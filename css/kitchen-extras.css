@@ -246,7 +246,7 @@
   [data-theme="dark"] .ds-item:not(.active){color:rgba(255,255,255,0.7);font-weight:600}
   .ds-section{font-weight:700;font-size:11px;letter-spacing:0.08em;color:#999;text-transform:uppercase}
   .kitshop-addbar{left:260px}
-  .screen-title,.dt-title{font-size:34px}
+  .screen-title{font-size:34px}
   .hero-workout-card{padding:28px}
   .hero-workout-title{font-size:40px}
   .metric-num{font-size:44px}

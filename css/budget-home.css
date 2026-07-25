@@ -127,7 +127,6 @@
 .home-half-card{flex:1;min-width:0}
 .hidden{display:none!important}
 #desktop-sidebar{display:none}
-.desktop-topbar{display:none}
 #desktop-exercise-nav{display:none}
 
 /* ── Settings: iOS-style grouped list ── */
@@ -204,8 +203,6 @@
   #app-main{flex:1;overflow-y:auto;height:100vh;padding:0;width:100%;max-width:none}
   #app-main>section{max-width:none;width:100%}
   #app-main>section{padding:0 18px 40px}
-  .desktop-topbar{display:flex;align-items:center;justify-content:space-between;height:44px;padding:0 18px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;margin:0 -18px 18px}
-  .dt-title{font-size:14px;font-weight:600}
   #desktop-sidebar{width:160px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);color:var(--text);display:flex;flex-direction:column;padding:16px 0;height:100vh;position:sticky;top:0}
   /* Real wordmark image (see layout.css) — theme-paired, same as the header/side-menu. */
   .ds-logo{padding:0 14px 18px}
@@ -256,7 +253,6 @@
   #view-home .hero-card .overview-content{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:32px}
   #view-home .hero-card .overview-greeting{margin-bottom:0}
   #app-main>section{padding:40px 32px 40px}
-  .desktop-topbar{margin:0 -32px 28px}
 
   /* Log tab */
   #view-log .log-cols{display:flex;gap:20px;height:100%}
