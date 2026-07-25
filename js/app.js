@@ -3703,31 +3703,41 @@ function openSettingsSection(key){
   overlay.style.left=window.innerWidth>=1024?'260px':'0';
   overlay.scrollTop=0;
 }
-// ── Desktop quick-settings dropdown ───────────────────────────────
-// A small popover next to the sidebar Settings item (desktop only — it lives inside
-// #desktop-sidebar, which is display:none under 1024px). It surfaces the most-flipped
-// settings without opening the full overlay; the Settings item itself still opens the full
-// menu. Live toggles (theme, dynamic colours) keep the menu open so you can see the change;
-// picking a discrete item (a TDEE goal) closes it, and any click-away closes it.
+// ── Desktop quick-settings mini list ──────────────────────────────
+// Tucked under the sidebar Settings item (desktop only — it lives inside
+// #desktop-sidebar, which is display:none under 1024px), revealed via the chevron in
+// .ds-settings-row. The Settings item itself always navigates straight to the full
+// Settings screen; the chevron independently expands/collapses this list. Open/closed
+// state persists across reloads via localStorage.
 function renderQuickSettingsMenu(){
   const menu=document.getElementById('quick-settings-menu'); if(!menu) return;
   const dark=S.theme!=='light';
   const dyn=localStorage.getItem('daily_dynamic_colours')==='true';
-  const cg=(typeof calcGoalCals==='function')?calcGoalCals():null;
-  const goal=(S.personalInfo&&S.personalInfo.goal)||'maintain';
-  const goalBtn=(id,label)=>'<button class="qs-goal'+(goal===id?' on':'')+'" onclick="quickSetGoal(\''+id+'\')">'+label+'</button>';
   menu.innerHTML=
-    '<div class="qs-item"><span>Dark mode</span>'+
+    '<div class="qs-item ds-item"><span>Dark mode</span>'+
       '<label class="toggle-switch"><input type="checkbox"'+(dark?' checked':'')+' onchange="quickSetTheme(this.checked)"><span class="toggle-slider"></span></label></div>'+
-    '<div class="qs-item"><span>Day colours</span>'+
-      '<label class="toggle-switch"><input type="checkbox"'+(dyn?' checked':'')+' onchange="quickSetDynamic(this.checked)"><span class="toggle-slider"></span></label></div>'+
-    '<div class="qs-goal-row"><span>Calorie goal</span><span class="qs-goal-cal">'+(cg?cg[goal]+' kcal':'Set up in Settings')+'</span></div>'+
-    '<div class="qs-goal-opts">'+goalBtn('cut','Cut')+goalBtn('maintain','Maintain')+goalBtn('bulk','Bulk')+'</div>';
+    '<div class="qs-item ds-item"><span>Day colours</span>'+
+      '<label class="toggle-switch"><input type="checkbox"'+(dyn?' checked':'')+' onchange="quickSetDynamic(this.checked)"><span class="toggle-slider"></span></label></div>';
 }
-// All interactions re-render the always-present menu after changing their value.
 function quickSetTheme(dark){ setTheme(dark?'dark':'light'); renderQuickSettingsMenu(); }
 function quickSetDynamic(on){ if(typeof onDynamicColoursToggle==='function') onDynamicColoursToggle(on); renderQuickSettingsMenu(); }
-function quickSetGoal(g){ if(typeof selectGoal==='function') selectGoal(g); renderQuickSettingsMenu(); }
+function setQuickSettingsOpen(open){
+  const menu=document.getElementById('quick-settings-menu');
+  const btn=document.querySelector('.ds-caret-btn');
+  if(!menu||!btn) return;
+  menu.classList.toggle('open', open);
+  btn.classList.toggle('open', open);
+  btn.setAttribute('aria-expanded', open?'true':'false');
+  localStorage.setItem('daily_qs_open', open?'1':'0');
+}
+function toggleQuickSettings(e){
+  if(e) e.stopPropagation();
+  setQuickSettingsOpen(!document.getElementById('quick-settings-menu').classList.contains('open'));
+}
+function restoreQuickSettings(){
+  renderQuickSettingsMenu();
+  setQuickSettingsOpen(localStorage.getItem('daily_qs_open')==='1');
+}
 
 function closeSettingsSection(){
   const overlay=document.getElementById('view-settings-detail');
@@ -9593,7 +9603,7 @@ try {
   applyTheme();
   applyLogoDayColour();
   buildSideMenu();
-  renderQuickSettingsMenu();
+  restoreQuickSettings();
   applyDayColour();
   logCheckin();
   // Restore an in-progress workout from earlier today (survives refresh); else fresh day.
