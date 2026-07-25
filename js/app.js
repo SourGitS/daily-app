@@ -464,6 +464,13 @@ if(firebaseReady){
     // ── Cross-device sync for everything else that was previously local-only ──
     // These keys are all unset until the user changes them, so an untouched device can't
     // seed empty data over a device that has real data (last-writer-wins is safe here).
+    // Exception: trainingSplit and exerciseLib are ALWAYS non-empty (loadSplit()/loadExerciseLib()
+    // generate a default the moment the app boots, even on a device the user has never touched),
+    // so the plain listener's "local differs from cloud → assume offline edit, push local" race
+    // would treat that untouched default as a real edit and clobber a genuine save made elsewhere
+    // (this is exactly what happened: a new split saved on desktop got wiped by an untouched
+    // phone's default reconnecting, which then clobbered the desktop right back). Both use the
+    // timestamped sync instead — same fix as Prompt 26 applied to the budget category lists.
     syncBlobListen(user.uid,'homeOrder','daily_home_order',()=>{ if(S.view==='home'&&typeof renderHome==='function') renderHome(); }); // legacy order (seed source)
     syncBlobListen(user.uid,'homeLayout','daily_home_layout',()=>{ if(S.view==='home'&&typeof renderHome==='function') renderHome(); if(_activeSettingsKey==='homelayout'&&typeof renderHomeLayoutSection==='function') renderHomeLayoutSection(); });
     syncBlobListen(user.uid,'habitsLog','daily_habits_log',()=>{ try{ habitsLog=loadHabitsLog(); }catch(e){} if(typeof refreshHabitsUI==='function') refreshHabitsUI(); });
@@ -473,10 +480,10 @@ if(firebaseReady){
     syncBlobListen(user.uid,'appTheme','wt_theme',()=>{ S.theme=localStorage.getItem('wt_theme')||S.theme; if(typeof applyTheme==='function') applyTheme(); });
     syncBlobListen(user.uid,'swaps','wt_swaps',()=>{ try{ S.swaps=JSON.parse(localStorage.getItem('wt_swaps')||'{}')||{}; }catch(e){} if(S.view==='log'&&typeof renderLog==='function') renderLog(); });
     syncBlobListen(user.uid,'dayCustom','wt_day_custom',()=>{ try{ dayCustom=JSON.parse(localStorage.getItem('wt_day_custom')||'{}')||{}; }catch(e){} if(S.view==='log'&&typeof renderLog==='function') renderLog(); if(S.view==='home'&&typeof renderHome==='function') renderHome(); });
-    syncBlobListen(user.uid,'exerciseLib','wt_exercise_lib',()=>{ if(typeof renderExerciseLibList==='function') renderExerciseLibList(); });
+    syncBlobListenTS(user.uid,'exerciseLib','wt_exercise_lib','wt_exercise_lib_ts',()=>{ if(typeof renderExerciseLibList==='function') renderExerciseLibList(); if(typeof SE!=='undefined' && SE.target>=0 && document.getElementById('se-picker-list')) document.getElementById('se-picker-list').innerHTML=sePickerListHTML(); });
     syncBlobListen(user.uid,'customMuscles','wt_custom_muscles',()=>{ try{ const v=document.getElementById('view-exercise-library'); if(v && v.style.display!=='none' && typeof renderMuscleFilterRow==='function') renderMuscleFilterRow(); }catch(e){} });
     syncBlobListen(user.uid,'libHidden','wt_lib_hidden',()=>{ if(typeof renderExerciseLibList==='function') renderExerciseLibList(); });
-    syncBlobListen(user.uid,'trainingSplit','wt_split',()=>{
+    syncBlobListenTS(user.uid,'trainingSplit','wt_split','wt_split_ts',()=>{
       splitConfig=null; splitCfg(); // reload from the just-updated localStorage copy
       if(S.view==='log'&&typeof renderLog==='function') renderLog();
       if(S.view==='home'&&typeof renderHome==='function') renderHome();
@@ -656,7 +663,7 @@ function splitCfg(){
   }
   return splitConfig;
 }
-function saveSplit(){ const c=sanitizeSplit(splitConfig); if(c) splitConfig=c; lsSave('wt_split', splitConfig, 'trainingSplit'); }
+function saveSplit(){ const c=sanitizeSplit(splitConfig); if(c) splitConfig=c; lsSaveTS('wt_split', splitConfig, 'wt_split_ts', 'trainingSplit'); }
 function splitTypes(){ return splitCfg().types; }
 function splitSchedule(){ return splitCfg().schedule; }
 function scheduleLen(){ const n=splitSchedule().length; return n>0?n:1; }
@@ -1705,7 +1712,7 @@ function loadExerciseLib(){
 }
 function saveExerciseLib(lib){
   // Persist only the user's customs; defaults always regenerate from the program.
-  lsSave('wt_exercise_lib', lib.filter(e=>e.custom), 'exerciseLib');
+  lsSaveTS('wt_exercise_lib', lib.filter(e=>e.custom), 'wt_exercise_lib_ts', 'exerciseLib');
 }
 // Names the user has flagged "allow negative/assisted" in the Exercise Library. Cached so the
 // per-set render doesn't reload the whole library each row; refreshed by refreshAllowNegNames()
