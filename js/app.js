@@ -1522,6 +1522,114 @@ function safeScrollIntoView(el, opts){
     if(dist>THRESHOLD) refreshHomeTab();
   },{passive:true});
 })();
+
+// ── Back navigation ───────────────────────────────────────────────
+// Every "close this view" control is <button class="back-btn" data-back="fnName">, so the
+// chevron markup lives in one constant and the dismiss animation in one place. The seven
+// full-screen views carry .app-overlay; a back-btn inside one slides it off before running
+// its close function, and a left-edge drag does the same by finger. Views that aren't
+// overlays (Kitchen's in-page detail) just run the function — nothing to slide.
+const BACK_CHEVRON='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+(function(){
+  const EDGE=28;      // px from the left edge that arms the drag
+  const COMMIT=0.32;  // fraction of the width that dismisses on release
+  const DUR=280;      // keep in step with .app-overlay's transition-duration
+
+  const reduced=()=>window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const shown=o=>getComputedStyle(o).display!=='none';
+  const fnOf=name=>(name&&typeof window[name]==='function')?window[name]:null;
+  // Desktop keeps the instant open/close: these views sit beside the sidebar rather than
+  // covering the screen, so a slide reads as noise there.
+  const animates=()=>window.innerWidth<1024 && !reduced();
+
+  // Topmost open overlay — the one a back gesture should act on.
+  function topOverlay(){
+    return Array.prototype.slice.call(document.querySelectorAll('.app-overlay'))
+      .filter(shown)
+      .sort((a,b)=>(parseInt(getComputedStyle(b).zIndex,10)||0)-(parseInt(getComputedStyle(a).zIndex,10)||0))[0]||null;
+  }
+  // An overlay declares its own close function through its back button, so the gesture
+  // needs no separate registry to stay in sync with the markup.
+  function closeFnFor(o){ const b=o.querySelector('[data-back]'); return b?fnOf(b.getAttribute('data-back')):null; }
+
+  function dismiss(o, fn){
+    if(!animates()){ if(fn) fn(); return; }
+    o.classList.remove('ov-drag');
+    o.style.transform='translateX(100%)';
+    setTimeout(()=>{ o.style.transform=''; if(fn) fn(); }, DUR);
+  }
+
+  document.addEventListener('click',function(e){
+    const btn=e.target.closest&&e.target.closest('.back-btn[data-back]');
+    if(!btn) return;
+    const fn=fnOf(btn.getAttribute('data-back'));
+    if(!fn) return;
+    e.preventDefault();
+    const o=btn.closest('.app-overlay');
+    if(o) dismiss(o, fn); else fn();
+  });
+
+  // Slide-in on open. Watching the style attribute keeps this self-contained — the seven
+  // open functions each just set display:block and need no animation hook of their own.
+  if(window.MutationObserver){
+    const mo=new MutationObserver(muts=>{
+      muts.forEach(m=>{
+        const o=m.target, isOpen=shown(o), was=o.dataset.ovOpen==='1';
+        if(isOpen===was) return;
+        o.dataset.ovOpen=isOpen?'1':'0';
+        if(!isOpen||!animates()) return;
+        o.classList.add('ov-drag','ov-enter');                    // park off-screen, untransitioned
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{
+          o.classList.remove('ov-drag');                          // transition back on…
+          o.classList.remove('ov-enter');                         // …then run it to 0
+        }));
+      });
+    });
+    document.querySelectorAll('.app-overlay').forEach(o=>{
+      o.dataset.ovOpen=shown(o)?'1':'0';
+      mo.observe(o,{attributes:true,attributeFilter:['style']});
+    });
+  }
+
+  // Left-edge drag-to-dismiss. Lives on document rather than per-overlay because the
+  // overlays are fixed siblings that come and go; the topOverlay() lookup picks the target.
+  let el=null,w=0,x0=0,y0=0,dx=0,locked=null,t0=0;
+  document.addEventListener('touchstart',function(e){
+    el=null;
+    if(!animates()||e.touches.length>1) return;
+    const o=topOverlay(); if(!o) return;
+    const r=o.getBoundingClientRect();
+    const t=e.touches[0];
+    if(t.clientX-r.left>EDGE) return;             // not an edge grab
+    el=o; w=r.width||window.innerWidth;
+    x0=t.clientX; y0=t.clientY; dx=0; locked=null; t0=Date.now();
+    el.classList.add('ov-drag');
+  },{passive:true});
+  document.addEventListener('touchmove',function(e){
+    if(!el) return;
+    const t=e.touches[0], mx=t.clientX-x0, my=t.clientY-y0;
+    if(locked===null){
+      if(mx>Math.abs(my)+3&&mx>=6) locked='h';    // rightward and clearly horizontal
+      else if(Math.abs(my)>Math.abs(mx)+3){ locked='v'; el.classList.remove('ov-drag'); el=null; return; }
+      else return;
+    }
+    if(locked!=='h') return;
+    e.preventDefault();                            // own the gesture; stop the view scrolling
+    dx=Math.max(0,mx);
+    el.style.transform='translateX('+dx+'px)';
+  },{passive:false});
+  function end(){
+    if(!el) return;
+    const o=el; el=null;
+    if(locked!=='h'){ o.classList.remove('ov-drag'); return; }
+    const flick=dx/Math.max(1,Date.now()-t0)>0.35&&dx>40;
+    if(dx>w*COMMIT||flick){ dismiss(o, closeFnFor(o)); return; }
+    o.classList.remove('ov-drag');                 // snap back
+    o.style.transform='';
+  }
+  document.addEventListener('touchend',end);
+  document.addEventListener('touchcancel',end);
+})();
 function refreshHomeTab(){
   renderHome(); // re-renders greeting, hero, stats, budget snapshot — the whole Home tab
   const fb=document.getElementById('home-content');
@@ -3720,7 +3828,12 @@ function renderQuickSettingsMenu(){
   const menu=document.getElementById('quick-settings-menu'); if(!menu) return;
   const dark=S.theme!=='light';
   const dyn=localStorage.getItem('daily_dynamic_colours')==='true';
+  // Same shortcuts as the mobile hamburger's Settings group (MENU_SECTIONS + "All
+  // settings"), so the desktop dropdown reaches the same destinations.
   menu.innerHTML=
+    '<button class="ds-item" onclick="openMenuSection(\'\')"><span>All settings</span></button>'+
+    MENU_SECTIONS.map(s=>'<button class="ds-item" onclick="openMenuSection(\''+s.id+'\')"><span>'+s.label+'</span></button>').join('')+
+    '<div class="qs-divider"></div>'+
     '<div class="qs-item ds-item"><span>Dark mode</span>'+
       '<label class="toggle-switch"><input type="checkbox"'+(dark?' checked':'')+' onchange="quickSetTheme(this.checked)"><span class="toggle-slider"></span></label></div>'+
     '<div class="qs-item ds-item"><span>Day colours</span>'+
@@ -4547,48 +4660,30 @@ function exportBudgetCSV(){
   rows.push(row(['Average Weekly Savings',avgWeeklySaved,'','']));
   rows.push(row(['Projected Annual Savings',projectedAnnualSavings,'','']));
 
-  // ── SECTION 5 — FIXED EXPENSES (budgetConfig.fixedExpenses; config-level, not per-week) ──
+  // ── SECTION 5 — FIXED EXPENSES (each category's own weekly budget) ──
   rows.push(''); rows.push('FIXED EXPENSES');
   rows.push(row(['Category','Monthly Amount','Annual Amount']));
-  const fixedCfg=budgetConfig.fixedExpenses||[];
   let fixedMonthlyTotal=0, fixedAnnualTotal=0;
-  fixedCfg.forEach(it=>{
-    const wk=parseFloat(it.weeklyAmount)||0, mo=r2(wk*4.33), yr=r2(wk*52);
+  fixCats.forEach(c=>{
+    const wk=catBudget(c), mo=r2(wk*4.33), yr=r2(wk*52);
     fixedMonthlyTotal+=mo; fixedAnnualTotal+=yr;
-    rows.push(row([it.name||'(unnamed)',mo,yr]));
+    rows.push(row([c.name||'(unnamed)',mo,yr]));
   });
   rows.push(row(['Totals',r2(fixedMonthlyTotal),r2(fixedAnnualTotal)]));
 
-  // ── SECTION 6 — VARIABLE EXPENSE BUDGETS (budgetConfig.variableExpenses) ────────────────
+  // ── SECTION 6 — VARIABLE EXPENSE BUDGETS ────────────────────────────────────
   rows.push(''); rows.push('VARIABLE BUDGETS');
   rows.push(row(['Category','Weekly Budget','Monthly Budget','Annual Budget',
     'Actual Weekly Average','Actual Monthly Average','Over/Under Budget per Month']));
-  // Config items (e.g. "Food / Social") don't share ids with the live var categories
-  // (food/pub/personal) — best-effort name match; unmatched actuals are left blank rather
-  // than guessed, per the design note at the top of this function.
-  const varSynonyms={food:['food','social','eating'],pub:['pub','bar','drink','social'],personal:['personal','misc']};
-  function matchVarCat(name){
-    const n=(name||'').toLowerCase();
-    return varCats.find(c=>{
-      const bare=(c.name||'').toLowerCase().replace(/[^a-z ]/g,'').trim();
-      if(bare&&n.includes(bare)) return true;
-      const syns=varSynonyms[c.id]||[];
-      return syns.some(s=>n.includes(s));
-    });
-  }
-  const variableCfg=budgetConfig.variableExpenses||[];
+  // Budget and actuals now hang off the same category, so the budget/actual pairing is exact
+  // — this used to name-match config items against the live categories via a synonym table.
   let vBudgetWkTotal=0,vBudgetMoTotal=0,vBudgetYrTotal=0;
-  variableCfg.forEach(it=>{
-    const wkBudget=parseFloat(it.weeklyAmount)||0, moBudget=r2(wkBudget*4.33), yrBudget=r2(wkBudget*52);
+  varCats.forEach(c=>{
+    const wkBudget=catBudget(c), moBudget=r2(wkBudget*4.33), yrBudget=r2(wkBudget*52);
     vBudgetWkTotal+=wkBudget; vBudgetMoTotal+=moBudget; vBudgetYrTotal+=yrBudget;
-    const match=matchVarCat(it.name);
-    let actualWeekly='',actualMonthly='',overUnder='';
-    if(match){
-      actualWeekly=avg(w=>w.varByCat[match.id]||0);
-      actualMonthly=r2(actualWeekly*4.33);
-      overUnder=r2(actualMonthly-moBudget);
-    }
-    rows.push(row([it.name||'(unnamed)',wkBudget,moBudget,yrBudget,actualWeekly,actualMonthly,overUnder]));
+    const actualWeekly=avg(w=>w.varByCat[c.id]||0);
+    const actualMonthly=r2(actualWeekly*4.33);
+    rows.push(row([c.name||'(unnamed)',wkBudget,moBudget,yrBudget,actualWeekly,actualMonthly,r2(actualMonthly-moBudget)]));
   });
   rows.push(row(['Totals',r2(vBudgetWkTotal),r2(vBudgetMoTotal),r2(vBudgetYrTotal),'','','']));
 
@@ -4699,6 +4794,319 @@ function importData(e){
   reader.readAsText(file);
 }
 
+// ── AI review export ─────────────────────────────────────────────
+// One Markdown briefing covering budget + accounts + workouts over a chosen window,
+// written to be pasted straight into an AI chat. Deliberately NOT exportAllData()'s
+// raw-localStorage dump: that's a restore-me backup, this is a read-me summary — rolled
+// up, labelled, and topped with the question we actually want answered.
+function aiRangeStart(months){
+  const d=localMidnight(getLocalDate());
+  d.setMonth(d.getMonth()-months);
+  return dateStr(d);
+}
+function buildAIReviewMarkdown(months){
+  const r2=n=>Math.round((n+Number.EPSILON)*100)/100;
+  const money=n=>(n<0?'-$':'$')+Math.abs(r2(n)).toFixed(2);
+  // Table-cell safe: pipes would split a column, newlines would end the row.
+  const md=v=>String(v==null?'':v).replace(/\|/g,'\\|').replace(/\n/g,' ');
+  const monthOf=d=>(d||'').slice(0,7);
+  const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+  const start=aiRangeStart(months), today=getLocalDate();
+  const L=[];
+
+  L.push('# Daily — data export for AI review');
+  L.push('');
+  L.push('Generated '+today+' · window: last '+months+' month'+(months===1?'':'s')+' ('+start+' → '+today+')');
+  L.push('All money in AUD. Budget is tracked weekly (weeks start Monday).');
+  L.push('');
+  L.push('## What I want from you');
+  L.push('');
+  L.push('Read the data below and give me:');
+  L.push('1. **How the period actually went** — spending vs targets, savings rate, net-worth movement, training consistency and progression. Call out what moved and why, not just the numbers.');
+  L.push('2. **What is going wrong** — the two or three habits or categories costing me the most, with the evidence from the tables.');
+  L.push('3. **Next month\'s budget** — a per-category weekly target, adjusted from what I actually spent rather than what I previously planned. Say which ones I am kidding myself about.');
+  L.push('4. **Next month\'s training and body goals** — concrete, based on the progression below.');
+  L.push('');
+  L.push('Be direct. If the data does not support a conclusion, say so rather than guessing.');
+  L.push('');
+
+  // ── Profile ──
+  const pi=S.personalInfo||{};
+  if(pi.age||pi.height||pi.weight||pi.goal){
+    L.push('## Profile');
+    L.push('');
+    if(pi.age)      L.push('- Age: '+pi.age);
+    if(pi.sex)      L.push('- Sex: '+pi.sex);
+    if(pi.height)   L.push('- Height: '+pi.height+' cm');
+    if(pi.weight)   L.push('- Weight (stated): '+pi.weight+' kg');
+    if(pi.activity) L.push('- Activity factor: '+pi.activity);
+    if(pi.goal)     L.push('- Goal: '+pi.goal);
+    L.push('');
+  }
+
+  // ── Budget ──
+  const incCats=loadIncCats(), fixCats=loadFixCats(), varCats=loadVarCats();
+  // Same per-category fallback rules exportBudgetCSV uses: a blank fixed cell means the
+  // category's default was charged, a blank variable cell means nothing was spent.
+  const fixActual=(d,c)=>{ const v=d&&d['fix_'+c.id]; return (v!==undefined&&v!=='')?(parseFloat(v)||0):(parseFloat(c.default)||0); };
+  const varActual=(d,c)=>parseFloat(d&&d['var_'+c.id])||0;
+  const weekKeys=Object.keys(budgetData).filter(k=>k>=start&&k<=today).sort();
+
+  L.push('## Budget');
+  L.push('');
+  L.push('### Current plan (weekly targets)');
+  L.push('');
+  L.push('| Type | Item | Weekly target |');
+  L.push('| --- | --- | --- |');
+  const planRow=(label,c)=>L.push('| '+label+' | '+md(c.name)+' | '+((c.budget==null||c.budget==='')&&c.default==null?'not set':money(catBudget(c)))+' |');
+  incCats.forEach(c=>planRow('Income',c));
+  fixCats.forEach(c=>planRow('Fixed',c));
+  varCats.forEach(c=>planRow('Variable',c));
+  if(budDefaults&&budDefaults.savingsGoal!=null) L.push('| Savings | Weekly savings goal | '+money(parseFloat(budDefaults.savingsGoal)||0)+' |');
+  L.push('');
+  L.push('Planned weekly: income '+money(configIncomeTotal())+' · fixed '+money(configFixedTotal())+' · variable '+money(configVariableTotal())+'.');
+  L.push('');
+
+  if(!weekKeys.length){
+    L.push('_No budget weeks recorded in this window._');
+    L.push('');
+  } else {
+    L.push('### Weekly actuals');
+    L.push('');
+    L.push('| Week (Mon) | Income | Fixed | Variable | Saved | Leftover |');
+    L.push('| --- | --- | --- | --- | --- | --- |');
+    weekKeys.forEach(k=>{
+      const d=budgetData[k];
+      L.push('| '+k+' | '+money(weekIncome(d))+' | '+money(weekFixedTotal(d))+' | '+money(weekVarTotal(d))+' | '+money(weekSavedAmt(d))+' | '+money(weekLeftover(d))+' |');
+    });
+    L.push('');
+
+    // Monthly rollup — weeks grouped by the month their Monday falls in.
+    const byMonth={};
+    weekKeys.forEach(k=>{ (byMonth[monthOf(k)]=byMonth[monthOf(k)]||[]).push(budgetData[k]); });
+    L.push('### Monthly rollup');
+    L.push('');
+    L.push('| Month | Weeks | Income | Spent | Saved | Leftover | Savings rate |');
+    L.push('| --- | --- | --- | --- | --- | --- | --- |');
+    Object.keys(byMonth).sort().forEach(m=>{
+      const ws=byMonth[m];
+      const inc=ws.reduce((s,d)=>s+weekIncome(d),0);
+      const spent=ws.reduce((s,d)=>s+weekSpending(d),0);
+      const sav=ws.reduce((s,d)=>s+weekSavedAmt(d),0);
+      const left=ws.reduce((s,d)=>s+weekLeftover(d),0);
+      L.push('| '+m+' | '+ws.length+' | '+money(inc)+' | '+money(spent)+' | '+money(sav)+' | '+money(left)+' | '+(inc>0?r2(sav/inc*100).toFixed(1)+'%':'—')+' |');
+    });
+    L.push('');
+
+    // ── Per-category detail — the point of the whole export ──
+    // Actuals come from each category's own weekly cells and the target from its own budget
+    // field, so a category added later (Groceries, anything) appears here complete with no
+    // code change and no name matching. A blank target means one was genuinely never set,
+    // which is worth the AI knowing rather than papering over with a zero.
+    const RECENT=4;
+    const statsOf=v=>({avg:avg(v), min:Math.min.apply(null,v), max:Math.max.apply(null,v), recent:avg(v.slice(-RECENT))});
+
+    // One table per type. `read(weekRecord, cat)` isolates the only thing that differs between
+    // income / fixed / variable — how a single category's amount is pulled out of a week.
+    function catSection(heading, cats, read, planTotal){
+      if(!cats.length) return;
+      const rows=cats.map(c=>{
+        const v=weekKeys.map(k=>read(budgetData[k], c));
+        const unset=(c.budget==null||c.budget==='')&&c.default==null;
+        return {c, v, s:statsOf(v), t:unset?null:catBudget(c)};
+      });
+      const total=rows.reduce((a,r)=>a+r.s.avg,0);
+      L.push('#### '+heading);
+      L.push('');
+      L.push('| Category | Avg/wk | Share | Last '+RECENT+'wk | Min–max | Target | vs target |');
+      L.push('| --- | --- | --- | --- | --- | --- | --- |');
+      rows.forEach(r=>{
+        L.push('| '+md(r.c.name)+' | '+money(r.s.avg)+' | '+(total>0?r2(r.s.avg/total*100).toFixed(0)+'%':'—')+' | '+
+          money(r.s.recent)+' | '+money(r.s.min)+'–'+money(r.s.max)+' | '+
+          (r.t==null?'—':money(r.t))+' | '+(r.t==null?'—':(r.s.avg-r.t>0?'+':'')+money(r.s.avg-r.t))+' |');
+      });
+      L.push('| **Total** | **'+money(total)+'** | 100% | '+money(rows.reduce((a,r)=>a+r.s.recent,0))+' | — | **'+money(planTotal)+'** | **'+
+        (total-planTotal>0?'+':'')+money(total-planTotal)+'** |');
+      L.push('');
+      // A missing target is a real gap in the user's setup, so name it — setting one is
+      // exactly the kind of thing next month's plan should include.
+      const noTarget=rows.filter(r=>r.t==null).map(r=>r.c.name);
+      if(noTarget.length){
+        L.push('- No weekly budget set for: '+noTarget.map(md).join(', ')+'. Suggest one based on the actuals above.');
+        L.push('');
+      }
+      return rows;
+    }
+
+    L.push('### Spending by category (per week)');
+    L.push('');
+    catSection('Income', incCats, (d,c)=>parseFloat(d['inc_'+c.id])||0, configIncomeTotal());
+    const fixRows=catSection('Fixed', fixCats, (d,c)=>fixActual(d,c), configFixedTotal());
+    const varRows=catSection('Variable', varCats, (d,c)=>varActual(d,c), configVariableTotal());
+
+    // Full weekly series per category — the raw numbers behind every average above, so the
+    // review can spot a one-off blowout rather than reading a lifted mean as a habit.
+    const seriesRows=[].concat(fixRows||[], varRows||[]).filter(r=>r.s.max>0);
+    if(seriesRows.length){
+      L.push('### Weekly series by expense category');
+      L.push('');
+      L.push('Weeks in order, '+weekKeys[0]+' → '+weekKeys[weekKeys.length-1]+'.');
+      L.push('');
+      seriesRows.forEach(r=>L.push('- **'+md(r.c.name)+'**: '+r.v.map(n=>r2(n)).join(' · ')));
+      L.push('');
+    }
+  }
+
+  // Subscriptions are a current snapshot, not history — labelled as such so the AI doesn't
+  // read them as period spend on top of the fixed-category totals above.
+  if(subscriptionsData&&subscriptionsData.length){
+    const subsMonthly=subscriptionsData.reduce((s,x)=>s+(parseFloat(x.monthlyCost)||0),0);
+    L.push('### Subscriptions (current, not historical)');
+    L.push('');
+    L.push('| Name | Monthly |');
+    L.push('| --- | --- |');
+    subscriptionsData.forEach(x=>L.push('| '+md(x.name)+' | '+money(parseFloat(x.monthlyCost)||0)+' |'));
+    L.push('| **Total** | **'+money(subsMonthly)+'** |');
+    L.push('');
+  }
+
+  // ── Accounts ──
+  L.push('## Accounts & net worth');
+  L.push('');
+  if(!accounts.length){
+    L.push('_No accounts set up._');
+    L.push('');
+  } else {
+    L.push('| Account | Type | Current |');
+    L.push('| --- | --- | --- |');
+    accounts.forEach(a=>L.push('| '+md(a.name)+' | '+(a.type==='debt'?'Debt':'Asset')+' | '+money(parseFloat(a.current)||0)+' |'));
+    L.push('');
+    L.push('Assets '+money(accountsAssetsTotal())+' · debts '+money(accountsDebtsTotal())+' · **net worth '+money(accountsAssetsTotal()-accountsDebtsTotal())+'**');
+    L.push('');
+    // Balance history within the window, so the AI can see the trend rather than one number.
+    accounts.forEach(a=>{
+      const h=(a.history||[]).filter(e=>e&&e.date>=start&&e.date<=today).sort((x,y)=>x.date<y.date?-1:1);
+      if(!h.length) return;
+      L.push('**'+md(a.name)+'** balance history: '+h.map(e=>e.date+' '+money(parseFloat(e.balance)||0)).join(' · '));
+      L.push('');
+    });
+  }
+
+  // ── Workouts ──
+  const sessions=S.sessions.filter(s=>s&&s.date>=start&&s.date<=today).sort((a,b)=>a.date<b.date?-1:1);
+  // Warmups carry no training load — volume counts working sets only.
+  const sessVolume=s=>s.exercises.reduce((t,ex)=>t+ex.sets.reduce((v,st)=>v+(st.type==='warmup'?0:(parseFloat(st.weight)||0)*(parseFloat(st.reps)||0)),0),0);
+  L.push('## Workouts');
+  L.push('');
+  if(!sessions.length){
+    L.push('_No sessions logged in this window._');
+    L.push('');
+  } else {
+    const totalVol=sessions.reduce((s,x)=>s+sessVolume(x),0);
+    const mins=sessions.reduce((s,x)=>s+(parseFloat(x.duration)||0),0);
+    const spanWeeks=Math.max(1,Math.round((localMidnight(today)-localMidnight(start))/6048e5));
+    L.push('- Sessions: '+sessions.length+' ('+r2(sessions.length/spanWeeks).toFixed(1)+'/week over '+spanWeeks+' weeks)');
+    L.push('- Total working volume: '+Math.round(totalVol).toLocaleString()+' kg');
+    if(mins) L.push('- Total logged time: '+Math.round(mins)+' min (avg '+Math.round(mins/sessions.length)+' min/session)');
+    L.push('');
+
+    const byMonthS={};
+    sessions.forEach(s=>{ (byMonthS[monthOf(s.date)]=byMonthS[monthOf(s.date)]||[]).push(s); });
+    L.push('### Monthly training');
+    L.push('');
+    L.push('| Month | Sessions | Volume (kg) | Avg effort |');
+    L.push('| --- | --- | --- | --- |');
+    Object.keys(byMonthS).sort().forEach(m=>{
+      const ss=byMonthS[m];
+      const eff=ss.map(s=>parseFloat(s.effort)).filter(n=>!isNaN(n));
+      L.push('| '+m+' | '+ss.length+' | '+Math.round(ss.reduce((t,s)=>t+sessVolume(s),0)).toLocaleString()+' | '+(eff.length?r2(avg(eff)).toFixed(1):'—')+' |');
+    });
+    L.push('');
+
+    L.push('### Session type frequency');
+    L.push('');
+    const byType={};
+    sessions.forEach(s=>{ byType[s.sessionType]=(byType[s.sessionType]||0)+1; });
+    Object.keys(byType).sort((a,b)=>byType[b]-byType[a]).forEach(t=>L.push('- '+md(t)+': '+byType[t]+' sessions'));
+    L.push('');
+
+    // Progression = heaviest working set first vs last time each movement was trained.
+    L.push('### Per-exercise progression (top working set)');
+    L.push('');
+    L.push('| Exercise | Sessions | First | Latest | Change |');
+    L.push('| --- | --- | --- | --- | --- |');
+    const byEx={};
+    sessions.forEach(s=>s.exercises.forEach(ex=>{
+      const working=ex.sets.filter(st=>st.type!=='warmup'&&(parseFloat(st.weight)||0)>0);
+      if(!working.length) return;
+      const top=working.reduce((a,b)=>((parseFloat(b.weight)||0)>(parseFloat(a.weight)||0)?b:a));
+      (byEx[ex.name]=byEx[ex.name]||[]).push({date:s.date, weight:parseFloat(top.weight)||0, reps:parseInt(top.reps)||0});
+    }));
+    Object.keys(byEx).sort((a,b)=>byEx[b].length-byEx[a].length).forEach(name=>{
+      const h=byEx[name].sort((a,b)=>a.date<b.date?-1:1);
+      const f=h[0], l=h[h.length-1], diff=l.weight-f.weight;
+      L.push('| '+md(name)+' | '+h.length+' | '+f.weight+'kg×'+f.reps+' ('+f.date+') | '+l.weight+'kg×'+l.reps+' ('+l.date+') | '+(diff>0?'+':'')+r2(diff)+'kg |');
+    });
+    L.push('');
+  }
+
+  // ── Body & habits ──
+  const weights=(S.weights||[]).filter(w=>w&&w.date>=start&&w.date<=today).sort((a,b)=>a.date<b.date?-1:1);
+  if(weights.length){
+    L.push('## Bodyweight');
+    L.push('');
+    const f=weights[0], l=weights[weights.length-1];
+    L.push('- Start '+f.weight+' kg ('+f.date+') → latest '+l.weight+' kg ('+l.date+'), change '+(l.weight-f.weight>0?'+':'')+r2(l.weight-f.weight)+' kg over '+weights.length+' weigh-ins');
+    if(typeof weightGoal==='object'&&weightGoal&&weightGoal.target) L.push('- Target: '+weightGoal.target+' kg'+(weightGoal.date?' by '+weightGoal.date:''));
+    L.push('');
+    L.push('Log: '+weights.map(w=>w.date+' '+w.weight+'kg').join(' · '));
+    L.push('');
+  }
+
+  const hLog=(typeof habitsLog==='object'&&habitsLog)?habitsLog:loadHabitsLog();
+  const hDays=Object.keys(hLog).filter(d=>d>=start&&d<=today);
+  if(hDays.length&&habitsData.length){
+    L.push('## Habits');
+    L.push('');
+    L.push('| Habit | Days completed | Rate |');
+    L.push('| --- | --- | --- |');
+    habitsData.forEach((h,i)=>{
+      const n=hDays.filter(d=>Array.isArray(hLog[d])&&hLog[d].indexOf(i)>=0).length;
+      L.push('| '+md(h)+' | '+n+' / '+hDays.length+' | '+r2(n/hDays.length*100).toFixed(0)+'% |');
+    });
+    L.push('');
+  }
+
+  return L.join('\n');
+}
+function exportAIReport(){
+  const sel=document.getElementById('ai-export-range');
+  const months=parseInt(sel&&sel.value,10)||1;
+  const text=buildAIReviewMarkdown(months);
+  const blob=new Blob([text],{type:'text/markdown'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='daily-ai-review-'+months+'m-'+getLocalDate()+'.md';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+// Clipboard path — on iOS "download a .md" is awkward, pasting into a chat is not.
+function copyAIReport(){
+  const sel=document.getElementById('ai-export-range');
+  const months=parseInt(sel&&sel.value,10)||1;
+  const text=buildAIReviewMarkdown(months);
+  const done=()=>{ if(typeof showToast==='function') showToast('Report copied — paste it into your AI chat'); };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done));
+  } else fallbackCopy(text,done);
+}
+function fallbackCopy(text,done){
+  const ta=document.createElement('textarea');
+  ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); done(); }catch(e){ alert('Could not copy automatically.'); }
+  ta.remove();
+}
 
 // ── Budget constants (fallback defaults) ──────────────────────────
 // Still referenced by loadFixCats defaults (fine/subs/gym/transport) and the Section-2 budget
@@ -4766,9 +5174,17 @@ function saveBudgetConfig(cfg){
 function loadIncomeStreams(){ return budgetConfig.incomeStreams; }
 function saveIncomeStreams(){ saveBudgetConfig(budgetConfig); }
 function cfgSum(arr){ return (arr||[]).reduce((a,i)=>a+(parseFloat(i.weeklyAmount)||0),0); }
-function configIncomeTotal(){ return cfgSum(budgetConfig.incomeStreams); }
-function configFixedTotal(){ return cfgSum(budgetConfig.fixedExpenses); }
-function configVariableTotal(){ return cfgSum(budgetConfig.variableExpenses); }
+// Planned weekly totals. The categories own the targets now, so these sum catBudget() —
+// except during onboarding, where the categories don't exist yet and budgetConfig is still
+// the live capture buffer for what the user is typing.
+function planTotal(type){
+  return localStorage.getItem(BUD_CAT_KEY[type])!=null
+    ? catBudgetTotal(type)
+    : cfgSum(budgetConfig[BUD_CFG_KEY[type]]);
+}
+function configIncomeTotal(){ return planTotal('inc'); }
+function configFixedTotal(){ return planTotal('fix'); }
+function configVariableTotal(){ return planTotal('var'); }
 
 // ── Generic line-item editing (Budget tab + Settings share these) ─
 function addBudgetItem(type){
@@ -4812,6 +5228,52 @@ function renderBudgetEditList(containerId,type){
     '</div>'
   ).join('')+
     '<button class="bud-add-item" onclick="addBudgetItem(\''+type+'\')">+ Add item</button>';
+}
+
+// ── Category budget editor (Settings → Budget categories) ─────────
+// Edits the live categories themselves — the same list the Budget tab enters weekly amounts
+// against — so a category added in either place carries its target everywhere and the two
+// can no longer drift. Ids are never rewritten, so saved weekly history stays attached.
+const CAT_TYPE_LABEL={inc:'income source', fix:'fixed expense', var:'variable expense'};
+function renderCatBudgetList(containerId, type){
+  const el=document.getElementById(containerId); if(!el) return;
+  const cats=BUD_CAT_LOAD[type]?BUD_CAT_LOAD[type]():[];
+  el.innerHTML=cats.map(c=>
+    '<div class="bud-edit-row">'+
+      '<input class="bud-edit-name" value="'+_catEsc(c.name||'')+'" placeholder="Name" '+
+        'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'name\',this.value)">'+
+      '<input class="bud-edit-amt" type="number" inputmode="decimal" value="'+(c.budget??'')+'" placeholder="0" '+
+        'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'budget\',this.value)">'+
+      '<button class="bud-edit-del" title="Remove" onclick="catRemoveItem(\''+type+'\',\''+c.id+'\')">🗑️</button>'+
+    '</div>'
+  ).join('')+
+    '<button class="bud-add-item" onclick="catAddItem(\''+type+'\')">+ Add '+CAT_TYPE_LABEL[type]+'</button>';
+}
+function catUpdateField(type,id,field,val){
+  const cats=BUD_CAT_LOAD[type](); const c=cats.find(x=>x.id===id); if(!c) return;
+  // Empty stays empty rather than becoming 0 — "no target set" and "target of zero" are
+  // different things, and only the first should leave the field blank next time.
+  c[field]= field==='budget' ? (String(val).trim()===''?'':(parseFloat(val)||0)) : val;
+  BUD_CAT_SAVE[type](cats);
+  refreshCatBudgetUI();
+}
+function catAddItem(type){
+  const cats=BUD_CAT_LOAD[type]();
+  cats.push({id:genCatId(type), name:'', budget:''});
+  BUD_CAT_SAVE[type](cats);
+  refreshCatBudgetUI();
+}
+function catRemoveItem(type,id){
+  const cats=BUD_CAT_LOAD[type]();
+  if(cats.length<=1) return;   // never leave a section with nothing to enter against
+  BUD_CAT_SAVE[type](cats.filter(c=>c.id!==id));
+  refreshCatBudgetUI();
+}
+function refreshCatBudgetUI(){
+  const be=document.getElementById('view-budget-editor');
+  if(be && be.style.display!=='none' && typeof renderBudgetEditor==='function') renderBudgetEditor();
+  if(S.view==='budget') renderBudgetTab();
+  if(S.view==='home') renderHome();
 }
 
 
@@ -5272,11 +5734,50 @@ function loadIncCats(){
 function saveIncCats(cats){ lsSaveTS('daily_budget_inc_cats', cats, 'daily_budget_inc_cats_ts', 'budgetIncCats'); }
 function genCatId(prefix){ return prefix+'_'+Date.now(); }
 
+// ── Per-category weekly budget ────────────────────────────────────
+// The category's own `budget` field is the single source of truth for its weekly target.
+// Before this, the target lived in budgetConfig — a second, independently-edited list that
+// shared no ids with these categories, so the two drifted (a category added in the Budget
+// tab had no plan entry; a plan entry renamed in Settings stopped matching). Anything that
+// wants "the target for this category" reads catBudget(); nothing name-matches any more.
+const BUD_CAT_KEY={fix:'daily_budget_fix_cats', var:'daily_budget_var_cats', inc:'daily_budget_inc_cats'};
+const BUD_CFG_KEY={fix:'fixedExpenses', var:'variableExpenses', inc:'incomeStreams'};
+function catBudget(c){
+  if(!c) return 0;
+  if(c.budget!=null&&c.budget!=='') return parseFloat(c.budget)||0;
+  return parseFloat(c.default)||0;   // pre-migration fixed categories
+}
+function catBudgetTotal(type){ return (BUD_CAT_LOAD[type]?BUD_CAT_LOAD[type]():[]).reduce((s,c)=>s+catBudget(c),0); }
+// One-time lift of the old budgetConfig amounts onto the categories they were describing.
+// Name-matched one-to-one — the same imperfect bridge as before, but run exactly once here
+// instead of on every read, so from now on the number lives with the category.
+function migrateCatBudgetsOnce(){
+  if(localStorage.getItem('daily_cat_budgets_migrated')) return;
+  const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  ['inc','fix','var'].forEach(type=>{
+    if(localStorage.getItem(BUD_CAT_KEY[type])==null) return;   // untouched defaults; nothing to migrate
+    const cats=BUD_CAT_LOAD[type]();
+    const plan=((budgetConfig&&budgetConfig[BUD_CFG_KEY[type]])||[]).map(p=>({n:norm(p.name), amt:parseFloat(p.weeklyAmount)||0, used:false}));
+    let changed=false;
+    const take=(c,hit)=>{ if(hit){ hit.used=true; c.budget=hit.amt; changed=true; } };
+    cats.forEach(c=>{ if(c.budget!=null&&c.budget!=='') return; const n=norm(c.name); if(n) take(c, plan.find(p=>!p.used&&p.n===n)); });
+    cats.forEach(c=>{ if(c.budget!=null&&c.budget!=='') return; const n=norm(c.name); if(!n) return;
+      take(c, plan.find(p=>!p.used&&p.n&&(p.n.includes(n)||n.includes(p.n)))); });
+    // No plan entry: fall back to the category's own legacy `default`, else leave it unset
+    // so the UI shows an empty field rather than a fabricated $0 target.
+    cats.forEach(c=>{ if((c.budget==null||c.budget==='')&&c.default!=null&&c.default!==''){ c.budget=parseFloat(c.default)||0; changed=true; } });
+    if(changed) BUD_CAT_SAVE[type](cats);
+  });
+  localStorage.setItem('daily_cat_budgets_migrated','1');
+}
+
 function weekFixedTotal(d){
   let t=0;
   loadFixCats().forEach(c=>{
     const v=d&&d['fix_'+c.id];
-    t += (v!==undefined&&v!=='') ? (parseFloat(v)||0) : (parseFloat(c.default)||0);
+    // A blank fixed cell means the standard amount was charged, so it falls back to the
+    // category's budget. (Variable is the opposite — blank there means nothing was spent.)
+    t += (v!==undefined&&v!=='') ? (parseFloat(v)||0) : catBudget(c);
   });
   return t;
 }
@@ -5454,9 +5955,7 @@ document.addEventListener('click', function(e){
     const load=BUD_CAT_LOAD[type], save=BUD_CAT_SAVE[type];
     if(!load) return;
     const id=genCatId(type);
-    const cat={id,name:''};
-    if(type==='fix') cat.default=0;
-    const cats=load(); cats.push(cat); save(cats);
+    const cats=load(); cats.push({id,name:'',budget:''}); save(cats);
     renderBudgetTab();
     setTimeout(()=>document.getElementById('catname-'+type+'-'+id)?.focus(),60);
     return;
@@ -7961,9 +8460,10 @@ function openBudgetEditor(){
   if(typeof closeMenu==='function') closeMenu();
 }
 function renderBudgetEditor(){
-  renderBudgetEditList('be-inc','incomeStreams');
-  renderBudgetEditList('be-fix','fixedExpenses');
-  renderBudgetEditList('be-var','variableExpenses');
+  // Categories, not budgetConfig — this screen sets each category's weekly budget directly.
+  renderCatBudgetList('be-inc','inc');
+  renderCatBudgetList('be-fix','fix');
+  renderCatBudgetList('be-var','var');
   renderSubscriptionsSection();
 }
 function closeBudgetEditor(){ const v=document.getElementById('view-budget-editor'); if(v){ v.style.display='none'; v.style.left='0'; } }
@@ -8394,17 +8894,28 @@ function seedBudgetCategoriesFromConfig(){
   const wkKey=weekKey(getMondayOf(0));
   let touchedWeek=false;
   const ensureWeek=()=>{ if(!budgetData[wkKey]) budgetData[wkKey]={}; return budgetData[wkKey]; };
-  if(localStorage.getItem('daily_budget_inc_cats')==null){
-    const inc=(budgetConfig.incomeStreams||[]).filter(s=>(s.name||'').trim()||parseFloat(s.weeklyAmount)>0);
-    const cats = inc.length ? inc.map((s,i)=>({id:'inc'+(i+1),name:(s.name||('Income '+(i+1))).trim()})) : [{id:'inc1',name:'Income'}];
-    saveIncCats(cats);
-    inc.forEach((s,i)=>{ const amt=parseFloat(s.weeklyAmount)||0; if(amt>0){ ensureWeek()['inc_inc'+(i+1)]=String(amt); touchedWeek=true; } });
-  }
-  if(localStorage.getItem('daily_budget_fix_cats')==null){
-    const fx=(budgetConfig.fixedExpenses||[]).filter(s=>(s.name||'').trim()||parseFloat(s.weeklyAmount)>0);
-    saveFixCats(fx.map((s,i)=>({id:'fix'+(i+1),name:(s.name||('Fixed '+(i+1))).trim()})));
-    fx.forEach((s,i)=>{ const amt=parseFloat(s.weeklyAmount)||0; if(amt>0){ ensureWeek()['fix_fix'+(i+1)]=String(amt); touchedWeek=true; } });
-  }
+  // Every config entry becomes a live category carrying its weekly amount as that category's
+  // budget, so what the user planned in onboarding IS the category list from day one. Variable
+  // was previously skipped entirely, which is why the plan and the categories started life
+  // already out of step for every new account.
+  const seed=(type, prefix, fallbackName, prefillWeek)=>{
+    if(localStorage.getItem(BUD_CAT_KEY[type])!=null) return;   // real categories already exist
+    const items=((budgetConfig&&budgetConfig[BUD_CFG_KEY[type]])||[])
+      .filter(s=>(s.name||'').trim()||parseFloat(s.weeklyAmount)>0);
+    BUD_CAT_SAVE[type](items.length
+      ? items.map((s,i)=>({id:prefix+(i+1), name:(s.name||(fallbackName+' '+(i+1))).trim(), budget:parseFloat(s.weeklyAmount)||0}))
+      : [{id:prefix+'1', name:fallbackName, budget:''}]);
+    // Income and fixed are known up front, so this week starts pre-filled. Variable is what
+    // you actually spend — prefilling it would claim spending that hasn't happened yet.
+    if(!prefillWeek) return;
+    items.forEach((s,i)=>{
+      const amt=parseFloat(s.weeklyAmount)||0;
+      if(amt>0){ ensureWeek()[type+'_'+prefix+(i+1)]=String(amt); touchedWeek=true; }
+    });
+  };
+  seed('inc','inc','Income',true);
+  seed('fix','fix','Fixed',true);
+  seed('var','var','Variable',false);
   if(touchedWeek && typeof budSaveData==='function'){
     budgetData[wkKey].updatedAt=Date.now();
     budSaveData(wkKey);
@@ -9022,7 +9533,7 @@ function kitRenderDetail(id,target){
     '</div>';
   }
   const cookInfo=(r.cookTime?'<span class="kit-cal-badge">⏱ '+r.cookTime+' min</span>':'');
-  const backBtn=window.innerWidth>=1024?'':'<button class="kit-back" onclick="kitCloseDetail()" aria-label="Back">←</button>';
+  const backBtn=window.innerWidth>=1024?'':'<button class="back-btn" data-back="kitCloseDetail" aria-label="Back">'+BACK_CHEVRON+'</button>';
   target.innerHTML=
     '<div class="kit-detail-head">'+backBtn+
       '<button class="kit-fav'+(r.favourite?' on':'')+'" onclick="kitToggleFav(\''+r.id+'\')" style="margin-left:auto" aria-label="Favourite">'+(r.favourite?'⭐':'☆')+'</button>'+
@@ -9092,7 +9603,7 @@ function kitOpenForm(id){
   }).join('');
   box.innerHTML=
     '<div class="kit-form-topbar">'+
-      '<button class="kit-back" onclick="kitCloseForm()">←</button>'+
+      '<button class="back-btn" data-back="kitCloseForm" aria-label="Back">'+BACK_CHEVRON+'</button>'+
       '<div class="modal-title">'+(editing?'Edit Recipe':'New Recipe')+'</div>'+
       '<div style="width:36px"></div>'+
     '</div>'+
@@ -9360,7 +9871,7 @@ function kitShopRenderList(){
   const totalItems=keys.length+needs.length;
   let html='';
   html+='<div class="kitshop-list-head">'+
-    '<button class="kit-back" onclick="kitShopBackToSelector()" aria-label="Back">←</button>'+
+    '<button class="back-btn" data-back="kitShopBackToSelector" aria-label="Back">'+BACK_CHEVRON+'</button>'+
     '<div class="kitshop-list-title">Shopping list<span class="kitshop-count">'+totalItems+'</span></div>'+
     '<button class="kitshop-clear-checked" onclick="kitShopClearChecked()">Clear checked</button>'+
   '</div>';
@@ -9598,6 +10109,7 @@ checkOrientation(); // run on boot
 try {
   migrateLegsGroupOnce(); // one-time: 'legs' → quads/hamstrings/calves/glutes/lower back
   recoverBudgetData(); // one-time: normalise legacy budget weeks, strip shadowing snapshots
+  migrateCatBudgetsOnce(); // one-time: lift budgetConfig weekly amounts onto the categories
   // Weight-log consolidation: fold any legacy daily_weight_log entries into wt_weight.
   // The local key is only removed by the signed-in path (after the merged copy is safely
   // in the cloud), so a signed-out merge can never lose data to the next cloud pull.

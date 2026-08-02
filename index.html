@@ -74,7 +74,6 @@
       </div>
       <div style="display:flex;align-items:center;gap:6px">
         <button id="header-avatar" onclick="openProfile()" aria-label="Profile"></button>
-        <button id="header-export" onclick="exportData()" aria-label="Export"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
         <button id="header-menu" onclick="toggleMenu()" aria-label="Menu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
       </div>
     </div>
@@ -571,6 +570,22 @@
             <button onclick="exportData()" style="width:100%;padding:11px;background:transparent;color:var(--muted);border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px">Export workout log (CSV)</button>
             <button onclick="exportBudgetCSV()" style="width:100%;padding:11px;background:transparent;color:var(--muted);border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Export Budget CSV</button>
           </div>
+
+          <div class="settings-card">
+            <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--muted);margin-bottom:10px">AI review</div>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Bundle your budget, accounts and training into one summary written for an AI to read — then paste it into a chat for a review of the period and targets for the next one.</div>
+            <div class="settings-field" style="margin-bottom:10px">
+              <label for="ai-export-range">Period</label>
+              <select id="ai-export-range">
+                <option value="1">Last 1 month</option>
+                <option value="3" selected>Last 3 months</option>
+                <option value="6">Last 6 months</option>
+                <option value="12">Last 12 months</option>
+              </select>
+            </div>
+            <button onclick="copyAIReport()" style="width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:8px">Copy report for AI</button>
+            <button onclick="exportAIReport()" style="width:100%;padding:11px;background:transparent;color:var(--muted);border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Download as Markdown</button>
+          </div>
         </div>
 
       </div>
@@ -598,9 +613,9 @@
   </div>
 
   <!-- Notes: edit a single note fullscreen (comfortable editing for long notes) -->
-  <div id="note-view-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:120;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
+  <div id="note-view-overlay" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:120;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
     <div style="position:sticky;top:0;background:var(--bg);z-index:10;padding:12px 16px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
-      <button onclick="closeNoteView()" aria-label="Back to notes" style="background:none;border:none;font-size:28px;line-height:1;color:var(--text);cursor:pointer;padding:0 4px;-webkit-tap-highlight-color:transparent">&#8249;</button>
+      <button class="back-btn" data-back="closeNoteView" aria-label="Back to notes"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
       <input id="note-view-title" oninput="noteViewSave()" placeholder="Title" style="font-size:18px;font-weight:700;color:var(--text);flex:1;min-width:0;background:none;border:none;padding:0;font-family:inherit">
       <button id="note-view-copy" onclick="copyNoteView()" style="background:var(--accent);border:none;border-radius:12px;color:#fff;font-size:14px;font-weight:700;padding:8px 14px;cursor:pointer;-webkit-tap-highlight-color:transparent">Copy</button>
     </div>
@@ -687,9 +702,9 @@
 </div>
 
 <!-- EXERCISE LIBRARY PAGE -->
-<div id="view-exercise-library" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
+<div id="view-exercise-library" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
   <div style="position:sticky;top:0;background:var(--bg);z-index:10;padding:12px 16px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
-    <button data-action="close-exercise-library" aria-label="Back" style="background:none;border:none;font-size:28px;line-height:1;color:var(--text);cursor:pointer;padding:0 4px;-webkit-tap-highlight-color:transparent">&#8249;</button>
+    <button class="back-btn" data-back="closeExerciseLibrary" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
     <span style="font-size:18px;font-weight:700;color:var(--text)">Exercise Library</span>
   </div>
   <div style="padding:16px 16px 10px">
@@ -704,18 +719,18 @@
 </div>
 
 <!-- SETTINGS DETAIL — full-screen pushed view for each settings item -->
-<div id="view-settings-detail" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
+<div id="view-settings-detail" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
   <div class="detail-topbar">
-    <button class="detail-back" onclick="closeSettingsSection()"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Settings</button>
+    <button class="back-btn with-label" data-back="closeSettingsSection"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Settings</button>
     <span class="detail-title" id="settings-detail-title">Settings</span>
   </div>
   <div id="settings-detail-content" style="padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 40px);max-width:640px;margin:0 auto"></div>
 </div>
 
 <!-- TRAINING SPLIT EDITOR PAGE -->
-<div id="view-split-editor" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
+<div id="view-split-editor" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
   <div class="detail-topbar">
-    <button class="detail-back" onclick="closeSplitEditor()"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Settings</button>
+    <button class="back-btn with-label" data-back="closeSplitEditor"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Settings</button>
     <span class="detail-title">Training Split</span>
     <button class="detail-action" onclick="saveSplitEditor()">Save</button>
   </div>
@@ -726,19 +741,20 @@
 </div>
 
 <!-- BUDGET STRUCTURE EDITOR PAGE -->
-<div id="view-budget-editor" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
+<div id="view-budget-editor" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
   <div class="detail-topbar">
-    <button class="detail-back" onclick="closeBudgetEditor()"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Settings</button>
+    <button class="back-btn with-label" data-back="closeBudgetEditor"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Settings</button>
     <span class="detail-title">Budget categories</span>
     <button class="detail-action" onclick="closeBudgetEditor()">Done</button>
   </div>
   <div style="padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 32px);max-width:520px;margin:0 auto">
-    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Set up your income sources and expense categories here. The Budget tab uses these when you fill in each week's amounts. Changes save automatically.</p>
-    <div class="ob-section-label">Income sources</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:6px">Name each category and set what you expect it to cost per week. These are the same categories you fill in on the Budget tab, so the weekly budget you set here is what your actual spending gets measured against. Changes save automatically.</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Leave a budget blank if you don't want a target for that category yet.</p>
+    <div class="ob-section-label">Income sources <span style="float:right;font-weight:500;text-transform:none;letter-spacing:0">Expected / week</span></div>
     <div id="be-inc"></div>
-    <div class="ob-section-label" style="margin-top:16px">Fixed expenses</div>
+    <div class="ob-section-label" style="margin-top:16px">Fixed expenses <span style="float:right;font-weight:500;text-transform:none;letter-spacing:0">Budget / week</span></div>
     <div id="be-fix"></div>
-    <div class="ob-section-label" style="margin-top:16px">Variable expenses</div>
+    <div class="ob-section-label" style="margin-top:16px">Variable expenses <span style="float:right;font-weight:500;text-transform:none;letter-spacing:0">Budget / week</span></div>
     <div id="be-var"></div>
     <div class="ob-section-label" style="margin-top:24px">Subscriptions</div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Recurring subscriptions are automatically counted as fixed expenses in your weekly budget.</p>
@@ -747,9 +763,9 @@
 </div>
 
 <!-- ACCOUNTS PAGE (assets & debts; net worth) -->
-<div id="view-accounts" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
+<div id="view-accounts" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
   <div class="detail-topbar">
-    <button class="detail-back" onclick="closeAccounts()"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Back</button>
+    <button class="back-btn" data-back="closeAccounts" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
     <span class="detail-title">Accounts</span>
   </div>
   <div style="padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 40px);max-width:520px;margin:0 auto">
@@ -760,9 +776,9 @@
 </div>
 
 <!-- EXERCISE DETAIL PAGE (per-exercise PR + chart + full set history) -->
-<div id="view-exercise-detail" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:110;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
+<div id="view-exercise-detail" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:110;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
   <div class="detail-topbar">
-    <button class="detail-back" onclick="closeExerciseDetail()"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Back</button>
+    <button class="back-btn" data-back="closeExerciseDetail" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
     <span class="detail-title" id="ex-detail-title">Exercise</span>
   </div>
   <div id="ex-detail-content" style="padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 40px);max-width:520px;margin:0 auto"></div>

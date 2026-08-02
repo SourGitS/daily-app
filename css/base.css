@@ -87,6 +87,33 @@ button,[onclick],[role="button"],a,label,summary,select,
   touch-action:manipulation;
 }
 
+/* ── Back button — the single "close this view" control ──────────────
+   Replaces four divergent implementations (.detail-back's accent chevron+label,
+   .kit-back's bare ←, and the inline ‹ glyphs in Notes / Exercise Library). The glass
+   circle mirrors .ldh-arrow in the Log hero so it reads as existing app vocabulary, and
+   36px is a real tap target where the old bare glyphs were ~24px of text.
+   .with-label adds the destination name for nested screens (Settings → Export). */
+.back-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;width:36px;height:36px;padding:0;flex-shrink:0;border-radius:50%;border:0.5px solid transparent;color:var(--text);font-family:inherit;font-size:14px;font-weight:600;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s,transform .12s}
+.back-btn svg{flex-shrink:0}
+.back-btn.with-label{width:auto;border-radius:999px;padding:0 14px 0 8px}
+.back-btn:active{transform:scale(0.92)}
+[data-theme="dark"] .back-btn{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.12)}
+[data-theme="dark"] .back-btn:active{background:rgba(255,255,255,.16)}
+[data-theme="light"] .back-btn{background:rgba(0,0,0,.05);border-color:rgba(0,0,0,.08)}
+[data-theme="light"] .back-btn:active{background:rgba(0,0,0,.11)}
+
+/* ── Full-screen overlay views: slide in, drag out ───────────────────
+   The seven fixed detail views (settings, editors, accounts, exercise detail/library,
+   note view) share this. Transform-only so it composites on the GPU; the drag sets
+   .ov-drag to suppress the transition while the finger is down. */
+.app-overlay{transition:transform .28s cubic-bezier(.22,.61,.36,1)}
+.app-overlay.ov-enter{transform:translateX(100%)}
+.app-overlay.ov-drag{transition:none}
+@media (prefers-reduced-motion:reduce){
+  .app-overlay{transition:none}
+  .app-overlay.ov-enter{transform:none}
+}
+
 /* Fill the viewport via fixed insets instead of 100dvh — iOS standalone PWAs mis-compute
    dvh at cold launch (black gap / shifted content until a rotation); fixed inset:0 is
    resolved correctly at launch. */

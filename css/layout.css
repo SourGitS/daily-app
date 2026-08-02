@@ -20,8 +20,6 @@
 #header-menu:active{opacity:0.7}
 #header-avatar{width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:var(--card);cursor:pointer;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent;padding:0}
 #header-avatar:active{opacity:0.7}
-#header-export{width:34px;height:34px;border-radius:50%;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted);flex-shrink:0;-webkit-tap-highlight-color:transparent;padding:0}
-#header-export:active{opacity:0.7}
 
 /* ── Main ── */
 /* Mobile: #app-main clips the horizontal swipe deck; each panel scrolls itself. */

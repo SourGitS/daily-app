@@ -14,13 +14,14 @@
 
 /* ── Exercise cards ── */
 .ex-card{background:var(--card);border-radius:var(--radius);border:0.5px solid var(--card-border);box-shadow:var(--card-top);padding:16px;margin-bottom:12px;transition:opacity 0.2s,box-shadow 0.2s,border-color 0.2s;-webkit-tap-highlight-color:transparent;overflow:hidden;position:relative}
-/* Fully-done card — green "glass" gradient (same construction as .active's accent glass,
-   using the app's success green 82,183,136), theme-scoped so it wins over the later
-   [data-theme] .ex-card background rules. Opacity lifted from the old 0.4 so the green
-   actually reads; the mild fade still lets done cards recede behind the active one. */
-.ex-card.done{opacity:0.75;border-color:rgba(82,183,136,.35)}
-[data-theme="dark"] .ex-card.done{background:linear-gradient(180deg, rgba(82,183,136,.30), rgba(82,183,136,.10));box-shadow:inset 0 1px 0 rgba(255,255,255,.14)}
-[data-theme="light"] .ex-card.done{background:linear-gradient(180deg, rgba(82,183,136,.22), rgba(82,183,136,.06));box-shadow:0 4px 16px rgba(82,183,136,.14)}
+/* Fully-done card — accent "glass" gradient (same construction as .active's glass),
+   tinted with the app's current Appearance colour instead of a fixed green, theme-scoped
+   so it wins over the later [data-theme] .ex-card background rules. Opacity lifted from
+   the old 0.4 so the tint actually reads; the mild fade still lets done cards recede
+   behind the active one. */
+.ex-card.done{opacity:0.75;border-color:rgba(var(--accent-rgb),.35)}
+[data-theme="dark"] .ex-card.done{background:linear-gradient(180deg, rgba(var(--accent-rgb),.30), rgba(var(--accent-rgb),.10));box-shadow:inset 0 1px 0 rgba(255,255,255,.14)}
+[data-theme="light"] .ex-card.done{background:linear-gradient(180deg, rgba(var(--accent-rgb),.22), rgba(var(--accent-rgb),.06));box-shadow:0 4px 16px rgba(var(--accent-rgb),.14)}
 /* Active (current) exercise card — subtle accent "glass" spotlight, theme-scoped so it
    wins over the later [data-theme] .ex-card rules. Keeps the frosted blur; just tints it. */
 .ex-card.active{box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 10px 30px rgba(var(--accent-rgb),.22)}
@@ -51,21 +52,21 @@
 .rt-fs-reset{width:100%;padding:12px;margin-bottom:6px;border:none;background:transparent;color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 /* Inline status chip in the card header controls — a real layout slot, not an absolute overlay
    floating over the buttons. */
-.exercise-done-check{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:rgba(82,183,136,.16);color:var(--positive);font-size:13px;font-weight:800;line-height:1;flex-shrink:0}
-.ex-card.done .set-row{background:rgba(82,183,136,.06);border-radius:8px}
+.exercise-done-check{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:rgba(var(--accent-rgb),.16);color:var(--accent);font-size:13px;font-weight:800;line-height:1;flex-shrink:0}
+.ex-card.done .set-row{background:rgba(var(--accent-rgb),.06);border-radius:8px}
 .ex-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
 /* ── Minimal collapsed cards: a slim header-only strip. The n/m sets counter (and the
    done ✓) stay visible so collapsing never hides all context. ── */
-.ex-card.collapsed{padding:7px 12px;margin-bottom:6px;border-radius:12px}
+.ex-card.collapsed{padding:11px 16px;margin-bottom:8px;border-radius:14px}
 .ex-card.collapsed .ex-top-bar{margin:0;padding:0;border-bottom:none}
 .ex-card.collapsed .ex-top{margin-bottom:0;align-items:center}
-.ex-card.collapsed .ex-name{font-size:14px;margin-bottom:0}
+.ex-card.collapsed .ex-name{font-size:16px;margin-bottom:0}
 .ex-card.collapsed .ex-left>*:not(.ex-name){display:none}
 .ex-card.collapsed .swap-btn{display:none}
 .ex-mini-progress{display:none;font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap}
-.ex-card.collapsed .ex-mini-progress{display:inline-flex;align-items:center}
-.ex-card.collapsed.done .ex-mini-progress{color:var(--positive)}
-.ex-card.collapsed .exercise-done-check{width:20px;height:20px;font-size:11px}
+.ex-card.collapsed .ex-mini-progress{display:inline-flex;align-items:center;font-size:12px}
+.ex-card.collapsed.done .ex-mini-progress{color:var(--accent)}
+.ex-card.collapsed .exercise-done-check{width:24px;height:24px;font-size:13px}
 .ex-top-bar{margin:-16px -16px 14px -16px;padding:12px 16px;border-radius:16px 16px 0 0;border-bottom:1px solid var(--border)}
 .ex-left{flex:1}
 .ex-name{font-size:17px;font-weight:700;line-height:1.3;color:var(--text);margin-bottom:4px}

@@ -142,8 +142,6 @@
 /* Opaque status bar reserves its own height (see #app-header) — fixed top padding only, no
    env(safe-area-inset-top) which double-counts it and raced on cold launch. */
 .detail-topbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;min-height:44px;padding:8px 12px 8px;border-bottom:1px solid var(--border);background:var(--bg)}
-.detail-back{display:flex;align-items:center;gap:1px;background:none;border:none;color:var(--accent);font-size:16px;font-weight:500;cursor:pointer;padding:4px 8px 4px 0;-webkit-tap-highlight-color:transparent;position:relative;z-index:1}
-.detail-back svg{margin-right:1px}
 .detail-title{position:absolute;left:0;right:0;margin:0 auto;text-align:center;font-size:16px;font-weight:700;color:var(--text);pointer-events:none;padding:0 90px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .detail-action{margin-left:auto;background:var(--accent);border:none;border-radius:12px;color:#fff;font-size:14px;font-weight:700;padding:7px 15px;cursor:pointer;-webkit-tap-highlight-color:transparent;position:relative;z-index:1}
 .sub-emoji-btn{font-size:20px;width:36px;height:36px;border-radius:8px;border:1.5px solid var(--border);background:var(--card);cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;transition:border-color 0.15s,background 0.15s}
@@ -175,8 +173,8 @@
 .hero-card{background:linear-gradient(180deg, rgba(var(--accent-rgb),.12), rgba(var(--accent-rgb),.03))}
 
 /* ── Theme-aware card borders (glass feel) ── */
-[data-theme="dark"] .card,[data-theme="dark"] .ex-card,[data-theme="dark"] .session-card,[data-theme="dark"] .settings-card,[data-theme="dark"] .week-section,[data-theme="dark"] .week-nav,[data-theme="dark"] .pr-row{border:0.5px solid var(--card-border)}
-[data-theme="light"] .card,[data-theme="light"] .ex-card,[data-theme="light"] .session-card,[data-theme="light"] .settings-card,[data-theme="light"] .week-section,[data-theme="light"] .week-nav,[data-theme="light"] .pr-row{border:1px solid rgba(0,0,0,0.07)}
+[data-theme="dark"] .card,[data-theme="dark"] .ex-card:not(.done),[data-theme="dark"] .session-card,[data-theme="dark"] .settings-card,[data-theme="dark"] .week-section,[data-theme="dark"] .week-nav,[data-theme="dark"] .pr-row{border:0.5px solid var(--card-border)}
+[data-theme="light"] .card,[data-theme="light"] .ex-card:not(.done),[data-theme="light"] .session-card,[data-theme="light"] .settings-card,[data-theme="light"] .week-section,[data-theme="light"] .week-nav,[data-theme="light"] .pr-row{border:1px solid rgba(0,0,0,0.07)}
 /* Tint scoped above the dark-glass .card rule; no border so it uses the neutral card edge */
 /* Calorie/overview hero now reads as a neutral grey card (no accent tint) */
 [data-theme="dark"] .card.hero-card{background:linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.09))}
@@ -224,8 +222,9 @@
   .ds-caret-btn svg{transition:transform .2s ease}
   .ds-caret-btn.open svg{transform:rotate(180deg)}
   #quick-settings-menu{overflow:hidden;max-height:0;transition:max-height .25s ease}
-  #quick-settings-menu.open{max-height:200px}
+  #quick-settings-menu.open{max-height:320px}
   .ds-quick-settings .qs-item{justify-content:space-between}
+  .qs-divider{height:1px;background:var(--border);margin:4px 10px}
   .ds-profile{margin-top:auto;padding:10px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px}
   .ds-av{width:24px;height:24px;border-radius:50%;background:rgba(var(--accent-rgb),0.25);color:var(--accent);font-size:9px;font-weight:600;display:flex;align-items:center;justify-content:center}
   .ds-name{font-size:11px;font-weight:500;color:var(--text)}
@@ -290,8 +289,8 @@
      Scoped to these two overlays so the genuine drill-down backs (settings-detail, split /
      budget editors, exercise-detail) keep theirs. .detail-title stays centred (it's absolutely
      positioned), so hiding the Accounts back leaves the header balanced. */
-  #view-accounts .detail-back{display:none}
-  #view-exercise-library [data-action="close-exercise-library"]{display:none}
+  #view-accounts .back-btn{display:none}
+  #view-exercise-library .back-btn{display:none}
 
   /* Daily habits toggles must sit above any sibling stacking contexts */
   #view-home #habits-today-list>div{position:relative;z-index:1}

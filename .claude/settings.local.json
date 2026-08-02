@@ -6,7 +6,16 @@
       "Bash(git push *)",
       "Bash(node *)",
       "Bash(git commit *)",
-      "PowerShell(node --check js/app.js)"
+      "PowerShell(node --check js/app.js)",
+      "Bash(git fetch *)",
+      "Bash(git pull *)",
+      "mcp__visualize__read_me",
+      "mcp__visualize__show_widget",
+      "PowerShell(if \\($?\\) { \"app.js OK\" })",
+      "Bash(python3 -c ' *)",
+      "Bash(node -e ' *)",
+      "Bash(gh api *)",
+      "PowerShell(gh api repos/SourGitS/workout-tracker/pages 2>&1)"
     ]
   }
 }
