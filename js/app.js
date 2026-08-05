@@ -5538,9 +5538,11 @@ function getMondayOf(weekOffset = 0){
 }
 function weekKey(monday){ return dateStr(monday); }
 function fmtWeekLabel(monday){
-  const fri = new Date(monday); fri.setDate(monday.getDate()+4);
+  // Full Monday–Sunday span, matching getMondayOf()'s 7-day week — this used to add 4 days
+  // (Friday), showing every week as a 5-day range instead of 7.
+  const sun = new Date(monday); sun.setDate(monday.getDate()+6);
   const opts = {day:'numeric',month:'short'};
-  return monday.toLocaleDateString('en-AU',opts)+' – '+fri.toLocaleDateString('en-AU',opts);
+  return monday.toLocaleDateString('en-AU',opts)+' – '+sun.toLocaleDateString('en-AU',opts);
 }
 function getBudWeekData(key){
   return budgetData[key]||{
