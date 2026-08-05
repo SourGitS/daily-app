@@ -3826,21 +3826,15 @@ function openSettingsSection(key){
 // state persists across reloads via localStorage.
 function renderQuickSettingsMenu(){
   const menu=document.getElementById('quick-settings-menu'); if(!menu) return;
-  const dark=S.theme!=='light';
-  const dyn=localStorage.getItem('daily_dynamic_colours')==='true';
   // Same shortcuts as the mobile hamburger's Settings group (MENU_SECTIONS + "All
-  // settings"), so the desktop dropdown reaches the same destinations.
+  // settings"), so the desktop dropdown reaches the same destinations. Dark mode / Day
+  // colours used to duplicate their own toggle switches here; both are one click away via
+  // the Appearance link, so the dropdown now just points there instead of maintaining a
+  // second copy of controls that already live in Settings.
   menu.innerHTML=
     '<button class="ds-item" onclick="openMenuSection(\'\')"><span>All settings</span></button>'+
-    MENU_SECTIONS.map(s=>'<button class="ds-item" onclick="openMenuSection(\''+s.id+'\')"><span>'+s.label+'</span></button>').join('')+
-    '<div class="qs-divider"></div>'+
-    '<div class="qs-item ds-item"><span>Dark mode</span>'+
-      '<label class="toggle-switch"><input type="checkbox"'+(dark?' checked':'')+' onchange="quickSetTheme(this.checked)"><span class="toggle-slider"></span></label></div>'+
-    '<div class="qs-item ds-item"><span>Day colours</span>'+
-      '<label class="toggle-switch"><input type="checkbox"'+(dyn?' checked':'')+' onchange="quickSetDynamic(this.checked)"><span class="toggle-slider"></span></label></div>';
+    MENU_SECTIONS.map(s=>'<button class="ds-item" onclick="openMenuSection(\''+s.id+'\')"><span>'+s.label+'</span></button>').join('');
 }
-function quickSetTheme(dark){ setTheme(dark?'dark':'light'); renderQuickSettingsMenu(); }
-function quickSetDynamic(on){ if(typeof onDynamicColoursToggle==='function') onDynamicColoursToggle(on); renderQuickSettingsMenu(); }
 function setQuickSettingsOpen(open){
   const menu=document.getElementById('quick-settings-menu');
   const btn=document.querySelector('.ds-caret-btn');

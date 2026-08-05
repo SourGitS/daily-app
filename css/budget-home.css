@@ -209,22 +209,23 @@
   .ds-item{display:flex;align-items:center;gap:8px;padding:7px 14px;font-size:12px;color:var(--muted);background:transparent;border:none;border-left:2px solid transparent;width:100%;cursor:pointer;text-align:left}
   .ds-item.active{color:var(--text);background:rgba(var(--accent-rgb),0.08);border-left-color:var(--accent);font-weight:500}
   .ds-item svg{width:20px;height:20px;flex-shrink:0}
-  /* Quick settings — Dark mode / Day colours, collapsed by default under the
-     Settings nav item, expanded via the chevron in .ds-settings-row. Rows carry
-     the real .ds-item class directly (not a hand-copied lookalike) so they can
-     never drift out of sync with the nav's font/colour again — see .ds-item in
-     css/kitchen-extras.css. .qs-item only adds what .ds-item doesn't need on
-     its own: pushing the toggle switch to the right. */
+  /* Quick settings — shortcuts to Settings sections, collapsed by default under the
+     Settings nav item, expanded via the chevron in .ds-settings-row. Rows carry the real
+     .ds-item class directly (not a hand-copied lookalike) so they can never drift out of
+     sync with the nav's font/colour again — see .ds-item in css/kitchen-extras.css.
+     That base rule sets width:auto, which a <button> (unlike a <div>) shrink-wraps to its
+     text instead of filling the row — harmless for the main nav, because #desktop-sidebar
+     is itself flex-column and stretches its direct children regardless of their own width.
+     #quick-settings-menu needs the same treatment (not a plain width:100% override — that
+     ignores the item's own left/right margin and overflows the row by exactly that much). */
   .ds-settings-row{display:flex;align-items:center;gap:2px;margin:0 10px 2px}
   .ds-settings-row .ds-item{margin:0;flex:1;min-width:0}
   .ds-caret-btn{flex-shrink:0;width:32px;height:32px;border:none;border-radius:8px;background:transparent;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,color .15s}
   .ds-caret-btn:hover{background:var(--track);color:var(--text)}
   .ds-caret-btn svg{transition:transform .2s ease}
   .ds-caret-btn.open svg{transform:rotate(180deg)}
-  #quick-settings-menu{overflow:hidden;max-height:0;transition:max-height .25s ease}
+  #quick-settings-menu{display:flex;flex-direction:column;overflow:hidden;max-height:0;transition:max-height .25s ease}
   #quick-settings-menu.open{max-height:320px}
-  .ds-quick-settings .qs-item{justify-content:space-between}
-  .qs-divider{height:1px;background:var(--border);margin:4px 10px}
   .ds-profile{margin-top:auto;padding:10px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px}
   .ds-av{width:24px;height:24px;border-radius:50%;background:rgba(var(--accent-rgb),0.25);color:var(--accent);font-size:9px;font-weight:600;display:flex;align-items:center;justify-content:center}
   .ds-name{font-size:11px;font-weight:500;color:var(--text)}
