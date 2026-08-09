@@ -1,17 +1,20 @@
-const CACHE_NAME = 'daily-v171';
+const CACHE_NAME = 'daily-v172';
 
+// Relative to this script's own location (whatever path GitHub Pages serves it under —
+// used to be hardcoded to /workout-tracker/, which broke outright when the repo was
+// renamed to daily-app: the old absolute paths pointed at a URL that no longer exists).
 const ASSETS = [
-  '/workout-tracker/',
-  '/workout-tracker/index.html',
-  '/workout-tracker/css/base.css',
-  '/workout-tracker/css/layout.css',
-  '/workout-tracker/css/workout.css',
-  '/workout-tracker/css/nutrition-modals.css',
-  '/workout-tracker/css/budget-home.css',
-  '/workout-tracker/css/kitchen-extras.css',
-  '/workout-tracker/js/app.js',
-  '/workout-tracker/icon-192.png',
-  '/workout-tracker/icon-512.png',
+  './',
+  './index.html',
+  './css/base.css',
+  './css/layout.css',
+  './css/workout.css',
+  './css/nutrition-modals.css',
+  './css/budget-home.css',
+  './css/kitchen-extras.css',
+  './js/app.js',
+  './icon-192.png',
+  './icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js',
   'https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js',
   'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js',

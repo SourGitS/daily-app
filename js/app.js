@@ -9123,7 +9123,7 @@ function checkReminders(){
     if(nowMins>=wH*60+wM && wAck!==today){
       if(Notification.permission==='granted'){
         const nxt=type(suggestDay());
-        new Notification('Time to train 💪',{body:nxt.name+' is up — let\'s go.',icon:'/workout-tracker/icon-192.png'});
+        new Notification('Time to train 💪',{body:nxt.name+' is up — let\'s go.',icon:'icon-192.png'});
         localStorage.setItem('daily_reminder_workout_date',today);
       } else if(Notification.permission!=='denied'){
         Notification.requestPermission().then(p=>{ if(p==='granted') checkReminders(); });
@@ -9139,7 +9139,7 @@ function checkReminders(){
     const bAck=localStorage.getItem('daily_reminder_budget_date');
     if(todayDay===(br.day??0) && nowMins>=bH*60+bM && bAck!==today){
       if(Notification.permission==='granted'){
-        new Notification('Save your week 💰',{body:"Don't forget to log this week's budget before it resets.",icon:'/workout-tracker/icon-192.png'});
+        new Notification('Save your week 💰',{body:"Don't forget to log this week's budget before it resets.",icon:'icon-192.png'});
         localStorage.setItem('daily_reminder_budget_date',today);
       } else if(Notification.permission!=='denied'){
         Notification.requestPermission().then(p=>{ if(p==='granted') checkReminders(); });
@@ -10278,7 +10278,11 @@ if('serviceWorker' in navigator){
       location.reload();
     });
   }
-  navigator.serviceWorker.register('/workout-tracker/service-worker.js');
+  // Relative, not hardcoded to a repo name — an absolute /workout-tracker/ path here
+  // broke outright when the repo was renamed to daily-app (404, registration failed
+  // silently), which also broke "Add to Home Screen" via manifest.json's start_url
+  // pointing at the same dead path.
+  navigator.serviceWorker.register('service-worker.js');
 }
 
 // ── Keep #app-main bottom padding in sync with the real bottom-nav height ──

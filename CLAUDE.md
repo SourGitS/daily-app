@@ -2,7 +2,8 @@
 
 Personal lifestyle web app for Francois: workout tracking, kitchen/recipes, budget, and
 habit/notes tracking. No build step, deployed via GitHub Pages from `main` at
-sourgits.github.io/workout-tracker.
+sourgits.github.io/daily-app (repo renamed from workout-tracker on 2026-08-09; the old
+URL now 404s — see manifest.json/service-worker.js history if PWA install issues resurface).
 
 This file has been out of sync with the app before (an old written description said "4 tabs,
 single HTML file" long after the app outgrew that). Trust what's actually in the repo over any
