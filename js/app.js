@@ -7569,6 +7569,98 @@ function getGreeting(){
   const timeGreet=hour<12?'Good morning':hour<17?'Good afternoon':'Good evening';
   return nm?timeGreet+', '+nm:timeGreet;
 }
+
+// ── Home weather card ──────────────────────────────────────────────
+// Open-Meteo: free, no API key (nothing to hide in a static public repo), CORS-enabled.
+// WMO weather codes → icon/label (https://open-meteo.com/en/docs — "WMO Weather interpretation codes").
+const WEATHER_CODES={
+  0:['☀️','Clear sky'],1:['🌤️','Mostly clear'],2:['⛅','Partly cloudy'],3:['☁️','Overcast'],
+  45:['🌫️','Fog'],48:['🌫️','Fog'],
+  51:['🌦️','Light drizzle'],53:['🌦️','Drizzle'],55:['🌦️','Heavy drizzle'],
+  61:['🌧️','Light rain'],63:['🌧️','Rain'],65:['🌧️','Heavy rain'],
+  71:['🌨️','Light snow'],73:['🌨️','Snow'],75:['🌨️','Heavy snow'],
+  80:['🌦️','Rain showers'],81:['🌧️','Rain showers'],82:['⛈️','Violent showers'],
+  95:['⛈️','Thunderstorm'],96:['⛈️','Thunderstorm'],99:['⛈️','Thunderstorm'],
+};
+function weatherIcon(code){ return (WEATHER_CODES[code]||['🌡️'])[0]; }
+function weatherLabel(code){ return (WEATHER_CODES[code]||[null,'—'])[1]; }
+function loadWeatherCache(){ return lsLoad('daily_weather_cache', null); }
+function saveWeatherCache(c){ lsSave('daily_weather_cache', c, 'weatherCache'); }
+const WEATHER_STALE_MS=30*60*1000; // refetch after 30 min
+let _weatherLoading=false;
+function renderWeatherInto(entry){
+  const tempEl=document.getElementById('home-weather-temp');
+  if(!tempEl) return; // card isn't in the current layout — nothing to patch
+  tempEl.textContent=Math.round(entry.tempC)+'°';
+  document.getElementById('home-weather-icon').textContent=weatherIcon(entry.code);
+  document.getElementById('home-weather-label').textContent=weatherLabel(entry.code);
+}
+// First-ever load (no cache yet): show an explicit "tap for weather" invite instead of
+// popping the OS location prompt unasked — Home is where most sessions land first, and an
+// unprompted permission dialog there is a bad first impression. Once granted, the browser
+// won't re-prompt, so every later call is a silent refresh via loadWeatherWidget(true)
+// (the label's own tap) or the auto-refresh at the bottom of renderHome().
+function renderWeatherPrompt(){
+  const labelEl=document.getElementById('home-weather-label'); if(!labelEl) return;
+  document.getElementById('home-weather-temp').textContent='';
+  document.getElementById('home-weather-icon').textContent='📍';
+  labelEl.textContent='Tap for weather';
+}
+function renderWeatherError(denied){
+  const labelEl=document.getElementById('home-weather-label'); if(!labelEl) return;
+  document.getElementById('home-weather-temp').textContent='';
+  document.getElementById('home-weather-icon').textContent='📍';
+  labelEl.textContent=denied?'Enable location for weather':'Couldn\'t load weather — tap to retry';
+}
+function loadWeatherWidget(userInitiated){
+  const cache=loadWeatherCache();
+  if(cache) renderWeatherInto(cache);
+  const fresh=cache && (Date.now()-cache.fetchedAt<WEATHER_STALE_MS);
+  if(fresh||_weatherLoading) return;
+  if(!cache && !userInitiated){ renderWeatherPrompt(); return; }
+  if(!navigator.geolocation){ renderWeatherError(false); return; }
+  _weatherLoading=true;
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      const {latitude:lat,longitude:lon}=pos.coords;
+      fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weather_code&timezone=auto')
+        .then(r=>r.json())
+        .then(data=>{
+          const c=data&&data.current;
+          if(!c||c.temperature_2m==null) throw new Error('no current-weather block');
+          const entry={lat,lon,tempC:c.temperature_2m,code:c.weather_code,fetchedAt:Date.now()};
+          saveWeatherCache(entry);
+          renderWeatherInto(entry);
+        })
+        .catch(()=>renderWeatherError(false))
+        .finally(()=>{ _weatherLoading=false; });
+    },
+    err=>{ _weatherLoading=false; renderWeatherError(err&&err.code===1); },
+    {maximumAge:15*60*1000, timeout:10000}
+  );
+}
+function buildWeatherCard(){
+  const d=localMidnight(getLocalDate());
+  const dayLabel=d.toLocaleDateString('en-AU',{weekday:'long'});
+  const dateLabel=d.toLocaleDateString('en-AU',{day:'numeric',month:'long'});
+  return '<div class="card home-weather-card" onclick="setView(\'log\')" style="cursor:pointer">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">'+
+      '<div>'+
+        '<div style="font-size:18px;font-weight:800;color:var(--text);letter-spacing:-.01em">'+dayLabel+'</div>'+
+        '<div style="font-size:12px;font-weight:600;color:var(--muted);margin-top:2px">'+dateLabel+'</div>'+
+      '</div>'+
+      '<div style="text-align:right">'+
+        '<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">'+
+          '<span style="font-size:24px;line-height:1" id="home-weather-icon"></span>'+
+          '<span style="font-family:var(--font-num);font-size:26px;font-weight:800;color:var(--text)" id="home-weather-temp"></span>'+
+        '</div>'+
+        '<div style="font-size:11px;font-weight:600;color:var(--muted);margin-top:2px" id="home-weather-label" '+
+          'onclick="event.stopPropagation();loadWeatherWidget(true)">Loading…</div>'+
+      '</div>'+
+    '</div>'+
+    '<div style="font-size:12px;font-weight:700;color:var(--accent);margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">Go to today\'s session →</div>'+
+  '</div>';
+}
 // ── Credit card tracker (Home card + Budget input) ───────────────
 function loadCCData(){ return lsLoad('daily_cc', {}); }
 function saveCCData(d){ lsSave('daily_cc', d, 'creditCard'); }
@@ -7832,10 +7924,11 @@ function renderHome(){
   const mBudPct=mBudIncome>0?Math.min(mBudSpent/mBudIncome*100,100):0;
   const mBudOver=mBudRem<0;
   const mBudCol=mBudOver?'var(--danger)':'var(--positive)';
+  const heroDateLabel=localMidnight(today).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
   const heroCard=
     '<div class="hero-workout-card">'+
       '<div class="hero-top">'+
-        '<span class="hero-label">TODAY\'S SESSION</span>'+
+        '<span class="hero-label">TODAY\'S SESSION · '+heroDateLabel+'</span>'+
         '<button class="hero-play-btn" aria-label="Go to workout" onclick="setView(\'log\')">'+
           '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M5 3.5l10 5.5-10 5.5V3.5z" fill="#e8541f"/></svg>'+
         '</button>'+
@@ -7941,6 +8034,7 @@ function renderHome(){
   // so a reorder survives the next renderHome. (Recent workout + Stats render separately.)
   const homeCards={
     session: heroCard,
+    weather: buildWeatherCard(),
     streak: statsSplit,
     calories: overviewCard,
     review: buildWeekSummaryCard(),
@@ -7953,8 +8047,8 @@ function renderHome(){
   };
   // Ordered + visibility-filtered widget list; skip widgets whose HTML is empty right now
   // (e.g. Recent Workout before any session exists) so edit mode has no invisible boxes.
-  wrap.innerHTML = effectiveHomeWidgetIds(homeCards)
-    .filter(k=>homeCards[k])
+  const _homeIds=effectiveHomeWidgetIds(homeCards).filter(k=>homeCards[k]);
+  wrap.innerHTML = _homeIds
     .map(k=>'<div class="home-card" data-card-id="'+k+'">'+homeCards[k]+'</div>').join('');
   const _oldRecent=document.getElementById('home-recent-card'); if(_oldRecent) _oldRecent.innerHTML='';
   document.querySelectorAll('#view-home .card').forEach((card, i) => {
@@ -7965,6 +8059,9 @@ function renderHome(){
   if(homeEditMode) applyHomeEditMode();
 
   applyDayColour();
+  // Only touch geolocation/network if the widget is actually visible — a hidden card has no
+  // #home-weather-temp for the result to land in anyway.
+  if(_homeIds.includes('weather')) loadWeatherWidget();
 }
 
 // ── Home widget system ────────────────────────────────────────────
@@ -7980,6 +8077,7 @@ function hlPreviewList(rows){ return '<div class="hl-preview"><div class="hl-p-l
 function hlPreviewBars(){ return '<div class="hl-preview"><div class="hl-p-label"></div><div class="hl-p-bars">'+Array(7).fill(0).map(()=> '<div class="hl-p-bar" style="height:'+(30+Math.random()*60)+'%"></div>').join('')+'</div></div>'; }
 const HOME_WIDGETS=[
   {id:'session',  label:"Today's Session",      tab:'Train', preview:hlPreviewStat},
+  {id:'weather',  label:'Weather',              tab:'Train', preview:hlPreviewStat},
   {id:'streak',   label:'Streak & This Week',   tab:'Train', preview:hlPreviewBars},
   {id:'review',   label:'Week in Review',       tab:'Train', preview:hlPreviewStat},
   {id:'recent',   label:'Recent Workout',       tab:'Train', preview:hlPreviewList},
@@ -7990,7 +8088,7 @@ const HOME_WIDGETS=[
   {id:'tiles',    label:'Money Quick Tiles',    tab:'Budget', preview:()=>hlPreviewList(2)},
   {id:'notes',    label:'Notes',                tab:'Notes', preview:hlPreviewList},
 ];
-const HOME_DEFAULT_ORDER=['session','streak','calories','review','habits','budget','balance','tiles','notes','recent'];
+const HOME_DEFAULT_ORDER=['session','weather','streak','calories','review','habits','budget','balance','tiles','notes','recent'];
 function loadHomeOrder(){ return lsLoad('daily_home_order', null, Array.isArray); } // legacy (seed only)
 // One preference object {hidden:[], order:[]} — the same overlay convention as per-day
 // exercise customisation (dayCustomFor's added/hidden/order). Seeded once from the legacy
