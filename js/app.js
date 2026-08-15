@@ -5934,19 +5934,53 @@ function budCatNameHtml(type,c,isCur,editMode){
     '<div class="bud-row-name">'+_catEscHtml(type==='fix'?catDisplayName(c.name):c.name)+'</div></div>';
   return '<input class="bud-cat-name-input" id="catname-'+type+'-'+c.id+'" value="" placeholder="Name this category…" oninput="budRenameCat(\''+type+'\',\''+c.id+'\',this.value)" onchange="renderBudgetTab()"'+(isCur?'':' disabled')+'>';
 }
+// A category billed monthly/yearly accrues its prorated share automatically — typing into it
+// would double-count what's already been counted (see the note in the collapsed list). So it
+// gets no weekly input; only genuinely per-week categories do.
+function catIsRecurring(c){ const cy=catCycle(c); return cy==='monthly'||cy==='yearly'; }
 function renderFixedCard(data,isCur){
   const editing=budEditMode.fix && isCur;
   const cats=loadFixCats();
-  const rows=cats.map(c=>{
+  const weeklyCats=cats.filter(c=>!catIsRecurring(c));
+  const recurCats=cats.filter(catIsRecurring);
+
+  const rows=weeklyCats.map(c=>{
     const raw=data['fix_'+c.id];
-    const val=(raw!==undefined&&raw!=='')?raw:(c.default!=null?c.default:'');
+    const val=(raw!==undefined&&raw!=='')?raw:'';
+    // Placeholder is the amount a blank row actually contributes, so an empty field reads as
+    // "the usual $50" rather than the old, misleading "$0".
     return '<div class="bud-row bud-cat-row" data-cat-id="'+c.id+'">'+
       budCatNameHtml('fix',c,isCur,editing)+
-      '<input class="bud-row-input" type="number" inputmode="decimal" id="fix-'+c.id+'" placeholder="$'+(c.default||0)+'" value="'+val+'" oninput="budRecalc();budSaveDraft()"'+(isCur?'':' disabled')+'>'+
+      '<input class="bud-row-input" type="number" inputmode="decimal" id="fix-'+c.id+'" placeholder="$'+catBudget(c).toFixed(0)+'" value="'+val+'" oninput="budRecalc();budSaveDraft()"'+(isCur?'':' disabled')+'>'+
       (editing?'<button class="delete-cat-btn" data-type="fix" data-id="'+c.id+'" aria-label="Remove category">×</button>':'')+
     '</div>';
   }).join('');
-  return '<div class="card">'+budCardHead('fix','📌 Fixed expenses',isCur)+rows+
+
+  // Recurring block: one summary row that expands to a read-only breakdown. Toggled inline
+  // (same idiom as the Home accounts list) so it never triggers a re-render mid-tap.
+  let recurBlock='';
+  if(recurCats.length){
+    const recurTotal=recurCats.reduce((s,c)=>s+catBudget(c),0);
+    const items=recurCats.map(c=>
+      '<div class="bud-recur-item">'+
+        '<div class="bud-row-left">'+catIconHtml(c,18)+
+          '<div class="bud-row-name">'+_catEscHtml(catDisplayName(c.name))+'</div></div>'+
+        '<div class="bud-recur-amt">$'+catBudget(c).toFixed(2)+
+          '<span class="bud-recur-per">/wk</span></div>'+
+      '</div>').join('');
+    recurBlock=
+      '<div class="bud-row bud-recur-head" onclick="var l=this.nextElementSibling;var open=l.style.display!==\'none\';l.style.display=open?\'none\':\'block\';var ch=this.querySelector(\'.bud-recur-chev\');if(ch)ch.textContent=open?\'▾\':\'▴\'">'+
+        '<div class="bud-row-left"><span class="bud-recur-ic">🔁</span>'+
+          '<div class="bud-row-name">Recurring<span class="bud-recur-count">'+recurCats.length+'</span></div></div>'+
+        '<div class="bud-row-calc bud-recur-total">$'+recurTotal.toFixed(2)+
+          '<span class="bud-recur-chev">▾</span></div>'+
+      '</div>'+
+      '<div class="bud-recur-list" style="display:none">'+items+
+        '<div class="bud-recur-note">Counted automatically each week from their billing cycle — nothing to enter. Edit them in Settings → Budget categories.</div>'+
+      '</div>';
+  }
+
+  return '<div class="card">'+budCardHead('fix','📌 Fixed expenses',isCur)+rows+recurBlock+
     '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total fixed</div><div class="bud-row-calc" id="calc-fixed" style="color:var(--muted)">—</div></div>'+
     (editing?'<button class="add-cat-btn" data-type="fix">+ Add fixed expense</button>':'')+
   '</div>';
@@ -6235,9 +6269,17 @@ function budRecalc(animate){
   let totalIncome=0;
   loadIncCats().forEach(c=>{ totalIncome += parseFloat(document.getElementById('inc-'+c.id)?.value)||0; });
 
-  // Dynamic fixed + variable totals (sum across the user's custom categories)
+  // Dynamic fixed + variable totals (sum across the user's custom categories).
+  // Fixed must mirror weekFixedTotal exactly: a blank (or absent) input means "the standard
+  // amount was charged", so it falls back to the category's budget. Summing only the input
+  // values under-reported the total by every category the user hadn't typed into — and
+  // recurring categories have no input at all now, so they'd have counted as zero.
   let totalFixed=0;
-  loadFixCats().forEach(c=>{ totalFixed += parseFloat(document.getElementById('fix-'+c.id)?.value)||0; });
+  loadFixCats().forEach(c=>{
+    const el=document.getElementById('fix-'+c.id);
+    const raw=el?el.value:'';
+    totalFixed += (raw!==undefined&&raw!=='') ? (parseFloat(raw)||0) : catBudget(c);
+  });
   let totalVar=0;
   loadVarCats().forEach(c=>{ totalVar += parseFloat(document.getElementById('var-'+c.id)?.value)||0; });
 

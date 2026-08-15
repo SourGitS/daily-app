@@ -3,6 +3,19 @@
 .sec-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-secondary);margin-bottom:8px}
 .bud-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
 .bud-row:last-child{border-bottom:none}
+/* Recurring (monthly/yearly) fixed expenses — one summary row that expands to a read-only
+   breakdown. No inputs: their prorated share is already counted, so typing would double it. */
+.bud-recur-head{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.bud-recur-ic{font-size:15px;line-height:1;flex-shrink:0}
+.bud-recur-count{display:inline-block;margin-left:7px;padding:1px 7px;border-radius:20px;background:var(--track);color:var(--muted);font-size:11px;font-weight:700}
+.bud-recur-total{display:flex;align-items:center;gap:7px;font-weight:700}
+.bud-recur-chev{color:var(--muted);font-size:11px}
+.bud-recur-list{padding:2px 0 4px 4px;border-bottom:1px solid var(--border)}
+.bud-recur-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0}
+.bud-recur-item .bud-row-name{font-size:13px;color:var(--text-2)}
+.bud-recur-amt{font-family:var(--font-num);font-size:13px;font-weight:700;color:var(--text-2);white-space:nowrap;flex-shrink:0}
+.bud-recur-per{font-size:10px;font-weight:600;color:var(--muted);margin-left:2px}
+.bud-recur-note{font-size:11px;color:var(--muted);line-height:1.45;padding:8px 0 2px}
 /* flex row so a fixed category's logo (or initial) can sit before its name */
 .bud-row-left{flex:1;min-width:0;display:flex;align-items:center;gap:9px}
 .bud-row-name{font-size:14px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis}
