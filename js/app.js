@@ -7584,6 +7584,25 @@ const WEATHER_CODES={
 };
 function weatherIcon(code){ return (WEATHER_CODES[code]||['🌡️'])[0]; }
 function weatherLabel(code){ return (WEATHER_CODES[code]||[null,'—'])[1]; }
+// Condition → animated background "scene" (see .home-weather-card[data-scene] in
+// kitchen-extras.css). Storm and fog skip the day/night split: a storm already reads as
+// dark regardless of clock time, and fog's flat haze doesn't have a distinct night look in
+// practice either — building separate art for those would just duplicate the day scene.
+function weatherSceneBase(code){
+  if(code===0||code===1) return 'clear';
+  if(code===2) return 'partly';
+  if(code===45||code===48) return 'fog';
+  if(code===3) return 'cloudy';
+  if((code>=51&&code<=67)||code===80||code===81) return 'rain';
+  if(code===82||code>=95) return 'storm';
+  if((code>=71&&code<=77)||(code>=85&&code<=86)) return 'snow';
+  return 'cloudy';
+}
+function weatherScene(code,isDay){
+  const base=weatherSceneBase(code);
+  if(base==='storm'||base==='fog') return base;
+  return base+'-'+(isDay===0?'night':'day');
+}
 function loadWeatherCache(){ return lsLoad('daily_weather_cache', null); }
 function saveWeatherCache(c){ lsSave('daily_weather_cache', c, 'weatherCache'); }
 const WEATHER_STALE_MS=30*60*1000; // refetch after 30 min
@@ -7594,6 +7613,8 @@ function renderWeatherInto(entry){
   tempEl.textContent=Math.round(entry.tempC)+'°';
   document.getElementById('home-weather-icon').textContent=weatherIcon(entry.code);
   document.getElementById('home-weather-label').textContent=weatherLabel(entry.code);
+  const card=document.querySelector('.home-weather-card');
+  if(card) card.dataset.scene=weatherScene(entry.code,entry.isDay);
 }
 // First-ever load (no cache yet): show an explicit "tap for weather" invite instead of
 // popping the OS location prompt unasked — Home is where most sessions land first, and an
@@ -7623,12 +7644,12 @@ function loadWeatherWidget(userInitiated){
   navigator.geolocation.getCurrentPosition(
     pos=>{
       const {latitude:lat,longitude:lon}=pos.coords;
-      fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weather_code&timezone=auto')
+      fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weather_code,is_day&timezone=auto')
         .then(r=>r.json())
         .then(data=>{
           const c=data&&data.current;
           if(!c||c.temperature_2m==null) throw new Error('no current-weather block');
-          const entry={lat,lon,tempC:c.temperature_2m,code:c.weather_code,fetchedAt:Date.now()};
+          const entry={lat,lon,tempC:c.temperature_2m,code:c.weather_code,isDay:c.is_day,fetchedAt:Date.now()};
           saveWeatherCache(entry);
           renderWeatherInto(entry);
         })
@@ -7639,26 +7660,45 @@ function loadWeatherWidget(userInitiated){
     {maximumAge:15*60*1000, timeout:10000}
   );
 }
+// Fixed set of decorative layers for every possible scene, shown/hidden per
+// .home-weather-card[data-scene] in CSS — cheaper and simpler than swapping markup per
+// condition, since it's just one attribute write in renderWeatherInto(). Stars/snow use a
+// handful of individually-delayed elements rather than a repeating background pattern so
+// they read as scattered/organic instead of a visible grid.
 function buildWeatherCard(){
   const d=localMidnight(getLocalDate());
   const dayLabel=d.toLocaleDateString('en-AU',{weekday:'long'});
   const dateLabel=d.toLocaleDateString('en-AU',{day:'numeric',month:'long'});
-  return '<div class="card home-weather-card" onclick="setView(\'log\')" style="cursor:pointer">'+
-    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">'+
+  const stars=Array.from({length:5},(_,i)=>'<div class="wfx-star wfx-star-'+(i+1)+'"></div>').join('');
+  const flakes=Array.from({length:6},(_,i)=>'<div class="wfx-flake wfx-flake-'+(i+1)+'"></div>').join('');
+  const drops=Array.from({length:6},(_,i)=>'<div class="wfx-drop wfx-drop-'+(i+1)+'"></div>').join('');
+  return '<div class="card home-weather-card" data-scene="neutral">'+
+    '<div class="weather-fx" aria-hidden="true">'+
+      '<div class="wfx-sun"></div>'+
+      '<div class="wfx-moon"></div>'+
+      '<div class="wfx-stars">'+stars+'</div>'+
+      '<div class="wfx-cloud wfx-cloud-1"></div>'+
+      '<div class="wfx-cloud wfx-cloud-2"></div>'+
+      '<div class="wfx-cloud wfx-cloud-3"></div>'+
+      '<div class="wfx-fog wfx-fog-1"></div>'+
+      '<div class="wfx-fog wfx-fog-2"></div>'+
+      '<div class="wfx-rain">'+drops+'</div>'+
+      '<div class="wfx-snow">'+flakes+'</div>'+
+      '<div class="wfx-flash"></div>'+
+    '</div>'+
+    '<div class="weather-content">'+
       '<div>'+
-        '<div style="font-size:18px;font-weight:800;color:var(--text);letter-spacing:-.01em">'+dayLabel+'</div>'+
-        '<div style="font-size:12px;font-weight:600;color:var(--muted);margin-top:2px">'+dateLabel+'</div>'+
+        '<div class="weather-day">'+dayLabel+'</div>'+
+        '<div class="weather-date">'+dateLabel+'</div>'+
       '</div>'+
       '<div style="text-align:right">'+
         '<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">'+
-          '<span style="font-size:24px;line-height:1" id="home-weather-icon"></span>'+
-          '<span style="font-family:var(--font-num);font-size:26px;font-weight:800;color:var(--text)" id="home-weather-temp"></span>'+
+          '<span class="weather-icon" id="home-weather-icon"></span>'+
+          '<span class="weather-temp" id="home-weather-temp"></span>'+
         '</div>'+
-        '<div style="font-size:11px;font-weight:600;color:var(--muted);margin-top:2px" id="home-weather-label" '+
-          'onclick="event.stopPropagation();loadWeatherWidget(true)">Loading…</div>'+
+        '<div class="weather-condition" id="home-weather-label" onclick="loadWeatherWidget(true)">Loading…</div>'+
       '</div>'+
     '</div>'+
-    '<div style="font-size:12px;font-weight:700;color:var(--accent);margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">Go to today\'s session →</div>'+
   '</div>';
 }
 // ── Credit card tracker (Home card + Budget input) ───────────────

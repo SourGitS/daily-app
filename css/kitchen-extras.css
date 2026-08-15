@@ -216,6 +216,141 @@
 .budget-snapshot-card .budget-snap-pill{background:rgba(255,255,255,.22);color:#fff}
 .budget-snapshot-card .budget-snap-pill.over{background:rgba(0,0,0,.4);color:#fff}
 
+/* Step 7b — Home Weather card: an animated "scene" per condition (Apple Weather-ish),
+   built the same way as every other animation in this file — plain divs, transform/opacity
+   keyframes, no canvas/JS render loop. One fixed set of decorative layers lives in the
+   markup at all times (see buildWeatherCard()); [data-scene] just toggles which are
+   display:block and picks the background gradient. JS only ever writes the one data-scene
+   attribute (renderWeatherInto()) — everything else here is pure CSS. */
+/* .card.home-weather-card (not just .home-weather-card) to match [data-theme="dark"] .card's
+   specificity (budget-home.css) — same fix as .card.budget-snapshot-card above; a plain
+   single-class rule here would lose to that dark-theme override regardless of file order. */
+.card.home-weather-card{position:relative;overflow:hidden;border:none;padding:16px;
+  background:linear-gradient(160deg,#7C93A8 0%,#4A5C70 100%);
+  transition:background 0.6s ease}
+.weather-fx{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.weather-content{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.weather-day{font-size:18px;font-weight:800;color:#fff;letter-spacing:-.01em}
+.weather-date{font-size:12px;font-weight:600;color:rgba(255,255,255,.75);margin-top:2px}
+.weather-icon{font-size:24px;line-height:1}
+.weather-temp{font-family:var(--font-num);font-size:26px;font-weight:800;color:#fff}
+.weather-condition{font-size:11px;font-weight:600;color:rgba(255,255,255,.75);margin-top:2px;cursor:pointer}
+
+/* ── Scene backgrounds ── */
+.home-weather-card[data-scene="clear-day"]{background:linear-gradient(160deg,#6DD5FA 0%,#2E86DE 100%)}
+.home-weather-card[data-scene="clear-night"]{background:linear-gradient(160deg,#16213E 0%,#0B1224 100%)}
+.home-weather-card[data-scene="partly-day"]{background:linear-gradient(160deg,#8EC5E8 0%,#5A87B5 100%)}
+.home-weather-card[data-scene="partly-night"]{background:linear-gradient(160deg,#253A5E 0%,#131C33 100%)}
+.home-weather-card[data-scene="cloudy-day"]{background:linear-gradient(160deg,#A9B7C4 0%,#74838F 100%)}
+.home-weather-card[data-scene="cloudy-night"]{background:linear-gradient(160deg,#3B4652 0%,#1E252B 100%)}
+.home-weather-card[data-scene="fog"]{background:linear-gradient(160deg,#B9C2C8 0%,#8B959C 100%)}
+.home-weather-card[data-scene="rain-day"]{background:linear-gradient(160deg,#5C7A94 0%,#34495E 100%)}
+.home-weather-card[data-scene="rain-night"]{background:linear-gradient(160deg,#263544 0%,#131C24 100%)}
+.home-weather-card[data-scene="storm"]{background:linear-gradient(160deg,#423A52 0%,#19151F 100%)}
+.home-weather-card[data-scene="snow-day"]{background:linear-gradient(160deg,#B8D4E0 0%,#7FA0B3 100%)}
+.home-weather-card[data-scene="snow-night"]{background:linear-gradient(160deg,#445566 0%,#232D38 100%)}
+
+/* ── Decorative layers: hidden by default, opted in per scene below ── */
+.wfx-sun,.wfx-moon,.wfx-stars,.wfx-cloud,.wfx-fog,.wfx-rain,.wfx-snow,.wfx-flash{display:none}
+
+/* Sun — soft glow that breathes; a few slow-rotating rays behind it */
+.wfx-sun{width:90px;height:90px;border-radius:50%;position:absolute;top:-30px;right:-20px;
+  background:radial-gradient(circle,rgba(255,244,214,.95) 0%,rgba(255,220,140,.55) 45%,transparent 72%);
+  animation:wfx-sun-breathe 5s ease-in-out infinite}
+.home-weather-card[data-scene="clear-day"] .wfx-sun,
+.home-weather-card[data-scene="partly-day"] .wfx-sun{display:block}
+@keyframes wfx-sun-breathe{0%,100%{opacity:.85;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
+
+/* Moon — dimmer, steadier glow */
+.wfx-moon{width:60px;height:60px;border-radius:50%;position:absolute;top:-14px;right:2px;
+  background:radial-gradient(circle,rgba(240,244,255,.9) 0%,rgba(200,212,240,.35) 55%,transparent 75%);
+  animation:wfx-moon-glow 6s ease-in-out infinite}
+.home-weather-card[data-scene="clear-night"] .wfx-moon,
+.home-weather-card[data-scene="partly-night"] .wfx-moon{display:block}
+@keyframes wfx-moon-glow{0%,100%{opacity:.75}50%{opacity:.95}}
+
+/* Stars — a handful of individually-twinkling dots, each on its own delay so they don't
+   blink in unison. */
+.wfx-stars{position:absolute;inset:0}
+.home-weather-card[data-scene="clear-night"] .wfx-stars,
+.home-weather-card[data-scene="partly-night"] .wfx-stars,
+.home-weather-card[data-scene="cloudy-night"] .wfx-stars{display:block}
+.wfx-star{position:absolute;width:3px;height:3px;border-radius:50%;background:#fff;animation:wfx-twinkle 2.6s ease-in-out infinite}
+.wfx-star-1{top:18%;left:12%;animation-delay:0s}
+.wfx-star-2{top:32%;left:30%;animation-delay:.5s}
+.wfx-star-3{top:14%;left:52%;animation-delay:1s}
+.wfx-star-4{top:40%;left:68%;animation-delay:1.5s}
+.wfx-star-5{top:22%;left:82%;animation-delay:2s}
+@keyframes wfx-twinkle{0%,100%{opacity:.25}50%{opacity:1}}
+
+/* Clouds — soft blurred blobs drifting sideways, three at different speeds/depths for a
+   little parallax rather than moving in lockstep. */
+.home-weather-card[data-scene="partly-day"] .wfx-cloud,
+.home-weather-card[data-scene="partly-night"] .wfx-cloud,
+.home-weather-card[data-scene="cloudy-day"] .wfx-cloud,
+.home-weather-card[data-scene="cloudy-night"] .wfx-cloud,
+.home-weather-card[data-scene="rain-day"] .wfx-cloud,
+.home-weather-card[data-scene="rain-night"] .wfx-cloud{display:block}
+.wfx-cloud{position:absolute;border-radius:50%;background:rgba(255,255,255,.32);filter:blur(2px)}
+.wfx-cloud-1{width:70px;height:26px;top:8%;left:-10%;animation:wfx-drift-1 22s linear infinite}
+.wfx-cloud-2{width:50px;height:20px;top:55%;left:-15%;opacity:.7;animation:wfx-drift-2 30s linear infinite}
+.wfx-cloud-3{width:36px;height:16px;top:30%;left:-12%;opacity:.5;animation:wfx-drift-3 26s linear infinite}
+@keyframes wfx-drift-1{0%{transform:translateX(0)}100%{transform:translateX(320px)}}
+@keyframes wfx-drift-2{0%{transform:translateX(0)}100%{transform:translateX(320px)}}
+@keyframes wfx-drift-3{0%{transform:translateX(0)}100%{transform:translateX(320px)}}
+
+/* Fog — wide translucent bars drifting very slowly, layered for depth */
+.home-weather-card[data-scene="fog"] .wfx-fog{display:block}
+.wfx-fog{position:absolute;left:-20%;width:140%;height:16px;background:rgba(255,255,255,.28);filter:blur(6px)}
+.wfx-fog-1{top:25%;animation:wfx-fog-drift 14s ease-in-out infinite}
+.wfx-fog-2{top:60%;opacity:.6;animation:wfx-fog-drift 18s ease-in-out infinite reverse}
+@keyframes wfx-fog-drift{0%,100%{transform:translateX(0)}50%{transform:translateX(24px)}}
+
+/* Rain — thin streaks falling diagonally, each with its own horizontal offset/timing so
+   they don't read as a repeating grid. */
+.home-weather-card[data-scene="rain-day"] .wfx-rain,
+.home-weather-card[data-scene="rain-night"] .wfx-rain,
+.home-weather-card[data-scene="storm"] .wfx-rain{display:block}
+.wfx-rain{position:absolute;inset:0}
+.wfx-drop{position:absolute;top:-20%;width:2px;height:16px;border-radius:2px;
+  background:linear-gradient(rgba(255,255,255,0),rgba(255,255,255,.7));
+  animation:wfx-fall 1s linear infinite}
+.wfx-drop-1{left:8%;animation-duration:.8s;animation-delay:0s}
+.wfx-drop-2{left:22%;animation-duration:1.1s;animation-delay:.2s}
+.wfx-drop-3{left:38%;animation-duration:.7s;animation-delay:.4s}
+.wfx-drop-4{left:56%;animation-duration:1s;animation-delay:.1s}
+.wfx-drop-5{left:74%;animation-duration:.9s;animation-delay:.3s}
+.wfx-drop-6{left:90%;animation-duration:1.2s;animation-delay:.5s}
+@keyframes wfx-fall{0%{transform:translate(0,0);opacity:0}10%{opacity:1}100%{transform:translate(-14px,140px);opacity:0}}
+.home-weather-card[data-scene="storm"] .wfx-drop{animation-duration:.5s !important}
+
+/* Storm — an occasional double-flash rather than a steady pulse, closer to real lightning */
+.home-weather-card[data-scene="storm"] .wfx-flash{display:block}
+.wfx-flash{position:absolute;inset:0;background:#fff;opacity:0;animation:wfx-lightning 6s ease-in-out infinite}
+@keyframes wfx-lightning{0%,100%{opacity:0}1%{opacity:.5}2%{opacity:0}4%{opacity:.35}6%{opacity:0}}
+
+/* Snow — flakes drifting down with a gentle sway, staggered so they fall unevenly */
+.home-weather-card[data-scene="snow-day"] .wfx-snow,
+.home-weather-card[data-scene="snow-night"] .wfx-snow{display:block}
+.wfx-snow{position:absolute;inset:0}
+.wfx-flake{position:absolute;top:-8%;width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.9);animation:wfx-snowfall 6s linear infinite}
+.wfx-flake-1{left:10%;animation-duration:5.5s;animation-delay:0s}
+.wfx-flake-2{left:26%;animation-duration:7s;animation-delay:1s}
+.wfx-flake-3{left:42%;animation-duration:6s;animation-delay:.5s}
+.wfx-flake-4{left:60%;animation-duration:8s;animation-delay:1.5s}
+.wfx-flake-5{left:76%;animation-duration:5s;animation-delay:2s}
+.wfx-flake-6{left:90%;animation-duration:7.5s;animation-delay:.8s}
+@keyframes wfx-snowfall{
+  0%{transform:translate(0,0);opacity:0}
+  10%{opacity:1}
+  50%{transform:translate(10px,70px)}
+  100%{transform:translate(-6px,150px);opacity:0}
+}
+@media (prefers-reduced-motion:reduce){
+  .wfx-sun,.wfx-moon,.wfx-star,.wfx-cloud-1,.wfx-cloud-2,.wfx-cloud-3,.wfx-fog-1,.wfx-fog-2,
+  .wfx-drop,.wfx-flake,.wfx-flash{animation:none}
+}
+
 /* Step 8 — keep session label legible on the orange bar */
 #rt-bar-session{color:rgba(255,255,255,.85)}
 
