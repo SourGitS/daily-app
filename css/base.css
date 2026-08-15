@@ -7,8 +7,10 @@
   --radius:16px;
   --font-ui:'Manrope', system-ui, sans-serif;
   --font-num:'Space Grotesk', system-ui, sans-serif;
-  --accent:#FF6B35;
-  --accent-rgb:255,107,53;
+  /* Neutral slate by default — the app no longer ships opinionated orange; the user picks a
+     colour in Settings → Appearance (see ACCENT_PRESETS in js/app.js). */
+  --accent:#6B7280;
+  --accent-rgb:107,114,128;
   --positive:#52B788;
   --success:#52B788;
   --danger:#E74C3C;

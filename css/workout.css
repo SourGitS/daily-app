@@ -304,6 +304,16 @@
 .dc-swatches{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
 .dc-swatch{width:24px;height:24px;border-radius:50%;border:none;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;padding:0}
 .dc-swatch.active{outline:2.5px solid var(--text);outline-offset:2px}
+/* Brand accent presets (Settings → Appearance, static mode). Named buttons rather than bare
+   swatches so the four read as a deliberate set, with the free picker below them. */
+.accent-preset-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:4px 0 2px}
+.accent-preset{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 4px;border-radius:12px;
+  border:1.5px solid var(--border);background:transparent;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  transition:border-color .15s,background .15s}
+.accent-preset.active{border-color:var(--accent);background:rgba(var(--accent-rgb),.10)}
+.accent-preset-dot{width:26px;height:26px;border-radius:50%;flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
+.accent-preset-name{font-size:11px;font-weight:700;color:var(--muted)}
+.accent-preset.active .accent-preset-name{color:var(--text)}
 
 /* ── Set / exercise / day micro-interactions ── */
 @keyframes ripple-out{0%{transform:scale(0.8);opacity:0.6}100%{transform:scale(2.2);opacity:0}}

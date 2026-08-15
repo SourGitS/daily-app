@@ -940,6 +940,35 @@ function setTheme(t){
 // rest colour doubles as the app's static base accent when dynamic day colours are off.
 const DAY_COLOR_PRESETS = ['#FF6B35','#3B82F6','#8B5CF6','#EF4444','#10B981','#F59E0B','#EC4899','#14B8A6'];
 const REST_COLOR_KEY = '__rest__';
+// ── Brand accent palette ──────────────────────────────────────────
+// The app starts neutral grey and the user commits to a colour deliberately, rather than
+// inheriting the old orange (#FF6B35, retired) by default.
+// The red and green here are pulled AWAY from the status colours on purpose: --danger is
+// #E74C3C (orange-red) and --success #52B788 (muted sea green), so the accent red leans
+// crimson and the accent green leans grass. Without that offset an accent-coloured button
+// would read as an error, and a "done"/"on track" state would be indistinguishable from
+// ordinary accent furniture.
+const DEFAULT_ACCENT = '#6B7280';   // neutral slate — 4.8:1 against white text
+const RETIRED_ACCENT = '#ff6b35';   // the old default; migrated away from once (lowercase for compares)
+const ACCENT_PRESETS = [
+  {id:'gray',  name:'Grey',  hex:'#6B7280'},
+  {id:'red',   name:'Red',   hex:'#C0304A'},
+  {id:'green', name:'Green', hex:'#2F9E44'},
+  {id:'blue',  name:'Blue',  hex:'#3B82F6'},
+];
+// One-time move off the retired orange — only for anyone still sitting on it untouched, so a
+// deliberately-chosen colour (orange included) is never overwritten.
+function migrateRetiredAccentOnce(){
+  if(localStorage.getItem('daily_accent_retired_orange')) return;
+  try{
+    const m=loadDayColors();
+    if(String(m[REST_COLOR_KEY]||'').toLowerCase()===RETIRED_ACCENT){
+      m[REST_COLOR_KEY]=DEFAULT_ACCENT;
+      saveDayColors(m);
+    }
+  }catch(e){}
+  localStorage.setItem('daily_accent_retired_orange','1');
+}
 function hexToRgb(hex){
   const h=(hex||'').replace('#','');
   return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)].join(',');
@@ -957,19 +986,19 @@ function buildDefaultDayColors(){
     map[t.name] = LEGACY_DAY_COLOURS[t.colorKey] || t.barColor || DAY_COLOR_PRESETS[i%DAY_COLOR_PRESETS.length];
   }); }catch(e){}
   // Preserve any previously-chosen single accent as the base/rest colour.
-  map[REST_COLOR_KEY] = localStorage.getItem('daily_accent_color') || '#FF6B35';
+  map[REST_COLOR_KEY] = localStorage.getItem('daily_accent_color') || DEFAULT_ACCENT;
   return map;
 }
 function loadDayColors(){
   let m=null;
   try{ m=JSON.parse(localStorage.getItem('daily_day_colors')||'null'); }catch(e){}
   if(!m||typeof m!=='object') m=buildDefaultDayColors();
-  if(!m[REST_COLOR_KEY]) m[REST_COLOR_KEY]='#FF6B35';
+  if(!m[REST_COLOR_KEY]) m[REST_COLOR_KEY]=DEFAULT_ACCENT;
   return m;
 }
 function saveDayColors(m){ lsSave('daily_day_colors', m, 'dayColors'); }
-function restColor(){ return loadDayColors()[REST_COLOR_KEY] || '#FF6B35'; }
-function dayColorFor(name){ const m=loadDayColors(); return (name&&m[name]) || m[REST_COLOR_KEY] || '#FF6B35'; }
+function restColor(){ return loadDayColors()[REST_COLOR_KEY] || DEFAULT_ACCENT; }
+function dayColorFor(name){ const m=loadDayColors(); return (name&&m[name]) || m[REST_COLOR_KEY] || DEFAULT_ACCENT; }
 function setDayColorEnc(encKey, hex){
   const key=decodeURIComponent(encKey);
   const m=loadDayColors(); m[key]=hex; saveDayColors(m);
@@ -1000,15 +1029,28 @@ function renderDayColorPickers(){
   const dynamicOn=localStorage.getItem('daily_dynamic_colours')==='true';
 
   if(!dynamicOn){
-    // Static mode: show a single native colour picker
-    const cur=restColor()||'#FF6B35';
+    // Static mode: the four brand presets first (the curated set), then a free picker for
+    // anything else. Presets are labelled buttons rather than bare swatches so the set reads
+    // as deliberate choices, not a palette.
+    const cur=restColor()||DEFAULT_ACCENT;
+    const curLc=String(cur).toLowerCase();
+    const isPreset=ACCENT_PRESETS.some(p=>p.hex.toLowerCase()===curLc);
     wrap.innerHTML=
-      '<div style="display:flex;align-items:center;gap:14px;padding:4px 0">' +
-        '<label style="font-size:14px;color:var(--text);font-weight:500;flex:1">Accent colour</label>' +
+      '<div class="accent-preset-row">'+
+        ACCENT_PRESETS.map(p=>
+          '<button class="accent-preset'+(p.hex.toLowerCase()===curLc?' active':'')+'" '+
+            'onclick="setStaticAccent(\''+p.hex+'\');renderDayColorPickers()" aria-label="'+p.name+' accent">'+
+            '<span class="accent-preset-dot" style="background:'+p.hex+'"></span>'+
+            '<span class="accent-preset-name">'+p.name+'</span>'+
+          '</button>').join('')+
+      '</div>'+
+      '<div style="display:flex;align-items:center;gap:14px;padding:10px 0 4px">' +
+        '<label style="font-size:14px;color:var(--text);font-weight:500;flex:1">Custom colour'+
+          (isPreset?'':' <span style="font-size:12px;color:var(--accent);font-weight:700">· in use</span>')+'</label>' +
         '<input type="color" id="static-accent-input" value="'+cur+'" ' +
           'style="width:44px;height:44px;border:none;border-radius:10px;cursor:pointer;background:none;padding:0" ' +
           'oninput="setStaticAccent(this.value)" ' +
-          'onchange="setStaticAccent(this.value)">' +
+          'onchange="setStaticAccent(this.value);renderDayColorPickers()">' +
       '</div>' +
       '<p style="font-size:12px;color:var(--muted);margin:8px 0 0;line-height:1.4">This colour is used as the app accent everywhere. Enable Dynamic day colours above to set a colour per training day.</p>';
     const favs=loadAccentFavourites();
@@ -1035,7 +1077,7 @@ function renderDayColorPickers(){
   types.forEach(t=>{ if(t&&t.name&&!seen.has(t.name)){ seen.add(t.name); rows.push({key:t.name,label:t.name}); } });
   rows.push({key:REST_COLOR_KEY,label:'Rest days'});
   wrap.innerHTML=rows.map(r=>{
-    const cur=String(m[r.key]||m[REST_COLOR_KEY]||'#FF6B35').toLowerCase();
+    const cur=String(m[r.key]||m[REST_COLOR_KEY]||DEFAULT_ACCENT).toLowerCase();
     const sw=DAY_COLOR_PRESETS.map(hex=>
       '<button class="dc-swatch'+(hex.toLowerCase()===cur?' active':'')+'" style="background:'+hex+'" '+
         'onclick="setDayColorEnc(\''+encodeURIComponent(r.key)+'\',\''+hex+'\')" aria-label="'+hex+'"></button>'
@@ -1057,7 +1099,7 @@ function setStaticAccent(hex){
 function loadAccentFavourites(){ return lsLoad('daily_accent_favourites', [], Array.isArray); }
 function saveAccentFavourites(list){ lsSave('daily_accent_favourites', list, 'accentFavourites'); }
 function saveCurrentAccentAsFavourite(){
-  const hex=(restColor()||'#FF6B35').toLowerCase();
+  const hex=(restColor()||DEFAULT_ACCENT).toLowerCase();
   const favs=loadAccentFavourites();
   if(!favs.includes(hex)) favs.push(hex);
   saveAccentFavourites(favs);
@@ -7594,20 +7636,49 @@ const WEATHER_CODES={
   80:['🌦️','Rain showers'],81:['🌧️','Rain showers'],82:['⛈️','Violent showers'],
   95:['⛈️','Thunderstorm'],96:['⛈️','Thunderstorm'],99:['⛈️','Thunderstorm'],
 };
-function weatherIcon(code){ return (WEATHER_CODES[code]||['🌡️'])[0]; }
-function weatherLabel(code){ return (WEATHER_CODES[code]||[null,'—'])[1]; }
+// A dry sky — no precipitation, fog or storm — is the only case where cloud_cover should
+// override the code (see cloudLook below).
+function isDrySkyCode(code){ return code===0||code===1||code===2||code===3; }
+// For a dry sky the WMO code is too coarse to trust: sampling live data, code 1 ("mainly
+// clear") comes back at anything from 22% to 46% cloud cover, and code 0/1 both used to draw
+// a cloudless sunny scene — so a half-grey sky rendered as brilliant sunshine. cloud_cover is
+// the actual modelled percentage and tracks what you see out the window far better, so it
+// drives the icon, the label and the scene whenever the sky is dry.
+// Thresholds follow the usual met convention (roughly okta bands): few / scattered / broken / overcast.
+const CLOUD_LOOKS=[
+  {max:15,  base:'clear',  day:['☀️','Clear sky'],     night:['🌙','Clear night']},
+  {max:40,  base:'clear',  day:['🌤️','Mostly sunny'],  night:['🌙','Mostly clear']},
+  {max:70,  base:'partly', day:['⛅','Partly cloudy'],  night:['☁️','Partly cloudy']},
+  {max:101, base:'cloudy', day:['☁️','Cloudy'],         night:['☁️','Cloudy']},
+];
+function cloudLook(cloud){
+  for(const l of CLOUD_LOOKS){ if(cloud<l.max) return l; }
+  return CLOUD_LOOKS[CLOUD_LOOKS.length-1];
+}
+// Icon + label for the card. Dry skies read from cloud_cover; anything with actual weather in
+// it (rain/snow/fog/storm) still reads from the code, which is authoritative for those.
+// Night matters here too: a clear sky at 9pm was previously drawing a ☀️.
+function weatherLook(entry){
+  if(entry&&isDrySkyCode(entry.code)&&entry.cloud!=null){
+    const l=cloudLook(entry.cloud);
+    return weatherPhase(entry)==='night'?l.night:l.day;
+  }
+  return WEATHER_CODES[entry&&entry.code]||['🌡️','—'];
+}
 // Condition → animated background "scene" (see .home-weather-card[data-scene] in
 // kitchen-extras.css). Storm and fog skip the day/night split: a storm already reads as
 // dark regardless of clock time, and fog's flat haze doesn't have a distinct night look in
 // practice either — building separate art for those would just duplicate the day scene.
-function weatherSceneBase(code){
-  if(code===0||code===1) return 'clear';
-  if(code===2) return 'partly';
+function weatherSceneBase(code,cloud){
+  // Real weather first — these are what the code is actually good for.
   if(code===45||code===48) return 'fog';
-  if(code===3) return 'cloudy';
-  if((code>=51&&code<=67)||code===80||code===81) return 'rain';
   if(code===82||code>=95) return 'storm';
   if((code>=71&&code<=77)||(code>=85&&code<=86)) return 'snow';
+  if((code>=51&&code<=67)||code===80||code===81) return 'rain';
+  // Dry sky → let measured cloud cover decide how cloudy it looks.
+  if(cloud!=null) return cloudLook(cloud).base;
+  if(code===0||code===1) return 'clear';
+  if(code===2) return 'partly';
   return 'cloudy';
 }
 // Time-of-day phase from the day's real sunrise/sunset rather than a fixed clock hour, so
@@ -7629,7 +7700,7 @@ function weatherPhase(entry){
 // Only clear/partly skies get the full dawn/noon/dusk treatment — under heavy cloud, rain or
 // snow the sun's height barely changes how the sky reads, so those stay day/night.
 function weatherScene(code,entry){
-  const base=weatherSceneBase(code);
+  const base=weatherSceneBase(code,entry&&entry.cloud);
   if(base==='storm'||base==='fog') return base;
   const phase=weatherPhase(entry);
   if(base==='clear'||base==='partly') return base+'-'+phase;
@@ -7651,8 +7722,9 @@ function renderWeatherInto(entry){
   const tempEl=document.getElementById('home-weather-temp');
   if(!tempEl) return; // card isn't in the current layout — nothing to patch
   tempEl.textContent=Math.round(entry.tempC)+'°';
-  document.getElementById('home-weather-icon').textContent=weatherIcon(entry.code);
-  document.getElementById('home-weather-label').textContent=weatherLabel(entry.code);
+  const look=weatherLook(entry);
+  document.getElementById('home-weather-icon').textContent=look[0];
+  document.getElementById('home-weather-label').textContent=look[1];
   const cityEl=document.getElementById('home-weather-city');
   if(cityEl) cityEl.textContent=entry.city||'';
   // Feels-like is only worth showing when it actually differs from the real temperature —
@@ -7696,7 +7768,7 @@ function loadWeatherWidget(userInitiated){
     pos=>{
       const {latitude:lat,longitude:lon}=pos.coords;
       fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+
-            '&current=temperature_2m,apparent_temperature,weather_code,is_day'+
+            '&current=temperature_2m,apparent_temperature,weather_code,is_day,cloud_cover'+
             '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=1&timezone=auto')
         .then(r=>r.json())
         .then(data=>{
@@ -7705,7 +7777,7 @@ function loadWeatherWidget(userInitiated){
           const d=(data&&data.daily)||{};
           const first=a=>Array.isArray(a)&&a.length?a[0]:null;
           const entry={lat,lon,tempC:c.temperature_2m,feelsC:c.apparent_temperature,
-            code:c.weather_code,isDay:c.is_day,
+            code:c.weather_code,isDay:c.is_day,cloud:c.cloud_cover,
             tmax:first(d.temperature_2m_max),tmin:first(d.temperature_2m_min),
             sunrise:first(d.sunrise),sunset:first(d.sunset),
             city:weatherCityFromTz(data&&data.timezone),
@@ -10448,6 +10520,7 @@ try {
   migrateLegsGroupOnce(); // one-time: 'legs' → quads/hamstrings/calves/glutes/lower back
   recoverBudgetData(); // one-time: normalise legacy budget weeks, strip shadowing snapshots
   migrateCatBudgetsOnce(); // one-time: lift budgetConfig weekly amounts onto the categories
+  migrateRetiredAccentOnce(); // one-time: retired orange default → neutral grey
   // Weight-log consolidation: fold any legacy daily_weight_log entries into wt_weight.
   // The local key is only removed by the signed-in path (after the merged copy is safely
   // in the cloud), so a signed-out merge can never lose data to the next cloud pull.
