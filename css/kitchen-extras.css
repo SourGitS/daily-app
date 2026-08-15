@@ -230,16 +230,33 @@
   transition:background 0.6s ease}
 .weather-fx{position:absolute;inset:0;overflow:hidden;pointer-events:none}
 .weather-content{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.weather-left{min-width:0}
+.weather-right{text-align:right;flex-shrink:0}
+.weather-city{font-size:11px;font-weight:700;color:rgba(255,255,255,.8);letter-spacing:.02em;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.weather-city:empty{display:none}
 .weather-day{font-size:18px;font-weight:800;color:#fff;letter-spacing:-.01em}
 .weather-date{font-size:12px;font-weight:600;color:rgba(255,255,255,.75);margin-top:2px}
+.weather-temp-row{display:flex;align-items:center;gap:6px;justify-content:flex-end}
 .weather-icon{font-size:24px;line-height:1}
 .weather-temp{font-family:var(--font-num);font-size:26px;font-weight:800;color:#fff}
 .weather-condition{font-size:11px;font-weight:600;color:rgba(255,255,255,.75);margin-top:2px;cursor:pointer}
+/* High/low + feels-like. Tabular figures so the numbers don't jitter between refreshes. */
+.weather-meta{font-family:var(--font-num);font-size:11px;font-weight:700;color:rgba(255,255,255,.9);margin-top:4px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.weather-meta:empty{display:none}
 
-/* ── Scene backgrounds ── */
+/* ── Scene backgrounds ──
+   Clear and partly skies carry the full dawn→noon→day→dusk→night progression: "noon" is the
+   lightest, high-sun look and "day" is the deeper blue of mid-morning/afternoon, so a 4pm
+   sky doesn't render as bright as midday. Everything else stays day/night. */
+.home-weather-card[data-scene="clear-dawn"]{background:linear-gradient(160deg,#FFC3A0 0%,#FF8C69 55%,#B85C8A 100%)}
+.home-weather-card[data-scene="clear-noon"]{background:linear-gradient(160deg,#A5E4FF 0%,#4FAEEA 100%)}
 .home-weather-card[data-scene="clear-day"]{background:linear-gradient(160deg,#6DD5FA 0%,#2E86DE 100%)}
+.home-weather-card[data-scene="clear-dusk"]{background:linear-gradient(160deg,#F79D65 0%,#9B5E8C 60%,#4A3F6B 100%)}
 .home-weather-card[data-scene="clear-night"]{background:linear-gradient(160deg,#16213E 0%,#0B1224 100%)}
+.home-weather-card[data-scene="partly-dawn"]{background:linear-gradient(160deg,#E8B49B 0%,#C97B7B 55%,#8A5F86 100%)}
+.home-weather-card[data-scene="partly-noon"]{background:linear-gradient(160deg,#B4DCF0 0%,#6FA3CE 100%)}
 .home-weather-card[data-scene="partly-day"]{background:linear-gradient(160deg,#8EC5E8 0%,#5A87B5 100%)}
+.home-weather-card[data-scene="partly-dusk"]{background:linear-gradient(160deg,#D9906E 0%,#8A6A93 60%,#454064 100%)}
 .home-weather-card[data-scene="partly-night"]{background:linear-gradient(160deg,#253A5E 0%,#131C33 100%)}
 .home-weather-card[data-scene="cloudy-day"]{background:linear-gradient(160deg,#A9B7C4 0%,#74838F 100%)}
 .home-weather-card[data-scene="cloudy-night"]{background:linear-gradient(160deg,#3B4652 0%,#1E252B 100%)}
@@ -257,8 +274,15 @@
 .wfx-sun{width:90px;height:90px;border-radius:50%;position:absolute;top:-30px;right:-20px;
   background:radial-gradient(circle,rgba(255,244,214,.95) 0%,rgba(255,220,140,.55) 45%,transparent 72%);
   animation:wfx-sun-breathe 5s ease-in-out infinite}
-.home-weather-card[data-scene="clear-day"] .wfx-sun,
-.home-weather-card[data-scene="partly-day"] .wfx-sun{display:block}
+/* Prefix/suffix matching so every phase (dawn/noon/day/dusk) is covered without listing
+   each scene name — only "-night" is excluded. */
+.home-weather-card[data-scene^="clear-"]:not([data-scene$="-night"]) .wfx-sun,
+.home-weather-card[data-scene^="partly-"]:not([data-scene$="-night"]) .wfx-sun{display:block}
+/* Low, warm sun at the horizon for sunrise/sunset instead of the high white midday disc */
+.home-weather-card[data-scene$="-dawn"] .wfx-sun,
+.home-weather-card[data-scene$="-dusk"] .wfx-sun{
+  top:auto;bottom:-34px;right:14px;
+  background:radial-gradient(circle,rgba(255,236,200,.95) 0%,rgba(255,168,110,.6) 45%,transparent 72%)}
 @keyframes wfx-sun-breathe{0%,100%{opacity:.85;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
 
 /* Moon — dimmer, steadier glow */
@@ -285,12 +309,9 @@
 
 /* Clouds — soft blurred blobs drifting sideways, three at different speeds/depths for a
    little parallax rather than moving in lockstep. */
-.home-weather-card[data-scene="partly-day"] .wfx-cloud,
-.home-weather-card[data-scene="partly-night"] .wfx-cloud,
-.home-weather-card[data-scene="cloudy-day"] .wfx-cloud,
-.home-weather-card[data-scene="cloudy-night"] .wfx-cloud,
-.home-weather-card[data-scene="rain-day"] .wfx-cloud,
-.home-weather-card[data-scene="rain-night"] .wfx-cloud{display:block}
+.home-weather-card[data-scene^="partly-"] .wfx-cloud,
+.home-weather-card[data-scene^="cloudy-"] .wfx-cloud,
+.home-weather-card[data-scene^="rain-"] .wfx-cloud{display:block}
 .wfx-cloud{position:absolute;border-radius:50%;background:rgba(255,255,255,.32);filter:blur(2px)}
 .wfx-cloud-1{width:70px;height:26px;top:8%;left:-10%;animation:wfx-drift-1 22s linear infinite}
 .wfx-cloud-2{width:50px;height:20px;top:55%;left:-15%;opacity:.7;animation:wfx-drift-2 30s linear infinite}

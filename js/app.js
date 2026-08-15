@@ -1670,6 +1670,18 @@ function updateNavPill(v){
 }
 // Button geometry shifts on resize/rotation — re-measure the underline for the current view.
 window.addEventListener('resize',function(){ if(typeof S!=='undefined'&&S.view) updateNavPill(S.view); });
+// Home's card markup differs across the 1024px breakpoint (flat list on mobile, two flex
+// columns on desktop), so it has to be rebuilt when the viewport crosses it. Only on an
+// actual crossing — re-rendering on every resize tick would fight the enter animation.
+(function(){
+  let wasDesktop=window.innerWidth>=1024;
+  window.addEventListener('resize',function(){
+    const isDesktop=window.innerWidth>=1024;
+    if(isDesktop===wasDesktop) return;
+    wasDesktop=isDesktop;
+    if(typeof S!=='undefined'&&S.view==='home'&&typeof renderHome==='function') renderHome();
+  });
+})();
 // ── Weekday wordmark tint ─────────────────────────────────────────
 // Publishes --day-color (one colour per weekday when dynamic colours are on, else the static
 // accent). The wordmark is a real logo image now, so this only drives the active Stats pill
@@ -7598,10 +7610,38 @@ function weatherSceneBase(code){
   if((code>=71&&code<=77)||(code>=85&&code<=86)) return 'snow';
   return 'cloudy';
 }
-function weatherScene(code,isDay){
+// Time-of-day phase from the day's real sunrise/sunset rather than a fixed clock hour, so
+// the card tracks the actual sky (an 8pm summer dusk vs an 8pm winter night). Computed at
+// RENDER time, not fetch time, so a cached reading still advances dawn→noon→dusk on its own.
+// Falls back to the API's is_day flag if the sun times are missing.
+function weatherPhase(entry){
+  const fallback=entry.isDay===0?'night':'day';
+  if(!entry.sunrise||!entry.sunset) return fallback;
+  const sr=new Date(entry.sunrise).getTime(), ss=new Date(entry.sunset).getTime();
+  if(isNaN(sr)||isNaN(ss)) return fallback;
+  const now=Date.now(), EDGE=45*60*1000;
+  if(now<sr-EDGE||now>ss+EDGE) return 'night';
+  if(Math.abs(now-sr)<=EDGE) return 'dawn';
+  if(Math.abs(now-ss)<=EDGE) return 'dusk';
+  if(Math.abs(now-(sr+ss)/2)<=2*60*60*1000) return 'noon';  // brightest, sun highest
+  return 'day';
+}
+// Only clear/partly skies get the full dawn/noon/dusk treatment — under heavy cloud, rain or
+// snow the sun's height barely changes how the sky reads, so those stay day/night.
+function weatherScene(code,entry){
   const base=weatherSceneBase(code);
   if(base==='storm'||base==='fog') return base;
-  return base+'-'+(isDay===0?'night':'day');
+  const phase=weatherPhase(entry);
+  if(base==='clear'||base==='partly') return base+'-'+phase;
+  return base+'-'+(phase==='night'?'night':'day');
+}
+// "Australia/Sydney" → "Sydney". Uses the timezone the forecast call already returns, so
+// there's no second request and no extra service to depend on. It's the timezone's city, not
+// a precise suburb — accurate enough for a glanceable card.
+function weatherCityFromTz(tz){
+  if(!tz) return '';
+  const part=String(tz).split('/').pop();
+  return part?part.replace(/_/g,' '):'';
 }
 function loadWeatherCache(){ return lsLoad('daily_weather_cache', null); }
 function saveWeatherCache(c){ lsSave('daily_weather_cache', c, 'weatherCache'); }
@@ -7613,8 +7653,19 @@ function renderWeatherInto(entry){
   tempEl.textContent=Math.round(entry.tempC)+'°';
   document.getElementById('home-weather-icon').textContent=weatherIcon(entry.code);
   document.getElementById('home-weather-label').textContent=weatherLabel(entry.code);
+  const cityEl=document.getElementById('home-weather-city');
+  if(cityEl) cityEl.textContent=entry.city||'';
+  // Feels-like is only worth showing when it actually differs from the real temperature —
+  // repeating the same number twice reads as a bug, not a detail.
+  const metaEl=document.getElementById('home-weather-meta');
+  if(metaEl){
+    const bits=[];
+    if(entry.feelsC!=null&&Math.round(entry.feelsC)!==Math.round(entry.tempC)) bits.push('Feels '+Math.round(entry.feelsC)+'°');
+    if(entry.tmax!=null&&entry.tmin!=null) bits.push('H '+Math.round(entry.tmax)+'°  L '+Math.round(entry.tmin)+'°');
+    metaEl.textContent=bits.join('   ·   ');
+  }
   const card=document.querySelector('.home-weather-card');
-  if(card) card.dataset.scene=weatherScene(entry.code,entry.isDay);
+  if(card) card.dataset.scene=weatherScene(entry.code,entry);
 }
 // First-ever load (no cache yet): show an explicit "tap for weather" invite instead of
 // popping the OS location prompt unasked — Home is where most sessions land first, and an
@@ -7644,12 +7695,21 @@ function loadWeatherWidget(userInitiated){
   navigator.geolocation.getCurrentPosition(
     pos=>{
       const {latitude:lat,longitude:lon}=pos.coords;
-      fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weather_code,is_day&timezone=auto')
+      fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+
+            '&current=temperature_2m,apparent_temperature,weather_code,is_day'+
+            '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=1&timezone=auto')
         .then(r=>r.json())
         .then(data=>{
           const c=data&&data.current;
           if(!c||c.temperature_2m==null) throw new Error('no current-weather block');
-          const entry={lat,lon,tempC:c.temperature_2m,code:c.weather_code,isDay:c.is_day,fetchedAt:Date.now()};
+          const d=(data&&data.daily)||{};
+          const first=a=>Array.isArray(a)&&a.length?a[0]:null;
+          const entry={lat,lon,tempC:c.temperature_2m,feelsC:c.apparent_temperature,
+            code:c.weather_code,isDay:c.is_day,
+            tmax:first(d.temperature_2m_max),tmin:first(d.temperature_2m_min),
+            sunrise:first(d.sunrise),sunset:first(d.sunset),
+            city:weatherCityFromTz(data&&data.timezone),
+            fetchedAt:Date.now()};
           saveWeatherCache(entry);
           renderWeatherInto(entry);
         })
@@ -7687,16 +7747,18 @@ function buildWeatherCard(){
       '<div class="wfx-flash"></div>'+
     '</div>'+
     '<div class="weather-content">'+
-      '<div>'+
+      '<div class="weather-left">'+
+        '<div class="weather-city" id="home-weather-city"></div>'+
         '<div class="weather-day">'+dayLabel+'</div>'+
         '<div class="weather-date">'+dateLabel+'</div>'+
       '</div>'+
-      '<div style="text-align:right">'+
-        '<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">'+
+      '<div class="weather-right">'+
+        '<div class="weather-temp-row">'+
           '<span class="weather-icon" id="home-weather-icon"></span>'+
           '<span class="weather-temp" id="home-weather-temp"></span>'+
         '</div>'+
         '<div class="weather-condition" id="home-weather-label" onclick="loadWeatherWidget(true)">Loading…</div>'+
+        '<div class="weather-meta" id="home-weather-meta"></div>'+
       '</div>'+
     '</div>'+
   '</div>';
@@ -8088,8 +8150,39 @@ function renderHome(){
   // Ordered + visibility-filtered widget list; skip widgets whose HTML is empty right now
   // (e.g. Recent Workout before any session exists) so edit mode has no invisible boxes.
   const _homeIds=effectiveHomeWidgetIds(homeCards).filter(k=>homeCards[k]);
-  wrap.innerHTML = _homeIds
-    .map(k=>'<div class="home-card" data-card-id="'+k+'">'+homeCards[k]+'</div>').join('');
+  const _cardHtml=k=>'<div class="home-card" data-card-id="'+k+'">'+homeCards[k]+'</div>';
+  if(window.innerWidth>=1024){
+    // Desktop: real flex columns instead of CSS multi-column. Multicol packs tightly but its
+    // columns end wherever the last card happens to fall, leaving a ragged bottom edge; a
+    // grid of two flex columns can stretch each column's LAST card to fill, so the two
+    // always finish flush (see .home-cols in budget-home.css).
+    // Full-width cards (Today's Session, Weekly Budget) split the list into segments so each
+    // run of normal cards is balanced within itself and saved order is still respected.
+    // Weather is pulled out and pinned to the very bottom, full width.
+    const ids=_homeIds.filter(k=>k!=='weather');
+    const hasWeather=_homeIds.includes('weather');
+    let html='', run=[];
+    const flushRun=()=>{
+      if(!run.length) return;
+      // Alternate into the two columns; the last-card stretch below absorbs any imbalance,
+      // so this doesn't need to measure heights to end up flush.
+      const colA=run.filter((_,i)=>i%2===0), colB=run.filter((_,i)=>i%2===1);
+      html+='<div class="home-cols">'+
+        '<div class="home-col">'+colA.map(_cardHtml).join('')+'</div>'+
+        '<div class="home-col">'+colB.map(_cardHtml).join('')+'</div>'+
+      '</div>';
+      run=[];
+    };
+    ids.forEach(k=>{
+      if(k==='session'||k==='budget'){ flushRun(); html+=_cardHtml(k); }
+      else run.push(k);
+    });
+    flushRun();
+    if(hasWeather) html+=_cardHtml('weather');
+    wrap.innerHTML=html;
+  } else {
+    wrap.innerHTML=_homeIds.map(_cardHtml).join('');
+  }
   const _oldRecent=document.getElementById('home-recent-card'); if(_oldRecent) _oldRecent.innerHTML='';
   document.querySelectorAll('#view-home .card').forEach((card, i) => {
     card.style.animationDelay = (i * 45) + 'ms';
@@ -8109,24 +8202,130 @@ function renderHome(){
 // underlying data is untouched) and reordered. The registry tags each widget with its
 // related tab for the Settings → Home Layout grouping. `fixed` widgets can't be hidden:
 // the Overview card doubles as the app's greeting, so Home is never a fully blank page.
-// Settings → Home Layout preview thumbnails. Deliberately generic skeleton shapes assigned by
-// rough content type, NOT pixel-accurate live copies of each real card — a handful of reusable
-// archetypes means one place to maintain, not two that drift every time a real card is restyled.
-function hlPreviewStat(){ return '<div class="hl-preview"><div class="hl-p-label"></div><div class="hl-p-stat"></div><div class="hl-p-sub"></div></div>'; }
-function hlPreviewList(rows){ return '<div class="hl-preview"><div class="hl-p-label"></div>'+Array(rows||3).fill('<div class="hl-p-row"></div>').join('')+'</div>'; }
-function hlPreviewBars(){ return '<div class="hl-preview"><div class="hl-p-label"></div><div class="hl-p-bars">'+Array(7).fill(0).map(()=> '<div class="hl-p-bar" style="height:'+(30+Math.random()*60)+'%"></div>').join('')+'</div></div>'; }
+// Settings → Home Layout preview thumbnails. Miniature mock-ups of the real cards (same
+// background treatment and layout at reduced scale), so a toggle is recognisably attached to
+// the card it controls — the same approach as the onboarding theme picker's mini screens.
+// Content is deliberately illustrative placeholder rather than live data: bound to real
+// values these would render blank exactly when the user has nothing logged yet, which is
+// when they're most likely to be setting their layout up.
+function hlPrevSession(){
+  return '<div class="hl-prev hl-prev-hero">'+
+    '<div class="hl-lbl">Today\'s session · Sat</div>'+
+    '<div class="hl-title">Full Body A</div>'+
+    '<div class="hl-sub">4 exercises</div>'+
+    '<div class="hl-row-between" style="margin-top:7px;font-size:8.5px;font-weight:700;opacity:.85"><span>1 of 4 done</span><span>25%</span></div>'+
+    '<div class="hl-bar"><i style="width:25%"></i></div>'+
+  '</div>';
+}
+function hlPrevWeather(){
+  return '<div class="hl-prev hl-prev-weather">'+
+    '<div class="hl-row-between">'+
+      '<div><div style="font-size:13px;font-weight:800">Saturday</div><div class="hl-sub">15 August</div></div>'+
+      '<div style="text-align:right">'+
+        '<div style="display:flex;align-items:center;gap:4px;justify-content:flex-end">'+
+          '<span style="font-size:14px;line-height:1">☀️</span>'+
+          '<span class="hl-num">21°</span>'+
+        '</div>'+
+        '<div class="hl-sub">Clear sky</div>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+function hlPrevStreak(){
+  const segs=[1,1,1,0,0,0].map(on=>'<i class="'+(on?'on':'')+'"></i>').join('');
+  return '<div class="hl-prev hl-prev-plain" style="display:flex;gap:12px">'+
+    '<div style="flex:1"><div class="hl-lbl">Streak</div><div class="hl-num" style="margin-top:3px">3</div><div class="hl-sub">days</div></div>'+
+    '<div style="width:0.5px;background:var(--border)"></div>'+
+    '<div style="flex:1"><div class="hl-lbl">This week</div><div class="hl-num" style="margin-top:3px">3 <span style="font-size:9px;font-weight:600;color:var(--muted)">of 6</span></div>'+
+      '<div class="hl-segs">'+segs+'</div></div>'+
+  '</div>';
+}
+function hlPrevReview(){
+  const stat=(lbl,val,col)=>'<div><div class="hl-lbl">'+lbl+'</div><div class="hl-num" style="font-size:14px;margin-top:2px'+(col?';color:'+col:'')+'">'+val+'</div></div>';
+  const dots=[1,1,0,1,0,0,0].map(on=>'<i class="'+(on?'on':'')+'"></i>').join('');
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-lbl">📋 Weekly review</div>'+
+    '<div class="hl-grid2">'+
+      stat('Workouts','3')+stat('Budget','+$120','var(--success)')+
+      stat('Cals today','1,840')+stat('Weight Δ','-0.4','var(--success)')+
+    '</div>'+
+    '<div class="hl-dots">'+dots+'</div>'+
+  '</div>';
+}
+function hlPrevRecent(){
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-lbl">Recent workout</div>'+
+    '<div class="hl-list">'+
+      '<div class="hl-li"><i></i>Squat <span style="margin-left:auto;color:var(--muted)">80kg × 5</span></div>'+
+      '<div class="hl-li"><i></i>Bench press <span style="margin-left:auto;color:var(--muted)">60kg × 8</span></div>'+
+      '<div class="hl-li"><i></i>Barbell row <span style="margin-left:auto;color:var(--muted)">55kg × 8</span></div>'+
+    '</div>'+
+  '</div>';
+}
+function hlPrevCalories(){
+  // Neutral surface, not accent — .card.hero-card on Home is deliberately a plain card.
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-lbl">📊 Overview</div>'+
+    '<div style="display:flex;align-items:center;gap:9px;margin-top:6px">'+
+      '<div class="hl-ring"><i></i></div>'+
+      '<div><div style="font-size:11px;font-weight:700;color:var(--text)">Good morning</div>'+
+        '<div class="hl-num" style="font-size:14px;color:var(--success);margin-top:2px">640</div>'+
+        '<div class="hl-sub">kcal remaining</div></div>'+
+    '</div>'+
+  '</div>';
+}
+function hlPrevHabits(){
+  const li=(txt,on)=>'<div class="hl-li"><b class="'+(on?'on':'')+'"></b>'+txt+'</div>';
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-row-between"><div class="hl-lbl">Daily habits</div><div style="font-size:9px;font-weight:700;color:var(--text)">3/5</div></div>'+
+    '<div class="hl-list">'+li('Morning workout',1)+li('Hit calorie goal',1)+li('Drink 2L water',0)+'</div>'+
+  '</div>';
+}
+function hlPrevBudget(){
+  return '<div class="hl-prev hl-prev-hero">'+
+    '<div class="hl-row-between">'+
+      '<div class="hl-lbl">Weekly budget</div>'+
+      '<span style="font-size:7.5px;font-weight:700;background:rgba(255,255,255,.22);padding:2px 7px;border-radius:20px">On track</span>'+
+    '</div>'+
+    '<div class="hl-num" style="font-size:20px;margin-top:6px">$666</div>'+
+    '<div class="hl-sub">left of $785</div>'+
+    '<div class="hl-bar"><i style="width:62%"></i></div>'+
+  '</div>';
+}
+function hlPrevBalance(){
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-lbl">💰 Total assets</div>'+
+    '<div class="hl-num" style="font-size:19px;margin-top:5px">$9,370</div>'+
+    '<div class="hl-sub">Net worth $8,030 · $1,340 debts</div>'+
+  '</div>';
+}
+function hlPrevTiles(){
+  const tile=(icon,val,lbl)=>'<div class="hl-tile"><em>'+icon+'</em><span>'+val+'</span><div class="hl-sub" style="font-size:7px;margin-top:1px">'+lbl+'</div></div>';
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-tiles">'+tile('💰','$150','Saved')+tile('💵','$785','Last pay')+'</div>'+
+  '</div>';
+}
+function hlPrevNotes(){
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-lbl">Notes</div>'+
+    '<div class="hl-list">'+
+      '<div class="hl-li"><i></i>Book physio <span style="margin-left:auto;color:var(--accent);font-size:8px">Priority</span></div>'+
+      '<div class="hl-li"><i style="background:var(--danger)"></i>Rego due <span style="margin-left:auto;color:var(--muted);font-size:8px">3 days</span></div>'+
+    '</div>'+
+  '</div>';
+}
 const HOME_WIDGETS=[
-  {id:'session',  label:"Today's Session",      tab:'Train', preview:hlPreviewStat},
-  {id:'weather',  label:'Weather',              tab:'Train', preview:hlPreviewStat},
-  {id:'streak',   label:'Streak & This Week',   tab:'Train', preview:hlPreviewBars},
-  {id:'review',   label:'Week in Review',       tab:'Train', preview:hlPreviewStat},
-  {id:'recent',   label:'Recent Workout',       tab:'Train', preview:hlPreviewList},
-  {id:'calories', label:'Overview & Greeting',  tab:'Nutrition', fixed:true, preview:hlPreviewStat},
-  {id:'habits',   label:"Today's Habits",       tab:'Habits', preview:hlPreviewList},
-  {id:'budget',   label:'Weekly Budget',        tab:'Budget', preview:hlPreviewStat},
-  {id:'balance',  label:'Net Worth & Accounts', tab:'Budget', preview:hlPreviewStat},
-  {id:'tiles',    label:'Money Quick Tiles',    tab:'Budget', preview:()=>hlPreviewList(2)},
-  {id:'notes',    label:'Notes',                tab:'Notes', preview:hlPreviewList},
+  {id:'session',  label:"Today's Session",      tab:'Train', preview:hlPrevSession},
+  {id:'weather',  label:'Weather',              tab:'Train', preview:hlPrevWeather},
+  {id:'streak',   label:'Streak & This Week',   tab:'Train', preview:hlPrevStreak},
+  {id:'review',   label:'Week in Review',       tab:'Train', preview:hlPrevReview},
+  {id:'recent',   label:'Recent Workout',       tab:'Train', preview:hlPrevRecent},
+  {id:'calories', label:'Overview & Greeting',  tab:'Nutrition', fixed:true, preview:hlPrevCalories},
+  {id:'habits',   label:"Today's Habits",       tab:'Habits', preview:hlPrevHabits},
+  {id:'budget',   label:'Weekly Budget',        tab:'Budget', preview:hlPrevBudget},
+  {id:'balance',  label:'Net Worth & Accounts', tab:'Budget', preview:hlPrevBalance},
+  {id:'tiles',    label:'Money Quick Tiles',    tab:'Budget', preview:hlPrevTiles},
+  {id:'notes',    label:'Notes',                tab:'Notes', preview:hlPrevNotes},
 ];
 const HOME_DEFAULT_ORDER=['session','weather','streak','calories','review','habits','budget','balance','tiles','notes','recent'];
 function loadHomeOrder(){ return lsLoad('daily_home_order', null, Array.isArray); } // legacy (seed only)
@@ -8153,6 +8352,11 @@ function effectiveHomeWidgetIds(cards){
   return keys.filter(k=>{ const w=HOME_WIDGETS.find(x=>x.id===k); return (w&&w.fixed) || !hidden.has(k); });
 }
 function saveHomeOrder(){
+  // Desktop splits the cards into two flex columns, so DOM order there is column-major
+  // (all of column A, then all of column B) rather than the visual top-to-bottom order —
+  // saving it would silently scramble the list. Reordering is a touch gesture anyway, so
+  // just decline on that layout instead of trying to reconstruct the order from geometry.
+  if(document.querySelector('#home-content .home-cols')) return;
   const order=[...document.querySelectorAll('#home-content [data-card-id]')].map(c=>c.dataset.cardId);
   if(!order.length) return;
   const l=homeLayout();
