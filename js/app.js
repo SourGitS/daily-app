@@ -5183,15 +5183,20 @@ function renderCatBudgetList(containerId, type){
         '</select>':'')+
         '<button class="bud-edit-del" title="Remove" onclick="catRemoveItem(\''+type+'\',\''+c.id+'\')">🗑️</button>'+
       '</div>';
-    // Website → logo. Second line so the row above stays readable on a phone.
-    const site=cycles
-      ? '<div class="bud-edit-sub">'+
-          '<input class="bud-edit-site" value="'+_catEsc(c.site||'')+'" placeholder="website (e.g. stan.com.au) — optional" '+
-            'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'site\',this.value)">'+
-          ((cyc!=='weekly'&&weekly>0)?'<span class="bud-edit-hint">≈ $'+weekly.toFixed(2)+'/wk</span>':'')+
-        '</div>'
-      : '';
-    return row+site;
+    // Second line: website (fixed only, drives the logo), the weekly conversion, and the
+    // move control — which carries saved history with it rather than stranding it.
+    const moveOpts=['inc','fix','var'].filter(t=>t!==type)
+      .map(t=>'<option value="'+t+'">→ '+CAT_TYPE_PLURAL[t]+'</option>').join('');
+    const sub=
+      '<div class="bud-edit-sub">'+
+        (cycles?'<input class="bud-edit-site" value="'+_catEsc(c.site||'')+'" placeholder="website (e.g. stan.com.au) — optional" '+
+          'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'site\',this.value)">':'<span class="bud-edit-spacer"></span>')+
+        ((cycles&&cyc!=='weekly'&&weekly>0)?'<span class="bud-edit-hint">≈ $'+weekly.toFixed(2)+'/wk</span>':'')+
+        '<select class="bud-edit-move" onchange="catMoveTo(\''+type+'\',\''+c.id+'\',this.value)" aria-label="Move category">'+
+          '<option value="">Move…</option>'+moveOpts+
+        '</select>'+
+      '</div>';
+    return row+sub;
   }).join('')+
     '<button class="bud-add-item" onclick="catAddItem(\''+type+'\')">+ Add '+CAT_TYPE_LABEL[type]+'</button>';
 }
@@ -5215,6 +5220,54 @@ function catAddItem(type){
   if(type==='fix'){ item.amount=''; item.cycle='weekly'; }
   cats.push(item);
   BUD_CAT_SAVE[type](cats);
+  refreshCatBudgetUI();
+}
+// ── Move a category between income / fixed / variable ─────────────
+// Recategorising by hand (delete here, re-add there) silently strands every saved week's
+// amount: the data stays in storage under the old `fix_<id>` key but nothing reads it, so
+// past weeks quietly drop that spend and the history rewrites itself. This moves the
+// per-week values across with the category so nothing is lost.
+const CAT_TYPE_PLURAL={inc:'Income', fix:'Fixed expenses', var:'Variable expenses'};
+function catMoveTo(fromType,id,toType){
+  if(!toType||toType===fromType||!BUD_CAT_LOAD[toType]){ refreshCatBudgetUI(); return; }
+  const fromCats=BUD_CAT_LOAD[fromType]();
+  const cat=fromCats.find(c=>c.id===id);
+  if(!cat){ refreshCatBudgetUI(); return; }
+  const toCats=BUD_CAT_LOAD[toType]();
+  // Ids only have to be unique within their own list, so the same id can already exist in
+  // the destination — mint a fresh one rather than colliding with someone else's history.
+  const newId=toCats.some(c=>c.id===id)?genCatId(toType):id;
+  const fromKey=fromType+'_'+id, toKey=toType+'_'+newId;
+  const weeks=Object.keys(budgetData).filter(k=>budgetData[k]&&budgetData[k][fromKey]!==undefined);
+
+  const label=catDisplayName(cat.name)||'this category';
+  let msg='Move “'+label+'” to '+CAT_TYPE_PLURAL[toType]+'?';
+  if(weeks.length) msg+='\n\n'+weeks.length+' saved week'+(weeks.length===1?'':'s')+' of history will move with it.';
+  // Leaving Fixed means losing the blank-row fallback: fixed treats an empty week as "the
+  // usual amount", variable treats it as nothing spent. Worth stating plainly — it changes
+  // what a forgotten week costs you.
+  if(fromType==='fix'&&toType==='var'){
+    msg+='\n\nHeads up: as a variable expense, a week you don’t fill in counts as $0 instead of the usual $'+catBudget(cat).toFixed(2)+'.';
+    if(catIsRecurring(cat)) msg+='\nIts '+catCycle(cat)+' billing will also stop being spread across weeks automatically.';
+  }
+  if(!confirm(msg)){ refreshCatBudgetUI(); return; }
+
+  weeks.forEach(k=>{ const d=budgetData[k]; d[toKey]=d[fromKey]; delete d[fromKey]; d.updatedAt=Date.now(); });
+
+  const moved={id:newId, name:cat.name, budget:cat.budget};
+  if(cat.site) moved.site=cat.site;
+  if(cat.default!=null) moved.default=cat.default;
+  // Cycles only exist on fixed expenses; arriving there needs one, leaving drops it so a
+  // stale cycle can't linger on a category that no longer prorates.
+  if(toType==='fix'){
+    moved.amount=(cat.amount!=null&&cat.amount!=='')?cat.amount:(cat.budget??'');
+    moved.cycle=catCycle(cat);
+  }
+  BUD_CAT_SAVE[fromType](fromCats.filter(c=>c.id!==id));
+  toCats.push(moved);
+  BUD_CAT_SAVE[toType](toCats);
+  // One write + one full cloud set for the whole move, rather than N per-week syncs.
+  if(weeks.length) budSaveData();
   refreshCatBudgetUI();
 }
 function catRemoveItem(type,id){
@@ -5824,13 +5877,13 @@ function migrateSubscriptionsToFixedOnce(){
       });
       if(skipped.length) try{ localStorage.setItem('daily_subs_merge_skipped', JSON.stringify(skipped)); }catch(e){}
       // The built-in 'subs' category existed only to hold the subscriptions TOTAL, which the
-      // individual entries above now represent — leaving both would double-count. Zero its
-      // forward budget rather than deleting it: past weeks store real spend under fix_subs,
-      // and removing the category would drop those from weekFixedTotal and silently rewrite
-      // budget history.
-      const agg=cats.find(c=>c.id==='subs');
-      if(agg) agg.budget=0;
-      saveFixCats(cats);
+      // individual entries above now represent — so it has to go entirely, not just have its
+      // budget zeroed. A zeroed category still double-counts wherever an amount was typed
+      // into its weekly row, and those rows exist. Removing it doesn't lose history either:
+      // each imported category's budget applies to EVERY week including past ones (a blank
+      // row falls back to the budget), so the recurring block already covers what fix_subs
+      // used to. The old per-week fix_subs values stay in storage, simply unread.
+      saveFixCats(cats.filter(c=>c.id!=='subs'));
     }
     // Backfill a website onto any fixed category that doesn't have one yet — including the
     // ones that predate subscriptions entirely (a gym, a transport card), so the list arrives
@@ -5847,6 +5900,30 @@ function migrateSubscriptionsToFixedOnce(){
   // daily_subscriptions is deliberately left in storage — nothing is destroyed, so the old
   // list is still recoverable if this migration got something wrong.
   localStorage.setItem('daily_subs_merged_into_fixed','1');
+}
+// Follow-up to the merge above. Its first version zeroed the aggregate 'subs' category's
+// budget instead of removing it, on the mistaken reasoning that past weeks needed it for
+// their history. They don't — every imported category's budget already applies retroactively
+// — and a zeroed category still counts twice on any week where an amount was typed into its
+// row, which is exactly what happened. Drops the leftover aggregate for anyone who ran that
+// earlier version.
+function migrateDropSubsAggregateOnce(){
+  if(localStorage.getItem('daily_subs_aggregate_dropped')) return;
+  try{
+    // Only when subscriptions were actually imported — otherwise a category that happens to
+    // use the built-in 'subs' id is a legitimate expense and must be left alone.
+    const hadSubs=(lsLoad('daily_subscriptions', [])||[]).length>0;
+    if(hadSubs){
+      const cats=loadFixCats();
+      const agg=cats.find(c=>c.id==='subs');
+      // Guard on the zeroed budget the earlier migration set, so a category the user has
+      // since given a real budget to isn't silently deleted.
+      if(agg&&(agg.budget===0||agg.budget===''||agg.budget==null)){
+        saveFixCats(cats.filter(c=>c.id!=='subs'));
+      }
+    }
+  }catch(e){}
+  localStorage.setItem('daily_subs_aggregate_dropped','1');
 }
 // One-time lift of the old budgetConfig amounts onto the categories they were describing.
 // Name-matched one-to-one — the same imperfect bridge as before, but run exactly once here
@@ -10616,6 +10693,7 @@ try {
   recoverBudgetData(); // one-time: normalise legacy budget weeks, strip shadowing snapshots
   migrateCatBudgetsOnce(); // one-time: lift budgetConfig weekly amounts onto the categories
   migrateSubscriptionsToFixedOnce(); // one-time: fold subscriptions into fixed categories
+  migrateDropSubsAggregateOnce(); // one-time: drop the leftover aggregate 'subs' category
   migrateRetiredAccentOnce(); // one-time: retired orange default → neutral grey
   // Weight-log consolidation: fold any legacy daily_weight_log entries into wt_weight.
   // The local key is only removed by the signed-in path (after the merged copy is safely

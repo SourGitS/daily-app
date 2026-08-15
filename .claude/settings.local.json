@@ -18,7 +18,9 @@
       "PowerShell(gh api repos/SourGitS/workout-tracker/pages 2>&1)",
       "Bash(node --check js/app.js)",
       "Bash(python3 -c \"import json; json.load\\(open\\('manifest.json'\\)\\)\")",
-      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('manifest.json','utf8'\\)\\); console.log\\('manifest.json valid JSON'\\)\")"
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('manifest.json','utf8'\\)\\); console.log\\('manifest.json valid JSON'\\)\")",
+      "Bash(sed -n '/^function budSaveData/,/^}/p' js/app.js)",
+      "Bash(sed -n '/^function syncBudgetDataToFirebase/,/^}/p' js/app.js)"
     ]
   }
 }

@@ -102,6 +102,10 @@
 .bud-edit-site:focus{outline:none;border-color:var(--blue)}
 .bud-edit-site::placeholder{color:var(--text-3)}
 .bud-edit-hint{font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap;flex-shrink:0}
+.bud-edit-spacer{flex:1}
+/* Move-to-another-type control. Sits at the end of the sub-line on every category row. */
+.bud-edit-move{flex-shrink:0;height:30px;max-width:150px;border:1px solid var(--border);border-radius:7px;font-size:11px;font-weight:600;background:transparent;color:var(--muted);-webkit-appearance:none;appearance:none;padding:0 7px;cursor:pointer}
+.bud-edit-move:focus{outline:none;border-color:var(--blue)}
 /* Category logo / initial fallback. object-fit contains so non-square favicons aren't cropped. */
 .cat-icon-img{object-fit:contain;background:var(--bg);display:inline-block;vertical-align:middle}
 .cat-icon-letter{display:inline-flex;align-items:center;justify-content:center;background:rgba(var(--accent-rgb),.16);color:var(--accent);font-weight:800;line-height:1;vertical-align:middle}
