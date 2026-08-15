@@ -417,10 +417,11 @@ if(firebaseReady){
       ()=>{ if(S.view==='stats') renderWeightGoal(); },
       ()=>!!weightGoal.target);
 
-    // Sync subscriptions
+    // Subscriptions are retired as a separate list (folded into fixed categories), but the
+    // cloud copy is still reconciled so an older device can't resurrect or lose the data.
     fbReconcile('subscriptions','daily_subscriptions',
       ()=>subscriptionsData, v=>{ subscriptionsData=Array.isArray(v)?v:Object.values(v||{}); },
-      ()=>{ applySubscriptionsToBudget(); if(S.view==='settings') renderSubscriptionsSection(); });
+      ()=>{});
 
     // Sync notes — one-shot pull/seed on sign-in (fbReconcile's seedWhen guard keeps an empty
     // local store from wiping a populated cloud one, and only overwrites local when the cloud
@@ -3838,7 +3839,7 @@ function updateDesktopSidebar(){
 // overlays), and moved back on close. Desktop and mobile behave identically (the overlay is
 // simply offset past the sidebar on desktop) — so there's no "stacked column" branch to break.
 const SETTINGS_SECTION_KEYS=['account','health','habits','appearance','homelayout','export'];
-const SETTINGS_TITLES={account:'Account',health:'Health',habits:'Habits',subscriptions:'Subscriptions',appearance:'Appearance',homelayout:'Home Layout',export:'Export'};
+const SETTINGS_TITLES={account:'Account',health:'Health',habits:'Habits',appearance:'Appearance',homelayout:'Home Layout',export:'Export'};
 let _activeSettingsKey=null;
 function openSettingsSection(key){
   const overlay=document.getElementById('view-settings-detail');
@@ -3866,7 +3867,6 @@ function openSettingsSection(key){
   }
   if(key==='habits') renderHabitsEditModal();
   if(key==='appearance'){ const th=document.getElementById('theme-toggle'); if(th) th.checked=S.theme==='dark'; const dc=document.getElementById('toggle-dynamic-colours'); if(dc) dc.checked=localStorage.getItem('daily_dynamic_colours')==='true'; renderDayColorPickers(); }
-  if(key==='subscriptions') renderSubscriptionsSection();
   if(key==='homelayout') renderHomeLayoutSection();
   overlay.style.display='block';
   overlay.style.left=window.innerWidth>=1024?'260px':'0';
@@ -3927,122 +3927,10 @@ function saveProfileSection(){
   const btn=document.getElementById('profile-save-btn');
   if(btn){ btn.textContent='Saved ✓'; btn.style.background='var(--accent)'; setTimeout(()=>{ btn.textContent='Save'; btn.style.background=''; },2000); }
 }
-function applySubscriptionsToBudget(){
-  const monthly=Math.round(subscriptionsData.reduce((s,sub)=>s+(sub.monthlyCost||0),0)*100)/100;
-  const weekly=Math.round(monthly/4.33*100)/100;
-  budDefaults.subs=weekly;
-  localStorage.setItem('daily_budget_defaults',JSON.stringify(budDefaults));
-  syncBudDefaultsToFirebase();
-  const el=document.getElementById('fix-subs');
-  if(el) el.value=weekly>0?weekly:'';
-}
-function pickSubEmoji(emoji,btn){
-  const val=document.getElementById('sub-emoji-val');
-  const disp=document.getElementById('sub-emoji-display');
-  if(val) val.value=emoji;
-  if(disp) disp.textContent=emoji;
-  document.querySelectorAll('.sub-emoji-btn').forEach(b=>b.classList.remove('sub-emoji-active'));
-  if(btn) btn.classList.add('sub-emoji-active');
-}
-function addSubscription(){
-  const name=(document.getElementById('sub-name')?.value||'').trim();
-  const cost=parseFloat(document.getElementById('sub-cost')?.value);
-  const cycle=document.getElementById('sub-cycle')?.value||'monthly';
-  const emoji=document.getElementById('sub-emoji-val')?.value||'📱';
-  if(!name||isNaN(cost)||cost<=0) return;
-  const monthlyCost=cycle==='yearly'?Math.round(cost/12*100)/100:Math.round(cost*100)/100;
-  subscriptionsData.push({name,monthlyCost,cycle,originalCost:cost,emoji});
-  localStorage.setItem('daily_subscriptions',JSON.stringify(subscriptionsData));
-  applySubscriptionsToBudget();
-  syncSubscriptionsToFirebase();
-  renderSubscriptionsSection();
-}
-function deleteSubscription(idx){
-  subscriptionsData.splice(idx,1);
-  localStorage.setItem('daily_subscriptions',JSON.stringify(subscriptionsData));
-  applySubscriptionsToBudget();
-  syncSubscriptionsToFirebase();
-  renderSubscriptionsSection();
-}
-// Delegated handler: re-rendered / modal buttons are more reliable on iOS via one
-// document listener than per-button inline onclick handlers.
-document.addEventListener('click', function(e){
-  const btn=e.target.closest('.delete-sub-btn');
-  if(btn){
-    const idx=parseInt(btn.dataset.idx,10);
-    if(!isNaN(idx)) deleteSubscription(idx);
-    return;
-  }
-  if(e.target.closest('#savings-save-btn')){ confirmSavingsBalance(); return; }
-  if(e.target.closest('#savings-cancel-btn')){ closeSavingsModal(); return; }
-});
-function renderSubscriptionsSection(){
-  const wrap=document.getElementById('be-subs')||document.getElementById('subscriptions-content');
-  if(!wrap) return;
-  const EMOJIS=['📺','🎵','🎮','📱','☁️','🏋️','📚','🛡️','🎬','💊','🌐','📰','🎯','💻','✈️','🧘'];
-  const curEmoji=document.getElementById('sub-emoji-val')?.value||'📱';
-  const total=Math.round(subscriptionsData.reduce((s,sub)=>s+(sub.monthlyCost||0),0)*100)/100;
-  const weeklyTotal=Math.round(total/4.33*100)/100;
+// The separate subscriptions list was retired: it was never actually wired into the budget,
+// and each entry is now a real fixed category with its own billing cycle (see
+// migrateSubscriptionsToFixedOnce). daily_subscriptions is left in storage, unread.
 
-  const listRows=subscriptionsData.length
-    ? subscriptionsData.map((sub,i)=>{
-        const cycleNote=sub.cycle==='yearly'?` <span style="font-size:11px;color:var(--muted)">(${sub.originalCost}/yr)</span>`:'';
-        return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
-          <span style="font-size:20px;line-height:1;flex-shrink:0">${sub.emoji}</span>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sub.name.replace(/</g,'&lt;')}</div>
-            <div style="font-size:12px;color:var(--muted)">$${sub.monthlyCost}/mo${cycleNote}</div>
-          </div>
-          <button class="delete-sub-btn" data-idx="${i}" style="color:var(--danger);flex-shrink:0">✕</button>
-        </div>`;
-      }).join('')
-    : '<div style="text-align:center;color:var(--muted);font-size:13px;padding:12px 0">No subscriptions yet</div>';
-
-  wrap.innerHTML=`
-    <div class="settings-card">
-      <div class="settings-card-title" style="cursor:default">Add subscription</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
-        ${EMOJIS.map(e=>`<button type="button" class="sub-emoji-btn${e===curEmoji?' sub-emoji-active':''}" onclick="pickSubEmoji('${e}',this)">${e}</button>`).join('')}
-      </div>
-      <input type="hidden" id="sub-emoji-val" value="${curEmoji}">
-      <div class="settings-field">
-        <label>Name</label>
-        <div style="display:flex;align-items:center;gap:10px">
-          <span id="sub-emoji-display" style="font-size:24px;line-height:1;flex-shrink:0">${curEmoji}</span>
-          <input type="text" id="sub-name" placeholder="e.g. Netflix" style="flex:1;height:44px;border:1.5px solid var(--border);border-radius:8px;font-size:15px;padding:0 12px;background:var(--card);color:var(--text)">
-        </div>
-      </div>
-      <div class="settings-2col">
-        <div class="settings-field">
-          <label>Cost ($)</label>
-          <input type="number" id="sub-cost" inputmode="decimal" min="0" step="0.01" placeholder="0.00" style="width:100%;height:44px;border:1.5px solid var(--border);border-radius:8px;font-size:15px;padding:0 12px;background:var(--card);color:var(--text)">
-        </div>
-        <div class="settings-field">
-          <label>Billing</label>
-          <select id="sub-cycle" style="width:100%;height:44px;border:1.5px solid var(--border);border-radius:8px;font-size:15px;padding:0 12px;background:var(--card);color:var(--text);-webkit-appearance:none;appearance:none">
-            <option value="monthly">Monthly</option>
-            <option value="yearly">Yearly</option>
-          </select>
-        </div>
-      </div>
-      <button onclick="addSubscription()" class="settings-save-btn">+ Add</button>
-    </div>
-    <div class="settings-card">
-      <div class="settings-card-title" style="cursor:default">My subscriptions</div>
-      ${listRows}
-      ${subscriptionsData.length?`
-        <div style="padding-top:12px;margin-top:2px;border-top:1px solid var(--border)">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-            <span style="font-size:13px;color:var(--muted)">Monthly total</span>
-            <span style="font-size:14px;font-weight:700;color:var(--text)">$${total}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-size:13px;color:var(--muted)">Weekly equivalent</span>
-            <span style="font-size:16px;font-weight:800;color:var(--accent)">$${weeklyTotal}</span>
-          </div>
-        </div>`:''}
-    </div>`;
-}
 function renderInstallCard(){
   const wrap = document.getElementById('stg-install-card');
   if(!wrap) return;
@@ -5005,18 +4893,8 @@ function buildAIReviewMarkdown(months){
     }
   }
 
-  // Subscriptions are a current snapshot, not history — labelled as such so the AI doesn't
-  // read them as period spend on top of the fixed-category totals above.
-  if(subscriptionsData&&subscriptionsData.length){
-    const subsMonthly=subscriptionsData.reduce((s,x)=>s+(parseFloat(x.monthlyCost)||0),0);
-    L.push('### Subscriptions (current, not historical)');
-    L.push('');
-    L.push('| Name | Monthly |');
-    L.push('| --- | --- |');
-    subscriptionsData.forEach(x=>L.push('| '+md(x.name)+' | '+money(parseFloat(x.monthlyCost)||0)+' |'));
-    L.push('| **Total** | **'+money(subsMonthly)+'** |');
-    L.push('');
-  }
+  // (Subscriptions used to get their own section here. They're fixed categories now, so they
+  // already appear in the Fixed table above — listing them twice would read as double spend.)
 
   // ── Accounts ──
   L.push('## Accounts & net worth');
@@ -5286,28 +5164,56 @@ const CAT_TYPE_LABEL={inc:'income source', fix:'fixed expense', var:'variable ex
 function renderCatBudgetList(containerId, type){
   const el=document.getElementById(containerId); if(!el) return;
   const cats=BUD_CAT_LOAD[type]?BUD_CAT_LOAD[type]():[];
-  el.innerHTML=cats.map(c=>
-    '<div class="bud-edit-row">'+
-      '<input class="bud-edit-name" value="'+_catEsc(c.name||'')+'" placeholder="Name" '+
-        'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'name\',this.value)">'+
-      '<input class="bud-edit-amt" type="number" inputmode="decimal" value="'+(c.budget??'')+'" placeholder="0" '+
-        'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'budget\',this.value)">'+
-      '<button class="bud-edit-del" title="Remove" onclick="catRemoveItem(\''+type+'\',\''+c.id+'\')">🗑️</button>'+
-    '</div>'
-  ).join('')+
+  // Only fixed expenses get a billing cycle: variable spend is per-week by definition, and
+  // income is entered per pay against the week it lands in.
+  const cycles=type==='fix';
+  el.innerHTML=cats.map(c=>{
+    const amt=cycles?catAmount(c):(c.budget??'');
+    const cyc=catCycle(c);
+    const weekly=catBudget(c);
+    const row=
+      '<div class="bud-edit-row">'+
+        (cycles?catIconHtml(c,26):'')+
+        '<input class="bud-edit-name" value="'+_catEsc(c.name||'')+'" placeholder="Name" '+
+          'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'name\',this.value)">'+
+        '<input class="bud-edit-amt" type="number" inputmode="decimal" value="'+(amt===''?'':amt)+'" placeholder="0" '+
+          'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\''+(cycles?'amount':'budget')+'\',this.value)">'+
+        (cycles?'<select class="bud-edit-cycle" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'cycle\',this.value)">'+
+          CAT_CYCLES.map(o=>'<option value="'+o.id+'"'+(o.id===cyc?' selected':'')+'>'+o.suffix+'</option>').join('')+
+        '</select>':'')+
+        '<button class="bud-edit-del" title="Remove" onclick="catRemoveItem(\''+type+'\',\''+c.id+'\')">🗑️</button>'+
+      '</div>';
+    // Website → logo. Second line so the row above stays readable on a phone.
+    const site=cycles
+      ? '<div class="bud-edit-sub">'+
+          '<input class="bud-edit-site" value="'+_catEsc(c.site||'')+'" placeholder="website (e.g. stan.com.au) — optional" '+
+            'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'site\',this.value)">'+
+          ((cyc!=='weekly'&&weekly>0)?'<span class="bud-edit-hint">≈ $'+weekly.toFixed(2)+'/wk</span>':'')+
+        '</div>'
+      : '';
+    return row+site;
+  }).join('')+
     '<button class="bud-add-item" onclick="catAddItem(\''+type+'\')">+ Add '+CAT_TYPE_LABEL[type]+'</button>';
 }
 function catUpdateField(type,id,field,val){
   const cats=BUD_CAT_LOAD[type](); const c=cats.find(x=>x.id===id); if(!c) return;
   // Empty stays empty rather than becoming 0 — "no target set" and "target of zero" are
   // different things, and only the first should leave the field blank next time.
-  c[field]= field==='budget' ? (String(val).trim()===''?'':(parseFloat(val)||0)) : val;
+  c[field]= (field==='budget'||field==='amount') ? (String(val).trim()===''?'':(parseFloat(val)||0)) : val;
+  // `budget` is the weekly figure the rest of the app reads, so keep it derived from the
+  // billed amount + cycle rather than asking anything downstream to understand cycles.
+  if(type==='fix'&&(field==='amount'||field==='cycle')){
+    const a=catAmount(c);
+    c.budget=(a===''||a==null)?'':catWeeklyFromAmount(a,catCycle(c));
+  }
   BUD_CAT_SAVE[type](cats);
   refreshCatBudgetUI();
 }
 function catAddItem(type){
   const cats=BUD_CAT_LOAD[type]();
-  cats.push({id:genCatId(type), name:'', budget:''});
+  const item={id:genCatId(type), name:'', budget:''};
+  if(type==='fix'){ item.amount=''; item.cycle='weekly'; }
+  cats.push(item);
   BUD_CAT_SAVE[type](cats);
   refreshCatBudgetUI();
 }
@@ -5792,12 +5698,156 @@ function genCatId(prefix){ return prefix+'_'+Date.now(); }
 // wants "the target for this category" reads catBudget(); nothing name-matches any more.
 const BUD_CAT_KEY={fix:'daily_budget_fix_cats', var:'daily_budget_var_cats', inc:'daily_budget_inc_cats'};
 const BUD_CFG_KEY={fix:'fixedExpenses', var:'variableExpenses', inc:'incomeStreams'};
+// ── Billing cycles ────────────────────────────────────────────────
+// A fixed expense is often billed on a cycle that isn't weekly — rego yearly, a subscription
+// monthly — and converting that by hand every time is exactly what the old, separate
+// subscriptions list existed to do. A category can now carry the amount it's ACTUALLY billed
+// plus its cycle; `budget` stays the canonical weekly figure everything else reads, and is
+// recomputed from those two whenever either changes (see catUpdateField).
+// 52/12 rather than the 4.33 used elsewhere: exact, so a yearly and a monthly entry of the
+// same annual cost agree to the cent.
+const CAT_CYCLES=[
+  {id:'weekly',  label:'Weekly',  suffix:'/wk', perWeek:1},
+  {id:'monthly', label:'Monthly', suffix:'/mo', perWeek:12/52},
+  {id:'yearly',  label:'Yearly',  suffix:'/yr', perWeek:1/52},
+];
+function cyclePerWeek(cycle){ const c=CAT_CYCLES.find(x=>x.id===cycle); return c?c.perWeek:1; }
+function catWeeklyFromAmount(amount,cycle){
+  const a=parseFloat(amount);
+  if(isNaN(a)) return '';
+  return Math.round(a*cyclePerWeek(cycle)*100)/100;
+}
+// What the user typed, in the cycle they typed it in. Falls back to the weekly budget for
+// categories that predate cycles (they're weekly by definition).
+function catAmount(c){
+  if(!c) return '';
+  if(c.amount!=null&&c.amount!=='') return c.amount;
+  return (c.budget!=null&&c.budget!=='')?c.budget:'';
+}
+function catCycle(c){ return (c&&c.cycle)||'weekly'; }
+// ── Category logos ────────────────────────────────────────────────
+// A category can carry the website of the thing it pays for; its favicon becomes the row
+// icon. DuckDuckGo's icon service is used rather than Google's: no key either way, but this
+// one doesn't feed an advertising profile with the list of services you pay for.
+// Note a real limitation — a mistyped domain does NOT error, both services just hand back a
+// generic globe. There's no way to tell "no logo" from "wrong domain" from the image alone,
+// so the field stays freely editable and the letter placeholder is always a valid choice.
+function catSiteDomain(raw){
+  let s=String(raw||'').trim().toLowerCase();
+  if(!s) return '';
+  s=s.replace(/^[a-z]+:\/\//,'').replace(/^www\./,'');   // strip scheme + www
+  s=s.split('/')[0].split('?')[0].split('#')[0];          // host only
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(s)?s:'';
+}
+function catLogoUrl(c){
+  const d=catSiteDomain(c&&c.site);
+  return d?'https://icons.duckduckgo.com/ip3/'+d+'.ico':'';
+}
+// Emoji were how these rows used to be identified, before logos. They're still sitting in
+// some names as a decorative prefix ("☁️ Claude"), which would double up next to a logo —
+// strip them for display only, leaving the stored name untouched.
+function catDisplayName(name){
+  return String(name||'').replace(/^[^\p{L}\p{N}$]+/u,'').trim()||String(name||'').trim();
+}
+function catInitial(name){
+  const n=catDisplayName(name);
+  return n?n.charAt(0).toUpperCase():'?';
+}
+// Falls back to the initial if there's no site, and also if the logo fails to load.
+function catIconHtml(c,size){
+  const px=size||22;
+  const url=catLogoUrl(c);
+  const style='width:'+px+'px;height:'+px+'px;border-radius:'+Math.round(px*0.27)+'px;flex-shrink:0';
+  const fallback='<span class="cat-icon-letter" style="'+style+';font-size:'+Math.round(px*0.5)+'px">'+_catEscHtml(catInitial(c&&c.name))+'</span>';
+  if(!url) return fallback;
+  // Not loading="lazy": these are ~20px icons in a short list, so deferring them saves
+  // nothing and just risks them never resolving if the list renders off-screen.
+  return '<img class="cat-icon-img" src="'+url+'" alt="" style="'+style+'" '+
+    'onerror="this.outerHTML='+_catEsc(JSON.stringify(fallback))+'">';
+}
 function catBudget(c){
   if(!c) return 0;
   if(c.budget!=null&&c.budget!=='') return parseFloat(c.budget)||0;
   return parseFloat(c.default)||0;   // pre-migration fixed categories
 }
 function catBudgetTotal(type){ return (BUD_CAT_LOAD[type]?BUD_CAT_LOAD[type]():[]).reduce((s,c)=>s+catBudget(c),0); }
+// One-time fold of the separate subscriptions list into the fixed categories. The two lists
+// were never actually connected — subscriptions only ever wrote to a legacy defaults key and
+// to a DOM input that usually wasn't on screen — so a $125/wk subscription load sat entirely
+// outside the weekly budget. Each subscription becomes a real fixed category billed on its
+// own cycle, so it now counts.
+// Best-effort website for a well-known name, so migrated entries arrive with a logo instead
+// of a wall of letter placeholders. Substring match on a stripped name; anything not listed
+// just gets no site, which is a perfectly valid state — the field is editable.
+const CAT_SITE_GUESSES=[
+  ['claude','claude.ai'],['chatgpt','openai.com'],['openai','openai.com'],
+  ['applecare','apple.com'],['icloud','icloud.com'],['appletv','apple.com'],['applemusic','apple.com'],
+  ['netflix','netflix.com'],['spotify','spotify.com'],['disney','disneyplus.com'],
+  ['hbomax','hbomax.com'],['binge','binge.com.au'],['stan','stan.com.au'],['kayo','kayosports.com.au'],
+  ['youtube','youtube.com'],['amazonprime','amazon.com.au'],['paramount','paramountplus.com'],
+  ['ozlotto','thelott.com'],['powerball','thelott.com'],['thelott','thelott.com'],
+  ['anytimefitness','anytimefitness.com.au'],['fitnessfirst','fitnessfirst.com.au'],['goodlife','goodlifehealthclubs.com.au'],
+  ['budgetdirect','budgetdirect.com.au'],['nrma','nrma.com.au'],['ctpgreenslip','nrma.com.au'],
+  ['rego','service.nsw.gov.au'],['servicensw','service.nsw.gov.au'],['opal','transportnsw.info'],
+  ['telstra','telstra.com.au'],['optus','optus.com.au'],['vodafone','vodafone.com.au'],['belong','belong.com.au'],
+  ['agl','agl.com.au'],['originenergy','originenergy.com.au'],['medibank','medibank.com.au'],['bupa','bupa.com.au'],
+];
+function guessCatSite(name){
+  const n=String(name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  if(!n) return '';
+  const hit=CAT_SITE_GUESSES.find(([k])=>n.includes(k));
+  return hit?hit[1]:'';
+}
+function migrateSubscriptionsToFixedOnce(){
+  if(localStorage.getItem('daily_subs_merged_into_fixed')) return;
+  try{
+    const subs=lsLoad('daily_subscriptions', []);
+    if(Array.isArray(subs)&&subs.length){
+      const cats=loadFixCats();
+      // Some expenses were tracked in BOTH lists (a gym membership as a fixed category and
+      // again as a subscription). Importing those blindly would silently inflate the weekly
+      // budget, so skip any whose name already exists as a fixed category — that expense is
+      // already being counted. Exact match on a stripped-down name only: deliberately not
+      // fuzzy, since a wrong merge here quietly loses a real expense.
+      const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+      const existing=new Set(cats.map(c=>norm(c.name)).filter(Boolean));
+      const skipped=[];
+      subs.forEach((s,i)=>{
+        const cycle=(s&&s.cycle==='yearly')?'yearly':'monthly';
+        // originalCost is what was actually billed for that cycle; monthlyCost is derived.
+        const raw=parseFloat(s&&s.originalCost);
+        const amount=isNaN(raw)?(parseFloat(s&&s.monthlyCost)||0):raw;
+        const name=((s&&s.emoji?s.emoji+' ':'')+((s&&s.name)||'Subscription')).trim();
+        if(existing.has(norm(name))){ skipped.push(name); return; }
+        cats.push({id:'sub'+Date.now()+'_'+i, name, amount, cycle,
+          budget:catWeeklyFromAmount(amount,cycle), site:guessCatSite(name)});
+      });
+      if(skipped.length) try{ localStorage.setItem('daily_subs_merge_skipped', JSON.stringify(skipped)); }catch(e){}
+      // The built-in 'subs' category existed only to hold the subscriptions TOTAL, which the
+      // individual entries above now represent — leaving both would double-count. Zero its
+      // forward budget rather than deleting it: past weeks store real spend under fix_subs,
+      // and removing the category would drop those from weekFixedTotal and silently rewrite
+      // budget history.
+      const agg=cats.find(c=>c.id==='subs');
+      if(agg) agg.budget=0;
+      saveFixCats(cats);
+    }
+    // Backfill a website onto any fixed category that doesn't have one yet — including the
+    // ones that predate subscriptions entirely (a gym, a transport card), so the list arrives
+    // with logos rather than a column of letter placeholders. Never overwrites a set value.
+    const all=loadFixCats();
+    let touched=false;
+    all.forEach(c=>{
+      if(c.site) return;
+      const g=guessCatSite(c.name);
+      if(g){ c.site=g; touched=true; }
+    });
+    if(touched) saveFixCats(all);
+  }catch(e){}
+  // daily_subscriptions is deliberately left in storage — nothing is destroyed, so the old
+  // list is still recoverable if this migration got something wrong.
+  localStorage.setItem('daily_subs_merged_into_fixed','1');
+}
 // One-time lift of the old budgetConfig amounts onto the categories they were describing.
 // Name-matched one-to-one — the same imperfect bridge as before, but run exactly once here
 // instead of on every read, so from now on the number lives with the category.
@@ -5877,7 +5927,11 @@ function budCatNameHtml(type,c,isCur,editMode){
   if(editMode && isCur){
     return '<input class="bud-cat-name-input" id="catname-'+type+'-'+c.id+'" value="'+_catEsc(c.name||'')+'" placeholder="Name this category…" oninput="budRenameCat(\''+type+'\',\''+c.id+'\',this.value)">';
   }
-  if(c.name) return '<div class="bud-row-left"><div class="bud-row-name">'+_catEscHtml(c.name)+'</div></div>';
+  // Fixed rows lead with the category's logo (or its initial); the stored name may still
+  // carry a legacy emoji prefix, so display the stripped form to avoid showing both.
+  if(c.name) return '<div class="bud-row-left">'+
+    (type==='fix'?catIconHtml(c,20):'')+
+    '<div class="bud-row-name">'+_catEscHtml(type==='fix'?catDisplayName(c.name):c.name)+'</div></div>';
   return '<input class="bud-cat-name-input" id="catname-'+type+'-'+c.id+'" value="" placeholder="Name this category…" oninput="budRenameCat(\''+type+'\',\''+c.id+'\',this.value)" onchange="renderBudgetTab()"'+(isCur?'':' disabled')+'>';
 }
 function renderFixedCard(data,isCur){
@@ -8874,7 +8928,6 @@ function renderBudgetEditor(){
   renderCatBudgetList('be-inc','inc');
   renderCatBudgetList('be-fix','fix');
   renderCatBudgetList('be-var','var');
-  renderSubscriptionsSection();
 }
 function closeBudgetEditor(){ const v=document.getElementById('view-budget-editor'); if(v){ v.style.display='none'; v.style.left='0'; } }
 
@@ -10520,6 +10573,7 @@ try {
   migrateLegsGroupOnce(); // one-time: 'legs' → quads/hamstrings/calves/glutes/lower back
   recoverBudgetData(); // one-time: normalise legacy budget weeks, strip shadowing snapshots
   migrateCatBudgetsOnce(); // one-time: lift budgetConfig weekly amounts onto the categories
+  migrateSubscriptionsToFixedOnce(); // one-time: fold subscriptions into fixed categories
   migrateRetiredAccentOnce(); // one-time: retired orange default → neutral grey
   // Weight-log consolidation: fold any legacy daily_weight_log entries into wt_weight.
   // The local key is only removed by the signed-in path (after the merged copy is safely

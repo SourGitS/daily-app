@@ -3,8 +3,9 @@
 .sec-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-secondary);margin-bottom:8px}
 .bud-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
 .bud-row:last-child{border-bottom:none}
-.bud-row-left{flex:1}
-.bud-row-name{font-size:14px;font-weight:500}
+/* flex row so a fixed category's logo (or initial) can sit before its name */
+.bud-row-left{flex:1;min-width:0;display:flex;align-items:center;gap:9px}
+.bud-row-name{font-size:14px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .bud-row-budget{font-size:11px;color:var(--muted);margin-top:1px}
 .bud-row-input{width:90px;height:38px;border:1.5px solid var(--border);border-radius:8px;font-size:16px;font-weight:500;text-align:center;background:var(--card);color:var(--text);-webkit-appearance:none;appearance:none}
 .bud-row-input:focus{outline:none;border-color:var(--blue)}
@@ -77,6 +78,20 @@
 .bud-edit-name{flex:1;min-width:0;height:38px;border:1px solid var(--border);border-radius:8px;font-size:14px;padding:0 10px;background:var(--card);color:var(--text)}
 .bud-edit-amt{width:88px;flex-shrink:0;height:38px;border:1px solid var(--border);border-radius:8px;font-size:15px;font-weight:500;text-align:center;background:var(--card);color:var(--text);-webkit-appearance:none;appearance:none}
 .bud-edit-name:focus,.bud-edit-amt:focus{outline:none;border-color:var(--blue)}
+/* Billing-cycle picker on fixed expenses (/wk, /mo, /yr) — narrow, since it sits between the
+   amount and the delete button on a phone-width row. */
+.bud-edit-cycle{width:62px;flex-shrink:0;height:38px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;text-align:center;background:var(--card);color:var(--text);-webkit-appearance:none;appearance:none;padding:0 4px}
+.bud-edit-cycle:focus{outline:none;border-color:var(--blue)}
+[data-theme="dark"] .bud-edit-cycle{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.1)}
+/* Second line of a fixed-expense row: optional website (drives the logo) + weekly conversion */
+.bud-edit-sub{display:flex;align-items:center;gap:8px;padding:0 0 8px 34px;margin-top:-2px}
+.bud-edit-site{flex:1;min-width:0;height:30px;border:1px solid var(--border);border-radius:7px;font-size:12px;padding:0 9px;background:transparent;color:var(--text)}
+.bud-edit-site:focus{outline:none;border-color:var(--blue)}
+.bud-edit-site::placeholder{color:var(--text-3)}
+.bud-edit-hint{font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap;flex-shrink:0}
+/* Category logo / initial fallback. object-fit contains so non-square favicons aren't cropped. */
+.cat-icon-img{object-fit:contain;background:var(--bg);display:inline-block;vertical-align:middle}
+.cat-icon-letter{display:inline-flex;align-items:center;justify-content:center;background:rgba(var(--accent-rgb),.16);color:var(--accent);font-weight:800;line-height:1;vertical-align:middle}
 .bud-edit-del{width:38px;height:38px;flex-shrink:0;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--danger);font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .bud-add-item{width:100%;padding:9px;margin-top:10px;border:1.5px dashed var(--border);border-radius:8px;background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 [data-theme="dark"] .bud-edit-name,[data-theme="dark"] .bud-edit-amt{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.1)}
