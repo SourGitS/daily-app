@@ -5463,7 +5463,6 @@ let yearStackChart     = null;   // Yearly view: stacked bars + savings-rate lin
 let yearCCChart        = null;   // Yearly view: monthly CC / variable spending line
 let budTrendRange      = 'monthly';
 let bsChart            = null;
-let bsBalChart         = null;
 let bsTrendRange       = 'monthly';
 
 // ── Budget storage ────────────────────────────────────────────────
@@ -7284,9 +7283,15 @@ function accountsHistoryDates(){
   accounts.forEach(a=>(a&&a.history||[]).forEach(e=>{ if(e&&e.date) set.add(e.date); }));
   return [...set].sort((x,y)=>x<y?-1:1);
 }
-function renderBSBalance(){
-  const wrap=document.getElementById('bs-balance-wrap'); if(!wrap) return;
-  if(bsBalChart){bsBalChart.destroy();bsBalChart=null;}
+// Rendered in two places — Stats → Finance and the Accounts page — so it's parametrised by
+// container rather than hardcoded to one. One function means the two can't drift apart; the
+// Chart instances are tracked per container so re-rendering one never destroys the other's.
+const _nwCharts={};
+function renderBSBalance(){ renderNetWorthChartInto('bs-balance-wrap'); }
+function renderNetWorthChartInto(wrapId){
+  const wrap=document.getElementById(wrapId); if(!wrap) return;
+  if(_nwCharts[wrapId]){ _nwCharts[wrapId].destroy(); _nwCharts[wrapId]=null; }
+  const canvasId=wrapId+'-nwcanvas';
   const dates=accountsHistoryDates();
   if(dates.length<2){
     wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">💰 Net worth over time</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Update at least 2 account balances in Accounts to see the trend.</div></div>';
@@ -7306,8 +7311,8 @@ function renderBSBalance(){
       '<span>💰 Net worth over time</span>'+
       '<span style="font-size:13px;font-weight:800;text-transform:none;letter-spacing:0;color:'+netCol+'">'+(curNet>=0?'+$':'-$')+Math.abs(Math.round(curNet)).toLocaleString()+' net</span>'+
     '</div>'+
-    '<div style="padding:14px 16px"><canvas id="bs-bal-chart" style="max-height:360px"></canvas></div></div>';
-  const ctx=document.getElementById('bs-bal-chart'); if(!ctx) return;
+    '<div style="padding:14px 16px"><canvas id="'+canvasId+'" style="max-height:360px"></canvas></div></div>';
+  const ctx=document.getElementById(canvasId); if(!ctx) return;
   const {gc,tc}=budChartGridColors();
   const datasets=[
     {label:'Assets',data:assetsData,borderColor:'#52B788',backgroundColor:'rgba(82,183,136,0.12)',borderWidth:2.5,pointRadius:3,pointBackgroundColor:'#52B788',fill:true,tension:0.3},
@@ -7315,7 +7320,7 @@ function renderBSBalance(){
   ];
   // Only plot the debt line if there's any debt account — a debt-free user shouldn't see a flat 0 line.
   if(debtAccts.length) datasets.splice(1,0,{label:'Debts',data:debtsData,borderColor:'#E74C3C',backgroundColor:'transparent',borderWidth:2.5,pointRadius:3,pointBackgroundColor:'#E74C3C',fill:false,tension:0.3});
-  bsBalChart=new Chart(ctx,{
+  _nwCharts[wrapId]=new Chart(ctx,{
     type:'line',
     data:{ labels:dates.map(e=>e.substring(5)), datasets },
     options:{
@@ -9081,6 +9086,47 @@ function acctDueText(acc){
   return (overdue?'Overdue · ':'Due ')+due.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
 }
 
+// ── Per-account trend ─────────────────────────────────────────────
+// Inline SVG rather than a Chart.js instance per account: these are decorative 40px traces,
+// and spinning up N charts on a page that already hosts the net-worth one is a lot of canvas
+// for very little. Needs 2+ points to be a line at all.
+function acctSparklineHtml(a){
+  const hist=(a&&a.history||[]).filter(e=>e&&e.date)
+    .slice().sort((x,y)=>x.date<y.date?-1:1);
+  if(hist.length<2) return '';
+  const vals=hist.map(e=>parseFloat(e.balance)||0);
+  const min=Math.min.apply(null,vals), max=Math.max.apply(null,vals);
+  const range=(max-min)||1;   // a flat history would divide by zero
+  const W=100, H=28;
+  const pts=vals.map((v,i)=>{
+    const x=(i/(vals.length-1))*W;
+    const y=H-((v-min)/range)*H;
+    return x.toFixed(1)+','+y.toFixed(1);
+  }).join(' ');
+  // Debt trending up is bad, an asset trending up is good — colour by what the line means,
+  // not just by direction.
+  const rising=vals[vals.length-1]>=vals[0];
+  const good=(a.type==='debt')?!rising:rising;
+  const col=good?'var(--success)':'var(--danger)';
+  return '<svg class="acct-spark" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">'+
+    '<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="2" '+
+    'stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>';
+}
+// Movement over the trailing 30 days. accountBalanceAt carries the last known balance
+// forward, and falls back to the earliest entry when the account is younger than 30 days —
+// so a new account reads as change-since-opening rather than a misleading zero.
+function acctChangeHtml(a){
+  const hist=(a&&a.history||[]).filter(e=>e&&e.date);
+  if(hist.length<2) return '';
+  const d=localMidnight(getLocalDate()); d.setDate(d.getDate()-30);
+  const then=accountBalanceAt(a,dateStr(d));
+  const now=parseFloat(a.current)||0;
+  const delta=Math.round((now-then)*100)/100;
+  if(!delta) return '<div class="acct-change acct-change-flat">No change · 30d</div>';
+  const good=(a.type==='debt')?delta<0:delta>0;
+  return '<div class="acct-change" style="color:'+(good?'var(--success)':'var(--danger)')+'">'+
+    (delta>0?'▲':'▼')+' '+fmtMoney(Math.abs(delta))+' · 30d</div>';
+}
 function renderAccountsPage(){
   // Net-worth header
   const nwEl=document.getElementById('accounts-networth');
@@ -9132,12 +9178,16 @@ function renderAccountsPage(){
           '</div>'+
           '<div class="bud-row" style="border-bottom:none">'+
             '<div class="bud-row-left"><div class="bud-row-name">Current balance</div>'+
-              '<div class="bud-row-budget">'+(a.history&&a.history.length?a.history.length+' update'+(a.history.length===1?'':'s')+' logged':'No history yet')+'</div></div>'+
+              '<div class="bud-row-budget">'+(a.history&&a.history.length?a.history.length+' update'+(a.history.length===1?'':'s')+' logged':'No history yet')+'</div>'+
+              acctChangeHtml(a)+'</div>'+
             '<div style="display:flex;align-items:center;gap:6px">'+
               '<input class="bud-row-input" id="acct-bal-'+a.id+'" type="number" inputmode="decimal" placeholder="$0" value="'+(a.current||a.current===0?a.current:'')+'" style="color:'+curCol+'">'+
               '<button class="sav-update-btn" onclick="accountUpdateBalanceFromInput(\''+a.id+'\')">Update</button>'+
             '</div>'+
           '</div>'+
+          // Trace of this account's own logged history — the "16 updates logged" line was the
+          // only sign this data existed.
+          (function(){ const sp=acctSparklineHtml(a); return sp?'<div class="acct-spark-wrap">'+sp+'</div>':''; })()+
           // Clarify that a debt balance is a standalone running total, not weekly spending —
           // the note that used to live in the retired Budget-tab CC editor.
           (isDebt?'<div style="font-size:12px;color:var(--muted);line-height:1.45;padding:2px 2px 4px">This is the total currently owed — a separate running debt, not counted in your weekly leftover. Enter card purchases in your Variable spending categories as usual, same as cash.</div>':'')+
@@ -9175,6 +9225,9 @@ function renderAccountsPage(){
       setTimeout(()=>{ document.getElementById('acct-new-name')?.focus(); },50);
     }
   }
+  // Net-worth trend — the same chart Stats → Finance renders, shown here where the balances
+  // that feed it are actually edited.
+  renderNetWorthChartInto('accounts-chart');
 }
 // Add-form controllers
 function accountsAddOpen(){ _acctAddOpen=true; _acctAddType='asset'; _acctAddTracks=false; renderAccountsPage(); }

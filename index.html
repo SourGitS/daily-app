@@ -763,10 +763,15 @@
     <button class="back-btn" data-back="closeAccounts" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
     <span class="detail-title">Accounts</span>
   </div>
-  <div style="padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 40px);max-width:520px;margin:0 auto">
-    <div id="accounts-networth"></div>
-    <div id="accounts-list"></div>
-    <div id="accounts-addform"></div>
+  <div class="accounts-wrap" style="padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 40px)">
+    <div class="accounts-col">
+      <div id="accounts-networth"></div>
+      <div id="accounts-chart"></div>
+    </div>
+    <div class="accounts-col">
+      <div id="accounts-list"></div>
+      <div id="accounts-addform"></div>
+    </div>
   </div>
 </div>
 

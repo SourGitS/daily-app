@@ -3,6 +3,15 @@
 .sec-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-secondary);margin-bottom:8px}
 .bud-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
 .bud-row:last-child{border-bottom:none}
+/* Accounts page. Mobile keeps the single centred column it always had; the desktop grid is
+   in the ≥1024px block below. */
+.accounts-wrap{max-width:520px;margin:0 auto}
+/* Per-account trend line + 30-day movement */
+.acct-spark-wrap{padding:2px 2px 6px}
+.acct-spark{display:block;width:100%;height:28px;overflow:visible}
+.acct-change{font-size:11px;font-weight:700;margin-top:3px}
+.acct-change-flat{color:var(--muted)}
+
 /* Recurring (monthly/yearly) fixed expenses — one summary row that expands to a read-only
    breakdown. No inputs: their prorated share is already counted, so typing would double it. */
 .bud-recur-head{cursor:pointer;-webkit-tap-highlight-color:transparent}
@@ -331,6 +340,10 @@
      budget editors, exercise-detail) keep theirs. .detail-title stays centred (it's absolutely
      positioned), so hiding the Accounts back leaves the header balanced. */
   #view-accounts .back-btn{display:none}
+  /* Accounts was the one full-screen view that never got a desktop layout — a 520px column
+     stranded in the middle of a 1600px screen. Two columns: net worth + trend on the left,
+     the editable account cards on the right. */
+  .accounts-wrap{max-width:1120px;display:grid;grid-template-columns:1fr 1fr;gap:0 22px;align-items:start}
   #view-exercise-library .back-btn{display:none}
 
   /* Daily habits toggles must sit above any sibling stacking contexts */
