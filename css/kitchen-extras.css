@@ -229,7 +229,11 @@
   background:linear-gradient(160deg,#7C93A8 0%,#4A5C70 100%);
   transition:background 0.6s ease}
 .weather-fx{position:absolute;inset:0;overflow:hidden;pointer-events:none}
-.weather-content{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px}
+/* The sky gradients now run pale toward the horizon (as real sky does), so white text sitting
+   over the lower part of the card can lose contrast — especially on the bright noon scenes.
+   A soft shadow keeps it legible on every scene without needing a scrim that would mute the
+   colours the whole redesign is about. */
+.weather-content{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px;text-shadow:0 1px 3px rgba(0,0,0,.38)}
 .weather-left{min-width:0}
 .weather-right{text-align:right;flex-shrink:0}
 .weather-city{font-size:11px;font-weight:700;color:rgba(255,255,255,.8);letter-spacing:.02em;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -248,24 +252,24 @@
    Clear and partly skies carry the full dawn→noon→day→dusk→night progression: "noon" is the
    lightest, high-sun look and "day" is the deeper blue of mid-morning/afternoon, so a 4pm
    sky doesn't render as bright as midday. Everything else stays day/night. */
-.home-weather-card[data-scene="clear-dawn"]{background:linear-gradient(160deg,#FFC3A0 0%,#FF8C69 55%,#B85C8A 100%)}
-.home-weather-card[data-scene="clear-noon"]{background:linear-gradient(160deg,#A5E4FF 0%,#4FAEEA 100%)}
-.home-weather-card[data-scene="clear-day"]{background:linear-gradient(160deg,#6DD5FA 0%,#2E86DE 100%)}
-.home-weather-card[data-scene="clear-dusk"]{background:linear-gradient(160deg,#F79D65 0%,#9B5E8C 60%,#4A3F6B 100%)}
-.home-weather-card[data-scene="clear-night"]{background:linear-gradient(160deg,#16213E 0%,#0B1224 100%)}
-.home-weather-card[data-scene="partly-dawn"]{background:linear-gradient(160deg,#E8B49B 0%,#C97B7B 55%,#8A5F86 100%)}
-.home-weather-card[data-scene="partly-noon"]{background:linear-gradient(160deg,#B4DCF0 0%,#6FA3CE 100%)}
-.home-weather-card[data-scene="partly-day"]{background:linear-gradient(160deg,#8EC5E8 0%,#5A87B5 100%)}
-.home-weather-card[data-scene="partly-dusk"]{background:linear-gradient(160deg,#D9906E 0%,#8A6A93 60%,#454064 100%)}
-.home-weather-card[data-scene="partly-night"]{background:linear-gradient(160deg,#253A5E 0%,#131C33 100%)}
-.home-weather-card[data-scene="cloudy-day"]{background:linear-gradient(160deg,#A9B7C4 0%,#74838F 100%)}
-.home-weather-card[data-scene="cloudy-night"]{background:linear-gradient(160deg,#3B4652 0%,#1E252B 100%)}
-.home-weather-card[data-scene="fog"]{background:linear-gradient(160deg,#B9C2C8 0%,#8B959C 100%)}
-.home-weather-card[data-scene="rain-day"]{background:linear-gradient(160deg,#5C7A94 0%,#34495E 100%)}
-.home-weather-card[data-scene="rain-night"]{background:linear-gradient(160deg,#263544 0%,#131C24 100%)}
-.home-weather-card[data-scene="storm"]{background:linear-gradient(160deg,#423A52 0%,#19151F 100%)}
-.home-weather-card[data-scene="snow-day"]{background:linear-gradient(160deg,#B8D4E0 0%,#7FA0B3 100%)}
-.home-weather-card[data-scene="snow-night"]{background:linear-gradient(160deg,#445566 0%,#232D38 100%)}
+.home-weather-card[data-scene="clear-dawn"]{background:radial-gradient(ellipse 80% 150% at 20% 120%,rgba(255,186,132,.55),transparent 60%),linear-gradient(to bottom,#33407A 0%,#7A5490 32%,#BE6789 58%,#EE9370 84%,#F7B98C 100%)}
+.home-weather-card[data-scene="clear-noon"]{background:radial-gradient(ellipse 70% 130% at 50% 122%,rgba(255,255,255,.42),transparent 62%),linear-gradient(to bottom,#2F8FD8 0%,#5FBAEC 46%,#94D4F3 78%,#B9E6FA 100%)}
+.home-weather-card[data-scene="clear-day"]{background:radial-gradient(ellipse 70% 130% at 50% 122%,rgba(255,255,255,.28),transparent 62%),linear-gradient(to bottom,#1E6FD0 0%,#3F9BE0 44%,#6FC0EA 78%,#98D6F2 100%)}
+.home-weather-card[data-scene="clear-dusk"]{background:radial-gradient(ellipse 80% 150% at 80% 120%,rgba(255,178,110,.55),transparent 60%),linear-gradient(to bottom,#2B2D5C 0%,#654A90 32%,#BC5A7C 60%,#EC8A5C 86%,#F5B27E 100%)}
+.home-weather-card[data-scene="clear-night"]{background:radial-gradient(ellipse 100% 140% at 50% 128%,rgba(86,116,176,.26),transparent 66%),linear-gradient(to bottom,#070C1A 0%,#111B36 48%,#1C2A4C 100%)}
+.home-weather-card[data-scene="partly-dawn"]{background:radial-gradient(ellipse 80% 150% at 20% 120%,rgba(236,176,138,.45),transparent 60%),linear-gradient(to bottom,#3A4272 0%,#75568A 34%,#AE6E86 60%,#D49179 86%,#E0AE92 100%)}
+.home-weather-card[data-scene="partly-noon"]{background:radial-gradient(ellipse 70% 130% at 50% 122%,rgba(255,255,255,.34),transparent 62%),linear-gradient(to bottom,#4C86B8 0%,#79A9CC 46%,#A3C6DD 78%,#C0D8E8 100%)}
+.home-weather-card[data-scene="partly-day"]{background:radial-gradient(ellipse 70% 130% at 50% 122%,rgba(255,255,255,.22),transparent 62%),linear-gradient(to bottom,#3E70A4 0%,#6A98C0 46%,#94B9D5 78%,#B2CCE0 100%)}
+.home-weather-card[data-scene="partly-dusk"]{background:radial-gradient(ellipse 80% 150% at 80% 120%,rgba(230,166,120,.45),transparent 60%),linear-gradient(to bottom,#2F3158 0%,#5E4A7E 34%,#A05E76 62%,#CC8461 86%,#DBA47C 100%)}
+.home-weather-card[data-scene="partly-night"]{background:radial-gradient(ellipse 100% 140% at 50% 128%,rgba(86,116,176,.22),transparent 66%),linear-gradient(to bottom,#0C1424 0%,#1A2740 48%,#26364F 100%)}
+.home-weather-card[data-scene="cloudy-day"]{background:linear-gradient(to bottom,#67757F 0%,#8794A0 52%,#A5B2BD 100%)}
+.home-weather-card[data-scene="cloudy-night"]{background:linear-gradient(to bottom,#12171C 0%,#242C34 56%,#353E47 100%)}
+.home-weather-card[data-scene="fog"]{background:linear-gradient(to bottom,#8E979E 0%,#A7B0B6 58%,#B8C0C6 100%)}
+.home-weather-card[data-scene="rain-day"]{background:linear-gradient(to bottom,#2B3E52 0%,#41596D 54%,#587287 100%)}
+.home-weather-card[data-scene="rain-night"]{background:linear-gradient(to bottom,#0B121A 0%,#18232F 58%,#24313C 100%)}
+.home-weather-card[data-scene="storm"]{background:radial-gradient(ellipse 90% 110% at 50% -20%,rgba(104,84,138,.55),transparent 62%),linear-gradient(to bottom,#120F19 0%,#241E31 55%,#372F49 100%)}
+.home-weather-card[data-scene="snow-day"]{background:linear-gradient(to bottom,#7895A9 0%,#A0BACA 54%,#C2D6E2 100%)}
+.home-weather-card[data-scene="snow-night"]{background:linear-gradient(to bottom,#18212B 0%,#2B3843 58%,#3E4D59 100%)}
 
 /* ── Decorative layers: hidden by default, opted in per scene below ── */
 .wfx-sun,.wfx-moon,.wfx-stars,.wfx-cloud,.wfx-fog,.wfx-rain,.wfx-snow,.wfx-flash{display:none}

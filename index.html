@@ -191,6 +191,10 @@
         <div id="nutrition-content"></div>
       </div>
       <div id="sub-finance" class="hidden">
+        <!-- Account-derived cards first: this tab was almost entirely budget data, with the
+             net worth chart buried below four budget cards. -->
+        <div id="bs-balance-wrap"></div>
+        <div id="bs-acctgrowth-wrap"></div>
         <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
           <div style="background:var(--accent);padding:8px 14px;font-size:13px;font-weight:500;color:#fff;display:flex;justify-content:space-between;align-items:center">
             <span>📈 Spending trends</span>
@@ -205,7 +209,6 @@
         <div id="bs-progress-wrap"></div>
         <div id="bs-bestworst-wrap"></div>
         <div id="bs-catbreak-wrap"></div>
-        <div id="bs-balance-wrap"></div>
         <div id="bs-consist-wrap"></div>
         <div id="bs-records-wrap"></div>
         <div id="bs-goals-wrap"></div>
@@ -764,14 +767,10 @@
     <span class="detail-title">Accounts</span>
   </div>
   <div class="accounts-wrap" style="padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 40px)">
-    <div class="accounts-col">
-      <div id="accounts-networth"></div>
-      <div id="accounts-chart"></div>
-    </div>
-    <div class="accounts-col">
-      <div id="accounts-list"></div>
-      <div id="accounts-addform"></div>
-    </div>
+    <div id="accounts-networth"></div>
+    <div id="accounts-chart"></div>
+    <div id="accounts-list"></div>
+    <div id="accounts-addform"></div>
   </div>
 </div>
 

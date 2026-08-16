@@ -3,6 +3,21 @@
 .sec-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-secondary);margin-bottom:8px}
 .bud-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
 .bud-row:last-child{border-bottom:none}
+/* Stats → Finance: per-account growth over a period */
+.bs-growth-range{display:flex;gap:4px;flex-shrink:0}
+.bs-growth-range button{padding:4px 9px;border-radius:20px;border:none;font-size:11px;font-weight:700;background:transparent;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.bs-growth-range button.on{background:rgba(var(--accent-rgb),.16);color:var(--accent)}
+.bs-growth-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+.bs-growth-row:last-of-type{border-bottom:none}
+.bs-growth-name{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bs-growth-type{display:block;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:1px}
+.bs-growth-spark{width:74px;flex-shrink:0}
+.bs-growth-spark .acct-spark{height:22px}
+.bs-growth-delta{font-family:var(--font-num);font-size:13px;font-weight:800;text-align:right;white-space:nowrap;flex-shrink:0;min-width:86px}
+.bs-growth-pct{display:block;font-size:10px;font-weight:600;opacity:.75;margin-top:1px}
+.bs-growth-total{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:13px;font-weight:800;font-family:var(--font-num)}
+.bs-growth-total>span:first-child{font-family:var(--font-ui);font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+
 /* Accounts page. Mobile keeps the single centred column it always had; the desktop grid is
    in the ≥1024px block below. */
 .accounts-wrap{max-width:520px;margin:0 auto}
@@ -343,7 +358,20 @@
   /* Accounts was the one full-screen view that never got a desktop layout — a 520px column
      stranded in the middle of a 1600px screen. Two columns: net worth + trend on the left,
      the editable account cards on the right. */
-  .accounts-wrap{max-width:1120px;display:grid;grid-template-columns:1fr 1fr;gap:0 22px;align-items:start}
+  /* Full-width stacked rather than two narrow columns: net worth, then the trend, then each
+     account — every card using the whole width. */
+  .accounts-wrap{max-width:1120px}
+  /* Net-worth header spreads its three figures across the width instead of stacking them
+     centred with dead space either side. */
+  #accounts-networth .card{display:flex;align-items:center;justify-content:space-between;gap:32px;text-align:left !important;padding:22px 28px !important}
+  #accounts-networth .card>div:nth-child(2){font-size:52px !important}
+  /* Account cards: the balance row and the statement fields sit inline on a wide screen, so
+     the extra width carries content instead of becoming a gap. */
+  #accounts-list .card{padding:18px 24px}
+  #accounts-list .acct-stmt-row{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  #accounts-list .acct-stmt-row>.bud-row{flex:1;min-width:200px;border-bottom:none;padding:6px 0}
+  #accounts-list .acct-stmt-row>.sav-update-btn{width:auto !important;margin-top:0 !important;flex-shrink:0}
+  #accounts-list .acct-note{max-width:640px}
   #view-exercise-library .back-btn{display:none}
 
   /* Daily habits toggles must sit above any sibling stacking contexts */

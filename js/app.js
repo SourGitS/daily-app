@@ -77,31 +77,23 @@ function syncSettingsCollapsedToFirebase(){ const r=fbRef('settingsCollapsed'); 
 function syncBlobPush(path, lsKey){
   const r=fbRef(path); if(!r) return;
   setSyncStatus('Syncing…');
-  r.set(localStorage.getItem(lsKey)||'')
+  // {v,t} envelope so the receiving device can compare ages. Reading side still accepts a
+  // bare value for anything written by an older build (treated as age 0, i.e. beatable).
+  const t=parseInt(localStorage.getItem(lsKey+'_ts')||'0',10)||Date.now();
+  r.set({v:localStorage.getItem(lsKey)||'', t})
     .then(()=>setSyncStatus('Synced ✓')).catch(()=>setSyncStatus('Sync failed'));
 }
+// Every blob-synced store is timestamped. This used to be an untimestamped listener that
+// treated ANY local/cloud difference as an unsynced offline edit and pushed local over cloud
+// — so a device running stale code, or one that had simply never been updated, would silently
+// overwrite real data saved elsewhere and then propagate that loss to every other device.
+// The same failure was fixed twice before by moving individual stores onto the timestamped
+// listener (see the budget category lists, then Training Split / Exercise Library in
+// 1db6a9d); leaving the unsafe version in place just meant the next store to matter hit it
+// again. Now there is only one implementation, and it always compares timestamps.
+// The ts key is derived rather than passed so no call site has to change.
 function syncBlobListen(uid, path, lsKey, onUpdate){
-  const ref=db.ref('users/'+uid+'/'+path);
-  const preAuthLocal=localStorage.getItem(lsKey); // snapshot before any cloud callback fires
-  let seedDone=false;
-  ref.once('value').then(snap=>{
-    const local=localStorage.getItem(lsKey);
-    if(!snap.exists() && local!=null && local!=='') ref.set(local); // seed cloud from this device
-    seedDone=true;
-  });
-  ref.on('value', snap=>{
-    const v=snap.val();
-    if(v==null || v==='') return;
-    // First fire arrives before seed-once resolves; if local differs, local wins (offline edit)
-    if(!seedDone && preAuthLocal!=null && preAuthLocal!=='' && preAuthLocal!==v){
-      ref.set(preAuthLocal);
-      return;
-    }
-    if(localStorage.getItem(lsKey)===v) return; // unchanged
-    localStorage.setItem(lsKey, v);
-    try{ onUpdate&&onUpdate(); }catch(e){}
-  });
-  return ref;
+  return syncBlobListenTS(uid, path, lsKey, lsKey+'_ts', onUpdate);
 }
 // Timestamp-aware variant of syncBlobPush/syncBlobListen, used only where a stale cloud read
 // must never clobber a newer local edit (see Prompt 26 — budget category lists were silently
@@ -122,6 +114,15 @@ function lsSaveTS(key, value, tsKey, syncPath){
 function syncBlobListenTS(uid, path, lsKey, tsKey, onUpdate){
   const ref=db.ref('users/'+uid+'/'+path);
   const localT=()=>parseInt(localStorage.getItem(tsKey)||'0',10)||0;
+  // Seed an empty cloud slot from this device (behaviour the untimestamped listener had).
+  // Seeded at the local timestamp — which is 0 for a store this device has never actually
+  // saved — so an untouched device's defaults can still be beaten by a real, timestamped
+  // edit from elsewhere rather than winning purely by connecting first.
+  ref.once('value').then(snap=>{
+    if(snap.exists()) return;
+    const local=localStorage.getItem(lsKey);
+    if(local!=null&&local!=='') ref.set({v:local, t:localT()});
+  }).catch(()=>{});
   ref.on('value', snap=>{
     const raw=snap.val();
     if(raw==null||raw==='') return; // nothing in the cloud yet — never adopt emptiness
@@ -165,6 +166,9 @@ function lsLoad(key, fallback, validate){
 function lsSave(key, value, syncPath){
   try{
     localStorage.setItem(key, typeof value==='string'?value:JSON.stringify(value));
+    // Stamp every save so the sync listener can tell a real edit from an untouched default.
+    // Without this the cloud copy carried no age and any device could claim to be newest.
+    localStorage.setItem(key+'_ts', String(Date.now()));
   }catch(e){ console.warn('localStorage save failed for '+key, e); return; }
   if(syncPath){ try{ if(typeof syncBlobPush==='function') syncBlobPush(syncPath, key); }catch(e){} }
 }
@@ -5906,6 +5910,24 @@ function migrateSubscriptionsToFixedOnce(){
 // — and a zeroed category still counts twice on any week where an amount was typed into its
 // row, which is exactly what happened. Drops the leftover aggregate for anyone who ran that
 // earlier version.
+// Recovery hatch. The subscriptions→fixed merge is rebuildable because daily_subscriptions
+// was deliberately never deleted — so if a stale device ever overwrites the merged categories
+// with a pre-merge copy, the merge can simply be run again from that surviving source rather
+// than re-entered by hand. Clears the one-shot flags and re-runs, then re-renders.
+function rebuildSubscriptionCategories(){
+  const subs=lsLoad('daily_subscriptions', []);
+  if(!Array.isArray(subs)||!subs.length){
+    alert('No saved subscriptions found to rebuild from.');
+    return false;
+  }
+  localStorage.removeItem('daily_subs_merged_into_fixed');
+  localStorage.removeItem('daily_subs_aggregate_dropped');
+  migrateSubscriptionsToFixedOnce();
+  migrateDropSubsAggregateOnce();
+  if(typeof renderBudgetTab==='function'&&S.view==='budget') renderBudgetTab();
+  if(typeof renderBudgetEditor==='function') renderBudgetEditor();
+  return true;
+}
 function migrateDropSubsAggregateOnce(){
   if(localStorage.getItem('daily_subs_aggregate_dropped')) return;
   try{
@@ -6916,13 +6938,13 @@ function logSavingsBalance(){
   saveSavingsLog();
   balEl.value='';
   renderSavingsCard();
-  if(statsSubTab==='finance'){ renderBSBalance(); renderBSTrend(); }
+  if(statsSubTab==='finance'){ renderBSBalance(); renderBSAccountGrowth(); renderBSTrend(); }
 }
 function deleteSavingsEntry(date){
   savingsLog=savingsLog.filter(e=>e.date!==date);
   saveSavingsLog();
   renderSavingsCard();
-  if(statsSubTab==='finance'){ renderBSBalance(); renderBSTrend(); }
+  if(statsSubTab==='finance'){ renderBSBalance(); renderBSAccountGrowth(); renderBSTrend(); }
 }
 
 // ── Savings goals card ────────────────────────────────────────────
@@ -6984,16 +7006,85 @@ function deleteGoal(i){
 }
 
 // ── Budget Stats (Stats tab) ──────────────────────────────────────
+// Account-derived cards lead: the Finance tab was almost entirely budget data with the net
+// worth chart buried below four budget cards, so account history was effectively hidden.
 function renderBudgetStats(){
+  renderBSBalance();
+  renderBSAccountGrowth();
   renderBSTrend();
   renderBSProgress();
   renderBSBestWorst();
   renderBSCatBreakdown();
-  renderBSBalance();
   renderBSConsist();
   renderBSRecords();
   renderBSGoals();
 }
+
+// ── Finance: which accounts actually moved ────────────────────────
+// The net worth chart shows the total but not where it came from. This ranks each account by
+// its effect on net worth over the period, so a rise driven by paying down debt reads
+// differently from one driven by saving.
+let bsGrowthRange='30';   // '30' | '90' | 'all'
+function setBSGrowthRange(r){ bsGrowthRange=r; renderBSAccountGrowth(); }
+function bsGrowthFromDate(a){
+  if(bsGrowthRange==='all'){
+    const h=(a&&a.history||[]).filter(e=>e&&e.date).slice().sort((x,y)=>x.date<y.date?-1:1);
+    return h.length?h[0].date:getLocalDate();
+  }
+  const d=localMidnight(getLocalDate());
+  d.setDate(d.getDate()-parseInt(bsGrowthRange,10));
+  return dateStr(d);
+}
+function renderBSAccountGrowth(){
+  const wrap=document.getElementById('bs-acctgrowth-wrap'); if(!wrap) return;
+  const head=(body)=>'<div class="card" style="padding:0;overflow:hidden">'+
+    '<div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px">'+
+      '<span>📊 Account growth</span>'+
+      '<div class="bs-growth-range">'+
+        [['30','30d'],['90','90d'],['all','All']].map(([v,l])=>
+          '<button onclick="setBSGrowthRange(\''+v+'\')" class="'+(bsGrowthRange===v?'on':'')+'">'+l+'</button>').join('')+
+      '</div>'+
+    '</div>'+body+'</div>';
+  const tracked=accounts.filter(a=>a&&(a.history||[]).length>=1);
+  if(!tracked.length){
+    wrap.innerHTML=head('<div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Log a balance in Accounts to see which of them are moving.</div>');
+    return;
+  }
+  const rows=tracked.map(a=>{
+    const from=bsGrowthFromDate(a);
+    const then=accountBalanceAt(a,from);
+    const now=parseFloat(a.current)||0;
+    const delta=Math.round((now-then)*100)/100;
+    // A debt shrinking RAISES net worth, so its contribution is the opposite of its delta.
+    const nwEffect=(a.type==='debt')?-delta:delta;
+    const pct=then?Math.round((delta/Math.abs(then))*1000)/10:null;
+    return {a,delta,nwEffect,pct};
+  }).sort((x,y)=>y.nwEffect-x.nwEffect);
+  const netChange=rows.reduce((s,r)=>s+r.nwEffect,0);
+  const body='<div style="padding:6px 16px 14px">'+
+    rows.map(r=>{
+      const good=r.nwEffect>0, flat=r.nwEffect===0;
+      const col=flat?'var(--muted)':(good?'var(--success)':'var(--danger)');
+      const arrow=flat?'':(r.delta>0?'▲':'▼');
+      return '<div class="bs-growth-row">'+
+        '<div class="bs-growth-name">'+_catEscHtml(a_name(r.a))+
+          '<span class="bs-growth-type">'+(r.a.type==='debt'?'Debt':'Asset')+'</span></div>'+
+        '<div class="bs-growth-spark">'+(acctSparklineHtml(r.a)||'')+'</div>'+
+        '<div class="bs-growth-delta" style="color:'+col+'">'+
+          (flat?'—':arrow+' '+fmtMoney(Math.abs(r.delta)))+
+          (r.pct!==null&&!flat?'<span class="bs-growth-pct">'+(r.pct>0?'+':'')+r.pct+'%</span>':'')+
+        '</div>'+
+      '</div>';
+    }).join('')+
+    '<div class="bs-growth-total">'+
+      '<span>Net worth change</span>'+
+      '<span style="color:'+(netChange>0?'var(--success)':netChange<0?'var(--danger)':'var(--muted)')+'">'+
+        (netChange===0?'—':(netChange>0?'▲ ':'▼ ')+fmtMoney(Math.abs(netChange)))+'</span>'+
+    '</div>'+
+  '</div>';
+  wrap.innerHTML=head(body);
+}
+function a_name(a){ return (a&&a.name)||'Account'; }
 
 // ── Finance: spending category breakdown (fixed + variable, last 12 saved weeks) ─
 function renderBSCatBreakdown(){
@@ -9159,6 +9250,9 @@ function renderAccountsPage(){
               '<label class="toggle-switch"><input type="checkbox"'+(a.tracksStatement?' checked':'')+' onchange="accountToggleStatement(\''+a.id+'\',this.checked)"><span class="toggle-slider"></span></label>'+
             '</div>'+
             (a.tracksStatement?
+              // Wrapped so the three controls can sit inline on a wide screen (see
+              // .acct-stmt-row); on mobile they stay stacked exactly as before.
+              '<div class="acct-stmt-row">'+
               '<div class="bud-row" style="border-bottom:none">'+
                 '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500">Statement balance</div></div>'+
                 '<input class="bud-row-input" type="number" inputmode="decimal" placeholder="$0" value="'+(a.statementBalance?a.statementBalance:'')+'" onchange="accountSetStatementField(\''+a.id+'\',\'statementBalance\',this.value)">'+
@@ -9167,7 +9261,8 @@ function renderAccountsPage(){
                 '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500">Due date</div>'+(dueTxt?'<div class="bud-row-budget"'+(dueTxt.indexOf('Overdue')===0?' style="color:var(--danger)"':'')+'>'+dueTxt+'</div>':'')+'</div>'+
                 '<input class="bud-row-input" type="date" value="'+(a.dueDate?String(a.dueDate).slice(0,10):'')+'" onchange="accountSetStatementField(\''+a.id+'\',\'dueDate\',this.value)" style="width:150px">'+
               '</div>'+
-              '<button class="sav-update-btn" style="width:100%;margin-top:8px" onclick="accountMarkPaid(\''+a.id+'\')">Mark statement as paid</button>'
+              '<button class="sav-update-btn" style="width:100%;margin-top:8px" onclick="accountMarkPaid(\''+a.id+'\')">Mark statement as paid</button>'+
+              '</div>'
             :'');
         }
         return '<div class="card">'+
@@ -9185,12 +9280,9 @@ function renderAccountsPage(){
               '<button class="sav-update-btn" onclick="accountUpdateBalanceFromInput(\''+a.id+'\')">Update</button>'+
             '</div>'+
           '</div>'+
-          // Trace of this account's own logged history — the "16 updates logged" line was the
-          // only sign this data existed.
-          (function(){ const sp=acctSparklineHtml(a); return sp?'<div class="acct-spark-wrap">'+sp+'</div>':''; })()+
           // Clarify that a debt balance is a standalone running total, not weekly spending —
           // the note that used to live in the retired Budget-tab CC editor.
-          (isDebt?'<div style="font-size:12px;color:var(--muted);line-height:1.45;padding:2px 2px 4px">This is the total currently owed — a separate running debt, not counted in your weekly leftover. Enter card purchases in your Variable spending categories as usual, same as cash.</div>':'')+
+          (isDebt?'<div class="acct-note" style="font-size:12px;color:var(--muted);line-height:1.45;padding:2px 2px 4px">This is the total currently owed — a separate running debt, not counted in your weekly leftover. Enter card purchases in your Variable spending categories as usual, same as cash.</div>':'')+
           stmt+
         '</div>';
       }).join('');
