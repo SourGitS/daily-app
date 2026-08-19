@@ -47,15 +47,56 @@
 .settings-chevron{font-size:11px;color:var(--muted);transition:transform 0.2s;display:inline-block;flex-shrink:0;margin-left:8px}
 .settings-row{display:flex;justify-content:space-between;align-items:center;padding:2px 0}
 .settings-row-label{font-size:15px}
-/* Home Layout toggle previews (Settings → Home Layout) — generic skeleton archetypes, not live data */
-.hl-preview{background:var(--card);border:1px solid var(--card-border);border-radius:10px;padding:10px;margin:6px 0 2px;pointer-events:none}
-.hl-p-label{width:40%;height:8px;border-radius:4px;background:var(--border);margin-bottom:8px}
-.hl-p-stat{width:60%;height:20px;border-radius:5px;background:var(--accent);opacity:.35;margin-bottom:6px}
-.hl-p-sub{width:75%;height:7px;border-radius:4px;background:var(--border)}
-.hl-p-row{width:100%;height:9px;border-radius:4px;background:var(--border);margin-bottom:6px}
-.hl-p-row:last-child{margin-bottom:0;width:70%}
-.hl-p-bars{display:flex;align-items:flex-end;gap:4px;height:36px}
-.hl-p-bar{flex:1;background:var(--accent);opacity:.35;border-radius:2px 2px 0 0}
+/* ── Home Layout previews (Settings → Home Layout) ───────────────────
+   Miniature mock-ups of each real Home card — same background treatment, same layout, real
+   type at reduced size — in the spirit of the onboarding theme picker's mini screens
+   (.ob-theme-mini). Content is illustrative placeholder, NOT live data: these need to read
+   as "this is that card" at a glance, and wiring them to real values would mean an empty
+   preview whenever the underlying data happens to be empty.
+   Three background treatments matching the real cards: accent hero (Today's Session,
+   Weekly Budget), the weather scene gradient, and the ordinary .card surface. */
+.hl-prev{border-radius:10px;padding:9px 11px;margin:8px 0 2px;overflow:hidden;pointer-events:none;line-height:1.25}
+.hl-prev-plain{background:var(--card);border:0.5px solid var(--card-border);color:var(--text)}
+.hl-prev-hero{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.55) 55%, rgba(var(--accent-rgb),.35));color:#fff}
+[data-theme="light"] .hl-prev-hero{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.7) 55%, rgba(var(--accent-rgb),.65))}
+.hl-prev-weather{background:linear-gradient(160deg,#6DD5FA 0%,#2E86DE 100%);color:#fff}
+/* Text scale — the hero/weather variants inherit white via the container's own colour, so
+   these only set size/weight and lean on currentColor for everything except muted greys. */
+.hl-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;opacity:.7}
+.hl-title{font-size:15px;font-weight:800;letter-spacing:-.01em;margin-top:3px}
+.hl-num{font-family:var(--font-num);font-size:17px;font-weight:800;line-height:1}
+.hl-sub{font-size:8.5px;font-weight:600;opacity:.7;margin-top:2px}
+.hl-prev-plain .hl-lbl,.hl-prev-plain .hl-sub{color:var(--muted);opacity:1}
+.hl-row-between{display:flex;align-items:center;justify-content:space-between;gap:8px}
+/* Progress bar — white on the tinted heroes, --border on the plain card surface */
+.hl-bar{height:4px;border-radius:3px;background:rgba(255,255,255,.28);overflow:hidden;margin-top:7px}
+.hl-prev-plain .hl-bar{background:var(--border)}
+.hl-bar>i{display:block;height:100%;border-radius:3px;background:currentColor}
+/* Weekly "6 sessions" segment row (mirrors .session-seg on the real Streak card) */
+.hl-segs{display:flex;gap:3px;margin-top:5px}
+.hl-segs>i{flex:1;height:3px;border-radius:2px;background:var(--border)}
+.hl-segs>i.on{background:var(--accent)}
+/* List rows — Notes / Recent / Habits. `.dot` gets a leading bullet, `.box` a checkbox. */
+.hl-list{margin-top:6px}
+.hl-li{display:flex;align-items:center;gap:6px;font-size:9px;font-weight:600;color:var(--text);padding:2.5px 0}
+.hl-li i{width:5px;height:5px;border-radius:50%;background:var(--accent);flex-shrink:0}
+.hl-li b{width:8px;height:8px;border-radius:2.5px;border:1.5px solid var(--border);flex-shrink:0;box-sizing:border-box}
+.hl-li b.on{background:var(--accent);border-color:var(--accent)}
+/* Calorie ring — the arc is a rotated conic slice so it reads as a real progress ring */
+.hl-ring{width:30px;height:30px;border-radius:50%;flex-shrink:0;
+  background:conic-gradient(var(--success) 0 62%, var(--border) 62% 100%);
+  display:flex;align-items:center;justify-content:center}
+.hl-ring>i{width:21px;height:21px;border-radius:50%;background:var(--card);display:block}
+/* 2×2 mini tile grid (Money Quick Tiles) */
+.hl-tiles{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:2px}
+.hl-tile{background:var(--bg);border-radius:6px;padding:5px 4px;text-align:center}
+.hl-tile em{display:block;font-style:normal;font-size:9px}
+.hl-tile span{display:block;font-family:var(--font-num);font-size:11px;font-weight:800;color:var(--text);margin-top:1px}
+/* Weekly-review 2×2 stat grid + habit dot row */
+.hl-grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin-top:6px}
+.hl-dots{display:flex;gap:3px;margin-top:7px;padding-top:6px;border-top:0.5px solid var(--border)}
+.hl-dots>i{width:9px;height:9px;border-radius:2.5px;background:var(--border)}
+.hl-dots>i.on{background:var(--accent)}
 .settings-field{margin-bottom:10px}
 .settings-field label{display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:5px}
 .settings-field input,.settings-field select{width:100%;height:44px;border:1.5px solid var(--border);border-radius:8px;font-size:15px;padding:0 12px;background:var(--card);color:var(--text);-webkit-appearance:none;appearance:none}

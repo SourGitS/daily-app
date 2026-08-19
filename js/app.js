@@ -77,31 +77,23 @@ function syncSettingsCollapsedToFirebase(){ const r=fbRef('settingsCollapsed'); 
 function syncBlobPush(path, lsKey){
   const r=fbRef(path); if(!r) return;
   setSyncStatus('Syncing…');
-  r.set(localStorage.getItem(lsKey)||'')
+  // {v,t} envelope so the receiving device can compare ages. Reading side still accepts a
+  // bare value for anything written by an older build (treated as age 0, i.e. beatable).
+  const t=parseInt(localStorage.getItem(lsKey+'_ts')||'0',10)||Date.now();
+  r.set({v:localStorage.getItem(lsKey)||'', t})
     .then(()=>setSyncStatus('Synced ✓')).catch(()=>setSyncStatus('Sync failed'));
 }
+// Every blob-synced store is timestamped. This used to be an untimestamped listener that
+// treated ANY local/cloud difference as an unsynced offline edit and pushed local over cloud
+// — so a device running stale code, or one that had simply never been updated, would silently
+// overwrite real data saved elsewhere and then propagate that loss to every other device.
+// The same failure was fixed twice before by moving individual stores onto the timestamped
+// listener (see the budget category lists, then Training Split / Exercise Library in
+// 1db6a9d); leaving the unsafe version in place just meant the next store to matter hit it
+// again. Now there is only one implementation, and it always compares timestamps.
+// The ts key is derived rather than passed so no call site has to change.
 function syncBlobListen(uid, path, lsKey, onUpdate){
-  const ref=db.ref('users/'+uid+'/'+path);
-  const preAuthLocal=localStorage.getItem(lsKey); // snapshot before any cloud callback fires
-  let seedDone=false;
-  ref.once('value').then(snap=>{
-    const local=localStorage.getItem(lsKey);
-    if(!snap.exists() && local!=null && local!=='') ref.set(local); // seed cloud from this device
-    seedDone=true;
-  });
-  ref.on('value', snap=>{
-    const v=snap.val();
-    if(v==null || v==='') return;
-    // First fire arrives before seed-once resolves; if local differs, local wins (offline edit)
-    if(!seedDone && preAuthLocal!=null && preAuthLocal!=='' && preAuthLocal!==v){
-      ref.set(preAuthLocal);
-      return;
-    }
-    if(localStorage.getItem(lsKey)===v) return; // unchanged
-    localStorage.setItem(lsKey, v);
-    try{ onUpdate&&onUpdate(); }catch(e){}
-  });
-  return ref;
+  return syncBlobListenTS(uid, path, lsKey, lsKey+'_ts', onUpdate);
 }
 // Timestamp-aware variant of syncBlobPush/syncBlobListen, used only where a stale cloud read
 // must never clobber a newer local edit (see Prompt 26 — budget category lists were silently
@@ -122,6 +114,15 @@ function lsSaveTS(key, value, tsKey, syncPath){
 function syncBlobListenTS(uid, path, lsKey, tsKey, onUpdate){
   const ref=db.ref('users/'+uid+'/'+path);
   const localT=()=>parseInt(localStorage.getItem(tsKey)||'0',10)||0;
+  // Seed an empty cloud slot from this device (behaviour the untimestamped listener had).
+  // Seeded at the local timestamp — which is 0 for a store this device has never actually
+  // saved — so an untouched device's defaults can still be beaten by a real, timestamped
+  // edit from elsewhere rather than winning purely by connecting first.
+  ref.once('value').then(snap=>{
+    if(snap.exists()) return;
+    const local=localStorage.getItem(lsKey);
+    if(local!=null&&local!=='') ref.set({v:local, t:localT()});
+  }).catch(()=>{});
   ref.on('value', snap=>{
     const raw=snap.val();
     if(raw==null||raw==='') return; // nothing in the cloud yet — never adopt emptiness
@@ -165,6 +166,9 @@ function lsLoad(key, fallback, validate){
 function lsSave(key, value, syncPath){
   try{
     localStorage.setItem(key, typeof value==='string'?value:JSON.stringify(value));
+    // Stamp every save so the sync listener can tell a real edit from an untouched default.
+    // Without this the cloud copy carried no age and any device could claim to be newest.
+    localStorage.setItem(key+'_ts', String(Date.now()));
   }catch(e){ console.warn('localStorage save failed for '+key, e); return; }
   if(syncPath){ try{ if(typeof syncBlobPush==='function') syncBlobPush(syncPath, key); }catch(e){} }
 }
@@ -417,10 +421,11 @@ if(firebaseReady){
       ()=>{ if(S.view==='stats') renderWeightGoal(); },
       ()=>!!weightGoal.target);
 
-    // Sync subscriptions
+    // Subscriptions are retired as a separate list (folded into fixed categories), but the
+    // cloud copy is still reconciled so an older device can't resurrect or lose the data.
     fbReconcile('subscriptions','daily_subscriptions',
       ()=>subscriptionsData, v=>{ subscriptionsData=Array.isArray(v)?v:Object.values(v||{}); },
-      ()=>{ applySubscriptionsToBudget(); if(S.view==='settings') renderSubscriptionsSection(); });
+      ()=>{});
 
     // Sync notes — one-shot pull/seed on sign-in (fbReconcile's seedWhen guard keeps an empty
     // local store from wiping a populated cloud one, and only overwrites local when the cloud
@@ -940,6 +945,35 @@ function setTheme(t){
 // rest colour doubles as the app's static base accent when dynamic day colours are off.
 const DAY_COLOR_PRESETS = ['#FF6B35','#3B82F6','#8B5CF6','#EF4444','#10B981','#F59E0B','#EC4899','#14B8A6'];
 const REST_COLOR_KEY = '__rest__';
+// ── Brand accent palette ──────────────────────────────────────────
+// The app starts neutral grey and the user commits to a colour deliberately, rather than
+// inheriting the old orange (#FF6B35, retired) by default.
+// The red and green here are pulled AWAY from the status colours on purpose: --danger is
+// #E74C3C (orange-red) and --success #52B788 (muted sea green), so the accent red leans
+// crimson and the accent green leans grass. Without that offset an accent-coloured button
+// would read as an error, and a "done"/"on track" state would be indistinguishable from
+// ordinary accent furniture.
+const DEFAULT_ACCENT = '#6B7280';   // neutral slate — 4.8:1 against white text
+const RETIRED_ACCENT = '#ff6b35';   // the old default; migrated away from once (lowercase for compares)
+const ACCENT_PRESETS = [
+  {id:'gray',  name:'Grey',  hex:'#6B7280'},
+  {id:'red',   name:'Red',   hex:'#C0304A'},
+  {id:'green', name:'Green', hex:'#2F9E44'},
+  {id:'blue',  name:'Blue',  hex:'#3B82F6'},
+];
+// One-time move off the retired orange — only for anyone still sitting on it untouched, so a
+// deliberately-chosen colour (orange included) is never overwritten.
+function migrateRetiredAccentOnce(){
+  if(localStorage.getItem('daily_accent_retired_orange')) return;
+  try{
+    const m=loadDayColors();
+    if(String(m[REST_COLOR_KEY]||'').toLowerCase()===RETIRED_ACCENT){
+      m[REST_COLOR_KEY]=DEFAULT_ACCENT;
+      saveDayColors(m);
+    }
+  }catch(e){}
+  localStorage.setItem('daily_accent_retired_orange','1');
+}
 function hexToRgb(hex){
   const h=(hex||'').replace('#','');
   return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)].join(',');
@@ -957,19 +991,19 @@ function buildDefaultDayColors(){
     map[t.name] = LEGACY_DAY_COLOURS[t.colorKey] || t.barColor || DAY_COLOR_PRESETS[i%DAY_COLOR_PRESETS.length];
   }); }catch(e){}
   // Preserve any previously-chosen single accent as the base/rest colour.
-  map[REST_COLOR_KEY] = localStorage.getItem('daily_accent_color') || '#FF6B35';
+  map[REST_COLOR_KEY] = localStorage.getItem('daily_accent_color') || DEFAULT_ACCENT;
   return map;
 }
 function loadDayColors(){
   let m=null;
   try{ m=JSON.parse(localStorage.getItem('daily_day_colors')||'null'); }catch(e){}
   if(!m||typeof m!=='object') m=buildDefaultDayColors();
-  if(!m[REST_COLOR_KEY]) m[REST_COLOR_KEY]='#FF6B35';
+  if(!m[REST_COLOR_KEY]) m[REST_COLOR_KEY]=DEFAULT_ACCENT;
   return m;
 }
 function saveDayColors(m){ lsSave('daily_day_colors', m, 'dayColors'); }
-function restColor(){ return loadDayColors()[REST_COLOR_KEY] || '#FF6B35'; }
-function dayColorFor(name){ const m=loadDayColors(); return (name&&m[name]) || m[REST_COLOR_KEY] || '#FF6B35'; }
+function restColor(){ return loadDayColors()[REST_COLOR_KEY] || DEFAULT_ACCENT; }
+function dayColorFor(name){ const m=loadDayColors(); return (name&&m[name]) || m[REST_COLOR_KEY] || DEFAULT_ACCENT; }
 function setDayColorEnc(encKey, hex){
   const key=decodeURIComponent(encKey);
   const m=loadDayColors(); m[key]=hex; saveDayColors(m);
@@ -1000,15 +1034,28 @@ function renderDayColorPickers(){
   const dynamicOn=localStorage.getItem('daily_dynamic_colours')==='true';
 
   if(!dynamicOn){
-    // Static mode: show a single native colour picker
-    const cur=restColor()||'#FF6B35';
+    // Static mode: the four brand presets first (the curated set), then a free picker for
+    // anything else. Presets are labelled buttons rather than bare swatches so the set reads
+    // as deliberate choices, not a palette.
+    const cur=restColor()||DEFAULT_ACCENT;
+    const curLc=String(cur).toLowerCase();
+    const isPreset=ACCENT_PRESETS.some(p=>p.hex.toLowerCase()===curLc);
     wrap.innerHTML=
-      '<div style="display:flex;align-items:center;gap:14px;padding:4px 0">' +
-        '<label style="font-size:14px;color:var(--text);font-weight:500;flex:1">Accent colour</label>' +
+      '<div class="accent-preset-row">'+
+        ACCENT_PRESETS.map(p=>
+          '<button class="accent-preset'+(p.hex.toLowerCase()===curLc?' active':'')+'" '+
+            'onclick="setStaticAccent(\''+p.hex+'\');renderDayColorPickers()" aria-label="'+p.name+' accent">'+
+            '<span class="accent-preset-dot" style="background:'+p.hex+'"></span>'+
+            '<span class="accent-preset-name">'+p.name+'</span>'+
+          '</button>').join('')+
+      '</div>'+
+      '<div style="display:flex;align-items:center;gap:14px;padding:10px 0 4px">' +
+        '<label style="font-size:14px;color:var(--text);font-weight:500;flex:1">Custom colour'+
+          (isPreset?'':' <span style="font-size:12px;color:var(--accent);font-weight:700">· in use</span>')+'</label>' +
         '<input type="color" id="static-accent-input" value="'+cur+'" ' +
           'style="width:44px;height:44px;border:none;border-radius:10px;cursor:pointer;background:none;padding:0" ' +
           'oninput="setStaticAccent(this.value)" ' +
-          'onchange="setStaticAccent(this.value)">' +
+          'onchange="setStaticAccent(this.value);renderDayColorPickers()">' +
       '</div>' +
       '<p style="font-size:12px;color:var(--muted);margin:8px 0 0;line-height:1.4">This colour is used as the app accent everywhere. Enable Dynamic day colours above to set a colour per training day.</p>';
     const favs=loadAccentFavourites();
@@ -1035,7 +1082,7 @@ function renderDayColorPickers(){
   types.forEach(t=>{ if(t&&t.name&&!seen.has(t.name)){ seen.add(t.name); rows.push({key:t.name,label:t.name}); } });
   rows.push({key:REST_COLOR_KEY,label:'Rest days'});
   wrap.innerHTML=rows.map(r=>{
-    const cur=String(m[r.key]||m[REST_COLOR_KEY]||'#FF6B35').toLowerCase();
+    const cur=String(m[r.key]||m[REST_COLOR_KEY]||DEFAULT_ACCENT).toLowerCase();
     const sw=DAY_COLOR_PRESETS.map(hex=>
       '<button class="dc-swatch'+(hex.toLowerCase()===cur?' active':'')+'" style="background:'+hex+'" '+
         'onclick="setDayColorEnc(\''+encodeURIComponent(r.key)+'\',\''+hex+'\')" aria-label="'+hex+'"></button>'
@@ -1057,7 +1104,7 @@ function setStaticAccent(hex){
 function loadAccentFavourites(){ return lsLoad('daily_accent_favourites', [], Array.isArray); }
 function saveAccentFavourites(list){ lsSave('daily_accent_favourites', list, 'accentFavourites'); }
 function saveCurrentAccentAsFavourite(){
-  const hex=(restColor()||'#FF6B35').toLowerCase();
+  const hex=(restColor()||DEFAULT_ACCENT).toLowerCase();
   const favs=loadAccentFavourites();
   if(!favs.includes(hex)) favs.push(hex);
   saveAccentFavourites(favs);
@@ -1670,6 +1717,18 @@ function updateNavPill(v){
 }
 // Button geometry shifts on resize/rotation — re-measure the underline for the current view.
 window.addEventListener('resize',function(){ if(typeof S!=='undefined'&&S.view) updateNavPill(S.view); });
+// Home's card markup differs across the 1024px breakpoint (flat list on mobile, two flex
+// columns on desktop), so it has to be rebuilt when the viewport crosses it. Only on an
+// actual crossing — re-rendering on every resize tick would fight the enter animation.
+(function(){
+  let wasDesktop=window.innerWidth>=1024;
+  window.addEventListener('resize',function(){
+    const isDesktop=window.innerWidth>=1024;
+    if(isDesktop===wasDesktop) return;
+    wasDesktop=isDesktop;
+    if(typeof S!=='undefined'&&S.view==='home'&&typeof renderHome==='function') renderHome();
+  });
+})();
 // ── Weekday wordmark tint ─────────────────────────────────────────
 // Publishes --day-color (one colour per weekday when dynamic colours are on, else the static
 // accent). The wordmark is a real logo image now, so this only drives the active Stats pill
@@ -3784,7 +3843,7 @@ function updateDesktopSidebar(){
 // overlays), and moved back on close. Desktop and mobile behave identically (the overlay is
 // simply offset past the sidebar on desktop) — so there's no "stacked column" branch to break.
 const SETTINGS_SECTION_KEYS=['account','health','habits','appearance','homelayout','export'];
-const SETTINGS_TITLES={account:'Account',health:'Health',habits:'Habits',subscriptions:'Subscriptions',appearance:'Appearance',homelayout:'Home Layout',export:'Export'};
+const SETTINGS_TITLES={account:'Account',health:'Health',habits:'Habits',appearance:'Appearance',homelayout:'Home Layout',export:'Export'};
 let _activeSettingsKey=null;
 function openSettingsSection(key){
   const overlay=document.getElementById('view-settings-detail');
@@ -3812,7 +3871,6 @@ function openSettingsSection(key){
   }
   if(key==='habits') renderHabitsEditModal();
   if(key==='appearance'){ const th=document.getElementById('theme-toggle'); if(th) th.checked=S.theme==='dark'; const dc=document.getElementById('toggle-dynamic-colours'); if(dc) dc.checked=localStorage.getItem('daily_dynamic_colours')==='true'; renderDayColorPickers(); }
-  if(key==='subscriptions') renderSubscriptionsSection();
   if(key==='homelayout') renderHomeLayoutSection();
   overlay.style.display='block';
   overlay.style.left=window.innerWidth>=1024?'260px':'0';
@@ -3873,122 +3931,10 @@ function saveProfileSection(){
   const btn=document.getElementById('profile-save-btn');
   if(btn){ btn.textContent='Saved ✓'; btn.style.background='var(--accent)'; setTimeout(()=>{ btn.textContent='Save'; btn.style.background=''; },2000); }
 }
-function applySubscriptionsToBudget(){
-  const monthly=Math.round(subscriptionsData.reduce((s,sub)=>s+(sub.monthlyCost||0),0)*100)/100;
-  const weekly=Math.round(monthly/4.33*100)/100;
-  budDefaults.subs=weekly;
-  localStorage.setItem('daily_budget_defaults',JSON.stringify(budDefaults));
-  syncBudDefaultsToFirebase();
-  const el=document.getElementById('fix-subs');
-  if(el) el.value=weekly>0?weekly:'';
-}
-function pickSubEmoji(emoji,btn){
-  const val=document.getElementById('sub-emoji-val');
-  const disp=document.getElementById('sub-emoji-display');
-  if(val) val.value=emoji;
-  if(disp) disp.textContent=emoji;
-  document.querySelectorAll('.sub-emoji-btn').forEach(b=>b.classList.remove('sub-emoji-active'));
-  if(btn) btn.classList.add('sub-emoji-active');
-}
-function addSubscription(){
-  const name=(document.getElementById('sub-name')?.value||'').trim();
-  const cost=parseFloat(document.getElementById('sub-cost')?.value);
-  const cycle=document.getElementById('sub-cycle')?.value||'monthly';
-  const emoji=document.getElementById('sub-emoji-val')?.value||'📱';
-  if(!name||isNaN(cost)||cost<=0) return;
-  const monthlyCost=cycle==='yearly'?Math.round(cost/12*100)/100:Math.round(cost*100)/100;
-  subscriptionsData.push({name,monthlyCost,cycle,originalCost:cost,emoji});
-  localStorage.setItem('daily_subscriptions',JSON.stringify(subscriptionsData));
-  applySubscriptionsToBudget();
-  syncSubscriptionsToFirebase();
-  renderSubscriptionsSection();
-}
-function deleteSubscription(idx){
-  subscriptionsData.splice(idx,1);
-  localStorage.setItem('daily_subscriptions',JSON.stringify(subscriptionsData));
-  applySubscriptionsToBudget();
-  syncSubscriptionsToFirebase();
-  renderSubscriptionsSection();
-}
-// Delegated handler: re-rendered / modal buttons are more reliable on iOS via one
-// document listener than per-button inline onclick handlers.
-document.addEventListener('click', function(e){
-  const btn=e.target.closest('.delete-sub-btn');
-  if(btn){
-    const idx=parseInt(btn.dataset.idx,10);
-    if(!isNaN(idx)) deleteSubscription(idx);
-    return;
-  }
-  if(e.target.closest('#savings-save-btn')){ confirmSavingsBalance(); return; }
-  if(e.target.closest('#savings-cancel-btn')){ closeSavingsModal(); return; }
-});
-function renderSubscriptionsSection(){
-  const wrap=document.getElementById('be-subs')||document.getElementById('subscriptions-content');
-  if(!wrap) return;
-  const EMOJIS=['📺','🎵','🎮','📱','☁️','🏋️','📚','🛡️','🎬','💊','🌐','📰','🎯','💻','✈️','🧘'];
-  const curEmoji=document.getElementById('sub-emoji-val')?.value||'📱';
-  const total=Math.round(subscriptionsData.reduce((s,sub)=>s+(sub.monthlyCost||0),0)*100)/100;
-  const weeklyTotal=Math.round(total/4.33*100)/100;
+// The separate subscriptions list was retired: it was never actually wired into the budget,
+// and each entry is now a real fixed category with its own billing cycle (see
+// migrateSubscriptionsToFixedOnce). daily_subscriptions is left in storage, unread.
 
-  const listRows=subscriptionsData.length
-    ? subscriptionsData.map((sub,i)=>{
-        const cycleNote=sub.cycle==='yearly'?` <span style="font-size:11px;color:var(--muted)">(${sub.originalCost}/yr)</span>`:'';
-        return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
-          <span style="font-size:20px;line-height:1;flex-shrink:0">${sub.emoji}</span>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sub.name.replace(/</g,'&lt;')}</div>
-            <div style="font-size:12px;color:var(--muted)">$${sub.monthlyCost}/mo${cycleNote}</div>
-          </div>
-          <button class="delete-sub-btn" data-idx="${i}" style="color:var(--danger);flex-shrink:0">✕</button>
-        </div>`;
-      }).join('')
-    : '<div style="text-align:center;color:var(--muted);font-size:13px;padding:12px 0">No subscriptions yet</div>';
-
-  wrap.innerHTML=`
-    <div class="settings-card">
-      <div class="settings-card-title" style="cursor:default">Add subscription</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
-        ${EMOJIS.map(e=>`<button type="button" class="sub-emoji-btn${e===curEmoji?' sub-emoji-active':''}" onclick="pickSubEmoji('${e}',this)">${e}</button>`).join('')}
-      </div>
-      <input type="hidden" id="sub-emoji-val" value="${curEmoji}">
-      <div class="settings-field">
-        <label>Name</label>
-        <div style="display:flex;align-items:center;gap:10px">
-          <span id="sub-emoji-display" style="font-size:24px;line-height:1;flex-shrink:0">${curEmoji}</span>
-          <input type="text" id="sub-name" placeholder="e.g. Netflix" style="flex:1;height:44px;border:1.5px solid var(--border);border-radius:8px;font-size:15px;padding:0 12px;background:var(--card);color:var(--text)">
-        </div>
-      </div>
-      <div class="settings-2col">
-        <div class="settings-field">
-          <label>Cost ($)</label>
-          <input type="number" id="sub-cost" inputmode="decimal" min="0" step="0.01" placeholder="0.00" style="width:100%;height:44px;border:1.5px solid var(--border);border-radius:8px;font-size:15px;padding:0 12px;background:var(--card);color:var(--text)">
-        </div>
-        <div class="settings-field">
-          <label>Billing</label>
-          <select id="sub-cycle" style="width:100%;height:44px;border:1.5px solid var(--border);border-radius:8px;font-size:15px;padding:0 12px;background:var(--card);color:var(--text);-webkit-appearance:none;appearance:none">
-            <option value="monthly">Monthly</option>
-            <option value="yearly">Yearly</option>
-          </select>
-        </div>
-      </div>
-      <button onclick="addSubscription()" class="settings-save-btn">+ Add</button>
-    </div>
-    <div class="settings-card">
-      <div class="settings-card-title" style="cursor:default">My subscriptions</div>
-      ${listRows}
-      ${subscriptionsData.length?`
-        <div style="padding-top:12px;margin-top:2px;border-top:1px solid var(--border)">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-            <span style="font-size:13px;color:var(--muted)">Monthly total</span>
-            <span style="font-size:14px;font-weight:700;color:var(--text)">$${total}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-size:13px;color:var(--muted)">Weekly equivalent</span>
-            <span style="font-size:16px;font-weight:800;color:var(--accent)">$${weeklyTotal}</span>
-          </div>
-        </div>`:''}
-    </div>`;
-}
 function renderInstallCard(){
   const wrap = document.getElementById('stg-install-card');
   if(!wrap) return;
@@ -4951,18 +4897,8 @@ function buildAIReviewMarkdown(months){
     }
   }
 
-  // Subscriptions are a current snapshot, not history — labelled as such so the AI doesn't
-  // read them as period spend on top of the fixed-category totals above.
-  if(subscriptionsData&&subscriptionsData.length){
-    const subsMonthly=subscriptionsData.reduce((s,x)=>s+(parseFloat(x.monthlyCost)||0),0);
-    L.push('### Subscriptions (current, not historical)');
-    L.push('');
-    L.push('| Name | Monthly |');
-    L.push('| --- | --- |');
-    subscriptionsData.forEach(x=>L.push('| '+md(x.name)+' | '+money(parseFloat(x.monthlyCost)||0)+' |'));
-    L.push('| **Total** | **'+money(subsMonthly)+'** |');
-    L.push('');
-  }
+  // (Subscriptions used to get their own section here. They're fixed categories now, so they
+  // already appear in the Fixed table above — listing them twice would read as double spend.)
 
   // ── Accounts ──
   L.push('## Accounts & net worth');
@@ -5232,29 +5168,110 @@ const CAT_TYPE_LABEL={inc:'income source', fix:'fixed expense', var:'variable ex
 function renderCatBudgetList(containerId, type){
   const el=document.getElementById(containerId); if(!el) return;
   const cats=BUD_CAT_LOAD[type]?BUD_CAT_LOAD[type]():[];
-  el.innerHTML=cats.map(c=>
-    '<div class="bud-edit-row">'+
-      '<input class="bud-edit-name" value="'+_catEsc(c.name||'')+'" placeholder="Name" '+
-        'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'name\',this.value)">'+
-      '<input class="bud-edit-amt" type="number" inputmode="decimal" value="'+(c.budget??'')+'" placeholder="0" '+
-        'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'budget\',this.value)">'+
-      '<button class="bud-edit-del" title="Remove" onclick="catRemoveItem(\''+type+'\',\''+c.id+'\')">🗑️</button>'+
-    '</div>'
-  ).join('')+
+  // Only fixed expenses get a billing cycle: variable spend is per-week by definition, and
+  // income is entered per pay against the week it lands in.
+  const cycles=type==='fix';
+  el.innerHTML=cats.map(c=>{
+    const amt=cycles?catAmount(c):(c.budget??'');
+    const cyc=catCycle(c);
+    const weekly=catBudget(c);
+    const row=
+      '<div class="bud-edit-row">'+
+        (cycles?catIconHtml(c,26):'')+
+        '<input class="bud-edit-name" value="'+_catEsc(c.name||'')+'" placeholder="Name" '+
+          'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'name\',this.value)">'+
+        '<input class="bud-edit-amt" type="number" inputmode="decimal" value="'+(amt===''?'':amt)+'" placeholder="0" '+
+          'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\''+(cycles?'amount':'budget')+'\',this.value)">'+
+        (cycles?'<select class="bud-edit-cycle" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'cycle\',this.value)">'+
+          CAT_CYCLES.map(o=>'<option value="'+o.id+'"'+(o.id===cyc?' selected':'')+'>'+o.suffix+'</option>').join('')+
+        '</select>':'')+
+        '<button class="bud-edit-del" title="Remove" onclick="catRemoveItem(\''+type+'\',\''+c.id+'\')">🗑️</button>'+
+      '</div>';
+    // Second line: website (fixed only, drives the logo), the weekly conversion, and the
+    // move control — which carries saved history with it rather than stranding it.
+    const moveOpts=['inc','fix','var'].filter(t=>t!==type)
+      .map(t=>'<option value="'+t+'">→ '+CAT_TYPE_PLURAL[t]+'</option>').join('');
+    const sub=
+      '<div class="bud-edit-sub">'+
+        (cycles?'<input class="bud-edit-site" value="'+_catEsc(c.site||'')+'" placeholder="website (e.g. stan.com.au) — optional" '+
+          'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'site\',this.value)">':'<span class="bud-edit-spacer"></span>')+
+        ((cycles&&cyc!=='weekly'&&weekly>0)?'<span class="bud-edit-hint">≈ $'+weekly.toFixed(2)+'/wk</span>':'')+
+        '<select class="bud-edit-move" onchange="catMoveTo(\''+type+'\',\''+c.id+'\',this.value)" aria-label="Move category">'+
+          '<option value="">Move…</option>'+moveOpts+
+        '</select>'+
+      '</div>';
+    return row+sub;
+  }).join('')+
     '<button class="bud-add-item" onclick="catAddItem(\''+type+'\')">+ Add '+CAT_TYPE_LABEL[type]+'</button>';
 }
 function catUpdateField(type,id,field,val){
   const cats=BUD_CAT_LOAD[type](); const c=cats.find(x=>x.id===id); if(!c) return;
   // Empty stays empty rather than becoming 0 — "no target set" and "target of zero" are
   // different things, and only the first should leave the field blank next time.
-  c[field]= field==='budget' ? (String(val).trim()===''?'':(parseFloat(val)||0)) : val;
+  c[field]= (field==='budget'||field==='amount') ? (String(val).trim()===''?'':(parseFloat(val)||0)) : val;
+  // `budget` is the weekly figure the rest of the app reads, so keep it derived from the
+  // billed amount + cycle rather than asking anything downstream to understand cycles.
+  if(type==='fix'&&(field==='amount'||field==='cycle')){
+    const a=catAmount(c);
+    c.budget=(a===''||a==null)?'':catWeeklyFromAmount(a,catCycle(c));
+  }
   BUD_CAT_SAVE[type](cats);
   refreshCatBudgetUI();
 }
 function catAddItem(type){
   const cats=BUD_CAT_LOAD[type]();
-  cats.push({id:genCatId(type), name:'', budget:''});
+  const item={id:genCatId(type), name:'', budget:''};
+  if(type==='fix'){ item.amount=''; item.cycle='weekly'; }
+  cats.push(item);
   BUD_CAT_SAVE[type](cats);
+  refreshCatBudgetUI();
+}
+// ── Move a category between income / fixed / variable ─────────────
+// Recategorising by hand (delete here, re-add there) silently strands every saved week's
+// amount: the data stays in storage under the old `fix_<id>` key but nothing reads it, so
+// past weeks quietly drop that spend and the history rewrites itself. This moves the
+// per-week values across with the category so nothing is lost.
+const CAT_TYPE_PLURAL={inc:'Income', fix:'Fixed expenses', var:'Variable expenses'};
+function catMoveTo(fromType,id,toType){
+  if(!toType||toType===fromType||!BUD_CAT_LOAD[toType]){ refreshCatBudgetUI(); return; }
+  const fromCats=BUD_CAT_LOAD[fromType]();
+  const cat=fromCats.find(c=>c.id===id);
+  if(!cat){ refreshCatBudgetUI(); return; }
+  const toCats=BUD_CAT_LOAD[toType]();
+  // Ids only have to be unique within their own list, so the same id can already exist in
+  // the destination — mint a fresh one rather than colliding with someone else's history.
+  const newId=toCats.some(c=>c.id===id)?genCatId(toType):id;
+  const fromKey=fromType+'_'+id, toKey=toType+'_'+newId;
+  const weeks=Object.keys(budgetData).filter(k=>budgetData[k]&&budgetData[k][fromKey]!==undefined);
+
+  const label=catDisplayName(cat.name)||'this category';
+  let msg='Move “'+label+'” to '+CAT_TYPE_PLURAL[toType]+'?';
+  if(weeks.length) msg+='\n\n'+weeks.length+' saved week'+(weeks.length===1?'':'s')+' of history will move with it.';
+  // Leaving Fixed means losing the blank-row fallback: fixed treats an empty week as "the
+  // usual amount", variable treats it as nothing spent. Worth stating plainly — it changes
+  // what a forgotten week costs you.
+  if(fromType==='fix'&&toType==='var'){
+    msg+='\n\nHeads up: as a variable expense, a week you don’t fill in counts as $0 instead of the usual $'+catBudget(cat).toFixed(2)+'.';
+    if(catIsRecurring(cat)) msg+='\nIts '+catCycle(cat)+' billing will also stop being spread across weeks automatically.';
+  }
+  if(!confirm(msg)){ refreshCatBudgetUI(); return; }
+
+  weeks.forEach(k=>{ const d=budgetData[k]; d[toKey]=d[fromKey]; delete d[fromKey]; d.updatedAt=Date.now(); });
+
+  const moved={id:newId, name:cat.name, budget:cat.budget};
+  if(cat.site) moved.site=cat.site;
+  if(cat.default!=null) moved.default=cat.default;
+  // Cycles only exist on fixed expenses; arriving there needs one, leaving drops it so a
+  // stale cycle can't linger on a category that no longer prorates.
+  if(toType==='fix'){
+    moved.amount=(cat.amount!=null&&cat.amount!=='')?cat.amount:(cat.budget??'');
+    moved.cycle=catCycle(cat);
+  }
+  BUD_CAT_SAVE[fromType](fromCats.filter(c=>c.id!==id));
+  toCats.push(moved);
+  BUD_CAT_SAVE[toType](toCats);
+  // One write + one full cloud set for the whole move, rather than N per-week syncs.
+  if(weeks.length) budSaveData();
   refreshCatBudgetUI();
 }
 function catRemoveItem(type,id){
@@ -5450,7 +5467,6 @@ let yearStackChart     = null;   // Yearly view: stacked bars + savings-rate lin
 let yearCCChart        = null;   // Yearly view: monthly CC / variable spending line
 let budTrendRange      = 'monthly';
 let bsChart            = null;
-let bsBalChart         = null;
 let bsTrendRange       = 'monthly';
 
 // ── Budget storage ────────────────────────────────────────────────
@@ -5738,12 +5754,198 @@ function genCatId(prefix){ return prefix+'_'+Date.now(); }
 // wants "the target for this category" reads catBudget(); nothing name-matches any more.
 const BUD_CAT_KEY={fix:'daily_budget_fix_cats', var:'daily_budget_var_cats', inc:'daily_budget_inc_cats'};
 const BUD_CFG_KEY={fix:'fixedExpenses', var:'variableExpenses', inc:'incomeStreams'};
+// ── Billing cycles ────────────────────────────────────────────────
+// A fixed expense is often billed on a cycle that isn't weekly — rego yearly, a subscription
+// monthly — and converting that by hand every time is exactly what the old, separate
+// subscriptions list existed to do. A category can now carry the amount it's ACTUALLY billed
+// plus its cycle; `budget` stays the canonical weekly figure everything else reads, and is
+// recomputed from those two whenever either changes (see catUpdateField).
+// 52/12 rather than the 4.33 used elsewhere: exact, so a yearly and a monthly entry of the
+// same annual cost agree to the cent.
+const CAT_CYCLES=[
+  {id:'weekly',  label:'Weekly',  suffix:'/wk', perWeek:1},
+  {id:'monthly', label:'Monthly', suffix:'/mo', perWeek:12/52},
+  {id:'yearly',  label:'Yearly',  suffix:'/yr', perWeek:1/52},
+];
+function cyclePerWeek(cycle){ const c=CAT_CYCLES.find(x=>x.id===cycle); return c?c.perWeek:1; }
+function catWeeklyFromAmount(amount,cycle){
+  const a=parseFloat(amount);
+  if(isNaN(a)) return '';
+  return Math.round(a*cyclePerWeek(cycle)*100)/100;
+}
+// What the user typed, in the cycle they typed it in. Falls back to the weekly budget for
+// categories that predate cycles (they're weekly by definition).
+function catAmount(c){
+  if(!c) return '';
+  if(c.amount!=null&&c.amount!=='') return c.amount;
+  return (c.budget!=null&&c.budget!=='')?c.budget:'';
+}
+function catCycle(c){ return (c&&c.cycle)||'weekly'; }
+// ── Category logos ────────────────────────────────────────────────
+// A category can carry the website of the thing it pays for; its favicon becomes the row
+// icon. DuckDuckGo's icon service is used rather than Google's: no key either way, but this
+// one doesn't feed an advertising profile with the list of services you pay for.
+// Note a real limitation — a mistyped domain does NOT error, both services just hand back a
+// generic globe. There's no way to tell "no logo" from "wrong domain" from the image alone,
+// so the field stays freely editable and the letter placeholder is always a valid choice.
+function catSiteDomain(raw){
+  let s=String(raw||'').trim().toLowerCase();
+  if(!s) return '';
+  s=s.replace(/^[a-z]+:\/\//,'').replace(/^www\./,'');   // strip scheme + www
+  s=s.split('/')[0].split('?')[0].split('#')[0];          // host only
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(s)?s:'';
+}
+function catLogoUrl(c){
+  const d=catSiteDomain(c&&c.site);
+  return d?'https://icons.duckduckgo.com/ip3/'+d+'.ico':'';
+}
+// Emoji were how these rows used to be identified, before logos. They're still sitting in
+// some names as a decorative prefix ("☁️ Claude"), which would double up next to a logo —
+// strip them for display only, leaving the stored name untouched.
+function catDisplayName(name){
+  return String(name||'').replace(/^[^\p{L}\p{N}$]+/u,'').trim()||String(name||'').trim();
+}
+function catInitial(name){
+  const n=catDisplayName(name);
+  return n?n.charAt(0).toUpperCase():'?';
+}
+// Falls back to the initial if there's no site, and also if the logo fails to load.
+function catIconHtml(c,size){
+  const px=size||22;
+  const url=catLogoUrl(c);
+  const style='width:'+px+'px;height:'+px+'px;border-radius:'+Math.round(px*0.27)+'px;flex-shrink:0';
+  const fallback='<span class="cat-icon-letter" style="'+style+';font-size:'+Math.round(px*0.5)+'px">'+_catEscHtml(catInitial(c&&c.name))+'</span>';
+  if(!url) return fallback;
+  // Not loading="lazy": these are ~20px icons in a short list, so deferring them saves
+  // nothing and just risks them never resolving if the list renders off-screen.
+  return '<img class="cat-icon-img" src="'+url+'" alt="" style="'+style+'" '+
+    'onerror="this.outerHTML='+_catEsc(JSON.stringify(fallback))+'">';
+}
 function catBudget(c){
   if(!c) return 0;
   if(c.budget!=null&&c.budget!=='') return parseFloat(c.budget)||0;
   return parseFloat(c.default)||0;   // pre-migration fixed categories
 }
 function catBudgetTotal(type){ return (BUD_CAT_LOAD[type]?BUD_CAT_LOAD[type]():[]).reduce((s,c)=>s+catBudget(c),0); }
+// One-time fold of the separate subscriptions list into the fixed categories. The two lists
+// were never actually connected — subscriptions only ever wrote to a legacy defaults key and
+// to a DOM input that usually wasn't on screen — so a $125/wk subscription load sat entirely
+// outside the weekly budget. Each subscription becomes a real fixed category billed on its
+// own cycle, so it now counts.
+// Best-effort website for a well-known name, so migrated entries arrive with a logo instead
+// of a wall of letter placeholders. Substring match on a stripped name; anything not listed
+// just gets no site, which is a perfectly valid state — the field is editable.
+const CAT_SITE_GUESSES=[
+  ['claude','claude.ai'],['chatgpt','openai.com'],['openai','openai.com'],
+  ['applecare','apple.com'],['icloud','icloud.com'],['appletv','apple.com'],['applemusic','apple.com'],
+  ['netflix','netflix.com'],['spotify','spotify.com'],['disney','disneyplus.com'],
+  ['hbomax','hbomax.com'],['binge','binge.com.au'],['stan','stan.com.au'],['kayo','kayosports.com.au'],
+  ['youtube','youtube.com'],['amazonprime','amazon.com.au'],['paramount','paramountplus.com'],
+  ['ozlotto','thelott.com'],['powerball','thelott.com'],['thelott','thelott.com'],
+  ['anytimefitness','anytimefitness.com.au'],['fitnessfirst','fitnessfirst.com.au'],['goodlife','goodlifehealthclubs.com.au'],
+  ['budgetdirect','budgetdirect.com.au'],['nrma','nrma.com.au'],['ctpgreenslip','nrma.com.au'],
+  ['rego','service.nsw.gov.au'],['servicensw','service.nsw.gov.au'],['opal','transportnsw.info'],
+  ['telstra','telstra.com.au'],['optus','optus.com.au'],['vodafone','vodafone.com.au'],['belong','belong.com.au'],
+  ['agl','agl.com.au'],['originenergy','originenergy.com.au'],['medibank','medibank.com.au'],['bupa','bupa.com.au'],
+];
+function guessCatSite(name){
+  const n=String(name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  if(!n) return '';
+  const hit=CAT_SITE_GUESSES.find(([k])=>n.includes(k));
+  return hit?hit[1]:'';
+}
+function migrateSubscriptionsToFixedOnce(){
+  if(localStorage.getItem('daily_subs_merged_into_fixed')) return;
+  try{
+    const subs=lsLoad('daily_subscriptions', []);
+    if(Array.isArray(subs)&&subs.length){
+      const cats=loadFixCats();
+      // Some expenses were tracked in BOTH lists (a gym membership as a fixed category and
+      // again as a subscription). Importing those blindly would silently inflate the weekly
+      // budget, so skip any whose name already exists as a fixed category — that expense is
+      // already being counted. Exact match on a stripped-down name only: deliberately not
+      // fuzzy, since a wrong merge here quietly loses a real expense.
+      const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+      const existing=new Set(cats.map(c=>norm(c.name)).filter(Boolean));
+      const skipped=[];
+      subs.forEach((s,i)=>{
+        const cycle=(s&&s.cycle==='yearly')?'yearly':'monthly';
+        // originalCost is what was actually billed for that cycle; monthlyCost is derived.
+        const raw=parseFloat(s&&s.originalCost);
+        const amount=isNaN(raw)?(parseFloat(s&&s.monthlyCost)||0):raw;
+        const name=((s&&s.emoji?s.emoji+' ':'')+((s&&s.name)||'Subscription')).trim();
+        if(existing.has(norm(name))){ skipped.push(name); return; }
+        cats.push({id:'sub'+Date.now()+'_'+i, name, amount, cycle,
+          budget:catWeeklyFromAmount(amount,cycle), site:guessCatSite(name)});
+      });
+      if(skipped.length) try{ localStorage.setItem('daily_subs_merge_skipped', JSON.stringify(skipped)); }catch(e){}
+      // The built-in 'subs' category existed only to hold the subscriptions TOTAL, which the
+      // individual entries above now represent — so it has to go entirely, not just have its
+      // budget zeroed. A zeroed category still double-counts wherever an amount was typed
+      // into its weekly row, and those rows exist. Removing it doesn't lose history either:
+      // each imported category's budget applies to EVERY week including past ones (a blank
+      // row falls back to the budget), so the recurring block already covers what fix_subs
+      // used to. The old per-week fix_subs values stay in storage, simply unread.
+      saveFixCats(cats.filter(c=>c.id!=='subs'));
+    }
+    // Backfill a website onto any fixed category that doesn't have one yet — including the
+    // ones that predate subscriptions entirely (a gym, a transport card), so the list arrives
+    // with logos rather than a column of letter placeholders. Never overwrites a set value.
+    const all=loadFixCats();
+    let touched=false;
+    all.forEach(c=>{
+      if(c.site) return;
+      const g=guessCatSite(c.name);
+      if(g){ c.site=g; touched=true; }
+    });
+    if(touched) saveFixCats(all);
+  }catch(e){}
+  // daily_subscriptions is deliberately left in storage — nothing is destroyed, so the old
+  // list is still recoverable if this migration got something wrong.
+  localStorage.setItem('daily_subs_merged_into_fixed','1');
+}
+// Follow-up to the merge above. Its first version zeroed the aggregate 'subs' category's
+// budget instead of removing it, on the mistaken reasoning that past weeks needed it for
+// their history. They don't — every imported category's budget already applies retroactively
+// — and a zeroed category still counts twice on any week where an amount was typed into its
+// row, which is exactly what happened. Drops the leftover aggregate for anyone who ran that
+// earlier version.
+// Recovery hatch. The subscriptions→fixed merge is rebuildable because daily_subscriptions
+// was deliberately never deleted — so if a stale device ever overwrites the merged categories
+// with a pre-merge copy, the merge can simply be run again from that surviving source rather
+// than re-entered by hand. Clears the one-shot flags and re-runs, then re-renders.
+function rebuildSubscriptionCategories(){
+  const subs=lsLoad('daily_subscriptions', []);
+  if(!Array.isArray(subs)||!subs.length){
+    alert('No saved subscriptions found to rebuild from.');
+    return false;
+  }
+  localStorage.removeItem('daily_subs_merged_into_fixed');
+  localStorage.removeItem('daily_subs_aggregate_dropped');
+  migrateSubscriptionsToFixedOnce();
+  migrateDropSubsAggregateOnce();
+  if(typeof renderBudgetTab==='function'&&S.view==='budget') renderBudgetTab();
+  if(typeof renderBudgetEditor==='function') renderBudgetEditor();
+  return true;
+}
+function migrateDropSubsAggregateOnce(){
+  if(localStorage.getItem('daily_subs_aggregate_dropped')) return;
+  try{
+    // Only when subscriptions were actually imported — otherwise a category that happens to
+    // use the built-in 'subs' id is a legitimate expense and must be left alone.
+    const hadSubs=(lsLoad('daily_subscriptions', [])||[]).length>0;
+    if(hadSubs){
+      const cats=loadFixCats();
+      const agg=cats.find(c=>c.id==='subs');
+      // Guard on the zeroed budget the earlier migration set, so a category the user has
+      // since given a real budget to isn't silently deleted.
+      if(agg&&(agg.budget===0||agg.budget===''||agg.budget==null)){
+        saveFixCats(cats.filter(c=>c.id!=='subs'));
+      }
+    }
+  }catch(e){}
+  localStorage.setItem('daily_subs_aggregate_dropped','1');
+}
 // One-time lift of the old budgetConfig amounts onto the categories they were describing.
 // Name-matched one-to-one — the same imperfect bridge as before, but run exactly once here
 // instead of on every read, so from now on the number lives with the category.
@@ -5823,22 +6025,60 @@ function budCatNameHtml(type,c,isCur,editMode){
   if(editMode && isCur){
     return '<input class="bud-cat-name-input" id="catname-'+type+'-'+c.id+'" value="'+_catEsc(c.name||'')+'" placeholder="Name this category…" oninput="budRenameCat(\''+type+'\',\''+c.id+'\',this.value)">';
   }
-  if(c.name) return '<div class="bud-row-left"><div class="bud-row-name">'+_catEscHtml(c.name)+'</div></div>';
+  // Fixed rows lead with the category's logo (or its initial); the stored name may still
+  // carry a legacy emoji prefix, so display the stripped form to avoid showing both.
+  if(c.name) return '<div class="bud-row-left">'+
+    (type==='fix'?catIconHtml(c,20):'')+
+    '<div class="bud-row-name">'+_catEscHtml(type==='fix'?catDisplayName(c.name):c.name)+'</div></div>';
   return '<input class="bud-cat-name-input" id="catname-'+type+'-'+c.id+'" value="" placeholder="Name this category…" oninput="budRenameCat(\''+type+'\',\''+c.id+'\',this.value)" onchange="renderBudgetTab()"'+(isCur?'':' disabled')+'>';
 }
+// A category billed monthly/yearly accrues its prorated share automatically — typing into it
+// would double-count what's already been counted (see the note in the collapsed list). So it
+// gets no weekly input; only genuinely per-week categories do.
+function catIsRecurring(c){ const cy=catCycle(c); return cy==='monthly'||cy==='yearly'; }
 function renderFixedCard(data,isCur){
   const editing=budEditMode.fix && isCur;
   const cats=loadFixCats();
-  const rows=cats.map(c=>{
+  const weeklyCats=cats.filter(c=>!catIsRecurring(c));
+  const recurCats=cats.filter(catIsRecurring);
+
+  const rows=weeklyCats.map(c=>{
     const raw=data['fix_'+c.id];
-    const val=(raw!==undefined&&raw!=='')?raw:(c.default!=null?c.default:'');
+    const val=(raw!==undefined&&raw!=='')?raw:'';
+    // Placeholder is the amount a blank row actually contributes, so an empty field reads as
+    // "the usual $50" rather than the old, misleading "$0".
     return '<div class="bud-row bud-cat-row" data-cat-id="'+c.id+'">'+
       budCatNameHtml('fix',c,isCur,editing)+
-      '<input class="bud-row-input" type="number" inputmode="decimal" id="fix-'+c.id+'" placeholder="$'+(c.default||0)+'" value="'+val+'" oninput="budRecalc();budSaveDraft()"'+(isCur?'':' disabled')+'>'+
+      '<input class="bud-row-input" type="number" inputmode="decimal" id="fix-'+c.id+'" placeholder="$'+catBudget(c).toFixed(0)+'" value="'+val+'" oninput="budRecalc();budSaveDraft()"'+(isCur?'':' disabled')+'>'+
       (editing?'<button class="delete-cat-btn" data-type="fix" data-id="'+c.id+'" aria-label="Remove category">×</button>':'')+
     '</div>';
   }).join('');
-  return '<div class="card">'+budCardHead('fix','📌 Fixed expenses',isCur)+rows+
+
+  // Recurring block: one summary row that expands to a read-only breakdown. Toggled inline
+  // (same idiom as the Home accounts list) so it never triggers a re-render mid-tap.
+  let recurBlock='';
+  if(recurCats.length){
+    const recurTotal=recurCats.reduce((s,c)=>s+catBudget(c),0);
+    const items=recurCats.map(c=>
+      '<div class="bud-recur-item">'+
+        '<div class="bud-row-left">'+catIconHtml(c,18)+
+          '<div class="bud-row-name">'+_catEscHtml(catDisplayName(c.name))+'</div></div>'+
+        '<div class="bud-recur-amt">$'+catBudget(c).toFixed(2)+
+          '<span class="bud-recur-per">/wk</span></div>'+
+      '</div>').join('');
+    recurBlock=
+      '<div class="bud-row bud-recur-head" onclick="var l=this.nextElementSibling;var open=l.style.display!==\'none\';l.style.display=open?\'none\':\'block\';var ch=this.querySelector(\'.bud-recur-chev\');if(ch)ch.textContent=open?\'▾\':\'▴\'">'+
+        '<div class="bud-row-left"><span class="bud-recur-ic">🔁</span>'+
+          '<div class="bud-row-name">Recurring<span class="bud-recur-count">'+recurCats.length+'</span></div></div>'+
+        '<div class="bud-row-calc bud-recur-total">$'+recurTotal.toFixed(2)+
+          '<span class="bud-recur-chev">▾</span></div>'+
+      '</div>'+
+      '<div class="bud-recur-list" style="display:none">'+items+
+        '<div class="bud-recur-note">Counted automatically each week from their billing cycle — nothing to enter. Edit them in Settings → Budget categories.</div>'+
+      '</div>';
+  }
+
+  return '<div class="card">'+budCardHead('fix','📌 Fixed expenses',isCur)+rows+recurBlock+
     '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total fixed</div><div class="bud-row-calc" id="calc-fixed" style="color:var(--muted)">—</div></div>'+
     (editing?'<button class="add-cat-btn" data-type="fix">+ Add fixed expense</button>':'')+
   '</div>';
@@ -6127,9 +6367,17 @@ function budRecalc(animate){
   let totalIncome=0;
   loadIncCats().forEach(c=>{ totalIncome += parseFloat(document.getElementById('inc-'+c.id)?.value)||0; });
 
-  // Dynamic fixed + variable totals (sum across the user's custom categories)
+  // Dynamic fixed + variable totals (sum across the user's custom categories).
+  // Fixed must mirror weekFixedTotal exactly: a blank (or absent) input means "the standard
+  // amount was charged", so it falls back to the category's budget. Summing only the input
+  // values under-reported the total by every category the user hadn't typed into — and
+  // recurring categories have no input at all now, so they'd have counted as zero.
   let totalFixed=0;
-  loadFixCats().forEach(c=>{ totalFixed += parseFloat(document.getElementById('fix-'+c.id)?.value)||0; });
+  loadFixCats().forEach(c=>{
+    const el=document.getElementById('fix-'+c.id);
+    const raw=el?el.value:'';
+    totalFixed += (raw!==undefined&&raw!=='') ? (parseFloat(raw)||0) : catBudget(c);
+  });
   let totalVar=0;
   loadVarCats().forEach(c=>{ totalVar += parseFloat(document.getElementById('var-'+c.id)?.value)||0; });
 
@@ -6690,13 +6938,13 @@ function logSavingsBalance(){
   saveSavingsLog();
   balEl.value='';
   renderSavingsCard();
-  if(statsSubTab==='finance'){ renderBSBalance(); renderBSTrend(); }
+  if(statsSubTab==='finance'){ renderBSBalance(); renderBSAccountGrowth(); renderBSTrend(); }
 }
 function deleteSavingsEntry(date){
   savingsLog=savingsLog.filter(e=>e.date!==date);
   saveSavingsLog();
   renderSavingsCard();
-  if(statsSubTab==='finance'){ renderBSBalance(); renderBSTrend(); }
+  if(statsSubTab==='finance'){ renderBSBalance(); renderBSAccountGrowth(); renderBSTrend(); }
 }
 
 // ── Savings goals card ────────────────────────────────────────────
@@ -6758,16 +7006,85 @@ function deleteGoal(i){
 }
 
 // ── Budget Stats (Stats tab) ──────────────────────────────────────
+// Account-derived cards lead: the Finance tab was almost entirely budget data with the net
+// worth chart buried below four budget cards, so account history was effectively hidden.
 function renderBudgetStats(){
+  renderBSBalance();
+  renderBSAccountGrowth();
   renderBSTrend();
   renderBSProgress();
   renderBSBestWorst();
   renderBSCatBreakdown();
-  renderBSBalance();
   renderBSConsist();
   renderBSRecords();
   renderBSGoals();
 }
+
+// ── Finance: which accounts actually moved ────────────────────────
+// The net worth chart shows the total but not where it came from. This ranks each account by
+// its effect on net worth over the period, so a rise driven by paying down debt reads
+// differently from one driven by saving.
+let bsGrowthRange='30';   // '30' | '90' | 'all'
+function setBSGrowthRange(r){ bsGrowthRange=r; renderBSAccountGrowth(); }
+function bsGrowthFromDate(a){
+  if(bsGrowthRange==='all'){
+    const h=(a&&a.history||[]).filter(e=>e&&e.date).slice().sort((x,y)=>x.date<y.date?-1:1);
+    return h.length?h[0].date:getLocalDate();
+  }
+  const d=localMidnight(getLocalDate());
+  d.setDate(d.getDate()-parseInt(bsGrowthRange,10));
+  return dateStr(d);
+}
+function renderBSAccountGrowth(){
+  const wrap=document.getElementById('bs-acctgrowth-wrap'); if(!wrap) return;
+  const head=(body)=>'<div class="card" style="padding:0;overflow:hidden">'+
+    '<div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px">'+
+      '<span>📊 Account growth</span>'+
+      '<div class="bs-growth-range">'+
+        [['30','30d'],['90','90d'],['all','All']].map(([v,l])=>
+          '<button onclick="setBSGrowthRange(\''+v+'\')" class="'+(bsGrowthRange===v?'on':'')+'">'+l+'</button>').join('')+
+      '</div>'+
+    '</div>'+body+'</div>';
+  const tracked=accounts.filter(a=>a&&(a.history||[]).length>=1);
+  if(!tracked.length){
+    wrap.innerHTML=head('<div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Log a balance in Accounts to see which of them are moving.</div>');
+    return;
+  }
+  const rows=tracked.map(a=>{
+    const from=bsGrowthFromDate(a);
+    const then=accountBalanceAt(a,from);
+    const now=parseFloat(a.current)||0;
+    const delta=Math.round((now-then)*100)/100;
+    // A debt shrinking RAISES net worth, so its contribution is the opposite of its delta.
+    const nwEffect=(a.type==='debt')?-delta:delta;
+    const pct=then?Math.round((delta/Math.abs(then))*1000)/10:null;
+    return {a,delta,nwEffect,pct};
+  }).sort((x,y)=>y.nwEffect-x.nwEffect);
+  const netChange=rows.reduce((s,r)=>s+r.nwEffect,0);
+  const body='<div style="padding:6px 16px 14px">'+
+    rows.map(r=>{
+      const good=r.nwEffect>0, flat=r.nwEffect===0;
+      const col=flat?'var(--muted)':(good?'var(--success)':'var(--danger)');
+      const arrow=flat?'':(r.delta>0?'▲':'▼');
+      return '<div class="bs-growth-row">'+
+        '<div class="bs-growth-name">'+_catEscHtml(a_name(r.a))+
+          '<span class="bs-growth-type">'+(r.a.type==='debt'?'Debt':'Asset')+'</span></div>'+
+        '<div class="bs-growth-spark">'+(acctSparklineHtml(r.a)||'')+'</div>'+
+        '<div class="bs-growth-delta" style="color:'+col+'">'+
+          (flat?'—':arrow+' '+fmtMoney(Math.abs(r.delta)))+
+          (r.pct!==null&&!flat?'<span class="bs-growth-pct">'+(r.pct>0?'+':'')+r.pct+'%</span>':'')+
+        '</div>'+
+      '</div>';
+    }).join('')+
+    '<div class="bs-growth-total">'+
+      '<span>Net worth change</span>'+
+      '<span style="color:'+(netChange>0?'var(--success)':netChange<0?'var(--danger)':'var(--muted)')+'">'+
+        (netChange===0?'—':(netChange>0?'▲ ':'▼ ')+fmtMoney(Math.abs(netChange)))+'</span>'+
+    '</div>'+
+  '</div>';
+  wrap.innerHTML=head(body);
+}
+function a_name(a){ return (a&&a.name)||'Account'; }
 
 // ── Finance: spending category breakdown (fixed + variable, last 12 saved weeks) ─
 function renderBSCatBreakdown(){
@@ -7057,9 +7374,15 @@ function accountsHistoryDates(){
   accounts.forEach(a=>(a&&a.history||[]).forEach(e=>{ if(e&&e.date) set.add(e.date); }));
   return [...set].sort((x,y)=>x<y?-1:1);
 }
-function renderBSBalance(){
-  const wrap=document.getElementById('bs-balance-wrap'); if(!wrap) return;
-  if(bsBalChart){bsBalChart.destroy();bsBalChart=null;}
+// Rendered in two places — Stats → Finance and the Accounts page — so it's parametrised by
+// container rather than hardcoded to one. One function means the two can't drift apart; the
+// Chart instances are tracked per container so re-rendering one never destroys the other's.
+const _nwCharts={};
+function renderBSBalance(){ renderNetWorthChartInto('bs-balance-wrap'); }
+function renderNetWorthChartInto(wrapId){
+  const wrap=document.getElementById(wrapId); if(!wrap) return;
+  if(_nwCharts[wrapId]){ _nwCharts[wrapId].destroy(); _nwCharts[wrapId]=null; }
+  const canvasId=wrapId+'-nwcanvas';
   const dates=accountsHistoryDates();
   if(dates.length<2){
     wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">💰 Net worth over time</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Update at least 2 account balances in Accounts to see the trend.</div></div>';
@@ -7079,8 +7402,8 @@ function renderBSBalance(){
       '<span>💰 Net worth over time</span>'+
       '<span style="font-size:13px;font-weight:800;text-transform:none;letter-spacing:0;color:'+netCol+'">'+(curNet>=0?'+$':'-$')+Math.abs(Math.round(curNet)).toLocaleString()+' net</span>'+
     '</div>'+
-    '<div style="padding:14px 16px"><canvas id="bs-bal-chart" style="max-height:360px"></canvas></div></div>';
-  const ctx=document.getElementById('bs-bal-chart'); if(!ctx) return;
+    '<div style="padding:14px 16px"><canvas id="'+canvasId+'" style="max-height:360px"></canvas></div></div>';
+  const ctx=document.getElementById(canvasId); if(!ctx) return;
   const {gc,tc}=budChartGridColors();
   const datasets=[
     {label:'Assets',data:assetsData,borderColor:'#52B788',backgroundColor:'rgba(82,183,136,0.12)',borderWidth:2.5,pointRadius:3,pointBackgroundColor:'#52B788',fill:true,tension:0.3},
@@ -7088,7 +7411,7 @@ function renderBSBalance(){
   ];
   // Only plot the debt line if there's any debt account — a debt-free user shouldn't see a flat 0 line.
   if(debtAccts.length) datasets.splice(1,0,{label:'Debts',data:debtsData,borderColor:'#E74C3C',backgroundColor:'transparent',borderWidth:2.5,pointRadius:3,pointBackgroundColor:'#E74C3C',fill:false,tension:0.3});
-  bsBalChart=new Chart(ctx,{
+  _nwCharts[wrapId]=new Chart(ctx,{
     type:'line',
     data:{ labels:dates.map(e=>e.substring(5)), datasets },
     options:{
@@ -7569,6 +7892,218 @@ function getGreeting(){
   const timeGreet=hour<12?'Good morning':hour<17?'Good afternoon':'Good evening';
   return nm?timeGreet+', '+nm:timeGreet;
 }
+
+// ── Home weather card ──────────────────────────────────────────────
+// Open-Meteo: free, no API key (nothing to hide in a static public repo), CORS-enabled.
+// WMO weather codes → icon/label (https://open-meteo.com/en/docs — "WMO Weather interpretation codes").
+const WEATHER_CODES={
+  0:['☀️','Clear sky'],1:['🌤️','Mostly clear'],2:['⛅','Partly cloudy'],3:['☁️','Overcast'],
+  45:['🌫️','Fog'],48:['🌫️','Fog'],
+  51:['🌦️','Light drizzle'],53:['🌦️','Drizzle'],55:['🌦️','Heavy drizzle'],
+  61:['🌧️','Light rain'],63:['🌧️','Rain'],65:['🌧️','Heavy rain'],
+  71:['🌨️','Light snow'],73:['🌨️','Snow'],75:['🌨️','Heavy snow'],
+  80:['🌦️','Rain showers'],81:['🌧️','Rain showers'],82:['⛈️','Violent showers'],
+  95:['⛈️','Thunderstorm'],96:['⛈️','Thunderstorm'],99:['⛈️','Thunderstorm'],
+};
+// A dry sky — no precipitation, fog or storm — is the only case where cloud_cover should
+// override the code (see cloudLook below).
+function isDrySkyCode(code){ return code===0||code===1||code===2||code===3; }
+// For a dry sky the WMO code is too coarse to trust: sampling live data, code 1 ("mainly
+// clear") comes back at anything from 22% to 46% cloud cover, and code 0/1 both used to draw
+// a cloudless sunny scene — so a half-grey sky rendered as brilliant sunshine. cloud_cover is
+// the actual modelled percentage and tracks what you see out the window far better, so it
+// drives the icon, the label and the scene whenever the sky is dry.
+// Thresholds follow the usual met convention (roughly okta bands): few / scattered / broken / overcast.
+const CLOUD_LOOKS=[
+  {max:15,  base:'clear',  day:['☀️','Clear sky'],     night:['🌙','Clear night']},
+  {max:40,  base:'clear',  day:['🌤️','Mostly sunny'],  night:['🌙','Mostly clear']},
+  {max:70,  base:'partly', day:['⛅','Partly cloudy'],  night:['☁️','Partly cloudy']},
+  {max:101, base:'cloudy', day:['☁️','Cloudy'],         night:['☁️','Cloudy']},
+];
+function cloudLook(cloud){
+  for(const l of CLOUD_LOOKS){ if(cloud<l.max) return l; }
+  return CLOUD_LOOKS[CLOUD_LOOKS.length-1];
+}
+// Icon + label for the card. Dry skies read from cloud_cover; anything with actual weather in
+// it (rain/snow/fog/storm) still reads from the code, which is authoritative for those.
+// Night matters here too: a clear sky at 9pm was previously drawing a ☀️.
+function weatherLook(entry){
+  if(entry&&isDrySkyCode(entry.code)&&entry.cloud!=null){
+    const l=cloudLook(entry.cloud);
+    return weatherPhase(entry)==='night'?l.night:l.day;
+  }
+  return WEATHER_CODES[entry&&entry.code]||['🌡️','—'];
+}
+// Condition → animated background "scene" (see .home-weather-card[data-scene] in
+// kitchen-extras.css). Storm and fog skip the day/night split: a storm already reads as
+// dark regardless of clock time, and fog's flat haze doesn't have a distinct night look in
+// practice either — building separate art for those would just duplicate the day scene.
+function weatherSceneBase(code,cloud){
+  // Real weather first — these are what the code is actually good for.
+  if(code===45||code===48) return 'fog';
+  if(code===82||code>=95) return 'storm';
+  if((code>=71&&code<=77)||(code>=85&&code<=86)) return 'snow';
+  if((code>=51&&code<=67)||code===80||code===81) return 'rain';
+  // Dry sky → let measured cloud cover decide how cloudy it looks.
+  if(cloud!=null) return cloudLook(cloud).base;
+  if(code===0||code===1) return 'clear';
+  if(code===2) return 'partly';
+  return 'cloudy';
+}
+// Time-of-day phase from the day's real sunrise/sunset rather than a fixed clock hour, so
+// the card tracks the actual sky (an 8pm summer dusk vs an 8pm winter night). Computed at
+// RENDER time, not fetch time, so a cached reading still advances dawn→noon→dusk on its own.
+// Falls back to the API's is_day flag if the sun times are missing.
+function weatherPhase(entry){
+  const fallback=entry.isDay===0?'night':'day';
+  if(!entry.sunrise||!entry.sunset) return fallback;
+  const sr=new Date(entry.sunrise).getTime(), ss=new Date(entry.sunset).getTime();
+  if(isNaN(sr)||isNaN(ss)) return fallback;
+  const now=Date.now(), EDGE=45*60*1000;
+  if(now<sr-EDGE||now>ss+EDGE) return 'night';
+  if(Math.abs(now-sr)<=EDGE) return 'dawn';
+  if(Math.abs(now-ss)<=EDGE) return 'dusk';
+  if(Math.abs(now-(sr+ss)/2)<=2*60*60*1000) return 'noon';  // brightest, sun highest
+  return 'day';
+}
+// Only clear/partly skies get the full dawn/noon/dusk treatment — under heavy cloud, rain or
+// snow the sun's height barely changes how the sky reads, so those stay day/night.
+function weatherScene(code,entry){
+  const base=weatherSceneBase(code,entry&&entry.cloud);
+  if(base==='storm'||base==='fog') return base;
+  const phase=weatherPhase(entry);
+  if(base==='clear'||base==='partly') return base+'-'+phase;
+  return base+'-'+(phase==='night'?'night':'day');
+}
+// "Australia/Sydney" → "Sydney". Uses the timezone the forecast call already returns, so
+// there's no second request and no extra service to depend on. It's the timezone's city, not
+// a precise suburb — accurate enough for a glanceable card.
+function weatherCityFromTz(tz){
+  if(!tz) return '';
+  const part=String(tz).split('/').pop();
+  return part?part.replace(/_/g,' '):'';
+}
+function loadWeatherCache(){ return lsLoad('daily_weather_cache', null); }
+function saveWeatherCache(c){ lsSave('daily_weather_cache', c, 'weatherCache'); }
+const WEATHER_STALE_MS=30*60*1000; // refetch after 30 min
+let _weatherLoading=false;
+function renderWeatherInto(entry){
+  const tempEl=document.getElementById('home-weather-temp');
+  if(!tempEl) return; // card isn't in the current layout — nothing to patch
+  tempEl.textContent=Math.round(entry.tempC)+'°';
+  const look=weatherLook(entry);
+  document.getElementById('home-weather-icon').textContent=look[0];
+  document.getElementById('home-weather-label').textContent=look[1];
+  const cityEl=document.getElementById('home-weather-city');
+  if(cityEl) cityEl.textContent=entry.city||'';
+  // Feels-like is only worth showing when it actually differs from the real temperature —
+  // repeating the same number twice reads as a bug, not a detail.
+  const metaEl=document.getElementById('home-weather-meta');
+  if(metaEl){
+    const bits=[];
+    if(entry.feelsC!=null&&Math.round(entry.feelsC)!==Math.round(entry.tempC)) bits.push('Feels '+Math.round(entry.feelsC)+'°');
+    if(entry.tmax!=null&&entry.tmin!=null) bits.push('H '+Math.round(entry.tmax)+'°  L '+Math.round(entry.tmin)+'°');
+    metaEl.textContent=bits.join('   ·   ');
+  }
+  const card=document.querySelector('.home-weather-card');
+  if(card) card.dataset.scene=weatherScene(entry.code,entry);
+}
+// First-ever load (no cache yet): show an explicit "tap for weather" invite instead of
+// popping the OS location prompt unasked — Home is where most sessions land first, and an
+// unprompted permission dialog there is a bad first impression. Once granted, the browser
+// won't re-prompt, so every later call is a silent refresh via loadWeatherWidget(true)
+// (the label's own tap) or the auto-refresh at the bottom of renderHome().
+function renderWeatherPrompt(){
+  const labelEl=document.getElementById('home-weather-label'); if(!labelEl) return;
+  document.getElementById('home-weather-temp').textContent='';
+  document.getElementById('home-weather-icon').textContent='📍';
+  labelEl.textContent='Tap for weather';
+}
+function renderWeatherError(denied){
+  const labelEl=document.getElementById('home-weather-label'); if(!labelEl) return;
+  document.getElementById('home-weather-temp').textContent='';
+  document.getElementById('home-weather-icon').textContent='📍';
+  labelEl.textContent=denied?'Enable location for weather':'Couldn\'t load weather — tap to retry';
+}
+function loadWeatherWidget(userInitiated){
+  const cache=loadWeatherCache();
+  if(cache) renderWeatherInto(cache);
+  const fresh=cache && (Date.now()-cache.fetchedAt<WEATHER_STALE_MS);
+  if(fresh||_weatherLoading) return;
+  if(!cache && !userInitiated){ renderWeatherPrompt(); return; }
+  if(!navigator.geolocation){ renderWeatherError(false); return; }
+  _weatherLoading=true;
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      const {latitude:lat,longitude:lon}=pos.coords;
+      fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+
+            '&current=temperature_2m,apparent_temperature,weather_code,is_day,cloud_cover'+
+            '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=1&timezone=auto')
+        .then(r=>r.json())
+        .then(data=>{
+          const c=data&&data.current;
+          if(!c||c.temperature_2m==null) throw new Error('no current-weather block');
+          const d=(data&&data.daily)||{};
+          const first=a=>Array.isArray(a)&&a.length?a[0]:null;
+          const entry={lat,lon,tempC:c.temperature_2m,feelsC:c.apparent_temperature,
+            code:c.weather_code,isDay:c.is_day,cloud:c.cloud_cover,
+            tmax:first(d.temperature_2m_max),tmin:first(d.temperature_2m_min),
+            sunrise:first(d.sunrise),sunset:first(d.sunset),
+            city:weatherCityFromTz(data&&data.timezone),
+            fetchedAt:Date.now()};
+          saveWeatherCache(entry);
+          renderWeatherInto(entry);
+        })
+        .catch(()=>renderWeatherError(false))
+        .finally(()=>{ _weatherLoading=false; });
+    },
+    err=>{ _weatherLoading=false; renderWeatherError(err&&err.code===1); },
+    {maximumAge:15*60*1000, timeout:10000}
+  );
+}
+// Fixed set of decorative layers for every possible scene, shown/hidden per
+// .home-weather-card[data-scene] in CSS — cheaper and simpler than swapping markup per
+// condition, since it's just one attribute write in renderWeatherInto(). Stars/snow use a
+// handful of individually-delayed elements rather than a repeating background pattern so
+// they read as scattered/organic instead of a visible grid.
+function buildWeatherCard(){
+  const d=localMidnight(getLocalDate());
+  const dayLabel=d.toLocaleDateString('en-AU',{weekday:'long'});
+  const dateLabel=d.toLocaleDateString('en-AU',{day:'numeric',month:'long'});
+  const stars=Array.from({length:5},(_,i)=>'<div class="wfx-star wfx-star-'+(i+1)+'"></div>').join('');
+  const flakes=Array.from({length:6},(_,i)=>'<div class="wfx-flake wfx-flake-'+(i+1)+'"></div>').join('');
+  const drops=Array.from({length:6},(_,i)=>'<div class="wfx-drop wfx-drop-'+(i+1)+'"></div>').join('');
+  return '<div class="card home-weather-card" data-scene="neutral">'+
+    '<div class="weather-fx" aria-hidden="true">'+
+      '<div class="wfx-sun"></div>'+
+      '<div class="wfx-moon"></div>'+
+      '<div class="wfx-stars">'+stars+'</div>'+
+      '<div class="wfx-cloud wfx-cloud-1"></div>'+
+      '<div class="wfx-cloud wfx-cloud-2"></div>'+
+      '<div class="wfx-cloud wfx-cloud-3"></div>'+
+      '<div class="wfx-fog wfx-fog-1"></div>'+
+      '<div class="wfx-fog wfx-fog-2"></div>'+
+      '<div class="wfx-rain">'+drops+'</div>'+
+      '<div class="wfx-snow">'+flakes+'</div>'+
+      '<div class="wfx-flash"></div>'+
+    '</div>'+
+    '<div class="weather-content">'+
+      '<div class="weather-left">'+
+        '<div class="weather-city" id="home-weather-city"></div>'+
+        '<div class="weather-day">'+dayLabel+'</div>'+
+        '<div class="weather-date">'+dateLabel+'</div>'+
+      '</div>'+
+      '<div class="weather-right">'+
+        '<div class="weather-temp-row">'+
+          '<span class="weather-icon" id="home-weather-icon"></span>'+
+          '<span class="weather-temp" id="home-weather-temp"></span>'+
+        '</div>'+
+        '<div class="weather-condition" id="home-weather-label" onclick="loadWeatherWidget(true)">Loading…</div>'+
+        '<div class="weather-meta" id="home-weather-meta"></div>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
 // ── Credit card tracker (Home card + Budget input) ───────────────
 function loadCCData(){ return lsLoad('daily_cc', {}); }
 function saveCCData(d){ lsSave('daily_cc', d, 'creditCard'); }
@@ -7832,10 +8367,11 @@ function renderHome(){
   const mBudPct=mBudIncome>0?Math.min(mBudSpent/mBudIncome*100,100):0;
   const mBudOver=mBudRem<0;
   const mBudCol=mBudOver?'var(--danger)':'var(--positive)';
+  const heroDateLabel=localMidnight(today).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
   const heroCard=
     '<div class="hero-workout-card">'+
       '<div class="hero-top">'+
-        '<span class="hero-label">TODAY\'S SESSION</span>'+
+        '<span class="hero-label">TODAY\'S SESSION · '+heroDateLabel+'</span>'+
         '<button class="hero-play-btn" aria-label="Go to workout" onclick="setView(\'log\')">'+
           '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M5 3.5l10 5.5-10 5.5V3.5z" fill="#e8541f"/></svg>'+
         '</button>'+
@@ -7941,6 +8477,7 @@ function renderHome(){
   // so a reorder survives the next renderHome. (Recent workout + Stats render separately.)
   const homeCards={
     session: heroCard,
+    weather: buildWeatherCard(),
     streak: statsSplit,
     calories: overviewCard,
     review: buildWeekSummaryCard(),
@@ -7953,9 +8490,40 @@ function renderHome(){
   };
   // Ordered + visibility-filtered widget list; skip widgets whose HTML is empty right now
   // (e.g. Recent Workout before any session exists) so edit mode has no invisible boxes.
-  wrap.innerHTML = effectiveHomeWidgetIds(homeCards)
-    .filter(k=>homeCards[k])
-    .map(k=>'<div class="home-card" data-card-id="'+k+'">'+homeCards[k]+'</div>').join('');
+  const _homeIds=effectiveHomeWidgetIds(homeCards).filter(k=>homeCards[k]);
+  const _cardHtml=k=>'<div class="home-card" data-card-id="'+k+'">'+homeCards[k]+'</div>';
+  if(window.innerWidth>=1024){
+    // Desktop: real flex columns instead of CSS multi-column. Multicol packs tightly but its
+    // columns end wherever the last card happens to fall, leaving a ragged bottom edge; a
+    // grid of two flex columns can stretch each column's LAST card to fill, so the two
+    // always finish flush (see .home-cols in budget-home.css).
+    // Full-width cards (Today's Session, Weekly Budget) split the list into segments so each
+    // run of normal cards is balanced within itself and saved order is still respected.
+    // Weather is pulled out and pinned to the very bottom, full width.
+    const ids=_homeIds.filter(k=>k!=='weather');
+    const hasWeather=_homeIds.includes('weather');
+    let html='', run=[];
+    const flushRun=()=>{
+      if(!run.length) return;
+      // Alternate into the two columns; the last-card stretch below absorbs any imbalance,
+      // so this doesn't need to measure heights to end up flush.
+      const colA=run.filter((_,i)=>i%2===0), colB=run.filter((_,i)=>i%2===1);
+      html+='<div class="home-cols">'+
+        '<div class="home-col">'+colA.map(_cardHtml).join('')+'</div>'+
+        '<div class="home-col">'+colB.map(_cardHtml).join('')+'</div>'+
+      '</div>';
+      run=[];
+    };
+    ids.forEach(k=>{
+      if(k==='session'||k==='budget'){ flushRun(); html+=_cardHtml(k); }
+      else run.push(k);
+    });
+    flushRun();
+    if(hasWeather) html+=_cardHtml('weather');
+    wrap.innerHTML=html;
+  } else {
+    wrap.innerHTML=_homeIds.map(_cardHtml).join('');
+  }
   const _oldRecent=document.getElementById('home-recent-card'); if(_oldRecent) _oldRecent.innerHTML='';
   document.querySelectorAll('#view-home .card').forEach((card, i) => {
     card.style.animationDelay = (i * 45) + 'ms';
@@ -7965,6 +8533,9 @@ function renderHome(){
   if(homeEditMode) applyHomeEditMode();
 
   applyDayColour();
+  // Only touch geolocation/network if the widget is actually visible — a hidden card has no
+  // #home-weather-temp for the result to land in anyway.
+  if(_homeIds.includes('weather')) loadWeatherWidget();
 }
 
 // ── Home widget system ────────────────────────────────────────────
@@ -7972,25 +8543,132 @@ function renderHome(){
 // underlying data is untouched) and reordered. The registry tags each widget with its
 // related tab for the Settings → Home Layout grouping. `fixed` widgets can't be hidden:
 // the Overview card doubles as the app's greeting, so Home is never a fully blank page.
-// Settings → Home Layout preview thumbnails. Deliberately generic skeleton shapes assigned by
-// rough content type, NOT pixel-accurate live copies of each real card — a handful of reusable
-// archetypes means one place to maintain, not two that drift every time a real card is restyled.
-function hlPreviewStat(){ return '<div class="hl-preview"><div class="hl-p-label"></div><div class="hl-p-stat"></div><div class="hl-p-sub"></div></div>'; }
-function hlPreviewList(rows){ return '<div class="hl-preview"><div class="hl-p-label"></div>'+Array(rows||3).fill('<div class="hl-p-row"></div>').join('')+'</div>'; }
-function hlPreviewBars(){ return '<div class="hl-preview"><div class="hl-p-label"></div><div class="hl-p-bars">'+Array(7).fill(0).map(()=> '<div class="hl-p-bar" style="height:'+(30+Math.random()*60)+'%"></div>').join('')+'</div></div>'; }
+// Settings → Home Layout preview thumbnails. Miniature mock-ups of the real cards (same
+// background treatment and layout at reduced scale), so a toggle is recognisably attached to
+// the card it controls — the same approach as the onboarding theme picker's mini screens.
+// Content is deliberately illustrative placeholder rather than live data: bound to real
+// values these would render blank exactly when the user has nothing logged yet, which is
+// when they're most likely to be setting their layout up.
+function hlPrevSession(){
+  return '<div class="hl-prev hl-prev-hero">'+
+    '<div class="hl-lbl">Today\'s session · Sat</div>'+
+    '<div class="hl-title">Full Body A</div>'+
+    '<div class="hl-sub">4 exercises</div>'+
+    '<div class="hl-row-between" style="margin-top:7px;font-size:8.5px;font-weight:700;opacity:.85"><span>1 of 4 done</span><span>25%</span></div>'+
+    '<div class="hl-bar"><i style="width:25%"></i></div>'+
+  '</div>';
+}
+function hlPrevWeather(){
+  return '<div class="hl-prev hl-prev-weather">'+
+    '<div class="hl-row-between">'+
+      '<div><div style="font-size:13px;font-weight:800">Saturday</div><div class="hl-sub">15 August</div></div>'+
+      '<div style="text-align:right">'+
+        '<div style="display:flex;align-items:center;gap:4px;justify-content:flex-end">'+
+          '<span style="font-size:14px;line-height:1">☀️</span>'+
+          '<span class="hl-num">21°</span>'+
+        '</div>'+
+        '<div class="hl-sub">Clear sky</div>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+function hlPrevStreak(){
+  const segs=[1,1,1,0,0,0].map(on=>'<i class="'+(on?'on':'')+'"></i>').join('');
+  return '<div class="hl-prev hl-prev-plain" style="display:flex;gap:12px">'+
+    '<div style="flex:1"><div class="hl-lbl">Streak</div><div class="hl-num" style="margin-top:3px">3</div><div class="hl-sub">days</div></div>'+
+    '<div style="width:0.5px;background:var(--border)"></div>'+
+    '<div style="flex:1"><div class="hl-lbl">This week</div><div class="hl-num" style="margin-top:3px">3 <span style="font-size:9px;font-weight:600;color:var(--muted)">of 6</span></div>'+
+      '<div class="hl-segs">'+segs+'</div></div>'+
+  '</div>';
+}
+function hlPrevReview(){
+  const stat=(lbl,val,col)=>'<div><div class="hl-lbl">'+lbl+'</div><div class="hl-num" style="font-size:14px;margin-top:2px'+(col?';color:'+col:'')+'">'+val+'</div></div>';
+  const dots=[1,1,0,1,0,0,0].map(on=>'<i class="'+(on?'on':'')+'"></i>').join('');
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-lbl">📋 Weekly review</div>'+
+    '<div class="hl-grid2">'+
+      stat('Workouts','3')+stat('Budget','+$120','var(--success)')+
+      stat('Cals today','1,840')+stat('Weight Δ','-0.4','var(--success)')+
+    '</div>'+
+    '<div class="hl-dots">'+dots+'</div>'+
+  '</div>';
+}
+function hlPrevRecent(){
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-lbl">Recent workout</div>'+
+    '<div class="hl-list">'+
+      '<div class="hl-li"><i></i>Squat <span style="margin-left:auto;color:var(--muted)">80kg × 5</span></div>'+
+      '<div class="hl-li"><i></i>Bench press <span style="margin-left:auto;color:var(--muted)">60kg × 8</span></div>'+
+      '<div class="hl-li"><i></i>Barbell row <span style="margin-left:auto;color:var(--muted)">55kg × 8</span></div>'+
+    '</div>'+
+  '</div>';
+}
+function hlPrevCalories(){
+  // Neutral surface, not accent — .card.hero-card on Home is deliberately a plain card.
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-lbl">📊 Overview</div>'+
+    '<div style="display:flex;align-items:center;gap:9px;margin-top:6px">'+
+      '<div class="hl-ring"><i></i></div>'+
+      '<div><div style="font-size:11px;font-weight:700;color:var(--text)">Good morning</div>'+
+        '<div class="hl-num" style="font-size:14px;color:var(--success);margin-top:2px">640</div>'+
+        '<div class="hl-sub">kcal remaining</div></div>'+
+    '</div>'+
+  '</div>';
+}
+function hlPrevHabits(){
+  const li=(txt,on)=>'<div class="hl-li"><b class="'+(on?'on':'')+'"></b>'+txt+'</div>';
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-row-between"><div class="hl-lbl">Daily habits</div><div style="font-size:9px;font-weight:700;color:var(--text)">3/5</div></div>'+
+    '<div class="hl-list">'+li('Morning workout',1)+li('Hit calorie goal',1)+li('Drink 2L water',0)+'</div>'+
+  '</div>';
+}
+function hlPrevBudget(){
+  return '<div class="hl-prev hl-prev-hero">'+
+    '<div class="hl-row-between">'+
+      '<div class="hl-lbl">Weekly budget</div>'+
+      '<span style="font-size:7.5px;font-weight:700;background:rgba(255,255,255,.22);padding:2px 7px;border-radius:20px">On track</span>'+
+    '</div>'+
+    '<div class="hl-num" style="font-size:20px;margin-top:6px">$666</div>'+
+    '<div class="hl-sub">left of $785</div>'+
+    '<div class="hl-bar"><i style="width:62%"></i></div>'+
+  '</div>';
+}
+function hlPrevBalance(){
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-lbl">💰 Total assets</div>'+
+    '<div class="hl-num" style="font-size:19px;margin-top:5px">$9,370</div>'+
+    '<div class="hl-sub">Net worth $8,030 · $1,340 debts</div>'+
+  '</div>';
+}
+function hlPrevTiles(){
+  const tile=(icon,val,lbl)=>'<div class="hl-tile"><em>'+icon+'</em><span>'+val+'</span><div class="hl-sub" style="font-size:7px;margin-top:1px">'+lbl+'</div></div>';
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-tiles">'+tile('💰','$150','Saved')+tile('💵','$785','Last pay')+'</div>'+
+  '</div>';
+}
+function hlPrevNotes(){
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-lbl">Notes</div>'+
+    '<div class="hl-list">'+
+      '<div class="hl-li"><i></i>Book physio <span style="margin-left:auto;color:var(--accent);font-size:8px">Priority</span></div>'+
+      '<div class="hl-li"><i style="background:var(--danger)"></i>Rego due <span style="margin-left:auto;color:var(--muted);font-size:8px">3 days</span></div>'+
+    '</div>'+
+  '</div>';
+}
 const HOME_WIDGETS=[
-  {id:'session',  label:"Today's Session",      tab:'Train', preview:hlPreviewStat},
-  {id:'streak',   label:'Streak & This Week',   tab:'Train', preview:hlPreviewBars},
-  {id:'review',   label:'Week in Review',       tab:'Train', preview:hlPreviewStat},
-  {id:'recent',   label:'Recent Workout',       tab:'Train', preview:hlPreviewList},
-  {id:'calories', label:'Overview & Greeting',  tab:'Nutrition', fixed:true, preview:hlPreviewStat},
-  {id:'habits',   label:"Today's Habits",       tab:'Habits', preview:hlPreviewList},
-  {id:'budget',   label:'Weekly Budget',        tab:'Budget', preview:hlPreviewStat},
-  {id:'balance',  label:'Net Worth & Accounts', tab:'Budget', preview:hlPreviewStat},
-  {id:'tiles',    label:'Money Quick Tiles',    tab:'Budget', preview:()=>hlPreviewList(2)},
-  {id:'notes',    label:'Notes',                tab:'Notes', preview:hlPreviewList},
+  {id:'session',  label:"Today's Session",      tab:'Train', preview:hlPrevSession},
+  {id:'weather',  label:'Weather',              tab:'Train', preview:hlPrevWeather},
+  {id:'streak',   label:'Streak & This Week',   tab:'Train', preview:hlPrevStreak},
+  {id:'review',   label:'Week in Review',       tab:'Train', preview:hlPrevReview},
+  {id:'recent',   label:'Recent Workout',       tab:'Train', preview:hlPrevRecent},
+  {id:'calories', label:'Overview & Greeting',  tab:'Nutrition', fixed:true, preview:hlPrevCalories},
+  {id:'habits',   label:"Today's Habits",       tab:'Habits', preview:hlPrevHabits},
+  {id:'budget',   label:'Weekly Budget',        tab:'Budget', preview:hlPrevBudget},
+  {id:'balance',  label:'Net Worth & Accounts', tab:'Budget', preview:hlPrevBalance},
+  {id:'tiles',    label:'Money Quick Tiles',    tab:'Budget', preview:hlPrevTiles},
+  {id:'notes',    label:'Notes',                tab:'Notes', preview:hlPrevNotes},
 ];
-const HOME_DEFAULT_ORDER=['session','streak','calories','review','habits','budget','balance','tiles','notes','recent'];
+const HOME_DEFAULT_ORDER=['session','weather','streak','calories','review','habits','budget','balance','tiles','notes','recent'];
 function loadHomeOrder(){ return lsLoad('daily_home_order', null, Array.isArray); } // legacy (seed only)
 // One preference object {hidden:[], order:[]} — the same overlay convention as per-day
 // exercise customisation (dayCustomFor's added/hidden/order). Seeded once from the legacy
@@ -8015,6 +8693,11 @@ function effectiveHomeWidgetIds(cards){
   return keys.filter(k=>{ const w=HOME_WIDGETS.find(x=>x.id===k); return (w&&w.fixed) || !hidden.has(k); });
 }
 function saveHomeOrder(){
+  // Desktop splits the cards into two flex columns, so DOM order there is column-major
+  // (all of column A, then all of column B) rather than the visual top-to-bottom order —
+  // saving it would silently scramble the list. Reordering is a touch gesture anyway, so
+  // just decline on that layout instead of trying to reconstruct the order from geometry.
+  if(document.querySelector('#home-content .home-cols')) return;
   const order=[...document.querySelectorAll('#home-content [data-card-id]')].map(c=>c.dataset.cardId);
   if(!order.length) return;
   const l=homeLayout();
@@ -8460,7 +9143,6 @@ function renderBudgetEditor(){
   renderCatBudgetList('be-inc','inc');
   renderCatBudgetList('be-fix','fix');
   renderCatBudgetList('be-var','var');
-  renderSubscriptionsSection();
 }
 function closeBudgetEditor(){ const v=document.getElementById('view-budget-editor'); if(v){ v.style.display='none'; v.style.left='0'; } }
 
@@ -8495,6 +9177,47 @@ function acctDueText(acc){
   return (overdue?'Overdue · ':'Due ')+due.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
 }
 
+// ── Per-account trend ─────────────────────────────────────────────
+// Inline SVG rather than a Chart.js instance per account: these are decorative 40px traces,
+// and spinning up N charts on a page that already hosts the net-worth one is a lot of canvas
+// for very little. Needs 2+ points to be a line at all.
+function acctSparklineHtml(a){
+  const hist=(a&&a.history||[]).filter(e=>e&&e.date)
+    .slice().sort((x,y)=>x.date<y.date?-1:1);
+  if(hist.length<2) return '';
+  const vals=hist.map(e=>parseFloat(e.balance)||0);
+  const min=Math.min.apply(null,vals), max=Math.max.apply(null,vals);
+  const range=(max-min)||1;   // a flat history would divide by zero
+  const W=100, H=28;
+  const pts=vals.map((v,i)=>{
+    const x=(i/(vals.length-1))*W;
+    const y=H-((v-min)/range)*H;
+    return x.toFixed(1)+','+y.toFixed(1);
+  }).join(' ');
+  // Debt trending up is bad, an asset trending up is good — colour by what the line means,
+  // not just by direction.
+  const rising=vals[vals.length-1]>=vals[0];
+  const good=(a.type==='debt')?!rising:rising;
+  const col=good?'var(--success)':'var(--danger)';
+  return '<svg class="acct-spark" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">'+
+    '<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="2" '+
+    'stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>';
+}
+// Movement over the trailing 30 days. accountBalanceAt carries the last known balance
+// forward, and falls back to the earliest entry when the account is younger than 30 days —
+// so a new account reads as change-since-opening rather than a misleading zero.
+function acctChangeHtml(a){
+  const hist=(a&&a.history||[]).filter(e=>e&&e.date);
+  if(hist.length<2) return '';
+  const d=localMidnight(getLocalDate()); d.setDate(d.getDate()-30);
+  const then=accountBalanceAt(a,dateStr(d));
+  const now=parseFloat(a.current)||0;
+  const delta=Math.round((now-then)*100)/100;
+  if(!delta) return '<div class="acct-change acct-change-flat">No change · 30d</div>';
+  const good=(a.type==='debt')?delta<0:delta>0;
+  return '<div class="acct-change" style="color:'+(good?'var(--success)':'var(--danger)')+'">'+
+    (delta>0?'▲':'▼')+' '+fmtMoney(Math.abs(delta))+' · 30d</div>';
+}
 function renderAccountsPage(){
   // Net-worth header
   const nwEl=document.getElementById('accounts-networth');
@@ -8527,6 +9250,9 @@ function renderAccountsPage(){
               '<label class="toggle-switch"><input type="checkbox"'+(a.tracksStatement?' checked':'')+' onchange="accountToggleStatement(\''+a.id+'\',this.checked)"><span class="toggle-slider"></span></label>'+
             '</div>'+
             (a.tracksStatement?
+              // Wrapped so the three controls can sit inline on a wide screen (see
+              // .acct-stmt-row); on mobile they stay stacked exactly as before.
+              '<div class="acct-stmt-row">'+
               '<div class="bud-row" style="border-bottom:none">'+
                 '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500">Statement balance</div></div>'+
                 '<input class="bud-row-input" type="number" inputmode="decimal" placeholder="$0" value="'+(a.statementBalance?a.statementBalance:'')+'" onchange="accountSetStatementField(\''+a.id+'\',\'statementBalance\',this.value)">'+
@@ -8535,7 +9261,8 @@ function renderAccountsPage(){
                 '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500">Due date</div>'+(dueTxt?'<div class="bud-row-budget"'+(dueTxt.indexOf('Overdue')===0?' style="color:var(--danger)"':'')+'>'+dueTxt+'</div>':'')+'</div>'+
                 '<input class="bud-row-input" type="date" value="'+(a.dueDate?String(a.dueDate).slice(0,10):'')+'" onchange="accountSetStatementField(\''+a.id+'\',\'dueDate\',this.value)" style="width:150px">'+
               '</div>'+
-              '<button class="sav-update-btn" style="width:100%;margin-top:8px" onclick="accountMarkPaid(\''+a.id+'\')">Mark statement as paid</button>'
+              '<button class="sav-update-btn" style="width:100%;margin-top:8px" onclick="accountMarkPaid(\''+a.id+'\')">Mark statement as paid</button>'+
+              '</div>'
             :'');
         }
         return '<div class="card">'+
@@ -8546,7 +9273,8 @@ function renderAccountsPage(){
           '</div>'+
           '<div class="bud-row" style="border-bottom:none">'+
             '<div class="bud-row-left"><div class="bud-row-name">Current balance</div>'+
-              '<div class="bud-row-budget">'+(a.history&&a.history.length?a.history.length+' update'+(a.history.length===1?'':'s')+' logged':'No history yet')+'</div></div>'+
+              '<div class="bud-row-budget">'+(a.history&&a.history.length?a.history.length+' update'+(a.history.length===1?'':'s')+' logged':'No history yet')+'</div>'+
+              acctChangeHtml(a)+'</div>'+
             '<div style="display:flex;align-items:center;gap:6px">'+
               '<input class="bud-row-input" id="acct-bal-'+a.id+'" type="number" inputmode="decimal" placeholder="$0" value="'+(a.current||a.current===0?a.current:'')+'" style="color:'+curCol+'">'+
               '<button class="sav-update-btn" onclick="accountUpdateBalanceFromInput(\''+a.id+'\')">Update</button>'+
@@ -8554,7 +9282,7 @@ function renderAccountsPage(){
           '</div>'+
           // Clarify that a debt balance is a standalone running total, not weekly spending —
           // the note that used to live in the retired Budget-tab CC editor.
-          (isDebt?'<div style="font-size:12px;color:var(--muted);line-height:1.45;padding:2px 2px 4px">This is the total currently owed — a separate running debt, not counted in your weekly leftover. Enter card purchases in your Variable spending categories as usual, same as cash.</div>':'')+
+          (isDebt?'<div class="acct-note" style="font-size:12px;color:var(--muted);line-height:1.45;padding:2px 2px 4px">This is the total currently owed — a separate running debt, not counted in your weekly leftover. Enter card purchases in your Variable spending categories as usual, same as cash.</div>':'')+
           stmt+
         '</div>';
       }).join('');
@@ -8589,6 +9317,9 @@ function renderAccountsPage(){
       setTimeout(()=>{ document.getElementById('acct-new-name')?.focus(); },50);
     }
   }
+  // Net-worth trend — the same chart Stats → Finance renders, shown here where the balances
+  // that feed it are actually edited.
+  renderNetWorthChartInto('accounts-chart');
 }
 // Add-form controllers
 function accountsAddOpen(){ _acctAddOpen=true; _acctAddType='asset'; _acctAddTracks=false; renderAccountsPage(); }
@@ -9025,7 +9756,7 @@ function checkReminders(){
     if(nowMins>=wH*60+wM && wAck!==today){
       if(Notification.permission==='granted'){
         const nxt=type(suggestDay());
-        new Notification('Time to train 💪',{body:nxt.name+' is up — let\'s go.',icon:'/workout-tracker/icon-192.png'});
+        new Notification('Time to train 💪',{body:nxt.name+' is up — let\'s go.',icon:'icon-192.png'});
         localStorage.setItem('daily_reminder_workout_date',today);
       } else if(Notification.permission!=='denied'){
         Notification.requestPermission().then(p=>{ if(p==='granted') checkReminders(); });
@@ -9041,7 +9772,7 @@ function checkReminders(){
     const bAck=localStorage.getItem('daily_reminder_budget_date');
     if(todayDay===(br.day??0) && nowMins>=bH*60+bM && bAck!==today){
       if(Notification.permission==='granted'){
-        new Notification('Save your week 💰',{body:"Don't forget to log this week's budget before it resets.",icon:'/workout-tracker/icon-192.png'});
+        new Notification('Save your week 💰',{body:"Don't forget to log this week's budget before it resets.",icon:'icon-192.png'});
         localStorage.setItem('daily_reminder_budget_date',today);
       } else if(Notification.permission!=='denied'){
         Notification.requestPermission().then(p=>{ if(p==='granted') checkReminders(); });
@@ -10106,6 +10837,9 @@ try {
   migrateLegsGroupOnce(); // one-time: 'legs' → quads/hamstrings/calves/glutes/lower back
   recoverBudgetData(); // one-time: normalise legacy budget weeks, strip shadowing snapshots
   migrateCatBudgetsOnce(); // one-time: lift budgetConfig weekly amounts onto the categories
+  migrateSubscriptionsToFixedOnce(); // one-time: fold subscriptions into fixed categories
+  migrateDropSubsAggregateOnce(); // one-time: drop the leftover aggregate 'subs' category
+  migrateRetiredAccentOnce(); // one-time: retired orange default → neutral grey
   // Weight-log consolidation: fold any legacy daily_weight_log entries into wt_weight.
   // The local key is only removed by the signed-in path (after the merged copy is safely
   // in the cloud), so a signed-out merge can never lose data to the next cloud pull.
@@ -10180,7 +10914,11 @@ if('serviceWorker' in navigator){
       location.reload();
     });
   }
-  navigator.serviceWorker.register('/workout-tracker/service-worker.js');
+  // Relative, not hardcoded to a repo name — an absolute /workout-tracker/ path here
+  // broke outright when the repo was renamed to daily-app (404, registration failed
+  // silently), which also broke "Add to Home Screen" via manifest.json's start_url
+  // pointing at the same dead path.
+  navigator.serviceWorker.register('service-worker.js');
 }
 
 // ── Keep #app-main bottom padding in sync with the real bottom-nav height ──
