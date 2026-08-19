@@ -437,19 +437,7 @@
 
   /* Kitchen: two-column (list 40% / persistent detail 60%) */
   #kit-recipes .kit-cols{display:flex;gap:20px;align-items:flex-start}
-  /* Widened from 40% to make room for two cards across without cramping them: at 40% of a
-     1440px viewport the column was 440px, so a two-up grid gave ~213px cards — too narrow for
-     a title like "Reverse Sear Rump Steak with Pan Sauce and Noodles". The detail pane still
-     gets ~480px, which is ample for a recipe. */
-  #kit-recipes .kit-list-col{width:56%;flex-shrink:0}
-  /* Two across, so the library is scannable instead of one long single-file column. */
-  /* Default stretch (not align-items:start): cards in a row share a height, so a recipe with
-     no description doesn't leave a step beside one that has two lines. */
-  #kit-recipes #kit-list{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  #kit-recipes #kit-list .kit-card{margin-bottom:0}
-  /* Room for two lines here, unlike the phone's one — the cards are side by side, so a little
-     more height costs no scrolling. */
-  #kit-recipes .kit-card-desc{-webkit-line-clamp:2}
+  #kit-recipes .kit-list-col{width:40%;flex-shrink:0}
   #kit-recipes .kit-detail-col{flex:1;display:block;position:sticky;top:0;align-self:flex-start;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;min-height:60vh}
   #kit-detail-overlay{display:none!important}
 }
