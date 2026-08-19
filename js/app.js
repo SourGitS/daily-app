@@ -958,7 +958,7 @@ const RETIRED_ACCENT = '#ff6b35';   // the old default; migrated away from once 
 const ACCENT_PRESETS = [
   {id:'gray',  name:'Grey',  hex:'#5C5C5C'},   // pure neutral (92,92,92); the old #6B7280 had a blue cast
   {id:'red',   name:'Red',   hex:'#C0304A'},
-  {id:'green', name:'Green', hex:'#2F9E44'},
+  {id:'green', name:'Green', hex:'#268000'},   // 5.04:1 on white; 2.04 against --success, so it can't be mistaken for a "done" state
   {id:'blue',  name:'Blue',  hex:'#0072EA'},   // 4.57:1 on white — the old #3B82F6 was 3.68:1
 ];
 // One-time move off the retired orange — only for anyone still sitting on it untouched, so a
@@ -8619,6 +8619,7 @@ function renderHome(){
     setTimeout(() => card.classList.remove('home-card-enter'), 600 + i * 45);
   });
   if(homeEditMode) applyHomeEditMode();
+  applyHomeCardCaps();
 
   applyDayColour();
   // Only touch geolocation/network if the widget is actually visible — a hidden card has no
@@ -8837,6 +8838,40 @@ function homeWidgetToggle(id,on){
   if(!on) l.hidden.push(id);
   saveHomeLayout(l);
   if(typeof renderHome==='function') renderHome();
+}
+// ── Height cap for cards that grow with your data ──────────────────
+// Rows share a height on the desktop grid (align-items:stretch), so one tall card drags its
+// partner up with it: 25 notes made the Notes card 837px and stretched the card beside it to
+// 837px of mostly empty space. Only the cards whose height depends on how much data you have
+// are capped — static cards can't blow out a row, so they get no chrome.
+// Desktop only: the phone is a single stack, where a tall card costs nothing.
+const HOME_CAPPABLE=['notes','habits','recent'];
+const HOME_CARD_CAP=280;   // ≈ the tallest naturally-occurring card, so today's layout is unchanged
+const _homeExpanded=new Set();   // survives re-render; renderHome rebuilds innerHTML and would lose a class
+function applyHomeCardCaps(){
+  document.querySelectorAll('#home-content .home-card').forEach(w=>{
+    const old=w.querySelector(':scope > .home-card-more'); if(old) old.remove();
+    w.classList.remove('home-card-capped','home-card-hasmore');
+    const id=w.dataset.cardId;
+    if(window.innerWidth<1024 || HOME_CAPPABLE.indexOf(id)<0) return;
+    const inner=w.firstElementChild; if(!inner) return;
+    const expanded=_homeExpanded.has(id);
+    // Measure uncapped, so a card that only just fits keeps no button at all.
+    if(!expanded && inner.scrollHeight<=HOME_CARD_CAP) return;
+    w.classList.add('home-card-hasmore');
+    if(!expanded) w.classList.add('home-card-capped');
+    const btn=document.createElement('button');
+    btn.type='button';
+    btn.className='home-card-more';
+    btn.textContent=expanded?'Show less':'Show all';
+    // The card itself is a link through to its tab; the toggle must not trigger that.
+    btn.addEventListener('click',e=>{ e.stopPropagation(); toggleHomeCardExpand(id); });
+    w.appendChild(btn);
+  });
+}
+function toggleHomeCardExpand(id){
+  if(_homeExpanded.has(id)) _homeExpanded.delete(id); else _homeExpanded.add(id);
+  applyHomeCardCaps();
 }
 let homeEditMode=false;
 function toggleHomeEdit(){

@@ -328,6 +328,19 @@
   #view-home .home-grid-cols > .home-card > *{flex:1 1 auto;margin-bottom:0 !important}
   /* Per-card preference now (Settings → Home Layout), not a hardcoded set of card ids. */
   #view-home .home-card-wide{grid-column:1 / -1}
+  /* Cards that grow with your data are capped so one long card can't stretch its row partner
+     into a tall empty box (see applyHomeCardCaps). The button is only added when the content
+     actually overflows, so a card that fits shows no chrome at all. */
+  #view-home .home-card-hasmore{position:relative}
+  #view-home .home-card-capped > *:first-child{max-height:280px;overflow:hidden}
+  /* Reserve room so the last line of content never sits under the toggle. */
+  #view-home .home-card-hasmore > *:first-child{padding-bottom:46px}
+  .home-card-more{position:absolute;left:14px;right:14px;bottom:12px;z-index:2;height:30px;
+    border-radius:10px;border:1px solid var(--card-border);background:var(--card);
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+    color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;
+    -webkit-tap-highlight-color:transparent}
+  .home-card-more:hover{border-color:var(--accent)}
   /* Weather as a wide banner — only when the user has it set to full width. At half width it
      keeps the phone-sized treatment, which already fits a one-column box. */
   #view-home .home-card-wide[data-card-id="weather"] .home-weather-card{padding:20px 24px}
