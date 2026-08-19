@@ -17,16 +17,33 @@
 /* Kitchen content cards don't inherit the .card rule — give them the same frosted glass */
 [data-theme="dark"] .kit-card,[data-theme="dark"] .kit-scaler,[data-theme="dark"] .kit-macro,[data-theme="dark"] .kit-ing-list,[data-theme="dark"] .kitshop-sel-card{background:linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.09));border:0.5px solid var(--card-border);box-shadow:inset 0 1px 0 rgba(255,255,255,.20),0 6px 22px rgba(0,0,0,.3);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
 [data-theme="dark"] .kit-card.kit-card-active{box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 0 0 1.5px var(--accent)}
-.kit-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
-.kit-card-name{font-size:15px;font-weight:700;color:var(--text);line-height:1.3}
+/* Three children now: tile | name | actions. The name takes the slack (min-width:0 so a long
+   title wraps instead of shoving the actions off the edge), and centring keeps the 38px tile
+   visually locked to the title rather than towering over a single-line one. */
+.kit-card-top{display:flex;align-items:center;gap:10px}
+.kit-card-name{flex:1;min-width:0;font-size:15px;font-weight:700;color:var(--text);line-height:1.3}
 .kit-fav{background:none;border:none;font-size:18px;cursor:pointer;padding:0;line-height:1;flex-shrink:0;-webkit-tap-highlight-color:transparent;filter:grayscale(1);opacity:0.6}
 .kit-fav.on{filter:none;opacity:1}
 .kit-card-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px}
-.kit-cat-tag{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;padding:2px 8px;border-radius:999px;color:#fff}
-.kit-cat-breakfast{background:#f59e0b}
-.kit-cat-lunch{background:#3b82f6}
-.kit-cat-dinner{background:#8b5cf6}
-.kit-cat-dessert{background:#ec4899}
+/* One colour per category, declared once on the card and used by BOTH the emoji tile and the
+   pill. Previously the pill had its own palette and the card had a separate border-left strip
+   on a third: breakfast was amber on the pill but green on the strip, dessert pink vs violet,
+   and dinner's strip followed var(--accent) — so changing the accent to green turned every
+   dinner card green while its pill stayed violet. Same fact, three colour languages.
+   The -soft variant is spelled out rather than derived with color-mix() so it works on older
+   iOS, which this is installed on as a PWA. */
+.kit-card{--kit-cat:#8b5cf6;--kit-cat-soft:rgba(139,92,246,.16)}
+.kit-card.kit-c-breakfast{--kit-cat:#f59e0b;--kit-cat-soft:rgba(245,158,11,.16)}
+.kit-card.kit-c-lunch    {--kit-cat:#3b82f6;--kit-cat-soft:rgba(59,130,246,.16)}
+.kit-card.kit-c-dinner   {--kit-cat:#8b5cf6;--kit-cat-soft:rgba(139,92,246,.16)}
+.kit-card.kit-c-dessert  {--kit-cat:#ec4899;--kit-cat-soft:rgba(236,72,153,.16)}
+.kit-cat-tag{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;padding:2px 8px;border-radius:999px;color:#fff;background:var(--kit-cat)}
+/* The emoji gets a tinted rounded-square tile instead of the card wearing a coloured edge:
+   it carries the category colour on something that is already meaningful, and gives every
+   card a consistent left anchor whether or not a recipe has an emoji set. */
+.kit-cat-tile{width:38px;height:38px;flex-shrink:0;border-radius:11px;display:flex;
+  align-items:center;justify-content:center;font-size:19px;line-height:1;
+  background:var(--kit-cat-soft);border:1px solid var(--kit-cat)}
 .kit-cal-badge{font-size:11px;font-weight:600;color:var(--success);background:rgba(82,183,136,0.15);padding:2px 8px;border-radius:999px}
 .kit-batch-badge{font-size:11px;font-weight:600;color:var(--accent);background:rgba(var(--accent-rgb),0.14);padding:2px 8px;border-radius:999px}
 .kit-card-desc{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.45}
@@ -531,7 +548,7 @@
 .kit-menu-dropdown button:hover{background:rgba(255,255,255,.06)}
 .kit-menu-dropdown button.danger{color:var(--danger)}
 .kit-cooked-ago{font-size:11px;color:var(--muted);margin-top:4px}
-.kit-card-emoji{margin-right:4px}
+/* .kit-card-emoji removed — the emoji moved out of the title into .kit-cat-tile. */
 .kit-step-body{flex:1;display:flex;flex-direction:column;gap:4px}
 .kit-step-timer-badge{display:inline-block;font-size:11px;font-weight:600;color:var(--accent);background:rgba(var(--accent-rgb),.12);border-radius:999px;padding:2px 8px;width:fit-content}
 
@@ -591,10 +608,9 @@
 
 /* Kitchen: glass cards (dark only) + category accent border */
 /* (removed the old flat .kit-card glass override — the frosted-glass rule earlier governs) */
-.kit-card.kit-c-dinner{border-left:3px solid var(--accent)}
-.kit-card.kit-c-breakfast{border-left:3px solid #52B788}
-.kit-card.kit-c-lunch{border-left:3px solid #3B82F6}
-.kit-card.kit-c-dessert{border-left:3px solid #8B5CF6}
+/* The category border-left strips were removed — the tinted emoji tile carries the category
+   colour now (see .kit-cat-tile). Keeping both meant two markers for one fact, and the strip
+   disagreed with the pill on three of the four categories. */
 .kit-cal-badge{font-family:var(--font-num);font-size:13px;font-weight:700;color:var(--accent);background:rgba(var(--accent-rgb),.12);padding:2px 9px;border-radius:999px}
 
 /* ── Exercise Library ── */

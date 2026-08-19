@@ -10406,7 +10406,8 @@ function kitRenderList(){
       }
       return '<div class="kit-card kit-c-'+(r.category||'dinner')+sel+'" onclick="kitOpenDetail(\''+r.id+'\')">'+
         '<div class="kit-card-top">'+
-          '<div class="kit-card-name">'+(r.emoji?'<span class="kit-card-emoji">'+r.emoji+'</span>':'')+kitEsc(r.name)+'</div>'+
+          '<div class="kit-cat-tile" aria-hidden="true">'+kitCardEmoji(r)+'</div>'+
+          '<div class="kit-card-name">'+kitEsc(r.name)+'</div>'+
           '<div class="kit-card-actions" onclick="event.stopPropagation()">'+
             '<button class="kit-fav'+(r.favourite?' on':'')+'" onclick="kitToggleFav(\''+r.id+'\')" aria-label="Favourite">'+(r.favourite?'⭐':'☆')+'</button>'+
             '<button class="kit-menu-btn" onclick="kitToggleMenu(\''+r.id+'\',event)">⋯</button>'+
@@ -10567,6 +10568,14 @@ const KIT_STANDARD_TAGS=[
   {val:'bulk-cook',label:'Bulk Cook'},
 ];
 const KIT_UNITS=['g','ml','cup','tbsp','tsp','piece','oz','lb'];
+// The tile always shows something, so cards line up whether or not a recipe carries an emoji
+// — several seeded ones (Butter Garlic Prawns) have none and previously rendered no glyph at
+// all, leaving their titles hanging where every other card had one.
+const KIT_CAT_EMOJI={breakfast:'🍳',lunch:'🥪',dinner:'🍽️',dessert:'🍰'};
+function kitCardEmoji(r){
+  const e=(r&&r.emoji||'').trim();
+  return e || KIT_CAT_EMOJI[(r&&r.category)||'dinner'] || '🍽️';
+}
 // ── Import recipes from Claude ─────────────────────────────────────
 // Daily is a static site with no backend, and the Firebase rules only accept writes from the
 // signed-in user's own uid, so nothing can push data in from outside. The transfer is

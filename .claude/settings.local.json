@@ -30,7 +30,9 @@
       "Bash(git remote *)",
       "Bash(awk 'NR>=86 && NR<=110' index.html)",
       "Bash(awk 'NR>=86 && NR<=420' index.html)",
-      "Bash(mkdir -p \"$HOME/.claude/skills/daily-recipe-export\" && echo created)"
+      "Bash(mkdir -p \"$HOME/.claude/skills/daily-recipe-export\" && echo created)",
+      "Read(//c/Users/FrancoisPeters/.claude/plugins/**)",
+      "Read(//c/Users/FrancoisPeters/AppData/Roaming/Claude/**)"
     ]
   }
 }
