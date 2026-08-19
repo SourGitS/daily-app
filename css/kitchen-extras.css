@@ -247,6 +247,9 @@
 .weather-icon{font-size:24px;line-height:1}
 .weather-temp{font-family:var(--font-num);font-size:26px;font-weight:800;color:#fff}
 .weather-condition{font-size:11px;font-weight:600;color:rgba(255,255,255,.75);margin-top:2px;cursor:pointer}
+/* On the sample reading this line is a call to action, not a label — underlined and full
+   white so it reads as the tappable thing rather than a caption. */
+.weather-condition.weather-cta{color:#fff;text-decoration:underline;text-underline-offset:3px}
 /* High/low + feels-like. Tabular figures so the numbers don't jitter between refreshes. */
 .weather-meta{font-family:var(--font-num);font-size:11px;font-weight:700;color:rgba(255,255,255,.9);margin-top:4px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .weather-meta:empty{display:none}

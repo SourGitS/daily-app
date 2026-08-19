@@ -8079,6 +8079,9 @@ function weatherCityFromTz(tz){
 function loadWeatherCache(){ return lsLoad('daily_weather_cache', null); }
 function saveWeatherCache(c){ lsSave('daily_weather_cache', c, 'weatherCache'); }
 const WEATHER_STALE_MS=30*60*1000; // refetch after 30 min
+// Shown before the user grants location, so the card reads as finished rather than an empty
+// grey box. It's a real live reading for this city, clearly labelled "sample", not fake data.
+const WEATHER_SAMPLE_LOC={lat:-33.8688, lon:151.2093, city:'Sydney'};
 let _weatherLoading=false;
 function renderWeatherInto(entry){
   const tempEl=document.getElementById('home-weather-temp');
@@ -8086,9 +8089,13 @@ function renderWeatherInto(entry){
   tempEl.textContent=Math.round(entry.tempC)+'°';
   const look=weatherLook(entry);
   document.getElementById('home-weather-icon').textContent=look[0];
-  document.getElementById('home-weather-label').textContent=look[1];
+  // On the sample reading the tappable label states what tapping does, rather than the
+  // condition — the icon already carries that, and an unexplained city is the confusing part.
+  const labelEl=document.getElementById('home-weather-label');
+  labelEl.textContent=entry.placeholder?'Tap for your weather':look[1];
+  labelEl.classList.toggle('weather-cta',!!entry.placeholder);
   const cityEl=document.getElementById('home-weather-city');
-  if(cityEl) cityEl.textContent=entry.city||'';
+  if(cityEl) cityEl.textContent=entry.placeholder?(entry.city||'Sydney')+' · sample':(entry.city||'');
   // Feels-like is only worth showing when it actually differs from the real temperature —
   // repeating the same number twice reads as a bug, not a detail.
   const metaEl=document.getElementById('home-weather-meta');
@@ -8126,40 +8133,79 @@ function setWeatherPlaceholderScene(){
   const card=document.querySelector('.home-weather-card');
   if(card) card.dataset.scene=weatherPlaceholderScene();
 }
+// One place that turns coordinates into a reading, so the sample city, the saved-coordinate
+// refresh and the real geolocation path all build an identical entry.
+function fetchWeatherAt(lat,lon){
+  return fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+
+        '&current=temperature_2m,apparent_temperature,weather_code,is_day,cloud_cover'+
+        '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=1&timezone=auto')
+    .then(r=>r.json())
+    .then(data=>{
+      const c=data&&data.current;
+      if(!c||c.temperature_2m==null) throw new Error('no current-weather block');
+      const d=(data&&data.daily)||{};
+      const first=a=>Array.isArray(a)&&a.length?a[0]:null;
+      return {lat,lon,tempC:c.temperature_2m,feelsC:c.apparent_temperature,
+        code:c.weather_code,isDay:c.is_day,cloud:c.cloud_cover,
+        tmax:first(d.temperature_2m_max),tmin:first(d.temperature_2m_min),
+        sunrise:first(d.sunrise),sunset:first(d.sunset),
+        city:weatherCityFromTz(data&&data.timezone),
+        fetchedAt:Date.now()};
+    });
+}
 function loadWeatherWidget(userInitiated){
   const cache=loadWeatherCache();
   if(cache) renderWeatherInto(cache);
+  if(_weatherLoading) return;
   const fresh=cache && (Date.now()-cache.fetchedAt<WEATHER_STALE_MS);
-  if(fresh||_weatherLoading) return;
-  if(!cache && !userInitiated){ renderWeatherPrompt(); return; }
+  const haveRealLocation=cache && !cache.placeholder && cache.lat!=null;
+
+  // Tapping the card while it's showing the sample means "use my location" — the only path
+  // that touches geolocation, so the OS dialog only ever appears in response to a tap.
+  if(userInitiated && !haveRealLocation){ requestRealLocationWeather(); return; }
+  if(fresh) return;
+
+  // We already know where they are, so refresh straight from the stored coordinates. This is
+  // what stops iOS asking on every launch: getCurrentPosition() is never called on a routine
+  // refresh, and a browser can only prompt when we actually ask it where we are.
+  if(haveRealLocation){
+    _weatherLoading=true;
+    fetchWeatherAt(cache.lat,cache.lon)
+      .then(e=>{ saveWeatherCache(e); renderWeatherInto(e); })
+      .catch(()=>{})   // keep the last good reading rather than blanking the card
+      .finally(()=>{ _weatherLoading=false; });
+    return;
+  }
+
+  // No location yet: show a real reading for the sample city so the card looks finished
+  // instead of empty, with the label inviting them to switch to their own.
+  _weatherLoading=true;
+  fetchWeatherAt(WEATHER_SAMPLE_LOC.lat,WEATHER_SAMPLE_LOC.lon)
+    .then(e=>{ e.city=WEATHER_SAMPLE_LOC.city; e.placeholder=true; saveWeatherCache(e); renderWeatherInto(e); })
+    .catch(()=>renderWeatherError(false))
+    .finally(()=>{ _weatherLoading=false; });
+}
+function requestRealLocationWeather(){
   if(!navigator.geolocation){ renderWeatherError(false); return; }
   _weatherLoading=true;
   navigator.geolocation.getCurrentPosition(
     pos=>{
       const {latitude:lat,longitude:lon}=pos.coords;
-      fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+
-            '&current=temperature_2m,apparent_temperature,weather_code,is_day,cloud_cover'+
-            '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=1&timezone=auto')
-        .then(r=>r.json())
-        .then(data=>{
-          const c=data&&data.current;
-          if(!c||c.temperature_2m==null) throw new Error('no current-weather block');
-          const d=(data&&data.daily)||{};
-          const first=a=>Array.isArray(a)&&a.length?a[0]:null;
-          const entry={lat,lon,tempC:c.temperature_2m,feelsC:c.apparent_temperature,
-            code:c.weather_code,isDay:c.is_day,cloud:c.cloud_cover,
-            tmax:first(d.temperature_2m_max),tmin:first(d.temperature_2m_min),
-            sunrise:first(d.sunrise),sunset:first(d.sunset),
-            city:weatherCityFromTz(data&&data.timezone),
-            fetchedAt:Date.now()};
-          saveWeatherCache(entry);
-          renderWeatherInto(entry);
-        })
+      fetchWeatherAt(lat,lon)
+        .then(e=>{ saveWeatherCache(e); renderWeatherInto(e); })
         .catch(()=>renderWeatherError(false))
         .finally(()=>{ _weatherLoading=false; });
     },
-    err=>{ _weatherLoading=false; renderWeatherError(err&&err.code===1); },
-    {maximumAge:15*60*1000, timeout:10000}
+    err=>{
+      _weatherLoading=false;
+      // Denied or unavailable: fall back to the sample card rather than an empty one, so
+      // declining location still leaves something readable (and still re-offerable).
+      const c=loadWeatherCache();
+      if(c) renderWeatherInto(c); else renderWeatherError(err&&err.code===1);
+    },
+    // A long maximumAge lets the browser answer from a position it already has instead of
+    // starting a fresh GPS fix, which is both quicker and less likely to re-prompt.
+    {maximumAge:6*60*60*1000, timeout:10000}
   );
 }
 // Fixed set of decorative layers for every possible scene, shown/hidden per
