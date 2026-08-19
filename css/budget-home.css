@@ -310,10 +310,22 @@
      saveHomeOrder). Two earlier attempts optimised for packing instead and both broke
      ordering: CSS multi-column left a ragged bottom edge, and .home-col flex columns dealt
      cards alternately into two columns so visual order no longer matched the DOM at all.
-     align-items:start keeps each card at its natural height; a short card beside a tall one
-     therefore leaves a gap rather than stretching, which is the accepted cost of ordering. */
-  #view-home .home-grid-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 14px;align-items:start}
-  #view-home .home-grid-cols > .home-card{min-width:0}
+     align-items:stretch so both cards in a row share the taller one's height. With :start they
+     kept their natural heights and a short card beside a tall one left a visible step — up to
+     161px between the calorie and weekly-review cards — which read as broken rather than
+     deliberate. Stretching moves that leftover space inside the shorter card, where it looks
+     intentional. Row spacing moved from each card's own margin-bottom to the grid's row-gap:
+     with the wrapper now a flex column, a child margin would be measured inside the stretched
+     box and desynchronise the rows it is supposed to separate. */
+  #view-home .home-grid-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;align-items:stretch}
+  #view-home .home-grid-cols > .home-card{min-width:0;display:flex;flex-direction:column}
+  /* The wrapper is what the grid stretches; without this the inner .card keeps its natural
+     height and the gap simply reappears inside the wrapper.
+     !important because several cards carry margin-bottom as an INLINE style written by
+     renderHome (the quick-tiles .home-grid, the hero and net-worth cards), and an inline
+     style outranks any selector. Mobile still needs that margin for row spacing, so it is
+     overridden only here, inside the desktop grid, where row-gap does the same job. */
+  #view-home .home-grid-cols > .home-card > *{flex:1 1 auto;margin-bottom:0 !important}
   /* Per-card preference now (Settings → Home Layout), not a hardcoded set of card ids. */
   #view-home .home-card-wide{grid-column:1 / -1}
   /* Weather as a wide banner — only when the user has it set to full width. At half width it
