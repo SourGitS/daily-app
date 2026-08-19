@@ -27,7 +27,9 @@
       "Bash(sed -n '/^function lsSaveTS/,/^}/p' js/app.js)",
       "Bash(sed -n '/^function syncBlobListen/,/^}/p' js/app.js)",
       "Bash(node \"C:/Users/fanma/AppData/Local/Temp/claude/C--Users-fanma-OneDrive-Desktop-Projects-Daily-App/8a3a5440-ae7a-4226-a0d1-901b106429d9/scratchpad/skies.js\")",
-      "Bash(git remote *)"
+      "Bash(git remote *)",
+      "Bash(awk 'NR>=86 && NR<=110' index.html)",
+      "Bash(awk 'NR>=86 && NR<=420' index.html)"
     ]
   }
 }

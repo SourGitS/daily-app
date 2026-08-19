@@ -306,6 +306,35 @@
 .dc-swatch.active{outline:2.5px solid var(--text);outline-offset:2px}
 /* Brand accent presets (Settings → Appearance, static mode). Named buttons rather than bare
    swatches so the four read as a deliberate set, with the free picker below them. */
+/* ── Accent favourites: stacked rows with swipe-to-delete ──
+   Was a wrap of 24px .dc-swatch circles each with a 16px × badge pinned to its corner — far
+   under the 44px touch minimum, with the destructive control overlapping the tap target.
+   Each row is now a full-width 56px tap area; the red delete panel sits behind it and is
+   reached by swiping the face aside (see the pointer handlers in app.js). */
+.fav-list{display:flex;flex-direction:column;gap:8px}
+.fav-row{position:relative;overflow:hidden;border-radius:12px;border:1px solid var(--border)}
+/* Behind the face, so it's only reachable once the row is swiped open. */
+.fav-del{position:absolute;top:0;right:0;bottom:0;width:76px;display:flex;align-items:center;justify-content:center;
+  border:none;background:var(--danger);color:#fff;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.fav-face{position:relative;z-index:1;display:flex;align-items:center;gap:12px;width:100%;min-height:56px;
+  padding:0 14px;background:var(--card);border:none;color:var(--text);text-align:left;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  /* pan-y keeps vertical scrolling with the browser and leaves the horizontal axis to us */
+  touch-action:pan-y;transform:translateX(0);transition:transform .22s cubic-bezier(.2,.7,.3,1)}
+.fav-row.open .fav-face{transform:translateX(-76px)}
+/* Desktop has no swipe to discover, so hovering nudges the face aside far enough to show a
+   sliver of the red panel behind. Deliberately small: enough to say "something lives here",
+   not enough to put the delete button under a click aimed at the row. */
+@media (hover:hover) and (pointer:fine){
+  .fav-row:not(.open):not(.fav-dragging) .fav-face:hover{transform:translateX(-14px)}
+}
+/* While a finger/mouse is down the transform is written every move — transitioning it would
+   lag the drag behind the pointer. */
+.fav-row.fav-dragging .fav-face{transition:none}
+.fav-dot{width:28px;height:28px;border-radius:50%;flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
+.fav-hex{font-family:var(--font-num);font-size:14px;font-weight:700;letter-spacing:.02em}
+.fav-inuse{margin-left:auto;font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.4px}
+
 .accent-preset-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:4px 0 2px}
 .accent-preset{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 4px;border-radius:12px;
   border:1.5px solid var(--border);background:transparent;cursor:pointer;-webkit-tap-highlight-color:transparent;

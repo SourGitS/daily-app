@@ -1066,10 +1066,15 @@ function renderDayColorPickers(){
           '<button onclick="saveCurrentAccentAsFavourite()" style="font-size:12px;font-weight:700;color:var(--accent);background:none;border:none;cursor:pointer;padding:0">+ Save current colour</button>'+
         '</div>'+
         (favs.length
-          ? '<div class="dc-swatches">'+favs.map(hex=>
-              '<button class="dc-swatch" style="background:'+hex+';position:relative" onclick="setStaticAccent(\''+hex+'\');renderDayColorPickers()" aria-label="'+hex+'">'+
-                '<span onclick="event.stopPropagation();removeAccentFavourite(\''+hex+'\')" style="position:absolute;top:-4px;right:-4px;width:16px;height:16px;border-radius:50%;background:var(--danger);color:#fff;font-size:10px;line-height:16px;text-align:center">×</span>'+
-              '</button>').join('')+'</div>'
+          ? '<div class="fav-list">'+favs.filter(h=>/^#[0-9a-fA-F]{6}$/.test(h)).map(hex=>
+              '<div class="fav-row">'+
+                '<button class="fav-del" onclick="removeAccentFavourite(\''+hex+'\')" aria-label="Delete favourite '+hex+'">'+FAV_TRASH_SVG+'</button>'+
+                '<div class="fav-face" role="button" tabindex="0" onclick="favRowActivate(this,\''+hex+'\')" aria-label="Use '+hex+' as accent">'+
+                  '<span class="fav-dot" style="background:'+hex+'"></span>'+
+                  '<span class="fav-hex">'+hex.toUpperCase()+'</span>'+
+                  (hex.toLowerCase()===curLc?'<span class="fav-inuse">In use</span>':'')+
+                '</div>'+
+              '</div>').join('')+'</div>'
           : '<p style="font-size:12px;color:var(--muted)">No favourites saved yet.</p>')+
       '</div>';
     return;
@@ -1114,6 +1119,69 @@ function removeAccentFavourite(hex){
   saveAccentFavourites(loadAccentFavourites().filter(h=>h!==hex));
   renderDayColorPickers();
 }
+// Favourites are a stacked list with iOS-style swipe-to-delete, replacing a row of 24px
+// swatches that each carried a 16px × badge overlapping their top-right corner: the tap target
+// was a quarter of the 44px minimum and the destructive control sat on top of the thing you
+// were aiming at, so selecting a colour frequently deleted it instead. Delete now lives behind
+// the row and takes a deliberate swipe to reach.
+const FAV_TRASH_SVG='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/></svg>';
+const FAV_REVEAL=76;   // px of red delete panel behind each row
+const FAV_SNAP=38;     // drag past this and it stays open
+let _favSuppressClick=false;
+function favCloseOpenRows(except){
+  document.querySelectorAll('.fav-row.open').forEach(r=>{ if(r!==except) r.classList.remove('open'); });
+}
+function favRowActivate(el,hex){
+  // A swipe ends with a click on the same element; ignore that one so dragging never also
+  // selects the colour.
+  if(_favSuppressClick){ _favSuppressClick=false; return; }
+  const row=el.closest('.fav-row');
+  if(row&&row.classList.contains('open')){ row.classList.remove('open'); return; } // tap = close
+  setStaticAccent(hex); renderDayColorPickers();
+}
+// Pointer Events so one path covers touch-swipe and mouse-drag. Settings sits OUTSIDE
+// #swipe-deck, so this can't fight the horizontal tab pager (which locks after 3px).
+(function(){
+  let row=null, face=null, x0=0, y0=0, base=0, axis=null, moved=false;
+  document.addEventListener('pointerdown',function(e){
+    const f=e.target.closest&&e.target.closest('.fav-face');
+    if(!f){ if(!(e.target.closest&&e.target.closest('.fav-row'))) favCloseOpenRows(); return; }
+    row=f.closest('.fav-row'); face=f; x0=e.clientX; y0=e.clientY; axis=null; moved=false;
+    base=row.classList.contains('open')?-FAV_REVEAL:0;
+  });
+  document.addEventListener('pointermove',function(e){
+    if(!row) return;
+    const dx=e.clientX-x0, dy=e.clientY-y0;
+    if(axis===null){
+      // Undecided until the finger commits, so a vertical scroll through the list is never
+      // stolen by the row (touch-action:pan-y on .fav-face backs this up).
+      if(Math.abs(dy)>Math.abs(dx)+3 && Math.abs(dy)>4){ row=null; face=null; return; }
+      if(Math.abs(dx)>Math.abs(dy)+3 && Math.abs(dx)>4) axis='h';
+      else return;
+    }
+    e.preventDefault();
+    moved=true;
+    row.classList.add('fav-dragging');
+    face.style.transform='translateX('+Math.max(-FAV_REVEAL,Math.min(0,base+dx))+'px)';
+  },{passive:false});
+  function end(){
+    if(!row) return;
+    const r=row, f=face;
+    row=null; face=null;
+    r.classList.remove('fav-dragging');
+    if(axis==='h'){
+      const cur=parseFloat((String(f.style.transform).match(/-?[\d.]+/)||[0])[0])||0;
+      const open=cur<-FAV_SNAP;
+      favCloseOpenRows(r);
+      r.classList.toggle('open',open);
+      f.style.transform='';        // hand the offset back to the CSS class
+      if(moved) _favSuppressClick=true;
+    }
+    axis=null; moved=false;
+  }
+  document.addEventListener('pointerup',end);
+  document.addEventListener('pointercancel',end);
+})();
 
 // ── Timer ─────────────────────────────────────────────────────────
 function fmtTimer(ms){
