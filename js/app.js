@@ -10399,6 +10399,7 @@ function kitRenderList(){
       const cal=r.calories!=null?'<span class="kit-cal-badge">'+r.calories+' cal</span>':'';
       const batch=r.batchPrep?'<span class="kit-batch-badge">🍱 Batch</span>':'';
       const cookTime=r.cookTime?'<span class="kit-cal-badge">⏱ '+r.cookTime+'m</span>':'';
+      const serv='<span class="kit-cal-badge">🍽 '+r.servings+'</span>';
       let cookedLabel='';
       if(r.lastCooked){
         const days=Math.floor((Date.now()-r.lastCooked)/86400000);
@@ -10413,9 +10414,10 @@ function kitRenderList(){
             '<button class="kit-menu-btn" onclick="kitToggleMenu(\''+r.id+'\',event)">⋯</button>'+
           '</div>'+
         '</div>'+
-        '<div class="kit-card-meta"><span class="kit-cat-tag kit-cat-'+r.category+'">'+r.category+'</span>'+cal+cookTime+batch+'</div>'+
+        // Servings joins the stats row instead of occupying a line of its own — it is a stat
+        // like calories and time, and the separate line was ~23px of card height per recipe.
+        '<div class="kit-card-meta"><span class="kit-cat-tag kit-cat-'+r.category+'">'+r.category+'</span>'+cal+cookTime+serv+batch+'</div>'+
         (r.description?'<div class="kit-card-desc">'+kitEsc(r.description)+'</div>':'')+
-        '<div class="kit-card-serv">🍽️ '+r.servings+' serving'+(r.servings!=1?'s':'')+'</div>'+
         cookedLabel+
         (kitMenuOpenId===r.id?
           '<div class="kit-menu-dropdown" onclick="event.stopPropagation()">'+
