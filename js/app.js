@@ -8041,6 +8041,24 @@ function weatherPhase(entry){
   if(Math.abs(now-(sr+ss)/2)<=2*60*60*1000) return 'noon';  // brightest, sun highest
   return 'day';
 }
+// Phase from the local clock alone, for the states where there is no reading to read sun
+// times from: location not yet granted, first launch, or a failed fetch. Rough hour bands are
+// the best available without a location, but enough that a 9pm card looks like night.
+function weatherClockPhase(){
+  const h=new Date().getHours();
+  if(h<5)  return 'night';
+  if(h<7)  return 'dawn';
+  if(h<11) return 'day';
+  if(h<15) return 'noon';
+  if(h<18) return 'day';
+  if(h<20) return 'dusk';
+  return 'night';
+}
+// Placeholder sky for the no-data states. Deliberately a "clear" scene: it implies no
+// precipitation we haven't measured, while still tracking time of day. Previously these
+// states left data-scene="neutral", which has no CSS of its own and so fell through to the
+// base blue-grey gradient — a daytime sky shown at every hour, including midnight.
+function weatherPlaceholderScene(){ return 'clear-'+weatherClockPhase(); }
 // Only clear/partly skies get the full dawn/noon/dusk treatment — under heavy cloud, rain or
 // snow the sun's height barely changes how the sky reads, so those stay day/night.
 function weatherScene(code,entry){
@@ -8093,12 +8111,20 @@ function renderWeatherPrompt(){
   document.getElementById('home-weather-temp').textContent='';
   document.getElementById('home-weather-icon').textContent='📍';
   labelEl.textContent='Tap for weather';
+  setWeatherPlaceholderScene();
 }
 function renderWeatherError(denied){
   const labelEl=document.getElementById('home-weather-label'); if(!labelEl) return;
   document.getElementById('home-weather-temp').textContent='';
   document.getElementById('home-weather-icon').textContent='📍';
   labelEl.textContent=denied?'Enable location for weather':'Couldn\'t load weather — tap to retry';
+  setWeatherPlaceholderScene();
+}
+// Both no-data states share the clock-based sky; without this they kept whatever scene was
+// already on the card, which on a cold start is the daytime placeholder gradient.
+function setWeatherPlaceholderScene(){
+  const card=document.querySelector('.home-weather-card');
+  if(card) card.dataset.scene=weatherPlaceholderScene();
 }
 function loadWeatherWidget(userInitiated){
   const cache=loadWeatherCache();
@@ -8148,7 +8174,9 @@ function buildWeatherCard(){
   const stars=Array.from({length:5},(_,i)=>'<div class="wfx-star wfx-star-'+(i+1)+'"></div>').join('');
   const flakes=Array.from({length:6},(_,i)=>'<div class="wfx-flake wfx-flake-'+(i+1)+'"></div>').join('');
   const drops=Array.from({length:6},(_,i)=>'<div class="wfx-drop wfx-drop-'+(i+1)+'"></div>').join('');
-  return '<div class="card home-weather-card" data-scene="neutral">'+
+  // Built with the clock-based sky already applied so a cold start paints the right time of
+  // day immediately, instead of flashing the daytime placeholder before any render runs.
+  return '<div class="card home-weather-card" data-scene="'+weatherPlaceholderScene()+'">'+
     '<div class="weather-fx" aria-hidden="true">'+
       '<div class="wfx-sun"></div>'+
       '<div class="wfx-moon"></div>'+
