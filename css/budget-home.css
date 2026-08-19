@@ -436,6 +436,12 @@
   #onboarding-box #se-wrap{max-width:560px;margin:0 auto}
 
   /* Kitchen: two-column (list 40% / persistent detail 60%) */
+  /* Pantry: two columns on desktop. The list is ~45 short rows, which as a single file left
+     most of a 1440px screen empty and made scanning for a low item a long scroll. Only the
+     items split — the sticky category headings and the per-category add row stay full width,
+     so the grouping still reads top to bottom. */
+  #kitpantry .kitpantry-cat-items{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;align-items:start}
+
   #kit-recipes .kit-cols{display:flex;gap:20px;align-items:flex-start}
   #kit-recipes .kit-list-col{width:40%;flex-shrink:0}
   #kit-recipes .kit-detail-col{flex:1;display:block;position:sticky;top:0;align-self:flex-start;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;min-height:60vh}

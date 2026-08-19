@@ -11162,6 +11162,9 @@ function kitPantryRender(){
   '</div>';
   KITPANTRY_CATS.forEach(([cat,label])=>{
     html+='<div class="kitpantry-cat-head">'+label+'</div>';
+    // Items wrapped per category so desktop can lay them out two-up without the sticky
+    // category headings being pulled into a column alongside them.
+    html+='<div class="kitpantry-cat-items">';
     groups[cat].forEach(it=>{
       html+='<div class="kitpantry-item'+(it.inStock?'':' out')+'">'+
         '<input type="checkbox" class="kitpantry-cb"'+(it.inStock?' checked':'')+' onchange="kitPantryToggleStock(\''+it.id+'\')" aria-label="In stock">'+
@@ -11170,6 +11173,7 @@ function kitPantryRender(){
         (it.custom?'<button class="kitpantry-del" onclick="kitPantryDeleteCustom(\''+it.id+'\')" aria-label="Remove">✕</button>':'')+
       '</div>';
     });
+    html+='</div>';
     html+='<div class="kitpantry-add"><input id="kitpantry-add-'+cat+'" type="text" placeholder="+ Add item" onkeydown="if(event.key===\'Enter\')kitPantryAddCustom(\''+cat+'\')"><button onclick="kitPantryAddCustom(\''+cat+'\')">Add</button></div>';
   });
   wrap.innerHTML=html;
