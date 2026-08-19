@@ -10820,7 +10820,17 @@ const PANTRY_STAPLES = new Set([
   'smoked paprika','paprika','coriander','cumin','chilli','chilli flakes',
   'garam masala','garlic powder','garlic salt','onion powder','parsley',
   'rosemary','oregano','italian herbs','allspice','roast chicken seasoning',
-  'bay leaves','cloves','cayenne pepper','ginger','ginger powder','sesame oil'
+  'bay leaves','cloves','cayenne pepper','ginger','ginger powder','sesame oil',
+  // Short forms. Matching is exact (kitShopNorm + Set.has), and recipes write the everyday
+  // name while this list held only the full one — so "Pepper" never matched 'black pepper'
+  // and landed on every shopping list, with no quantity, even though the Pantry tracker was
+  // already tracking Black pepper. Same near-miss for vanilla/worcestershire/balsamic/mayo.
+  // Deliberately explicit aliases rather than substring matching: 'onion' is a staple, and a
+  // substring rule would swallow "spring onion", which is produce you genuinely have to buy.
+  'pepper','vanilla','worcestershire','balsamic','mayo',
+  // Tracked in the Pantry tab (KITPANTRY_CATS 'sauces') but missing here, so they were
+  // treated as shopping items despite being staples.
+  'tomato ketchup','ketchup','dijon mustard','dijon'
 ]);
 function kitGetIngredientCategory(name){
   const n=name.toLowerCase();
