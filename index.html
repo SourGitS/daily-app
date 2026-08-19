@@ -290,7 +290,9 @@
           <div class="bud-row">
             <div class="bud-row-left">
               <div class="bud-row-name">This week's savings</div>
-              <div class="bud-row-budget">Goal: $200 minimum</div>
+              <!-- Filled by budRecalc() from the user's saved goal; the text here is only a
+                   pre-paint placeholder, not the value. -->
+              <div class="bud-row-budget" id="sav-goal-label">Goal: $200 minimum</div>
             </div>
             <input class="bud-row-input" type="number" inputmode="decimal" placeholder="$0" id="sav-amount" oninput="budRecalc();budSaveDraft()">
           </div>

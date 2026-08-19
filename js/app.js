@@ -953,13 +953,13 @@ const REST_COLOR_KEY = '__rest__';
 // crimson and the accent green leans grass. Without that offset an accent-coloured button
 // would read as an error, and a "done"/"on track" state would be indistinguishable from
 // ordinary accent furniture.
-const DEFAULT_ACCENT = '#6B7280';   // neutral slate — 4.8:1 against white text
+const DEFAULT_ACCENT = '#5C5C5C';   // pure neutral grey — 6.69:1 against white text
 const RETIRED_ACCENT = '#ff6b35';   // the old default; migrated away from once (lowercase for compares)
 const ACCENT_PRESETS = [
-  {id:'gray',  name:'Grey',  hex:'#6B7280'},
+  {id:'gray',  name:'Grey',  hex:'#5C5C5C'},   // pure neutral (92,92,92); the old #6B7280 had a blue cast
   {id:'red',   name:'Red',   hex:'#C0304A'},
   {id:'green', name:'Green', hex:'#2F9E44'},
-  {id:'blue',  name:'Blue',  hex:'#3B82F6'},
+  {id:'blue',  name:'Blue',  hex:'#0072EA'},   // 4.57:1 on white — the old #3B82F6 was 3.68:1
 ];
 // One-time move off the retired orange — only for anyone still sitting on it untouched, so a
 // deliberately-chosen colour (orange included) is never overwritten.
@@ -6406,6 +6406,9 @@ function budSaveConfig(){
   });
   localStorage.setItem('daily_budget_defaults', JSON.stringify(budDefaults));
   syncBudDefaultsToFirebase();
+  // Repaint the savings card so a changed goal shows on its label (and recolours the figure)
+  // straight away rather than waiting for the next Budget render.
+  if(typeof budRecalc==='function') budRecalc();
 }
 
 // Savings is a free per-week input (no auto-calc / no lock). The savings goal is SUGGESTIVE
@@ -6449,7 +6452,7 @@ function budRecalc(animate){
   let totalVar=0;
   loadVarCats().forEach(c=>{ totalVar += parseFloat(document.getElementById('var-'+c.id)?.value)||0; });
 
-  // Savings is a free per-week amount (no fixed target); $200 is a display-only goal.
+  // Savings is a free per-week amount (no fixed target); the goal is display-only.
   const totalSaved  = parseFloat(document.getElementById('sav-amount')?.value)||0;
   const totalOut    = totalSaved+totalFixed+totalVar;
   const leftover    = totalIncome>0?totalIncome-totalOut:null;
@@ -6460,6 +6463,10 @@ function budRecalc(animate){
   $('calc-fixed',   '$'+totalFixed.toFixed(0));
   $('calc-variable',totalVar>0?'$'+totalVar.toFixed(0):'—');
   $('calc-leftover',leftover!==null?(leftover>=0?'+$':'-$')+Math.abs(leftover).toFixed(0):'—');
+
+  // The goal label was hardcoded as "Goal: $200 minimum" in index.html, so it kept showing
+  // $200 no matter what the user set in Pay days & savings goal. Drive it from the saved value.
+  $('sav-goal-label','Goal: $'+getSavingsGoal().toLocaleString()+' minimum');
 
   // Suggestive savings goal: below it → red, met → blue
   const calcSavedEl=document.getElementById('calc-saved');
