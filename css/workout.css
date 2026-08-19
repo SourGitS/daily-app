@@ -331,7 +331,8 @@
 /* While a finger/mouse is down the transform is written every move — transitioning it would
    lag the drag behind the pointer. */
 .fav-row.fav-dragging .fav-face{transition:none}
-.fav-dot{width:28px;height:28px;border-radius:50%;flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
+/* Matches .accent-preset-dot — these sit in the same panel, so they share the shape. */
+.fav-dot{width:28px;height:28px;border-radius:8px;flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
 .fav-hex{font-family:var(--font-num);font-size:14px;font-weight:700;letter-spacing:.02em}
 .fav-inuse{margin-left:auto;font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.4px}
 
@@ -340,7 +341,9 @@
   border:1.5px solid var(--border);background:transparent;cursor:pointer;-webkit-tap-highlight-color:transparent;
   transition:border-color .15s,background .15s}
 .accent-preset.active{border-color:var(--accent);background:rgba(var(--accent-rgb),.10)}
-.accent-preset-dot{width:26px;height:26px;border-radius:50%;flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
+/* Rounded square, not a circle, so the presets match the native <input type="color"> swatch
+   next to them (44px, 10px radius) — a row of circles beside a square read as two systems. */
+.accent-preset-dot{width:26px;height:26px;border-radius:8px;flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
 .accent-preset-name{font-size:11px;font-weight:700;color:var(--muted)}
 .accent-preset.active .accent-preset-name{color:var(--text)}
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'daily-v180';
+const CACHE_NAME = 'daily-v181';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
