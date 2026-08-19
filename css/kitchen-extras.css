@@ -225,7 +225,10 @@
 /* .card.home-weather-card (not just .home-weather-card) to match [data-theme="dark"] .card's
    specificity (budget-home.css) — same fix as .card.budget-snapshot-card above; a plain
    single-class rule here would lose to that dark-theme override regardless of file order. */
+/* --wfx-drift is how far the clouds travel before looping; it must out-span the card or they
+   stall mid-card and snap back. Desktop overrides it (budget-home.css) for the wide banner. */
 .card.home-weather-card{position:relative;overflow:hidden;border:none;padding:16px;
+  --wfx-drift:320px;
   background:linear-gradient(160deg,#7C93A8 0%,#4A5C70 100%);
   transition:background 0.6s ease}
 .weather-fx{position:absolute;inset:0;overflow:hidden;pointer-events:none}
@@ -320,9 +323,9 @@
 .wfx-cloud-1{width:70px;height:26px;top:8%;left:-10%;animation:wfx-drift-1 22s linear infinite}
 .wfx-cloud-2{width:50px;height:20px;top:55%;left:-15%;opacity:.7;animation:wfx-drift-2 30s linear infinite}
 .wfx-cloud-3{width:36px;height:16px;top:30%;left:-12%;opacity:.5;animation:wfx-drift-3 26s linear infinite}
-@keyframes wfx-drift-1{0%{transform:translateX(0)}100%{transform:translateX(320px)}}
-@keyframes wfx-drift-2{0%{transform:translateX(0)}100%{transform:translateX(320px)}}
-@keyframes wfx-drift-3{0%{transform:translateX(0)}100%{transform:translateX(320px)}}
+@keyframes wfx-drift-1{0%{transform:translateX(0)}100%{transform:translateX(var(--wfx-drift))}}
+@keyframes wfx-drift-2{0%{transform:translateX(0)}100%{transform:translateX(var(--wfx-drift))}}
+@keyframes wfx-drift-3{0%{transform:translateX(0)}100%{transform:translateX(var(--wfx-drift))}}
 
 /* Fog — wide translucent bars drifting very slowly, layered for depth */
 .home-weather-card[data-scene="fog"] .wfx-fog{display:block}

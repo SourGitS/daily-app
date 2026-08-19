@@ -26,7 +26,8 @@
       "Bash(awk 'NR>=7270 && NR<=7295 && /^function /' js/app.js)",
       "Bash(sed -n '/^function lsSaveTS/,/^}/p' js/app.js)",
       "Bash(sed -n '/^function syncBlobListen/,/^}/p' js/app.js)",
-      "Bash(node \"C:/Users/fanma/AppData/Local/Temp/claude/C--Users-fanma-OneDrive-Desktop-Projects-Daily-App/8a3a5440-ae7a-4226-a0d1-901b106429d9/scratchpad/skies.js\")"
+      "Bash(node \"C:/Users/fanma/AppData/Local/Temp/claude/C--Users-fanma-OneDrive-Desktop-Projects-Daily-App/8a3a5440-ae7a-4226-a0d1-901b106429d9/scratchpad/skies.js\")",
+      "Bash(git remote *)"
     ]
   }
 }

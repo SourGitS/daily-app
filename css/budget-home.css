@@ -101,6 +101,15 @@
 .home-card-jiggle{animation:home-jiggle .4s ease-in-out infinite;transform-origin:center}
 /* In edit mode the inner card is inert (no navigation); the wrapper handles drag */
 .home-editing [data-card-id]>*{pointer-events:none}
+/* Let the wrapper own the gesture: without this, a touch-drag scrolls the page instead of
+   moving the card (pointermove can't preventDefault once the browser has claimed the pan). */
+.home-editing [data-card-id]{touch-action:none;cursor:grab}
+.home-editing.home-dragging [data-card-id]{cursor:grabbing}
+/* The jiggle keyframes animate transform, and a running animation beats an inline style —
+   it would swallow the FLIP transforms outright. Suspend it for the duration of a drag. */
+.home-dragging .home-card-jiggle{animation:none}
+/* The lifted card's placeholder: the floating clone is what follows the pointer. */
+.home-card-ghost{opacity:.25}
 .home-cc-card{position:relative;display:flex;flex-direction:column;justify-content:flex-start}
 .home-cc-card .card-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)}
 .home-cc-balance{font-family:var(--font-num);font-size:24px;font-weight:700;color:var(--text);margin:6px 0 2px}
@@ -296,24 +305,32 @@
      dead CSS — nothing has carried that class since Home became a widget grid.
      .home-grid (the money quick-tiles) keeps its base 2-col layout — it now sits inside
      a half-width column, so the old desktop 4-across override was dropped.
-     Previously CSS multi-column: it packed tightly but each column ended wherever its last
-     card happened to fall, leaving a ragged bottom edge that no CSS could even out (there's
-     no way to target "last card in a column"). Now renderHome() emits real .home-col flex
-     columns, so the grid stretches both to the taller one and the last card in each fills
-     the slack — the two always finish flush. Full-width cards split the list into segments
-     (see renderHome), and Weather is pinned last, full width. */
-  #view-home .home-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 14px;align-items:stretch}
-  #view-home .home-col{display:flex;flex-direction:column;min-width:0}
-  /* The stretch: last card in each column grows into the leftover height, and its inner
-     .card is told to fill that box rather than sit at its natural height. */
-  #view-home .home-col > .home-card:last-child{flex:1 1 auto;display:flex;flex-direction:column}
-  #view-home .home-col > .home-card:last-child > *{flex:1 1 auto}
-  /* Weather sits full-width at the bottom on desktop — laid out as a wide banner rather than
-     the narrow stacked column version used on mobile. */
-  #view-home .home-card[data-card-id="weather"] .home-weather-card{padding:20px 24px}
-  #view-home .home-card[data-card-id="weather"] .weather-day{font-size:24px}
-  #view-home .home-card[data-card-id="weather"] .weather-temp{font-size:38px}
-  #view-home .home-card[data-card-id="weather"] .weather-icon{font-size:34px}
+     ONE grid holding every card in saved order, so what you see top-to-bottom, left-to-right
+     is exactly the DOM order — which is what makes drag-to-reorder saveable here (see
+     saveHomeOrder). Two earlier attempts optimised for packing instead and both broke
+     ordering: CSS multi-column left a ragged bottom edge, and .home-col flex columns dealt
+     cards alternately into two columns so visual order no longer matched the DOM at all.
+     align-items:start keeps each card at its natural height; a short card beside a tall one
+     therefore leaves a gap rather than stretching, which is the accepted cost of ordering. */
+  #view-home .home-grid-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 14px;align-items:start}
+  #view-home .home-grid-cols > .home-card{min-width:0}
+  /* Per-card preference now (Settings → Home Layout), not a hardcoded set of card ids. */
+  #view-home .home-card-wide{grid-column:1 / -1}
+  /* Weather as a wide banner — only when the user has it set to full width. At half width it
+     keeps the phone-sized treatment, which already fits a one-column box. */
+  #view-home .home-card-wide[data-card-id="weather"] .home-weather-card{padding:20px 24px}
+  /* Full width the card is ~1100px but its two content blocks only need ~250px, so
+     space-between stranded them at opposite edges with ~800px of dead air between. Cap the
+     row and centre it so the banner reads as one group. */
+  #view-home .home-card-wide[data-card-id="weather"] .weather-content{max-width:560px;margin:0 auto}
+  /* Clouds drift by a fixed px distance (see --wfx-drift in kitchen-extras.css) that only
+     spans a phone-width card; on a wider card they stalled partway and snapped back. Scale
+     the travel to the viewport — more for the full-width banner than the half-width box. */
+  #view-home .home-card[data-card-id="weather"] .home-weather-card{--wfx-drift:60vw}
+  #view-home .home-card-wide[data-card-id="weather"] .home-weather-card{--wfx-drift:100vw}
+  #view-home .home-card-wide[data-card-id="weather"] .weather-day{font-size:24px}
+  #view-home .home-card-wide[data-card-id="weather"] .weather-temp{font-size:38px}
+  #view-home .home-card-wide[data-card-id="weather"] .weather-icon{font-size:34px}
   #view-home .hero-card .overview-content{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:32px}
   #view-home .hero-card .overview-greeting{margin-bottom:0}
   #app-main>section{padding:40px 32px 40px}

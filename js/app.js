@@ -8491,36 +8491,21 @@ function renderHome(){
   // Ordered + visibility-filtered widget list; skip widgets whose HTML is empty right now
   // (e.g. Recent Workout before any session exists) so edit mode has no invisible boxes.
   const _homeIds=effectiveHomeWidgetIds(homeCards).filter(k=>homeCards[k]);
-  const _cardHtml=k=>'<div class="home-card" data-card-id="'+k+'">'+homeCards[k]+'</div>';
+  // Cards that span both desktop columns are a saved per-card preference now, not a hardcoded
+  // list. The class is emitted on every layout but only means anything inside the desktop
+  // media query, where the grid lives.
+  const _wide=new Set(homeLayout().wide);
+  const _cardHtml=k=>'<div class="home-card'+(_wide.has(k)?' home-card-wide':'')+'" data-card-id="'+k+'">'+homeCards[k]+'</div>';
   if(window.innerWidth>=1024){
-    // Desktop: real flex columns instead of CSS multi-column. Multicol packs tightly but its
-    // columns end wherever the last card happens to fall, leaving a ragged bottom edge; a
-    // grid of two flex columns can stretch each column's LAST card to fill, so the two
-    // always finish flush (see .home-cols in budget-home.css).
-    // Full-width cards (Today's Session, Weekly Budget) split the list into segments so each
-    // run of normal cards is balanced within itself and saved order is still respected.
-    // Weather is pulled out and pinned to the very bottom, full width.
-    const ids=_homeIds.filter(k=>k!=='weather');
-    const hasWeather=_homeIds.includes('weather');
-    let html='', run=[];
-    const flushRun=()=>{
-      if(!run.length) return;
-      // Alternate into the two columns; the last-card stretch below absorbs any imbalance,
-      // so this doesn't need to measure heights to end up flush.
-      const colA=run.filter((_,i)=>i%2===0), colB=run.filter((_,i)=>i%2===1);
-      html+='<div class="home-cols">'+
-        '<div class="home-col">'+colA.map(_cardHtml).join('')+'</div>'+
-        '<div class="home-col">'+colB.map(_cardHtml).join('')+'</div>'+
-      '</div>';
-      run=[];
-    };
-    ids.forEach(k=>{
-      if(k==='session'||k==='budget'){ flushRun(); html+=_cardHtml(k); }
-      else run.push(k);
-    });
-    flushRun();
-    if(hasWeather) html+=_cardHtml('weather');
-    wrap.innerHTML=html;
+    // Desktop: ONE grid holding every card in saved order, so visual order == DOM order.
+    // This replaced a column-major layout (cards dealt alternately into two flex columns)
+    // that packed more tightly but made the visual order unreadable from the DOM — which is
+    // why saveHomeOrder() used to refuse to run on desktop and drag-to-reorder was mobile-only.
+    // Ordering has to win over packing for reordering to work at all: in a packed/masonry
+    // layout a dragged card can't land where it was dropped. The cost is that a short card
+    // beside a tall one leaves a gap rather than the columns finishing flush.
+    // Weather is no longer pulled out and pinned last — it's an ordinary ordered card.
+    wrap.innerHTML='<div class="home-grid-cols">'+_homeIds.map(_cardHtml).join('')+'</div>';
   } else {
     wrap.innerHTML=_homeIds.map(_cardHtml).join('');
   }
@@ -8669,6 +8654,9 @@ const HOME_WIDGETS=[
   {id:'notes',    label:'Notes',                tab:'Notes', preview:hlPrevNotes},
 ];
 const HOME_DEFAULT_ORDER=['session','weather','streak','calories','review','habits','budget','balance','tiles','notes','recent'];
+// Which cards span both desktop grid columns. User-editable per card (Settings → Home Layout);
+// this is only the starting point, and matches how session/budget/weather used to be hardcoded.
+const HOME_DEFAULT_WIDE=['session','budget','weather'];
 function loadHomeOrder(){ return lsLoad('daily_home_order', null, Array.isArray); } // legacy (seed only)
 // One preference object {hidden:[], order:[]} — the same overlay convention as per-day
 // exercise customisation (dayCustomFor's added/hidden/order). Seeded once from the legacy
@@ -8678,6 +8666,9 @@ function homeLayout(){
   if(!l) l={hidden:[], order:loadHomeOrder()||[]};
   if(!Array.isArray(l.hidden)) l.hidden=[];
   if(!Array.isArray(l.order)) l.order=[];
+  // Seeded only when the key is absent, so a user who deliberately turns every card to
+  // half-width keeps an empty array instead of having the defaults re-applied each load.
+  if(!Array.isArray(l.wide)) l.wide=HOME_DEFAULT_WIDE.slice();
   return l;
 }
 function saveHomeLayout(l){ lsSave('daily_home_layout', l, 'homeLayout'); }
@@ -8693,11 +8684,9 @@ function effectiveHomeWidgetIds(cards){
   return keys.filter(k=>{ const w=HOME_WIDGETS.find(x=>x.id===k); return (w&&w.fixed) || !hidden.has(k); });
 }
 function saveHomeOrder(){
-  // Desktop splits the cards into two flex columns, so DOM order there is column-major
-  // (all of column A, then all of column B) rather than the visual top-to-bottom order —
-  // saving it would silently scramble the list. Reordering is a touch gesture anyway, so
-  // just decline on that layout instead of trying to reconstruct the order from geometry.
-  if(document.querySelector('#home-content .home-cols')) return;
+  // Both layouts now put every card in one container in visual order (desktop is a single
+  // CSS grid, mobile a plain stack), so DOM order is the saved order on either. The old
+  // desktop bail-out is gone with the column-major layout that made it necessary.
   const order=[...document.querySelectorAll('#home-content [data-card-id]')].map(c=>c.dataset.cardId);
   if(!order.length) return;
   const l=homeLayout();
@@ -8710,9 +8699,10 @@ function saveHomeOrder(){
 function renderHomeLayoutSection(){
   const wrap=document.getElementById('settings-homelayout-section'); if(!wrap) return;
   const hidden=new Set(homeLayout().hidden);
+  const wide=new Set(homeLayout().wide);
   const tabs=[...new Set(HOME_WIDGETS.map(w=>w.tab))];
   wrap.innerHTML=
-    '<p style="font-size:13px;color:var(--muted);margin-bottom:14px">Choose which cards show on the Home tab. Hiding a card never deletes its data — turn it back on any time. Reorder cards by dragging them via Home → Edit layout.</p>'+
+    '<p style="font-size:13px;color:var(--muted);margin-bottom:14px">Choose which cards show on the Home tab. Hiding a card never deletes its data — turn it back on any time. Reorder cards by dragging them via Home → Edit layout (works on phone and desktop).</p>'+
     tabs.map(tab=>'<div class="settings-card">'+
       '<div class="settings-card-title">'+tab+'</div>'+
       HOME_WIDGETS.filter(w=>w.tab===tab).map(w=>
@@ -8721,9 +8711,22 @@ function renderHomeLayoutSection(){
             '<span class="settings-row-label">'+w.label+(w.fixed?' <span style="font-size:11px;color:var(--muted)">· always shown</span>':'')+'</span>'+
             (w.fixed?'':'<label class="toggle-switch"><input type="checkbox"'+(hidden.has(w.id)?'':' checked')+' onchange="homeWidgetToggle(\''+w.id+'\',this.checked)"><span class="toggle-slider"></span></label>')+
           '</div>'+
+          // Desktop-only: the phone layout is a single column, so every card is full width there.
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">'+
+            '<span style="font-size:12px;color:var(--muted)">Full width on desktop</span>'+
+            '<label class="toggle-switch"><input type="checkbox"'+(wide.has(w.id)?' checked':'')+' onchange="homeWidgetWidth(\''+w.id+'\',this.checked)"><span class="toggle-slider"></span></label>'+
+          '</div>'+
           (w.preview?w.preview():'')+
         '</div>').join('')+
       '</div>').join('');
+}
+// Half-width (one grid column) vs full-width (both) on the desktop Home grid.
+function homeWidgetWidth(id,on){
+  const l=homeLayout();
+  l.wide=l.wide.filter(x=>x!==id);
+  if(on) l.wide.push(id);
+  saveHomeLayout(l);
+  if(typeof renderHome==='function') renderHome();
 }
 function homeWidgetToggle(id,on){
   const l=homeLayout();
@@ -8744,38 +8747,101 @@ function applyHomeEditMode(){
   if(hc) hc.classList.toggle('home-editing',homeEditMode);
   document.querySelectorAll('#home-content [data-card-id]').forEach(c=>c.classList.toggle('home-card-jiggle',homeEditMode));
 }
-// Touch drag-to-reorder with a floating clone. Active only in Home edit mode.
+// Drag-to-reorder with a floating clone. Active only in Home edit mode.
+// Pointer Events (not touch events) so mouse, touch and pen all run the same path — the old
+// touchstart/touchmove pair meant desktop could enter edit mode but nothing responded to a
+// mouse, making the Edit layout button a dead control there.
+// Reordering is FLIP-animated (First/Last/Invert/Play): a bare insertBefore relocates the
+// other cards in a single frame, which is the "snap" — measuring before and after and
+// transitioning from the inverted offset turns the same DOM move into a smooth swap.
 (function(){
-  let card=null, clone=null, offY=0;
-  document.addEventListener('touchstart',function(e){
-    if(!homeEditMode || S.view!=='home') return;
-    const c=e.target.closest('#home-content [data-card-id]'); if(!c) return;
-    card=c;
-    const t=e.touches[0], r=c.getBoundingClientRect(); offY=t.clientY-r.top;
-    clone=c.cloneNode(true);
+  const SLOP=4;            // px of movement before a press becomes a drag
+  const FLIP_MS=260;
+  let card=null, clone=null, offX=0, offY=0, startX=0, startY=0, dragging=false, pid=null;
+
+  const allCards=()=>[...document.querySelectorAll('#home-content [data-card-id]')];
+
+  // Animate every card from where it was to where the mutation just put it.
+  // Uses the Web Animations API rather than inline styles + requestAnimationFrame: the rAF
+  // approach has to paint the inverted position on one frame and release it on the next, so
+  // if frames stop (backgrounded tab, throttled window) the release never runs and the cards
+  // stay visually displaced with a stale inline transform. element.animate() owns the whole
+  // invert→identity transition itself, touches no inline styles, and needs no cleanup.
+  function flip(mutate){
+    const cards=allCards();
+    const first=new Map(cards.map(c=>[c,c.getBoundingClientRect()]));
+    mutate();
+    cards.forEach(c=>{
+      const f=first.get(c), l=c.getBoundingClientRect();
+      const dx=f.left-l.left, dy=f.top-l.top;
+      if(!dx&&!dy) return;
+      if(!c.animate) return; // no WAAPI: the move still happens, just without the tween
+      c.animate(
+        [{transform:'translate('+dx+'px,'+dy+'px)'},{transform:'none'}],
+        {duration:FLIP_MS, easing:'cubic-bezier(.2,.7,.3,1)'}
+      );
+    });
+  }
+
+  function beginDrag(e){
+    const r=card.getBoundingClientRect();
+    dragging=true;
+    document.getElementById('home-content').classList.add('home-dragging');
+    clone=card.cloneNode(true);
     clone.classList.remove('home-card-jiggle');
     clone.style.cssText='position:fixed;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;opacity:.92;z-index:9999;pointer-events:none;transform:scale(1.03);box-shadow:0 14px 34px rgba(0,0,0,.45);animation:none;margin:0';
     document.body.appendChild(clone);
-    c.style.opacity='.25';
-  },{passive:true});
-  document.addEventListener('touchmove',function(e){
-    if(!card||!clone) return;
+    card.classList.add('home-card-ghost');
+  }
+
+  document.addEventListener('pointerdown',function(e){
+    if(!homeEditMode || S.view!=='home' || e.button) return;
+    const c=e.target.closest&&e.target.closest('#home-content [data-card-id]'); if(!c) return;
+    card=c; pid=e.pointerId;
+    const r=c.getBoundingClientRect();
+    startX=e.clientX; startY=e.clientY; offX=e.clientX-r.left; offY=e.clientY-r.top;
+    // Capture on the card so moves that leave it (fast drags, edge of screen) still arrive.
+    try{ c.setPointerCapture(e.pointerId); }catch(_){}
+  });
+
+  document.addEventListener('pointermove',function(e){
+    if(!card||e.pointerId!==pid) return;
+    if(!dragging){
+      if(Math.abs(e.clientX-startX)<SLOP && Math.abs(e.clientY-startY)<SLOP) return;
+      beginDrag(e);
+    }
     e.preventDefault();
-    const t=e.touches[0];
-    clone.style.top=(t.clientY-offY)+'px';
+    clone.style.left=(e.clientX-offX)+'px';
+    clone.style.top=(e.clientY-offY)+'px';
     clone.style.display='none';
-    const el=document.elementFromPoint(t.clientX,t.clientY);
+    const el=document.elementFromPoint(e.clientX,e.clientY);
     clone.style.display='';
     const target=(el&&el.closest)?el.closest('#home-content [data-card-id]'):null;
-    if(target&&target!==card&&target.parentElement===card.parentElement){
-      const r=target.getBoundingClientRect();
-      const after=t.clientY>r.top+r.height/2;
-      card.parentElement.insertBefore(card, after?target.nextSibling:target);
-    }
+    if(!target||target===card||target.parentElement!==card.parentElement) return;
+    // Desktop is a two-column grid, so "past the midpoint" has to consider X as well as Y:
+    // within the same row the decision is horizontal, across rows it's vertical.
+    const r=target.getBoundingClientRect();
+    const cx=r.left+r.width/2, cy=r.top+r.height/2;
+    const sameRow=Math.abs(e.clientY-cy)<r.height/2;
+    const after=sameRow ? e.clientX>cx : e.clientY>cy;
+    const ref=after?target.nextSibling:target;
+    if(ref===card||(after&&target.nextSibling===card)) return;
+    flip(()=>card.parentElement.insertBefore(card,ref));
   },{passive:false});
-  function endDrag(){ if(!card) return; card.style.opacity=''; if(clone){ clone.remove(); clone=null; } card=null; saveHomeOrder(); }
-  document.addEventListener('touchend',endDrag);
-  document.addEventListener('touchcancel',endDrag);
+
+  function endDrag(e){
+    if(!card||(e&&e.pointerId!==undefined&&e.pointerId!==pid)) return;
+    try{ card.releasePointerCapture(pid); }catch(_){}
+    card.classList.remove('home-card-ghost');
+    const hc=document.getElementById('home-content');
+    if(hc) hc.classList.remove('home-dragging');
+    if(clone){ clone.remove(); clone=null; }
+    const wasDragging=dragging;
+    card=null; dragging=false; pid=null;
+    if(wasDragging) saveHomeOrder();
+  }
+  document.addEventListener('pointerup',endDrag);
+  document.addEventListener('pointercancel',endDrag);
 })();
 
 // Persistent Home "Recent workout" card (last saved session, tap to expand exercises).
