@@ -517,6 +517,9 @@
 .kit-list-header .kit-search{margin-bottom:0;flex:1}
 .kit-add-recipe-btn{flex-shrink:0;height:42px;padding:0 14px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent}
 .kit-add-recipe-btn:active{opacity:0.85}
+/* Import is the secondary action beside "+ Add Recipe" — outlined so the primary one keeps
+   the accent fill, and narrower since the header row is tight on a phone. */
+.kit-import-btn{background:transparent;color:var(--text);border:1px solid var(--border);padding:0 12px}
 .kit-filter-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .kit-fchip{height:30px;padding:0 12px;border-radius:999px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;transition:border-color .15s,color .15s,background .15s}
 .kit-fchip.active{border-color:var(--accent);color:var(--accent);background:rgba(var(--accent-rgb),.12)}

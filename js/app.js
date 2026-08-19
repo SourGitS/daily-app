@@ -10567,6 +10567,103 @@ const KIT_STANDARD_TAGS=[
   {val:'bulk-cook',label:'Bulk Cook'},
 ];
 const KIT_UNITS=['g','ml','cup','tbsp','tsp','piece','oz','lb'];
+// ── Import recipes from Claude ─────────────────────────────────────
+// Daily is a static site with no backend, and the Firebase rules only accept writes from the
+// signed-in user's own uid, so nothing can push data in from outside. The transfer is
+// therefore a paste: Claude emits JSON in the schema below and this validates it.
+// Strict on purpose — a bad paste is reported precisely rather than half-imported, since a
+// silently mangled recipe is worse than a rejected one.
+const KIT_IMPORT_CATS=['breakfast','lunch','dinner','dessert'];
+// Returns {recipes:[...]} or {error:'...'} — never throws, never partially applies.
+function kitParseImport(text){
+  const raw=String(text||'').trim();
+  if(!raw) return {error:'Nothing pasted yet.'};
+  // Tolerate a ```json fence, since that is how chat tools usually present a code block.
+  const unfenced=raw.replace(/^```(?:json)?\s*/i,'').replace(/```$/,'').trim();
+  let data;
+  try{ data=JSON.parse(unfenced); }
+  catch(e){ return {error:"That isn't valid JSON. Copy the whole code block, including the outer { } or [ ]."}; }
+  // Accept a single recipe, a bare array, or {recipes:[...]}.
+  let list=Array.isArray(data)?data:(data&&Array.isArray(data.recipes)?data.recipes:[data]);
+  if(!list.length) return {error:'No recipes found in that JSON.'};
+  const out=[];
+  for(let i=0;i<list.length;i++){
+    const r=list[i], where=list.length>1?(' (recipe '+(i+1)+')'):'';
+    if(!r||typeof r!=='object') return {error:'Each recipe must be an object'+where+'.'};
+    const name=String(r.name||'').trim();
+    if(!name) return {error:'A recipe is missing "name"'+where+'.'};
+    if(!Array.isArray(r.ingredients)||!r.ingredients.length) return {error:'"'+name+'" needs a non-empty "ingredients" array.'};
+    const ingredients=[];
+    for(const ing of r.ingredients){
+      if(!ing||typeof ing!=='object') return {error:'"'+name+'": each ingredient must be an object with a "name".'};
+      const iname=String(ing.name||'').trim();
+      if(!iname) return {error:'"'+name+'": an ingredient is missing "name".'};
+      const amt=ing.amount===''||ing.amount==null?'':(isNaN(parseFloat(ing.amount))?String(ing.amount):parseFloat(ing.amount));
+      ingredients.push({name:iname, amount:amt, unit:String(ing.unit||'').trim()});
+    }
+    // Steps may be plain strings or {text,timerMinutes}; the cook mode reads both.
+    const steps=(Array.isArray(r.steps)?r.steps:[]).map(s=>{
+      if(typeof s==='string') return s;
+      if(s&&typeof s==='object'&&s.text) return {text:String(s.text), timerMinutes:(s.timerMinutes==null?null:parseInt(s.timerMinutes)||null)};
+      return null;
+    }).filter(Boolean);
+    const cat=String(r.category||'').toLowerCase();
+    const num=v=>{ const n=parseFloat(v); return isNaN(n)?null:n; };
+    const tags=Array.isArray(r.tags)?r.tags.map(t=>String(t).trim()).filter(Boolean):[];
+    out.push({
+      name, emoji:String(r.emoji||'🍽️').trim()||'🍽️',
+      category:KIT_IMPORT_CATS.indexOf(cat)>=0?cat:'dinner',
+      description:String(r.description||'').trim(),
+      servings:Math.max(1,parseInt(r.servings)||2),
+      cookTime:num(r.cookTime), ingredients, steps, tags,
+      calories:num(r.calories), protein:num(r.protein), carbs:num(r.carbs), fat:num(r.fat),
+      batchPrep:tags.includes('batch-prep')||tags.includes('bulk-cook')
+    });
+  }
+  return {recipes:out};
+}
+function kitOpenImport(){
+  const box=document.getElementById('kit-import-box'); if(!box) return;
+  box.innerHTML=
+    // Same topbar as the recipe form, so it joins the app's unified back navigation
+    // (the delegated [data-back] handler) rather than inventing its own close control.
+    '<div class="kit-form-topbar">'+
+      '<button class="back-btn" data-back="kitCloseImport" aria-label="Back">'+BACK_CHEVRON+'</button>'+
+      '<div class="modal-title">Import recipes</div>'+
+      '<div style="width:36px"></div>'+
+    '</div>'+
+    '<div style="padding:4px 2px 0">'+
+      '<p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 10px">'+
+        'Paste the JSON your assistant produced. Ask it for recipes “in Daily import format”, '+
+        'or give it the format below once and it will remember for that chat.</p>'+
+      '<textarea id="kit-import-text" rows="8" placeholder=\'{"recipes":[{"name":"…","ingredients":[…]}]}\' '+
+        'style="width:100%;box-sizing:border-box;font-family:ui-monospace,monospace;font-size:12px;line-height:1.45;'+
+        'padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);resize:vertical"></textarea>'+
+      '<div id="kit-import-msg" style="font-size:12.5px;font-weight:600;margin-top:8px;min-height:17px"></div>'+
+      '<details style="margin-top:6px"><summary style="font-size:12px;color:var(--muted);cursor:pointer">Show the format</summary>'+
+        '<pre style="font-size:11px;line-height:1.45;overflow-x:auto;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:8px">'+
+_catEscHtml(KIT_IMPORT_EXAMPLE)+'</pre></details>'+
+      '<div style="display:flex;gap:10px;margin-top:14px">'+
+        '<button class="modal-btn secondary" onclick="kitCloseImport()">Cancel</button>'+
+        '<button class="modal-btn primary" onclick="kitDoImport()">Import</button>'+
+      '</div>'+
+    '</div>';
+  document.getElementById('kit-import-overlay').classList.remove('hidden');
+}
+function kitCloseImport(){ const o=document.getElementById('kit-import-overlay'); if(o) o.classList.add('hidden'); }
+const KIT_IMPORT_EXAMPLE=
+'{\n  "recipes": [\n    {\n      "name": "Lemon Garlic Chicken",\n      "emoji": "🍗",\n      "category": "dinner",\n      "servings": 2,\n      "description": "One-pan roast chicken thighs.",\n      "cookTime": 35,\n      "ingredients": [\n        { "name": "Chicken thighs", "amount": 4, "unit": "" },\n        { "name": "Lemon", "amount": 1, "unit": "" },\n        { "name": "Olive oil", "amount": 2, "unit": "tbsp" }\n      ],\n      "steps": [\n        "Heat oven to 200C.",\n        { "text": "Roast until cooked through.", "timerMinutes": 30 }\n      ],\n      "tags": ["quick"],\n      "calories": 520, "protein": 42, "carbs": 6, "fat": 34\n    }\n  ]\n}';
+function kitDoImport(){
+  const msg=document.getElementById('kit-import-msg');
+  const res=kitParseImport(document.getElementById('kit-import-text')?.value);
+  if(res.error){ if(msg){ msg.textContent=res.error; msg.style.color='var(--danger)'; } return; }
+  // Same shape kitSaveForm builds, so imported recipes are ordinary recipes from here on.
+  res.recipes.forEach(d=>kitRecipes.push(Object.assign({id:kitUUID(),favourite:false,lastCooked:null,createdAt:Date.now()},d)));
+  kitSaveRecipes();
+  kitCloseImport();
+  kitSetTab('recipes');
+  showToast('Imported '+res.recipes.length+' recipe'+(res.recipes.length>1?'s':''));
+}
 function kitOpenForm(id){
   const editing=id?kitRecipes.find(x=>x.id===id):null;
   const r=editing||{name:'',emoji:'🍽️',category:'dinner',description:'',servings:2,cookTime:null,

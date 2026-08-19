@@ -387,6 +387,7 @@
             <div class="kit-list-header">
               <input id="kit-search" class="kit-search" type="search" placeholder="Search recipes…" oninput="kitOnSearch(this.value)">
               <button class="kit-add-recipe-btn" onclick="kitOpenForm()">+ Add Recipe</button>
+              <button class="kit-add-recipe-btn kit-import-btn" onclick="kitOpenImport()">⇩ Import</button>
             </div>
             <div id="kit-filter-chips" class="kit-filter-chips"></div>
             <div id="kit-cat-pills" class="kit-cat-pills"></div>
@@ -628,6 +629,10 @@
   <div id="kit-detail-overlay" style="display:none"><div id="kit-detail-overlay-inner"></div></div>
 
   <!-- Kitchen: add/edit recipe form (bottom sheet) -->
+  <div id="kit-import-overlay" class="modal-overlay hidden" onclick="if(event.target===this)kitCloseImport()">
+    <div class="modal-box" id="kit-import-box"></div>
+  </div>
+
   <div id="kit-form-overlay" class="modal-overlay hidden" onclick="if(event.target===this)kitCloseForm()">
     <div class="modal-box" id="kit-form-box"></div>
   </div>
