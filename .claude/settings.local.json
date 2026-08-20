@@ -41,7 +41,8 @@
       "Bash(awk -F: '$1>2300 && $1<2500')",
       "Bash(awk -F: '$1>1968')",
       "Bash(python -)",
-      "Bash(sed -i \"s/const CACHE_NAME = 'daily-v183'/const CACHE_NAME = 'daily-v184'/\" service-worker.js)"
+      "Bash(sed -i \"s/const CACHE_NAME = 'daily-v183'/const CACHE_NAME = 'daily-v184'/\" service-worker.js)",
+      "Bash(sed -i \"s/const CACHE_NAME = 'daily-v184'/const CACHE_NAME = 'daily-v185'/\" service-worker.js)"
     ]
   }
 }

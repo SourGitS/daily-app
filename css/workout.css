@@ -43,12 +43,40 @@
 .ldh-bar{height:6px;background:rgba(255,255,255,.22);border-radius:4px;overflow:hidden}
 .ldh-bar-fill{height:100%;background:#fff;border-radius:4px;transition:width .3s ease}
 /* Merged timer — tappable row inside the hero that opens the fullscreen timer page */
-.ldh-timer{display:flex;align-items:center;gap:10px;width:100%;margin-top:16px;padding:11px 14px;border-radius:12px;border:none;background:rgba(0,0,0,.18);color:#fff;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.ldh-timer:active{background:rgba(0,0,0,.3)}
-.ldh-timer-dot{width:8px;height:8px;border-radius:50%;background:#fff;flex-shrink:0;animation:rt-pulse 1.4s ease-in-out infinite}
-.ldh-timer-time{font-family:var(--font-num);font-size:20px;font-weight:800;letter-spacing:-.02em;color:#fff}
-.ldh-timer-session{font-size:12px;font-weight:600;color:rgba(255,255,255,.78);margin-left:auto;font-family:monospace;white-space:nowrap}
-.ldh-timer-expand{color:rgba(255,255,255,.85);flex-shrink:0}
+/* ── Rest timer card ──
+   Was .ldh-timer, a strip inside the day hero's footer. Now a card of its own directly under
+   it, so the hero carries only the day and its progress. The body still opens the fullscreen
+   timer; the start/stop control now lives here rather than only inside the expanded view. */
+.log-timer-card{display:flex;align-items:center;gap:10px;
+  background:var(--card);border:0.5px solid var(--card-border);box-shadow:var(--card-top);
+  border-radius:var(--radius-card);padding:12px 14px;margin-bottom:12px}
+.lt-body{display:flex;align-items:center;gap:10px;flex:1;min-width:0;padding:0;
+  background:none;border:none;color:var(--text);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.lt-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;animation:rt-pulse 1.4s ease-in-out infinite}
+.lt-time{font-family:var(--font-num);font-size:22px;font-weight:800;letter-spacing:-.02em;color:var(--text)}
+.lt-session{font-size:12px;font-weight:600;color:var(--muted);margin-left:auto;font-family:monospace;white-space:nowrap}
+.lt-expand{color:var(--muted);flex-shrink:0}
+/* Shiny start button: the accent with a light sheen over the top half and a coloured glow, so
+   it reads as the lit control on the card. Tracks --accent, so it follows the app colour
+   (including the dynamic per-training-day colour) rather than being a fixed green. */
+.lt-toggle{flex-shrink:0;min-width:92px;height:44px;padding:0 20px;border-radius:14px;border:none;
+  font-size:15px;font-weight:800;letter-spacing:.01em;color:#fff;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;position:relative;overflow:hidden;
+  background:linear-gradient(180deg,
+    rgba(255,255,255,.34) 0%,
+    rgba(255,255,255,.10) 48%,
+    rgba(0,0,0,.06) 52%,
+    rgba(0,0,0,.14) 100%), var(--accent);
+  box-shadow:0 4px 14px rgba(var(--accent-rgb),.45), inset 0 1px 0 rgba(255,255,255,.5);
+  transition:transform .12s ease, box-shadow .2s ease}
+.lt-toggle:active{transform:scale(.96);box-shadow:0 2px 8px rgba(var(--accent-rgb),.35), inset 0 1px 0 rgba(255,255,255,.4)}
+/* Running → stop. Same sheen, danger colour, so the state is unmistakable mid-set. */
+.lt-toggle.running{background:linear-gradient(180deg,
+    rgba(255,255,255,.34) 0%,
+    rgba(255,255,255,.10) 48%,
+    rgba(0,0,0,.06) 52%,
+    rgba(0,0,0,.14) 100%), var(--danger);
+  box-shadow:0 4px 14px rgba(231,76,60,.45), inset 0 1px 0 rgba(255,255,255,.5)}
 .rt-fs-reset{width:100%;padding:12px;margin-bottom:6px;border:none;background:transparent;color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 /* Inline status chip in the card header controls — a real layout slot, not an absolute overlay
    floating over the buttons. */

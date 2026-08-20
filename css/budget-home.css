@@ -3,6 +3,19 @@
 .sec-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-secondary);margin-bottom:8px}
 .bud-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
 .bud-row:last-child{border-bottom:none}
+/* ── Budget calculator ── */
+.bcalc-expr{text-align:right;font-family:var(--font-num);font-size:13px;font-weight:600;color:var(--muted);min-height:18px;letter-spacing:.02em}
+.bcalc-display{text-align:right;font-family:var(--font-num);font-size:34px;font-weight:800;color:var(--text);letter-spacing:-.02em;line-height:1.1;margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bcalc-pad{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+/* 52px keys: comfortably over the 44px touch minimum, since this is used one-handed. */
+.bcalc-key{height:52px;border-radius:14px;border:1px solid var(--border);background:var(--card);
+  color:var(--text);font-size:19px;font-weight:700;font-family:var(--font-num);cursor:pointer;
+  -webkit-tap-highlight-color:transparent;transition:transform .1s ease,background .15s ease}
+.bcalc-key:active{transform:scale(.94);background:var(--track,rgba(128,128,128,.18))}
+.bcalc-key.fn{color:var(--muted);font-size:17px}
+.bcalc-key.op{color:var(--accent);font-size:21px}
+.bcalc-key.eq{background:var(--accent);color:#fff;border-color:transparent}
+
 /* Stats → Finance: per-account growth over a period */
 .bs-growth-range{display:flex;gap:4px;flex-shrink:0}
 .bs-growth-range button{padding:4px 9px;border-radius:20px;border:none;font-size:11px;font-weight:700;background:transparent;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent}

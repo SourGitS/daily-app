@@ -100,6 +100,8 @@
       <div class="log-cols">
         <div class="log-left">
           <div id="log-day-hero"></div>
+          <!-- Timer moved out of the day hero's footer into its own card (renderTimerCard). -->
+          <div id="log-timer-card"></div>
           <div id="desktop-exercise-nav"></div>
         </div>
         <div class="log-right">
@@ -306,6 +308,39 @@
         <div id="bud-fixed-card"></div>
 
         <div id="bud-variable-card"></div>
+
+        <!-- Standalone calculator. Deliberately NOT wired into the budget inputs: the previous
+             version hijacked field taps and stole focus, so a sync refresh could overwrite an
+             in-progress entry (see commit 05e1cd1). This one is self-contained. -->
+        <div class="card">
+          <div class="sec-label bud-toggle">&#129518; Calculator<svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="bud-collapse-body">
+            <div id="bcalc-expr" class="bcalc-expr">&nbsp;</div>
+            <div id="bcalc-display" class="bcalc-display">0</div>
+            <div class="bcalc-pad">
+              <button class="bcalc-key fn" onclick="bcalcClear()">C</button>
+              <button class="bcalc-key fn" onclick="bcalcSign()">±</button>
+              <button class="bcalc-key fn" onclick="bcalcPercent()">%</button>
+              <button class="bcalc-key op" onclick="bcalcOp('/')">÷</button>
+              <button class="bcalc-key" onclick="bcalcDigit('7')">7</button>
+              <button class="bcalc-key" onclick="bcalcDigit('8')">8</button>
+              <button class="bcalc-key" onclick="bcalcDigit('9')">9</button>
+              <button class="bcalc-key op" onclick="bcalcOp('*')">×</button>
+              <button class="bcalc-key" onclick="bcalcDigit('4')">4</button>
+              <button class="bcalc-key" onclick="bcalcDigit('5')">5</button>
+              <button class="bcalc-key" onclick="bcalcDigit('6')">6</button>
+              <button class="bcalc-key op" onclick="bcalcOp('-')">&#8722;</button>
+              <button class="bcalc-key" onclick="bcalcDigit('1')">1</button>
+              <button class="bcalc-key" onclick="bcalcDigit('2')">2</button>
+              <button class="bcalc-key" onclick="bcalcDigit('3')">3</button>
+              <button class="bcalc-key op" onclick="bcalcOp('+')">+</button>
+              <button class="bcalc-key" onclick="bcalcDigit('0')">0</button>
+              <button class="bcalc-key" onclick="bcalcDot()">.</button>
+              <button class="bcalc-key fn" onclick="bcalcBack()" aria-label="Backspace">&#9003;</button>
+              <button class="bcalc-key eq" onclick="bcalcEquals()">=</button>
+            </div>
+          </div>
+        </div>
 
         </div><!-- /left column -->
         <div><!-- right column: results, history, config -->

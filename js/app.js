@@ -1256,6 +1256,25 @@ function rtPause(){
   updateLapFab();
 }
 function rtToggle(){ rtRunning ? rtPause() : rtStart(); }
+// The rest timer used to be a strip inside the day hero's footer. It's now its own card
+// directly under it: the body still opens the fullscreen timer (data-action="timer-expand",
+// unchanged), and the start/stop control sits on the card itself rather than only existing
+// once you've expanded it.
+function renderTimerCard(){
+  const el=document.getElementById('log-timer-card'); if(!el) return;
+  el.innerHTML=
+    '<div class="log-timer-card">'+
+      '<button class="lt-body" data-action="timer-expand" aria-label="Open timer">'+
+        '<span class="lt-dot"></span>'+
+        '<span id="rt-bar-time" class="lt-time">0.0</span>'+
+        '<span id="rt-bar-session" class="lt-session">Session: 0:00</span>'+
+        '<svg class="lt-expand" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>'+
+      '</button>'+
+      '<button id="lt-toggle" class="lt-toggle'+(rtRunning?' running':'')+'" onclick="rtToggle();renderTimerCard();rtUpdateDisplay(rtGetElapsed());rtUpdateSessionLabels()">'+
+        (rtRunning?'Stop':'Start')+
+      '</button>'+
+    '</div>';
+}
 function rtTick(){ rtUpdateDisplay(rtGetElapsed()); }
 
 function rtUpdateDisplay(ms){
@@ -2421,13 +2440,8 @@ function renderLog(animateEntrance){
         '</div>'+
         '<div class="ldh-progress-row"><span>'+done+' of '+total+' done</span><span>'+pct+'%</span></div>'+
         '<div class="ldh-bar"><div class="ldh-bar-fill" style="width:'+pct+'%"></div></div>'+
-        '<button class="ldh-timer" data-action="timer-expand" aria-label="Open timer">'+
-          '<span class="ldh-timer-dot"></span>'+
-          '<span id="rt-bar-time" class="ldh-timer-time">0.0</span>'+
-          '<span id="rt-bar-session" class="ldh-timer-session">Session: 0:00</span>'+
-          '<svg class="ldh-timer-expand" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>'+
-        '</button>'+
       '</div>';
+    renderTimerCard();
     rtUpdateDisplay(rtGetElapsed()); rtUpdateSessionLabels(); // sync the freshly-rendered timer
     // The continuous gradient-breathe always runs; the one-time entrance pop/bar-fill/badge only
     // replay on tab-entry or day-switch (animateEntrance), not on every re-render from a set tick.
@@ -6465,6 +6479,89 @@ function budSaveConfig(){
   // Repaint the savings card so a changed goal shows on its label (and recolours the figure)
   // straight away rather than waiting for the next Budget render.
   if(typeof budRecalc==='function') budRecalc();
+}
+
+// ── Budget calculator ──────────────────────────────────────────────
+// Standalone on purpose. The previous attempt wired itself into the budget inputs, hijacking
+// taps and pulling focus off the field, which let a sync refresh overwrite an in-progress
+// entry — the "reverting values" bug that got it removed (05e1cd1). This one touches nothing
+// but its own display.
+// Sequential four-function behaviour, like a physical calculator: each new operator resolves
+// the pending one. No eval() anywhere — the operation is applied by a switch.
+let _bcalc={acc:null, op:null, entry:'0', fresh:true};
+function bcalcRender(){
+  const d=document.getElementById('bcalc-display'); if(d) d.textContent=_bcalc.entry;
+  const e=document.getElementById('bcalc-expr');
+  if(e){
+    const sym={'+':'+','-':'−','*':'×','/':'÷'}[_bcalc.op]||'';
+    e.innerHTML=_bcalc.op!=null ? (bcalcTrim(_bcalc.acc)+' '+sym) : '&nbsp;';
+  }
+}
+function bcalcTrim(n){
+  if(n==null||isNaN(n)) return '0';
+  // Kill floating-point noise (0.1+0.2) without forcing decimals onto whole numbers.
+  const r=Math.round(n*1e10)/1e10;
+  return String(r);
+}
+function bcalcDigit(d){
+  if(_bcalc.fresh){ _bcalc.entry=d; _bcalc.fresh=false; }
+  else if(_bcalc.entry==='0') _bcalc.entry=d;
+  else if(_bcalc.entry.replace(/[-.]/g,'').length<12) _bcalc.entry+=d;
+  bcalcRender();
+}
+function bcalcDot(){
+  if(_bcalc.fresh){ _bcalc.entry='0.'; _bcalc.fresh=false; }
+  else if(!_bcalc.entry.includes('.')) _bcalc.entry+='.';
+  bcalcRender();
+}
+function bcalcApply(a,b,op){
+  switch(op){
+    case '+': return a+b;
+    case '-': return a-b;
+    case '*': return a*b;
+    case '/': return b===0?NaN:a/b;
+    default:  return b;
+  }
+}
+function bcalcOp(op){
+  const cur=parseFloat(_bcalc.entry)||0;
+  if(_bcalc.op!=null && !_bcalc.fresh){
+    const r=bcalcApply(_bcalc.acc,cur,_bcalc.op);
+    if(isNaN(r)){ bcalcClear(); _bcalc.entry='Can\'t divide by 0'; bcalcRender(); return; }
+    _bcalc.acc=r; _bcalc.entry=bcalcTrim(r);
+  } else {
+    _bcalc.acc=cur;
+  }
+  _bcalc.op=op; _bcalc.fresh=true;
+  bcalcRender();
+}
+function bcalcEquals(){
+  if(_bcalc.op==null) return;
+  const cur=parseFloat(_bcalc.entry)||0;
+  const r=bcalcApply(_bcalc.acc,cur,_bcalc.op);
+  if(isNaN(r)){ bcalcClear(); _bcalc.entry='Can\'t divide by 0'; bcalcRender(); return; }
+  _bcalc.entry=bcalcTrim(r); _bcalc.acc=null; _bcalc.op=null; _bcalc.fresh=true;
+  bcalcRender();
+}
+function bcalcClear(){ _bcalc={acc:null,op:null,entry:'0',fresh:true}; bcalcRender(); }
+function bcalcSign(){
+  if(_bcalc.entry==='0') return;
+  _bcalc.entry=_bcalc.entry.startsWith('-')?_bcalc.entry.slice(1):'-'+_bcalc.entry;
+  bcalcRender();
+}
+// Percent of the pending left-hand value where there is one (200 + 10% = 220), otherwise a
+// plain division by 100 — matching what a phone calculator does.
+function bcalcPercent(){
+  const cur=parseFloat(_bcalc.entry)||0;
+  _bcalc.entry=bcalcTrim(_bcalc.op!=null&&_bcalc.acc!=null ? _bcalc.acc*cur/100 : cur/100);
+  _bcalc.fresh=false;
+  bcalcRender();
+}
+function bcalcBack(){
+  if(_bcalc.fresh) return;
+  _bcalc.entry=_bcalc.entry.length>1?_bcalc.entry.slice(0,-1):'0';
+  if(_bcalc.entry==='-') _bcalc.entry='0';
+  bcalcRender();
 }
 
 // Savings is a free per-week input (no auto-calc / no lock). The savings goal is SUGGESTIVE
