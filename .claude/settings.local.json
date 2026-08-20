@@ -35,7 +35,8 @@
       "Read(//c/Users/FrancoisPeters/AppData/Roaming/Claude/**)",
       "Bash(git revert *)",
       "Bash(awk '/Step 7b — Home Weather card/,/^\\\\.kitpantry-summary/' css/kitchen-extras.css)",
-      "Bash(awk '/@keyframes wfx-/,/^}/' css/kitchen-extras.css)"
+      "Bash(awk '/@keyframes wfx-/,/^}/' css/kitchen-extras.css)",
+      "Bash(node --check service-worker.js)"
     ]
   }
 }

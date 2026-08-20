@@ -11690,20 +11690,50 @@ function renderPlans(){
     </div>`;
   }
 
+  // Saving the current split is the primary action now — it's the only one that produces a
+  // program you can actually train, so it leads and the import/export tools follow.
+  html+=`<button onclick="plansSaveCurrentAsProgram()" style="width:100%;padding:13px;border-radius:12px;border:none;background:var(--accent);color:#fff;font-size:15px;font-weight:700;margin-bottom:8px">+ Save current split as a program</button>`;
   html+=`<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
     <button onclick="plansImport()" style="flex:1;padding:10px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;font-weight:600">⬆ JSON</button>
     <button onclick="plansImportHTML()" style="flex:1;padding:10px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;font-weight:600">⬆ HTML</button>
     <button onclick="plansExport()" style="flex:1;padding:10px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;font-weight:600">⬇ Export</button>
-    <button onclick="plansNew()" style="flex:1;padding:10px;border-radius:12px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600">+ New</button>
   </div>`;
 
   if(!data.plans.length){
-    html+=`<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">📋</div><div style="font-size:16px;font-weight:600;margin-bottom:6px">No plans yet</div><div style="font-size:14px">Create a plan or import one via JSON</div></div>`;
+    html+=`<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">🗂️</div><div style="font-size:16px;font-weight:600;margin-bottom:6px;color:var(--text)">No programs yet</div><div style="font-size:14px;line-height:1.5">Save your current training split as a program, then build others and switch between them any time.</div></div>`;
   } else {
     html+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">${data.plans.map(p=>`<button onclick="plansSetActive('${p.id}')" style="padding:6px 14px;border-radius:20px;border:none;background:${p.id===data.activePlanId?'var(--accent)':'var(--card-2)'};color:${p.id===data.activePlanId?'#fff':'var(--text)'};font-size:13px;font-weight:600">${p.name}</button>`).join('')}</div>`;
 
     if(active){
-      if(active.type==='html'){
+      if(planIsProgram(active)){
+        // A saved training split: its real days and exercises, plus whether it's the one
+        // currently driving the Log.
+        const applied=planAppliedState(active)==='active';
+        const types=active.cfg.types||[], sched=active.cfg.schedule||[];
+        html+=`<div style="background:var(--card);border-radius:16px;padding:16px;margin-bottom:12px">`;
+        html+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <div style="font-size:16px;font-weight:700;color:var(--text);flex:1;min-width:0">${_catEscHtml(active.name)}</div>
+          ${applied?`<span style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:rgba(var(--accent-rgb),.16);color:var(--accent)">Training now</span>`:''}
+        </div>`;
+        html+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${types.length} day${types.length===1?'':'s'} · ${sched.length}-day rotation</div>`;
+        types.forEach((t,i)=>{
+          const exs=t.exercises||[];
+          html+=`<div style="border-bottom:1px solid var(--border);padding:10px 0">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:${exs.length?6:0}px">
+              <div style="width:32px;height:32px;border-radius:8px;background:rgba(var(--accent-rgb),.12);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent)">${i+1}</div>
+              <div style="font-weight:600;color:var(--text);font-size:14px">${_catEscHtml(t.name||'Day '+(i+1))}</div>
+              <div style="margin-left:auto;font-size:12px;color:var(--muted)">${exs.length} ex</div>
+            </div>
+            ${exs.map(e=>`<div style="padding:3px 0 3px 40px;font-size:13px;color:var(--text-2)">${_catEscHtml(e.name||'')}</div>`).join('')}
+          </div>`;
+        });
+        html+=`</div>`;
+        html+=`<button onclick="plansApply('${active.id}')" ${applied?'disabled':''} style="width:100%;padding:13px;border-radius:12px;border:none;background:${applied?'var(--card-2)':'var(--accent)'};color:${applied?'var(--muted)':'#fff'};font-size:15px;font-weight:700;margin-bottom:8px">${applied?'Currently training this':'Switch to this program'}</button>`;
+        html+=`<div style="display:flex;gap:8px;margin-bottom:8px">
+          <button onclick="plansUpdateFromCurrent('${active.id}')" style="flex:1;padding:10px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;font-weight:600">Save current split into this</button>
+          <button onclick="plansRename('${active.id}')" style="flex:1;padding:10px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;font-weight:600">Rename</button>
+        </div>`;
+      } else if(active.type==='html'){
         // HTML plan — show open button and a preview description
         html+=`<div style="background:var(--card);border-radius:16px;padding:20px;margin-bottom:12px;text-align:center">
           <div style="font-size:36px;margin-bottom:10px">📄</div>
@@ -11753,6 +11783,76 @@ function renderPlans(){
   wrap.innerHTML=html;
 }
 
+// ── Programs ───────────────────────────────────────────────────────
+// The Log holds exactly ONE training split (splitCfg). A program is a saved snapshot of that
+// split, so Plans can hold many and swap between them — the one job the Log genuinely cannot
+// do, and the reason this tab was previously an island: nothing outside it ever read a plan,
+// and plansNew() built a seven-day shell with no UI anywhere to put exercises in it.
+function planSnapshotSplit(){
+  const c=splitCfg();
+  return JSON.parse(JSON.stringify({types:c.types||[],schedule:c.schedule||[]}));
+}
+// Compared as normalised JSON so "is this the program I'm running?" survives key order and
+// can also tell you the split has been edited since it was saved.
+function planCfgFingerprint(cfg){
+  if(!cfg||!Array.isArray(cfg.types)) return '';
+  return JSON.stringify({
+    types:cfg.types.map(t=>({name:t.name||'',exercises:(t.exercises||[]).map(e=>e.name||'')})),
+    schedule:cfg.schedule||[]
+  });
+}
+function planIsProgram(p){ return p&&p.kind==='split'&&p.cfg&&Array.isArray(p.cfg.types); }
+function planAppliedState(p){
+  if(!planIsProgram(p)) return 'n/a';
+  return planCfgFingerprint(p.cfg)===planCfgFingerprint(splitCfg())?'active':'inactive';
+}
+function plansSaveCurrentAsProgram(){
+  const cur=splitCfg();
+  if(!cur||!Array.isArray(cur.types)||!cur.types.length){ alert('No training split to save yet.'); return; }
+  const name=(prompt('Name this program?', cur.types.length+'-day split')||'').trim();
+  if(!name) return;
+  const data=loadPlans();
+  const id='plan_'+Date.now();
+  data.plans.push({id,name,kind:'split',description:'',cfg:planSnapshotSplit(),createdAt:Date.now()});
+  data.activePlanId=id;
+  savePlans(data);
+  renderPlans();
+}
+// Overwrite a saved program with whatever the split looks like now.
+function plansUpdateFromCurrent(id){
+  const data=loadPlans();
+  const p=data.plans.find(x=>x.id===id); if(!planIsProgram(p)) return;
+  if(!confirm('Replace "'+p.name+'" with your current training split?')) return;
+  p.cfg=planSnapshotSplit(); p.updatedAt=Date.now();
+  savePlans(data);
+  renderPlans();
+}
+// Write a program back into the Log's split. Mirrors the split editor's save path (9417):
+// assign, persist, clamp the day index, then re-render the Log.
+function plansApply(id){
+  const data=loadPlans();
+  const p=data.plans.find(x=>x.id===id);
+  if(!planIsProgram(p)) return;
+  const clean=sanitizeSplit(JSON.parse(JSON.stringify(p.cfg)));
+  if(!clean){ alert('That program has no training days saved in it.'); return; }
+  if(!confirm('Switch your training split to "'+p.name+'"?\n\nThis changes the days and exercises the Log shows. Your logged sessions and history are not touched.')) return;
+  splitConfig=clean;
+  saveSplit();
+  if(S.dayIdx>=scheduleLen()) S.dayIdx=0;
+  p.lastAppliedAt=Date.now();
+  savePlans(data);
+  if(typeof applyDayColour==='function') applyDayColour();
+  if(S.view==='log'&&typeof renderLog==='function') renderLog();
+  renderPlans();
+  if(typeof showToast==='function') showToast('Now training "'+p.name+'"');
+}
+function plansRename(id){
+  const data=loadPlans();
+  const p=data.plans.find(x=>x.id===id); if(!p) return;
+  const name=(prompt('Rename program', p.name)||'').trim();
+  if(!name) return;
+  p.name=name; savePlans(data); renderPlans();
+}
 function plansSetActive(id){
   const data=loadPlans();
   data.activePlanId=id;
@@ -11769,16 +11869,9 @@ function plansDelete(id){
   renderPlans();
 }
 
-function plansNew(){
-  const name=prompt('Plan name?');
-  if(!name) return;
-  const data=loadPlans();
-  const id='plan_'+Date.now();
-  data.plans.push({id,name,description:'',days:{'0':{name:'Day 1',exercises:[]},'1':{name:'Day 2',exercises:[]},'2':{name:'Day 3',exercises:[]},'3':{name:'Day 4',exercises:[]},'4':{name:'Day 5',exercises:[]},'5':{name:'Day 6',exercises:[]},'6':{name:'Rest',exercises:[]}}});
-  if(!data.activePlanId) data.activePlanId=id;
-  savePlans(data);
-  renderPlans();
-}
+// plansNew() removed: it created a plan with seven empty days, and no screen anywhere could
+// add an exercise to it, so it could only ever produce an empty shell. Programs are captured
+// from the real training split now (plansSaveCurrentAsProgram), which is editable in the Log.
 
 function plansImport(){
   const inp=document.createElement('input');
