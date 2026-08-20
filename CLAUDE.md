@@ -53,9 +53,14 @@ older summary — re-grep before assuming a fact from here is still true if it l
 - **Budget** — weekly tracker. Income sources, savings target, and fixed/variable categories are
   all user-configurable now — see "Known history" below, these used to be hardcoded to
   Francois's specific numbers and were deliberately made dynamic. Credit-card balance tracking,
-  comprehensive 8-section CSV export, collapsible sections, monthly/yearly charts.
+  comprehensive 8-section CSV export, collapsible sections, monthly/yearly charts. A weekly
+  **spending goal** card sits between Fixed and Variable (a self-imposed cap on variable
+  spending, distinct from "money left over"): the usual goal is `budDefaults.varGoal`, and each
+  week stores the goal that applied to it as `var_goal` so past weeks aren't rewritten later.
 - **Accounts** — net-worth tracking across accounts; added after Budget, migrated from the old
-  savings/CC logs.
+  savings/CC logs. An asset can be flagged `saver:true` ("Savers account"): it still counts in
+  net worth but is excluded from the **debt payoff position** card
+  (`(assets − savers) − debts`), which answers "am I covered" rather than "what am I worth".
 - **Plans** — import/export, streak tracking, plus an "HTML plan" type (import any HTML file,
   view it in a sandboxed iframe).
 - **Notes** — date-tracked notes, fullscreen view, optional home-screen bubble.
@@ -92,6 +97,10 @@ pure-black card surface).
   `env(safe-area-inset-top)` padding that the opaque bar has already reserved —
   `#app-header` in `css/layout.css` is the reference implementation that got this right;
   several other sticky sub-headers hadn't been brought in line as of 2026-07-21.
+- **Budget card collapse state is keyed by `data-bud-key`**, not by card index (it was
+  index-based, which mis-applied the saved state whenever the card count changed — the due
+  banner and previous-weeks list render `.card`s conditionally). Any new card in
+  `#budget-week-view` that should remember its collapsed state needs that attribute.
 - **Three separate collapse/expand systems exist side by side**: generic `.card.collapsed` +
   `.card-collapse-header/body`, `.ex-card.collapsed` (a fully separate ruleset in
   `workout.css`), and `.bud-collapsed`/`.bud-toggle` (budget-only, different naming

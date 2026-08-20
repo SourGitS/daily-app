@@ -523,3 +523,27 @@
 @keyframes home-card-enter{0%{opacity:0;transform:translateY(16px)}100%{opacity:1;transform:translateY(0)}}
 .budget-hero-bar-fill-animate{width:0% !important;transition:width 0.65s cubic-bezier(0.22,0.61,0.36,1) !important}
 .home-card-enter{animation:home-card-enter 0.32s cubic-bezier(0.22,0.61,0.36,1) both}
+
+/* ── Weekly spending-goal card (Budget, between Fixed and Variable) ── */
+.vg-body{padding:10px 2px 4px;text-align:center}
+.vg-amt{font-family:var(--font-num);font-size:34px;font-weight:800;line-height:1;letter-spacing:-.02em;color:var(--muted)}
+.vg-sub{font-size:12px;font-weight:600;color:var(--muted);margin-top:5px}
+.vg-bar-wrap{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin:12px 0 6px}
+.vg-bar-fill{height:100%;border-radius:4px;background:var(--muted);transition:width .35s ease,background .35s ease}
+.vg-foot{display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:var(--muted)}
+/* Over the goal: a tint on the whole card, so it reads at a glance without hunting for the number */
+.vg-card.vg-over{border-color:rgba(231,76,60,.45)}
+.vg-card.vg-over .vg-bar-wrap{background:rgba(231,76,60,.15)}
+.vg-default-line{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 2px 0;min-height:0}
+.vg-default-line:empty{display:none}
+.vg-default-txt{font-size:11px;font-weight:600;color:var(--muted)}
+.vg-default-btn{padding:5px 11px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--text-2,var(--text));font-size:11px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.vg-default-btn:active{background:var(--border)}
+
+/* ── Debt payoff position card (Accounts) ── */
+.acct-payoff-card{text-align:center;padding:18px 16px;margin-bottom:12px}
+.acct-payoff-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.acct-payoff-amt{font-family:var(--font-num);font-size:34px;font-weight:800;line-height:1;letter-spacing:-.02em}
+.acct-payoff-sub{font-size:12px;font-weight:600;color:var(--muted);margin-top:6px}
+.acct-payoff-math{font-family:var(--font-num);font-size:11px;font-weight:600;color:var(--muted);opacity:.8;margin-top:8px}
+.acct-payoff-note{font-size:11px;color:var(--muted);line-height:1.45;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}

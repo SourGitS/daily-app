@@ -287,7 +287,7 @@
 
         <div id="bud-income-card"></div>
 
-        <div class="card">
+        <div class="card" data-bud-key="sav">
           <div class="sec-label bud-toggle">&#127974; Savings<svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
           <div class="bud-row">
             <div class="bud-row-left">
@@ -307,12 +307,16 @@
 
         <div id="bud-fixed-card"></div>
 
+        <!-- Weekly variable-spend goal. Sits between the two expense cards deliberately:
+             it's the ceiling the Variable card below has to stay under. -->
+        <div id="bud-vargoal-card"></div>
+
         <div id="bud-variable-card"></div>
 
         <!-- Standalone calculator. Deliberately NOT wired into the budget inputs: the previous
              version hijacked field taps and stole focus, so a sync refresh could overwrite an
              in-progress entry (see commit 05e1cd1). This one is self-contained. -->
-        <div class="card">
+        <div class="card" data-bud-key="calc">
           <div class="sec-label bud-toggle">&#129518; Calculator<svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
           <div class="bud-collapse-body">
             <div id="bcalc-expr" class="bcalc-expr">&nbsp;</div>
@@ -345,7 +349,7 @@
         </div><!-- /left column -->
         <div><!-- right column: results, history, config -->
 
-        <div class="card">
+        <div class="card" data-bud-key="result">
           <div class="sec-label bud-toggle">&#128202; Weekly result<svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
             <div><div style="font-size:13px;color:var(--muted);margin-bottom:2px">Money left over</div><div style="font-size:28px;font-weight:800;line-height:1" id="calc-leftover">&#8212;</div></div>
@@ -362,7 +366,7 @@
         <div id="prev-weeks-section"></div>
 
         <!-- Budget config: pay days + suggestive savings goal (drive the Home tab) -->
-        <div class="card">
+        <div class="card" data-bud-key="config">
           <div class="sec-label">&#9881;&#65039; Pay days &amp; savings goal</div>
           <div class="bud-row">
             <div class="bud-row-left"><div class="bud-row-name">Weekly savings goal</div><div class="bud-row-budget">Suggestive only — colours the savings figure when reached</div></div>
@@ -810,6 +814,7 @@
   </div>
   <div class="accounts-wrap" style="padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 40px)">
     <div id="accounts-networth"></div>
+    <div id="accounts-payoff"></div>
     <div id="accounts-chart"></div>
     <div id="accounts-list"></div>
     <div id="accounts-addform"></div>

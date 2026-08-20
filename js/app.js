@@ -5532,6 +5532,15 @@ function ensureAccountsMigrated(){
 }
 ensureAccountsMigrated();
 
+// A "savers" account is an asset the user has ringfenced — money parked to earn interest
+// that they don't intend to raid to clear debts. It still counts in net worth (it IS theirs);
+// it's excluded only from the debt-payoff position below, which answers a different question:
+// "if I paid everything off today with the money I'm willing to spend, where would I land?"
+function acctIsSaver(a){ return !!(a && a.type==='asset' && a.saver); }
+function accountsSaverTotal(){ return accounts.filter(acctIsSaver).reduce((s,a)=>s+(parseFloat(a.current)||0),0); }
+// Spendable assets (everything except the savers accounts) minus every debt.
+// Negative → short by that much. Positive → clear, with that much spare.
+function accountsPayoffPosition(){ return (accountsAssetsTotal()-accountsSaverTotal())-accountsDebtsTotal(); }
 function accountsAssetsTotal(){ return accounts.filter(a=>a&&a.type==='asset').reduce((s,a)=>s+(parseFloat(a.current)||0),0); }
 function accountsDebtsTotal(){  return accounts.filter(a=>a&&a.type==='debt' ).reduce((s,a)=>s+(parseFloat(a.current)||0),0); }
 function accountsNetWorth(){ return accountsAssetsTotal()-accountsDebtsTotal(); }
@@ -6216,10 +6225,135 @@ function renderFixedCard(data,isCur){
       '</div>';
   }
 
-  return '<div class="card">'+budCardHead('fix','📌 Fixed expenses',isCur)+rows+recurBlock+
+  return '<div class="card" data-bud-key="fix">'+budCardHead('fix','📌 Fixed expenses',isCur)+rows+recurBlock+
     '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total fixed</div><div class="bud-row-calc" id="calc-fixed" style="color:var(--muted)">—</div></div>'+
     (editing?'<button class="add-cat-btn" data-type="fix">+ Add fixed expense</button>':'')+
   '</div>';
+}
+// ── Weekly variable-spend goal ────────────────────────────────────
+// A self-imposed ceiling on the Variable card below, separate from "money left over":
+// leftover is whatever income happens to leave behind, this is a number Francois picks and
+// tries to stay under. Per-week, so a week with things on can carry a bigger goal without
+// rewriting the usual one. The usual goal lives in budDefaults.varGoal; each week stores the
+// number that actually applied to it (var_goal), so past weeks aren't rewritten when the
+// usual goal changes later.
+function getVarGoalDefault(){ const n=parseFloat(budDefaults&&budDefaults.varGoal); return isNaN(n)?null:n; }
+function getWeekVarGoal(data){
+  const raw=data?data.var_goal:'';
+  if(raw!==undefined&&raw!==''&&raw!==null){ const n=parseFloat(raw); if(!isNaN(n)) return n; }
+  return getVarGoalDefault();
+}
+// Days remaining in the viewed week, today included. Only meaningful for the current week —
+// a past week has no "rest of the week" left to pace.
+function varGoalDaysLeft(){
+  const dow=(new Date().getDay()+6)%7; // 0 = Monday … 6 = Sunday
+  return 7-dow;
+}
+function renderVarGoalCard(data,editable){
+  const goal=getWeekVarGoal(data);
+  return '<div class="card vg-card" data-bud-key="vargoal">'+
+    '<div class="sec-label bud-toggle"><span class="bud-head-label">🎯 Spending goal</span>'+
+      '<span class="bud-head-right">'+BUD_CHEVRON+'</span></div>'+
+    '<div class="bud-row">'+
+      '<div class="bud-row-left"><div class="bud-row-name">Goal for this week</div></div>'+
+      '<input class="bud-row-input" type="number" inputmode="decimal" id="vargoal-input" placeholder="$0" '+
+        'value="'+(goal===null?'':goal)+'" oninput="budVarGoalInput()"'+(editable?'':' disabled')+'>'+
+    '</div>'+
+    '<div class="vg-body">'+
+      '<div class="vg-amt" id="vargoal-amt">—</div>'+
+      '<div class="vg-sub" id="vargoal-sub">Set a goal to start tracking it</div>'+
+      '<div class="vg-bar-wrap"><div class="vg-bar-fill" id="vargoal-bar" style="width:0%"></div></div>'+
+      '<div class="vg-foot"><span id="vargoal-spent">$0 spent</span><span id="vargoal-pace"></span></div>'+
+    '</div>'+
+    '<div class="vg-default-line" id="vargoal-defaultline"></div>'+
+  '</div>';
+}
+// Live update from budRecalc — never a re-render, which would drop focus out of the goal
+// input mid-typing (the same reason the category rows update by id rather than re-rendering).
+function updateVarGoalCard(totalVar){
+  const inputEl=document.getElementById('vargoal-input'); if(!inputEl) return;
+  const raw=inputEl.value;
+  const goal=(raw===''||raw===null)?null:parseFloat(raw);
+  const $=(id,t)=>{ const el=document.getElementById(id); if(el) el.textContent=t; };
+  const amtEl=document.getElementById('vargoal-amt');
+  const barEl=document.getElementById('vargoal-bar');
+  const cardEl=inputEl.closest('.card');
+
+  $('vargoal-spent','$'+totalVar.toFixed(0)+' spent');
+
+  if(goal===null||isNaN(goal)||goal<=0){
+    if(amtEl){ amtEl.textContent='—'; amtEl.style.color='var(--muted)'; }
+    $('vargoal-sub','Set a goal to start tracking it');
+    $('vargoal-pace','');
+    if(barEl){ barEl.style.width='0%'; barEl.style.background='var(--muted)'; }
+    if(cardEl) cardEl.classList.remove('vg-over');
+    updateVarGoalDefaultLine(goal);
+    return;
+  }
+
+  const left=goal-totalVar;
+  const over=left<0;
+  const pct=Math.min(100,Math.round(totalVar/goal*100));
+  // Green under, amber from 85% (close enough to pull up), red the moment it ticks over.
+  const col=over?'var(--danger)':(totalVar/goal>=0.85?'var(--accent)':'var(--success)');
+  if(amtEl){ amtEl.textContent=(over?'-$':'$')+Math.abs(left).toFixed(0); amtEl.style.color=col; }
+  $('vargoal-sub',over?'over your $'+goal.toFixed(0)+' goal':'left of your $'+goal.toFixed(0)+' goal');
+  if(barEl){ barEl.style.width=pct+'%'; barEl.style.background=col; }
+  if(cardEl) cardEl.classList.toggle('vg-over',over);
+
+  // Pace only makes sense for the week actually in progress.
+  if(currentWeekIdx===0 && !over){
+    const days=varGoalDaysLeft();
+    $('vargoal-pace','$'+(left/days).toFixed(0)+'/day for '+days+' more day'+(days===1?'':'s'));
+  } else if(currentWeekIdx===0 && over){
+    // The amount over is already the headline — the useful extra here is how long you still
+    // have to hold the line for.
+    const days=varGoalDaysLeft();
+    $('vargoal-pace',days+' day'+(days===1?'':'s')+' still to go');
+  } else {
+    $('vargoal-pace',totalVar<=goal?'✓ Stayed under':'✗ Went over');
+  }
+  updateVarGoalDefaultLine(goal);
+}
+// "Usual goal" controls: only shown when this week's number differs from the saved default.
+function updateVarGoalDefaultLine(goal){
+  const el=document.getElementById('vargoal-defaultline'); if(!el) return;
+  const def=getVarGoalDefault();
+  if(goal===null||isNaN(goal)||def===null||goal===def){
+    el.innerHTML = def===null ? '' : '<span class="vg-default-txt">Your usual goal: $'+def.toFixed(0)+'</span>';
+    return;
+  }
+  el.innerHTML='<span class="vg-default-txt">Usual: $'+def.toFixed(0)+'</span>'+
+    '<button class="vg-default-btn" onclick="budVarGoalReset()">Use usual</button>'+
+    '<button class="vg-default-btn" onclick="budVarGoalSaveDefault()">Make this my usual</button>';
+}
+function budVarGoalInput(){
+  // First goal ever set becomes the usual one — otherwise the "usual" line would stay empty
+  // until the user found the button, and there'd be nothing for new weeks to inherit.
+  if(getVarGoalDefault()===null){
+    const n=parseFloat(document.getElementById('vargoal-input')?.value);
+    if(!isNaN(n)&&n>0){ budDefaults.varGoal=n; budPersistDefaults(); }
+  }
+  budRecalc(); budSaveDraft();
+}
+function budVarGoalSaveDefault(){
+  const n=parseFloat(document.getElementById('vargoal-input')?.value);
+  if(isNaN(n)||n<=0) return;
+  budDefaults.varGoal=n; budPersistDefaults();
+  budRecalc();
+  if(typeof showToast==='function') showToast('Usual goal set to $'+n.toFixed(0));
+}
+function budVarGoalReset(){
+  const def=getVarGoalDefault(); if(def===null) return;
+  const el=document.getElementById('vargoal-input'); if(!el||el.disabled) return;
+  el.value=def;
+  budRecalc(); budSaveDraft();
+}
+// budSaveDefaults() rewrites the four legacy fixed-expense fields from the DOM, which isn't
+// what we want here — this just persists whatever is already on the object, and syncs.
+function budPersistDefaults(){
+  localStorage.setItem('daily_budget_defaults', JSON.stringify(budDefaults));
+  syncBudDefaultsToFirebase();
 }
 function renderVariableCard(data,isCur){
   const editing=budEditMode.var && isCur;
@@ -6234,7 +6368,7 @@ function renderVariableCard(data,isCur){
       (editing?'<button class="delete-cat-btn" data-type="var" data-id="'+c.id+'" aria-label="Remove category">×</button>':'')+
     '</div>';
   }).join('');
-  return '<div class="card">'+budCardHead('var','🛒 Variable expenses',isCur)+rows+
+  return '<div class="card" data-bud-key="var">'+budCardHead('var','🛒 Variable expenses',isCur)+rows+
     '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total variable</div><div class="bud-row-calc" id="calc-variable" style="color:var(--muted)">$0</div></div>'+
     (editing?'<button class="add-cat-btn" data-type="var">+ Add variable expense</button>':'')+
   '</div>';
@@ -6257,7 +6391,7 @@ function renderIncomeCard(data,isCur){
       (editing?'<button class="delete-cat-btn" data-type="inc" data-id="'+c.id+'" aria-label="Remove income source">×</button>':'')+
     '</div>';
   }).join('');
-  return '<div class="card">'+budCardHead('inc','💵 Income',isCur)+rows+
+  return '<div class="card" data-bud-key="inc">'+budCardHead('inc','💵 Income',isCur)+rows+
     '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total income</div><div class="bud-row-calc" id="calc-income" style="color:var(--green)">$0</div></div>'+
     (editing?'<button class="add-cat-btn" data-type="inc">+ Add income source</button>':'')+
   '</div>';
@@ -6346,15 +6480,24 @@ document.addEventListener('click', function(e){
   card.classList.toggle('bud-collapsed');
   saveBudgetCollapseState();
 });
+// Keyed by data-bud-key, not by position. The old index-based array silently mis-applied
+// itself whenever the card count changed — the due banner and the previous-weeks list both
+// render .card elements conditionally, so a collapsed card could reappear as a different one.
+// Cards without a key (those two) simply aren't persisted, which is what we want anyway.
 function saveBudgetCollapseState(){
-  const states=[];
-  document.querySelectorAll('#budget-week-view .card').forEach((card,i)=>{ states[i]=card.classList.contains('bud-collapsed'); });
+  const states={};
+  document.querySelectorAll('#budget-week-view .card[data-bud-key]').forEach(card=>{
+    states[card.dataset.budKey]=card.classList.contains('bud-collapsed');
+  });
   localStorage.setItem('daily_budget_collapse', JSON.stringify(states));
 }
 function restoreBudgetCollapseState(){
   try{
-    const states=JSON.parse(localStorage.getItem('daily_budget_collapse')||'[]');
-    document.querySelectorAll('#budget-week-view .card').forEach((card,i)=>{ if(states[i]) card.classList.add('bud-collapsed'); });
+    const states=JSON.parse(localStorage.getItem('daily_budget_collapse')||'{}');
+    if(!states||Array.isArray(states)||typeof states!=='object') return; // legacy array: ignore, re-saves on first toggle
+    document.querySelectorAll('#budget-week-view .card[data-bud-key]').forEach(card=>{
+      if(states[card.dataset.budKey]) card.classList.add('bud-collapsed');
+    });
   }catch(e){}
 }
 
@@ -6393,6 +6536,8 @@ function renderBudgetTab(){
   if(incWrap) incWrap.innerHTML=renderIncomeCard(data,editable);
   const fixWrap=document.getElementById('bud-fixed-card');
   if(fixWrap) fixWrap.innerHTML=renderFixedCard(data,editable);
+  const goalWrap=document.getElementById('bud-vargoal-card');
+  if(goalWrap) goalWrap.innerHTML=renderVarGoalCard(data,editable);
   const varWrap=document.getElementById('bud-variable-card');
   if(varWrap) varWrap.innerHTML=renderVariableCard(data,editable);
 
@@ -6616,6 +6761,7 @@ function budRecalc(animate){
   $('calc-fixed',   '$'+totalFixed.toFixed(0));
   $('calc-variable',totalVar>0?'$'+totalVar.toFixed(0):'—');
   $('calc-leftover',leftover!==null?(leftover>=0?'+$':'-$')+Math.abs(leftover).toFixed(0):'—');
+  updateVarGoalCard(totalVar);
 
   // The goal label was hardcoded as "Goal: $200 minimum" in index.html, so it kept showing
   // $200 no matter what the user set in Pay days & savings goal. Drive it from the saved value.
@@ -6696,6 +6842,7 @@ function budWriteFields(d){
   const gv=id=>document.getElementById(id)?.value||'';
   if(S.view==='budget'){
     d.sav_amount = gv('sav-amount');
+    d.var_goal   = gv('vargoal-input');
     d.notes      = gv('week-notes');
   }
   loadIncCats().forEach(c=>{ const el=document.getElementById('inc-'+c.id); if(el) d['inc_'+c.id]=el.value||''; });
@@ -9332,9 +9479,10 @@ document.addEventListener('focusin', function(e){
 const OB_VERSION = 2;             // bump when onboarding gains steps worth re-showing existing users
 // Bump WHATS_NEW_VERSION and add an entry whenever existing users should see a "what's new"
 // popup next time they open the app. Independent of OB_VERSION (which is onboarding steps only).
-const WHATS_NEW_VERSION = 1;
+const WHATS_NEW_VERSION = 2;
 const WHATS_NEW_LOG = [
-  { v:1, items:['New app icon and logo, everywhere in the app', 'Brighter, taller completed-exercise rows on Log', 'Exercise Library: delete moved into the edit screen'] }
+  { v:1, items:['New app icon and logo, everywhere in the app', 'Brighter, taller completed-exercise rows on Log', 'Exercise Library: delete moved into the edit screen'] },
+  { v:2, items:['Budget: a weekly Spending goal card — set a cap for your variable spending and watch it turn red if you go over', 'Accounts: flag an account as a Savers account to keep it out of the new debt payoff total'] }
 ];
 const OB_STEPS = ['welcome','theme','profile','body','split','habits','sync','done'];
 const OB_FIX_CHIPS = ['Rent','Phone','Subscriptions','Transport','Gym'];
@@ -9631,7 +9779,7 @@ function closeBudgetEditor(){ const v=document.getElementById('view-budget-edito
 // Same overlay pattern as the budget/settings editors, and the same add/rename/delete
 // idiom as the budget-category lists — just richer per-item fields (balance history,
 // optional statement tracking for debts). Reads/writes the daily_accounts store from phase 1.
-let _acctAddOpen=false, _acctAddType='asset', _acctAddTracks=false;
+let _acctAddOpen=false, _acctAddType='asset', _acctAddTracks=false, _acctAddSaver=false;
 function openAccounts(){
   const v=document.getElementById('view-accounts'); if(!v) return;
   v.style.display='block';
@@ -9639,7 +9787,7 @@ function openAccounts(){
   // Sidebar peer highlight (mirrors openExerciseLibrary): mark Accounts active, clear the rest.
   document.querySelectorAll('.ds-item').forEach(b=>b.classList.remove('active'));
   const _di=document.getElementById('ds-accounts'); if(_di) _di.classList.add('active');
-  _acctAddOpen=false; _acctAddType='asset'; _acctAddTracks=false;
+  _acctAddOpen=false; _acctAddType='asset'; _acctAddTracks=false; _acctAddSaver=false;
   renderAccountsPage();
   if(typeof closeMenu==='function') closeMenu();
 }
@@ -9699,6 +9847,34 @@ function acctChangeHtml(a){
   return '<div class="acct-change" style="color:'+(good?'var(--success)':'var(--danger)')+'">'+
     (delta>0?'▲':'▼')+' '+fmtMoney(Math.abs(delta))+' · 30d</div>';
 }
+// ── Debt payoff position ──────────────────────────────────────────
+// Net worth answers "what am I worth"; this answers "am I actually covered". Savers accounts
+// are held back from the sum so the interest pot isn't quietly counted as debt cover.
+function renderPayoffCard(){
+  const el=document.getElementById('accounts-payoff'); if(!el) return;
+  if(!accounts.length){ el.innerHTML=''; return; }
+  const debts=accountsDebtsTotal();
+  const savers=accounts.filter(acctIsSaver);
+  const saverTot=accountsSaverTotal();
+  const pos=accountsPayoffPosition();
+  const clear=pos>=0;
+  const col=clear?'var(--success)':'var(--danger)';
+  const headline=debts<=0
+    ? 'No debts — everything here is yours'
+    : (clear?'spare after clearing every debt':'still needed to clear every debt');
+  const saverLine=savers.length
+    ? '<div class="acct-payoff-note">Holding back '+fmtMoney(saverTot)+' in '+
+        savers.map(a=>_catEscHtml(a.name||'Savers')).join(', ')+' — excluded from this total, still counted in net worth.</div>'
+    : '<div class="acct-payoff-note">Flip on “Savers account” below to keep an interest account out of this total.</div>';
+  el.innerHTML=
+    '<div class="card acct-payoff-card">'+
+      '<div class="acct-payoff-label">'+(clear?'✅':'⚠️')+' Debt payoff position</div>'+
+      '<div class="acct-payoff-amt" style="color:'+col+'">'+fmtMoney(Math.abs(pos))+'</div>'+
+      '<div class="acct-payoff-sub">'+headline+'</div>'+
+      (debts>0?'<div class="acct-payoff-math">'+fmtMoney(accountsAssetsTotal()-saverTot)+' spendable − '+fmtMoney(debts)+' debts</div>':'')+
+      saverLine+
+    '</div>';
+}
 function renderAccountsPage(){
   // Net-worth header
   const nwEl=document.getElementById('accounts-networth');
@@ -9713,6 +9889,7 @@ function renderAccountsPage(){
         '<div style="font-size:12px;color:var(--muted);margin-top:8px">'+fmtMoney(assets)+' assets · '+fmtMoney(debts)+' debts</div>'+
       '</div>';
   }
+  renderPayoffCard();
   // One card per account
   const listEl=document.getElementById('accounts-list');
   if(listEl){
@@ -9746,10 +9923,22 @@ function renderAccountsPage(){
               '</div>'
             :'');
         }
+        // Assets can be flagged as a savers account: still net worth, held out of the payoff total.
+        let saverRow='';
+        if(!isDebt){
+          saverRow=
+            '<div class="bud-row" style="border-bottom:none;padding-top:6px">'+
+              '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Savers account</div>'+
+                '<div class="bud-row-budget">Excluded from the payoff total</div></div>'+
+              '<label class="toggle-switch"><input type="checkbox"'+(a.saver?' checked':'')+' onchange="accountToggleSaver(\''+a.id+'\',this.checked)"><span class="toggle-slider"></span></label>'+
+            '</div>';
+        }
+        const typeTag=(!isDebt&&a.saver)?'🔒 Savers':(isDebt?'Debt':'Asset');
+        const typeCol=isDebt?'var(--danger)':((a.saver)?'var(--blue)':'var(--success)');
         return '<div class="card">'+
           '<div class="bud-row" style="border-bottom:1px solid var(--border)">'+
             '<input class="bud-cat-name-input" value="'+_catEsc(a.name)+'" placeholder="Account name" onchange="accountRename(\''+a.id+'\',this.value)" style="flex:1;font-weight:700">'+
-            '<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:'+(isDebt?'var(--danger)':'var(--success)')+';margin:0 8px">'+(isDebt?'Debt':'Asset')+'</span>'+
+            '<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:'+typeCol+';margin:0 8px;white-space:nowrap">'+typeTag+'</span>'+
             '<button class="lib-del-btn" onclick="accountDelete(\''+a.id+'\')" aria-label="Delete account">×</button>'+
           '</div>'+
           '<div class="bud-row" style="border-bottom:none">'+
@@ -9763,6 +9952,7 @@ function renderAccountsPage(){
           '</div>'+
           // Clarify that a debt balance is a standalone running total, not weekly spending —
           // the note that used to live in the retired Budget-tab CC editor.
+          saverRow+
           (isDebt?'<div class="acct-note" style="font-size:12px;color:var(--muted);line-height:1.45;padding:2px 2px 4px">This is the total currently owed — a separate running debt, not counted in your weekly leftover. Enter card purchases in your Variable spending categories as usual, same as cash.</div>':'')+
           stmt+
         '</div>';
@@ -9789,7 +9979,12 @@ function renderAccountsPage(){
             '<div class="bud-row" style="border-bottom:none">'+
               '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Track statement due date</div></div>'+
               '<label class="toggle-switch"><input type="checkbox"'+(_acctAddTracks?' checked':'')+' onchange="accountsAddSetTracks(this.checked)"><span class="toggle-slider"></span></label>'+
-            '</div>':'')+
+            '</div>':
+            '<div class="bud-row" style="border-bottom:none">'+
+              '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Savers account</div>'+
+                '<div class="bud-row-budget">Excluded from the debt payoff total</div></div>'+
+              '<label class="toggle-switch"><input type="checkbox"'+(_acctAddSaver?' checked':'')+' onchange="accountsAddSetSaver(this.checked)"><span class="toggle-slider"></span></label>'+
+            '</div>')+
           '<div style="display:flex;gap:8px;margin-top:10px">'+
             '<button class="modal-btn secondary" onclick="accountsAddCancel()">Cancel</button>'+
             '<button class="modal-btn primary" onclick="accountsAddConfirm()">Add account</button>'+
@@ -9803,15 +9998,17 @@ function renderAccountsPage(){
   renderNetWorthChartInto('accounts-chart');
 }
 // Add-form controllers
-function accountsAddOpen(){ _acctAddOpen=true; _acctAddType='asset'; _acctAddTracks=false; renderAccountsPage(); }
+function accountsAddOpen(){ _acctAddOpen=true; _acctAddType='asset'; _acctAddTracks=false; _acctAddSaver=false; renderAccountsPage(); }
 function accountsAddCancel(){ _acctAddOpen=false; renderAccountsPage(); }
-function accountsAddSetType(t){ _acctAddType=t; if(t!=='debt') _acctAddTracks=false; renderAccountsPage(); }
+function accountsAddSetType(t){ _acctAddType=t; if(t!=='debt') _acctAddTracks=false; else _acctAddSaver=false; renderAccountsPage(); }
+function accountsAddSetSaver(on){ _acctAddSaver=!!on; }
 function accountsAddSetTracks(on){ _acctAddTracks=!!on; }
 function accountsAddConfirm(){
   const name=(document.getElementById('acct-new-name')?.value||'').trim();
   if(!name){ document.getElementById('acct-new-name')?.focus(); return; }
   accounts.push({ id:genAccountId(), name, type:(_acctAddType==='debt'?'debt':'asset'),
-    tracksStatement:(_acctAddType==='debt'&&_acctAddTracks), current:0, statementBalance:0, dueDate:'', history:[] });
+    tracksStatement:(_acctAddType==='debt'&&_acctAddTracks), saver:(_acctAddType!=='debt'&&_acctAddSaver),
+    current:0, statementBalance:0, dueDate:'', history:[] });
   saveAccounts(accounts);
   _acctAddOpen=false;
   renderAccountsPage();
@@ -9834,6 +10031,11 @@ function accountUpdateBalanceFromInput(id){
   if(isNaN(v)) return;
   accountLogBalance(id, v); // dated history entry + current update + sync (phase 1)
   renderAccountsPage();
+}
+function accountToggleSaver(id,on){
+  const a=accounts.find(x=>x&&x.id===id); if(!a) return;
+  a.saver=!!on;
+  saveAccounts(accounts); renderAccountsPage();
 }
 function accountToggleStatement(id,on){
   const a=accounts.find(x=>x&&x.id===id); if(!a) return;
