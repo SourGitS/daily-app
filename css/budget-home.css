@@ -268,10 +268,11 @@
   #app-main>section{padding:0 18px 40px}
   #desktop-sidebar{width:160px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);color:var(--text);display:flex;flex-direction:column;padding:16px 0;height:100vh;position:sticky;top:0}
   /* Real wordmark image (see layout.css) — theme-paired, same as the header/side-menu.
-     Centred in the sidebar: the img is inline-block, so it otherwise sat hard against the
-     left padding while the nav items below read as a centred column. Only one of the two
-     theme wordmarks is display:block at a time, so this centres whichever is showing. */
-  .ds-logo{display:flex;justify-content:center;padding:0 14px 18px}
+     Inset rather than centred or flush-left. 54px is the midpoint between the two, and it is
+     also exactly where the nav labels start, so the wordmark shares an edge with "Home",
+     "Log" and "Stats" instead of sitting at an arbitrary offset. Only one of the two theme
+     wordmarks is display:block at a time, so this positions whichever is showing. */
+  .ds-logo{display:flex;justify-content:flex-start;padding:0 14px 18px 54px}
   .ds-logo .wordmark-img{height:28px}
   .ds-section{font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--muted);padding:10px 14px 4px}
   .ds-item{display:flex;align-items:center;gap:8px;padding:7px 14px;font-size:12px;color:var(--muted);background:transparent;border:none;border-left:2px solid transparent;width:100%;cursor:pointer;text-align:left}
