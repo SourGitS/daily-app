@@ -50,11 +50,18 @@ New card between Fixed expenses and Variable expenses (`#bud-vargoal-card`,
 `renderVarGoalCard()` / `updateVarGoalCard()`), because it's the ceiling the Variable card
 directly below has to stay under.
 
-- A goal input per week. The usual goal lives in `budDefaults.varGoal`; each week stores the
-  number that actually applied to it (`var_goal` in the week data), so raising the goal for a
-  big week never rewrites past weeks, and past weeks don't move when the usual goal changes.
+- Read-only by default: just the figure, the bar and the footer. The goal input sits behind
+  the card's **Edit** button, the same convention as the Income / Fixed / Variable cards
+  (`budEditMode.vargoal`, `budCardHead('vargoal',…)`, the shared `bud-edit-toggle` handler).
+- A goal per week. The usual goal lives in `budDefaults.varGoal`; each week stores the number
+  that actually applied to it (`var_goal` in the week data), so raising the goal for a big
+  week never rewrites past weeks, and past weeks don't move when the usual goal changes.
+  Because the input isn't always on screen, the card carries the live goal in
+  `data-vg-goal` and `budWriteFields` only writes `var_goal` when the input exists — otherwise
+  a routine draft flush would blank the saved goal.
 - The first goal ever set is adopted as the usual one automatically. After that, a week whose
-  goal differs from the usual one gets two buttons: **Use usual** and **Make this my usual**.
+  goal differs from the usual one gets two buttons while editing: **Use usual** and **Make
+  this my usual**.
 - Big figure = goal − total variable. Green under, amber from 85%, **red the moment it ticks
   over** (and the whole card border tints red).
 - Footer: `$X spent` on the left; on the right, `$X/day for N more days` while under,
@@ -73,23 +80,27 @@ a legacy saved array is ignored and replaced on the first toggle.
 ## VERIFICATION CHECKLIST
 
 1. Budget tab → a **🎯 Spending goal** card sits between Fixed expenses and Variable expenses.
-2. Type a goal (e.g. 250). Enter variable spending under it → big green figure "$X left of
-   your $250 goal", green bar, and "$X/day for N more days" bottom-right.
-3. Push variable spending past the goal → figure flips red with a minus, "over your $250 goal",
-   red bar, and the card's border tints red.
-4. Change the goal on this week → a line appears: "Usual: $250 · Use usual · Make this my
-   usual". **Use usual** puts it back; **Make this my usual** sets the new default.
-5. Close and reopen the app → the goal is still there for the week.
-6. Swipe back to a past week → the goal input is greyed out and the footer reads
-   "✓ Stayed under" or "✗ Went over".
-7. Collapse the Spending goal card, reopen the app → it's still collapsed, and no other card
+2. The card shows no input — just the figure and bar. Tap **Edit** in its header to reveal
+   "Goal for this week", type a goal (e.g. 250), tap **Done** and the input disappears again.
+3. Enter variable spending under the goal → big green figure "$X left of your $250 goal",
+   green bar, and "$X/day for N more days" bottom-right.
+4. Push variable spending past the goal → the figure flips red with a minus, "over your $250
+   goal", red bar, and the card's border tints red. All of this updates with the card closed.
+5. Tap **Edit** and change the goal for this week → a line appears: "Usual: $250 · Use usual ·
+   Make this my usual". **Use usual** puts it back; **Make this my usual** sets the new
+   default. Both disappear again on **Done**.
+6. Close and reopen the app → the goal is still there for the week, and the card is still
+   closed (entering variable spending with it closed must never blank the goal).
+7. Swipe back to a past week → no Edit button on the card, and the footer reads
+   "✓ Stayed under" or "✗ Went over". Unlock the week with **✎ Edit week** and Edit comes back.
+8. Collapse the Spending goal card, reopen the app → it's still collapsed, and no other card
    collapsed itself.
-8. Menu → Accounts → each asset account has a **Savers account** toggle.
-9. Turn it on for the savings account → its tag turns into a blue 🔒 SAVERS.
-10. A **Debt payoff position** card sits under Net worth: red "$X still needed to clear every
+9. Menu → Accounts → each asset account has a **Savers account** toggle.
+10. Turn it on for the savings account → its tag turns into a blue 🔒 SAVERS.
+11. A **Debt payoff position** card sits under Net worth: red "$X still needed to clear every
     debt" while short, green "$X spare after clearing every debt" once covered, and it names
     the savers account it's holding back.
-11. Turn the savers toggle off → the payoff figure jumps by that account's balance. Net worth
+12. Turn the savers toggle off → the payoff figure jumps by that account's balance. Net worth
     at the top does NOT change either way.
-12. Add a new account with type Asset → the add form offers the Savers toggle; pick Debt and
+13. Add a new account with type Asset → the add form offers the Savers toggle; pick Debt and
     it offers "Track statement due date" as before.

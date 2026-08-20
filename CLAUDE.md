@@ -55,8 +55,10 @@ older summary — re-grep before assuming a fact from here is still true if it l
   Francois's specific numbers and were deliberately made dynamic. Credit-card balance tracking,
   comprehensive 8-section CSV export, collapsible sections, monthly/yearly charts. A weekly
   **spending goal** card sits between Fixed and Variable (a self-imposed cap on variable
-  spending, distinct from "money left over"): the usual goal is `budDefaults.varGoal`, and each
-  week stores the goal that applied to it as `var_goal` so past weeks aren't rewritten later.
+  spending, distinct from "money left over"): the goal input is behind the card's Edit button
+  (`budEditMode.vargoal`, same convention as the other budget cards), the usual goal is
+  `budDefaults.varGoal`, and each week stores the goal that applied to it as `var_goal` so past
+  weeks aren't rewritten later.
 - **Accounts** — net-worth tracking across accounts; added after Budget, migrated from the old
   savings/CC logs. An asset can be flagged `saver:true` ("Savers account"): it still counts in
   net worth but is excluded from the **debt payoff position** card

@@ -6152,7 +6152,7 @@ const _catEscHtml=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(
 const BUD_CHEVRON='<svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>';
 // Per-card edit mode (current week only). When off, add/delete/rename controls are not
 // rendered at all — so a stray tap can't delete a category; amounts stay editable always.
-const budEditMode = {inc:false, fix:false, var:false};
+const budEditMode = {inc:false, fix:false, var:false, vargoal:false};
 // A past week temporarily unlocked for backfill editing (e.g. fixing last week's income).
 // Reset whenever the viewed week changes so history stays read-only by default.
 let budPastEdit = false;
@@ -6251,14 +6251,21 @@ function varGoalDaysLeft(){
 }
 function renderVarGoalCard(data,editable){
   const goal=getWeekVarGoal(data);
-  return '<div class="card vg-card" data-bud-key="vargoal">'+
-    '<div class="sec-label bud-toggle"><span class="bud-head-label">🎯 Spending goal</span>'+
-      '<span class="bud-head-right">'+BUD_CHEVRON+'</span></div>'+
-    '<div class="bud-row">'+
-      '<div class="bud-row-left"><div class="bud-row-name">Goal for this week</div></div>'+
-      '<input class="bud-row-input" type="number" inputmode="decimal" id="vargoal-input" placeholder="$0" '+
-        'value="'+(goal===null?'':goal)+'" oninput="budVarGoalInput()"'+(editable?'':' disabled')+'>'+
-    '</div>'+
+  const editing=budEditMode.vargoal && editable;
+  // Read-only by default (same Edit-button convention as the Income/Fixed/Variable cards):
+  // the goal is already spelled out in "left of your $250 goal", so an always-visible input
+  // was just clutter on a card you only change occasionally.
+  const goalRow=editing
+    ? '<div class="bud-row">'+
+        '<div class="bud-row-left"><div class="bud-row-name">Goal for this week</div></div>'+
+        '<input class="bud-row-input" type="number" inputmode="decimal" id="vargoal-input" placeholder="$0" '+
+          'value="'+(goal===null?'':goal)+'" oninput="budVarGoalInput()">'+
+      '</div>'
+    : '';
+  // The goal has to survive the input disappearing — updateVarGoalCard falls back to this.
+  return '<div class="card vg-card" data-bud-key="vargoal" data-vg-goal="'+(goal===null?'':goal)+'">'+
+    budCardHead('vargoal','🎯 Spending goal',editable)+
+    goalRow+
     '<div class="vg-body">'+
       '<div class="vg-amt" id="vargoal-amt">—</div>'+
       '<div class="vg-sub" id="vargoal-sub">Set a goal to start tracking it</div>'+
@@ -6270,20 +6277,26 @@ function renderVarGoalCard(data,editable){
 }
 // Live update from budRecalc — never a re-render, which would drop focus out of the goal
 // input mid-typing (the same reason the category rows update by id rather than re-rendering).
+function currentVarGoal(){
+  const inputEl=document.getElementById('vargoal-input');
+  const raw=inputEl ? inputEl.value
+                    : (document.querySelector('#bud-vargoal-card .vg-card')||{dataset:{}}).dataset.vgGoal;
+  if(raw===undefined||raw===null||raw==='') return null;
+  const n=parseFloat(raw);
+  return isNaN(n)?null:n;
+}
 function updateVarGoalCard(totalVar){
-  const inputEl=document.getElementById('vargoal-input'); if(!inputEl) return;
-  const raw=inputEl.value;
-  const goal=(raw===''||raw===null)?null:parseFloat(raw);
+  const cardEl=document.querySelector('#bud-vargoal-card .vg-card'); if(!cardEl) return;
+  const goal=currentVarGoal();
   const $=(id,t)=>{ const el=document.getElementById(id); if(el) el.textContent=t; };
   const amtEl=document.getElementById('vargoal-amt');
   const barEl=document.getElementById('vargoal-bar');
-  const cardEl=inputEl.closest('.card');
 
   $('vargoal-spent','$'+totalVar.toFixed(0)+' spent');
 
   if(goal===null||isNaN(goal)||goal<=0){
     if(amtEl){ amtEl.textContent='—'; amtEl.style.color='var(--muted)'; }
-    $('vargoal-sub','Set a goal to start tracking it');
+    $('vargoal-sub',document.getElementById('vargoal-input')?'Enter a goal to start tracking it':'Tap Edit to set a weekly goal');
     $('vargoal-pace','');
     if(barEl){ barEl.style.width='0%'; barEl.style.background='var(--muted)'; }
     if(cardEl) cardEl.classList.remove('vg-over');
@@ -6318,6 +6331,7 @@ function updateVarGoalCard(totalVar){
 // "Usual goal" controls: only shown when this week's number differs from the saved default.
 function updateVarGoalDefaultLine(goal){
   const el=document.getElementById('vargoal-defaultline'); if(!el) return;
+  if(!document.getElementById('vargoal-input')){ el.innerHTML=''; return; } // read-only card
   const def=getVarGoalDefault();
   if(goal===null||isNaN(goal)||def===null||goal===def){
     el.innerHTML = def===null ? '' : '<span class="vg-default-txt">Your usual goal: $'+def.toFixed(0)+'</span>';
@@ -6345,7 +6359,7 @@ function budVarGoalSaveDefault(){
 }
 function budVarGoalReset(){
   const def=getVarGoalDefault(); if(def===null) return;
-  const el=document.getElementById('vargoal-input'); if(!el||el.disabled) return;
+  const el=document.getElementById('vargoal-input'); if(!el) return;
   el.value=def;
   budRecalc(); budSaveDraft();
 }
@@ -6842,7 +6856,9 @@ function budWriteFields(d){
   const gv=id=>document.getElementById(id)?.value||'';
   if(S.view==='budget'){
     d.sav_amount = gv('sav-amount');
-    d.var_goal   = gv('vargoal-input');
+    // Only when the goal input is actually on screen (it's behind the card's Edit button) —
+    // otherwise a routine draft flush would blank the week's saved goal.
+    if(document.getElementById('vargoal-input')) d.var_goal = gv('vargoal-input');
     d.notes      = gv('week-notes');
   }
   loadIncCats().forEach(c=>{ const el=document.getElementById('inc-'+c.id); if(el) d['inc_'+c.id]=el.value||''; });
