@@ -298,24 +298,33 @@
 .wfx-sun,.wfx-moon,.wfx-stars,.wfx-cloud,.wfx-fog,.wfx-rain,.wfx-snow,.wfx-flash{display:none}
 
 /* Sun — soft glow that breathes; a few slow-rotating rays behind it */
-.wfx-sun{width:90px;height:90px;border-radius:50%;position:absolute;top:-30px;right:-20px;
+/* Position comes from applyWeatherMotion(), which walks it along the real sunrise-to-sunset
+   arc; the fallbacks are the old fixed corner for the states with no reading yet. The 45px
+   offset is half the width, so the var addresses the centre of the glow rather than its edge. */
+.wfx-sun{width:90px;height:90px;border-radius:50%;position:absolute;
+  left:calc(var(--wfx-sun-x,88%) - 45px);top:var(--wfx-sun-y,-30px);right:auto;
   background:radial-gradient(circle,rgba(255,244,214,.95) 0%,rgba(255,220,140,.55) 45%,transparent 72%);
-  animation:wfx-sun-breathe 5s ease-in-out infinite}
+  animation:wfx-sun-breathe 5s ease-in-out infinite;
+  transition:left 1.2s linear,top 1.2s linear}
 /* Prefix/suffix matching so every phase (dawn/noon/day/dusk) is covered without listing
    each scene name — only "-night" is excluded. */
 .home-weather-card[data-scene^="clear-"]:not([data-scene$="-night"]) .wfx-sun,
 .home-weather-card[data-scene^="partly-"]:not([data-scene$="-night"]) .wfx-sun{display:block}
-/* Low, warm sun at the horizon for sunrise/sunset instead of the high white midday disc */
+/* Warm horizon colour for sunrise/sunset. The position it used to force here is gone — the
+   arc already puts the sun low at both ends of the day, and a fixed bottom/right would have
+   fought it. This now only changes what the light looks like, not where it is. */
 .home-weather-card[data-scene$="-dawn"] .wfx-sun,
 .home-weather-card[data-scene$="-dusk"] .wfx-sun{
-  top:auto;bottom:-34px;right:14px;
   background:radial-gradient(circle,rgba(255,236,200,.95) 0%,rgba(255,168,110,.6) 45%,transparent 72%)}
 @keyframes wfx-sun-breathe{0%,100%{opacity:.85;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
 
 /* Moon — dimmer, steadier glow */
-.wfx-moon{width:60px;height:60px;border-radius:50%;position:absolute;top:-14px;right:2px;
+/* Same arc treatment as the sun, across the night from sunset to the next sunrise. */
+.wfx-moon{width:60px;height:60px;border-radius:50%;position:absolute;
+  left:calc(var(--wfx-moon-x,92%) - 30px);top:var(--wfx-moon-y,-14px);right:auto;
   background:radial-gradient(circle,rgba(240,244,255,.9) 0%,rgba(200,212,240,.35) 55%,transparent 75%);
-  animation:wfx-moon-glow 6s ease-in-out infinite}
+  animation:wfx-moon-glow 6s ease-in-out infinite;
+  transition:left 1.2s linear,top 1.2s linear}
 .home-weather-card[data-scene="clear-night"] .wfx-moon,
 .home-weather-card[data-scene="partly-night"] .wfx-moon{display:block}
 @keyframes wfx-moon-glow{0%,100%{opacity:.75}50%{opacity:.95}}
@@ -343,6 +352,11 @@
 .wfx-cloud-1{width:70px;height:26px;top:8%;left:-10%;animation:wfx-drift-1 22s linear infinite}
 .wfx-cloud-2{width:50px;height:20px;top:55%;left:-15%;opacity:.7;animation:wfx-drift-2 30s linear infinite}
 .wfx-cloud-3{width:36px;height:16px;top:30%;left:-12%;opacity:.5;animation:wfx-drift-3 26s linear infinite}
+/* Live wind divides the drift time: ~0.6 on a still day stretches these out, ~2.2 in a gale
+   roughly halves them. Declared after the shorthand above so it overrides its duration. */
+.wfx-cloud-1{animation-duration:calc(22s / var(--wfx-wind,1))}
+.wfx-cloud-2{animation-duration:calc(30s / var(--wfx-wind,1))}
+.wfx-cloud-3{animation-duration:calc(26s / var(--wfx-wind,1))}
 @keyframes wfx-drift-1{0%{transform:translateX(0)}100%{transform:translateX(var(--wfx-drift))}}
 @keyframes wfx-drift-2{0%{transform:translateX(0)}100%{transform:translateX(var(--wfx-drift))}}
 @keyframes wfx-drift-3{0%{transform:translateX(0)}100%{transform:translateX(var(--wfx-drift))}}
@@ -369,7 +383,10 @@
 .wfx-drop-4{left:56%;animation-duration:1s;animation-delay:.1s}
 .wfx-drop-5{left:74%;animation-duration:.9s;animation-delay:.3s}
 .wfx-drop-6{left:90%;animation-duration:1.2s;animation-delay:.5s}
-@keyframes wfx-fall{0%{transform:translate(0,0);opacity:0}10%{opacity:1}100%{transform:translate(-14px,140px);opacity:0}}
+/* The horizontal drift is the live wind (set by applyWeatherMotion), so rain leans the way
+   it is actually blowing instead of always slanting left. -14px is the old fixed value, kept
+   as the fallback for a reading with no wind data. */
+@keyframes wfx-fall{0%{transform:translate(0,0);opacity:0}10%{opacity:1}100%{transform:translate(var(--wfx-rain-x,-14px),140px);opacity:0}}
 .home-weather-card[data-scene="storm"] .wfx-drop{animation-duration:.5s !important}
 
 /* Storm — an occasional double-flash rather than a steady pulse, closer to real lightning */
@@ -397,6 +414,9 @@
 @media (prefers-reduced-motion:reduce){
   .wfx-sun,.wfx-moon,.wfx-star,.wfx-cloud-1,.wfx-cloud-2,.wfx-cloud-3,.wfx-fog-1,.wfx-fog-2,
   .wfx-drop,.wfx-flake,.wfx-flash{animation:none}
+  /* The sun/moon glide between arc positions is motion too — they still get placed correctly,
+     they just snap there rather than sliding. */
+  .wfx-sun,.wfx-moon{transition:none}
 }
 
 /* Step 8 — keep session label legible on the orange bar */

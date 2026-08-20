@@ -33,7 +33,9 @@
       "Bash(mkdir -p \"$HOME/.claude/skills/daily-recipe-export\" && echo created)",
       "Read(//c/Users/FrancoisPeters/.claude/plugins/**)",
       "Read(//c/Users/FrancoisPeters/AppData/Roaming/Claude/**)",
-      "Bash(git revert *)"
+      "Bash(git revert *)",
+      "Bash(awk '/Step 7b — Home Weather card/,/^\\\\.kitpantry-summary/' css/kitchen-extras.css)",
+      "Bash(awk '/@keyframes wfx-/,/^}/' css/kitchen-extras.css)"
     ]
   }
 }

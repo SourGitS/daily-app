@@ -8041,6 +8041,47 @@ function weatherPhase(entry){
   if(Math.abs(now-(sr+ss)/2)<=2*60*60*1000) return 'noon';  // brightest, sun highest
   return 'day';
 }
+// The sun and moon travel a real arc between sunrise and sunset rather than sitting at one
+// fixed spot per phase, and live wind angles the rain and drives the cloud speed. Everything
+// is published as CSS custom properties so the animation layers stay pure CSS — this only
+// decides where things sit, never how they move.
+function applyWeatherMotion(card, entry){
+  if(!card||!entry) return;
+  const H=card.getBoundingClientRect().height||100;
+  const now=Date.now(), DAY=86400000;
+  const sr=entry.sunrise?new Date(entry.sunrise).getTime():NaN;
+  const ss=entry.sunset?new Date(entry.sunset).getTime():NaN;
+  let p=0.5, isNight=false;
+  if(!isNaN(sr)&&!isNaN(ss)&&ss>sr){
+    if(now>=sr&&now<=ss){
+      p=(now-sr)/(ss-sr);                       // fraction of daylight elapsed
+    } else {
+      isNight=true;
+      // Night spans sunset to the NEXT sunrise, so before dawn we look back to yesterday's
+      // sunset and after dusk forward to tomorrow's sunrise.
+      const start=now>ss?ss:ss-DAY;
+      const end  =now>ss?sr+DAY:sr;
+      p=(now-start)/(end-start);
+    }
+  } else {
+    isNight=weatherPhase(entry)==='night';       // no sun times — fall back to the phase
+  }
+  p=Math.max(0,Math.min(1,isNaN(p)?0.5:p));
+  const arc=Math.sin(Math.PI*p);                 // 0 at both horizons, 1 at the peak
+  const lowTop=H*0.55, peakTop=-38;
+  const set=(k,v)=>card.style.setProperty(k,v);
+  set(isNight?'--wfx-moon-x':'--wfx-sun-x',(p*100).toFixed(1)+'%');
+  set(isNight?'--wfx-moon-y':'--wfx-sun-y',Math.round(lowTop+(peakTop-lowTop)*arc)+'px');
+
+  // Wind direction is the compass bearing the wind blows FROM, so a westerly (270) pushes
+  // rain to the right: -sin(270) = +1.
+  const spd=Math.max(0,Math.min(60,parseFloat(entry.wind)||0));
+  const dir=parseFloat(entry.windDir);
+  const across=isNaN(dir)?-1:-Math.sin(dir*Math.PI/180);
+  set('--wfx-rain-x',(across*(6+spd*0.7)).toFixed(0)+'px');
+  // Divides the cloud drift durations, so 0.6 is a slow still day and ~2.2 a gale.
+  set('--wfx-wind',(0.6+Math.min(spd,40)/25).toFixed(2));
+}
 // Phase from the local clock alone, for the states where there is no reading to read sun
 // times from: location not yet granted, first launch, or a failed fetch. Rough hour bands are
 // the best available without a location, but enough that a 9pm card looks like night.
@@ -8106,7 +8147,10 @@ function renderWeatherInto(entry){
     metaEl.textContent=bits.join('   ·   ');
   }
   const card=document.querySelector('.home-weather-card');
-  if(card) card.dataset.scene=weatherScene(entry.code,entry);
+  if(card){
+    card.dataset.scene=weatherScene(entry.code,entry);
+    applyWeatherMotion(card,entry);
+  }
 }
 // First-ever load (no cache yet): show an explicit "tap for weather" invite instead of
 // popping the OS location prompt unasked — Home is where most sessions land first, and an
@@ -8137,7 +8181,7 @@ function setWeatherPlaceholderScene(){
 // refresh and the real geolocation path all build an identical entry.
 function fetchWeatherAt(lat,lon){
   return fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+
-        '&current=temperature_2m,apparent_temperature,weather_code,is_day,cloud_cover'+
+        '&current=temperature_2m,apparent_temperature,weather_code,is_day,cloud_cover,wind_speed_10m,wind_direction_10m'+
         '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=1&timezone=auto')
     .then(r=>r.json())
     .then(data=>{
@@ -8147,6 +8191,7 @@ function fetchWeatherAt(lat,lon){
       const first=a=>Array.isArray(a)&&a.length?a[0]:null;
       return {lat,lon,tempC:c.temperature_2m,feelsC:c.apparent_temperature,
         code:c.weather_code,isDay:c.is_day,cloud:c.cloud_cover,
+        wind:c.wind_speed_10m,windDir:c.wind_direction_10m,
         tmax:first(d.temperature_2m_max),tmin:first(d.temperature_2m_min),
         sunrise:first(d.sunrise),sunset:first(d.sunset),
         city:weatherCityFromTz(data&&data.timezone),
