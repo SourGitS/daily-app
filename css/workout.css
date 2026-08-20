@@ -307,6 +307,13 @@
 .se-ex-empty{font-size:13px;color:var(--muted);padding:6px 2px}
 .se-add-ex{width:100%;padding:9px;border:1.5px dashed var(--border);border-radius:9px;background:transparent;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .se-add-day{width:100%;padding:13px;border:1.5px dashed var(--accent);border-radius:14px;background:rgba(var(--accent-rgb),.06);color:var(--accent);font-size:15px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;margin-top:2px}
+/* Destructive, so it reads in --danger — but outlined rather than filled, since it sits under
+   the primary "+ Add training day" and shouldn't compete with it for attention. */
+.se-clear-all{width:100%;padding:12px;margin-top:10px;border:1px solid var(--danger);border-radius:14px;
+  background:transparent;color:var(--danger);font-size:14px;font-weight:700;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.se-clear-all:active{background:rgba(231,76,60,.10)}
+.se-clear-hint{font-size:12px;color:var(--muted);line-height:1.45;margin:8px 2px 0;text-align:center}
 /* Exercise picker sheet */
 .se-picker-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200}
 .se-picker{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:100%;max-width:520px;max-height:72vh;display:flex;flex-direction:column;background:var(--bg);border-radius:20px 20px 0 0;z-index:201;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 16px);box-shadow:0 -8px 40px rgba(0,0,0,.3)}

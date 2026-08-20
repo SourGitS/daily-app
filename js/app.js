@@ -9493,6 +9493,10 @@ function renderSplitEditor(containerId){
     '</div>'
   ).join('');
   html+='<button class="se-add-day" onclick="seAddDay()">+ Add training day</button>';
+  // Starting a new program means wiping the current days, which was previously only possible
+  // by deleting each one by hand (and seRemoveDay refuses to delete the last).
+  html+='<button class="se-clear-all" onclick="seClearAll()">Clear all days and start fresh</button>';
+  html+='<div class="se-clear-hint">Removes every training day here so you can build a new split. Your logged sessions and history are not affected.</div>';
   if(SE.target>=0 && SE.days[SE.target]){
     html+='<div class="se-picker-backdrop" onclick="seClosePicker()"></div>'+
       '<div class="se-picker">'+
@@ -9526,6 +9530,35 @@ function sePickerListHTML(){
   return out;
 }
 function seAddDay(){ const i=SE.days.length; SE.days.push({id:'d'+Date.now()+'_'+i,name:'Day '+(i+1),colorKey:'',barColor:SPLIT_PALETTE[i%SPLIT_PALETTE.length],exercises:[]}); seRerender(); }
+// Wipe the editor back to one blank day. Resets to ONE rather than zero because a split must
+// have at least one type to be valid (sanitizeSplit), and seRemoveDay refuses to delete the
+// last day for the same reason.
+// Offers to save the current split to Plans first, but only when it isn't already stored
+// there — otherwise the prompt is noise on every clear.
+function seClearAll(){
+  let alreadySaved=false;
+  try{
+    alreadySaved=(loadPlans().plans||[]).some(p=>planIsProgram(p)&&planCfgFingerprint(p.cfg)===planCfgFingerprint(daysToSplit(SE.days)));
+  }catch(e){}
+  if(!alreadySaved && SE.days.some(d=>(d.exercises||[]).length)){
+    if(confirm('Save this split to Plans before clearing it?\n\nYou can switch back to it any time from the Plans tab.')){
+      // Persist what's in the editor right now, so the saved program matches what's on screen.
+      const cfg=sanitizeSplit(daysToSplit(SE.days));
+      if(cfg){
+        const name=(prompt('Name this program?', cfg.types.length+'-day split')||'').trim();
+        if(name){
+          const data=loadPlans();
+          data.plans.push({id:'plan_'+Date.now(),name,kind:'split',description:'',
+            cfg:JSON.parse(JSON.stringify({types:cfg.types,schedule:cfg.schedule})),createdAt:Date.now()});
+          savePlans(data);
+        }
+      }
+    }
+  }
+  if(!confirm('Clear every training day?\n\nYour logged sessions and history stay exactly as they are.')) return;
+  SE.days=[{id:'d'+Date.now()+'_0',name:'Day 1',colorKey:'',barColor:SPLIT_PALETTE[0],exercises:[]}];
+  seRerender();
+}
 function seRemoveDay(i){ if(SE.days.length<=1) return; SE.days.splice(i,1); seRerender(); }
 function seRenameDay(i,val){ if(SE.days[i]) SE.days[i].name=val; } // no rerender — keep input focus
 function seSetSets(i,j,val){ const n=Math.max(1,Math.min(12,parseInt(val)||1)); if(SE.days[i]&&SE.days[i].exercises[j]) SE.days[i].exercises[j].sets=n; }
