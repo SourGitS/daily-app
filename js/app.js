@@ -900,20 +900,31 @@ function fmtDate(iso){
   const d = new Date(iso+'T12:00:00');
   return d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
 }
+// For a counted exercise the record is the heaviest load; for a timed one it's the longest
+// hold. Without this a bodyweight plank had a permanent PR of 0, because it carries no weight
+// for the comparison to find.
 function getPR(exName){
+  const timed=_secsNames.has(exName);
   let pr=0;
   S.sessions.forEach(s=>s.exercises.forEach(ex=>{
-    if(ex.name===exName) ex.sets.forEach(set=>{ if(set.weight>pr) pr=set.weight; });
+    if(ex.name!==exName) return;
+    ex.sets.forEach(set=>{
+      const v=parseFloat(timed?set.reps:set.weight);
+      if(!isNaN(v)&&v>pr) pr=v;
+    });
   }));
   return pr;
 }
+// Same split for the progress chart. The old weight>0 filter dropped every set of a bodyweight
+// timed exercise, so those exercises produced no points and therefore no trend line at all.
 function getPoints(exName){
+  const timed=_secsNames.has(exName);
   const pts=[];
   S.sessions.forEach(s=>{
     const ex=s.exercises.find(e=>e.name===exName);
     if(ex&&ex.sets.length){
-      const ws=ex.sets.filter(s=>s.weight>0).map(s=>s.weight);
-      if(ws.length) pts.push({date:s.date,weight:Math.max(...ws)});
+      const vs=ex.sets.map(st=>parseFloat(timed?st.reps:st.weight)).filter(v=>!isNaN(v)&&v>0);
+      if(vs.length) pts.push({date:s.date,weight:Math.max(...vs)});
     }
   });
   return pts;
@@ -1948,6 +1959,9 @@ function loadExerciseLib(){
 function saveExerciseLib(lib){
   // Persist only the user's customs; defaults always regenerate from the program.
   lsSaveTS('wt_exercise_lib', lib.filter(e=>e.custom), 'wt_exercise_lib_ts', 'exerciseLib');
+  // Re-derive the timed-exercise cache here rather than at each call site, so flagging an
+  // exercise as seconds takes effect immediately in PRs, charts and set rows.
+  if(typeof refreshSecsNames==='function') refreshSecsNames();
 }
 // Names the user has flagged "allow negative/assisted" in the Exercise Library. Cached so the
 // per-set render doesn't reload the whole library each row; refreshed by refreshAllowNegNames()
@@ -1962,6 +1976,27 @@ function refreshAllowNegNames(){
 function exerciseAllowsNegative(ex){
   if(ex && ex.allowNegative) return true;
   return !!(ex && _allowNegNames.has(ex.name));
+}
+// Exercises measured in time rather than repetitions (planks, dead hangs, wall sits). Same
+// two-source resolution as the negative flag: the plan definition can set it (the seeded
+// Plank and Dead hangs already do) or the user flags it in the Exercise Library.
+// Only the SECOND field changes meaning — weight still applies, so a 20kg weighted plank
+// records both load and duration.
+let _secsNames=new Set();
+function refreshSecsNames(){
+  try{ _secsNames=new Set(loadExerciseLib().filter(e=>e.unit==='secs').map(e=>e.name)); }
+  catch(e){ _secsNames=new Set(); }
+}
+function exerciseUnit(ex){
+  if(ex && ex.unit) return ex.unit;
+  return (ex && _secsNames.has(ex.name)) ? 'secs' : 'reps';
+}
+function isTimedExercise(ex){ return exerciseUnit(ex)==='secs'; }
+// Formats a set's second field for display: "45s" for a hold, plain count for reps.
+function fmtSetAmount(v,unit){
+  const n=parseFloat(v);
+  if(isNaN(n)) return '–';
+  return unit==='secs' ? n+'s' : String(n);
 }
 let _libMuscle='all';
 function openExerciseLibrary(){
@@ -2050,6 +2085,7 @@ function openNewExercise(){
   const nm=document.getElementById('exlib-new-name'); if(nm) nm.value='';
   renderExMuscleRow();
   const neg=document.getElementById('exlib-allow-neg'); if(neg) neg.checked=false;
+  const secs=document.getElementById('exlib-unit-secs'); if(secs) secs.checked=false;
   _setExModalLabels(false);
   const m=document.getElementById('exlib-add-modal'); if(m) m.classList.remove('hidden');
   setTimeout(()=>{ if(nm) nm.focus(); }, 50);
@@ -2063,6 +2099,7 @@ function openEditExercise(id){
   const nm=document.getElementById('exlib-new-name'); if(nm) nm.value=ex.name;
   renderExMuscleRow();
   const neg=document.getElementById('exlib-allow-neg'); if(neg) neg.checked=!!ex.allowNegative;
+  const secs=document.getElementById('exlib-unit-secs'); if(secs) secs.checked=ex.unit==='secs';
   _setExModalLabels(true);
   const m=document.getElementById('exlib-add-modal'); if(m) m.classList.remove('hidden');
   setTimeout(()=>{ if(nm) nm.focus(); }, 50);
@@ -2086,6 +2123,8 @@ function confirmNewExercise(){
   const name=(nm?nm.value:'').trim();
   if(!name){ closeNewExercise(); return; }
   const allowNeg=!!(document.getElementById('exlib-allow-neg')||{}).checked;
+  // Stored only when true, so a reps exercise stays free of the field entirely.
+  const exUnit=(document.getElementById('exlib-unit-secs')||{}).checked?'secs':undefined;
   const lib=loadExerciseLib();
   if(_editExId){
     const ex=lib.find(e=>e.id===_editExId);
@@ -2094,17 +2133,17 @@ function confirmNewExercise(){
       if(name!==oldName && lib.some(e=>e.id!==_editExId && e.name.toLowerCase()===name.toLowerCase())
          && !confirm('An exercise named "'+name+'" already exists — rename anyway? Their history will be combined.')) return;
       if(ex.custom){
-        ex.name=name; ex.muscle=_newExMuscle; ex.allowNegative=allowNeg;
+        ex.name=name; ex.muscle=_newExMuscle; ex.allowNegative=allowNeg; ex.unit=exUnit;
         saveExerciseLib(lib);
       } else {
         // Default exercise: save as a custom override with the same id (loadExerciseLib will hide the default)
-        lib.push({id:ex.id, name, muscle:_newExMuscle, allowNegative:allowNeg, custom:true});
+        lib.push({id:ex.id, name, muscle:_newExMuscle, allowNegative:allowNeg, unit:exUnit, custom:true});
         saveExerciseLib(lib);
       }
       if(name!==oldName) renameExerciseRefs(oldName,name);
     }
   } else {
-    lib.push({id:'ex_custom_'+Date.now(), name, muscle:_newExMuscle, allowNegative:allowNeg, custom:true});
+    lib.push({id:'ex_custom_'+Date.now(), name, muscle:_newExMuscle, allowNegative:allowNeg, unit:exUnit, custom:true});
     saveExerciseLib(lib);
   }
   closeNewExercise();
@@ -2353,6 +2392,7 @@ function setStatsTab(tab){
 function renderLog(animateEntrance){
   if(!Object.keys(S.setData).length) initDay(S.dayIdx);
   refreshAllowNegNames(); // which exercises show the ± sign toggle (library-driven)
+  refreshSecsNames();     // which exercises are timed rather than counted (library-driven)
   const t = type(S.dayIdx);
   // Make sure every effective exercise (incl. ones just added) has a starting set row.
   t.exercises.forEach(ex=>{ if(!S.setData[ex.name]) S.setData[ex.name]=[{weight:'',reps:'',type:'working',done:false}]; });
@@ -2472,7 +2512,8 @@ function renderExCard(ex, ei){
   }
   const isActive = ei===activeEi && !done;
   const badge = ex.priority ? `<span class="badge badge-${ex.priority}">${ex.priority==='grip'?'dead hangs':ex.priority}</span>` : '';
-  const unit = ex.unit||'reps';
+  // Via the resolver so a library flag counts too, not just a unit baked into the plan.
+  const unit = exerciseUnit(ex);
   const displayName = dn(ex.name);
   const isSwapped = S.swaps[ex.name] && S.swaps[ex.name] !== ex.name;
   const allowNeg = exerciseAllowsNegative(ex); // plan flag OR the library toggle for this name
@@ -2491,7 +2532,13 @@ function renderExCard(ex, ei){
     } else {
       numLabel=String(++workIdx);
       const lw=lastWork[workIdx-1];
-      if(lw && (lw.weight||lw.reps)) hint='Last: '+(lw.weight||'–')+'kg × '+(lw.reps||'–');
+      // A timed bodyweight hold has no load, so "–kg × 45" reads as missing data. Show the
+      // duration alone unless weight was actually added.
+      if(lw && (lw.weight||lw.reps)){
+        hint = unit==='secs'
+          ? 'Last: '+(parseFloat(lw.weight)?lw.weight+'kg × ':'')+fmtSetAmount(lw.reps,'secs')
+          : 'Last: '+(lw.weight||'–')+'kg × '+(lw.reps||'–');
+      }
     }
     // iOS decimal keypad has no minus key. For exercises that allow negative loads (e.g. assisted
     // pullups), overlay a ± button inside the kg field so the sign can be set without a keyboard
@@ -2507,9 +2554,9 @@ function renderExCard(ex, ei){
       <button class="set-warmup-btn${isWarmup?' active':''}" onclick="toggleWarmup(${ei},${si})" aria-label="Toggle warmup">W</button>
       <div class="set-num">${numLabel}</div>
       ${kgCell}
-      <span class="set-sep">×</span>
-      <input class="set-reps" type="number" inputmode="numeric" min="0"
-        placeholder="${unit}" value="${s.reps}"
+      <span class="set-sep">${unit==='secs'?'for':'×'}</span>
+      <input class="set-reps${unit==='secs'?' set-secs':''}" type="number" inputmode="numeric" min="0"
+        placeholder="${unit==='secs'?'secs':unit}" value="${s.reps}"
         onfocus="focusExercise(${ei})" onchange="updSet(${ei},${si},'reps',this.value)">
       <button class="set-check${s.done?' done':''}" onclick="toggleSetDone(${ei},${si})" aria-label="Mark set done">✓</button>
       <button class="set-delete-btn" onclick="delSet(${ei},${si})" aria-label="Delete set">×</button>
@@ -3081,7 +3128,11 @@ function renderHistory(){
     const detail = s.exercises.map(ex=>`
       <div class="session-ex-row">
         <div class="session-ex-name">${dn(ex.name)}</div>
-        ${ex.sets.map((set,si)=>`<div class="session-set-line">Set ${si+1}: ${set.weight?set.weight+'kg':'—'} × ${set.reps||'—'}</div>`).join('')}
+        ${ex.sets.map((set,si)=>{
+          const timed=isTimedExercise(ex);
+          const load=set.weight?set.weight+'kg':(timed?'':'—');
+          return `<div class="session-set-line">Set ${si+1}: ${timed?(load?load+' for ':'')+fmtSetAmount(set.reps,'secs'):load+' × '+(set.reps||'—')}</div>`;
+        }).join('')}
       </div>`).join('');
 
     const durStr = s.duration ? ` · ${fmtDuration(s.duration)}` : '';
@@ -3800,14 +3851,19 @@ function renderExerciseDetail(name){
 
   const pts=getPoints(name); // reused: max working weight per session, chronological
   const chartCard=pts.length>=2
-    ? '<div class="card" style="padding:14px 16px"><div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px">📈 Top set weight</div><canvas id="ex-detail-chart" style="max-height:220px"></canvas></div>'
-    : (pts.length===1?'<div class="card" style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">One weighted session logged — the chart appears from the second.</div>':'');
+    ? '<div class="card" style="padding:14px 16px"><div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px">📈 '+(_secsNames.has(name)?'Longest hold':'Top set weight')+'</div><canvas id="ex-detail-chart" style="max-height:220px"></canvas></div>'
+    : (pts.length===1?'<div class="card" style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">One session logged — the chart appears from the second.</div>':'');
 
   const histList=hist.length
     ? [...hist].reverse().map(s=>{
         const e=(s.exercises||[]).find(x=>x.name===name);
-        const setLines=(e.sets||[]).map((x,si)=>
-          '<div class="session-set-line">'+(x.type==='warmup'?'W':'Set '+(si+1))+': '+(x.weight?x.weight+'kg':'—')+' × '+(x.reps||'—')+'</div>').join('');
+        const _timed=_secsNames.has(name);
+        const setLines=(e.sets||[]).map((x,si)=>{
+          const lbl=(x.type==='warmup'?'W':'Set '+(si+1));
+          const load=x.weight?x.weight+'kg':(_timed?'':'—');
+          const val=_timed?((load?load+' for ':'')+fmtSetAmount(x.reps,'secs')):(load+' × '+(x.reps||'—'));
+          return '<div class="session-set-line">'+lbl+': '+val+'</div>';
+        }).join('');
         return '<div style="padding:10px 0;border-bottom:1px solid var(--border)">'+
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'+
             '<span style="font-size:13px;font-weight:700">'+fmtDate(s.date)+'</span>'+
@@ -11255,6 +11311,9 @@ try {
   migrateSubscriptionsToFixedOnce(); // one-time: fold subscriptions into fixed categories
   migrateDropSubsAggregateOnce(); // one-time: drop the leftover aggregate 'subs' category
   migrateRetiredAccentOnce(); // one-time: retired orange default → neutral grey
+  // Warm the timed-exercise cache at boot: getPR/getPoints read it, and Stats can render
+  // before renderLog has ever run.
+  refreshSecsNames();
   // Weight-log consolidation: fold any legacy daily_weight_log entries into wt_weight.
   // The local key is only removed by the signed-in path (after the merged copy is safely
   // in the cloud), so a signed-out merge can never lose data to the next cloud pull.

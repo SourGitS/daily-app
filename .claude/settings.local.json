@@ -36,7 +36,12 @@
       "Bash(git revert *)",
       "Bash(awk '/Step 7b — Home Weather card/,/^\\\\.kitpantry-summary/' css/kitchen-extras.css)",
       "Bash(awk '/@keyframes wfx-/,/^}/' css/kitchen-extras.css)",
-      "Bash(node --check service-worker.js)"
+      "Bash(node --check service-worker.js)",
+      "Bash(awk -F: '{print $3}')",
+      "Bash(awk -F: '$1>2300 && $1<2500')",
+      "Bash(awk -F: '$1>1968')",
+      "Bash(python -)",
+      "Bash(sed -i \"s/const CACHE_NAME = 'daily-v183'/const CACHE_NAME = 'daily-v184'/\" service-worker.js)"
     ]
   }
 }
