@@ -413,7 +413,11 @@
   /* Full width the card is ~1100px but its two content blocks only need ~250px, so
      space-between stranded them at opposite edges with ~800px of dead air between. Cap the
      row and centre it so the banner reads as one group. */
-  #view-home .home-card-wide[data-card-id="weather"] .weather-content{max-width:560px;margin:0 auto}
+  /* Explicit width, not max-width + auto margins. The card is a flex COLUMN now, so the
+     content is a flex item — and there `margin:0 auto` absorbs the free space and shrinks the
+     item to fit (195px), rather than centring a 560px block as it did when the card was a
+     plain block. An explicit width keeps the two ends spread across the banner. */
+  #view-home .home-card-wide[data-card-id="weather"] .weather-content{width:72%;max-width:none;margin:0 auto}
   /* Clouds drift by a fixed px distance (see --wfx-drift in kitchen-extras.css) that only
      spans a phone-width card; on a wider card they stalled partway and snapped back. Scale
      the travel to the viewport — more for the full-width banner than the half-width box. */
