@@ -357,7 +357,13 @@
      renderHome (the quick-tiles .home-grid, the hero and net-worth cards), and an inline
      style outranks any selector. Mobile still needs that margin for row spacing, so it is
      overridden only here, inside the desktop grid, where row-gap does the same job. */
-  #view-home .home-grid-cols > .home-card > *{flex:1 1 auto;margin-bottom:0 !important}
+  #view-home .home-grid-cols > .home-card > *{flex:1 1 auto;margin-bottom:0 !important;
+    /* Centre the contents of a stretched card. Row-matching gives the shorter card its
+       partner's height, and without this its content stayed pinned to the top with all the
+       slack dumped underneath — most visible on the calorie card next to Weekly review.
+       Children keep stacking as before: a column flex box lays block children out the same
+       way and still stretches them to full width. */
+    display:flex;flex-direction:column;justify-content:center}
   /* Per-card preference now (Settings → Home Layout), not a hardcoded set of card ids. */
   #view-home .home-card-wide{grid-column:1 / -1}
   /* Cards that grow with your data are capped so one long card can't stretch its row partner
