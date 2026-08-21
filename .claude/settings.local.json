@@ -44,7 +44,11 @@
       "Bash(sed -i \"s/const CACHE_NAME = 'daily-v183'/const CACHE_NAME = 'daily-v184'/\" service-worker.js)",
       "Bash(sed -i \"s/const CACHE_NAME = 'daily-v184'/const CACHE_NAME = 'daily-v185'/\" service-worker.js)",
       "Bash(sed -i \"s/const CACHE_NAME = 'daily-v185'/const CACHE_NAME = 'daily-v186'/\" service-worker.js)",
-      "Bash(awk 'NR>=9450 && NR<=9470 && /^function /' js/app.js)"
+      "Bash(awk 'NR>=9450 && NR<=9470 && /^function /' js/app.js)",
+      "Bash(git checkout *)",
+      "Bash(git branch *)",
+      "Bash(git merge *)",
+      "Bash(sed -i \"s/const CACHE_NAME = 'daily-v186'/const CACHE_NAME = 'daily-v187'/\" service-worker.js)"
     ]
   }
 }

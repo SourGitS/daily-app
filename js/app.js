@@ -6780,6 +6780,12 @@ function budRecalc(animate){
   // The goal label was hardcoded as "Goal: $200 minimum" in index.html, so it kept showing
   // $200 no matter what the user set in Pay days & savings goal. Drive it from the saved value.
   $('sav-goal-label','Goal: $'+getSavingsGoal().toLocaleString()+' minimum');
+  // Header summary: this week's savings stays readable once the card is collapsed. The
+  // generic rule keeps only the LAST .bud-row, which here is "Total saved" — not the figure
+  // that matters week to week.
+  $('sav-head-sum','$'+totalSaved.toFixed(0));
+  const savSum=document.getElementById('sav-head-sum');
+  if(savSum) savSum.style.color = totalSaved>=getSavingsGoal() ? 'var(--blue)' : 'var(--muted)';
 
   // Suggestive savings goal: below it → red, met → blue
   const calcSavedEl=document.getElementById('calc-saved');

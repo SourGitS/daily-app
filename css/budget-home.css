@@ -102,6 +102,10 @@
 .bud-collapsed .bud-chevron{transform:rotate(-90deg)}
 /* Collapse: hide everything except the header; keep the last row (the total) as a preview */
 .bud-collapsed>:not(.bud-toggle){display:none}
+/* Collapsed summary in the card header. Hidden while expanded, where the row below already
+   shows the same figure. */
+.bud-head-sum{display:none;font-family:var(--font-num);font-size:14px;font-weight:800;letter-spacing:-.01em}
+.bud-collapsed .bud-head-sum{display:inline}
 .bud-collapsed>.bud-row:last-of-type{display:flex}
 
 /* Home: savings + credit card side-by-side row */

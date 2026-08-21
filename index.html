@@ -288,7 +288,9 @@
         <div id="bud-income-card"></div>
 
         <div class="card" data-bud-key="sav">
-          <div class="sec-label bud-toggle">&#127974; Savings<svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <!-- Same head structure as budCardHead() so the collapsed summary has a slot to sit
+               in. #sav-head-sum is filled by budRecalc and only shows while collapsed. -->
+          <div class="sec-label bud-toggle"><span class="bud-head-label">&#127974; Savings</span><span class="bud-head-right"><span class="bud-head-sum" id="sav-head-sum"></span><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span></div>
           <div class="bud-row">
             <div class="bud-row-left">
               <div class="bud-row-name">This week's savings</div>
@@ -367,7 +369,7 @@
 
         <!-- Budget config: pay days + suggestive savings goal (drive the Home tab) -->
         <div class="card" data-bud-key="config">
-          <div class="sec-label">&#9881;&#65039; Pay days &amp; savings goal</div>
+          <div class="sec-label bud-toggle"><span class="bud-head-label">&#9881;&#65039; Pay days &amp; savings goal</span><span class="bud-head-right"><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span></div>
           <div class="bud-row">
             <div class="bud-row-left"><div class="bud-row-name">Weekly savings goal</div><div class="bud-row-budget">Suggestive only — colours the savings figure when reached</div></div>
             <input class="bud-row-input" type="number" inputmode="decimal" placeholder="$200" id="bud-cfg-savings-goal" oninput="budSaveConfig()">
