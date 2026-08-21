@@ -2932,27 +2932,63 @@ function saveSession(){
 }
 
 // ── Progressive overload check ────────────────────────────────────
-function checkPO(newSession){
-  let prev = null;
-  const past = S.sessions.slice(0, -1);
-  for(let i = past.length-1; i >= 0; i--){
-    if(past[i].sessionType === newSession.sessionType){ prev = past[i]; break; }
+// The old rule compared only the last two sessions and used >=, so simply MATCHING last week
+// was enough to be told to add weight — which is why it fired nearly every session. It now
+// wants a real trend, judged on the first working set and always at the same load: a weight
+// increase resets the comparison, because reps naturally drop after a jump and then climb
+// back, which the old rule read as progress.
+const PO_STREAK_NEEDED=3;      // sessions of strictly increasing reps
+const PO_REP_CEILING=8;        // reps at or above this means the load is too light
+const PO_CEILING_SESSIONS=2;   // ...sustained for this many sessions
+// The first working set specifically: it's the freshest and least affected by fatigue, and
+// it's what Francois judges his own progress on.
+function poFirstWorkingSet(ex){
+  const sets=(ex&&ex.sets||[]).filter(s=>s.type!=='warmup'&&parseFloat(s.weight)>0&&parseFloat(s.reps)>0);
+  return sets.length?{weight:parseFloat(sets[0].weight),reps:parseFloat(sets[0].reps)}:null;
+}
+// Newest-first first-working-sets for one exercise, across sessions of the same type.
+function poHistoryFor(exName,sessionType){
+  const out=[];
+  for(let i=S.sessions.length-1;i>=0;i--){
+    const s=S.sessions[i];
+    if(s.sessionType!==sessionType) continue;
+    const ex=(s.exercises||[]).find(e=>e.name===exName);
+    if(!ex) continue;
+    const fw=poFirstWorkingSet(ex);
+    if(fw) out.push(fw);
+    if(out.length>=6) break;   // no need to look further back than the current streak can reach
   }
-  if(!prev) return [];
+  return out;
+}
+// Returns a reason string, or null. Only ever considers the run at the CURRENT weight.
+function poShouldIncrease(hist){
+  if(!hist.length) return null;
+  const w=hist[0].weight;
+  const run=[];
+  for(const h of hist){ if(h.weight!==w) break; run.push(h); }
 
-  const suggestions = [];
-  newSession.exercises.forEach(ex=>{
-    const prevEx = prev.exercises.find(e=>e.name===ex.name);
-    if(!prevEx) return;
-    const curSets  = ex.sets.filter(s=>s.weight>0&&s.reps>0);
-    const prevSets = prevEx.sets.filter(s=>s.weight>0&&s.reps>0);
-    if(!curSets.length||!prevSets.length) return;
-    const curTop  = curSets.reduce((b,s)=>s.weight>b.weight?s:b);
-    const prevTop = prevSets.reduce((b,s)=>s.weight>b.weight?s:b);
-    if(prevTop.weight<=0) return;
-    if(curTop.weight>=prevTop.weight && curTop.reps>=prevTop.reps){
-      suggestions.push({name:dn(ex.name), weight:curTop.weight, reps:curTop.reps});
+  // Strictly increasing reps, session over session. run[0] is the newest, so each entry must
+  // beat the one before it in time.
+  if(run.length>=PO_STREAK_NEEDED){
+    let rising=true;
+    for(let i=0;i<PO_STREAK_NEEDED-1;i++){
+      if(!(run[i].reps>run[i+1].reps)){ rising=false; break; }
     }
+    if(rising) return 'reps up '+PO_STREAK_NEEDED+' sessions running';
+  }
+  // Or the load is simply too light to keep at.
+  if(run.length>=PO_CEILING_SESSIONS &&
+     run.slice(0,PO_CEILING_SESSIONS).every(h=>h.reps>=PO_REP_CEILING)){
+    return PO_REP_CEILING+'+ reps for '+PO_CEILING_SESSIONS+' sessions';
+  }
+  return null;
+}
+function checkPO(newSession){
+  const suggestions=[];
+  (newSession.exercises||[]).forEach(ex=>{
+    const hist=poHistoryFor(ex.name,newSession.sessionType);
+    const reason=poShouldIncrease(hist);
+    if(reason) suggestions.push({name:dn(ex.name),weight:hist[0].weight,reps:hist[0].reps,reason});
   });
   return suggestions;
 }
@@ -2962,6 +2998,8 @@ function showPOModal(suggestions){
     <div class="po-item">
       <div class="po-item-name">${s.name}</div>
       <div class="po-item-tip">Try ${s.weight+2.5}kg next time (+2.5kg)</div>
+      <!-- Say WHY it fired, so a suggestion can be judged rather than just trusted. -->
+      <div class="po-item-why">${s.reason} · currently ${s.weight}kg × ${s.reps}</div>
     </div>`).join('');
   document.getElementById('po-modal').classList.remove('hidden');
 }
@@ -7265,12 +7303,15 @@ function renderMonth(){
 
   const sg=document.getElementById('month-summary-grid');
   if(sg){
-    const ccBalance=parseFloat(loadCCData().balance)||0;
+    // Income and Expenses rather than Saved and CC balance: the CC balance is a running debt
+    // that has nothing to do with the month being viewed, and Saved was already implied by
+    // the savings rate beside it. These three now describe the same month — what came in,
+    // what went out (fixed + variable), and what proportion stuck.
     const savRate=totalIncome>0?(totalSaved/totalIncome*100).toFixed(0)+'%':'—';
     sg.innerHTML=[
-      {val:savRate,lbl:'Savings rate',color:BUD_CHART_COLORS.income},
-      {val:weekCount>0?'$'+totalSaved.toFixed(0):'—',lbl:'Saved',color:BUD_CHART_COLORS.saved},
-      {val:'$'+ccBalance.toFixed(0),lbl:'CC balance',color:BUD_CHART_COLORS.variable},
+      {val:savRate,lbl:'Savings rate',color:BUD_CHART_COLORS.rate},
+      {val:weekCount>0?'$'+Math.round(totalIncome).toLocaleString():'—',lbl:'Income',color:BUD_CHART_COLORS.income},
+      {val:weekCount>0?'$'+Math.round(totalSpending).toLocaleString():'—',lbl:'Expenses',color:BUD_CHART_COLORS.variable},
     ].map(s=>'<div class="sum-card"><div class="sum-card-val" style="color:'+s.color+'">'+s.val+'</div><div class="sum-card-lbl">'+s.lbl+'</div></div>').join('');
   }
 
