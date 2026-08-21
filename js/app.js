@@ -10214,11 +10214,13 @@ function renderPayoffCard(){
         savers.map(a=>_catEscHtml(a.name||'Savers')).join(', ')+' — excluded from this total, still counted in net worth.</div>'
     : '<div class="acct-payoff-note">Flip on “Savers account” below to keep an interest account out of this total.</div>';
   el.innerHTML=
-    // Two groups so the desktop rule can lay them side by side instead of centring a short
-    // figure across a 1088px card — the same treatment the net-worth card above already gets.
+    // THREE groups, matching the net-worth card directly above: label, figure, detail. The
+    // shared desktop rule spreads them with space-between, which is what puts the figure in
+    // the middle — a two-group version left it hard against the left edge while net worth's
+    // sat centred, and the two cards read as unrelated.
     '<div class="card acct-payoff-card">'+
-      '<div class="acct-payoff-main">'+
-        '<div class="acct-payoff-label">'+(clear?'✅':'⚠️')+' Debt payoff position</div>'+
+      '<div class="acct-payoff-label">'+(clear?'✅':'⚠️')+' Debt payoff position</div>'+
+      '<div class="acct-payoff-fig">'+
         '<div class="acct-payoff-amt" style="color:'+col+'">'+fmtMoney(Math.abs(pos))+'</div>'+
         '<div class="acct-payoff-sub">'+headline+'</div>'+
       '</div>'+

@@ -447,14 +447,24 @@
   #accounts-networth .card>div:nth-child(2){font-size:52px !important}
   /* Account cards: the balance row and the statement fields sit inline on a wide screen, so
      the extra width carries content instead of becoming a gap. */
-  /* Payoff card: same problem the net-worth card above already solves — a short figure
-     centred across a 1088px card reads as adrift rather than centred. Lay the two groups
-     side by side so the width carries content. */
+  /* Payoff card: laid out exactly like #accounts-networth above it — same flex spread, same
+     padding, same figure size — so the two stacked cards read as one system. The label sits
+     left, the figure lands centred by space-between, and the detail sits right. */
   .acct-payoff-card{display:flex;align-items:center;justify-content:space-between;gap:32px;
     text-align:left !important;padding:22px 28px !important}
-  .acct-payoff-main{flex-shrink:0}
-  .acct-payoff-aside{flex:1;min-width:0;text-align:right}
-  .acct-payoff-amt{font-size:44px !important}
+  .acct-payoff-label{margin-bottom:0 !important;flex-shrink:0}
+  .acct-payoff-fig{text-align:center;flex-shrink:0}
+  .acct-payoff-aside{min-width:0;text-align:right}
+  /* Centre the figure deterministically on BOTH cards. Relying on space-between made it
+     accidental — it lands wherever the two side columns happen to leave it, so the same
+     layout gave net worth 46% and the payoff card 28%. Equal flex on the outer columns puts
+     the middle one dead centre on both, whatever the label or note lengths are. */
+  #accounts-networth .card>div:nth-child(1), #accounts-networth .card>div:nth-child(3),
+  .acct-payoff-label, .acct-payoff-aside{flex:1 1 0}
+  #accounts-networth .card>div:nth-child(2), .acct-payoff-fig{flex:0 0 auto}
+  #accounts-networth .card>div:nth-child(3){text-align:right}
+  .acct-payoff-amt{font-size:52px !important}
+  .acct-payoff-sub{margin-top:4px !important}
   /* The note's divider is a top border in the stacked layout; side by side it needs no rule. */
   .acct-payoff-note{border-top:none !important;padding-top:0 !important;margin-top:6px !important}
 
