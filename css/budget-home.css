@@ -422,7 +422,15 @@
   #view-home .home-card-wide[data-card-id="weather"] .weather-day{font-size:24px}
   #view-home .home-card-wide[data-card-id="weather"] .weather-temp{font-size:38px}
   #view-home .home-card-wide[data-card-id="weather"] .weather-icon{font-size:34px}
-  #view-home .hero-card .overview-content{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:32px}
+  /* Was a centred flex ROW, built for the old layout where the greeting sat beside the ring.
+     .hh-row is the row now, and as a flex item it sized to its content — 251px inside a 544px
+     card — which starved the side columns to 58px and wrapped "kcal remaining" onto two lines.
+     A stretching column lets the row use the whole card. */
+  #view-home .hero-card .overview-content{display:flex;flex-direction:column;align-items:stretch;justify-content:center}
+  /* The card is ~200px tall on desktop; a 110px ring left it looking lost. */
+  #view-home .hh-row svg{width:136px;height:136px}
+  #view-home .hh-meal-val{font-size:17px}
+  #view-home .hh-meal-key{font-size:13px}
   #app-main>section{padding:40px 32px 40px}
 
   /* Log tab */
