@@ -526,23 +526,13 @@ if(firebaseReady){
     syncBlobListen(user.uid,'checkinLog','daily_checkin_log',()=>{
       if(S.view==='home'&&typeof renderHome==='function') renderHome(); // streak lives on Home (calcStreak)
     });
-    // Sync plans from cloud on login (cloud wins on first load; local wins on conflict via timestamp)
-    db.ref('users/'+user.uid+'/plans').once('value').then(snap=>{
-      if(snap.exists()){
-        const cloud=snap.val();
-        const local=loadPlans();
-        // Cloud wins if it has more plans; otherwise keep local
-        if(cloud&&Array.isArray(cloud.plans)&&cloud.plans.length>=local.plans.length){
-          try{ localStorage.setItem('wt_plans',JSON.stringify(cloud)); }catch(e){}
-        } else if(local.plans.length>0){
-          db.ref('users/'+user.uid+'/plans').set(local);
-        }
-      } else {
-        const local=loadPlans();
-        if(local.plans.length>0) db.ref('users/'+user.uid+'/plans').set(local);
-      }
-      if(S.view==='plans') renderPlans();
-    }).catch(e=>console.warn('plans sync failed',e));
+    // Plans now resolve by timestamp like every other store. The previous handler compared
+    // PLAN COUNTS and let the longer list win, so deleting a plan was undone on the next
+    // sign-in — the shorter local list always lost to the stale cloud copy. A legacy raw
+    // value in the cloud reads as timestamp 0, so any real local edit beats it.
+    syncBlobListenTS(user.uid,'plans','wt_plans','wt_plans_ts',()=>{
+      if(S.view==='plans'&&typeof renderPlans==='function') renderPlans();
+    });
     setSyncStatus('Synced ✓');
 
   } else {
@@ -725,13 +715,12 @@ function loadPlans(){
   if(raw.activePlanId===undefined) raw.activePlanId=(raw.plans[0]&&raw.plans[0].id)||null;
   return raw;
 }
+// Timestamped, like every other synced store. The old version wrote a bare object and let the
+// login handler resolve conflicts by COUNTING plans, which meant a deletion could never win:
+// deleting makes the local list shorter, so the longer cloud copy always overwrote it and the
+// deleted plans came back on the next sign-in.
 function savePlans(data){
-  try{ localStorage.setItem('wt_plans',JSON.stringify(data)); }catch(e){ console.warn('plans save failed',e); }
-  try{
-    if(firebaseReady&&auth&&auth.currentUser&&db){
-      db.ref('users/'+auth.currentUser.uid+'/plans').set(data);
-    }
-  }catch(e){ console.warn('plans firebase sync failed',e); }
+  lsSaveTS('wt_plans', data, 'wt_plans_ts', 'plans');
 }
 function loadNotes(){ try{ return JSON.parse(localStorage.getItem('wt_notes')||'[]'); }catch(e){ return []; } }
 // Save + push to Firebase, matching savePlans' pattern (localStorage is source of truth; the
