@@ -594,7 +594,10 @@
 .home-card-enter{animation:home-card-enter 0.32s cubic-bezier(0.22,0.61,0.36,1) both}
 
 /* ── Weekly spending-goal card (Budget, between Fixed and Variable) ── */
-.vg-body{padding:10px 2px 4px;text-align:center}
+/* Left, not centred: every other figure in the Budget tab is left-aligned under its label
+   (see the Weekly result card), so a centred headline here read as a different card style.
+   The bar and its foot are full-width rows, so only the figure and caption move. */
+.vg-body{padding:10px 2px 4px;text-align:left}
 .vg-amt{font-family:var(--font-num);font-size:34px;font-weight:800;line-height:1;letter-spacing:-.02em;color:var(--muted)}
 .vg-sub{font-size:12px;font-weight:600;color:var(--muted);margin-top:5px}
 .vg-bar-wrap{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin:12px 0 6px}
