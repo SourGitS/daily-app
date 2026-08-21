@@ -13,6 +13,14 @@
 .hh-meal-key{width:16px;flex-shrink:0;font-size:12px;font-weight:800;color:var(--muted);letter-spacing:.04em}
 .hh-meal-val{font-family:var(--font-num);font-size:15px;font-weight:700;color:var(--text)}
 .hh-meal-empty{color:var(--muted);font-weight:600}
+/* On a phone the 110px ring left only ~88px per side column, which is too narrow for
+   "kcal remaining" and "Goal: 2837 kcal" — they wrapped and the whole row read as cramped.
+   A smaller ring and tighter gaps buy each side ~30px more without moving the ring off centre. */
+@media (max-width:430px){
+  .hh-row{gap:8px}
+  .hh-row svg{width:92px;height:92px}
+  .hh-remain>div:first-child{font-size:26px !important}
+}
 
 /* ── Yearly: month-by-month table ── */
 .year-mo-row{display:grid;grid-template-columns:1.1fr 1fr 1fr 1fr 0.7fr;gap:6px;align-items:center;
@@ -122,13 +130,21 @@
 .bud-toggle svg{pointer-events:none} /* taps land on the header, never the chevron */
 .bud-chevron{color:var(--muted);transition:transform 0.2s ease;flex-shrink:0}
 .bud-collapsed .bud-chevron{transform:rotate(-90deg)}
-/* Collapse: hide everything except the header; keep the last row (the total) as a preview */
-.bud-collapsed>:not(.bud-toggle){display:none}
+/* Collapse: header only. The total moves into the header (.bud-head-sum) rather than being
+   previewed as the last row — keeping that row made collapsed cards different heights
+   depending on whether they had a total row at all, so Income and Fixed stayed tall while
+   Savings and Spending goal shrank. Header-only means every collapsed card is the same size. */
+/* !important because several of these children carry an inline display from JS (the Weekly
+   result card's figure row and its save button), and an inline style outranks any selector —
+   so that card stayed 193px tall while every other collapsed card shrank to 86px. */
+.bud-collapsed>:not(.bud-toggle){display:none !important}
 /* Collapsed summary in the card header. Hidden while expanded, where the row below already
    shows the same figure. */
 .bud-head-sum{display:none;font-family:var(--font-num);font-size:14px;font-weight:800;letter-spacing:-.01em}
 .bud-collapsed .bud-head-sum{display:inline}
-.bud-collapsed>.bud-row:last-of-type{display:flex}
+/* Edit belongs to an open card — there is nothing to edit while it's shut, and it competed
+   with the figure for the same corner. */
+.bud-collapsed .bud-edit-btn{display:none}
 
 /* Home: savings + credit card side-by-side row */
 .home-balance-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
@@ -369,12 +385,13 @@
      style outranks any selector. Mobile still needs that margin for row spacing, so it is
      overridden only here, inside the desktop grid, where row-gap does the same job. */
   #view-home .home-grid-cols > .home-card > *{flex:1 1 auto;margin-bottom:0 !important;
-    /* Centre the contents of a stretched card. Row-matching gives the shorter card its
-       partner's height, and without this its content stayed pinned to the top with all the
-       slack dumped underneath — most visible on the calorie card next to Weekly review.
-       Children keep stacking as before: a column flex box lays block children out the same
-       way and still stretches them to full width. */
-    display:flex;flex-direction:column;justify-content:center}
+    display:flex;flex-direction:column}
+  /* Centre only the BODY of a stretched card, never the header. justify-content:center moved
+     every child, so each card's title drifted down by a different amount depending on how much
+     slack it had (9px on habits, 24px on calories, 79px on net worth) — titles that should all
+     line up. Auto margins on the last child soak up the slack instead, leaving the header
+     exactly where it sits in an unstretched card. */
+  #view-home .home-grid-cols > .home-card > * > *:last-child{margin-top:auto;margin-bottom:auto}
   /* Per-card preference now (Settings → Home Layout), not a hardcoded set of card ids. */
   #view-home .home-card-wide{grid-column:1 / -1}
   /* Cards that grow with your data are capped so one long card can't stretch its row partner

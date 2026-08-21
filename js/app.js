@@ -6460,8 +6460,11 @@ function budCardHead(type, label, isCur){
   const editBtn = isCur
     ? '<button class="bud-edit-btn'+(editing?' active':'')+'" data-type="'+type+'" data-action="bud-edit-toggle">'+(editing?'Done':'Edit')+'</button>'
     : '';
+  // bud-head-sum carries the card's total so a collapsed card still states its figure; it is
+  // shown only while collapsed (the row below says the same thing when open). Filled by
+  // budRecalc, which already computes every one of these totals.
   return '<div class="sec-label bud-toggle"><span class="bud-head-label">'+label+'</span>'+
-    '<span class="bud-head-right">'+editBtn+BUD_CHEVRON+'</span></div>';
+    '<span class="bud-head-right"><span class="bud-head-sum" id="sum-'+type+'"></span>'+editBtn+BUD_CHEVRON+'</span></div>';
 }
 // In edit mode (current week) category names are editable inputs; otherwise plain labels.
 // A brand-new unnamed row also gets an input so it can be named without window.prompt().
@@ -7089,6 +7092,12 @@ function budRecalc(animate){
   // generic rule keeps only the LAST .bud-row, which here is "Total saved" — not the figure
   // that matters week to week.
   $('sav-head-sum','$'+totalSaved.toFixed(0));
+  // Collapsed-card totals, so minimising a card never hides its figure.
+  $('sum-inc','$'+totalIncome.toFixed(0));
+  $('sum-fix','$'+totalFixed.toFixed(0));
+  $('sum-var','$'+totalVar.toFixed(0));
+  const _vg=currentVarGoal&&currentVarGoal();
+  $('sum-vargoal',_vg?('$'+totalVar.toFixed(0)+' / $'+Math.round(_vg)):'—');
   const savSum=document.getElementById('sav-head-sum');
   if(savSum) savSum.style.color = totalSaved>=getSavingsGoal() ? 'var(--blue)' : 'var(--muted)';
 
@@ -7793,7 +7802,7 @@ function bsGrowthFromDate(a){
 function renderBSAccountGrowth(){
   const wrap=document.getElementById('bs-acctgrowth-wrap'); if(!wrap) return;
   const head=(body)=>'<div class="card" style="padding:0;overflow:hidden">'+
-    '<div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px">'+
+    '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px">'+
       '<span>📊 Account growth</span>'+
       '<div class="bs-growth-range">'+
         [['30','30d'],['90','90d'],['all','All']].map(([v,l])=>
@@ -7875,7 +7884,7 @@ function renderBSCatBreakdown(){
     '</div>';
   }).join('');
   wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden">'+
-    '<div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">🧾 Where the money goes · last '+keys.length+' week'+(keys.length>1?'s':'')+'</div>'+
+    '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">🧾 Where the money goes · last '+keys.length+' week'+(keys.length>1?'s':'')+'</div>'+
     '<div style="padding:14px 16px">'+rows+
       '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px;margin-top:4px"><span>Total spent</span><b style="color:var(--text)">$'+Math.round(total).toLocaleString()+'</b></div>'+
     '</div></div>';
@@ -7963,7 +7972,7 @@ function renderNutrition(){
       {l:'Days tracked',v:days.length},
     ].map(s=>'<div class="stat-card"><div class="stat-val">'+s.v+'</div><div class="stat-lbl">'+s.l+'</div></div>').join('')+'</div>';
     html+='<div class="card" style="padding:0;overflow:hidden">'+
-      '<div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">🍽️ Calorie trend</div>'+
+      '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">🍽️ Calorie trend</div>'+
       '<div style="padding:14px 16px">'+goalLine+'<canvas id="nut-chart" style="max-height:360px"></canvas></div>'+
     '</div>';
   } else {
@@ -8140,7 +8149,7 @@ function renderNetWorthChartInto(wrapId){
   const canvasId=wrapId+'-nwcanvas';
   const dates=accountsHistoryDates();
   if(dates.length<2){
-    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">💰 Net worth over time</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Update at least 2 account balances in Accounts to see the trend.</div></div>';
+    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">💰 Net worth over time</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Update at least 2 account balances in Accounts to see the trend.</div></div>';
     return;
   }
   // Assets, debts and net worth at each recorded date (each account carried forward from its
@@ -8153,7 +8162,7 @@ function renderNetWorthChartInto(wrapId){
   const netCol=curNet>=0?'var(--success)':'var(--danger)';
   const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#FF6B35').trim();
   wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden">'+
-    '<div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center">'+
+    '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center">'+
       '<span>💰 Net worth over time</span>'+
       '<span style="font-size:13px;font-weight:800;text-transform:none;letter-spacing:0;color:'+netCol+'">'+(curNet>=0?'+$':'-$')+Math.abs(Math.round(curNet)).toLocaleString()+' net</span>'+
     '</div>'+
@@ -8186,7 +8195,7 @@ function renderBSConsist(){
   const wrap=document.getElementById('bs-consist-wrap'); if(!wrap) return;
   const allKeys=Object.keys(budgetData).sort().reverse().slice(0,8).reverse();
   if(!allKeys.length){
-    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">📅 Budget consistency</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">No weeks saved yet.</div></div>';
+    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">📅 Budget consistency</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">No weeks saved yet.</div></div>';
     return;
   }
   const cells=allKeys.map(k=>{
@@ -8205,7 +8214,7 @@ function renderBSConsist(){
       +'</div>';
   }).join('');
   wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden">'
-    +'<div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">📅 Budget consistency</div>'
+    +'<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">📅 Budget consistency</div>'
     +'<div style="padding:14px 16px">'
     +'<div style="display:flex;gap:5px;margin-bottom:10px">'+cells+'</div>'
     +'<div style="display:flex;gap:14px;font-size:11px;color:var(--muted)">'
@@ -8218,7 +8227,7 @@ function renderBSRecords(){
   const wrap=document.getElementById('bs-records-wrap'); if(!wrap) return;
   const keys=Object.keys(budgetData);
   if(keys.length<2){
-    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">🏆 Personal records</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Save at least 2 weeks to see records.</div></div>';
+    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">🏆 Personal records</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Save at least 2 weeks to see records.</div></div>';
     return;
   }
   let bestInc={val:0,key:null},bestSav={val:0,key:null},loSpend={val:Infinity,key:null};
@@ -8238,7 +8247,7 @@ function renderBSRecords(){
     {icon:'🏅',label:'Most saved',val:bestSav.key?'$'+bestSav.val.toFixed(0):'—',wk:fmtWk(bestSav.key)},
   ];
   wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden">'
-    +'<div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">🏆 Personal records</div>'
+    +'<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">🏆 Personal records</div>'
     +'<div style="padding:2px 16px">'
     +rows.map(r=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--border)">'
       +'<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">'+r.icon+'</span>'
@@ -8277,7 +8286,7 @@ function renderBSGoals(){
     </div>`;
   }).join('');
   wrap.innerHTML=`<div class="card" style="padding:0;overflow:hidden">
-    <div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">🎯 Savings goals</div>
+    <div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">🎯 Savings goals</div>
     <div style="padding:14px 16px">
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:${goals.length?'12px':'0'}">
         <input type="text" id="bs-goal-name" placeholder="Goal name" style="flex:1 1 100px;min-width:0;box-sizing:border-box;height:38px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;padding:0 8px;background:var(--card);color:var(--text)">
@@ -8481,7 +8490,7 @@ function buildWeekSummaryCard(){
     weightHTML='<span style="font-size:18px;font-weight:800;color:'+col+'">'+(chg>0?'+':'')+chg+'<span style="font-size:12px;margin-left:1px">kg</span></span>';
   }
   return '<div class="card" style="padding:0;overflow:hidden">'
-    +'<div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center">'
+    +'<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center">'
     +'<span>📋 Weekly review</span>'
     +'<button onclick="openWeekReviewModal()" style="font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;border:1.5px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">Full review</button>'
     +'</div>'
@@ -8506,7 +8515,7 @@ function buildTodayHabitsCard(){
   const n=habitsData.length;
   const allDone=doneCount===n&&n>0;
   return '<div class="card" style="padding:0;overflow:hidden">'
-    +'<div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center">'
+    +'<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center">'
     +'<span>Daily habits</span>'
     +'<div style="display:flex;align-items:center;gap:10px">'
     +'<span id="habits-today-count" style="font-size:13px;font-weight:700;color:var(--text);opacity:'+(allDone?'1':'0.75')+'">'+doneCount+'/'+n+'</span>'
@@ -9300,7 +9309,7 @@ function renderHome(){
   // Calorie / overview card
   const overviewCard=
     '<div class="card hero-card"'+(goalCals?' onclick="openCalorieOverlay()"':'')+' style="margin-bottom:12px;padding:0;overflow:hidden'+(goalCals?';cursor:pointer':'')+'">'+
-      '<div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">'+heroHdrTxt+'</div>'+
+      '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">'+heroHdrTxt+'</div>'+
       // Greeting removed: it repeated the time of day the app already shows and pushed the
       // figures down. The meal totals now occupy that side of the card instead.
       '<div class="overview-content" style="padding:14px 16px">'+
@@ -9327,7 +9336,7 @@ function renderHome(){
     }).join('');
   const balanceRow=
     '<div class="card home-networth-card" style="padding:0;overflow:hidden;margin-bottom:12px">'+
-      '<div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center">'+
+      '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center">'+
         '<span>💰 Total Assets</span>'+
         '<span onclick="openAccounts()" style="cursor:pointer;text-transform:none;letter-spacing:0;font-weight:700;color:var(--accent)">Manage Accounts →</span>'+
       '</div>'+
