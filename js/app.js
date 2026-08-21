@@ -5415,8 +5415,102 @@ function catMoveTo(fromType,id,toType){
 function catRemoveItem(type,id){
   const cats=BUD_CAT_LOAD[type]();
   if(cats.length<=1) return;   // never leave a section with nothing to enter against
+  // Deleting a category removes it from the LIST only — every week's saved amount stays in
+  // storage under `<type>_<id>`. Nothing reads those keys once the category is gone, so past
+  // weeks silently lose that income/spend and look wrong (see budScanOrphans, which finds
+  // them again). Warn while the money is still attributable to a name.
+  const stranded=budCountStrandedFor(type,id);
+  if(stranded.weeks && !confirm(
+      'Delete "'+(cats.find(c=>c.id===id)||{}).name+'"?\n\n'+
+      stranded.weeks+' past week'+(stranded.weeks===1?'':'s')+' still hold '+fmtMoney(stranded.total)+
+      ' against it. That figure is kept, not erased, but it stops counting towards those weeks '+
+      'until you restore the category from Budget → Stranded data.')) return;
   BUD_CAT_SAVE[type](cats.filter(c=>c.id!==id));
   refreshCatBudgetUI();
+}
+// ── Stranded week data ─────────────────────────────────────────────
+// weekIncome/weekSpending only sum the categories that currently EXIST, so a deleted
+// category's saved amounts stop counting and the affected weeks read as over budget. The
+// values are never actually deleted — budWriteFields only ever assigns keys for live
+// categories, it never prunes — so this finds them and can reattach them.
+function budCountStrandedFor(type,id){
+  let weeks=0,total=0;
+  Object.keys(budgetData||{}).forEach(wk=>{
+    const d=budgetData[wk]; if(!d||typeof d!=='object') return;
+    const v=parseFloat(d[type+'_'+id]);
+    if(!isNaN(v)&&v!==0){ weeks++; total+=v; }
+  });
+  return {weeks,total};
+}
+function budScanOrphans(){
+  const known={inc:new Set(loadIncCats().map(c=>c.id)),
+               fix:new Set(loadFixCats().map(c=>c.id)),
+               var:new Set(loadVarCats().map(c=>c.id))};
+  const found={};
+  Object.keys(budgetData||{}).forEach(wk=>{
+    const d=budgetData[wk]; if(!d||typeof d!=='object') return;
+    Object.keys(d).forEach(k=>{
+      const m=k.match(/^(inc|fix|var)_(.+)$/); if(!m) return;
+      const type=m[1], id=m[2];
+      // var_goal is the week's spending goal, not a category amount.
+      if(type==='var'&&id==='goal') return;
+      if(known[type].has(id)) return;
+      const v=parseFloat(d[k]); if(isNaN(v)||v===0) return;
+      const key=type+'_'+id;
+      if(!found[key]) found[key]={type,id,weeks:0,total:0,firstWeek:wk,lastWeek:wk};
+      const f=found[key];
+      f.weeks++; f.total+=v;
+      if(wk<f.firstWeek) f.firstWeek=wk;
+      if(wk>f.lastWeek)  f.lastWeek=wk;
+    });
+  });
+  return Object.values(found).sort((a,b)=>b.total-a.total);
+}
+// Re-create the category under its ORIGINAL id, which is what reattaches the saved amounts.
+function budRestoreOrphan(type,id){
+  const load={inc:loadIncCats,fix:loadFixCats,var:loadVarCats}[type];
+  const save={inc:saveIncCats,fix:saveFixCats,var:saveVarCats}[type];
+  if(!load||!save) return;
+  const cats=load();
+  if(cats.some(c=>c.id===id)) return;
+  const name=(prompt('Name for this restored category?', id)||'').trim();
+  if(!name) return;
+  const item={id,name,budget:''};
+  if(type==='fix'){ item.amount=''; item.cycle='weekly'; }
+  cats.push(item); save(cats);
+  refreshCatBudgetUI();
+  if(typeof showToast==='function') showToast('Restored "'+name+'" — past weeks now count it again');
+}
+function budDiscardOrphan(type,id){
+  const s=budCountStrandedFor(type,id);
+  if(!confirm('Permanently delete '+fmtMoney(s.total)+' of saved data across '+s.weeks+' week'+(s.weeks===1?'':'s')+'?\n\nThis cannot be undone.')) return;
+  Object.keys(budgetData||{}).forEach(wk=>{ const d=budgetData[wk]; if(d&&typeof d==='object') delete d[type+'_'+id]; });
+  budSaveData();
+  refreshCatBudgetUI();
+}
+// Only rendered when something is actually stranded, so it stays invisible in normal use.
+function renderStrandedCard(){
+  const orphans=budScanOrphans();
+  if(!orphans.length) return '';
+  const label={inc:'Income',fix:'Fixed',var:'Variable'};
+  return '<div class="card" data-bud-key="stranded">'+
+    '<div class="sec-label bud-toggle"><span class="bud-head-label">⚠️ Stranded data</span>'+
+      '<span class="bud-head-right">'+BUD_CHEVRON+'</span></div>'+
+    '<div style="font-size:12.5px;color:var(--muted);line-height:1.5;margin-bottom:10px">'+
+      'These amounts are saved against past weeks but their category was deleted, so they no '+
+      'longer count towards those weeks. Restore a category to make its weeks add up again.</div>'+
+    orphans.map(o=>
+      '<div class="bud-row">'+
+        '<div class="bud-row-left">'+
+          '<div class="bud-row-name">'+label[o.type]+' · '+_catEscHtml(o.id)+'</div>'+
+          '<div class="bud-row-budget">'+fmtMoney(o.total)+' across '+o.weeks+' week'+(o.weeks===1?'':'s')+' · '+o.firstWeek+' to '+o.lastWeek+'</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:6px;flex-shrink:0">'+
+          '<button class="bud-edit-btn" onclick="budRestoreOrphan(\''+o.type+'\',\''+o.id+'\')">Restore</button>'+
+          '<button class="bud-edit-btn" style="color:var(--danger);border-color:var(--danger)" onclick="budDiscardOrphan(\''+o.type+'\',\''+o.id+'\')">Discard</button>'+
+        '</div>'+
+      '</div>').join('')+
+  '</div>';
 }
 function refreshCatBudgetUI(){
   const be=document.getElementById('view-budget-editor');
@@ -6554,6 +6648,9 @@ function renderBudgetTab(){
   if(goalWrap) goalWrap.innerHTML=renderVarGoalCard(data,editable);
   const varWrap=document.getElementById('bud-variable-card');
   if(varWrap) varWrap.innerHTML=renderVariableCard(data,editable);
+  // Empty string when nothing is stranded, so this slot collapses to nothing in normal use.
+  const strandedWrap=document.getElementById('bud-stranded-card');
+  if(strandedWrap) strandedWrap.innerHTML=renderStrandedCard();
 
   const notesEl=document.getElementById('week-notes');
   if(notesEl){ notesEl.value=data.notes||''; notesEl.disabled=!editable; }
