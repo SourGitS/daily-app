@@ -431,10 +431,20 @@
      card — which starved the side columns to 58px and wrapped "kcal remaining" onto two lines.
      A stretching column lets the row use the whole card. */
   #view-home .hero-card .overview-content{display:flex;flex-direction:column;align-items:stretch;justify-content:center}
-  /* The card is ~200px tall on desktop; a 110px ring left it looking lost. */
-  #view-home .hh-row svg{width:136px;height:136px}
-  #view-home .hh-meal-val{font-size:17px}
-  #view-home .hh-meal-key{font-size:13px}
+  /* Sized up for the desktop card, which is stretched to its row partner's height and so is
+     often much taller than its own content needs — everything inside was reading as small
+     against all that space. The SVG's own font-size attributes are overridden here too, since
+     they are baked into the markup at 19/10. */
+  #view-home .hh-row svg{width:168px;height:168px}
+  #view-home .hh-row svg text:first-of-type{font-size:26px}
+  #view-home .hh-row svg text:last-of-type{font-size:12px}
+  #view-home .hh-meal-val{font-size:20px}
+  #view-home .hh-meal-key{font-size:14px;width:18px}
+  #view-home .hh-meal{gap:12px}
+  #view-home .hh-meals{gap:10px}
+  #view-home .hh-remain>div:nth-child(1){font-size:38px !important}
+  #view-home .hh-remain>div:nth-child(2){font-size:14px !important}
+  #view-home .hh-remain>div:nth-child(3){font-size:12px !important}
   #app-main>section{padding:40px 32px 40px}
 
   /* Log tab */
