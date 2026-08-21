@@ -4719,8 +4719,8 @@ function exportBudgetCSV(){
   // Income columns are generated per live income source so they always reconcile with Total
   // Income; hours columns appear only if any week recorded hours. Everything after Total
   // Income is fixed.
-  const incHdr=incCats.map(c=>(c.name||c.id)+' Income');
-  const hrsHdr=anyHours?incCats.map(c=>(c.name||c.id)+' Hours'):[];
+  const incHdr=incCats.map(c=>catLabel(c)+' Income');
+  const hrsHdr=anyHours?incCats.map(c=>catLabel(c)+' Hours'):[];
   const tail=['Saved','Savings Rate %','Running Savings Balance','Fixed Transport','Var Food','Var Pub',
     'Var Personal','Total Variable','Total Fixed','Total Subscriptions','Total Out','Leftover','Leftover %','Notes'];
   const incVals=w=>incCats.map(c=>w.incByCat[c.id]);
@@ -5491,6 +5491,56 @@ function catRemoveItem(type,id){
   BUD_CAT_SAVE[type](cats.filter(c=>c.id!==id));
   refreshCatBudgetUI();
 }
+// ── Unnamed categories ─────────────────────────────────────────────
+// catAddItem creates a category with name:'' and it persists whether or not it's ever named,
+// so tapping "+ Add category" and backing out leaves a permanent row. Those rows surfaced as
+// raw machine ids ("var_1784718952875") in the Income and Variable spending breakdowns.
+// A name that IS the id counts as unnamed too — nothing legitimate is called var_1784718952875.
+const CAT_ID_SHAPE=/^(inc|fix|var)_\d{10,}$/;
+function catIsUnnamed(c){
+  const n=String((c&&c.name)||'').trim();
+  return !n || n===c.id || CAT_ID_SHAPE.test(n);
+}
+// Never render a machine id as a label.
+// Distinct from catDisplayName(name), which strips a decorative emoji prefix off a name
+// string. This takes the CATEGORY and answers "what should this row be called", so a
+// machine id never reaches a label.
+function catLabel(c){ return catIsUnnamed(c) ? 'Other' : catDisplayName(c.name); }
+// Removes unnamed categories that hold no money anywhere. Any that DO hold money are renamed
+// to "Other" instead of deleted — deleting one would strand its amounts (see budScanOrphans),
+// which is the very bug this must not cause.
+function budCleanupUnnamedCats(){
+  let removed=0, renamed=0;
+  [['inc',loadIncCats,saveIncCats],['fix',loadFixCats,saveFixCats],['var',loadVarCats,saveVarCats]]
+  .forEach(([type,load,save])=>{
+    const cats=load();
+    const keep=[];
+    let touched=false;
+    cats.forEach(c=>{
+      if(!catIsUnnamed(c)){ keep.push(c); return; }
+      const held=budCountStrandedFor(type,c.id);
+      if(held.weeks>0){ c.name='Other'; renamed++; touched=true; keep.push(c); } // has data → keep the money
+      else { removed++; touched=true; }                                          // empty → drop it
+    });
+    if(!touched) return;
+    // Never leave a section with nothing to enter against: if everything was unnamed and
+    // empty, keep one as "Other" rather than emptying the section.
+    if(!keep.length && cats.length){
+      const first=cats[0]; first.name='Other'; removed--; renamed++;
+      keep.push(first);
+    }
+    // Saves on a rename too, not only when the list shrinks — the rename is applied to the
+    // same object, so without this it lived in memory and vanished on reload.
+    save(keep);
+  });
+  return {removed,renamed};
+}
+function budCleanupUnnamedCatsOnce(){
+  if(localStorage.getItem('daily_budget_unnamed_cleaned')) return;
+  try{ budCleanupUnnamedCats(); }catch(e){}
+  localStorage.setItem('daily_budget_unnamed_cleaned','1');
+}
+
 // ── Stranded week data ─────────────────────────────────────────────
 // weekIncome/weekSpending only sum the categories that currently EXIST, so a deleted
 // category's saved amounts stop counting and the affected weeks read as over budget. The
@@ -6767,7 +6817,7 @@ function renderBudgetConfig(){
     const cats=loadIncCats();
     wrap.innerHTML = cats.length
       ? cats.map(c=>{
-          const name=(c.name||'').trim()||'Income source';
+          const name=catIsUnnamed(c)?'Income source':c.name.trim();
           const rate=getHourlyRate(c.id);
           return '<div class="bud-row">'+
             '<div class="bud-row-left"><div class="bud-row-name">'+_catEscHtml(name)+' pay day</div></div>'+
@@ -7186,7 +7236,7 @@ function renderMonth(){
   if(catEl){
     const MONTH_CAT_COLORS=['#52B788','#f59e0b','#6366f1','#3b82f6','#ec4899','#8b5cf6','#FF6B35','#14b8a6'];
     const catTotals=loadVarCats().map((c,i)=>({
-      label:c.name||'Untitled',
+      label:catLabel(c),
       val:keys.reduce((s,k)=>s+(parseFloat(budgetData[k]?.['var_'+c.id])||0),0),
       color:MONTH_CAT_COLORS[i%MONTH_CAT_COLORS.length]
     }));
@@ -7658,11 +7708,11 @@ function renderBSCatBreakdown(){
       const v=budgetData[k]['fix_'+c.id];
       return s+((v!==undefined&&v!=='')?(parseFloat(v)||0):(parseFloat(c.default)||0));
     },0);
-    cats.push({label:c.name||'Untitled', val, kind:'Fixed'});
+    cats.push({label:catLabel(c), val, kind:'Fixed'});
   });
   loadVarCats().forEach(c=>{
     const val=keys.reduce((s,k)=>s+(parseFloat(budgetData[k]['var_'+c.id])||0),0);
-    cats.push({label:c.name||'Untitled', val, kind:'Variable'});
+    cats.push({label:catLabel(c), val, kind:'Variable'});
   });
   cats.sort((a,b)=>b.val-a.val);
   const total=cats.reduce((s,c)=>s+c.val,0);
@@ -9957,7 +10007,13 @@ function renderBudgetEditor(){
   renderCatBudgetList('be-fix','fix');
   renderCatBudgetList('be-var','var');
 }
-function closeBudgetEditor(){ const v=document.getElementById('view-budget-editor'); if(v){ v.style.display='none'; v.style.left='0'; } }
+function closeBudgetEditor(){
+  // Prune categories the user added but never named, so backing out of "+ Add category"
+  // doesn't leave a permanent blank row. Only ever removes EMPTY ones (see the function).
+  try{ budCleanupUnnamedCats(); }catch(e){}
+  const v=document.getElementById('view-budget-editor'); if(v){ v.style.display='none'; v.style.left='0'; }
+  refreshCatBudgetUI();
+}
 
 // ── Accounts page (full-screen overlay) ───────────────────────────────────────
 // Same overlay pattern as the budget/settings editors, and the same add/rename/delete
@@ -10051,12 +10107,18 @@ function renderPayoffCard(){
         savers.map(a=>_catEscHtml(a.name||'Savers')).join(', ')+' — excluded from this total, still counted in net worth.</div>'
     : '<div class="acct-payoff-note">Flip on “Savers account” below to keep an interest account out of this total.</div>';
   el.innerHTML=
+    // Two groups so the desktop rule can lay them side by side instead of centring a short
+    // figure across a 1088px card — the same treatment the net-worth card above already gets.
     '<div class="card acct-payoff-card">'+
-      '<div class="acct-payoff-label">'+(clear?'✅':'⚠️')+' Debt payoff position</div>'+
-      '<div class="acct-payoff-amt" style="color:'+col+'">'+fmtMoney(Math.abs(pos))+'</div>'+
-      '<div class="acct-payoff-sub">'+headline+'</div>'+
-      (debts>0?'<div class="acct-payoff-math">'+fmtMoney(accountsAssetsTotal()-saverTot)+' spendable − '+fmtMoney(debts)+' debts</div>':'')+
-      saverLine+
+      '<div class="acct-payoff-main">'+
+        '<div class="acct-payoff-label">'+(clear?'✅':'⚠️')+' Debt payoff position</div>'+
+        '<div class="acct-payoff-amt" style="color:'+col+'">'+fmtMoney(Math.abs(pos))+'</div>'+
+        '<div class="acct-payoff-sub">'+headline+'</div>'+
+      '</div>'+
+      '<div class="acct-payoff-aside">'+
+        (debts>0?'<div class="acct-payoff-math">'+fmtMoney(accountsAssetsTotal()-saverTot)+' spendable − '+fmtMoney(debts)+' debts</div>':'')+
+        saverLine+
+      '</div>'+
     '</div>';
 }
 function renderAccountsPage(){
@@ -11827,6 +11889,7 @@ try {
   migrateSubscriptionsToFixedOnce(); // one-time: fold subscriptions into fixed categories
   migrateDropSubsAggregateOnce(); // one-time: drop the leftover aggregate 'subs' category
   migrateRetiredAccentOnce(); // one-time: retired orange default → neutral grey
+  budCleanupUnnamedCatsOnce(); // one-time: clear machine-id rows left by unnamed categories
   // Warm the timed-exercise cache at boot: getPR/getPoints read it, and Stats can render
   // before renderLog has ever run.
   refreshSecsNames();

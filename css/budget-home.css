@@ -430,6 +430,17 @@
   #accounts-networth .card>div:nth-child(2){font-size:52px !important}
   /* Account cards: the balance row and the statement fields sit inline on a wide screen, so
      the extra width carries content instead of becoming a gap. */
+  /* Payoff card: same problem the net-worth card above already solves — a short figure
+     centred across a 1088px card reads as adrift rather than centred. Lay the two groups
+     side by side so the width carries content. */
+  .acct-payoff-card{display:flex;align-items:center;justify-content:space-between;gap:32px;
+    text-align:left !important;padding:22px 28px !important}
+  .acct-payoff-main{flex-shrink:0}
+  .acct-payoff-aside{flex:1;min-width:0;text-align:right}
+  .acct-payoff-amt{font-size:44px !important}
+  /* The note's divider is a top border in the stacked layout; side by side it needs no rule. */
+  .acct-payoff-note{border-top:none !important;padding-top:0 !important;margin-top:6px !important}
+
   #accounts-list .card{padding:18px 24px}
   #accounts-list .acct-stmt-row{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
   #accounts-list .acct-stmt-row>.bud-row{flex:1;min-width:200px;border-bottom:none;padding:6px 0}
