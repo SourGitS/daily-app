@@ -5509,36 +5509,88 @@ function catLabel(c){ return catIsUnnamed(c) ? 'Other' : catDisplayName(c.name);
 // Removes unnamed categories that hold no money anywhere. Any that DO hold money are renamed
 // to "Other" instead of deleted — deleting one would strand its amounts (see budScanOrphans),
 // which is the very bug this must not cause.
+// ── Archived categories ────────────────────────────────────────────
+// A category you've finished with (a job you left, a spend you no longer have) shouldn't sit
+// in the entry lists collecting blank rows — but deleting it strands every past week's amount
+// (see budScanOrphans). Archiving keeps the record and drops the row: loadXCats() still
+// returns it, so every history and total path counts it unchanged, and only the entry UI
+// filters it out.
+function catIsArchived(c){ return !!(c && c.archived); }
+function activeCats(list){ return (list||[]).filter(c=>!catIsArchived(c)); }
+function catArchive(type,id,on){
+  const load={inc:loadIncCats,fix:loadFixCats,var:loadVarCats}[type];
+  const save={inc:saveIncCats,fix:saveFixCats,var:saveVarCats}[type];
+  if(!load||!save) return;
+  const cats=load();
+  const c=cats.find(x=>x.id===id); if(!c) return;
+  // Never archive the last remaining active category — the section needs somewhere to type.
+  if(on && activeCats(cats).length<=1) return;
+  if(on) c.archived=true; else delete c.archived;
+  save(cats);
+  refreshCatBudgetUI();
+}
+// Fold each source category's per-week amounts into the target's key and clear the source.
+// Amounts are ADDED, never overwritten, so a merge cannot lose money.
+function budMergeCatsInto(type,targetId,sourceIds){
+  if(!sourceIds.length) return;
+  const tk=type+'_'+targetId;
+  Object.keys(budgetData||{}).forEach(wk=>{
+    const d=budgetData[wk]; if(!d||typeof d!=='object') return;
+    sourceIds.forEach(sid=>{
+      const sk=type+'_'+sid;
+      if(!(sk in d)) return;
+      const sv=parseFloat(d[sk]);
+      if(!isNaN(sv)&&sv!==0) d[tk]=String((parseFloat(d[tk])||0)+sv);
+      delete d[sk];
+    });
+  });
+  budSaveData();
+}
+// Junk categories: an unnamed row (never named after "+ Add category"), or an "Other" left by
+// an earlier version of this cleanup. Holding money decides the outcome, never the name:
+//   holds money → ARCHIVED, so past weeks still add up but no row appears
+//   holds none  → deleted outright, since there is nothing to preserve
 function budCleanupUnnamedCats(){
-  let removed=0, renamed=0;
+  let removed=0, archived=0;
   [['inc',loadIncCats,saveIncCats],['fix',loadFixCats,saveFixCats],['var',loadVarCats,saveVarCats]]
   .forEach(([type,load,save])=>{
     const cats=load();
+    const before=JSON.stringify(cats);
+    const isJunk=c=>catIsUnnamed(c)||String(c.name||'').trim().toLowerCase()==='other';
+    const junk=cats.filter(c=>isJunk(c)&&!catIsArchived(c));
+    if(!junk.length) return;
+
     const keep=[];
-    let touched=false;
     cats.forEach(c=>{
-      if(!catIsUnnamed(c)){ keep.push(c); return; }
-      const held=budCountStrandedFor(type,c.id);
-      if(held.weeks>0){ c.name='Other'; renamed++; touched=true; keep.push(c); } // has data → keep the money
-      else { removed++; touched=true; }                                          // empty → drop it
+      if(!isJunk(c)||catIsArchived(c)){ keep.push(c); return; }
+      if(budCountStrandedFor(type,c.id).weeks>0){
+        c.archived=true;
+        if(!String(c.name||'').trim()) c.name='Former '+({inc:'income',fix:'expense',var:'spending'}[type]);
+        archived++; keep.push(c);
+      } else {
+        // No money anywhere, so nothing to keep — drop the row and any zero-value keys.
+        Object.keys(budgetData||{}).forEach(wk=>{
+          const d=budgetData[wk]; if(d&&typeof d==='object') delete d[type+'_'+c.id];
+        });
+        removed++;
+      }
     });
-    if(!touched) return;
-    // Never leave a section with nothing to enter against: if everything was unnamed and
-    // empty, keep one as "Other" rather than emptying the section.
-    if(!keep.length && cats.length){
-      const first=cats[0]; first.name='Other'; removed--; renamed++;
-      keep.push(first);
+    // Never leave a section with no active row to type into.
+    if(!activeCats(keep).length){
+      const revive=keep[0]||cats[0];
+      if(revive){ delete revive.archived; if(!String(revive.name||'').trim()) revive.name='Other';
+        if(keep.indexOf(revive)<0) keep.push(revive); archived--; }
     }
-    // Saves on a rename too, not only when the list shrinks — the rename is applied to the
-    // same object, so without this it lived in memory and vanished on reload.
-    save(keep);
+    if(JSON.stringify(keep)!==before && keep.length){ budSaveData(); save(keep); }
   });
-  return {removed,renamed};
+  return {removed,archived};
 }
 function budCleanupUnnamedCatsOnce(){
-  if(localStorage.getItem('daily_budget_unnamed_cleaned')) return;
+  // Versioned: v1 renamed junk rows to "Other" and could leave several of them, so a device
+  // that already ran it still needs the archive-or-delete pass.
+  if(localStorage.getItem('daily_budget_unnamed_cleaned')==='2') return;
   try{ budCleanupUnnamedCats(); }catch(e){}
-  localStorage.setItem('daily_budget_unnamed_cleaned','1');
+  localStorage.setItem('daily_budget_unnamed_cleaned','2');
 }
 
 // ── Stranded week data ─────────────────────────────────────────────
@@ -6392,7 +6444,7 @@ function budCatNameHtml(type,c,isCur,editMode){
 function catIsRecurring(c){ const cy=catCycle(c); return cy==='monthly'||cy==='yearly'; }
 function renderFixedCard(data,isCur){
   const editing=budEditMode.fix && isCur;
-  const cats=loadFixCats();
+  const cats=activeCats(loadFixCats()); // archived keep counting in totals, just no row
   const weeklyCats=cats.filter(c=>!catIsRecurring(c));
   const recurCats=cats.filter(catIsRecurring);
 
@@ -6578,7 +6630,7 @@ function budPersistDefaults(){
 }
 function renderVariableCard(data,isCur){
   const editing=budEditMode.var && isCur;
-  const cats=loadVarCats();
+  const cats=activeCats(loadVarCats()); // archived keep counting in totals, just no row
   const rows=cats.map(c=>{
     // Show empty placeholder for no/zero spend — never a filled "0"
     const num=parseFloat(data['var_'+c.id]);
@@ -6596,7 +6648,7 @@ function renderVariableCard(data,isCur){
 }
 function renderIncomeCard(data,isCur){
   const editing=budEditMode.inc && isCur;
-  const cats=loadIncCats();
+  const cats=activeCats(loadIncCats()); // archived keep counting in totals, just no row
   const rows=cats.map(c=>{
     const raw=data['inc_'+c.id];
     const val=(raw!==undefined&&raw!=='')?raw:'';
@@ -6958,7 +7010,12 @@ function countUp(el, target, duration){
 function budRecalc(animate){
   const v=id=>parseFloat(document.getElementById(id)?.value)||0;
   let totalIncome=0;
-  loadIncCats().forEach(c=>{ totalIncome += parseFloat(document.getElementById('inc-'+c.id)?.value)||0; });
+  // An archived category has no input, so fall back to whatever the week already holds —
+  // otherwise the on-screen total would disagree with weekIncome(), which still counts it.
+  const _wk=budgetData[weekKey(getMondayOf(currentWeekIdx))]||{};
+  const liveOrSaved=(pre,c)=>{ const el=document.getElementById(pre+'-'+c.id);
+    return el ? (parseFloat(el.value)||0) : (parseFloat(_wk[pre+'_'+c.id])||0); };
+  loadIncCats().forEach(c=>{ totalIncome += liveOrSaved('inc',c); });
 
   // Dynamic fixed + variable totals (sum across the user's custom categories).
   // Fixed must mirror weekFixedTotal exactly: a blank (or absent) input means "the standard
@@ -6972,7 +7029,7 @@ function budRecalc(animate){
     totalFixed += (raw!==undefined&&raw!=='') ? (parseFloat(raw)||0) : catBudget(c);
   });
   let totalVar=0;
-  loadVarCats().forEach(c=>{ totalVar += parseFloat(document.getElementById('var-'+c.id)?.value)||0; });
+  loadVarCats().forEach(c=>{ totalVar += liveOrSaved('var',c); });
 
   // Savings is a free per-week amount (no fixed target); the goal is display-only.
   const totalSaved  = parseFloat(document.getElementById('sav-amount')?.value)||0;
@@ -7235,7 +7292,7 @@ function renderMonth(){
   const catEl=document.getElementById('month-categories');
   if(catEl){
     const MONTH_CAT_COLORS=['#52B788','#f59e0b','#6366f1','#3b82f6','#ec4899','#8b5cf6','#FF6B35','#14b8a6'];
-    const catTotals=loadVarCats().map((c,i)=>({
+    const catTotals=activeCats(loadVarCats()).map((c,i)=>({
       label:catLabel(c),
       val:keys.reduce((s,k)=>s+(parseFloat(budgetData[k]?.['var_'+c.id])||0),0),
       color:MONTH_CAT_COLORS[i%MONTH_CAT_COLORS.length]
