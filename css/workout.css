@@ -371,6 +371,15 @@
 .fav-hex{font-family:var(--font-num);font-size:14px;font-weight:700;letter-spacing:.02em}
 .fav-inuse{margin-left:auto;font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.4px}
 
+/* App colour mode: Fixed / Training / Weather. Segmented rather than a toggle, since it's a
+   three-way choice now. */
+.accent-mode-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;width:100%;
+  background:var(--track,rgba(128,128,128,.16));border-radius:12px;padding:4px}
+.accent-mode-btn{height:38px;border-radius:9px;border:none;background:transparent;color:var(--muted);
+  font-size:13px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  transition:background .15s ease,color .15s ease}
+.accent-mode-btn.on{background:var(--card);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.18)}
+
 .accent-preset-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:4px 0 2px}
 .accent-preset{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 4px;border-radius:12px;
   border:1.5px solid var(--border);background:transparent;cursor:pointer;-webkit-tap-highlight-color:transparent;

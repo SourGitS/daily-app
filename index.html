@@ -587,15 +587,12 @@
                 <span class="toggle-slider"></span>
               </label>
             </div>
-            <div class="settings-row" style="margin-top:16px;align-items:flex-start">
-              <div style="flex:1;padding-right:14px">
-                <span class="settings-row-label">Dynamic day colours</span>
-                <p style="font-size:12px;color:var(--muted);margin:4px 0 0;line-height:1.4">The accent colour follows the training day you're viewing, using the colours you set below. Off &mdash; the app uses your Rest days colour.</p>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="toggle-dynamic-colours" onchange="onDynamicColoursToggle(this.checked)">
-                <span class="toggle-slider"></span>
-              </label>
+            <!-- Three-way now (was a Dynamic day colours on/off toggle); rendered by
+                 renderAccentModeRow() so the descriptions can follow the selection. -->
+            <div class="settings-row" style="margin-top:16px;align-items:flex-start;flex-direction:column">
+              <span class="settings-row-label" style="margin-bottom:2px">App colour</span>
+              <p id="accent-mode-desc" style="font-size:12px;color:var(--muted);margin:4px 0 10px;line-height:1.4"></p>
+              <div id="accent-mode-row" class="accent-mode-row"></div>
             </div>
           </div>
           <div class="settings-card">

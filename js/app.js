@@ -1023,26 +1023,98 @@ function setDayColorEnc(encKey, hex){
 }
 // Name of the training day currently shown in the Log tab (drives the live accent).
 function currentDayName(){ const t=typeForDayIdx(S.dayIdx); return t?t.name:null; }
-function applyDayColour(){
-  if(typeof applyLogoDayColour==='function') applyLogoDayColour(); // keep the wordmark in sync
-  const enabled = localStorage.getItem('daily_dynamic_colours') === 'true';
-  const hero = document.querySelector('.hero-workout-card');
-  const rtBar = document.getElementById('rt-bar');
-  // Dynamic ON → follow the current day's assigned colour; OFF → static rest/base colour.
-  const hex = enabled ? dayColorFor(currentDayName()) : restColor();
-  applyAccent(hex);
-  if(hero){ hero.style.background=''; hero.style.boxShadow=''; }
-  if(rtBar) rtBar.style.boxShadow = enabled ? ('0 8px 24px rgba('+hexToRgb(hex)+',.30)') : '';
+// ── Accent mode ────────────────────────────────────────────────────
+// Three ways the accent can be decided. This used to be a boolean read independently in four
+// places (accent, wordmark, log hero, settings), which is why they could disagree; they all
+// go through currentAccentHex() now.
+//   static  — the colour picked in Appearance (the Rest days colour)
+//   day     — the current training day's colour
+//   weather — derived from the Home weather card's scene
+const ACCENT_MODES=['static','day','weather'];
+function accentMode(){
+  const m=localStorage.getItem('daily_accent_mode');
+  if(ACCENT_MODES.indexOf(m)>=0) return m;
+  // Migrate the legacy boolean, so an existing install keeps whatever it had.
+  return localStorage.getItem('daily_dynamic_colours')==='true' ? 'day' : 'static';
 }
-function onDynamicColoursToggle(enabled){
-  lsSave('daily_dynamic_colours', enabled ? 'true' : 'false', 'dynamicColours');
+function setAccentMode(mode){
+  if(ACCENT_MODES.indexOf(mode)<0) return;
+  lsSave('daily_accent_mode', mode, 'accentMode');
+  // Keep the old key in step so a downgrade (or an un-migrated device) still behaves sanely.
+  lsSave('daily_dynamic_colours', mode==='day' ? 'true' : 'false', 'dynamicColours');
+  if(typeof renderAccentModeRow==='function') renderAccentModeRow(); // refresh its own selection
   renderDayColorPickers();
   applyDayColour();
+}
+// Scene → accent. Deliberately darker/more saturated than the scene gradient itself: the
+// gradient only needs to look like sky, whereas the accent carries white text, so every one
+// of these is >=4.5:1 on white and hue-separated from --danger (a burnt orange at dawn read
+// too close to the error red, so dawn/dusk sit in amber instead).
+const WEATHER_ACCENTS={
+  'clear-dawn':'#A05E18','clear-noon':'#0072EA','clear-day':'#0072EA','clear-dusk':'#98591A','clear-night':'#2B3566',
+  'partly-dawn':'#96662F','partly-noon':'#3E6E99','partly-day':'#3E6E99','partly-dusk':'#83572A','partly-night':'#313B57',
+  'cloudy-day':'#5C5C5C','cloudy-night':'#35393D','fog':'#5E6368',
+  'rain-day':'#3D5A70','rain-night':'#2A3A48','storm':'#4B3A66',
+  'snow-day':'#4F6C82','snow-night':'#33454F'
+};
+// The scene the accent should follow. Prefers a real reading; with no location yet it uses
+// the same clock-based sky the card itself falls back to, so the colour still tracks
+// day/night rather than freezing on a default.
+function currentWeatherScene(){
+  try{
+    const c=loadWeatherCache();
+    if(c && !c.placeholder) return weatherScene(c.code,c);
+    if(c) return weatherScene(c.code,c);          // sample reading — still a real sky
+  }catch(e){}
+  return (typeof weatherPlaceholderScene==='function') ? weatherPlaceholderScene() : 'clear-day';
+}
+function weatherAccentHex(){
+  return WEATHER_ACCENTS[currentWeatherScene()] || restColor();
+}
+// One source of truth for "what colour is the app right now".
+function currentAccentHex(){
+  switch(accentMode()){
+    case 'day':     return dayColorFor(currentDayName());
+    case 'weather': return weatherAccentHex();
+    default:        return restColor();
+  }
+}
+function applyDayColour(){
+  if(typeof applyLogoDayColour==='function') applyLogoDayColour(); // keep the wordmark in sync
+  const mode = accentMode();
+  const hero = document.querySelector('.hero-workout-card');
+  const rtBar = document.getElementById('rt-bar');
+  const hex = currentAccentHex();
+  applyAccent(hex);
+  if(hero){ hero.style.background=''; hero.style.boxShadow=''; }
+  if(rtBar) rtBar.style.boxShadow = mode!=='static' ? ('0 8px 24px rgba('+hexToRgb(hex)+',.30)') : '';
+}
+// Kept for the old checkbox handler path; routes into the mode model.
+function onDynamicColoursToggle(enabled){ setAccentMode(enabled?'day':'static'); }
+const ACCENT_MODE_LABELS={
+  static:{label:'Fixed',   desc:'The app uses the single colour you pick below.'},
+  day:   {label:'Training',desc:'Follows the training day you\'re viewing, using the per-day colours below.'},
+  weather:{desc:'Follows the sky on your Home weather card — blue on a clear day, grey when it\'s overcast, deep indigo at night.', label:'Weather'}
+};
+function renderAccentModeRow(){
+  const row=document.getElementById('accent-mode-row'); if(!row) return;
+  const cur=accentMode();
+  row.innerHTML=ACCENT_MODES.map(m=>
+    '<button type="button" class="accent-mode-btn'+(m===cur?' on':'')+'" onclick="setAccentMode(\''+m+'\')">'+
+      ACCENT_MODE_LABELS[m].label+'</button>').join('');
+  const d=document.getElementById('accent-mode-desc');
+  if(d){
+    let txt=ACCENT_MODE_LABELS[cur].desc;
+    // Name the sky it's actually following, so the choice isn't abstract.
+    if(cur==='weather') txt+=' Right now: '+currentWeatherScene().replace('-',' ')+'.';
+    d.textContent=txt;
+  }
 }
 // Appearance → per-day colour pickers. One row per live training day + one for rest days.
 function renderDayColorPickers(){
   const wrap=document.getElementById('day-colors-list'); if(!wrap) return;
-  const dynamicOn=localStorage.getItem('daily_dynamic_colours')==='true';
+  // Per-day pickers only make sense in Training mode; the other two modes don't use them.
+  const dynamicOn=accentMode()==='day';
 
   if(!dynamicOn){
     // Static mode: the four brand presets first (the curated set), then a free picker for
@@ -1832,17 +1904,9 @@ window.addEventListener('resize',function(){ if(typeof S!=='undefined'&&S.view) 
 // accent). The wordmark is a real logo image now, so this only drives the active Stats pill
 // (#header-stats-pill.active). Name/call sites kept though "Logo" is no longer strictly apt.
 function applyLogoDayColour(){
-  let c;
-  if(localStorage.getItem('daily_dynamic_colours')==='true'){
-    // Dynamic day colours on → follow the current training day's assigned colour, so the
-    // wordmark matches the rest of the dynamically-themed UI.
-    c=dayColorFor(currentDayName());
-  } else {
-    // Off → follow the user's chosen static accent (same colour applyDayColour uses), so the
-    // "Daily" wordmark tracks the accent picked in Appearance instead of a fixed weekday colour.
-    c=restColor();
-  }
-  document.documentElement.style.setProperty('--day-color', c);
+  // Same colour the rest of the UI is using, whichever mode is active — the wordmark used to
+  // read the dynamic flag itself and so ignored the weather mode entirely.
+  document.documentElement.style.setProperty('--day-color', currentAccentHex());
 }
 // Stats pill shows on Home (and stays visible+active on the Stats view so it doubles
 // as the way back). Hidden everywhere else.
@@ -2423,8 +2487,7 @@ function renderLog(animateEntrance){
   // this day's assigned colour; OFF → the fixed static accent (restColor). Reading the raw
   // day colour unconditionally was the bug — with dynamic OFF the accent went static but this
   // card stayed the day's colour (e.g. green for Legs), so the static pick looked overridden.
-  const _dynOn = localStorage.getItem('daily_dynamic_colours') === 'true';
-  const heroRgb = hexToRgb(_dynOn ? dayColorFor(currentDayName()) : restColor());
+  const heroRgb = hexToRgb(currentAccentHex());
   const isToday = S.dayIdx === suggestDay();
   const heroEl = document.getElementById('log-day-hero');
   if(heroEl){
@@ -4008,7 +4071,7 @@ function openSettingsSection(key){
     renderTDEESection();
   }
   if(key==='habits') renderHabitsEditModal();
-  if(key==='appearance'){ const th=document.getElementById('theme-toggle'); if(th) th.checked=S.theme==='dark'; const dc=document.getElementById('toggle-dynamic-colours'); if(dc) dc.checked=localStorage.getItem('daily_dynamic_colours')==='true'; renderDayColorPickers(); }
+  if(key==='appearance'){ const th=document.getElementById('theme-toggle'); if(th) th.checked=S.theme==='dark'; renderAccentModeRow(); renderDayColorPickers(); }
   if(key==='homelayout') renderHomeLayoutSection();
   overlay.style.display='block';
   overlay.style.left=window.innerWidth>=1024?'260px':'0';
@@ -8570,6 +8633,8 @@ function renderWeatherInto(entry){
     card.dataset.scene=weatherScene(entry.code,entry);
     applyWeatherMotion(card,entry);
   }
+  // In weather mode the accent follows the sky, so a new reading has to repaint it.
+  if(accentMode()==='weather' && typeof applyDayColour==='function') applyDayColour();
 }
 // First-ever load (no cache yet): show an explicit "tap for weather" invite instead of
 // popping the OS location prompt unasked — Home is where most sessions land first, and an
