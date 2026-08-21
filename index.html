@@ -400,7 +400,18 @@
 
       <!-- YEARLY VIEW -->
       <div id="budget-year-view" class="hidden">
+        <!-- Same nav pattern as the week and month views, which this previously lacked —
+             it was pinned to a rolling 12 months with no way to see a different year. -->
+        <div class="week-nav" style="margin-bottom:16px">
+          <button class="week-nav-btn" onclick="changeBudgetYear(-1)">&#8249;</button>
+          <div class="week-label"><div class="week-label-main" id="year-label-main">&#8212;</div><div class="week-label-sub" id="year-label-sub">&#8212;</div></div>
+          <button class="week-nav-btn" onclick="changeBudgetYear(1)" id="year-next-btn">&#8250;</button>
+        </div>
         <div class="summary-grid" id="year-summary-grid" style="grid-template-columns:repeat(2,1fr)"></div>
+        <div class="card">
+          <div class="sec-label" style="margin-bottom:10px">Month by month</div>
+          <div id="year-months-list"></div>
+        </div>
         <div class="card">
           <div class="sec-label" style="margin-bottom:10px">Monthly breakdown</div>
           <div id="year-stack-legend" class="chart-legend"></div>

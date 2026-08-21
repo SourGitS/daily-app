@@ -7356,45 +7356,95 @@ function renderMonth(){
 }
 
 // ── Yearly budget view ────────────────────────────────────────────
-function renderYear(){
-  const points=getBudTrendPoints('monthly');
-
-  // Fixed + variable spend per month, grouped with the SAME key/cutoff as
-  // getBudTrendPoints('monthly') so the arrays line up 1:1 with `points`.
-  const cutoff=localMidnight(getLocalDate());
-  cutoff.setDate(1); cutoff.setMonth(cutoff.getMonth()-11);
-  const cutoffYM=dateStr(cutoff).substring(0,7);
-  const byMonth={};
-  Object.keys(budgetData).sort().forEach(k=>{
-    const ym=k.substring(0,7); if(ym<cutoffYM) return;
+// ── Yearly view ────────────────────────────────────────────────────
+// This used to read a rolling 12 months for its charts while the "Saved this year" tile read
+// the calendar year, so the headline figure and the chart described different spans. Now
+// everything is one calendar year, which is also what makes the year nav meaningful.
+let budgetYearOffset=0;   // 0 = this year, -1 = last year
+function budViewedYear(){ return localMidnight(getLocalDate()).getFullYear()+budgetYearOffset; }
+function changeBudgetYear(dir){
+  if(dir>0&&budgetYearOffset>=0) return;   // never navigate into the future
+  budgetYearOffset+=dir;
+  renderYear();
+}
+// One entry per calendar month of the given year. Months are always returned in order with
+// zeros for the empty ones, so a gap month reads as a gap on the chart rather than being
+// silently dropped and shifting the axis.
+function budYearMonths(year){
+  const now=localMidnight(getLocalDate());
+  const isCurrentYear=year===now.getFullYear();
+  const lastMonth=isCurrentYear?now.getMonth():11;   // don't project into unlived months
+  const months=[];
+  for(let m=0;m<=lastMonth;m++){
+    months.push({m, ym:year+'-'+String(m+1).padStart(2,'0'),
+      label:new Date(year,m,1).toLocaleDateString('en-AU',{month:'short'}),
+      income:0, fixed:0, variable:0, saved:0, weeks:0});
+  }
+  Object.keys(budgetData).forEach(k=>{
+    if(k.substring(0,4)!==String(year)) return;
+    const mi=parseInt(k.substring(5,7),10)-1;
+    if(isNaN(mi)||mi<0||mi>lastMonth) return;
     const d=budgetData[k]; if(!d) return;
-    if(!byMonth[ym]) byMonth[ym]={fixed:0,variable:0};
-    byMonth[ym].fixed+=weekFixed(d);
-    byMonth[ym].variable+=weekVarTotal(d);
+    const M=months[mi];
+    M.income+=weekIncome(d); M.fixed+=weekFixed(d);
+    M.variable+=weekVarTotal(d); M.saved+=weekSavedAmt(d); M.weeks++;
   });
-  const orderedYM=Object.keys(byMonth).sort();
-  const fixedArr=orderedYM.map(ym=>byMonth[ym].fixed);
-  const varArr=orderedYM.map(ym=>byMonth[ym].variable);
-  const rateArr=points.map(p=>p.income>0?(p.saved/p.income*100):0);
+  return months;
+}
+function renderYear(){
+  const year=budViewedYear();
+  const months=budYearMonths(year);
+  const withData=months.filter(m=>m.weeks>0);
+  const points=months.map(m=>({label:m.label, income:m.income, saved:m.saved}));
+  const fixedArr=months.map(m=>m.fixed);
+  const varArr=months.map(m=>m.variable);
+  const rateArr=months.map(m=>m.income>0?(m.saved/m.income*100):0);
+
+  // ── Year label + nav ──
+  const lm=document.getElementById('year-label-main');
+  const ls=document.getElementById('year-label-sub');
+  if(lm) lm.textContent=String(year);
+  if(ls) ls.textContent=withData.length
+    ? withData.length+' month'+(withData.length===1?'':'s')+' recorded'
+    : 'No data yet';
+  const nextBtn=document.getElementById('year-next-btn');
+  if(nextBtn) nextBtn.style.opacity=budgetYearOffset>=0?'0.3':'1';
 
   // ── Stat tiles ──
   const sg=document.getElementById('year-summary-grid');
   if(sg){
-    // Savings-rate trend: latest month vs 3 months ago
-    let trendVal='—', trendColor='var(--muted)';
-    if(rateArr.length>=4){
-      const diff=rateArr[rateArr.length-1]-rateArr[rateArr.length-4];
-      if(diff>=0){ trendVal='↑ '+diff.toFixed(0)+'%'; trendColor=BUD_CHART_COLORS.income; }
-      else      { trendVal='↓ '+Math.abs(diff).toFixed(0)+'%'; trendColor='var(--danger)'; }
-    }
-    // Saved across the current calendar year
-    const curYear=String(localMidnight(getLocalDate()).getFullYear());
-    let savedThisYear=0;
-    Object.keys(budgetData).forEach(k=>{ if(k.substring(0,4)===curYear) savedThisYear+=weekSavedAmt(budgetData[k]); });
+    const totIncome=months.reduce((s,m)=>s+m.income,0);
+    const totSaved=months.reduce((s,m)=>s+m.saved,0);
+    const avgRate=totIncome>0?(totSaved/totIncome*100):0;
+    // Best month by what was actually put away, which is the number worth chasing.
+    const best=withData.slice().sort((a,b)=>b.saved-a.saved)[0];
     sg.innerHTML=[
-      {val:trendVal,lbl:'Savings rate trend',color:trendColor},
-      {val:'$'+savedThisYear.toFixed(0),lbl:'Saved this year',color:BUD_CHART_COLORS.saved},
+      {val:'$'+Math.round(totIncome).toLocaleString(),lbl:'Earned in '+year,color:BUD_CHART_COLORS.income},
+      {val:'$'+Math.round(totSaved).toLocaleString(),lbl:'Saved in '+year,color:BUD_CHART_COLORS.saved},
+      {val:avgRate.toFixed(0)+'%',lbl:'Average savings rate',color:BUD_CHART_COLORS.rate},
+      {val:best?best.label:'—',lbl:best?'Best month · $'+Math.round(best.saved).toLocaleString():'Best month',color:BUD_CHART_COLORS.saved},
     ].map(s=>'<div class="sum-card"><div class="sum-card-val" style="color:'+s.color+'">'+s.val+'</div><div class="sum-card-lbl">'+s.lbl+'</div></div>').join('');
+  }
+
+  // ── Month-by-month table ──
+  // The arrays above already held all of this; the view just never showed it itemised.
+  const ml=document.getElementById('year-months-list');
+  if(ml){
+    ml.innerHTML=withData.length
+      ? '<div class="year-mo-row year-mo-head"><span>Month</span><span>In</span><span>Out</span><span>Saved</span><span>Rate</span></div>'+
+        withData.map(m=>{
+          const out=m.fixed+m.variable;
+          const rate=m.income>0?(m.saved/m.income*100):0;
+          const rateCol=rate>=20?'var(--positive)':rate>0?'var(--amber-dark,#f59e0b)':'var(--muted)';
+          return '<div class="year-mo-row">'+
+            '<span class="year-mo-name">'+m.label+'</span>'+
+            '<span>'+fmtMoney(m.income)+'</span>'+
+            '<span>'+fmtMoney(out)+'</span>'+
+            '<span>'+fmtMoney(m.saved)+'</span>'+
+            '<span style="color:'+rateCol+'">'+rate.toFixed(0)+'%</span>'+
+          '</div>';
+        }).join('')
+      : '<div style="text-align:center;color:var(--muted);font-size:13px;padding:18px 0">Nothing recorded in '+year+' yet.</div>';
   }
 
   // ── Stacked bar + savings-rate line ──
@@ -7403,7 +7453,7 @@ function renderYear(){
   const stackLegend=document.getElementById('year-stack-legend');
   const {gc,tc}=budChartGridColors();
   if(stackWrap){
-    if(points.length<2){
+    if(withData.length<2){
       stackWrap.innerHTML='<div style="text-align:center;color:var(--muted);font-size:13px;padding:20px 0">Not enough data yet.</div>';
       if(stackLegend) stackLegend.innerHTML='';
     } else {
@@ -7447,7 +7497,7 @@ function renderYear(){
   const ccWrap=document.getElementById('year-cc-wrap');
   const ccLegend=document.getElementById('year-cc-legend');
   if(ccWrap){
-    if(points.length<2){
+    if(withData.length<2){
       ccWrap.innerHTML='<div style="text-align:center;color:var(--muted);font-size:13px;padding:20px 0">Not enough data yet.</div>';
       if(ccLegend) ccLegend.innerHTML='';
     } else {

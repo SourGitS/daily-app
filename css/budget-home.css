@@ -3,6 +3,17 @@
 .sec-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-secondary);margin-bottom:8px}
 .bud-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
 .bud-row:last-child{border-bottom:none}
+/* ── Yearly: month-by-month table ── */
+.year-mo-row{display:grid;grid-template-columns:1.1fr 1fr 1fr 1fr 0.7fr;gap:6px;align-items:center;
+  padding:9px 0;border-bottom:1px solid var(--border);font-family:var(--font-num);
+  font-size:13px;font-weight:700;color:var(--text);text-align:right}
+.year-mo-row:last-child{border-bottom:none}
+.year-mo-row>span:first-child{text-align:left}
+.year-mo-name{font-family:var(--font-ui);font-weight:600}
+/* Header row: labels, not figures — lighter and in the UI face. */
+.year-mo-head{font-family:var(--font-ui);font-size:10px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--muted);padding-bottom:6px}
+
 /* ── Budget calculator ── */
 .bcalc-expr{text-align:right;font-family:var(--font-num);font-size:13px;font-weight:600;color:var(--muted);min-height:18px;letter-spacing:.02em}
 .bcalc-display{text-align:right;font-family:var(--font-num);font-size:34px;font-weight:800;color:var(--text);letter-spacing:-.02em;line-height:1.1;margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
