@@ -3,6 +3,17 @@
 .sec-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-secondary);margin-bottom:8px}
 .bud-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
 .bud-row:last-child{border-bottom:none}
+/* ── Home calorie card: meals | ring | remaining ──
+   Three columns with the ring dead centre. The outer two share a flex basis so the ring is
+   genuinely centred rather than landing wherever the side widths leave it. */
+.hh-row{display:flex;align-items:center;gap:12px;padding:6px 0}
+.hh-meals{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:6px}
+.hh-remain{flex:1 1 0;min-width:0;text-align:right}
+.hh-meal{display:flex;align-items:baseline;gap:8px}
+.hh-meal-key{width:16px;flex-shrink:0;font-size:12px;font-weight:800;color:var(--muted);letter-spacing:.04em}
+.hh-meal-val{font-family:var(--font-num);font-size:15px;font-weight:700;color:var(--text)}
+.hh-meal-empty{color:var(--muted);font-weight:600}
+
 /* ── Yearly: month-by-month table ── */
 .year-mo-row{display:grid;grid-template-columns:1.1fr 1fr 1fr 1fr 0.7fr;gap:6px;align-items:center;
   padding:9px 0;border-bottom:1px solid var(--border);font-family:var(--font-num);
@@ -395,7 +406,6 @@
   #view-home .home-card-wide[data-card-id="weather"] .weather-temp{font-size:38px}
   #view-home .home-card-wide[data-card-id="weather"] .weather-icon{font-size:34px}
   #view-home .hero-card .overview-content{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:32px}
-  #view-home .hero-card .overview-greeting{margin-bottom:0}
   #app-main>section{padding:40px 32px 40px}
 
   /* Log tab */

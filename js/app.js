@@ -9105,8 +9105,23 @@ function homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt){
     const rem=goalCals-kcalTotal;
     const ringCol=rem<0?'var(--danger)':pct>80?'var(--warn)':'var(--success)';
     const R=44,circ=+(2*Math.PI*R).toFixed(1),offset=+(circ*(1-pct/100)).toFixed(1);
+    // Breakfast / lunch / dinner totals, replacing the greeting that used to sit above the
+    // ring. The per-meal category is already recorded on every entry (MEAL_CATS), it just
+    // was never surfaced here — so this is a read, not new tracking.
+    const byMeal={breakfast:0,lunch:0,dinner:0};
+    ((S.dailyLog&&S.dailyLog.entries)||[]).forEach(e=>{
+      if(byMeal[e.category]!==undefined) byMeal[e.category]+=parseFloat(e.kcal)||0;
+    });
+    const mealRows=[['B','breakfast'],['L','lunch'],['D','dinner']].map(([initial,id])=>{
+      const v=Math.round(byMeal[id]);
+      return '<div class="hh-meal">'+
+        '<span class="hh-meal-key">'+initial+'</span>'+
+        '<span class="hh-meal-val'+(v?'':' hh-meal-empty')+'">'+(v?v:'—')+'</span>'+
+      '</div>';
+    }).join('');
     return (
-      '<div style="display:flex;align-items:center;gap:16px;justify-content:center;padding:6px 0">'+
+      '<div class="hh-row">'+
+      '<div class="hh-meals">'+mealRows+'</div>'+
       '<svg width="110" height="110" viewBox="0 0 110 110" style="flex-shrink:0">'+
         '<circle cx="55" cy="55" r="'+R+'" fill="none" stroke="var(--border)" stroke-width="9"/>'+
         '<circle cx="55" cy="55" r="'+R+'" fill="none" stroke="'+ringCol+'" stroke-width="9"'+
@@ -9115,7 +9130,7 @@ function homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt){
         '<text x="55" y="52" text-anchor="middle" dominant-baseline="middle" font-size="19" font-weight="800" fill="var(--text)">'+kcalTotal+'</text>'+
         '<text x="55" y="67" text-anchor="middle" font-size="10" fill="var(--muted)">eaten</text>'+
       '</svg>'+
-      '<div>'+
+      '<div class="hh-remain">'+
         '<div style="font-size:30px;font-weight:700;letter-spacing:-1px;color:'+ringCol+';line-height:1">'+(rem>=0?rem:Math.abs(rem))+'</div>'+
         '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">'+(rem>=0?'kcal remaining':'kcal over target')+'</div>'+
         '<div style="font-size:11px;font-weight:600;color:var(--muted)">Goal: '+goalCals+' kcal</div>'+
@@ -9169,9 +9184,6 @@ function homeSavingsInner(){
 function renderHome(){
   const wrap=document.getElementById('home-content'); if(!wrap) return;
   const name=profileData.name||S.personalInfo.name||'';
-
-  // Greeting (time-of-day + saved profile name)
-  const greetLine=getGreeting();
 
   // Calories
   const today=getLocalDate();
@@ -9289,8 +9301,9 @@ function renderHome(){
   const overviewCard=
     '<div class="card hero-card"'+(goalCals?' onclick="openCalorieOverlay()"':'')+' style="margin-bottom:12px;padding:0;overflow:hidden'+(goalCals?';cursor:pointer':'')+'">'+
       '<div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">'+heroHdrTxt+'</div>'+
+      // Greeting removed: it repeated the time of day the app already shows and pushed the
+      // figures down. The meal totals now occupy that side of the card instead.
       '<div class="overview-content" style="padding:14px 16px">'+
-        '<div class="overview-greeting" style="font-size:15px;font-weight:700;margin-bottom:12px">'+greetLine+'</div>'+
         heroContent+
       '</div>'+
     '</div>';
