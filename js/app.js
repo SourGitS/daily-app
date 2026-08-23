@@ -9838,8 +9838,7 @@ function renderHome(){
     setTimeout(() => card.classList.remove('home-card-enter'), 600 + i * 45);
   });
   if(homeEditMode) applyHomeEditMode();
-  applyHomeCardCaps();
-  applyHomeCardSpans();
+  applyHomeCardCaps();   // assigns grid spans too
 
   applyDayColour();
   // Only touch geolocation/network if the widget is actually visible — a hidden card has no
@@ -10143,27 +10142,86 @@ function homeWidgetToggle(id,on){
 // are capped — static cards can't blow out a row, so they get no chrome.
 // Desktop only: the phone is a single stack, where a tall card costs nothing.
 const HOME_CAPPABLE=['notes','habits','recent'];
-const HOME_CARD_CAP=280;   // ≈ the tallest naturally-occurring card, so today's layout is unchanged
+// Caps are expressed in GRID ROWS, not pixels, so they can't disagree with the span a card is
+// given. A fixed 280px cap against a 2-row (434px) span is what broke the desktop layout: the
+// habits card was clipped at 280 while occupying 434, so it hid content AND left 154px of dead
+// space under it. One number now drives both.
+const HOME_CARD_MAX_ROWS=2;
 const _homeExpanded=new Set();   // survives re-render; renderHome rebuilds innerHTML and would lose a class
+// Height of a card occupying n grid rows, including the gaps it swallows between them.
+function homeRowsToPx(n){ return n*HOME_ROW + (n-1)*HOME_ROW_GAP; }
+// Caps and spans are ONE pass now. They used to be two functions with two different ideas of
+// how tall a card was allowed to be, which is what broke the desktop grid.
 function applyHomeCardCaps(){
-  document.querySelectorAll('#home-content .home-card').forEach(w=>{
+  const grid=document.querySelector('#home-content .home-grid-cols');
+  const cards=[...document.querySelectorAll('#home-content .home-card')];
+  // ── Pass 1: strip everything that could distort a measurement ──
+  // Two passes, not one, because clearing a card's span does not force a synchronous reflow —
+  // measuring immediately after returns the PREVIOUS layout, which made every card measure as
+  // whatever it was last time and converge on one span. height:auto is also required: the
+  // stretch rule sets height:100% on the inner card, so its natural height is otherwise
+  // invisible, and cards with overflow:hidden (weather, the hero) report their box rather than
+  // their content.
+  cards.forEach(w=>{
     const old=w.querySelector(':scope > .home-card-more'); if(old) old.remove();
     w.classList.remove('home-card-capped','home-card-hasmore');
-    const id=w.dataset.cardId;
-    if(window.innerWidth<1024 || HOME_CAPPABLE.indexOf(id)<0) return;
+    w.style.gridRow='';
+    // The wrapper is a flex COLUMN that the grid stretches to the row height, so its child is a
+    // flex item and gets compressed to the row no matter what height it is given — 12 habits
+    // measured as 211px. Releasing align-self AND the child's flex is what actually exposes the
+    // natural height.
+    w.style.alignSelf='start';
     const inner=w.firstElementChild; if(!inner) return;
+    inner.style.removeProperty('max-height');
+    inner.style.height='auto';
+    inner.style.flex='none';
+  });
+  if(!grid || window.innerWidth<1024){
+    // Mobile (and any layout without the grid) stacks and sizes to content — no spans, no caps.
+    cards.forEach(w=>{ w.style.removeProperty('align-self');
+      const i=w.firstElementChild;
+      if(i){ i.style.removeProperty('height'); i.style.removeProperty('flex'); } });
+    return;
+  }
+  // Force the reflow so pass 2 measures the stripped layout, not the previous one.
+  void grid.offsetHeight;
+  // ── Pass 2: measure natural height, assign rows, restore ──
+  const measured=cards.map(w=>{
+    const inner=w.firstElementChild;
+    return inner?Math.ceil(inner.getBoundingClientRect().height):0;
+  });
+  cards.forEach((w,i)=>{
+    const inner=w.firstElementChild; if(!inner) return;
+    inner.style.removeProperty('height');
+    inner.style.removeProperty('flex');
+    w.style.removeProperty('align-self');
+    const id=w.dataset.cardId;
     const expanded=_homeExpanded.has(id);
-    // Measure uncapped, so a card that only just fits keeps no button at all.
-    if(!expanded && inner.scrollHeight<=HOME_CARD_CAP) return;
-    w.classList.add('home-card-hasmore');
-    if(!expanded) w.classList.add('home-card-capped');
-    const btn=document.createElement('button');
-    btn.type='button';
-    btn.className='home-card-more';
-    btn.textContent=expanded?'Show less':'Show all';
-    // The card itself is a link through to its tab; the toggle must not trigger that.
-    btn.addEventListener('click',e=>{ e.stopPropagation(); toggleHomeCardExpand(id); });
-    w.appendChild(btn);
+    const natural=measured[i];
+    let rows=Math.max(1, Math.ceil((natural+HOME_ROW_GAP)/(HOME_ROW+HOME_ROW_GAP)));
+    // Only the list-style cards are capped; everything else takes whatever it needs.
+    const cappable=HOME_CAPPABLE.indexOf(id)>=0;
+    if(cappable && !expanded && rows>HOME_CARD_MAX_ROWS){
+      rows=HOME_CARD_MAX_ROWS;
+      w.classList.add('home-card-capped','home-card-hasmore');
+    } else if(cappable && expanded && Math.ceil((natural+HOME_ROW_GAP)/(HOME_ROW+HOME_ROW_GAP))>HOME_CARD_MAX_ROWS){
+      w.classList.add('home-card-hasmore');   // expanded: full height, but keep the toggle
+    }
+    w.style.gridRow='span '+rows;
+    if(w.classList.contains('home-card-capped')){
+      // Clip to exactly the rows it occupies, so there is no dead strip and nothing is hidden
+      // that the card had room to show.
+      inner.style.maxHeight=homeRowsToPx(rows)+'px';
+    }
+    if(w.classList.contains('home-card-hasmore')){
+      const btn=document.createElement('button');
+      btn.type='button';
+      btn.className='home-card-more';
+      btn.textContent=expanded?'Show less':'Show all';
+      // The card itself is a link through to its tab; the toggle must not trigger that.
+      btn.addEventListener('click',e=>{ e.stopPropagation(); toggleHomeCardExpand(id); });
+      w.appendChild(btn);
+    }
   });
 }
 // ── Desktop card heights ──────────────────────────────────────────
@@ -10176,23 +10234,12 @@ function applyHomeCardCaps(){
 // "Show all" button, and the span has to reflect the capped height, not the full content.
 const HOME_ROW=210;   // keep in step with grid-auto-rows in css/budget-home.css
 const HOME_ROW_GAP=14;
-function applyHomeCardSpans(){
-  const wrap=document.getElementById('home-content'); if(!wrap) return;
-  const grid=wrap.querySelector('.home-grid-cols');
-  wrap.querySelectorAll('.home-card').forEach(w=>{
-    if(!grid){ w.style.gridRow=''; return; }   // mobile stack: no grid, no spans
-    const inner=w.firstElementChild; if(!inner) return;
-    // Clear first so a previous span can't floor the measurement.
-    w.style.gridRow='';
-    const h=Math.max(inner.scrollHeight, inner.getBoundingClientRect().height);
-    const span=Math.max(1, Math.ceil((h+HOME_ROW_GAP)/(HOME_ROW+HOME_ROW_GAP)));
-    w.style.gridRow='span '+span;
-  });
-}
+// Spans are assigned inside applyHomeCardCaps (one pass, so a cap and a span can never
+// disagree). Kept as a named alias because several call sites read better this way.
+function applyHomeCardSpans(){ applyHomeCardCaps(); }
 function toggleHomeCardExpand(id){
   if(_homeExpanded.has(id)) _homeExpanded.delete(id); else _homeExpanded.add(id);
-  applyHomeCardCaps();
-  applyHomeCardSpans();   // expanding changes the height, so the span has to be recomputed
+  applyHomeCardCaps();   // recomputes the span as well as the cap
 }
 // A width change can move the grid between 2, 3 and 4 columns, which reflows every card and
 // changes how many rows each one needs. Debounced — resize fires continuously during a drag.
@@ -10201,7 +10248,7 @@ window.addEventListener('resize',function(){
   if(_homeSpanRaf) cancelAnimationFrame(_homeSpanRaf);
   _homeSpanRaf=requestAnimationFrame(function(){
     _homeSpanRaf=0;
-    if(S.view==='home'){ applyHomeCardCaps(); applyHomeCardSpans(); }
+    if(S.view==='home') applyHomeCardCaps();
   });
 });
 let homeEditMode=false;

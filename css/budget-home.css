@@ -524,7 +524,10 @@
      into a tall empty box (see applyHomeCardCaps). The button is only added when the content
      actually overflows, so a card that fits shows no chrome at all. */
   #view-home .home-card-hasmore{position:relative}
-  #view-home .home-card-capped > *:first-child{max-height:280px;overflow:hidden}
+  /* max-height is set inline by applyHomeCardCaps to the exact pixel height of the rows the
+     card was given, so the clip and the span always agree. A fixed 280px here disagreed with a
+     434px span and left the habits card clipped with a dead strip beneath it. */
+  #view-home .home-card-capped > *:first-child{overflow:hidden}
   /* Reserve room so the last line of content never sits under the toggle. */
   #view-home .home-card-hasmore > *:first-child{padding-bottom:46px}
   .home-card-more{position:absolute;left:14px;right:14px;bottom:12px;z-index:2;height:30px;
