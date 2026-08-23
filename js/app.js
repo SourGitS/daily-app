@@ -9306,6 +9306,33 @@ function sparkline(vals,opts){
     tgt+'<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>'+
     last+'</svg>';
 }
+// Seven-day calorie strip for the overview card. daily_cal_history is a flat {date: total}
+// map that was stored, synced, and never shown on Home — the card only ever knew about today,
+// so "0 / 3,062" on a Sunday evening read as failure rather than as a Sunday.
+// Folded into the existing card rather than shipped as a separate widget: one card showing
+// today AND the week beats two cards each showing half of it.
+function calorieWeekStrip(goalCals,todayTotal){
+  const today=getLocalDate(), t0=localMidnight(today).getTime();
+  const days=[];
+  for(let i=6;i>=0;i--){
+    const d=dateStr(new Date(t0-i*864e5));
+    days.push({d, v: d===today ? todayTotal : (parseFloat((calorieHistory||{})[d])||0)});
+  }
+  const logged=days.filter(x=>x.v>0);
+  // Under three logged days the chart is mostly gaps, which reads as broken rather than as
+  // "not much history yet" — better to show nothing at all.
+  if(logged.length<3) return '';
+  const avg=Math.round(logged.reduce((a,b)=>a+b.v,0)/logged.length);
+  const max=Math.max(goalCals||0, ...days.map(x=>x.v))*1.08||1;
+  const bars=days.map(x=>
+    '<div class="cw-col"><div class="cw-bar'+(x.d===today?' cw-today':'')+(x.v?'':' cw-empty')+
+    '" style="height:'+Math.min(100,x.v/max*100).toFixed(1)+'%"></div></div>').join('');
+  return '<div class="cal-week">'+
+      (goalCals?'<div class="cw-target" style="bottom:'+(goalCals/max*100).toFixed(1)+'%"></div>':'')+
+      bars+
+    '</div>'+
+    '<div class="card-cap">7-day avg '+avg.toLocaleString()+(goalCals?' · target '+goalCals.toLocaleString():'')+'</div>';
+}
 function homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt){
   if(goalCals){
     const pct=Math.min(100,Math.round(kcalTotal/goalCals*100));
@@ -9342,7 +9369,8 @@ function homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt){
         '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">'+(rem>=0?'kcal remaining':'kcal over target')+'</div>'+
         '<div style="font-size:11px;font-weight:600;color:var(--muted)">Goal: '+goalCals+' kcal</div>'+
       '</div>'+
-      '</div>');
+      '</div>'+
+      calorieWeekStrip(goalCals,kcalTotal));
   } else if(budLeft!==null){
     const col=budLeft>=0?'var(--success)':'var(--danger)';
     return (
@@ -9407,7 +9435,9 @@ function renderHome(){
   if(incTot>0){
     budLeft=weekLeftover(curWk);
     budPillCls=budLeft>=50?'good':budLeft>=0?'warn':'over';
-    budPillTxt=budLeft>=50?'🟢 On track':budLeft>=0?'🟡 Tight':'🔴 Over';
+    // The .status-pill class already carries the state colour, so the emoji was saying the
+    // same thing a second time in a way that can't follow the theme.
+    budPillTxt=budLeft>=50?'On track':budLeft>=0?'Tight':'Over';
   }
 
   const heroContent=homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt);
@@ -9428,16 +9458,16 @@ function renderHome(){
   const dayNum=nextIdx+1;
 
   // Pay day countdown tiles — one per named income source (loadIncCats), no hardcoded names.
+  // Cells of the money card (see quickTiles) rather than free-floating mini-cards.
   const payDayTiles=loadIncCats()
     .filter(c=>(c.name||'').trim())
     .map(c=>{
       const str=daysUntil(getPayDay(c.id),today);
       const nm=_catEscHtml(c.name.trim());
-      return '<div class="card" onclick="setView(\'budget\')" style="margin-bottom:0;padding:14px;text-align:center;cursor:pointer">'+
-        '<div style="font-size:22px;margin-bottom:2px">📅</div>'+
-        '<div style="font-size:14px;font-weight:700;line-height:1.2;color:'+(str==='Today! 🎉'?'var(--accent)':'var(--text)')+'">'+str+'</div>'+
-        '<div style="font-size:10px;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:0.5px">'+nm+' pay</div>'+
-      '</div>';
+      const soon=str==='Today! 🎉';
+      return '<div class="mt-cell"><div class="mt-val'+(soon?' mt-val-sm':' mt-val-sm')+'" style="color:'+
+        (soon?'var(--accent-text)':'var(--text)')+'">'+str+'</div>'+
+        '<div class="mt-lbl">'+nm+' pay</div></div>';
     }).join('');
 
   // Last week's total pay (sum of income sources recorded for the previous budget week)
@@ -9445,7 +9475,8 @@ function renderHome(){
   const lastWeekPay=lastWk?weekIncome(lastWk):0;
 
   const heroHdrCol=goalCals?'#52B788':budLeft!==null?'#FF6B35':'#64748b';
-  const heroHdrTxt=goalCals?'Calorie progress':budLeft!==null?'💰 Budget summary':'📊 Overview';
+  const heroHdrTxt=goalCals?'Calorie progress':budLeft!==null?'Budget summary':'Overview';
+  const heroHdrIcon=goalCals?'flame':budLeft!==null?'wallet':'check';
 
   // ── Momentum redesign: top-of-Home cards (display only; reuse existing data) ──
   const mCurType=type(S.dayIdx);
@@ -9538,7 +9569,8 @@ function renderHome(){
   // Calorie / overview card
   const overviewCard=
     '<div class="card hero-card"'+(goalCals?' onclick="openCalorieOverlay()"':'')+' style="margin-bottom:12px;padding:0;overflow:hidden'+(goalCals?';cursor:pointer':'')+'">'+
-      '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">'+heroHdrTxt+'</div>'+
+      // Shared header, replacing another inline copy of the 11px/600/uppercase declaration.
+      '<div style="padding:16px 16px 0">'+cardHeader(heroHdrIcon,heroHdrTxt)+'</div>'+
       // Greeting removed: it repeated the time of day the app already shows and pushed the
       // figures down. The meal totals now occupy that side of the card instead.
       '<div class="overview-content" style="padding:14px 16px">'+
@@ -9609,19 +9641,23 @@ function renderHome(){
     '</div>';
 
   // Quick-info tiles (de-duplicated: no streak/next-workout — those live in the cards above)
+  // ── Money at a glance ──
+  // Was a bare 2-column grid of small .cards with no container of its own — a loose cluster
+  // rather than a widget, so it broke the page's vertical rhythm every time you scrolled past
+  // it, and its tiles carried their own padding and radius matching nothing else.
+  // One card now, with the tiles as cells inside it sharing the card's padding. Emoji dropped:
+  // the header icon says "money" once, so repeating 💰/💵/📅 on every cell was decoration that
+  // also could not follow the theme.
   const quickTiles=
-    '<div class="home-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px">'+
-      '<div class="card" onclick="setView(\'budget\')" style="margin-bottom:0;padding:14px;text-align:center;cursor:pointer">'+
-        '<div style="font-size:22px;margin-bottom:2px">💰</div>'+
-        '<div style="font-size:22px;font-weight:800;line-height:1;color:var(--success)">$'+thisWeekSaved+'</div>'+
-        '<div style="font-size:10px;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:0.5px">Saved this week</div>'+
+    '<div class="card" onclick="setView(\'budget\')" style="cursor:pointer">'+
+      cardHeader('wallet','This week\'s money')+
+      '<div class="mt-grid">'+
+        '<div class="mt-cell"><div class="mt-val" style="color:var(--positive)">'+fmtMoney(thisWeekSaved)+'</div>'+
+          '<div class="mt-lbl">Saved this week</div></div>'+
+        '<div class="mt-cell"><div class="mt-val">'+fmtMoney(Math.round(lastWeekPay))+'</div>'+
+          '<div class="mt-lbl">Last week\'s pay</div></div>'+
+        payDayTiles+
       '</div>'+
-      '<div class="card" onclick="setView(\'budget\')" style="margin-bottom:0;padding:14px;text-align:center;cursor:pointer">'+
-        '<div style="font-size:22px;margin-bottom:2px">💵</div>'+
-        '<div style="font-size:22px;font-weight:800;line-height:1">$'+Math.round(lastWeekPay)+'</div>'+
-        '<div style="font-size:10px;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:0.5px">Last week\'s pay</div>'+
-      '</div>'+
-      payDayTiles+
     '</div>';
 
   // Each card is a draggable unit (data-card-id); assembled in the user's saved order

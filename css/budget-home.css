@@ -292,7 +292,12 @@
 .card:has(textarea:focus):active,.card:has(input:focus):active,.card:has(select:focus):active,.ex-card:has(input:focus):active{transform:none;box-shadow:none}
 
 /* ── Accent-reactive hero (calorie) card — soft tint, no hard outline ── */
-.hero-card{background:linear-gradient(180deg, rgba(var(--accent-rgb),.12), rgba(var(--accent-rgb),.03))}
+/* .hero-card carried an accent tint here, but both [data-theme="light"] .card.hero-card and
+   [data-theme="dark"] .card.hero-card below outrank it (attribute + two classes beats one
+   class), so it never rendered in either theme — dead since the theme overrides were added.
+   Removed rather than revived: the calorie ring is this card's visual interest and does not
+   need a tinted background behind it. Worth noting both outside reviews reported this card as
+   "a hero in light, neutral in dark" — measured, it is neutral in both. */
 
 /* ── Theme-aware card borders (glass feel) ── */
 [data-theme="dark"] .card,[data-theme="dark"] .ex-card:not(.done),[data-theme="dark"] .session-card,[data-theme="dark"] .settings-card,[data-theme="dark"] .week-section,[data-theme="dark"] .week-nav,[data-theme="dark"] .pr-row{border:0.5px solid var(--card-border)}

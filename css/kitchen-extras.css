@@ -231,6 +231,27 @@
 .wr-chip-none{background:var(--track);color:var(--muted);font-family:var(--font-ui);font-size:10px;font-weight:600}
 /* Moved, but with no good/bad reading — see the calories row in buildWeekSummaryCard. */
 .wr-chip-flat{background:var(--track);color:var(--text-2)}
+/* ── 7-day calorie strip (overview card) ──
+   Bars grow from the baseline, so each column is bottom-aligned and the dashed target line is
+   positioned from the bottom too — both measured against the same max, which is what keeps the
+   line meaningful against the bars. */
+.cal-week{position:relative;display:flex;align-items:flex-end;gap:5px;height:44px;margin-top:14px}
+.cw-col{flex:1;height:100%;display:flex;align-items:flex-end}
+.cw-bar{width:100%;min-height:3px;border-radius:3px;background:var(--track);transition:height .3s ease}
+/* Today is the one bar you are still able to change, so it is the only coloured one. */
+.cw-bar.cw-today{background:var(--accent-text)}
+.cw-bar.cw-empty{background:var(--track);opacity:.5}
+.cw-target{position:absolute;left:0;right:0;height:0;border-top:1px dashed var(--text-3);pointer-events:none}
+/* ── Money at a glance cells ──
+   auto-fit so a second income source adds a cell without needing a new breakpoint, and the row
+   stays balanced whether there are two cells or four. */
+.mt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:14px 12px}
+.mt-cell{min-width:0}
+.mt-val{font-family:var(--font-num);font-size:22px;font-weight:800;line-height:1.05;color:var(--text)}
+/* Pay-day cells hold a phrase ("in 3 days"), not a figure, so they take UI type at a size that
+   can wrap to two lines without shoving the row around. */
+.mt-val-sm{font-family:var(--font-ui);font-size:14px;font-weight:700;line-height:1.2}
+.mt-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:4px}
 /* Progress bar with an optional pace marker. Not overflow:hidden — the marker deliberately
    overhangs the track top and bottom so it reads as a gate rather than as part of the fill. */
 .card-bar{position:relative;height:8px;border-radius:5px;background:var(--track);margin-top:12px}
@@ -310,7 +331,11 @@
    single-class rule here would lose to that dark-theme override regardless of file order. */
 /* --wfx-drift is how far the clouds travel before looping; it must out-span the card or they
    stall mid-card and snap back. Desktop overrides it (budget-home.css) for the wide banner. */
-.card.home-weather-card{position:relative;overflow:hidden;border:none;padding:16px;
+/* Borderless made it the only Home card without an edge. Beside a bordered card at half width
+   that read as a rendering fault rather than as "special" — the scene gradient is what makes
+   this card distinct, the missing edge was just inconsistency. The sky lives inside the frame
+   now, same --card-border and radius as everything else. */
+.card.home-weather-card{position:relative;overflow:hidden;border:0.5px solid var(--card-border);padding:16px;
   --wfx-drift:320px;
   background:linear-gradient(160deg,#7C93A8 0%,#4A5C70 100%);
   transition:background 0.6s ease}
