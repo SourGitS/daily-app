@@ -157,6 +157,33 @@ the accent or the theme must go through those, not set `--accent` directly.
 - **Card and button CSS grew one class per feature area**, not from a shared base — expect
   near-duplicate patterns (e.g. multiple independent "hero card" implementations with slightly
   different padding/gradient values) rather than one canonical definition per component type.
+- **There IS now a shared card vocabulary — use it for new cards** (`css/kitchen-extras.css`,
+  which loads last so it wins ties). Anatomy, top to bottom: `.card-hd` (with `.card-hd-l`,
+  `.card-hd-ico`, `.card-hd-act`) → `.card-fig` + `.card-fig-u` (ONE primary number per card)
+  → `.card-shape` → `.card-cap`. Plus `.card-bar`/`.card-bar-fill`/`.card-bar-pace` for
+  progress with a pace marker, and `.card-split` for the two-or-three-up-with-divider pattern.
+  In JS, build headers with `cardHeader(icon, label, rightHtml)` and icons from `CARD_ICONS`
+  via `cardIcon(name)` — do not hand-roll another inline `11px/uppercase` header.
+  `sparkline(vals, {target, height})` renders an inline-SVG trend line (no Chart.js needed for
+  in-card shapes).
+- **Emoji do not belong in card CHROME** — they ignore `currentColor`, so they can't follow the
+  theme or the accent, and they render differently per OS. Use `CARD_ICONS`. Emoji the *user*
+  typed (note titles, recipe names, `sub.emoji`) are content and must be left alone — and note
+  `catDisplayName()` exists specifically to strip a legacy emoji prefix off stored category
+  names, so never bulk find-and-replace emoji.
+- **Accent means "press this".** Only the session hero (`.hero-workout-card`) carries the
+  full-strength accent gradient. Cards that need to signal good/bad use SEMANTIC colour
+  (`--positive` / amber / `--danger`), because the accent can be any hue at runtime and a
+  colour pairing that works for one accent won't for another. The weather card is the one
+  scene-gradient exception.
+- **Home cards must not restate a number another card already shows.** The Week in Review card
+  was three-quarters duplicate (its Workouts cell recomputed the streak card's figure exactly),
+  which is what made Home feel busy without being informative. It now shows week-over-week
+  DELTAS instead — a delta is not a duplicate. Before adding a figure to a card, check whether
+  another widget already shows it.
+- **Every Home card needs a real empty state**, and delta/trend UI must not treat missing data
+  as zero (the review chips read "no last week" rather than inventing an improvement; the
+  calorie strip hides itself under three logged days rather than drawing a chart of gaps).
 - **Specific hero-card gotchas** confirmed while consolidating these (2026-07-21, see
   `Prompts/08-*`): `.card.hero-card` (Home) is a NEUTRAL card, not an accent one — its
   background is `var(--card)`, so don't assume every "hero" class wants white text.
