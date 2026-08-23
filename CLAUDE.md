@@ -124,11 +124,21 @@ the accent or the theme must go through those, not set `--accent` directly.
   Plans, Notes). Anything meant to apply to every screen needs both selectors; this is how the
   two halves silently drifted apart before (see the desktop width cap in `budget-home.css`).
 - **Home's desktop layout is a CSS grid, not multi-column.** `#view-home .home-grid-cols` is
-  `grid-template-columns:1fr 1fr`, and full-width is `.home-card-wide{grid-column:1/-1}` — a
-  saved per-card user preference (`homeLayout().wide`, Settings → Home Layout), not a hardcoded
-  set of ids. Multi-column / masonry packing was tried twice and reverted both times: in a
-  packed layout DOM order stops matching visual order, which breaks drag-to-reorder
-  (`saveHomeOrder` reads DOM order). Don't re-propose it.
+  `repeat(auto-fit,minmax(440px,1fr))` — the column COUNT is derived from the width available
+  (2 on a laptop, 4 at 2560), not hardcoded. Full-width is `.home-card-wide{grid-column:1/-1}`,
+  a saved per-card user preference (`homeLayout().wide`, Settings → Home Layout), not a
+  hardcoded set of ids. Multi-column / masonry packing (`column-count`) was tried twice and
+  reverted both times: it fills column-BY-column, so DOM order stops matching visual order and
+  drag-to-reorder breaks (`saveHomeOrder` reads DOM order). A grid is fine — it fills row by
+  row in DOM order. Don't confuse the two.
+- **Home cards are `align-items:start` — sized to content, deliberately.** This flipped from
+  `stretch` and back once. `stretch` equalises every card in a row to the tallest, which pads
+  short cards with dead space and makes card height meaningless (size should imply importance).
+  `start` leaves a ragged bottom edge between cards instead, which is the accepted trade: empty
+  space BETWEEN cards reads as layout, empty space INSIDE a bordered card reads as broken.
+- **One width cap for every view**, `max-width:2200px` on `#app-main>section,#app-main
+  .swipe-panel` (see the note above about those being disjoint selector halves). Do not add a
+  per-view override — a 1180/1760 split existed briefly and letterboxed every tab except Home.
 - **`HOME_DEFAULT_WIDE` is a seed, not a setting.** `homeLayout()` applies it only while the
   stored layout has no `wide` array, and `saveHomeOrder()` writes the whole object back — so
   the first drag freezes the current seed into storage permanently. Changing the constant
