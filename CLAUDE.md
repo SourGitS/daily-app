@@ -131,11 +131,22 @@ the accent or the theme must go through those, not set `--accent` directly.
   reverted both times: it fills column-BY-column, so DOM order stops matching visual order and
   drag-to-reorder breaks (`saveHomeOrder` reads DOM order). A grid is fine — it fills row by
   row in DOM order. Don't confuse the two.
-- **Home cards are `align-items:start` — sized to content, deliberately.** This flipped from
-  `stretch` and back once. `stretch` equalises every card in a row to the tallest, which pads
-  short cards with dead space and makes card height meaningless (size should imply importance).
-  `start` leaves a ragged bottom edge between cards instead, which is the accepted trade: empty
-  space BETWEEN cards reads as layout, empty space INSIDE a bordered card reads as broken.
+- **Home cards are `align-items:start` — sized to content, deliberately, and this is settled.**
+  Every alternative was tried and reverted: `stretch` (equalises every card in a row to the
+  tallest, padding short cards with dead space), a fixed `min-height` floor, and a
+  `grid-auto-rows` row-quantisation scheme that forced every card into a whole multiple of a
+  fixed row height (looked uniform, but the session hero and the accounts card both got padded
+  to fill a row-and-change they didn't need — up to ~220px of dead space inside a single card).
+  All three "fixed" the gap BETWEEN cards by introducing empty space INSIDE one, which is worse.
+  `align-items:start` leaves a ragged gap between differently-sized cards in the same row
+  instead, and that is the accepted trade, confirmed on direct request after seeing the
+  alternative: a gap between cards reads as layout, dead space inside a bordered card reads as
+  a broken card. Do not reintroduce row-height forcing of any kind to "fix" the ragged gap —
+  it has been tried three times.
+  The one thing that still needs to cap a card's height is `HOME_CAPPABLE` in
+  `applyHomeCardCaps()` (`js/app.js`) — a flat 280px `max-height` for the genuinely UNBOUNDED
+  list cards (habits/notes/recent), so one very long list can't blow out its whole row. That is
+  a different problem (unbounded growth) from card-height uniformity and the fix for it stays.
 - **One width cap for every view**, `max-width:2200px` on `#app-main>section,#app-main
   .swipe-panel` (see the note above about those being disjoint selector halves). Do not add a
   per-view override — a 1180/1760 split existed briefly and letterboxed every tab except Home.
