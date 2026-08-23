@@ -8582,6 +8582,65 @@ function buildWeekSummaryCard(){
     +'</div>'
     +'</div>';
 }
+// ── Weight & goal ─────────────────────────────────────────────────
+// The app stored a weight goal that appeared nowhere on Home — a goal whose progress only
+// exists on a settings screen is a goal you never see.
+// The stored goal is {target, date}, and the DATE is what makes this more than a subtraction:
+// with a start point, a target and a deadline you can say whether today's weight is ahead of
+// or behind the straight line between them, which is the same "pace" idea the budget card
+// uses. Without a target date it degrades to distance-to-go, which is still useful.
+function buildWeightGoalCard(){
+  const sorted=[...(S.weights||[])].sort((a,b)=>a.date<b.date?-1:1);
+  const open='onclick="setView(\'stats\');setStatsTab(\'body\')"';
+  if(!sorted.length){
+    return '<div class="card" '+open+' style="cursor:pointer">'+
+      cardHeader('scale','Weight')+
+      '<div style="font-size:14px;color:var(--muted)">Log your weight to start tracking.</div>'+
+    '</div>';
+  }
+  const cur=sorted[sorted.length-1];
+  const target=parseFloat(weightGoal&&weightGoal.target);
+  const hasGoal=!isNaN(target)&&target>0;
+  // Last ~8 weeks of readings for the shape.
+  const cutoff=dateStr(new Date(Date.now()-56*864e5));
+  const recent=sorted.filter(w=>w.date>=cutoff);
+  const series=(recent.length>=2?recent:sorted.slice(-8)).map(w=>parseFloat(w.weight)).filter(v=>isFinite(v));
+  // Week-over-week delta from the readings inside the current week.
+  const {mondayStr}=getWeekBounds();
+  const wk=sorted.filter(w=>w.date>=mondayStr);
+  const wkDelta=wk.length>=2?+(wk[wk.length-1].weight-wk[0].weight).toFixed(1):null;
+  let capParts=[];
+  if(wkDelta!==null) capParts.push((wkDelta>0?'+':'')+wkDelta+' kg this week');
+  let pillHtml='';
+  if(hasGoal){
+    const toGo=+(target-cur.weight).toFixed(1);
+    capParts.push(Math.abs(toGo)+' kg to go');
+    // Pace: where the straight line from the first reading to the target says you should be
+    // today. Losing and gaining are both handled because it compares distance covered against
+    // distance expected, not raw direction.
+    const gd=weightGoal.date?String(weightGoal.date).slice(0,10):'';
+    if(gd&&sorted.length>=2){
+      const t0=localMidnight(sorted[0].date).getTime();
+      const t1=localMidnight(gd).getTime();
+      const now=localMidnight(getLocalDate()).getTime();
+      if(t1>t0&&now>t0){
+        const frac=Math.min(1,(now-t0)/(t1-t0));
+        const expected=sorted[0].weight+(target-sorted[0].weight)*frac;
+        const total=target-sorted[0].weight;
+        // "Ahead" means further along the intended direction than the line expects.
+        const ahead=total===0 ? true : ((cur.weight-expected)/total)>=-0.02;
+        pillHtml='<span class="budget-snap-pill'+(ahead?'':' warn')+'">'+(ahead?'On pace':'Behind pace')+'</span>';
+        capParts.push('target '+localMidnight(gd).toLocaleDateString('en-AU',{day:'numeric',month:'short'}));
+      }
+    }
+  }
+  return '<div class="card" '+open+' style="cursor:pointer">'+
+    cardHeader('scale','Weight',pillHtml||(hasGoal?'':'<span class="card-hd-act">Set a goal →</span>'))+
+    '<div><span class="card-fig">'+cur.weight+'</span><span class="card-fig-u">kg</span></div>'+
+    (series.length>=2?'<div class="card-shape">'+sparkline(series,{target:hasGoal?target:null,height:40})+'</div>':'')+
+    (capParts.length?'<div class="card-cap">'+capParts.join(' · ')+'</div>':'')+
+  '</div>';
+}
 function buildTodayHabitsCard(){
   const today=getLocalDate();
   const doneCount=(habitsLog[today]||[]).length;
@@ -9209,6 +9268,33 @@ function cardHeader(icon,label,rightHtml){
   return '<div class="card-hd"><div class="card-hd-l">'+cardIcon(icon)+
     '<span class="card-label">'+label+'</span></div>'+(rightHtml||'')+'</div>';
 }
+// Inline SVG sparkline — one path, no axes, no labels, no library. Chart.js is loaded but a
+// 40px trend line inside a card wants a shape, not a chart: axes and tooltips at this size are
+// noise, and a hand-rolled path costs nothing and scales with the card.
+// preserveAspectRatio="none" so the path stretches to whatever width the card gives it while
+// keeping its stroke crisp (vector-effect), which is what lets it act as a .card-shape stretch
+// zone on desktop.
+function sparkline(vals,opts){
+  const o=opts||{};
+  const h=o.height||40, col=o.color||'var(--accent-text)', W=100;
+  const pts=(vals||[]).filter(v=>typeof v==='number'&&isFinite(v));
+  if(pts.length<2) return '';
+  let min=Math.min(...pts), max=Math.max(...pts);
+  if(o.target!=null){ min=Math.min(min,o.target); max=Math.max(max,o.target); }
+  const pad=(max-min)*0.12||1;
+  min-=pad; max+=pad;
+  const x=i=>(i/(pts.length-1)*W).toFixed(2);
+  const y=v=>(h-((v-min)/(max-min))*h).toFixed(2);
+  const d=pts.map((v,i)=>(i?'L':'M')+x(i)+' '+y(v)).join(' ');
+  const tgt=o.target!=null
+    ? '<line x1="0" y1="'+y(o.target)+'" x2="'+W+'" y2="'+y(o.target)+'" stroke="var(--text-3)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>'
+    : '';
+  // Last point marked so "where am I now" is findable without reading the whole line.
+  const last='<circle cx="'+x(pts.length-1)+'" cy="'+y(pts[pts.length-1])+'" r="2.5" fill="'+col+'" vector-effect="non-scaling-stroke"/>';
+  return '<svg class="card-spark" viewBox="0 0 '+W+' '+h+'" preserveAspectRatio="none" aria-hidden="true">'+
+    tgt+'<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>'+
+    last+'</svg>';
+}
 function homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt){
   if(goalCals){
     const pct=Math.min(100,Math.round(kcalTotal/goalCals*100));
@@ -9539,6 +9625,7 @@ function renderHome(){
     budget: budgetSnapshot,
     balance: balanceRow,
     tiles: quickTiles,
+    weight: buildWeightGoalCard(),
     notes: buildHomeNotesCard(),
     recent: buildHomeRecentCard()
   };
@@ -9662,22 +9749,41 @@ function hlPrevHabits(){
     '<div class="hl-list">'+li('Morning workout',1)+li('Hit calorie goal',1)+li('Drink 2L water',0)+'</div>'+
   '</div>';
 }
+// Plain, not hl-prev-hero, and semantic green rather than white-on-accent — these thumbnails
+// are meant to be recognisable miniatures of the real cards, so they track the redesigns.
 function hlPrevBudget(){
-  return '<div class="hl-prev hl-prev-hero">'+
+  return '<div class="hl-prev hl-prev-plain">'+
     '<div class="hl-row-between">'+
       '<div class="hl-lbl">Weekly budget</div>'+
-      '<span style="font-size:7.5px;font-weight:700;background:rgba(255,255,255,.22);padding:2px 7px;border-radius:20px">On track</span>'+
+      '<span style="font-size:7.5px;font-weight:700;background:rgba(82,183,136,.16);color:var(--positive);padding:2px 7px;border-radius:20px">On track</span>'+
     '</div>'+
     '<div class="hl-num" style="font-size:20px;margin-top:6px">$666</div>'+
     '<div class="hl-sub">left of $785</div>'+
-    '<div class="hl-bar"><i style="width:62%"></i></div>'+
+    '<div class="hl-bar"><i style="width:62%;background:var(--positive)"></i></div>'+
   '</div>';
 }
 function hlPrevBalance(){
+  const cell=(l,v)=>'<div style="flex:1;min-width:0"><div class="hl-lbl" style="font-size:7px">'+l+'</div>'+
+    '<div style="font-size:9px;font-weight:800;color:var(--text)">'+v+'</div></div>';
   return '<div class="hl-prev hl-prev-plain">'+
-    '<div class="hl-lbl">💰 Total assets</div>'+
-    '<div class="hl-num" style="font-size:19px;margin-top:5px">$9,370</div>'+
-    '<div class="hl-sub">Net worth $8,030 · $1,340 debts</div>'+
+    '<div class="hl-lbl">Accounts</div>'+
+    '<div class="hl-num" style="font-size:19px;margin-top:5px">$8,030</div>'+
+    '<div class="hl-sub">net worth</div>'+
+    '<div style="display:flex;gap:6px;margin-top:5px">'+cell('Assets','$9,370')+cell('Debts','$1,340')+'</div>'+
+  '</div>';
+}
+function hlPrevWeight(){
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-row-between">'+
+      '<div class="hl-lbl">Weight</div>'+
+      '<span style="font-size:7.5px;font-weight:700;background:rgba(82,183,136,.16);color:var(--positive);padding:2px 7px;border-radius:20px">On pace</span>'+
+    '</div>'+
+    '<div class="hl-num" style="font-size:19px;margin-top:5px">82.4<span style="font-size:9px;margin-left:2px">kg</span></div>'+
+    '<svg viewBox="0 0 100 22" preserveAspectRatio="none" style="width:100%;height:22px;margin-top:4px">'+
+      '<line x1="0" y1="17" x2="100" y2="17" stroke="var(--text-3)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>'+
+      '<path d="M0 4 L25 7 L50 6 L75 11 L100 13" fill="none" stroke="var(--accent-text)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>'+
+    '</svg>'+
+    '<div class="hl-sub">−0.4 kg this week · 3.2 kg to go</div>'+
   '</div>';
 }
 function hlPrevTiles(){
@@ -9702,13 +9808,14 @@ const HOME_WIDGETS=[
   {id:'review',   label:'Week in Review',       tab:'Train', preview:hlPrevReview},
   {id:'recent',   label:'Recent Workout',       tab:'Train', preview:hlPrevRecent},
   {id:'calories', label:'Overview & Greeting',  tab:'Nutrition', fixed:true, preview:hlPrevCalories},
+  {id:'weight',   label:'Weight & Goal',        tab:'Nutrition', preview:hlPrevWeight},
   {id:'habits',   label:"Today's Habits",       tab:'Habits', preview:hlPrevHabits},
   {id:'budget',   label:'Weekly Budget',        tab:'Budget', preview:hlPrevBudget},
   {id:'balance',  label:'Net Worth & Accounts', tab:'Budget', preview:hlPrevBalance},
   {id:'tiles',    label:'Money Quick Tiles',    tab:'Budget', preview:hlPrevTiles},
   {id:'notes',    label:'Notes',                tab:'Notes', preview:hlPrevNotes},
 ];
-const HOME_DEFAULT_ORDER=['session','weather','streak','calories','review','habits','budget','balance','tiles','notes','recent'];
+const HOME_DEFAULT_ORDER=['session','weather','streak','calories','weight','review','habits','budget','balance','tiles','notes','recent'];
 // Which cards span the full desktop grid row by default. User-editable per card
 // (Settings → Home Layout); this is only the starting point. Only the session hero: it is the
 // one card with enough internal content to earn the width (label, play button, 40px title, meta,

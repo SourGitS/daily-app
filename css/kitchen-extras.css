@@ -211,6 +211,10 @@
 /* The stretch zone. On desktop a card is stretched to its row partner's height; letting the
    shape absorb that is what stops whitespace pooling at the bottom of short cards. */
 .card-shape{margin-top:12px}
+/* The sparkline fills its card and grows into spare vertical space, which is what makes
+   .card-shape a real stretch zone: on desktop a short card stretched to its row partner's
+   height puts the slack into the shape rather than pooling it as whitespace. */
+.card-spark{display:block;width:100%;height:40px;min-height:34px;flex:1 1 auto;overflow:visible}
 /* Progress bar with an optional pace marker. Not overflow:hidden — the marker deliberately
    overhangs the track top and bottom so it reads as a gate rather than as part of the fill. */
 .card-bar{position:relative;height:8px;border-radius:5px;background:var(--track);margin-top:12px}
