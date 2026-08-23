@@ -438,31 +438,24 @@
      intentional. Row spacing moved from each card's own margin-bottom to the grid's row-gap:
      with the wrapper now a flex column, a child margin would be measured inside the stretched
      box and desynchronise the rows it is supposed to separate. */
-  /* Column COUNT is derived from the space available, not hardcoded to two: as many columns as
-     fit at >=480px each (the width the phone layout was designed at), sharing the remainder
-     equally. A laptop lands on 2, a 2560px screen on 3, and no width is ever left as empty
-     margin just because it did not reach a hardcoded breakpoint — which is what a fixed
-     two-column grid under a fixed cap did, letterboxing a wide screen with 560px of dead space
-     on each side.
-     auto-fit + minmax means it can never cramp either: columns are added only once each one
-     still clears 480px, so widening the window adds a column instead of shrinking the cards.
-     Still a GRID, deliberately, not CSS multi-column — grid fills row by row in DOM order, so
-     visual order keeps matching the DOM and drag-to-reorder stays saveable (see saveHomeOrder,
-     and the two reverted masonry attempts noted below). column-count fills column-BY-column,
-     which is what broke ordering both times. */
-  /* align-items:start — every card sizes to its OWN content, full stop. No stretch, no shared
-     row height, no forced minimum, no row-grid quantisation. Three earlier attempts tried to
-     force a uniform height (stretch-to-tallest-in-row, a fixed 180px floor, a 250px-multiple
-     row grid) and every one of them padded short cards with dead space to buy that uniformity.
-     Told directly that the dead space inside a card was worse than a ragged row of
-     differently-sized cards beside it, this is the version that stays: a short card next to a
-     tall one leaves a gap in the ROW below it (background showing through until the next row
-     starts), not inside either card. That gap is accepted as the trade-off, not a bug to chase
-     again — see applyHomeCardCaps() in js/app.js, which still caps the few genuinely UNBOUNDED
-     list cards (habits/notes/recent) so one very long list can't blow out an entire row for
-     everything beside it, which is the one case content-sizing alone can't fix on its own. */
-  #view-home .home-grid-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:14px;align-items:start}
-  #view-home .home-grid-cols > .home-card{min-width:0;display:flex;flex-direction:column}
+  /* SINGLE COLUMN on desktop, same as mobile — settled after five different multi-column
+     attempts (stretch-to-tallest, a min-height floor, a 250px row-quantisation grid, a
+     440px-minmax 2-4 column auto-fit grid, and a fine-grained masonry via grid-auto-flow:dense)
+     all failed the same requirement for the same underlying reason: ANY layout that puts more
+     than one card in a shared "row" leaves a gap under whichever card in that row is shorter
+     than its row-mates, because a CSS grid row's height is always the tallest item in it,
+     full stop — there is no configuration of grid/align-items that changes that. The masonry
+     attempt could reduce it but not eliminate it, and it introduced a real overlap bug (a card
+     bled into the one below it when async content — the weather widget's live reading — grew
+     the card after its span had already been measured and fixed).
+     One column removes the entire class of problem: with nothing beside a card, there is no
+     "shorter than its row-mate" to leave a gap under. Every card just stacks directly beneath
+     the one before it, exactly like the phone layout, at a comfortable reading width rather
+     than mobile's edge-to-edge. Max-width chosen to sit close to what a two-column layout gave
+     the wider cards (session, notes) rather than a narrow phone-width column stretched across
+     a monitor. */
+  #view-home .home-grid-cols{display:flex;flex-direction:column;gap:14px;align-items:center;max-width:760px;margin:0 auto}
+  #view-home .home-grid-cols > .home-card{width:100%;min-width:0;display:flex;flex-direction:column}
   /* !important because several cards carry margin-bottom as an INLINE style written by
      renderHome (the quick-tiles .home-grid, the hero and net-worth cards), and an inline style
      outranks any selector. Mobile still needs that margin for row spacing, so it is overridden
@@ -503,25 +496,12 @@
   #view-home .home-card-wide[data-card-id="weather"] .weather-day{font-size:24px}
   #view-home .home-card-wide[data-card-id="weather"] .weather-temp{font-size:38px}
   #view-home .home-card-wide[data-card-id="weather"] .weather-icon{font-size:34px}
-  /* Was a centred flex ROW, built for the old layout where the greeting sat beside the ring.
-     .hh-row is the row now, and as a flex item it sized to its content — 251px inside a 544px
-     card — which starved the side columns to 58px and wrapped "kcal remaining" onto two lines.
-     A stretching column lets the row use the whole card. */
-  #view-home .hero-card .overview-content{display:flex;flex-direction:column;align-items:stretch;justify-content:center}
-  /* Sized up for the desktop card, which is stretched to its row partner's height and so is
-     often much taller than its own content needs — everything inside was reading as small
-     against all that space. The SVG's own font-size attributes are overridden here too, since
-     they are baked into the markup at 19/10. */
-  #view-home .hh-row svg{width:168px;height:168px}
-  #view-home .hh-row svg text:first-of-type{font-size:26px}
-  #view-home .hh-row svg text:last-of-type{font-size:12px}
-  #view-home .hh-meal-val{font-size:20px}
-  #view-home .hh-meal-key{font-size:14px;width:18px}
-  #view-home .hh-meal{gap:12px}
-  #view-home .hh-meals{gap:10px}
-  #view-home .hh-remain>div:nth-child(1){font-size:38px !important}
-  #view-home .hh-remain>div:nth-child(2){font-size:14px !important}
-  #view-home .hh-remain>div:nth-child(3){font-size:12px !important}
+  /* This whole block used to up-size the ring (168px), its text, and the meal/remaining figures
+     for desktop, on the premise that the card was being STRETCHED to match a taller row
+     partner and needed bigger content to avoid looking lost in that space. Cards no longer
+     stretch — every card sizes to its own content now — so there is no extra space to fill and
+     this was just making the calorie card the biggest thing on the page for no reason. Removed;
+     the ring and its text use the same size as mobile, on every screen. */
 
 
   /* Log tab */

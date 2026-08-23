@@ -123,30 +123,34 @@ the accent or the theme must go through those, not set `--accent` directly.
   children of `#app-main`. That selector only ever styles the overlay views (Kitchen, Settings,
   Plans, Notes). Anything meant to apply to every screen needs both selectors; this is how the
   two halves silently drifted apart before (see the desktop width cap in `budget-home.css`).
-- **Home's desktop layout is a CSS grid, not multi-column.** `#view-home .home-grid-cols` is
-  `repeat(auto-fit,minmax(440px,1fr))` — the column COUNT is derived from the width available
-  (2 on a laptop, 4 at 2560), not hardcoded. Full-width is `.home-card-wide{grid-column:1/-1}`,
-  a saved per-card user preference (`homeLayout().wide`, Settings → Home Layout), not a
-  hardcoded set of ids. Multi-column / masonry packing (`column-count`) was tried twice and
-  reverted both times: it fills column-BY-column, so DOM order stops matching visual order and
-  drag-to-reorder breaks (`saveHomeOrder` reads DOM order). A grid is fine — it fills row by
-  row in DOM order. Don't confuse the two.
-- **Home cards are `align-items:start` — sized to content, deliberately, and this is settled.**
-  Every alternative was tried and reverted: `stretch` (equalises every card in a row to the
-  tallest, padding short cards with dead space), a fixed `min-height` floor, and a
-  `grid-auto-rows` row-quantisation scheme that forced every card into a whole multiple of a
-  fixed row height (looked uniform, but the session hero and the accounts card both got padded
-  to fill a row-and-change they didn't need — up to ~220px of dead space inside a single card).
-  All three "fixed" the gap BETWEEN cards by introducing empty space INSIDE one, which is worse.
-  `align-items:start` leaves a ragged gap between differently-sized cards in the same row
-  instead, and that is the accepted trade, confirmed on direct request after seeing the
-  alternative: a gap between cards reads as layout, dead space inside a bordered card reads as
-  a broken card. Do not reintroduce row-height forcing of any kind to "fix" the ragged gap —
-  it has been tried three times.
-  The one thing that still needs to cap a card's height is `HOME_CAPPABLE` in
-  `applyHomeCardCaps()` (`js/app.js`) — a flat 280px `max-height` for the genuinely UNBOUNDED
-  list cards (habits/notes/recent), so one very long list can't blow out its whole row. That is
-  a different problem (unbounded growth) from card-height uniformity and the fix for it stays.
+- **Home's desktop layout is a SINGLE COLUMN, settled after five attempts — do not reintroduce
+  multi-column.** `#view-home .home-grid-cols` is `display:flex;flex-direction:column;
+  max-width:760px;margin:0 auto`. Every card stacks directly under the one before it, at a
+  fixed 14px gap, with no card-height logic of any kind (no stretch, no floor, no row grid, no
+  measurement, no spans) — that absence is the point, not a gap to fill in later.
+  The full history, because it's long and someone will be tempted to redo part of it: (1)
+  `stretch` equalised every card in a row to the tallest, padding short cards with dead space.
+  (2) a fixed `min-height` floor did the same on a smaller scale. (3) a `grid-auto-rows`
+  row-quantisation scheme forced every card into a whole multiple of a 210–250px row (up to
+  ~220px of dead space inside a single card). (4) a `repeat(auto-fit,minmax(440px,1fr))`
+  multi-column grid with `align-items:start` fixed the dead-space-inside-a-card problem but
+  left a gap in the ROW below any card shorter than its row-mates — CSS grid row height is
+  always the tallest item in that row, and no combination of grid properties changes that.
+  (5) a fine-grained masonry attempt (`grid-auto-flow:dense` over ~4px rows, spans computed per
+  card in `applyHomeCardCaps()`) reduced the gap but did not eliminate it, and introduced a real
+  bug: a card whose content changed asynchronously AFTER its span was measured (the weather
+  widget's live reading landing after the initial render) grew taller than its reserved span
+  and visibly overlapped the card below it, because `align-items:start` does not clip a card to
+  its grid area.
+  Single column is the only configuration that removes the *category* of problem rather than
+  minimising it: with nothing beside a card, there is no row-mate for it to be shorter or
+  taller than, so a gap-under-a-short-card can't exist. This was the explicit, direct request
+  after (4) and (5) both still showed visible gaps on a real screen — the multi-column
+  auto-fit-by-width grid described in older prompts/commit messages is gone, not paused.
+  `HOME_CAPPABLE` in `applyHomeCardCaps()` (`js/app.js`) still caps the few genuinely UNBOUNDED
+  list cards (habits/notes/recent) at a flat 280px `max-height`, so one very long list doesn't
+  make the single column absurdly tall — that part is unrelated to the column-count history
+  above and was never in question.
 - **One width cap for every view**, `max-width:2200px` on `#app-main>section,#app-main
   .swipe-panel` (see the note above about those being disjoint selector halves). Do not add a
   per-view override — a 1180/1760 split existed briefly and letterboxed every tab except Home.
