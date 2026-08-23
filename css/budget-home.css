@@ -471,8 +471,20 @@
      renderHome (the quick-tiles .home-grid, the hero and net-worth cards), and an inline
      style outranks any selector. Mobile still needs that margin for row spacing, so it is
      overridden only here, inside the desktop grid, where row-gap does the same job. */
+  /* min-height is the FLOOR, and it is what settles the stretch-vs-start argument rather than
+     flipping between them again. The two extremes both fail: `stretch` equalises every card to
+     the tallest in its row, which pads short cards with dead space and makes height meaningless;
+     plain `start` sizes to content but leaves a 79px card beside a 331px one, so the short ones
+     read as stunted and the row leaves a large gap.
+     A floor keeps `start` (a card is never inflated to match an arbitrary neighbour) while
+     giving every card a standard minimum presence — measured, the spread was 79–331px and the
+     short end was all of weather, notes, tiles and kitchen. 180px is roughly a header + figure
+     + shape + caption, i.e. the height of a card that has actually said something. Cards with
+     more content simply exceed it.
+     This does not reintroduce dead space in the way stretch did: 180 is a fixed, predictable
+     card size, not "however tall the biggest thing next to you happens to be". */
   #view-home .home-grid-cols > .home-card > *{margin-bottom:0 !important;
-    display:flex;flex-direction:column}
+    display:flex;flex-direction:column;min-height:180px}
   /* Centre only the BODY of a stretched card, never the header. justify-content:center moved
      every child, so each card's title drifted down by a different amount depending on how much
      slack it had (9px on habits, 24px on calories, 79px on net worth) — titles that should all
