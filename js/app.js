@@ -10137,40 +10137,51 @@ function homeWidgetToggle(id,on){
   if(typeof renderHome==='function') renderHome();
 }
 // ── Height cap for cards that grow with your data ──────────────────
-// Rows share a height on the desktop grid (align-items:stretch), so one tall card drags its
-// partner up with it: 25 notes made the Notes card 837px and stretched the card beside it to
-// 837px of mostly empty space. Only the cards whose height depends on how much data you have
-// are capped — static cards can't blow out a row, so they get no chrome.
+// Rows share a height on the desktop grid, so one tall card drags its partner up with it —
+// only cards whose height genuinely depends on how much data you have are measured; everything
+// else is FORCED to a fixed span, never measured, so it can never accidentally balloon.
+// The first version of this measured EVERY card and rounded up to the nearest row. That looked
+// right on a page of short cards, but the moment a card's real content landed just PAST a row
+// boundary (balance at 216px against a 210px row) it got bumped a FULL extra row — 434px, with
+// ~220px sitting empty inside it. The session hero (240px) had the same problem, made worse by
+// an earlier fix that forced it to ALWAYS be 2 rows regardless of content — that is the large
+// empty patch under the progress bar. Both were measured on real data, not guessed.
+// Two changes fix this instead of one: HOME_ROW is now 250, not 210 — generous enough that
+// session (240px) and balance (up to ~230px with an alert row or savers split) both land in a
+// single row like every other standard card, rather than tipping over the old, tighter 210px
+// line by a handful of pixels. And nothing is EVER forced to a hardcoded span without being
+// measured first — see HOME_MEASURED_UNCAPPED below — because a forced span can't tell the
+// difference between "this card is naturally tall" and "this card's content briefly grew" (a
+// long training-day name wrapping to two lines, for instance), and the wrong guess either
+// wastes a full row or clips real content.
+// Cards whose content can genuinely vary enough to need more than one row: real lists (habits,
+// notes, recent sessions) plus the two cards whose SECONDARY content is conditional — the
+// calorie trend strip (only once 3+ days are logged) and the account alert/expanded list. These
+// are measured and, if they overflow HOME_CARD_MAX_ROWS, capped with a "Show all" toggle exactly
+// like a long Notes list already was.
 // Desktop only: the phone is a single stack, where a tall card costs nothing.
-const HOME_CAPPABLE=['notes','habits','recent'];
+const HOME_CAPPABLE=['notes','habits','recent','calories','balance'];
+// The session hero: measured, so a long training-day name is never silently clipped, but never
+// capped and never shown a "Show all" — there is nothing meaningful to "show more of" on a
+// fixed-content hero, so the cap-and-reveal UI built for list cards would be wrong here.
+const HOME_MEASURED_UNCAPPED=['session'];
 // Caps are expressed in GRID ROWS, not pixels, so they can't disagree with the span a card is
-// given. A fixed 280px cap against a 2-row (434px) span is what broke the desktop layout: the
-// habits card was clipped at 280 while occupying 434, so it hid content AND left 154px of dead
-// space under it. One number now drives both.
+// given. A fixed 280px cap against a 2-row (434px) span is what broke the desktop layout once
+// already: the habits card was clipped at 280 while occupying 434, so it hid content AND left
+// 154px of dead space under it. One number now drives both.
 const HOME_CARD_MAX_ROWS=2;
 const _homeExpanded=new Set();   // survives re-render; renderHome rebuilds innerHTML and would lose a class
 // Height of a card occupying n grid rows, including the gaps it swallows between them.
 function homeRowsToPx(n){ return n*HOME_ROW + (n-1)*HOME_ROW_GAP; }
-// Caps and spans are ONE pass now. They used to be two functions with two different ideas of
-// how tall a card was allowed to be, which is what broke the desktop grid.
+// Caps and spans are ONE pass. They used to be two functions with two different ideas of how
+// tall a card was allowed to be, which is what broke the desktop grid the first time.
 function applyHomeCardCaps(){
   const grid=document.querySelector('#home-content .home-grid-cols');
   const cards=[...document.querySelectorAll('#home-content .home-card')];
-  // ── Pass 1: strip everything that could distort a measurement ──
-  // Two passes, not one, because clearing a card's span does not force a synchronous reflow —
-  // measuring immediately after returns the PREVIOUS layout, which made every card measure as
-  // whatever it was last time and converge on one span. height:auto is also required: the
-  // stretch rule sets height:100% on the inner card, so its natural height is otherwise
-  // invisible, and cards with overflow:hidden (weather, the hero) report their box rather than
-  // their content.
   cards.forEach(w=>{
     const old=w.querySelector(':scope > .home-card-more'); if(old) old.remove();
     w.classList.remove('home-card-capped','home-card-hasmore');
     w.style.gridRow='';
-    // The wrapper is a flex COLUMN that the grid stretches to the row height, so its child is a
-    // flex item and gets compressed to the row no matter what height it is given — 12 habits
-    // measured as 211px. Releasing align-self AND the child's flex is what actually exposes the
-    // natural height.
     w.style.alignSelf='start';
     const inner=w.firstElementChild; if(!inner) return;
     inner.style.removeProperty('max-height');
@@ -10184,28 +10195,49 @@ function applyHomeCardCaps(){
       if(i){ i.style.removeProperty('height'); i.style.removeProperty('flex'); } });
     return;
   }
-  // Force the reflow so pass 2 measures the stripped layout, not the previous one.
-  void grid.offsetHeight;
-  // ── Pass 2: measure natural height, assign rows, restore ──
-  const measured=cards.map(w=>{
+  // Only cards that actually need measuring get it — standard cards are forced to one row
+  // unconditionally with no reflow-forcing pass at all, which is what makes "most cards the
+  // same size" a guarantee rather than a coincidence of their content happening to fit.
+  const toMeasureIds=HOME_CAPPABLE.concat(HOME_MEASURED_UNCAPPED);
+  const toMeasure=cards.filter(w=>toMeasureIds.indexOf(w.dataset.cardId)>=0);
+  if(toMeasure.length) void grid.offsetHeight;   // force the reflow so measurement isn't stale
+  const measured=new Map(toMeasure.map(w=>{
     const inner=w.firstElementChild;
-    return inner?Math.ceil(inner.getBoundingClientRect().height):0;
-  });
-  cards.forEach((w,i)=>{
+    return [w, inner?Math.ceil(inner.getBoundingClientRect().height):0];
+  }));
+  cards.forEach(w=>{
     const inner=w.firstElementChild; if(!inner) return;
     inner.style.removeProperty('height');
     inner.style.removeProperty('flex');
     w.style.removeProperty('align-self');
     const id=w.dataset.cardId;
-    const expanded=_homeExpanded.has(id);
-    const natural=measured[i];
-    let rows=Math.max(1, Math.ceil((natural+HOME_ROW_GAP)/(HOME_ROW+HOME_ROW_GAP)));
-    // Only the list-style cards are capped; everything else takes whatever it needs.
+    if(HOME_MEASURED_UNCAPPED.indexOf(id)>=0){
+      // Measured, but never capped and never given a "Show all" — it just takes however many
+      // rows its real content needs, which is what stops it either clipping a long line or
+      // sitting inside a row-and-a-half of empty space it never asked for.
+      const natural=measured.get(w)||0;
+      const rows=Math.max(1, Math.ceil((natural+HOME_ROW_GAP)/(HOME_ROW+HOME_ROW_GAP)));
+      w.style.gridRow='span '+rows;
+      return;
+    }
     const cappable=HOME_CAPPABLE.indexOf(id)>=0;
-    if(cappable && !expanded && rows>HOME_CARD_MAX_ROWS){
+    if(!cappable){
+      // Standard card: always exactly one row, unconditionally. .home-card-standard in CSS adds
+      // overflow:hidden as a safety net if a card's own content ever grows past that — clipped,
+      // not overlapping the row below. A card that needs room to grow belongs in HOME_CAPPABLE,
+      // not here.
+      w.classList.add('home-card-standard');
+      w.style.gridRow='span 1';
+      return;
+    }
+    const expanded=_homeExpanded.has(id);
+    const natural=measured.get(w)||0;
+    const naturalRows=Math.max(1, Math.ceil((natural+HOME_ROW_GAP)/(HOME_ROW+HOME_ROW_GAP)));
+    let rows=naturalRows;
+    if(!expanded && rows>HOME_CARD_MAX_ROWS){
       rows=HOME_CARD_MAX_ROWS;
       w.classList.add('home-card-capped','home-card-hasmore');
-    } else if(cappable && expanded && Math.ceil((natural+HOME_ROW_GAP)/(HOME_ROW+HOME_ROW_GAP))>HOME_CARD_MAX_ROWS){
+    } else if(expanded && naturalRows>HOME_CARD_MAX_ROWS){
       w.classList.add('home-card-hasmore');   // expanded: full height, but keep the toggle
     }
     w.style.gridRow='span '+rows;
@@ -10233,7 +10265,12 @@ function applyHomeCardCaps(){
 // a note or an account simply claims another row instead of overflowing or being clipped.
 // Must run AFTER applyHomeCardCaps: that can cap a tall card to HOME_CARD_CAP and add a
 // "Show all" button, and the span has to reflect the capped height, not the full content.
-const HOME_ROW=210;   // keep in step with grid-auto-rows in css/budget-home.css
+// 250, not 210. Measured on real content, the tallest thing meant to be a single-row card —
+// the session hero at 240px — needs slightly more than 210 to avoid tipping into a wasted
+// second row; 250 covers it with a little to spare, and every genuinely short card (weather,
+// notes, tiles, kitchen, budget: all under 130px) is nowhere near this ceiling so gains nothing
+// extra to worry about. Keep in step with grid-auto-rows in css/budget-home.css.
+const HOME_ROW=250;
 const HOME_ROW_GAP=14;
 // Spans are assigned inside applyHomeCardCaps (one pass, so a cap and a span can never
 // disagree). Kept as a named alias because several call sites read better this way.
