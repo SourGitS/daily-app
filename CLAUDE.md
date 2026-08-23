@@ -76,7 +76,7 @@ older summary — re-grep before assuming a fact from here is still true if it l
 ```
 --radius-card: 22px    --radius-hero: 24px    --radius-pill: 14px    --radius: 16px
 --font-ui: 'Manrope'   --font-num: 'Space Grotesk'
---accent: #FF6B35 (--accent-rgb for rgba() use)
+--accent: #5C5C5C neutral slate (--accent-rgb for rgba() use)   --accent-text
 --positive / --success: #52B788   --danger: #E74C3C   --purple: #6366f1
 --bg / --card / --card-border / --card-top / --text / --text-2 / --text-3 / --muted / --border
 ```
@@ -84,6 +84,24 @@ older summary — re-grep before assuming a fact from here is still true if it l
 Light values live in `:root` as defaults; `[data-theme="dark"]` overrides colour tokens only
 (dark `--bg: #080808`, `--card` becomes a translucent white gradient "glass" look — never a
 pure-black card surface).
+
+The app no longer ships the old orange `#FF6B35` — that is `RETIRED_ACCENT` in `js/app.js`,
+migrated away from once. `--accent` is whatever the user's Appearance settings resolve to:
+one of four presets, a free colour picker, a per-training-day colour, or a weather scene
+(`currentAccentHex()` is the single source of truth). Treat it as an arbitrary runtime hex.
+
+**`--accent` vs `--accent-text` — pick the right one.** Every accent value the app can hold
+is tuned to CARRY white text (checked ≥4.5:1 with `#fff` on top). That makes it the wrong
+colour to use AS text on the app background — against dark `--bg` the night weather scenes
+measure 1.7:1. Rule of thumb:
+
+- fills, borders, progress bars, and any surface that white text sits on → `--accent`
+- accent-coloured **text or icons** on `--bg` / `--card` → `--accent-text`
+
+`--accent-text` is derived at runtime by `accentTextHex()` (hue and saturation kept, lightness
+moved until it clears 5.0:1 against the current theme's background) and written by
+`applyAccent()`. It is theme-dependent, so `applyTheme()` re-runs it — anything that changes
+the accent or the theme must go through those, not set `--accent` directly.
 
 ## Known history worth knowing before touching these areas
 
@@ -99,6 +117,30 @@ pure-black card surface).
   `env(safe-area-inset-top)` padding that the opaque bar has already reserved —
   `#app-header` in `css/layout.css` is the reference implementation that got this right;
   several other sticky sub-headers hadn't been brought in line as of 2026-07-21.
+- **`#app-main>section` does NOT reach the four paged tabs.** Home, Log, Stats and Budget are
+  `.swipe-panel` elements inside `#swipe-deck`. On desktop `#swipe-deck` is `display:contents`,
+  which flattens them for *layout* but not for *selector matching* — they are still not direct
+  children of `#app-main`. That selector only ever styles the overlay views (Kitchen, Settings,
+  Plans, Notes). Anything meant to apply to every screen needs both selectors; this is how the
+  two halves silently drifted apart before (see the desktop width cap in `budget-home.css`).
+- **Home's desktop layout is a CSS grid, not multi-column.** `#view-home .home-grid-cols` is
+  `grid-template-columns:1fr 1fr`, and full-width is `.home-card-wide{grid-column:1/-1}` — a
+  saved per-card user preference (`homeLayout().wide`, Settings → Home Layout), not a hardcoded
+  set of ids. Multi-column / masonry packing was tried twice and reverted both times: in a
+  packed layout DOM order stops matching visual order, which breaks drag-to-reorder
+  (`saveHomeOrder` reads DOM order). Don't re-propose it.
+- **`HOME_DEFAULT_WIDE` is a seed, not a setting.** `homeLayout()` applies it only while the
+  stored layout has no `wide` array, and `saveHomeOrder()` writes the whole object back — so
+  the first drag freezes the current seed into storage permanently. Changing the constant
+  reaches new and untouched installs only; existing users need a one-time migration guarded on
+  the exact old value (`migrateDefaultWideOnce`, modelled on `migrateRetiredAccentOnce`).
+- **Sub-10px type is deliberate, not a bug.** Every `font-size` below 10px in the codebase is
+  inside a miniature mock-up — the Settings → Home Layout preview thumbnails (`.hl-*`) or the
+  onboarding mini screens (`.ob-mini-*`). They are scaled-down replicas of real cards. Don't
+  "fix" them to a legibility floor; check what they belong to first.
+- **Roughly half the app's typography is inline in JS**, not in the stylesheets — `js/app.js`
+  and `index.html` carry ~420 `font-size` declarations between them against ~420 in all six CSS
+  files. A CSS-only type-scale sweep would therefore make the app *less* consistent, not more.
 - **Budget card collapse state is keyed by `data-bud-key`**, not by card index (it was
   index-based, which mis-applied the saved state whenever the card count changed — the due
   banner and previous-weeks list render `.card`s conditionally). Any new card in
