@@ -9839,6 +9839,7 @@ function renderHome(){
   });
   if(homeEditMode) applyHomeEditMode();
   applyHomeCardCaps();
+  applyHomeCardSpans();
 
   applyDayColour();
   // Only touch geolocation/network if the widget is actually visible — a hidden card has no
@@ -10165,10 +10166,44 @@ function applyHomeCardCaps(){
     w.appendChild(btn);
   });
 }
+// ── Desktop card heights ──────────────────────────────────────────
+// Every Home card occupies a whole number of grid rows, so no card can end part-way down a row
+// and leave a strip of background showing beneath it. Most cards need one row and are therefore
+// all exactly the same height; the content-driven ones take two or three.
+// The span is measured rather than hardcoded, so a card that grows because you added a habit,
+// a note or an account simply claims another row instead of overflowing or being clipped.
+// Must run AFTER applyHomeCardCaps: that can cap a tall card to HOME_CARD_CAP and add a
+// "Show all" button, and the span has to reflect the capped height, not the full content.
+const HOME_ROW=210;   // keep in step with grid-auto-rows in css/budget-home.css
+const HOME_ROW_GAP=14;
+function applyHomeCardSpans(){
+  const wrap=document.getElementById('home-content'); if(!wrap) return;
+  const grid=wrap.querySelector('.home-grid-cols');
+  wrap.querySelectorAll('.home-card').forEach(w=>{
+    if(!grid){ w.style.gridRow=''; return; }   // mobile stack: no grid, no spans
+    const inner=w.firstElementChild; if(!inner) return;
+    // Clear first so a previous span can't floor the measurement.
+    w.style.gridRow='';
+    const h=Math.max(inner.scrollHeight, inner.getBoundingClientRect().height);
+    const span=Math.max(1, Math.ceil((h+HOME_ROW_GAP)/(HOME_ROW+HOME_ROW_GAP)));
+    w.style.gridRow='span '+span;
+  });
+}
 function toggleHomeCardExpand(id){
   if(_homeExpanded.has(id)) _homeExpanded.delete(id); else _homeExpanded.add(id);
   applyHomeCardCaps();
+  applyHomeCardSpans();   // expanding changes the height, so the span has to be recomputed
 }
+// A width change can move the grid between 2, 3 and 4 columns, which reflows every card and
+// changes how many rows each one needs. Debounced — resize fires continuously during a drag.
+let _homeSpanRaf=0;
+window.addEventListener('resize',function(){
+  if(_homeSpanRaf) cancelAnimationFrame(_homeSpanRaf);
+  _homeSpanRaf=requestAnimationFrame(function(){
+    _homeSpanRaf=0;
+    if(S.view==='home'){ applyHomeCardCaps(); applyHomeCardSpans(); }
+  });
+});
 let homeEditMode=false;
 function toggleHomeEdit(){
   homeEditMode=!homeEditMode;
@@ -10710,6 +10745,16 @@ function closeBudgetEditor(){
 // idiom as the budget-category lists — just richer per-item fields (balance history,
 // optional statement tracking for debts). Reads/writes the daily_accounts store from phase 1.
 let _acctAddOpen=false, _acctAddType='asset', _acctAddTracks=false, _acctAddSaver=false;
+// Read-only by default, same Edit-button convention as the Budget cards (budEditMode). The
+// account name used to be a permanent <input>, and in dark mode an input carries a grey fill —
+// so every account card showed a grey slab across its title, which read as a rendering fault
+// rather than as "this is editable". A name you change once and then read a hundred times
+// should look like a heading; the input only appears while editing.
+let _acctEditMode=false;
+function acctToggleEdit(){
+  _acctEditMode=!_acctEditMode;
+  renderAccountsPage();
+}
 function openAccounts(){
   const v=document.getElementById('view-accounts'); if(!v) return;
   v.style.display='block';
@@ -10829,6 +10874,18 @@ function renderAccountsPage(){
   }
   renderPayoffCard();
   // One card per account
+  // Section header carrying the Edit toggle — same .bud-edit-btn / "Edit"→"Done" convention as
+  // the Budget tab's Income, Fixed and Variable cards.
+  const headEl=document.getElementById('accounts-list-head');
+  if(headEl){
+    headEl.innerHTML=accounts.length
+      ? '<div class="sec-label bud-toggle" style="cursor:default">'+
+          '<span class="bud-head-label">Your accounts</span>'+
+          '<button class="bud-edit-btn'+(_acctEditMode?' active':'')+'" onclick="acctToggleEdit()">'+
+            (_acctEditMode?'Done':'Edit')+'</button>'+
+        '</div>'
+      : '';
+  }
   const listEl=document.getElementById('accounts-list');
   if(listEl){
     if(!accounts.length){
@@ -10905,9 +10962,12 @@ function renderAccountsPage(){
         const typeCol=isDebt?'var(--danger)':((a.saver)?'var(--blue)':'var(--success)');
         return '<div class="card">'+
           '<div class="bud-row" style="border-bottom:1px solid var(--border)">'+
-            '<input class="bud-cat-name-input" value="'+_catEsc(a.name)+'" placeholder="Account name" onchange="accountRename(\''+a.id+'\',this.value)" style="flex:1;font-weight:700">'+
+            (_acctEditMode
+              ? '<input class="bud-cat-name-input" value="'+_catEsc(a.name)+'" placeholder="Account name" onchange="accountRename(\''+a.id+'\',this.value)" style="flex:1;font-weight:700">'
+              : '<div style="flex:1;min-width:0;font-weight:700;font-size:15px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_catEscHtml(a.name||'Untitled')+'</div>')+
             '<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:'+typeCol+';margin:0 8px;white-space:nowrap">'+typeTag+'</span>'+
-            '<button class="lib-del-btn" onclick="accountDelete(\''+a.id+'\')" aria-label="Delete account">×</button>'+
+            // Destructive, so it only exists while deliberately in edit mode.
+            (_acctEditMode?'<button class="lib-del-btn" onclick="accountDelete(\''+a.id+'\')" aria-label="Delete account">×</button>':'')+
           '</div>'+
           '<div class="bud-row" style="border-bottom:none">'+
             '<div class="bud-row-left"><div class="bud-row-name">Current balance</div>'+
