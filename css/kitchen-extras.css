@@ -45,7 +45,7 @@
   align-items:center;justify-content:center;font-size:19px;line-height:1;
   background:var(--kit-cat-soft);border:1px solid var(--kit-cat)}
 .kit-cal-badge{font-size:11px;font-weight:600;color:var(--success);background:rgba(82,183,136,0.15);padding:2px 8px;border-radius:999px}
-.kit-batch-badge{font-size:11px;font-weight:600;color:var(--accent);background:rgba(var(--accent-rgb),0.14);padding:2px 8px;border-radius:999px}
+.kit-batch-badge{font-size:11px;font-weight:600;color:var(--accent-text);background:rgba(var(--accent-rgb),0.14);padding:2px 8px;border-radius:999px}
 .kit-card-desc{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.45}
 .kit-card-serv{font-size:12px;color:var(--muted);margin-top:8px}
 
@@ -143,7 +143,7 @@
 @media (min-width:1024px){
   .kitshop-addbar{max-width:none;bottom:0;left:160px}
 }
-.kitshop-pantry-head{color:var(--accent)}
+.kitshop-pantry-head{color:var(--accent-text)}
 .kitshop-need-tag{font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px}
 .kitshop-need-tag.low{background:rgba(245,158,11,0.16);color:#f59e0b}
 .kitshop-need-tag.out{background:rgba(231,76,60,0.16);color:var(--danger)}
@@ -203,7 +203,13 @@
 .hero-workout-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% -10%, rgba(255,255,255,.12), transparent 55%);pointer-events:none}
 .hero-label{font-size:11px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.75)}
 .hero-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.hero-play-btn{width:48px;height:48px;border-radius:50%;background:#fff;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.2);flex-shrink:0}
+/* The play triangle is fill="currentColor" (js/app.js, heroCard), so the colour lives here.
+   Plain --accent, NOT --accent-text: this glyph sits on the button's own WHITE circle, which
+   is the background --accent was tuned against in the first place. Until this existed the
+   triangle was a hardcoded #e8541f — the last of the retired orange — which meant it never
+   followed the accent, and the accent transition listing .hero-play-btn below animated
+   nothing. */
+.hero-play-btn{width:48px;height:48px;border-radius:50%;background:#fff;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.2);flex-shrink:0;color:var(--accent)}
 .hero-workout-title{font-size:30px;font-weight:800;letter-spacing:-.025em;color:#fff;margin:0 0 4px}
 .hero-meta{font-size:14px;font-weight:600;color:rgba(255,255,255,.75);margin:0 0 16px}
 .hero-progress-row{display:flex;justify-content:space-between;margin-bottom:8px}
@@ -433,16 +439,16 @@
 /* Step 11 — Bottom nav labels (real selector is .nav-btn) */
 .nav-btn{font-family:var(--font-ui);font-weight:600;color:var(--muted)}
 .nav-btn svg{color:var(--text-3)}
-.nav-btn.active{font-weight:700;color:var(--accent)}
-.nav-btn.active svg{color:var(--accent)}
+.nav-btn.active{font-weight:700;color:var(--accent-text)}
+.nav-btn.active svg{color:var(--accent-text)}
 
 /* Step 12 — Desktop sidebar (≥1024px) */
 @media (min-width:1024px){
   #desktop-sidebar{width:260px;background:var(--card);border-right:0.5px solid var(--border)}
   .ds-item{border-radius:12px;padding:10px 14px;margin:0 10px 2px;width:auto;display:flex;align-items:center;gap:10px;font-family:var(--font-ui);font-size:14px;font-weight:600;color:var(--muted);border-left:none;transition:background .15s,color .15s}
   .ds-item:hover{background:var(--track);color:var(--text)}
-  .ds-item.active{background:rgba(var(--accent-rgb),.13);color:var(--accent);border-left:none;font-weight:700}
-  .ds-item.active svg{color:var(--accent)}
+  .ds-item.active{background:rgba(var(--accent-rgb),.13);color:var(--accent-text);border-left:none;font-weight:700}
+  .ds-item.active svg{color:var(--accent-text)}
   /* Readable, bolder nav labels (inactive items were washed-out --muted) */
   .ds-item:not(.active){color:#555;font-weight:600}
   [data-theme="dark"] .ds-item:not(.active){color:rgba(255,255,255,0.7);font-weight:600}
@@ -559,7 +565,7 @@
 .kit-import-btn{background:transparent;color:var(--text);border:1px solid var(--border);padding:0 12px}
 .kit-filter-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .kit-fchip{height:30px;padding:0 12px;border-radius:999px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;transition:border-color .15s,color .15s,background .15s}
-.kit-fchip.active{border-color:var(--accent);color:var(--accent);background:rgba(var(--accent-rgb),.12)}
+.kit-fchip.active{border-color:var(--accent);color:var(--accent-text);background:rgba(var(--accent-rgb),.12)}
 .kit-card-actions{display:flex;gap:4px;align-items:center;flex-shrink:0}
 .kit-menu-btn{width:32px;height:32px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-size:18px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;justify-content:center;line-height:1}
 .kit-menu-btn:active{background:var(--border)}
@@ -570,7 +576,7 @@
 .kit-cooked-ago{font-size:11px;color:var(--muted);margin-top:4px}
 /* .kit-card-emoji removed — the emoji moved out of the title into .kit-cat-tile. */
 .kit-step-body{flex:1;display:flex;flex-direction:column;gap:4px}
-.kit-step-timer-badge{display:inline-block;font-size:11px;font-weight:600;color:var(--accent);background:rgba(var(--accent-rgb),.12);border-radius:999px;padding:2px 8px;width:fit-content}
+.kit-step-timer-badge{display:inline-block;font-size:11px;font-weight:600;color:var(--accent-text);background:rgba(var(--accent-rgb),.12);border-radius:999px;padding:2px 8px;width:fit-content}
 
 /* ── Kitchen detail: start cooking button & emoji ─────────────── */
 .kit-detail-emoji{font-size:48px;text-align:center;margin-bottom:4px;line-height:1.2}
@@ -584,7 +590,7 @@
 .kit-f-name-input{flex:1;height:56px;font-size:18px;font-weight:700;border:1.5px solid var(--border);border-radius:14px;background:var(--card);color:var(--text);padding:0 14px}
 .kit-tag-chips-wrap{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
 .kit-tag-chip{height:32px;padding:0 14px;border-radius:999px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.kit-tag-chip.active{border-color:var(--accent);color:var(--accent);background:rgba(var(--accent-rgb),.12)}
+.kit-tag-chip.active{border-color:var(--accent);color:var(--accent-text);background:rgba(var(--accent-rgb),.12)}
 .kit-f-save-btn{display:block;width:calc(100% - 32px);margin:16px 16px 0;padding:15px;background:var(--accent);color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kit-f-save-btn:active{opacity:0.88}
 .kit-fi-unit-sel{width:72px;flex-shrink:0;height:40px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:13px;padding:0 4px;-webkit-appearance:none;appearance:none}
@@ -604,7 +610,7 @@
 .kit-cook-timer-time{font-size:18px;font-weight:700;font-family:'Space Grotesk',sans-serif;color:var(--text);position:relative;z-index:1}
 .kit-cook-timer-time.done{color:var(--danger)}
 .kit-cook-timer-btns{display:flex;gap:8px;margin-top:10px}
-.kit-cook-tbtn{height:36px;padding:0 16px;border-radius:999px;border:1.5px solid var(--accent);background:transparent;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kit-cook-tbtn{height:36px;padding:0 16px;border-radius:999px;border:1.5px solid var(--accent);background:transparent;color:var(--accent-text);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kit-cook-tbtn.secondary{border-color:var(--border);color:var(--muted)}
 .kit-cook-nav{display:flex;gap:10px;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));flex-shrink:0;border-top:1px solid var(--border)}
 .kit-cook-nav-btn{flex:1;padding:14px;border-radius:12px;border:1.5px solid var(--border);background:transparent;color:var(--text);font-size:15px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
@@ -623,7 +629,7 @@
 .log-strip-label{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2);margin:0 0 3px}
 .log-strip-title{font-size:18px;font-weight:800;color:var(--text);margin:0;letter-spacing:-.02em}
 .log-strip-right{text-align:right}
-.log-strip-val{font-family:var(--font-num);font-size:24px;font-weight:700;color:var(--accent);margin:0;line-height:1}
+.log-strip-val{font-family:var(--font-num);font-size:24px;font-weight:700;color:var(--accent-text);margin:0;line-height:1}
 .log-strip-total{font-size:16px;color:var(--text-2)}
 
 /* Kitchen: glass cards (dark only) + category accent border */
@@ -631,13 +637,13 @@
 /* The category border-left strips were removed — the tinted emoji tile carries the category
    colour now (see .kit-cat-tile). Keeping both meant two markers for one fact, and the strip
    disagreed with the pill on three of the four categories. */
-.kit-cal-badge{font-family:var(--font-num);font-size:13px;font-weight:700;color:var(--accent);background:rgba(var(--accent-rgb),.12);padding:2px 9px;border-radius:999px}
+.kit-cal-badge{font-family:var(--font-num);font-size:13px;font-weight:700;color:var(--accent-text);background:rgba(var(--accent-rgb),.12);padding:2px 9px;border-radius:999px}
 
 /* ── Exercise Library ── */
 .muscle-filter,.exlib-muscle-pick{flex-shrink:0;padding:7px 14px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;white-space:nowrap}
 .muscle-filter.active,.exlib-muscle-pick.active{background:var(--accent);border-color:var(--accent);color:#fff}
 /* "+" add-group bubble + its inline rename input (add/edit exercise modal) */
-.exlib-muscle-add{flex-shrink:0;width:34px;height:34px;padding:0;border-radius:999px;border:1px dashed var(--border);background:transparent;color:var(--accent);font-size:20px;font-weight:600;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;justify-content:center}
+.exlib-muscle-add{flex-shrink:0;width:34px;height:34px;padding:0;border-radius:999px;border:1px dashed var(--border);background:transparent;color:var(--accent-text);font-size:20px;font-weight:600;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;justify-content:center}
 .exlib-muscle-add:active{background:rgba(var(--accent-rgb),.12)}
 .exlib-muscle-add-input{flex-shrink:0;width:110px;padding:7px 12px;border-radius:999px;border:1px solid var(--accent);background:transparent;color:var(--text);font-size:13px;font-weight:600;outline:none;-webkit-appearance:none;appearance:none}
 .lib-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px 0;border-bottom:1px solid var(--border)}
@@ -648,7 +654,7 @@
 .lib-default-badge{flex-shrink:0;font-size:11px;color:var(--muted);padding:3px 10px;border-radius:10px;border:1px solid var(--border)}
 /* Log edit mode + add-exercise picker */
 .log-edit-btn{font-size:12px;font-weight:600;padding:5px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent}
-.log-edit-btn.active{color:var(--accent);border-color:var(--accent);background:rgba(var(--accent-rgb),.1)}
+.log-edit-btn.active{color:var(--accent-text);border-color:var(--accent);background:rgba(var(--accent-rgb),.1)}
 .ex-del-btn{width:28px;height:28px;border-radius:50%;border:1px solid var(--danger);background:transparent;color:var(--danger);font-size:17px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent;padding:0}
 .ex-drag-handle{display:flex;align-items:center;justify-content:center;width:30px;height:34px;color:var(--muted);font-size:20px;line-height:1;cursor:grab;touch-action:none;-webkit-tap-highlight-color:transparent;flex-shrink:0;letter-spacing:-2px}
 .ex-card.ex-dragging{opacity:.6;box-shadow:0 12px 30px rgba(0,0,0,.45);position:relative;z-index:5}

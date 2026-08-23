@@ -38,7 +38,7 @@ function updateHeaderAvatar(){
   } else {
     const name=profileData.name||S.personalInfo?.name||'';
     const initial=name?name.charAt(0).toUpperCase():'?';
-    btn.innerHTML='<span style="font-size:14px;font-weight:700;color:var(--accent);line-height:1">'+initial+'</span>';
+    btn.innerHTML='<span style="font-size:14px;font-weight:700;color:var(--accent-text);line-height:1">'+initial+'</span>';
     btn.style.background='#2a2a2a';
   }
 }
@@ -930,6 +930,12 @@ function applyTheme(){
     const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
     meta.content = bg || (isDark ? '#080808' : '#f2f2f7');
   }
+  // --accent-text is derived against the theme's background, so a theme change invalidates it.
+  // applyTheme() is the one path EVERY theme change goes through (setTheme, the Firebase
+  // 'appTheme' listener, and boot), which is why the refresh lives here rather than in
+  // setTheme alone — otherwise toggling light<->dark strands the previous theme's variant on
+  // the new background and accent text goes unreadable again, in mirror image.
+  if(typeof applyDayColour==='function') applyDayColour();
 }
 function setTheme(t){
   S.theme = t;
@@ -978,9 +984,80 @@ function hexToRgb(hex){
   const h=(hex||'').replace('#','');
   return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)].join(',');
 }
+// ── Accent as a FOREGROUND colour ──────────────────────────────────
+// Every accent the app can hold — ACCENT_PRESETS, WEATHER_ACCENTS, the per-day colours — was
+// tuned to CARRY white text, i.e. checked >=4.5:1 with #fff sitting on top. Using the accent
+// AS text on the app background is the opposite test, and ~90 call sites do exactly that
+// (color:var(--accent-text) on links, badges, "Manage Accounts →"). Measured against the dark --bg
+// #080808 every one of them fails: the daytime blues land at 4.38:1 and the night skies at
+// 1.7:1, which is invisible rather than merely low.
+// --accent-text is the same hue and saturation, lifted (dark theme) or deepened (light theme)
+// in lightness only, until it clears the threshold — so accent TEXT is readable while --accent
+// itself keeps the tuning that white-on-accent needs. Both tokens are always set together.
+// Derived, not a lookup table: the accent is not a closed set. Appearance offers a free
+// <input type="color"> plus a saved favourites list, so an arbitrary hex is always reachable
+// and any table would be missing exactly the colours a user chose deliberately.
+// Lightness-only keeps the palette's design intent intact — dawn/dusk were deliberately moved
+// into amber so they couldn't be mistaken for --danger, and the lifted variants still sit at
+// hue ~31 against --danger's 6.
+const ACCENT_TEXT_TARGET=5.0;   // not the 4.5 AA floor: this token's main job is 12px text,
+                                // where 4.5 leaves no headroom for antialiasing.
+function _relLum(hex){
+  const h=(hex||'').replace('#','');
+  const c=[0,2,4].map(i=>parseInt(h.substr(i,2),16)/255)
+    .map(v=>v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055,2.4));
+  return .2126*c[0]+.7152*c[1]+.0722*c[2];
+}
+function _contrastRatio(a,b){
+  const x=_relLum(a), y=_relLum(b);
+  return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);
+}
+function _hexToHsl(hex){
+  const h=(hex||'').replace('#','');
+  const r=parseInt(h.substr(0,2),16)/255, g=parseInt(h.substr(2,2),16)/255, b=parseInt(h.substr(4,2),16)/255;
+  const mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn, l=(mx+mn)/2;
+  let hu=0, s=0;
+  if(d){
+    s = l>.5 ? d/(2-mx-mn) : d/(mx+mn);
+    hu = mx===r ? ((g-b)/d+(g<b?6:0)) : mx===g ? ((b-r)/d+2) : ((r-g)/d+4);
+    hu/=6;
+  }
+  return [hu,s,l];
+}
+function _hslToHex(hu,s,l){
+  const f=(p,q,t)=>{ if(t<0)t+=1; if(t>1)t-=1;
+    if(t<1/6) return p+(q-p)*6*t;
+    if(t<1/2) return q;
+    if(t<2/3) return p+(q-p)*(2/3-t)*6;
+    return p; };
+  let r,g,b;
+  if(!s){ r=g=b=l; }
+  else { const q = l<.5 ? l*(1+s) : l+s-l*s, p=2*l-q; r=f(p,q,hu+1/3); g=f(p,q,hu); b=f(p,q,hu-1/3); }
+  return '#'+[r,g,b].map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+}
+// isDark decides both the background to test against and which way to move: on #080808 the
+// accent has to get lighter, on #f2f2f7 darker. Most accents already pass in light mode (the
+// blue preset #0072EA at 4.10:1 is the notable exception), so this usually returns hex
+// unchanged there and only really bites in dark mode.
+function accentTextHex(hex, isDark){
+  if(!/^#[0-9a-fA-F]{6}$/.test(hex||'')) return hex;
+  const bg = isDark ? '#080808' : '#f2f2f7';
+  if(_contrastRatio(hex,bg) >= ACCENT_TEXT_TARGET) return hex;
+  const [hu,s,l]=_hexToHsl(hex);
+  const dir = isDark ? 1 : -1;
+  for(let i=1;i<=100;i++){
+    const c=_hslToHex(hu, s, Math.min(1, Math.max(0, l + dir*i/100)));
+    if(_contrastRatio(c,bg) >= ACCENT_TEXT_TARGET) return c;
+  }
+  return isDark ? '#ffffff' : '#000000';
+}
 function applyAccent(hex){
-  document.documentElement.style.setProperty('--accent', hex);
-  document.documentElement.style.setProperty('--accent-rgb', hexToRgb(hex));
+  const root=document.documentElement;
+  root.style.setProperty('--accent', hex);
+  root.style.setProperty('--accent-rgb', hexToRgb(hex));
+  // Theme-dependent, so applyTheme() re-runs this. A stale value here is the invisible-text
+  // bug in mirror image — the previous theme's variant left sitting on the new background.
+  root.style.setProperty('--accent-text', accentTextHex(hex, root.getAttribute('data-theme')!=='light'));
 }
 // Legacy muscle-group → colour; used only to migrate existing accounts onto the new store.
 const LEGACY_DAY_COLOURS = { 'chest-back':'#3B82F6','shoulders-arms':'#8B5CF6','legs':'#EF4444','rest':'#FF6B35' };
@@ -1123,7 +1200,7 @@ function renderDayColorPickers(){
       '</div>'+
       '<div style="display:flex;align-items:center;gap:14px;padding:10px 0 4px">' +
         '<label style="font-size:14px;color:var(--text);font-weight:500;flex:1">Custom colour'+
-          (isPreset?'':' <span style="font-size:12px;color:var(--accent);font-weight:700">· in use</span>')+'</label>' +
+          (isPreset?'':' <span style="font-size:12px;color:var(--accent-text);font-weight:700">· in use</span>')+'</label>' +
         '<input type="color" id="static-accent-input" value="'+cur+'" ' +
           'style="width:44px;height:44px;border:none;border-radius:10px;cursor:pointer;background:none;padding:0" ' +
           'oninput="setStaticAccent(this.value)" ' +
@@ -1135,7 +1212,7 @@ function renderDayColorPickers(){
       '<div style="margin-top:14px">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
           '<span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px">Favourites</span>'+
-          '<button onclick="saveCurrentAccentAsFavourite()" style="font-size:12px;font-weight:700;color:var(--accent);background:none;border:none;cursor:pointer;padding:0">+ Save current colour</button>'+
+          '<button onclick="saveCurrentAccentAsFavourite()" style="font-size:12px;font-weight:700;color:var(--accent-text);background:none;border:none;cursor:pointer;padding:0">+ Save current colour</button>'+
         '</div>'+
         (favs.length
           ? '<div class="fav-list">'+favs.filter(h=>/^#[0-9a-fA-F]{6}$/.test(h)).map(hex=>
@@ -3943,7 +4020,7 @@ function renderExerciseDetail(name){
   const lastDone=hist.length?hist[hist.length-1].date:null;
   const statCard=
     '<div class="card" style="display:flex;text-align:center;padding:16px 8px">'+
-      '<div style="flex:1"><div style="font-family:var(--font-num);font-size:24px;font-weight:800;color:var(--accent)">'+(pr?pr+'kg':'—')+'</div>'+
+      '<div style="flex:1"><div style="font-family:var(--font-num);font-size:24px;font-weight:800;color:var(--accent-text)">'+(pr?pr+'kg':'—')+'</div>'+
         '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:3px">PR'+(prDate?' · '+fmtDate(prDate):'')+'</div></div>'+
       '<div style="width:1px;background:var(--border)"></div>'+
       '<div style="flex:1"><div style="font-family:var(--font-num);font-size:24px;font-weight:800">'+hist.length+'</div>'+
@@ -9259,7 +9336,7 @@ function renderHome(){
       '<div class="hero-top">'+
         '<span class="hero-label">TODAY\'S SESSION · '+heroDateLabel+'</span>'+
         '<button class="hero-play-btn" aria-label="Go to workout" onclick="setView(\'log\')">'+
-          '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M5 3.5l10 5.5-10 5.5V3.5z" fill="#e8541f"/></svg>'+
+          '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M5 3.5l10 5.5-10 5.5V3.5z" fill="currentColor"/></svg>'+
         '</button>'+
       '</div>'+
       '<p class="hero-workout-title" id="hero-day-name">'+mCurType.name+'</p>'+
@@ -9327,7 +9404,7 @@ function renderHome(){
     '<div class="card home-networth-card" style="padding:0;overflow:hidden;margin-bottom:12px">'+
       '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center">'+
         '<span>💰 Total Assets</span>'+
-        '<span onclick="openAccounts()" style="cursor:pointer;text-transform:none;letter-spacing:0;font-weight:700;color:var(--accent)">Manage Accounts →</span>'+
+        '<span onclick="openAccounts()" style="cursor:pointer;text-transform:none;letter-spacing:0;font-weight:700;color:var(--accent-text)">Manage Accounts →</span>'+
       '</div>'+
       '<div style="padding:12px 16px 16px">'+
         (accounts.length
@@ -9523,7 +9600,7 @@ function hlPrevNotes(){
   return '<div class="hl-prev hl-prev-plain">'+
     '<div class="hl-lbl">Notes</div>'+
     '<div class="hl-list">'+
-      '<div class="hl-li"><i></i>Book physio <span style="margin-left:auto;color:var(--accent);font-size:8px">Priority</span></div>'+
+      '<div class="hl-li"><i></i>Book physio <span style="margin-left:auto;color:var(--accent-text);font-size:8px">Priority</span></div>'+
       '<div class="hl-li"><i style="background:var(--danger)"></i>Rego due <span style="margin-left:auto;color:var(--muted);font-size:8px">3 days</span></div>'+
     '</div>'+
   '</div>';
@@ -12433,7 +12510,7 @@ function buildHomeNotesCard(){
   } else {
     // 1) Priority — accent dot, pinned to the top.
     priority.forEach(n=>{
-      html+=row('var(--accent)','600',n.title,'<div style="font-size:12px;color:var(--accent);font-weight:700">Priority</div>');
+      html+=row('var(--accent)','600',n.title,'<div style="font-size:12px;color:var(--accent-text);font-weight:700">Priority</div>');
     });
     // 2) Urgent — danger dot, due within 7 days.
     urgent.forEach(n=>{
@@ -12483,7 +12560,7 @@ function renderPlans(){
     html+=`<div style="background:linear-gradient(135deg,rgba(var(--accent-rgb),.15),rgba(var(--accent-rgb),.05));border-radius:16px;padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;gap:14px">
       <div style="font-size:32px">🔥</div>
       <div>
-        <div style="font-size:24px;font-weight:800;color:var(--accent);font-family:var(--font-num)">${data.streak.count} day streak</div>
+        <div style="font-size:24px;font-weight:800;color:var(--accent-text);font-family:var(--font-num)">${data.streak.count} day streak</div>
         <div style="font-size:13px;color:var(--muted)">Active: ${active.name}</div>
       </div>
     </div>`;
@@ -12512,14 +12589,14 @@ function renderPlans(){
         html+=`<div style="background:var(--card);border-radius:16px;padding:16px;margin-bottom:12px">`;
         html+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
           <div style="font-size:16px;font-weight:700;color:var(--text);flex:1;min-width:0">${_catEscHtml(active.name)}</div>
-          ${applied?`<span style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:rgba(var(--accent-rgb),.16);color:var(--accent)">Training now</span>`:''}
+          ${applied?`<span style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:rgba(var(--accent-rgb),.16);color:var(--accent-text)">Training now</span>`:''}
         </div>`;
         html+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${types.length} day${types.length===1?'':'s'} · ${sched.length}-day rotation</div>`;
         types.forEach((t,i)=>{
           const exs=t.exercises||[];
           html+=`<div style="border-bottom:1px solid var(--border);padding:10px 0">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:${exs.length?6:0}px">
-              <div style="width:32px;height:32px;border-radius:8px;background:rgba(var(--accent-rgb),.12);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent)">${i+1}</div>
+              <div style="width:32px;height:32px;border-radius:8px;background:rgba(var(--accent-rgb),.12);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent-text)">${i+1}</div>
               <div style="font-weight:600;color:var(--text);font-size:14px">${_catEscHtml(t.name||'Day '+(i+1))}</div>
               <div style="margin-left:auto;font-size:12px;color:var(--muted)">${exs.length} ex</div>
             </div>

@@ -43,13 +43,13 @@
   -webkit-tap-highlight-color:transparent;transition:transform .1s ease,background .15s ease}
 .bcalc-key:active{transform:scale(.94);background:var(--track,rgba(128,128,128,.18))}
 .bcalc-key.fn{color:var(--muted);font-size:17px}
-.bcalc-key.op{color:var(--accent);font-size:21px}
+.bcalc-key.op{color:var(--accent-text);font-size:21px}
 .bcalc-key.eq{background:var(--accent);color:#fff;border-color:transparent}
 
 /* Stats → Finance: per-account growth over a period */
 .bs-growth-range{display:flex;gap:4px;flex-shrink:0}
 .bs-growth-range button{padding:4px 9px;border-radius:20px;border:none;font-size:11px;font-weight:700;background:transparent;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent}
-.bs-growth-range button.on{background:rgba(var(--accent-rgb),.16);color:var(--accent)}
+.bs-growth-range button.on{background:rgba(var(--accent-rgb),.16);color:var(--accent-text)}
 .bs-growth-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
 .bs-growth-row:last-of-type{border-bottom:none}
 .bs-growth-name{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -95,7 +95,7 @@
 .bud-cat-name-input{flex:1;min-width:0;border:none;background:transparent;font-size:14px;font-weight:600;color:var(--text);padding:2px 0;font-family:inherit}
 .bud-cat-name-input:focus{outline:none;border-bottom:1.5px solid var(--accent)}
 .bud-cat-name-input:disabled{color:var(--text);opacity:0.7}
-.add-cat-btn{width:100%;padding:10px;margin-top:8px;border:1.5px dashed var(--border);border-radius:8px;background:transparent;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.add-cat-btn{width:100%;padding:10px;margin-top:8px;border:1.5px dashed var(--border);border-radius:8px;background:transparent;color:var(--accent-text);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .add-cat-btn:active{opacity:0.6}
 /* Accounts page: Asset/Debt segmented control on the add-account form */
 .acct-type-seg{display:flex;gap:4px;background:var(--border);border-radius:8px;padding:3px}
@@ -105,7 +105,7 @@
 .delete-cat-btn:active{color:var(--danger);opacity:0.7}
 .bud-head-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .bud-edit-btn{font-size:12px;font-weight:600;padding:4px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;text-transform:none;letter-spacing:0}
-.bud-edit-btn.active{color:var(--accent);border-color:var(--accent);background:rgba(var(--accent-rgb),.1)}
+.bud-edit-btn.active{color:var(--accent-text);border-color:var(--accent);background:rgba(var(--accent-rgb),.1)}
 /* Budget hero summary card (accent gradient — tracks the dynamic day colour) */
 .budget-hero-card{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.6) 55%, rgba(var(--accent-rgb),.4));border-radius:var(--radius-hero,22px);padding:20px 20px 16px;margin-bottom:16px;box-shadow:0 16px 40px rgba(var(--accent-rgb),.3)}
 .budget-hero-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
@@ -151,7 +151,7 @@
 .home-balance-row>.card{margin-bottom:0}
 /* ── Home card reorder (edit mode) ── */
 .home-edit-btn{padding:10px 26px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
-.home-edit-btn.active{color:var(--accent);border-color:var(--accent);background:rgba(var(--accent-rgb),.08)}
+.home-edit-btn.active{color:var(--accent-text);border-color:var(--accent);background:rgba(var(--accent-rgb),.08)}
 @keyframes home-jiggle{0%{transform:rotate(-0.9deg)}25%{transform:rotate(0.9deg)}50%{transform:rotate(-0.6deg)}75%{transform:rotate(0.6deg)}100%{transform:rotate(-0.9deg)}}
 .home-card-jiggle{animation:home-jiggle .4s ease-in-out infinite;transform-origin:center}
 /* In edit mode the inner card is inert (no navigation); the wrapper handles drag */
@@ -196,7 +196,7 @@
 .bud-edit-move:focus{outline:none;border-color:var(--blue)}
 /* Category logo / initial fallback. object-fit contains so non-square favicons aren't cropped. */
 .cat-icon-img{object-fit:contain;background:var(--bg);display:inline-block;vertical-align:middle}
-.cat-icon-letter{display:inline-flex;align-items:center;justify-content:center;background:rgba(var(--accent-rgb),.16);color:var(--accent);font-weight:800;line-height:1;vertical-align:middle}
+.cat-icon-letter{display:inline-flex;align-items:center;justify-content:center;background:rgba(var(--accent-rgb),.16);color:var(--accent-text);font-weight:800;line-height:1;vertical-align:middle}
 .bud-edit-del{width:38px;height:38px;flex-shrink:0;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--danger);font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .bud-add-item{width:100%;padding:9px;margin-top:10px;border:1.5px dashed var(--border);border-radius:8px;background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 [data-theme="dark"] .bud-edit-name,[data-theme="dark"] .bud-edit-amt{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.1)}
@@ -351,7 +351,7 @@
   #quick-settings-menu{display:flex;flex-direction:column;overflow:hidden;max-height:0;transition:max-height .25s ease}
   #quick-settings-menu.open{max-height:320px}
   .ds-profile{margin-top:auto;padding:10px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px}
-  .ds-av{width:24px;height:24px;border-radius:50%;background:rgba(var(--accent-rgb),0.25);color:var(--accent);font-size:9px;font-weight:600;display:flex;align-items:center;justify-content:center}
+  .ds-av{width:24px;height:24px;border-radius:50%;background:rgba(var(--accent-rgb),0.25);color:var(--accent-text);font-size:9px;font-weight:600;display:flex;align-items:center;justify-content:center}
   .ds-name{font-size:11px;font-weight:500;color:var(--text)}
   .ds-sync{font-size:9px;color:var(--muted);display:block}
 
@@ -404,7 +404,7 @@
   .home-card-more{position:absolute;left:14px;right:14px;bottom:12px;z-index:2;height:30px;
     border-radius:10px;border:1px solid var(--card-border);background:var(--card);
     -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
-    color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;
+    color:var(--accent-text);font-size:12px;font-weight:700;cursor:pointer;
     -webkit-tap-highlight-color:transparent}
   .home-card-more:hover{border-color:var(--accent)}
   /* Weather as a wide banner — only when the user has it set to full width. At half width it
@@ -589,15 +589,15 @@
 .ob-theme-mini-light .ob-mini-card{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .ob-theme-mini-dark .ob-mini-card{background:linear-gradient(180deg,rgba(255,255,255,.15),rgba(255,255,255,.09))}
 .ob-theme-name{text-align:center;font-size:14px;font-weight:700;color:var(--text);margin-top:8px}
-.ob-theme-check{color:var(--accent)}
+.ob-theme-check{color:var(--accent-text)}
 /* Goal segmented control */
 .ob-seg{display:flex;gap:8px}
 .ob-seg-btn{flex:1;padding:12px 6px;border-radius:12px;border:1.5px solid var(--border);background:transparent;color:var(--text);font-size:14px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.ob-seg-btn.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.1);color:var(--accent)}
+.ob-seg-btn.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.1);color:var(--accent-text)}
 /* Habit chips */
 .ob-habit-wrap{display:flex;flex-wrap:wrap;gap:8px}
 .ob-habit-chip{padding:9px 14px;border-radius:20px;border:1.5px solid var(--border);background:transparent;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.ob-habit-chip.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.12);color:var(--accent)}
+.ob-habit-chip.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.12);color:var(--accent-text)}
 .ob-habit-add{display:flex;gap:8px;margin-top:14px}
 .ob-habit-add input{flex:1;height:44px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;padding:0 12px;background:var(--card);color:var(--text)}
 .ob-habit-add button{padding:0 18px;height:44px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0}

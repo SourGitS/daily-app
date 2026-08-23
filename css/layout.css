@@ -58,7 +58,7 @@
 #rt-bar::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;animation:rt-pulse 1.4s ease-in-out infinite}
 @keyframes rt-pulse{0%,100%{opacity:1}50%{opacity:.45}}
 #rt-bar-time{font-family:var(--font-num);font-size:22px;font-weight:700;color:var(--text);flex:1;text-align:center;letter-spacing:-.02em}
-.rt-bar-btn{width:44px;height:44px;border-radius:50%;border:none;background:rgba(var(--accent-rgb),.16);color:var(--accent);font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent}
+.rt-bar-btn{width:44px;height:44px;border-radius:50%;border:none;background:rgba(var(--accent-rgb),.16);color:var(--accent-text);font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent}
 /* iOS-friendly minimum tap targets for all timer controls */
 [data-action^="timer-"]{min-height:44px;min-width:44px}
 .rt-bar-btn.primary{background:var(--accent);color:#fff}
@@ -82,7 +82,7 @@
 .rt-fs-btn.start{background:var(--accent);color:#fff;flex:2}
 #rt-fs-laps{width:100%;overflow-y:auto;flex:1;margin-top:16px}
 .rt-lap-row{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);font-family:monospace}
-.rt-lap-row:first-child .rt-lap-time{color:var(--accent)}
+.rt-lap-row:first-child .rt-lap-time{color:var(--accent-text)}
 .rt-lap-label{color:var(--muted)}
 .rt-lap-time{font-weight:700;color:var(--text)}
 
@@ -90,7 +90,7 @@
 #bottom-nav{display:flex;background:#fff;border-top:1px solid var(--border);position:fixed;left:0;right:0;bottom:0;margin:0 auto;width:100%;max-width:480px;z-index:10}
 .nav-btn{flex:1;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 4px 4px;border:none;background:transparent;font-size:11px;color:var(--muted);gap:2px;transition:color 0.15s;position:relative;z-index:1;-webkit-tap-highlight-color:transparent}
 .nav-btn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.nav-btn.active{color:var(--accent)}
+.nav-btn.active{color:var(--accent-text)}
 /* Active-tab pill sits behind the icon+label. Its bottom is anchored to the button-content
    bottom (the same safe-area expression as the nav's padding-bottom), NOT the screen edge, so
    it no longer bleeds into the bottom padding. Per-tab left/width (with outer insets on tabs

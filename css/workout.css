@@ -80,7 +80,7 @@
 .rt-fs-reset{width:100%;padding:12px;margin-bottom:6px;border:none;background:transparent;color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 /* Inline status chip in the card header controls — a real layout slot, not an absolute overlay
    floating over the buttons. */
-.exercise-done-check{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:rgba(var(--accent-rgb),.16);color:var(--accent);font-size:13px;font-weight:800;line-height:1;flex-shrink:0}
+.exercise-done-check{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:rgba(var(--accent-rgb),.16);color:var(--accent-text);font-size:13px;font-weight:800;line-height:1;flex-shrink:0}
 .ex-card.done .set-row{background:rgba(var(--accent-rgb),.06);border-radius:8px}
 .ex-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
 /* ── Minimal collapsed cards: a slim header-only strip. The n/m sets counter (and the
@@ -93,12 +93,12 @@
 .ex-card.collapsed .swap-btn{display:none}
 .ex-mini-progress{display:none;font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap}
 .ex-card.collapsed .ex-mini-progress{display:inline-flex;align-items:center;font-size:12px}
-.ex-card.collapsed.done .ex-mini-progress{color:var(--accent)}
+.ex-card.collapsed.done .ex-mini-progress{color:var(--accent-text)}
 .ex-card.collapsed .exercise-done-check{width:24px;height:24px;font-size:13px}
 .ex-top-bar{margin:-16px -16px 14px -16px;padding:12px 16px;border-radius:16px 16px 0 0;border-bottom:1px solid var(--border)}
 .ex-left{flex:1}
 .ex-name{font-size:17px;font-weight:700;line-height:1.3;color:var(--text);margin-bottom:4px}
-.muscle-pill{display:inline-block;background:rgba(var(--accent-rgb),.15);color:var(--accent);font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;text-transform:capitalize;letter-spacing:0}
+.muscle-pill{display:inline-block;background:rgba(var(--accent-rgb),.15);color:var(--accent-text);font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;text-transform:capitalize;letter-spacing:0}
 .ex-top-bar .check-btn{border-color:var(--border)}
 .ex-top-bar .check-btn svg{stroke:var(--muted)}
 .ex-top-bar .check-btn.done{background:var(--accent);border-color:var(--accent)}
@@ -117,7 +117,7 @@
 .swap-btn{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border);background:transparent;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:6px;cursor:pointer;transition:background 0.15s;-webkit-tap-highlight-color:transparent}
 .swap-btn:active{background:var(--border)}
 .swap-btn svg{width:13px;height:13px;stroke:var(--muted);fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
-.swap-badge{font-size:10px;background:rgba(var(--accent-rgb),0.15);color:var(--accent);padding:1px 5px;border-radius:6px;margin-top:3px;display:inline-block}
+.swap-badge{font-size:10px;background:rgba(var(--accent-rgb),0.15);color:var(--accent-text);padding:1px 5px;border-radius:6px;margin-top:3px;display:inline-block}
 
 /* ── Set inputs ── */
 .set-col-labels{display:grid;grid-template-columns:32px 1fr 1fr;gap:6px;margin-bottom:4px;padding:0 2px}
@@ -127,7 +127,7 @@
 .set-num{display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--muted)}
 /* Dynamic set rows: warmup toggle, per-set done ✓, delete ×, last-session hint */
 .set-warmup-btn{width:28px;height:40px;border-radius:8px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:11px;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:0}
-.set-warmup-btn.active{background:rgba(var(--accent-rgb),.15);border-color:var(--accent);color:var(--accent)}
+.set-warmup-btn.active{background:rgba(var(--accent-rgb),.15);border-color:var(--accent);color:var(--accent-text)}
 .set-sep{font-size:13px;color:var(--muted);text-align:center}
 .set-check{width:36px;height:36px;border-radius:50%;flex-shrink:0;border:2px solid var(--border);background:transparent;color:var(--muted);font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;padding:0;position:relative}
 .set-check.done{background:var(--positive,#52B788);border-color:var(--positive,#52B788);color:#fff}
@@ -149,7 +149,7 @@
 .set-kg-wrap{position:relative;min-width:0}
 .set-kg-wrap .set-kg{padding-left:24px}
 .set-sign-btn{position:absolute;left:2px;top:50%;transform:translateY(-50%);width:24px;height:38px;border:none;background:transparent;color:var(--muted);font-size:17px;font-weight:800;line-height:1;cursor:pointer;z-index:2;-webkit-tap-highlight-color:transparent;padding:0;display:flex;align-items:center;justify-content:center;border-radius:6px}
-.set-sign-btn.neg{color:var(--accent);background:rgba(var(--accent-rgb),.16)}
+.set-sign-btn.neg{color:var(--accent-text);background:rgba(var(--accent-rgb),.16)}
 /* "Allow assisted / negative kg" toggle in the exercise add/edit modal */
 .exlib-neg-toggle{display:flex;align-items:center;gap:10px;cursor:pointer;-webkit-tap-highlight-color:transparent;margin-bottom:6px}
 .exlib-neg-toggle input{width:20px;height:20px;flex-shrink:0;accent-color:var(--accent);cursor:pointer}
@@ -169,7 +169,7 @@
 /* ── Save ── */
 #save-btn{width:100%;padding:15px;border-radius:10px;border:none;background:var(--header);color:#fff;font-size:16px;font-weight:600;margin-top:6px;transition:background 0.15s;-webkit-tap-highlight-color:transparent}
 #save-btn:active{filter:brightness(0.85)}
-#save-msg{display:none;text-align:center;color:var(--accent);font-size:14px;font-weight:500;padding:10px}
+#save-msg{display:none;text-align:center;color:var(--accent-text);font-size:14px;font-weight:500;padding:10px}
 
 /* ── History ── */
 .session-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:16px;margin-bottom:12px}
@@ -286,7 +286,7 @@
 /* ── Onboarding: budget quick-add chips (fixed expenses) ── */
 .ob-chip-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
 .ob-add-chip{font-size:13px;font-weight:600;padding:7px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;-webkit-tap-highlight-color:transparent}
-.ob-add-chip:active{background:rgba(var(--accent-rgb),.1);border-color:var(--accent);color:var(--accent)}
+.ob-add-chip:active{background:rgba(var(--accent-rgb),.1);border-color:var(--accent);color:var(--accent-text)}
 
 /* ── Training split editor (onboarding step + Settings overlay) ── */
 .se-day-card{background:var(--card);border:1px solid var(--card-border,var(--border));border-radius:16px;padding:14px;margin-bottom:12px;box-shadow:var(--card-top)}
@@ -305,8 +305,8 @@
 .se-ex-setslbl{font-size:11px;color:var(--muted);flex-shrink:0}
 .se-ex-del{width:28px;height:28px;flex-shrink:0;border:none;background:transparent;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .se-ex-empty{font-size:13px;color:var(--muted);padding:6px 2px}
-.se-add-ex{width:100%;padding:9px;border:1.5px dashed var(--border);border-radius:9px;background:transparent;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.se-add-day{width:100%;padding:13px;border:1.5px dashed var(--accent);border-radius:14px;background:rgba(var(--accent-rgb),.06);color:var(--accent);font-size:15px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;margin-top:2px}
+.se-add-ex{width:100%;padding:9px;border:1.5px dashed var(--border);border-radius:9px;background:transparent;color:var(--accent-text);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.se-add-day{width:100%;padding:13px;border:1.5px dashed var(--accent);border-radius:14px;background:rgba(var(--accent-rgb),.06);color:var(--accent-text);font-size:15px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;margin-top:2px}
 /* Destructive, so it reads in --danger — but outlined rather than filled, since it sits under
    the primary "+ Add training day" and shouldn't compete with it for attention. */
 .se-clear-all{width:100%;padding:12px;margin-top:10px;border:1px solid var(--danger);border-radius:14px;
@@ -327,7 +327,7 @@
 .se-picker-pick{flex:1;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 8px;font-size:14px;font-weight:500;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .se-picker-edit{flex-shrink:0;width:28px;height:28px;border-radius:50%;border:none;background:none;color:var(--muted);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}
 .se-picker-muscle{font-size:11px;color:var(--muted);text-transform:capitalize;flex-shrink:0}
-.se-picker-new{color:var(--accent);font-weight:700;background:rgba(var(--accent-rgb),.1);padding:11px 12px;font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.se-picker-new{color:var(--accent-text);font-weight:700;background:rgba(var(--accent-rgb),.1);padding:11px 12px;font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
 /* The edit-exercise modal can be opened from within the picker sheet (Split editor), so it must
    stack above .se-picker (z-index:201) — .modal-overlay's own 200 would otherwise sit behind it. */
 #exlib-add-modal{z-index:210}
@@ -369,7 +369,7 @@
 /* Matches .accent-preset-dot — these sit in the same panel, so they share the shape. */
 .fav-dot{width:28px;height:28px;border-radius:8px;flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
 .fav-hex{font-family:var(--font-num);font-size:14px;font-weight:700;letter-spacing:.02em}
-.fav-inuse{margin-left:auto;font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.4px}
+.fav-inuse{margin-left:auto;font-size:11px;font-weight:700;color:var(--accent-text);text-transform:uppercase;letter-spacing:.4px}
 
 /* App colour mode: Fixed / Training / Weather. Segmented rather than a toggle, since it's a
    three-way choice now. */
@@ -378,7 +378,7 @@
 .accent-mode-btn{height:38px;border-radius:9px;border:none;background:transparent;color:var(--muted);
   font-size:13px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;
   transition:background .15s ease,color .15s ease}
-.accent-mode-btn.on{background:var(--card);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.18)}
+.accent-mode-btn.on{background:var(--card);color:var(--accent-text);box-shadow:0 1px 3px rgba(0,0,0,.18)}
 
 .accent-preset-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:4px 0 2px}
 .accent-preset{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 4px;border-radius:12px;

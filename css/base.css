@@ -11,6 +11,10 @@
      colour in Settings → Appearance (see ACCENT_PRESETS in js/app.js). */
   --accent:#5C5C5C;
   --accent-rgb:92,92,92;
+  /* Accent as a FOREGROUND colour. Pre-JS fallback only: applyAccent() writes the real,
+     theme-corrected value as an inline style on :root, which outranks this rule. See
+     accentTextHex() in js/app.js for why the two can't be the same colour. */
+  --accent-text:var(--accent);
   --positive:#52B788;
   --success:#52B788;
   --danger:#E74C3C;
