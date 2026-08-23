@@ -9709,9 +9709,15 @@ function renderHome(){
   const _nw=accountsNetWorth(), _assets=accountsAssetsTotal(), _debts=accountsDebtsTotal();
   const _acctRows=accounts.map(a=>{
     const isD=a&&a.type==='debt';
-    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">'+
-      '<span style="font-weight:600">'+_catEscHtml(a.name||'')+'</span>'+
-      '<span style="font-weight:700;font-family:var(--font-num);color:'+(isD?'var(--danger)':'var(--text)')+'">'+(isD?'−':'')+fmtMoney(parseFloat(a.current)||0)+'</span>'+
+    const util=(typeof acctUtilisation==='function')?acctUtilisation(a):null;
+    const cat=(typeof acctCategoryLabel==='function')?acctCategoryLabel(a):null;
+    // Sub-line only when there is something to say — a category, a utilisation figure, or both.
+    const sub=[cat, util!==null?util.toFixed(0)+'% of limit':null].filter(Boolean).join(' · ');
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">'+
+      '<span style="min-width:0"><span style="font-weight:600">'+_catEscHtml(a.name||'')+'</span>'+
+        (sub?'<span style="display:block;font-size:11px;font-weight:600;color:'+
+          (util!==null?acctUtilColour(util):'var(--muted)')+'">'+sub+'</span>':'')+'</span>'+
+      '<span style="font-weight:700;font-family:var(--font-num);flex-shrink:0;color:'+(isD?'var(--danger)':'var(--text)')+'">'+(isD?'−':'')+fmtMoney(parseFloat(a.current)||0)+'</span>'+
     '</div>';
   }).join('');
   const _stmtRows=accounts
@@ -10855,6 +10861,36 @@ function renderAccountsPage(){
               '</div>'
             :'');
         }
+        // Category picker — one optional select per account. "Unset" is a real option, and the
+        // default, so existing accounts are untouched until deliberately categorised.
+        const catList=ACCT_CATEGORIES[isDebt?'debt':'asset'];
+        const catRow=
+          '<div class="bud-row" style="border-bottom:none;padding-top:6px">'+
+            '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Category</div></div>'+
+            '<select class="bud-row-input" style="text-align:left" onchange="accountSetCategory(\''+a.id+'\',this.value)">'+
+              '<option value=""'+(a.category?'':' selected')+'>Not set</option>'+
+              catList.map(c=>'<option value="'+c.id+'"'+(a.category===c.id?' selected':'')+'>'+c.label+'</option>').join('')+
+            '</select>'+
+          '</div>';
+        // Credit limit — debts only, and only meaningful for revolving credit, but offered on
+        // any debt since a loan's original principal works the same way as a progress figure.
+        let limitRow='';
+        if(isDebt){
+          const util=acctUtilisation(a);
+          limitRow=
+            '<div class="bud-row" style="border-bottom:none;padding-top:6px">'+
+              '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Credit limit</div>'+
+                (util!==null
+                  ? '<div class="bud-row-budget" style="color:'+acctUtilColour(util)+';font-weight:700">'+util.toFixed(0)+'% used'+
+                    (util>=80?' · high':'')+'</div>'
+                  : '<div class="bud-row-budget">Optional — shows how much of it you are using</div>')+
+              '</div>'+
+              '<input class="bud-row-input" type="number" inputmode="decimal" placeholder="$0" value="'+(a.limit?a.limit:'')+'" onchange="accountSetLimit(\''+a.id+'\',this.value)">'+
+            '</div>'+
+            (util!==null
+              ? '<div class="card-bar" style="margin:2px 2px 8px"><div class="card-bar-fill" style="width:'+Math.min(100,util).toFixed(1)+'%;background:'+acctUtilColour(util)+'"></div></div>'
+              : '');
+        }
         // Assets can be flagged as a savers account: still net worth, held out of the payoff total.
         let saverRow='';
         if(!isDebt){
@@ -10884,6 +10920,8 @@ function renderAccountsPage(){
           '</div>'+
           // Clarify that a debt balance is a standalone running total, not weekly spending —
           // the note that used to live in the retired Budget-tab CC editor.
+          catRow+
+          limitRow+
           saverRow+
           (isDebt?'<div class="acct-note" style="font-size:12px;color:var(--muted);line-height:1.45;padding:2px 2px 4px">This is the total currently owed — a separate running debt, not counted in your weekly leftover. Enter card purchases in your Variable spending categories as usual, same as cash.</div>':'')+
           stmt+
@@ -10979,6 +11017,55 @@ function accountSetStatementField(id,field,val){
   if(field==='statementBalance') a.statementBalance=parseFloat(val)||0;
   else if(field==='dueDate') a.dueDate=val||'';
   saveAccounts(accounts); renderAccountsPage();
+}
+// ── Credit limit & utilisation ────────────────────────────────────
+// Optional per-debt field. Absent on every existing account, and every reader below treats
+// absent as "no limit set", so nothing needs migrating.
+// Utilisation is worth surfacing on its own terms: $2,000 owed means something different on a
+// $2,500 limit than on a $10,000 one, and the balance alone can't say which.
+function accountSetLimit(id,val){
+  const a=accounts.find(x=>x&&x.id===id); if(!a) return;
+  const n=parseFloat(val);
+  if(isNaN(n)||n<=0) delete a.limit; else a.limit=n;
+  saveAccounts(accounts); renderAccountsPage();
+  if(S.view==='home'&&typeof renderHome==='function') renderHome();
+}
+function acctUtilisation(a){
+  if(!a||a.type!=='debt') return null;
+  const lim=parseFloat(a.limit); if(isNaN(lim)||lim<=0) return null;
+  return Math.max(0,(parseFloat(a.current)||0)/lim*100);
+}
+// 30% is the usual "healthy" threshold and 80% is where it starts to look stretched; these are
+// semantic, not accent-driven, for the same reason the budget card's colours are.
+function acctUtilColour(pct){
+  return pct>=80?'var(--danger)':pct>=30?'#f59e0b':'var(--positive)';
+}
+// ── Account categories ────────────────────────────────────────────
+// A flat asset/debt split can't tell a credit card apart from money you owe a person, and had
+// no way at all to record money owed TO you — which is an asset that isn't sitting in any
+// account. `category` is one optional string; absent means "unset" and behaves exactly as
+// before, so no migration.
+const ACCT_CATEGORIES={
+  asset:[ {id:'cash',   label:'Cash / everyday'},
+          {id:'savings',label:'Savings'},
+          {id:'invest', label:'Investments'},
+          {id:'owed',   label:'Owed to me'} ],
+  debt: [ {id:'card',   label:'Credit card'},
+          {id:'loan',   label:'Loan'},
+          {id:'person', label:'Owed to a person'},
+          {id:'bill',   label:'Bill / arrears'} ]
+};
+function acctCategoryLabel(a){
+  if(!a||!a.category) return null;
+  const list=ACCT_CATEGORIES[a.type==='debt'?'debt':'asset'];
+  const hit=list.find(c=>c.id===a.category);
+  return hit?hit.label:null;
+}
+function accountSetCategory(id,val){
+  const a=accounts.find(x=>x&&x.id===id); if(!a) return;
+  if(!val) delete a.category; else a.category=val;
+  saveAccounts(accounts); renderAccountsPage();
+  if(S.view==='home'&&typeof renderHome==='function') renderHome();
 }
 function accountMarkPaid(id){
   const a=accounts.find(x=>x&&x.id===id); if(!a) return;
