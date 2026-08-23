@@ -264,6 +264,33 @@
    A name, not a figure, so UI type rather than font-num — and it wraps rather than truncating,
    because a recipe you can't read the end of is useless as a suggestion. */
 .kit-suggest{font-size:19px;font-weight:800;line-height:1.2;color:var(--text);letter-spacing:-.01em}
+/* ── Recent session rows ──
+   Date + split on the left, how it felt on the right. align-items:center rather than baseline
+   because the left side is two stacked lines and the chip should centre against the pair. */
+.rw-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+.rw-row:last-child{border-bottom:none;padding-bottom:0}
+.rw-l{flex:1;min-width:0}
+.rw-date{font-size:14px;font-weight:700;color:var(--text)}
+.rw-sub{font-size:12px;font-weight:600;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* A semantic easy→brutal scale that must NOT follow --accent: the accent can be any hue at
+   runtime, and "brutal" needs to read as hot regardless.
+   Split by theme because the chip is coloured text sitting on a tint of its own colour, so the
+   background moves with the foreground and the ratio doesn't improve by itself. The vivid scale
+   is correct on the dark card (3.9–7.0:1) and fails on the light one — Moderate measured
+   1.76:1 — so light mode uses darkened variants, each checked ≥4.5:1 against its own tint.
+   EFFORT_LEVELS[].color keeps the vivid value for anywhere a solid swatch is wanted. */
+.rw-effort{flex-shrink:0;font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px}
+.ef-easy{background:rgba(82,183,136,.14);color:#52B788}
+.ef-moderate{background:rgba(234,179,8,.14);color:#EAB308}
+.ef-hard{background:rgba(245,158,11,.14);color:#F59E0B}
+.ef-brutal{background:rgba(231,76,60,.14);color:#E74C3C}
+[data-theme="light"] .ef-easy{color:#317756}
+[data-theme="light"] .ef-moderate{color:#826404}
+[data-theme="light"] .ef-hard{color:#945F06}
+[data-theme="light"] .ef-brutal{color:#C82919}
+/* Unrated reads as an outline rather than a filled chip, so it is visibly a gap and not a
+   rating of its own. */
+.rw-effort-none{background:transparent;border:1px solid var(--border);color:var(--muted);font-weight:600}
 /* Progress bar with an optional pace marker. Not overflow:hidden — the marker deliberately
    overhangs the track top and bottom so it reads as a gate rather than as part of the fill. */
 .card-bar{position:relative;height:8px;border-radius:5px;background:var(--track);margin-top:12px}

@@ -3411,11 +3411,14 @@ function dismissPostSaveWeight(){
 // Fully optional and non-blocking: the session is already saved by the time this appears —
 // picking a level back-fills s.effort on the saved record; Skip (or ignoring it) changes
 // nothing. Synced automatically via persist() (sessions sync wholesale by id).
+// `color` is a semantic scale (easy→brutal), deliberately independent of --accent, which can
+// be any hue at runtime. The emoji stay for the existing rating buttons and session pills;
+// chrome that needs the rating as a coloured chip uses `color` instead.
 const EFFORT_LEVELS=[
-  {id:'easy',     label:'Easy',     emoji:'🟢'},
-  {id:'moderate', label:'Moderate', emoji:'🟡'},
-  {id:'hard',     label:'Hard',     emoji:'🟠'},
-  {id:'brutal',   label:'Brutal',   emoji:'🔴'},
+  {id:'easy',     label:'Easy',     emoji:'🟢', color:'#52B788'},
+  {id:'moderate', label:'Moderate', emoji:'🟡', color:'#EAB308'},
+  {id:'hard',     label:'Hard',     emoji:'🟠', color:'#F59E0B'},
+  {id:'brutal',   label:'Brutal',   emoji:'🔴', color:'#E74C3C'},
 ];
 function effortMeta(id){ return EFFORT_LEVELS.find(l=>l.id===id)||null; }
 function showPostSaveEffortPrompt(sessionId){
@@ -10268,24 +10271,43 @@ function applyHomeEditMode(){
 // Rendered separately from the draggable home-content cards, into its own #home-recent-card.
 // "Recent workout" card — now a widget in the ordered Home list (was a separate render
 // into #home-recent-card, which renderHome keeps cleared for older cached markup).
+// ── Recent sessions ───────────────────────────────────────────────
+// Was one session with every exercise and every set behind a tap-to-expand. That is the Log
+// tab's job — Home is a glance, and the expanded state made a card that was already the
+// tallest on the page taller still while answering a question ("what did I lift on set 3?")
+// nobody asks from the dashboard.
+// It's a short history instead: the last few sessions with date, split, and how each one FELT.
+// The effort rating was recorded on every session and shown nowhere outside the session card,
+// so the one genuinely subjective thing tracked here was invisible. Four sessions rather than
+// one also gives the card enough rows to fill its height on desktop, where it is stretched to
+// match its row partner.
 function buildHomeRecentCard(){
   if(!S.sessions.length) return '';
-  const s=S.sessions[S.sessions.length-1];
-  const tc=splitTypes().find(t=>t.name===s.sessionType)||splitTypes()[0];
-  const detail=s.exercises.map(ex=>
-    '<div class="session-ex-row"><div class="session-ex-name">'+dn(ex.name)+'</div>'+
-    ex.sets.map((set,si)=>'<div class="session-set-line">Set '+(si+1)+': '+(set.weight?set.weight+'kg':'—')+' × '+(set.reps||'—')+'</div>').join('')+
-    '</div>').join('');
-  return (
-    '<div class="card" style="cursor:pointer" onclick="var d=this.querySelector(\'.home-recent-detail\');d.style.display=d.style.display===\'block\'?\'none\':\'block\'">'+
-      '<div class="settings-card-title" style="margin-bottom:10px">🏋️ Recent workout</div>'+
-      '<div class="session-card-top">'+
-        '<div class="session-date-str">'+fmtDate(s.date)+' · Day '+s.dayNum+'</div>'+
-        '<div class="session-type-pill '+tc.id+'">'+s.sessionType+'</div>'+
+  const recent=[...S.sessions].sort((a,b)=>a.date<b.date?-1:1).slice(-4).reverse();
+  const rows=recent.map(s=>{
+    const m=effortMeta(s.effort);
+    const exCount=(s.exercises||[]).length;
+    return '<div class="rw-row">'+
+      '<div class="rw-l">'+
+        '<div class="rw-date">'+fmtDate(s.date)+'</div>'+
+        '<div class="rw-sub">'+_catEscHtml(s.sessionType||('Day '+(s.dayNum||'')))+
+          (exCount?' · '+exCount+' exercise'+(exCount!==1?'s':''):'')+'</div>'+
       '</div>'+
-      '<div class="session-summary">'+s.exercises.length+' exercise'+(s.exercises.length!==1?'s':'')+' · tap to '+'expand</div>'+
-      '<div class="home-recent-detail" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">'+detail+'</div>'+
-    '</div>');
+      // Not rated is a real state, not a blank: an unrated session should look different from
+      // one you found easy, so it gets a hollow chip rather than no chip.
+      // Class, not an inline colour: the chip is coloured text on a tint of its own colour, and
+      // the vivid scale that works on the dark card is unreadable on the light one (Moderate
+      // measured 1.76:1 in light mode). The per-theme values live in CSS — same problem, and
+      // the same fix, as --accent-text.
+      (m
+        ? '<span class="rw-effort ef-'+m.id+'">'+m.label+'</span>'
+        : '<span class="rw-effort rw-effort-none">Not rated</span>')+
+    '</div>';
+  }).join('');
+  return '<div class="card" style="cursor:pointer" onclick="setView(\'stats\');setStatsTab(\'history\')">'+
+    cardHeader('flame','Recent sessions','<span class="card-hd-act">History →</span>')+
+    rows+
+  '</div>';
 }
 
 // iOS standalone PWAs disable window.prompt(), which is why the old Update button
