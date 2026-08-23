@@ -9181,6 +9181,34 @@ function daysUntil(targetDay,today){
   let diff=(targetDay-nowDay+7)%7;
   return diff===0?'Today! 🎉':'in '+diff+' day'+(diff===1?'':'s');
 }
+// ── Card chrome ───────────────────────────────────────────────────
+// A small line-icon set for card headers, in one visual family with the sidebar's icons
+// (24px grid, currentColor stroke, round caps) — so a card header stops being an emoji sitting
+// a few hundred pixels from a clean icon set. Emoji ignore currentColor, so they can never
+// follow the theme or the accent, and they render as a different picture per OS.
+// Chrome only. Emoji the USER typed (note titles, recipe names, the per-subscription emoji
+// field) are content and are left alone.
+const CARD_ICONS={
+  wallet:'<path d="M17 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6"/><circle cx="16.5" cy="13.5" r="1.1"/>',
+  bank:'<path d="M3 21h18M5 10v11M19 10v11M9.5 10v11M14.5 10v11M4 10h16L12 4z"/>',
+  scale:'<path d="M12 4v16M7 20h10M4 7h16M7 7l-3 6a3 3 0 0 0 6 0zM17 7l-3 6a3 3 0 0 0 6 0z"/>',
+  trophy:'<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H5a2 2 0 0 0 0 4h2M17 6h2a2 2 0 0 1 0 4h-2"/>',
+  check:'<path d="M9 12l2 2 4-4M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/>',
+  note:'<path d="M14 3v5h5M15 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z"/>',
+  pot:'<path d="M5 10h14v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4zM3 10h18M8 10V7a4 4 0 0 1 8 0v3"/>',
+  calendar:'<path d="M8 3v3M16 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>',
+  flame:'<path d="M12 3c3 4 6 5.5 6 9a6 6 0 0 1-12 0c0-2 1-3.5 2.5-5 .3 1.2 1 2 2 2.2C10 7 11 4.6 12 3z"/>'
+};
+function cardIcon(name){
+  const d=CARD_ICONS[name];
+  return d ? '<svg class="card-hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+d+'</svg>' : '';
+}
+// One header for every rebuilt card: icon + label on the left, an optional pill or action on
+// the right. rightHtml is raw so a card can pass either.
+function cardHeader(icon,label,rightHtml){
+  return '<div class="card-hd"><div class="card-hd-l">'+cardIcon(icon)+
+    '<span class="card-label">'+label+'</span></div>'+(rightHtml||'')+'</div>';
+}
 function homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt){
   if(goalCals){
     const pct=Math.min(100,Math.round(kcalTotal/goalCals*100));
@@ -9368,15 +9396,46 @@ function renderHome(){
         '<div class="sessions-bar-row" id="home-sessions-bar">'+mSegs+'</div>'+
       '</div>'+
     '</div>';
+  // ── Weekly budget ──
+  // No longer an accent-gradient hero. It used the same 90%→35% accent gradient, white text and
+  // glow as the session hero, so the two were indistinguishable in peripheral vision — and a
+  // budget readout is not an action the way "start today's session" is. Full accent now means
+  // "press this", and only the session card gets it.
+  // Its colour is SEMANTIC instead: --positive / --warn / --danger on the pill and the bar fill.
+  // That survives the accent being any hue (grey, indigo or bright blue depending on
+  // weather/settings), and green-vs-red answers the question before you read the number.
+  const budGoal=getWeekVarGoal(curWk);
+  const budVarSpent=curWk?weekVarTotal(curWk):0;
+  // The bar tracks VARIABLE spending against the weekly goal, not total spend against income,
+  // because variable spend is the half that accrues day by day and the half still in your
+  // control. Total spend can't be paced — a fixed cost lands in one lump, so a pace marker
+  // against income would read "behind" every week the rent came out.
+  const budHasGoal=budGoal!==null&&budGoal>0;
+  const budVarPct=budHasGoal?budVarSpent/budGoal*100:0;
+  const budBarPct=budHasGoal?Math.min(budVarPct,100):mBudPct;
+  // Days elapsed this week including today (Mon=1 … Sun=7). varGoalDaysLeft() counts days
+  // REMAINING, so elapsed is 8 minus that.
+  const budPacePct=budHasGoal?Math.round((8-varGoalDaysLeft())/7*100):null;
+  const budBehind=budHasGoal&&budVarPct>budPacePct+2;
+  const budOverGoal=budHasGoal&&budVarSpent>budGoal;
+  const budBarCol=(budHasGoal?budOverGoal:mBudOver)?'var(--danger)':budBehind?'#f59e0b':'var(--positive)';
+  const budPillTxt2=mBudOver?'Over budget':budBehind?'Spending fast':'On track';
+  const budPillCls2=mBudOver?' over':budBehind?' warn':'';
+  const budCaption=budHasGoal
+    ? fmtMoney(budVarSpent)+' of '+fmtMoney(budGoal)+' spending goal · '+(budBehind?'ahead of pace':'on pace')
+    : (mBudIncome>0?'Set a weekly spending goal to track pace':'');
   const budgetSnapshot=
     '<div class="card budget-snapshot-card" onclick="setView(\'budget\')" style="cursor:pointer">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'+
-        '<p class="card-label" style="margin:0">WEEKLY BUDGET</p>'+
-        '<span class="budget-snap-pill'+(mBudOver?' over':'')+'" id="home-bud-status">'+(mBudOver?'Over budget':'On track')+'</span>'+
+      cardHeader('wallet','Weekly budget',
+        '<span class="budget-snap-pill'+budPillCls2+'" id="home-bud-status">'+budPillTxt2+'</span>')+
+      '<div><span class="card-fig" id="home-bud-remaining" style="color:'+(mBudOver?'var(--danger)':'var(--text)')+'">'+
+        (mBudRem>=0?'':'-')+fmtMoney(Math.abs(Math.round(mBudRem)))+'</span>'+
+        '<span class="card-fig-u" id="home-bud-label">left of '+fmtMoney(Math.round(mBudIncome))+'</span></div>'+
+      '<div class="card-bar">'+
+        '<div class="card-bar-fill" id="home-bud-bar" style="width:'+budBarPct+'%;background:'+budBarCol+'"></div>'+
+        (budPacePct!==null?'<div class="card-bar-pace" style="left:calc('+budPacePct+'% - 1px)" title="Where you should be today"></div>':'')+
       '</div>'+
-      '<p class="metric-num" id="home-bud-remaining" style="color:#fff;margin:8px 0 2px">'+(mBudRem>=0?'$':'-$')+Math.abs(Math.round(mBudRem))+'</p>'+
-      '<p class="metric-unit" id="home-bud-label">left of $'+Math.round(mBudIncome)+'</p>'+
-      '<div style="height:7px;background:rgba(255,255,255,.25);border-radius:5px;overflow:hidden;margin-top:12px"><div id="home-bud-bar" style="height:100%;border-radius:5px;background:#fff;width:'+mBudPct+'%;transition:width .3s"></div></div>'+
+      (budCaption?'<div class="card-cap">'+budCaption+'</div>':'')+
     '</div>';
 
   // Calorie / overview card

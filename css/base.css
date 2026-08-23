@@ -30,7 +30,9 @@
   --text:#1c1c1e;
   --text-2:rgba(0,0,0,0.45);
   --text-3:rgba(0,0,0,0.35);
-  --text-secondary:rgba(0,0,0,0.45);
+  /* Alias, not a second value. These held identical values in both themes, which is how the
+     app ended up with two near-identical header-label rules pointing at "the same" colour. */
+  --text-secondary:var(--text-2);
   --muted:#8e8e93;
   --border:rgba(0,0,0,0.1);
   --track:rgba(0,0,0,0.08);
@@ -50,7 +52,7 @@
   --text:#ffffff;
   --text-2:rgba(255,255,255,.45);
   --text-3:rgba(255,255,255,.35);
-  --text-secondary:rgba(255,255,255,0.45);
+  --text-secondary:var(--text-2);
   --muted:rgba(255,255,255,.45);
   --border:rgba(255,255,255,.10);
   --track:rgba(255,255,255,.08);

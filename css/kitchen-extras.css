@@ -192,7 +192,45 @@
 /* Step 4 — Typography utilities */
 .date-kicker{font-family:var(--font-ui);font-size:11px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--text-2);margin:0 0 4px}
 .screen-title{font-family:var(--font-ui);font-size:30px;font-weight:800;letter-spacing:-.03em;color:var(--text);margin:0 0 16px}
-.card-label{font-family:var(--font-ui);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2);margin:0 0 6px}
+/* ── Card anatomy ─────────────────────────────────────────────────
+   One vocabulary for building a card, so a new one is assembled from named parts instead of
+   another set of inline styles. Every Home card redesign is built on these.
+   Order down a card: .card-hd → .card-fig → .card-shape → .card-cap → rows.
+   This file loads last, so these win ties against the older per-feature rules. */
+.card-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.card-hd-l{display:flex;align-items:center;gap:7px;min-width:0}
+.card-hd-ico{width:14px;height:14px;flex-shrink:0;color:var(--text-2);stroke-width:2.2}
+/* The right-hand affordance ("Manage →"). --accent-text, not --accent: this is accent-coloured
+   TEXT on the card surface, which is the case --accent is not tuned for. */
+.card-hd-act{font-size:12px;font-weight:700;color:var(--accent-text);cursor:pointer;white-space:nowrap;text-transform:none;letter-spacing:0;background:none;border:none;padding:0;font-family:inherit}
+/* The one primary number. One per card — a card with two competing figures has no hierarchy. */
+.card-fig{font-family:var(--font-num);font-size:32px;font-weight:800;line-height:1;letter-spacing:-.02em;color:var(--text);margin:0}
+.card-fig-sm{font-size:24px}
+.card-fig-u{font-family:var(--font-ui);font-size:13px;font-weight:700;color:var(--text-2);margin-left:6px}
+.card-cap{font-size:12px;font-weight:600;color:var(--muted);margin-top:6px}
+/* The stretch zone. On desktop a card is stretched to its row partner's height; letting the
+   shape absorb that is what stops whitespace pooling at the bottom of short cards. */
+.card-shape{margin-top:12px}
+/* Progress bar with an optional pace marker. Not overflow:hidden — the marker deliberately
+   overhangs the track top and bottom so it reads as a gate rather than as part of the fill. */
+.card-bar{position:relative;height:8px;border-radius:5px;background:var(--track);margin-top:12px}
+.card-bar-fill{height:100%;border-radius:5px;transition:width .3s ease}
+.card-bar-pace{position:absolute;top:-3px;height:14px;width:2px;border-radius:1px;background:var(--text);opacity:.45}
+/* Two-up split with a divider — the .stats-split-card pattern generalised, so cards that show
+   a pair of related figures rhyme with the streak card instead of inventing a layout. */
+.card-split{display:flex;align-items:stretch;gap:14px;margin-top:14px}
+.card-split>div{flex:1;min-width:0}
+.card-split-div{flex:0 0 1px;background:var(--border);align-self:stretch}
+.card-split-l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px}
+.card-split-v{font-family:var(--font-num);font-size:17px;font-weight:800;color:var(--text)}
+/* Canonical card header label. .sec-label keeps its own bottom margin (it is used standalone in
+   ~20 places outside .card-hd) but is otherwise folded into the same type, replacing a second
+   near-identical definition at 600/0.5px/--text-secondary. Sixteen further inline copies of
+   that declaration still exist in js/app.js; new work uses this class. */
+.card-label,.sec-label{font-family:var(--font-ui);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2)}
+.card-label{margin:0 0 6px}
+/* Inside a header row the flex gap already provides the spacing. */
+.card-hd .card-label{margin:0}
 .metric-num{font-family:var(--font-num);font-size:36px;font-weight:700;letter-spacing:-.02em;color:var(--text);line-height:1;margin:0}
 .metric-unit{font-family:var(--font-ui);font-size:13px;font-weight:700;color:var(--text-2)}
 
@@ -228,16 +266,18 @@
 /* Step 7 — Budget snapshot card */
 .budget-snap-pill{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(82,183,136,.14);color:var(--positive)}
 .budget-snap-pill.over{background:rgba(var(--danger-rgb),.14);color:var(--danger)}
+/* Spending faster than the week has elapsed — not over budget yet, so amber rather than red. */
+.budget-snap-pill.warn{background:rgba(245,158,11,.16);color:#f59e0b}
 /* Home Weekly Budget card — full accent gradient hero (matches Today's Session) */
-.card.budget-snapshot-card{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.55) 55%, rgba(var(--accent-rgb),.35));box-shadow:0 16px 40px rgba(var(--accent-rgb),.3);border:none;border-radius:var(--radius-hero);position:relative;overflow:hidden}
+/* Neutral glass, not an accent hero — rationale on budgetSnapshot in js/app.js. It keeps
+   --radius-hero and the roomier padding so it still reads as a significant card; what it gives
+   up is the accent gradient, the white text and the accent glow, which now belong to the
+   session card alone. No background of its own, so it inherits plain .card and picks up the
+   dark-theme glass treatment automatically. */
+.card.budget-snapshot-card{border-radius:var(--radius-hero);padding:20px;position:relative}
 /* Light mode: prevent the gradient from fading into the white page background */
-[data-theme="light"] .card.budget-snapshot-card{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.7) 55%, rgba(var(--accent-rgb),.65))}
-.budget-snapshot-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% -10%, rgba(255,255,255,.12), transparent 55%);pointer-events:none}
-.budget-snapshot-card>*{position:relative;z-index:1}
-.budget-snapshot-card .card-label{color:rgba(255,255,255,.7)}
-.budget-snapshot-card .metric-unit{color:rgba(255,255,255,.8)}
-.budget-snapshot-card .budget-snap-pill{background:rgba(255,255,255,.22);color:#fff}
-.budget-snapshot-card .budget-snap-pill.over{background:rgba(0,0,0,.4);color:#fff}
+/* The white-on-accent overrides that lived here are gone with the gradient — the card's text
+   now uses the ordinary --text / --text-2 tokens like every other Data card. */
 
 /* Step 7b — Home Weather card: an animated "scene" per condition (Apple Weather-ish),
    built the same way as every other animation in this file — plain divs, transform/opacity
