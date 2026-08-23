@@ -9464,27 +9464,51 @@ function renderHome(){
     .map(a=>{
       const dueTxt=acctDueText(a);
       return '<div style="font-size:12px;font-weight:600;color:var(--amber-dark);background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:7px 10px;margin-top:8px">'+
-        '💳 '+_catEscHtml(a.name||'')+': '+fmtMoney(parseFloat(a.statementBalance)||0)+' this statement'+(dueTxt?' · '+dueTxt:'')+'</div>';
+        // Icon rather than 💳: inside an amber alert the stroke inherits the row's amber via
+        // currentColor, which an emoji cannot do.
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;vertical-align:-2px;margin-right:6px" aria-hidden="true">'+
+          '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>'+
+        _catEscHtml(a.name||'')+': '+fmtMoney(parseFloat(a.statementBalance)||0)+' this statement'+(dueTxt?' · '+dueTxt:'')+'</div>';
     }).join('');
+  // ── Net worth & accounts ──
+  // Rebuilt on the shared card anatomy. It was the only Home card with no CSS identity at all —
+  // assembled entirely from inline styles, so it had drifted furthest from everything else and
+  // drifted further with each edit.
+  // Hierarchy is inverted: NET WORTH is the primary figure, not total assets. Assets is the
+  // bigger number but not the true one — $2,991 of assets against $2,812 of debts is a $179
+  // position, and leading with the flattering figure told you the wrong thing at a glance.
+  // The split below it is three-way when a Savers account exists, because "savers" money is
+  // ringfenced and is deliberately excluded from the debt-payoff position (see
+  // accountsPayoffPosition) — so folding it into one Assets number hides the distinction the
+  // account flag exists to make. With no savers account it collapses to two cells rather than
+  // rendering a dead $0 column.
+  const _savers=accountsSaverTotal();
+  const _spendable=_assets-_savers;
+  const _splitCell=(label,val,col)=>'<div><div class="card-split-l">'+label+'</div>'+
+    '<div class="card-split-v"'+(col?' style="color:'+col+'"':'')+'>'+fmtMoney(val)+'</div></div>';
+  const _div='<div class="card-split-div"></div>';
+  const _splitHtml=_savers>0
+    ? _splitCell('Spendable',_spendable)+_div+_splitCell('Savers',_savers)+_div+_splitCell('Debts',_debts,'var(--danger)')
+    : _splitCell('Assets',_assets)+_div+_splitCell('Debts',_debts,'var(--danger)');
   const balanceRow=
-    '<div class="card home-networth-card" style="padding:0;overflow:hidden;margin-bottom:12px">'+
-      '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center">'+
-        '<span>💰 Total Assets</span>'+
-        '<span onclick="openAccounts()" style="cursor:pointer;text-transform:none;letter-spacing:0;font-weight:700;color:var(--accent-text)">Manage Accounts →</span>'+
-      '</div>'+
-      '<div style="padding:12px 16px 16px">'+
-        (accounts.length
-          ? '<div style="font-family:var(--font-num);font-size:30px;font-weight:800;line-height:1;color:var(--text)">'+fmtMoney(_assets)+'</div>'+
-            '<div style="font-size:12px;color:var(--muted);margin-top:6px">Net worth '+fmtMoney(_nw)+' · '+fmtMoney(_debts)+' debts</div>'+
-            // Expand/collapse the per-account list — same inline toggle idiom as the
-            // Recent-workout card; no re-render, so it can't lose scroll position.
-            '<div onclick="var d=this.nextElementSibling;var open=d.style.display===\'block\';d.style.display=open?\'none\':\'block\';this.querySelector(\'span\').textContent=open?\'▾\':\'▴\'" '+
-              'style="cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);margin-top:10px;display:flex;justify-content:space-between;align-items:center">'+
-              accounts.length+' account'+(accounts.length===1?'':'s')+' <span>▾</span></div>'+
-            '<div class="home-accts-list" style="display:none;margin-top:4px">'+_acctRows+'</div>'+
-            _stmtRows
-          : '<div onclick="openAccounts()" style="cursor:pointer;font-size:14px;color:var(--muted)">Tap to add your savings, credit card, or any balance to track net worth.</div>')+
-      '</div>'+
+    '<div class="card home-networth-card">'+
+      cardHeader('bank','Accounts',
+        '<span class="card-hd-act" onclick="event.stopPropagation();openAccounts()">Manage →</span>')+
+      (accounts.length
+        ? '<div><span class="card-fig"'+(_nw<0?' style="color:var(--danger)"':'')+'>'+
+            (_nw<0?'-':'')+fmtMoney(Math.abs(_nw))+'</span>'+
+            '<span class="card-fig-u">net worth</span></div>'+
+          '<div class="card-split">'+_splitHtml+'</div>'+
+          // The statement alert moved ABOVE the account list: it is the actionable part of the
+          // card and it was sitting below a collapsed section, i.e. last.
+          _stmtRows+
+          // Expand/collapse the per-account list — same inline toggle idiom as the
+          // Recent-workout card; no re-render, so it can't lose scroll position.
+          '<div onclick="event.stopPropagation();var d=this.nextElementSibling;var open=d.style.display===\'block\';d.style.display=open?\'none\':\'block\';this.querySelector(\'span\').textContent=open?\'▾\':\'▴\'" '+
+            'style="cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);margin-top:12px;display:flex;justify-content:space-between;align-items:center">'+
+            accounts.length+' account'+(accounts.length===1?'':'s')+' <span>▾</span></div>'+
+          '<div class="home-accts-list" style="display:none;margin-top:4px">'+_acctRows+'</div>'
+        : '<div onclick="openAccounts()" style="cursor:pointer;font-size:14px;color:var(--muted)">Tap to add your savings, credit card, or any balance to track net worth.</div>')+
     '</div>';
 
   // Quick-info tiles (de-duplicated: no streak/next-workout — those live in the cards above)
