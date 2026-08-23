@@ -3,7 +3,7 @@
 // cache NAME changes — a deploy with the same name reaches nobody who already has the app on
 // their home screen. v203: the card-system pass (shared card anatomy, --accent-text, new Home
 // cards, Kitchen in the bottom nav).
-const CACHE_NAME = 'daily-v203';
+const CACHE_NAME = 'daily-v204';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
@@ -54,7 +54,12 @@ self.addEventListener('fetch', event => {
 
   if (isAppShell) {
     event.respondWith(
-      fetch(event.request).then(response => {
+      // cache:'no-cache' forces a revalidation against the server. A plain fetch() here uses the
+      // DEFAULT cache mode, which the browser may satisfy from its own HTTP cache — so
+      // "network-first" was still capable of returning a stale app.js, and a deployed fix could
+      // sit unseen behind a disk-cached copy. This asks the server every time and falls back to
+      // the SW cache only when genuinely offline.
+      fetch(new Request(event.request.url, {cache: 'no-cache', credentials: 'same-origin'})).then(response => {
         if (response && response.status === 200 && response.type !== 'opaque') {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));

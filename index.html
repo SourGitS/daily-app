@@ -371,7 +371,6 @@
           </div>
           <div class="kit-detail-col" id="kit-detail-col"></div>
         </div>
-        <button class="kit-fab" onclick="kitOpenForm()" aria-label="Add recipe">+</button>
       </div>
 
       <div id="kit-shopping" class="kit-pane hidden">
@@ -886,6 +885,13 @@
 
 <!-- Bottom nav: kept a direct child of <body> (outside #app) so position:fixed pins it
      to the visual viewport on iOS PWAs instead of a 100dvh flex ancestor -->
+<!-- Kitchen's floating "+" lives OUTSIDE #swipe-deck. position:fixed resolves against the
+     nearest ancestor with a transform / will-change:transform, and the deck has both (it is the
+     element the swipe animates), so a fixed element inside any panel is positioned against the
+     400%-wide deck instead of the viewport — this button measured left:1428px, off-screen, once
+     Kitchen moved into the deck. Its visibility is driven by updateKitFab(). -->
+<button class="kit-fab" id="kit-fab" onclick="kitOpenForm()" aria-label="Add recipe" style="display:none">+</button>
+
 <nav id="bottom-nav">
   <span id="nav-pill"></span>
   <span id="nav-indicator" aria-hidden="true"></span>

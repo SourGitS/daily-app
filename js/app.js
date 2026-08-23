@@ -1582,6 +1582,7 @@ function setView(v, direction, opts){
   document.querySelectorAll('#app-main > section').forEach(el=>el.classList.add('hidden'));
   if(!isSwipe){ const incoming=document.getElementById('view-'+v); if(incoming) incoming.classList.remove('hidden'); }
   document.querySelectorAll('.swipe-panel').forEach(p=>p.classList.toggle('deck-active', p.id===('view-'+v)));
+  if(typeof updateKitFab==='function') updateKitFab();   // hide the "+" when leaving Kitchen
   // Move the deck to the target panel — unless the gesture already positioned it (fromSwipe).
   if(isSwipe && !opts.fromSwipe) setDeckPosition(swipeIdx, prev!==v);
   else if(isSwipe) deckIdx=swipeIdx;
@@ -11716,6 +11717,15 @@ function kitSetTab(tab){
   if(tab==='shopping') kitShopRender();
   else if(typeof kitShopRenderAddBar==='function') kitShopRenderAddBar(false);
   if(tab==='pantry') kitPantryRender();
+  updateKitFab();
+}
+// The "+" is only meaningful on the Recipes sub-tab of the Kitchen view. It used to be a child
+// of #kit-recipes, so the pane's own .hidden did this; now that it has to live outside the
+// swipe deck (see index.html) its visibility is explicit.
+function updateKitFab(){
+  const fab=document.getElementById('kit-fab'); if(!fab) return;
+  const show = S.view==='kitchen' && (kitState&&kitState.tab==='recipes');
+  fab.style.display = show ? 'flex' : 'none';
 }
 function kitOnSearch(v){ kitState.search=v||''; kitRenderList(); }
 function kitSetCat(c){ kitState.cat=c; kitRenderList(); }
