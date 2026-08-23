@@ -8520,66 +8520,67 @@ function refreshHabitsUI(){
     c.style.opacity=(doneN===n&&n>0)?'1':'0.75';
   }
 }
+// ── Week in review ────────────────────────────────────────────────
+// Rebuilt around DELTAS, because as a snapshot this card was almost entirely duplicate. Its
+// 2×2 grid showed Workouts (the same distinct-session-dates count the streak card already
+// computes), Budget (the same leftover as the budget card), Cals today (the same total as the
+// calorie ring) and Weight Δ — and Weight Δ, its one unique cell, is now covered properly by
+// the Weight & Goal card. Three of four cells were repeating a number from another card two
+// rows away, which is why Home felt busy without feeling informative.
+// A delta is not a duplicate: "4 workouts" is already on screen, "+1 vs last week" is not.
+// The habits stats and 7-day grid moved to the habits card, where they describe the thing
+// they belong to.
 function buildWeekSummaryCard(){
   const {mondayStr,sundayStr}=getWeekBounds();
-  const workoutDays=new Set(S.sessions.filter(s=>s.date>=mondayStr&&s.date<=sundayStr).map(s=>s.date)).size;
-  // A tile with nothing to show says WHY, at label size. A bare em dash at figure size reads
-  // as a rendering failure rather than a state, and being 18px it pulls the eye toward the
-  // emptiest thing in the card. Same idea as the muted "No weight logged this week" line in
-  // the Body stats view, shortened to fit a 2-up tile.
-  const _statEmpty=txt=>'<span style="font-size:13px;font-weight:600;color:var(--muted)">'+txt+'</span>';
-  // Budget
-  const bd=budgetData[mondayStr];
-  let budHTML=_statEmpty('No budget yet');
-  if(bd){
-    const inc=weekIncome(bd);
-    if(inc>0){
-      const left=weekLeftover(bd);
-      const col=left>=0?'var(--success)':'var(--danger)';
-      const pillCls=left>=50?'good':left>=0?'warn':'over';
-      const pillTxt=left>=50?'On track':left>=0?'Tight':'Over';
-      budHTML='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
-        +'<span style="font-size:18px;font-weight:800;color:'+col+'">'+(left>=0?'+$':'-$')+Math.abs(left).toFixed(0)+'</span>'
-        +'<span class="status-pill '+pillCls+'" style="font-size:10px;padding:2px 7px">'+pillTxt+'</span>'
-        +'</div>';
-    }
-  }
-  // Calories
-  const cg=calcGoalCals();
-  const goalCals=cg?(cg.goal==='cut'?cg.cut:cg.goal==='bulk'?cg.bulk:cg.maintain):null;
-  const kcalTotal=S.dailyLog.entries.reduce((a,e)=>a+e.kcal,0);
-  const calHTML=goalCals
-    ?'<span style="font-size:18px;font-weight:800;color:'+(kcalTotal>goalCals?'var(--danger)':'var(--text)')+'">'+kcalTotal+'</span>'
-     +'<span style="font-size:11px;color:var(--muted);margin-left:3px">/ '+goalCals+'</span>'
-    :_statEmpty('Set a calorie goal');
-  // Weight
-  const weekWeights=S.weights.filter(w=>w.date>=mondayStr&&w.date<=sundayStr).sort((a,b)=>a.date<b.date?-1:1);
-  // Needs two weigh-ins in the week to have a delta at all, so say that rather than showing
-  // an empty figure to someone who has already logged once and expects to see something.
-  let weightHTML=_statEmpty(weekWeights.length===1?'Need 1 more weigh-in':'No weigh-ins yet');
-  if(weekWeights.length>=2){
-    const chg=+(weekWeights[weekWeights.length-1].weight-weekWeights[0].weight).toFixed(1);
-    const col=chg<0?'var(--success)':chg>0?'var(--danger)':'var(--muted)';
-    weightHTML='<span style="font-size:18px;font-weight:800;color:'+col+'">'+(chg>0?'+':'')+chg+'<span style="font-size:12px;margin-left:1px">kg</span></span>';
-  }
-  return '<div class="card" style="padding:0;overflow:hidden">'
-    +'<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center">'
-    +'<span>📋 Weekly review</span>'
-    +'<button onclick="openWeekReviewModal()" style="font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;border:1.5px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">Full review</button>'
-    +'</div>'
-    +'<div style="padding:14px 16px">'
-    +'<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px">'
-    +'<div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Workouts</div>'
-    +'<span style="font-size:18px;font-weight:800">'+workoutDays+'</span><span style="font-size:11px;color:var(--muted);margin-left:3px">/ 6 days</span></div>'
-    +'<div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Budget</div>'+budHTML+'</div>'
-    +'<div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Cals today</div>'+calHTML+'</div>'
-    +'<div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Weight Δ</div>'+weightHTML+'</div>'
-    +'</div>'
-    +'<div style="border-top:1px solid var(--border);padding-top:12px">'
-    +'<div id="habits-week-stats" style="margin-bottom:8px">'+buildHabitsWeekStats()+'</div>'
-    +'<div id="habits-week-grid" style="display:flex;gap:4px">'+buildHabitsWeekGrid()+'</div>'
-    +'</div>'
-    +'</div>'
+  const prevMon=getMondayOf(-1);
+  const prevMonStr=weekKey(prevMon);
+  const prevSun=new Date(prevMon); prevSun.setDate(prevMon.getDate()+6);
+  const prevSunStr=dateStr(prevSun);
+  const inRange=(d,a,b)=>d>=a&&d<=b;
+  // Workouts: distinct days trained, this week vs last.
+  const wNow=new Set(S.sessions.filter(s=>inRange(s.date,mondayStr,sundayStr)).map(s=>s.date)).size;
+  const wPrev=new Set(S.sessions.filter(s=>inRange(s.date,prevMonStr,prevSunStr)).map(s=>s.date)).size;
+  // Spending: total outgoings for each week, from the same accessor the Budget tab uses.
+  const sNow=budgetData[mondayStr]?weekSpending(budgetData[mondayStr]):null;
+  const sPrev=budgetData[prevMonStr]?weekSpending(budgetData[prevMonStr]):null;
+  // Calories: daily average across the days actually logged in each week. calorieHistory is a
+  // flat {date: total} map, so this is a read — no new tracking.
+  const avgCals=(a,b)=>{
+    const vals=Object.keys(calorieHistory||{}).filter(d=>inRange(d,a,b))
+      .map(d=>parseFloat(calorieHistory[d])||0).filter(v=>v>0);
+    return vals.length?Math.round(vals.reduce((x,y)=>x+y,0)/vals.length):null;
+  };
+  const cNow=avgCals(mondayStr,sundayStr), cPrev=avgCals(prevMonStr,prevSunStr);
+  // A delta chip is only honest when there is a previous week to compare against — otherwise
+  // it silently treats "no data last week" as zero and reports a fake improvement.
+  const chip=(now,prev,opts)=>{
+    const o=opts||{};
+    if(now==null||prev==null) return '<span class="wr-chip wr-chip-none">no last week</span>';
+    const d=+(now-prev).toFixed(o.dp||0);
+    if(!d) return '<span class="wr-chip wr-chip-none">same</span>';
+    // neutral: the direction has no good/bad reading, so the chip stays grey and just reports
+    // the movement. lowerIsBetter otherwise flips which way is green — more workouts is good,
+    // more spend is not.
+    const cls=o.neutral?'wr-chip-flat':((o.lowerIsBetter?d<0:d>0)?'wr-chip-up':'wr-chip-down');
+    return '<span class="wr-chip '+cls+'">'+
+      (d>0?'+':'−')+(o.money?fmtMoney(Math.abs(d)):Math.abs(d))+'</span>';
+  };
+  const row=(label,valHtml,chipHtml)=>
+    '<div class="wr-row"><span class="wr-row-l">'+label+'</span>'+
+    '<span class="wr-row-v">'+valHtml+'</span>'+chipHtml+'</div>';
+  const dash='<span class="wr-row-none">—</span>';
+  return '<div class="card">'
+    +cardHeader('calendar','Week in review',
+       '<button class="card-hd-act" onclick="event.stopPropagation();openWeekReviewModal()">Full review →</button>')
+    +row('Workouts', wNow+'<span class="wr-row-u">days</span>', chip(wNow,wPrev))
+    +row('Spending', sNow==null?dash:fmtMoney(Math.round(sNow)), chip(sNow==null?null:Math.round(sNow), sPrev==null?null:Math.round(sPrev), {money:true,lowerIsBetter:true}))
+    // Whether eating more is better depends entirely on the goal, so read it rather than
+    // assuming: cutting wants the number down, bulking wants it up, and maintaining has no
+    // preferred direction at all (grey chip, movement reported without a verdict). Painting
+    // "+257 kcal" green for someone on a cut would be exactly backwards.
+    +row('Avg calories', cNow==null?dash:cNow+'<span class="wr-row-u">kcal/day</span>',
+        chip(cNow,cPrev,(()=>{ const g=(calcGoalCals()||{}).goal;
+          return g==='cut'?{lowerIsBetter:true}:g==='bulk'?{}:{neutral:true}; })()))
     +'</div>';
 }
 // ── Weight & goal ─────────────────────────────────────────────────
@@ -8656,6 +8657,16 @@ function buildTodayHabitsCard(){
     +'</div>'
     +'<div style="padding:14px 16px">'
     +'<div id="habits-today-list">'+buildTodayHabitsList()+'</div>'
+    // The week stats + 7-day grid moved here from the Week in Review card, where they were
+    // the habits half of a card that also duplicated three other cards. A habits card showing
+    // only today has no memory — the grid is what turns "3/5 today" into "and here's the week",
+    // and it belongs with the habits it describes.
+    +(habitsData.length
+      ? '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">'
+        +'<div id="habits-week-stats" style="margin-bottom:8px">'+buildHabitsWeekStats()+'</div>'
+        +'<div id="habits-week-grid" style="display:flex;gap:4px">'+buildHabitsWeekGrid()+'</div>'
+      +'</div>'
+      : '')
     +'</div>'
     +'</div>';
 }

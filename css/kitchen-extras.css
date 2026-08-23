@@ -215,6 +215,22 @@
    .card-shape a real stretch zone: on desktop a short card stretched to its row partner's
    height puts the slack into the shape rather than pooling it as whitespace. */
 .card-spark{display:block;width:100%;height:40px;min-height:34px;flex:1 1 auto;overflow:visible}
+/* ── Week in review rows ──
+   label · value · delta chip. The value is font-num so the three figures align optically down
+   the card even though they are different magnitudes. */
+.wr-row{display:flex;align-items:baseline;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+.wr-row:last-child{border-bottom:none;padding-bottom:0}
+.wr-row-l{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text-2)}
+.wr-row-v{font-family:var(--font-num);font-size:17px;font-weight:800;color:var(--text)}
+.wr-row-u{font-family:var(--font-ui);font-size:11px;font-weight:600;color:var(--muted);margin-left:4px}
+.wr-row-none{font-family:var(--font-ui);font-size:13px;font-weight:600;color:var(--muted)}
+.wr-chip{flex-shrink:0;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;font-family:var(--font-num);min-width:52px;text-align:center}
+/* Semantic, not accent: better/worse has to survive the accent being any hue. */
+.wr-chip-up{background:rgba(82,183,136,.15);color:var(--positive)}
+.wr-chip-down{background:rgba(var(--danger-rgb),.14);color:var(--danger)}
+.wr-chip-none{background:var(--track);color:var(--muted);font-family:var(--font-ui);font-size:10px;font-weight:600}
+/* Moved, but with no good/bad reading — see the calories row in buildWeekSummaryCard. */
+.wr-chip-flat{background:var(--track);color:var(--text-2)}
 /* Progress bar with an optional pace marker. Not overflow:hidden — the marker deliberately
    overhangs the track top and bottom so it reads as a gate rather than as part of the fill. */
 .card-bar{position:relative;height:8px;border-radius:5px;background:var(--track);margin-top:12px}
