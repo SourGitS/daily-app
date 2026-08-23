@@ -9626,10 +9626,9 @@ const HOME_WIDGETS=[
   {id:'notes',    label:'Notes',                tab:'Notes', preview:hlPrevNotes},
 ];
 const HOME_DEFAULT_ORDER=['session','weather','streak','calories','review','habits','budget','balance','tiles','notes','recent'];
-// Which cards span both desktop grid columns. User-editable per card (Settings → Home Layout);
-// this is only the starting point, and matches how session/budget/weather used to be hardcoded.
-// Which cards span both desktop columns by default. Only the session hero: it is the one card
-// with enough internal content to earn the width (label, play button, 40px title, meta,
+// Which cards span the full desktop grid row by default. User-editable per card
+// (Settings → Home Layout); this is only the starting point. Only the session hero: it is the
+// one card with enough internal content to earn the width (label, play button, 40px title, meta,
 // progress row and track) and the one whose job is to be ranked first.
 // Weather and budget were seeded wide too, which stacked three full-width bands before the
 // grid began and, since all three are accent-toned, put the signature colour on three
