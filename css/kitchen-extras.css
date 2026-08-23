@@ -299,8 +299,12 @@
 /* Two-up split with a divider — the .stats-split-card pattern generalised, so cards that show
    a pair of related figures rhyme with the streak card instead of inventing a layout. */
 .card-split{display:flex;align-items:stretch;gap:14px;margin-top:14px}
-.card-split>div{flex:1;min-width:0}
-.card-split-div{flex:0 0 1px;background:var(--border);align-self:stretch}
+/* :not(.card-split-div), and the divider re-scoped under .card-split, because the plain
+   `.card-split>div` rule (0,1,1) outranked a bare `.card-split-div` (0,1,0) — so the dividers
+   inherited flex:1 and rendered as 51x38px grey BLOCKS taking an equal share of the row
+   instead of 1px hairlines. */
+.card-split>div:not(.card-split-div){flex:1;min-width:0}
+.card-split>.card-split-div{flex:0 0 1px;width:1px;background:var(--border);align-self:stretch}
 .card-split-l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px}
 .card-split-v{font-family:var(--font-num);font-size:17px;font-weight:800;color:var(--text)}
 /* Canonical card header label. .sec-label keeps its own bottom margin (it is used standalone in

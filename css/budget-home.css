@@ -372,13 +372,17 @@
      direct children. `#app-main>section` reaches only the overlay views (Kitchen, Settings,
      Plans, Notes). Capping one and not the other is how the two drifted apart in the first
      place. #app-main-scoped so this outranks the plain .swipe-panel padding in layout.css. */
-  #app-main>section,#app-main .swipe-panel{width:100%;max-width:1180px;margin:0 auto;padding:40px 32px}
-  /* Home is capped wider than the rest because it is the only screen that can USE the width:
-     its grid adds columns, so extra space becomes more cards per row. The linear views
-     (Budget, Log, Notes, Settings) have nothing to densify with, so a wider cap there would
-     just go back to stretching single rows across the window.
-     Two IDs so this outranks #app-main .swipe-panel above (1 id + 1 class). */
-  #app-main #view-home{max-width:1760px}
+  /* ONE cap for every view. It was 1180 here with a 1760 override for Home only, on the theory
+     that Home was the one screen with a grid to densify — wrong. Kitchen is a master/detail
+     split, Budget is a two-column grid, Stats is charts, and all of them were being letterboxed
+     at 1180 with dead margin either side on a wide screen while Home used 1760. That
+     inconsistency was the "squished" complaint. */
+  /* 2200, not 1760. Home derives its column count from the width available, so extra space
+     there becomes a fourth column rather than wider cards — and the linear tabs were reading
+     as letterboxed rather than as deliberately measured. At 2560 this leaves ~50px of margin
+     instead of 270. */
+  #app-main>section,#app-main .swipe-panel{width:100%;max-width:2200px;margin:0 auto;padding:40px 32px}
+
   #desktop-sidebar{width:160px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);color:var(--text);display:flex;flex-direction:column;padding:16px 0;height:100vh;position:sticky;top:0}
   /* Real wordmark image (see layout.css) — theme-paired, same as the header/side-menu.
      Inset rather than centred or flush-left. 54px is the midpoint between the two, and it is
@@ -446,7 +450,20 @@
      visual order keeps matching the DOM and drag-to-reorder stays saveable (see saveHomeOrder,
      and the two reverted masonry attempts noted below). column-count fills column-BY-column,
      which is what broke ordering both times. */
-  #view-home .home-grid-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(480px,1fr));gap:12px 14px;align-items:stretch}
+  /* align-items:START, not stretch. Stretching every card to its tallest row partner is where
+     the empty space inside Home cards came from: a 3-row card next to a tall one got padded
+     out to match it, so card height stopped meaning anything and "big" no longer implied
+     "important" — which is the opposite of what card size should say.
+     This was tried the other way once and reverted, because a short card beside a tall one
+     leaves a visible step at the bottom of the row. That trade is being taken deliberately now:
+     a ragged bottom edge between cards reads as normal layout, whereas dead space INSIDE a
+     bordered card reads as a broken card. Empty space between cards is designed; empty space
+     inside one is a bug. */
+  /* 440 rather than 480 as the column minimum. At 480 a 1440px window sat at two 681px columns
+     — wider than any card needs — because a third would have required 1468px. 440 lets that
+     width break into three ~449px columns instead, which is closer to the ~480 the cards were
+     designed at and puts more on screen. */
+  #view-home .home-grid-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px 14px;align-items:start}
   #view-home .home-grid-cols > .home-card{min-width:0;display:flex;flex-direction:column}
   /* The wrapper is what the grid stretches; without this the inner .card keeps its natural
      height and the gap simply reappears inside the wrapper.
@@ -454,7 +471,7 @@
      renderHome (the quick-tiles .home-grid, the hero and net-worth cards), and an inline
      style outranks any selector. Mobile still needs that margin for row spacing, so it is
      overridden only here, inside the desktop grid, where row-gap does the same job. */
-  #view-home .home-grid-cols > .home-card > *{flex:1 1 auto;margin-bottom:0 !important;
+  #view-home .home-grid-cols > .home-card > *{margin-bottom:0 !important;
     display:flex;flex-direction:column}
   /* Centre only the BODY of a stretched card, never the header. justify-content:center moved
      every child, so each card's title drifted down by a different amount depending on how much
@@ -471,7 +488,8 @@
      Multi-row cards now top-align and let the slack fall to the bottom of the card, which is
      the outcome the stretch was after anyway: leftover space inside the shorter card, where it
      looks intentional. */
-  #view-home .home-grid-cols > .home-card > * > *:nth-child(2):last-child{margin-top:auto;margin-bottom:auto}
+  /* The single-body centring rule that went with align-items:stretch is gone with it — with
+     cards sized to their content there is no slack left to distribute. */
   /* Per-card preference now (Settings → Home Layout), not a hardcoded set of card ids. */
   #view-home .home-card-wide{grid-column:1 / -1}
   /* Cards that grow with your data are capped so one long card can't stretch its row partner
@@ -625,7 +643,9 @@
      most of a 1440px screen empty and made scanning for a low item a long scroll. Only the
      items split — the sticky category headings and the per-category add row stay full width,
      so the grouping still reads top to bottom. */
-  #kitpantry .kitpantry-cat-items{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;align-items:start}
+  /* auto-fit rather than a hardcoded 2, so the extra width from the raised cap becomes more
+     columns of pantry items instead of two very wide rows. */
+  #kitpantry .kitpantry-cat-items{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0 10px;align-items:start}
 
   #kit-recipes .kit-cols{display:flex;gap:20px;align-items:flex-start}
   #kit-recipes .kit-list-col{width:40%;flex-shrink:0}
