@@ -252,6 +252,18 @@
    can wrap to two lines without shoving the row around. */
 .mt-val-sm{font-family:var(--font-ui);font-size:14px;font-weight:700;line-height:1.2}
 .mt-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:4px}
+/* ── Personal record rows ──
+   Name left, value hard right in font-num so the figures form a column regardless of how long
+   the exercise names are. */
+.pr-row{display:flex;align-items:baseline;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)}
+.pr-row:last-child{border-bottom:none;padding-bottom:0}
+.pr-name{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pr-val{font-family:var(--font-num);font-size:15px;font-weight:800;color:var(--text);flex-shrink:0}
+.pr-new{flex-shrink:0;font-size:9px;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:999px;background:rgba(82,183,136,.16);color:var(--positive)}
+/* ── Kitchen cook-again suggestion ──
+   A name, not a figure, so UI type rather than font-num — and it wraps rather than truncating,
+   because a recipe you can't read the end of is useless as a suggestion. */
+.kit-suggest{font-size:19px;font-weight:800;line-height:1.2;color:var(--text);letter-spacing:-.01em}
 /* Progress bar with an optional pace marker. Not overflow:hidden — the marker deliberately
    overhangs the track top and bottom so it reads as a gate rather than as part of the fill. */
 .card-bar{position:relative;height:8px;border-radius:5px;background:var(--track);margin-top:12px}

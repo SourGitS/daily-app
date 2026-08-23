@@ -8642,6 +8642,124 @@ function buildWeightGoalCard(){
     (capParts.length?'<div class="card-cap">'+capParts.join(' · ')+'</div>':'')+
   '</div>';
 }
+// ── Kitchen snapshot ──────────────────────────────────────────────
+// Kitchen was an entire tab — recipes, shopping list, pantry — with no presence on Home at
+// all, which is why Home read as a fitness-and-money app that happened to have a Kitchen tab.
+// Everything here is a read of data already stored and synced: recipes carry `favourite` and a
+// `lastCooked` timestamp (stored precisely so something could reason about rotation, and
+// nothing did), kitShopComputeItems() already builds the shopping list, and kitPantryNeeds()
+// already knows what is low or out.
+// ── Personal records ──────────────────────────────────────────────
+// getPR(name) returns a bare maximum and nothing else — no reps, no date, no previous best —
+// and it rescans every session, exercise and set on each call, so asking it for a Home card's
+// worth of exercises is O(sessions × exercises × sets) per exercise, every render.
+// This walks the history ONCE, in date order, and records a PR *event* whenever a working set
+// beats the running best for that exercise. One pass gives everything the card needs: what was
+// lifted, for how many reps, when, and what it beat.
+// Warmup sets are excluded (s.type==='warmup'); getPR counts them, which is a latent bug there
+// — harmless only because warmups are usually lighter.
+function computePRHistory(){
+  const best={}, events=[];
+  [...(S.sessions||[])].sort((a,b)=>a.date<b.date?-1:1).forEach(s=>{
+    (s.exercises||[]).forEach(ex=>{
+      if(!ex||!ex.name) return;
+      // Timed exercises are ranked by seconds (stored in reps), matching getPR/getPoints.
+      const timed=(typeof _secsNames!=='undefined')&&_secsNames.has(ex.name);
+      (ex.sets||[]).forEach(set=>{
+        if(!set||set.type==='warmup') return;
+        const val=parseFloat(timed?set.reps:set.weight);
+        if(isNaN(val)||val<=0) return;
+        const prev=best[ex.name];
+        if(prev===undefined||val>prev){
+          events.push({name:ex.name, val, reps:parseFloat(set.reps)||null,
+                       date:s.date, prev:prev===undefined?null:prev, timed});
+          best[ex.name]=val;
+        }
+      });
+    });
+  });
+  return events;
+}
+// Every other training card on Home is about compliance — did you train, how many days, what
+// percent done. None of them are about getting stronger, which is the reason to train at all.
+function buildPRCard(){
+  const ev=computePRHistory();
+  const open='onclick="setView(\'stats\');setStatsTab(\'training\')"';
+  if(!ev.length){
+    return '<div class="card" '+open+' style="cursor:pointer">'+
+      cardHeader('trophy','Personal records')+
+      '<div style="font-size:14px;color:var(--muted)">Your first logged session sets them all.</div>'+
+    '</div>';
+  }
+  // Most recent first, one row per exercise so a single lift that broke its record three weeks
+  // running doesn't fill the card.
+  const seen=new Set(), rows=[];
+  for(let i=ev.length-1;i>=0&&rows.length<3;i--){
+    const e=ev[i];
+    if(seen.has(e.name)) continue;
+    seen.add(e.name);
+    const days=Math.floor((localMidnight(getLocalDate())-localMidnight(e.date))/864e5);
+    const val=e.timed ? e.val+'s' : e.val+' kg'+(e.reps?' × '+e.reps:'');
+    rows.push('<div class="pr-row">'+
+      '<span class="pr-name">'+_catEscHtml(e.name)+'</span>'+
+      (days<=14?'<span class="pr-new">NEW</span>':'')+
+      '<span class="pr-val">'+val+'</span>'+
+    '</div>');
+  }
+  return '<div class="card" '+open+' style="cursor:pointer">'+
+    cardHeader('trophy','Personal records','<span class="card-hd-act">All →</span>')+
+    rows.join('')+
+  '</div>';
+}
+function buildKitchenCard(){
+  const recipes=(typeof kitRecipes!=='undefined'&&Array.isArray(kitRecipes))?kitRecipes:[];
+  const open='onclick="setView(\'kitchen\')"';
+  if(!recipes.length){
+    return '<div class="card" '+open+' style="cursor:pointer">'+
+      cardHeader('pot','Kitchen')+
+      '<div style="font-size:14px;color:var(--muted)">Add a recipe to get cook-again suggestions.</div>'+
+    '</div>';
+  }
+  // Cook again: the favourite you have left longest. Favourites first because a suggestion you
+  // have already said you like is worth more than one picked purely by staleness; never-cooked
+  // recipes sort first inside each group (lastCooked 0), which is the right nudge for something
+  // you saved and never made.
+  const byStale=(a,b)=>(a.lastCooked||0)-(b.lastCooked||0);
+  const favs=recipes.filter(r=>r.favourite).sort(byStale);
+  const pick=(favs.length?favs:[...recipes].sort(byStale))[0];
+  const days=pick.lastCooked?Math.floor((Date.now()-pick.lastCooked)/864e5):null;
+  const ago=days===null?'never cooked':days===0?'cooked today':days===1?'cooked yesterday'
+    :days<14?'cooked '+days+' days ago':'cooked '+Math.floor(days/7)+' weeks ago';
+  const meta=[pick.category?pick.category[0].toUpperCase()+pick.category.slice(1):'',
+              pick.servings?pick.servings+' servings':'', ago].filter(Boolean).join(' · ');
+  // Shopping + pantry, as cells — omitted individually when there is nothing to say, so a
+  // clear list doesn't render a "0 left" that looks like a failure.
+  const cells=[];
+  try{
+    if(typeof kitShopComputeItems==='function'){
+      const map=kitShopComputeItems();
+      const left=Object.keys(map).filter(k=>!kitShopChecked[k]).length;
+      if(Object.keys(map).length) cells.push({l:'Shopping',v:left?left+' left':'All done',
+        c:left?'':'var(--positive)'});
+    }
+  }catch(e){}
+  try{
+    if(typeof kitPantryNeeds==='function'){
+      const n=kitPantryNeeds().length;
+      if(n) cells.push({l:'Pantry',v:n+(n===1?' item low':' items low'),c:'#f59e0b'});
+    }
+  }catch(e){}
+  const splitHtml=cells.map((c,i)=>
+    (i?'<div class="card-split-div"></div>':'')+
+    '<div><div class="card-split-l">'+c.l+'</div>'+
+    '<div class="card-split-v"'+(c.c?' style="color:'+c.c+'"':'')+'>'+c.v+'</div></div>').join('');
+  return '<div class="card" '+open+' style="cursor:pointer">'+
+    cardHeader('pot','Kitchen','<span class="card-hd-act">Open →</span>')+
+    '<div class="kit-suggest">'+_catEscHtml(pick.name||'Untitled')+'</div>'+
+    '<div class="card-cap" style="margin-top:4px">'+meta+'</div>'+
+    (splitHtml?'<div class="card-split">'+splitHtml+'</div>':'')+
+  '</div>';
+}
 function buildTodayHabitsCard(){
   const today=getLocalDate();
   const doneCount=(habitsLog[today]||[]).length;
@@ -9673,6 +9791,8 @@ function renderHome(){
     balance: balanceRow,
     tiles: quickTiles,
     weight: buildWeightGoalCard(),
+    prs: buildPRCard(),
+    kitchen: buildKitchenCard(),
     notes: buildHomeNotesCard(),
     recent: buildHomeRecentCard()
   };
@@ -9819,6 +9939,27 @@ function hlPrevBalance(){
     '<div style="display:flex;gap:6px;margin-top:5px">'+cell('Assets','$9,370')+cell('Debts','$1,340')+'</div>'+
   '</div>';
 }
+function hlPrevPRs(){
+  const r=(n,v,isNew)=>'<div class="hl-row-between" style="padding:2px 0">'+
+    '<span style="font-size:8.5px;font-weight:600;color:var(--text)">'+n+
+      (isNew?' <span style="font-size:6.5px;font-weight:800;color:var(--positive)">NEW</span>':'')+'</span>'+
+    '<span style="font-size:8.5px;font-weight:800;color:var(--text)">'+v+'</span></div>';
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-lbl">Personal records</div>'+
+    '<div style="margin-top:4px">'+r('Bench press','100 kg × 5',1)+r('Squat','140 kg × 3')+r('Deadlift','180 kg × 1')+'</div>'+
+  '</div>';
+}
+function hlPrevKitchen(){
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-lbl">Kitchen</div>'+
+    '<div style="font-size:11px;font-weight:700;color:var(--text);margin-top:4px">Chicken Katsu</div>'+
+    '<div class="hl-sub">Dinner · cooked 3 weeks ago</div>'+
+    '<div style="display:flex;gap:8px;margin-top:5px">'+
+      '<div><div class="hl-lbl" style="font-size:7px">Shopping</div><div style="font-size:9px;font-weight:800;color:var(--text)">6 left</div></div>'+
+      '<div><div class="hl-lbl" style="font-size:7px">Pantry</div><div style="font-size:9px;font-weight:800;color:#f59e0b">2 low</div></div>'+
+    '</div>'+
+  '</div>';
+}
 function hlPrevWeight(){
   return '<div class="hl-prev hl-prev-plain">'+
     '<div class="hl-row-between">'+
@@ -9856,13 +9997,15 @@ const HOME_WIDGETS=[
   {id:'recent',   label:'Recent Workout',       tab:'Train', preview:hlPrevRecent},
   {id:'calories', label:'Overview & Greeting',  tab:'Nutrition', fixed:true, preview:hlPrevCalories},
   {id:'weight',   label:'Weight & Goal',        tab:'Nutrition', preview:hlPrevWeight},
+  {id:'prs',      label:'Personal Records',     tab:'Train', preview:hlPrevPRs},
+  {id:'kitchen',  label:'Kitchen Snapshot',     tab:'Kitchen', preview:hlPrevKitchen},
   {id:'habits',   label:"Today's Habits",       tab:'Habits', preview:hlPrevHabits},
   {id:'budget',   label:'Weekly Budget',        tab:'Budget', preview:hlPrevBudget},
   {id:'balance',  label:'Net Worth & Accounts', tab:'Budget', preview:hlPrevBalance},
   {id:'tiles',    label:'Money Quick Tiles',    tab:'Budget', preview:hlPrevTiles},
   {id:'notes',    label:'Notes',                tab:'Notes', preview:hlPrevNotes},
 ];
-const HOME_DEFAULT_ORDER=['session','weather','streak','calories','weight','review','habits','budget','balance','tiles','notes','recent'];
+const HOME_DEFAULT_ORDER=['session','weather','streak','prs','calories','weight','review','habits','budget','balance','tiles','kitchen','notes','recent'];
 // Which cards span the full desktop grid row by default. User-editable per card
 // (Settings → Home Layout); this is only the starting point. Only the session hero: it is the
 // one card with enough internal content to earn the width (label, play button, 40px title, meta,
