@@ -8523,9 +8523,14 @@ function refreshHabitsUI(){
 function buildWeekSummaryCard(){
   const {mondayStr,sundayStr}=getWeekBounds();
   const workoutDays=new Set(S.sessions.filter(s=>s.date>=mondayStr&&s.date<=sundayStr).map(s=>s.date)).size;
+  // A tile with nothing to show says WHY, at label size. A bare em dash at figure size reads
+  // as a rendering failure rather than a state, and being 18px it pulls the eye toward the
+  // emptiest thing in the card. Same idea as the muted "No weight logged this week" line in
+  // the Body stats view, shortened to fit a 2-up tile.
+  const _statEmpty=txt=>'<span style="font-size:13px;font-weight:600;color:var(--muted)">'+txt+'</span>';
   // Budget
   const bd=budgetData[mondayStr];
-  let budHTML='<span style="font-size:18px;font-weight:800;color:var(--muted)">—</span>';
+  let budHTML=_statEmpty('No budget yet');
   if(bd){
     const inc=weekIncome(bd);
     if(inc>0){
@@ -8546,10 +8551,12 @@ function buildWeekSummaryCard(){
   const calHTML=goalCals
     ?'<span style="font-size:18px;font-weight:800;color:'+(kcalTotal>goalCals?'var(--danger)':'var(--text)')+'">'+kcalTotal+'</span>'
      +'<span style="font-size:11px;color:var(--muted);margin-left:3px">/ '+goalCals+'</span>'
-    :'<span style="font-size:18px;font-weight:800;color:var(--muted)">—</span>';
+    :_statEmpty('Set a calorie goal');
   // Weight
   const weekWeights=S.weights.filter(w=>w.date>=mondayStr&&w.date<=sundayStr).sort((a,b)=>a.date<b.date?-1:1);
-  let weightHTML='<span style="font-size:18px;font-weight:800;color:var(--muted)">—</span>';
+  // Needs two weigh-ins in the week to have a delta at all, so say that rather than showing
+  // an empty figure to someone who has already logged once and expects to see something.
+  let weightHTML=_statEmpty(weekWeights.length===1?'Need 1 more weigh-in':'No weigh-ins yet');
   if(weekWeights.length>=2){
     const chg=+(weekWeights[weekWeights.length-1].weight-weekWeights[0].weight).toFixed(1);
     const col=chg<0?'var(--success)':chg>0?'var(--danger)':'var(--muted)';
