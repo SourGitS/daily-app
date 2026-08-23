@@ -9621,7 +9621,22 @@ const HOME_WIDGETS=[
 const HOME_DEFAULT_ORDER=['session','weather','streak','calories','review','habits','budget','balance','tiles','notes','recent'];
 // Which cards span both desktop grid columns. User-editable per card (Settings → Home Layout);
 // this is only the starting point, and matches how session/budget/weather used to be hardcoded.
-const HOME_DEFAULT_WIDE=['session','budget','weather'];
+// Which cards span both desktop columns by default. Only the session hero: it is the one card
+// with enough internal content to earn the width (label, play button, 40px title, meta,
+// progress row and track) and the one whose job is to be ranked first.
+// Weather and budget were seeded wide too, which stacked three full-width bands before the
+// grid began and, since all three are accent-toned, put the signature colour on three
+// consecutive full-bleed rows — read as a default nobody turned off rather than as emphasis.
+// Neither needs the width: the Home budget card is four elements (label + pill, one figure,
+// one unit line, one 7px bar) — not to be confused with #budget-hero-card on the Budget tab,
+// which does have arrows and a stat row — and the weather card keeps its full 16-scene
+// treatment at half width, where the sky gradient actually has room to resolve its stops.
+// Both remain one toggle away in Settings → Home Layout for anyone who wants them back.
+// NOTE this is a SEED, not a setting: homeLayout() applies it only while the stored layout
+// has no `wide` array, and saveHomeOrder() freezes whatever is current into storage the first
+// time a card is dragged. So this reaches new and untouched installs; anyone who has already
+// reordered their Home keeps the old three and has to change it in Settings.
+const HOME_DEFAULT_WIDE=['session'];
 function loadHomeOrder(){ return lsLoad('daily_home_order', null, Array.isArray); } // legacy (seed only)
 // One preference object {hidden:[], order:[]} — the same overlay convention as per-day
 // exercise customisation (dayCustomFor's added/hidden/order). Seeded once from the legacy
@@ -9637,6 +9652,26 @@ function homeLayout(){
   return l;
 }
 function saveHomeLayout(l){ lsSave('daily_home_layout', l, 'homeLayout'); }
+// One-time narrowing of the default wide set (see HOME_DEFAULT_WIDE). Without this the change
+// would only ever reach brand-new installs: saveHomeOrder() writes the whole layout object
+// back, so the moment anyone drags a Home card the seed of the day is frozen into storage and
+// no later change to the constant can move it.
+// Same rule as migrateRetiredAccentOnce — it fires ONLY for a layout still holding the exact
+// old default set, so a deliberately-chosen arrangement is never overwritten. Compared as a
+// set rather than by index, since the order within `wide` carries no meaning.
+const HOME_LEGACY_WIDE=['session','budget','weather'];
+function migrateDefaultWideOnce(){
+  if(localStorage.getItem('daily_home_wide_narrowed')) return;
+  try{
+    const l=lsLoad('daily_home_layout', null, v=>v&&typeof v==='object'&&!Array.isArray(v));
+    if(l && Array.isArray(l.wide) && l.wide.length===HOME_LEGACY_WIDE.length
+       && HOME_LEGACY_WIDE.every(k=>l.wide.indexOf(k)>=0)){
+      l.wide=HOME_DEFAULT_WIDE.slice();
+      saveHomeLayout(l);
+    }
+  }catch(e){}
+  localStorage.setItem('daily_home_wide_narrowed','1');
+}
 // Saved order first (only ids that exist), then defaults/new widgets appended, then the
 // hidden filter — mirroring effectiveExercises' order-then-hidden overlay application.
 function effectiveHomeWidgetIds(cards){
@@ -12127,6 +12162,7 @@ try {
   migrateSubscriptionsToFixedOnce(); // one-time: fold subscriptions into fixed categories
   migrateDropSubsAggregateOnce(); // one-time: drop the leftover aggregate 'subs' category
   migrateRetiredAccentOnce(); // one-time: retired orange default → neutral grey
+  migrateDefaultWideOnce();   // one-time: three full-width Home cards → just the session hero
   budCleanupUnnamedCatsOnce(); // one-time: clear machine-id rows left by unnamed categories
   // Warm the timed-exercise cache at boot: getPR/getPoints read it, and Stats can render
   // before renderLog has ever run.

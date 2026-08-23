@@ -308,6 +308,35 @@
 .card.weekly-review-card>*{position:relative;z-index:1}
 .hero-card .hero-big{font-size:30px;font-weight:700;letter-spacing:-1px}
 
+/* ── Home card hover (pointer devices only) ──
+   base.css declares cursor:pointer on .card and a dozen other surfaces, so on a laptop the
+   pointer promises every Home card is interactive. Until this rule the app had SEVEN :hover
+   declarations across all six stylesheets and not one was on a card — so every card claimed
+   to be clickable and none of them reacted. That, more than any colour or width decision, is
+   why the dashboard read as dead with a mouse while feeling fine on a phone.
+   The transform goes on the WRAPPER, not the inner card: .home-card-more (the "Show all"
+   button, added by applyHomeCardCaps) is an absolutely-positioned sibling of the card, so
+   lifting the card on its own would leave the button behind. The shadow goes on the inner
+   element, which is the one carrying the border-radius.
+   `> *` rather than `> .card` because Home cards are not a single class — the session hero is
+   .hero-workout-card, the tiles are .home-grid, and neither carries .card.
+   hover:hover and pointer:fine keep this off touch entirely: phones are the primary target
+   and would otherwise latch the hover state on tap and hold it until the next tap elsewhere.
+   The dark shadow restates the inset top highlight because it is replacing the whole
+   box-shadow from [data-theme="dark"] .card, not adding to it. */
+@media (hover:hover) and (pointer:fine){
+  #view-home .home-card{transition:transform .18s ease}
+  #view-home .home-card:hover{transform:translateY(-2px)}
+  #view-home .home-card > *{transition:box-shadow .18s ease}
+  [data-theme="dark"] #view-home .home-card:hover > *{box-shadow:inset 0 1px 0 rgba(255,255,255,.20),0 12px 30px rgba(0,0,0,.45)}
+  [data-theme="light"] #view-home .home-card:hover > *{box-shadow:0 10px 26px rgba(0,0,0,.13)}
+}
+/* Matches the .app-overlay precedent in base.css — motion is opt-out, app-wide. */
+@media (prefers-reduced-motion:reduce){
+  #view-home .home-card,#view-home .home-card > *{transition:none}
+  #view-home .home-card:hover{transform:none}
+}
+
 /* ── Light-mode inputs (grey fill) ── */
 .modal-input,.settings-field input,.settings-field select,.cal-food-input,.cal-kcal-input,.bud-row-input,.bud-row-label-input,.session-notes-textarea,.bud-notes-textarea{background:#f5f5f5;border:1px solid rgba(0,0,0,0.1);border-radius:8px}
 [data-theme="dark"] .modal-input,[data-theme="dark"] .settings-field input,[data-theme="dark"] .settings-field select,[data-theme="dark"] .cal-food-input,[data-theme="dark"] .cal-kcal-input,[data-theme="dark"] .bud-row-input,[data-theme="dark"] .bud-row-label-input,[data-theme="dark"] .session-notes-textarea,[data-theme="dark"] .bud-notes-textarea{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1)}
@@ -319,8 +348,24 @@
   #app-header{display:none}
   #bottom-nav{display:none}
   #app-main{flex:1;overflow-y:auto;height:100vh;padding:0;width:100%;max-width:none}
-  #app-main>section{max-width:none;width:100%}
-  #app-main>section{padding:0 18px 40px}
+  /* Content width cap. Uncapped, a card holding one figure stretched the full window — on a
+     1600px screen the grid ran to 1261px and a progress bar spanned the lot, which is the
+     single biggest reason the app read as unfinished on a laptop while looking right on a
+     phone. Cards should size to content, not to viewport.
+     1180 is picked against the two-column grid: minus 64px of padding it leaves ~1116px, so
+     each column lands near 550px — close to the ~480px the phone layout was designed at, so
+     the cards keep their intended proportions instead of being stretched versions of them.
+     ONE rule, not two: this used to be a max-width/width declaration here and a SECOND
+     padding declaration for the same selector 120 lines further down, same specificity, so
+     the later one silently won and the earlier padding was dead. Both are folded in here. */
+  /* BOTH selectors, because they cover disjoint halves of the app and neither reaches the
+     other. The four paged tabs (Home, Log, Stats, Budget) are .swipe-panel and live inside
+     #swipe-deck, so `#app-main>section` has never matched them — #swipe-deck is display:contents
+     here, which flattens them for LAYOUT but not for selector matching, so they are still not
+     direct children. `#app-main>section` reaches only the overlay views (Kitchen, Settings,
+     Plans, Notes). Capping one and not the other is how the two drifted apart in the first
+     place. #app-main-scoped so this outranks the plain .swipe-panel padding in layout.css. */
+  #app-main>section,#app-main .swipe-panel{width:100%;max-width:1180px;margin:0 auto;padding:40px 32px}
   #desktop-sidebar{width:160px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);color:var(--text);display:flex;flex-direction:column;padding:16px 0;height:100vh;position:sticky;top:0}
   /* Real wordmark image (see layout.css) — theme-paired, same as the header/side-menu.
      Inset rather than centred or flush-left. 54px is the midpoint between the two, and it is
@@ -445,7 +490,7 @@
   #view-home .hh-remain>div:nth-child(1){font-size:38px !important}
   #view-home .hh-remain>div:nth-child(2){font-size:14px !important}
   #view-home .hh-remain>div:nth-child(3){font-size:12px !important}
-  #app-main>section{padding:40px 32px 40px}
+
 
   /* Log tab */
   #view-log .log-cols{display:flex;gap:20px;height:100%}
