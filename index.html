@@ -140,82 +140,6 @@
     </section>
 
     <!-- STATS VIEW -->
-    <section id="view-stats" class="swipe-panel">
-      <div class="stats-tab-row" id="stats-tab-row">
-        <button class="stats-tab-btn active" id="st-ov-btn" onclick="setStatsTab('overview')">Overview</button>
-        <button class="stats-tab-btn" id="st-hist-btn" onclick="setStatsTab('history')">History</button>
-        <button class="stats-tab-btn" id="st-train-btn" onclick="setStatsTab('training')">Training</button>
-        <button class="stats-tab-btn" id="st-body-btn" onclick="setStatsTab('body')">Body</button>
-        <button class="stats-tab-btn" id="st-nut-btn" onclick="setStatsTab('nutrition')">Nutrition</button>
-        <button class="stats-tab-btn" id="st-fin-btn" onclick="setStatsTab('finance')">Finance</button>
-      </div>
-      <div id="sub-overview">
-        <div id="overview-content"></div>
-      </div>
-      <div id="sub-history" class="hidden">
-        <div id="history-list"></div>
-      </div>
-      <div id="sub-training" class="hidden">
-        <div id="train-empty"></div>
-        <div id="train-content">
-          <div class="stats-grid" id="train-streak-grid"></div>
-          <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-            <div style="background:var(--accent);padding:8px 14px;font-size:13px;font-weight:500;color:#fff;display:flex;justify-content:space-between;align-items:center">
-              <span>🏋️ Training volume</span>
-              <div style="display:flex;gap:4px">
-                <button id="tv-week" onclick="setTrainVolRange('week')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:rgba(255,255,255,0.3);color:#fff;cursor:pointer">Weekly</button>
-                <button id="tv-month" onclick="setTrainVolRange('month')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:transparent;color:rgba(255,255,255,0.65);cursor:pointer">Monthly</button>
-              </div>
-            </div>
-            <div style="padding:14px 16px"><div id="train-vol-wrap" style="height:260px"></div></div>
-          </div>
-          <div id="week-grid-wrap"></div>
-          <div class="consist-stats" id="consist-stats"></div>
-          <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-            <div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">💪 Muscle balance · last 30 days</div>
-            <div style="padding:14px 16px;height:220px" id="train-muscle-wrap"></div>
-          </div>
-          <select class="pr-select" id="pr-select" onchange="renderChart()"></select>
-          <div class="stats-grid" id="stats-grid"></div>
-          <div id="chart-wrap">
-            <p>Top set weight per session (kg)</p>
-            <canvas id="prog-chart" style="max-height:360px"></canvas>
-          </div>
-          <div class="pr-board-title">Personal records</div>
-          <div id="pr-board"></div>
-        </div>
-      </div>
-      <div id="sub-body" class="hidden">
-        <div id="weight-section"></div>
-        <div id="weight-goal-section"></div>
-      </div>
-      <div id="sub-nutrition" class="hidden">
-        <div id="nutrition-content"></div>
-      </div>
-      <div id="sub-finance" class="hidden">
-        <!-- Account-derived cards first: this tab was almost entirely budget data, with the
-             net worth chart buried below four budget cards. -->
-        <div id="bs-balance-wrap"></div>
-        <div id="bs-acctgrowth-wrap"></div>
-        <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-          <div style="background:var(--accent);padding:8px 14px;font-size:13px;font-weight:500;color:#fff;display:flex;justify-content:space-between;align-items:center">
-            <span>📈 Spending trends</span>
-            <div style="display:flex;gap:4px">
-              <button id="bst-monthly" onclick="setBSTrendRange('monthly')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:rgba(255,255,255,0.3);color:#fff;cursor:pointer">Monthly</button>
-              <button id="bst-yearly" onclick="setBSTrendRange('yearly')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:transparent;color:rgba(255,255,255,0.65);cursor:pointer">Yearly</button>
-              <button id="bst-alltime" onclick="setBSTrendRange('alltime')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:transparent;color:rgba(255,255,255,0.65);cursor:pointer">All time</button>
-            </div>
-          </div>
-          <div style="padding:14px 16px"><div id="bs-trend-wrap"></div></div>
-        </div>
-        <div id="bs-progress-wrap"></div>
-        <div id="bs-bestworst-wrap"></div>
-        <div id="bs-catbreak-wrap"></div>
-        <div id="bs-consist-wrap"></div>
-        <div id="bs-records-wrap"></div>
-        <div id="bs-goals-wrap"></div>
-      </div>
-    </section>
 
     <!-- BUDGET VIEW -->
     <section id="view-budget" class="swipe-panel">
@@ -425,10 +349,7 @@
       </div>
     </section>
 
-    </div><!-- /#swipe-deck -->
-
-    <!-- KITCHEN VIEW -->
-    <section id="view-kitchen" class="hidden">
+    <section id="view-kitchen" class="swipe-panel">
       <div class="kit-subnav">
         <button class="kit-subnav-btn active" id="kit-tab-recipes" onclick="kitSetTab('recipes')">Recipes</button>
         <button class="kit-subnav-btn" id="kit-tab-shopping" onclick="kitSetTab('shopping')">Shopping</button>
@@ -460,6 +381,86 @@
 
       <div id="kit-pantry" class="kit-pane hidden">
         <div id="kitpantry"></div>
+      </div>
+    </section>
+
+    </div><!-- /#swipe-deck -->
+
+    <!-- KITCHEN VIEW -->
+    <section id="view-stats" class="hidden">
+      <div class="stats-tab-row" id="stats-tab-row">
+        <button class="stats-tab-btn active" id="st-ov-btn" onclick="setStatsTab('overview')">Overview</button>
+        <button class="stats-tab-btn" id="st-hist-btn" onclick="setStatsTab('history')">History</button>
+        <button class="stats-tab-btn" id="st-train-btn" onclick="setStatsTab('training')">Training</button>
+        <button class="stats-tab-btn" id="st-body-btn" onclick="setStatsTab('body')">Body</button>
+        <button class="stats-tab-btn" id="st-nut-btn" onclick="setStatsTab('nutrition')">Nutrition</button>
+        <button class="stats-tab-btn" id="st-fin-btn" onclick="setStatsTab('finance')">Finance</button>
+      </div>
+      <div id="sub-overview">
+        <div id="overview-content"></div>
+      </div>
+      <div id="sub-history" class="hidden">
+        <div id="history-list"></div>
+      </div>
+      <div id="sub-training" class="hidden">
+        <div id="train-empty"></div>
+        <div id="train-content">
+          <div class="stats-grid" id="train-streak-grid"></div>
+          <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+            <div style="background:var(--accent);padding:8px 14px;font-size:13px;font-weight:500;color:#fff;display:flex;justify-content:space-between;align-items:center">
+              <span>🏋️ Training volume</span>
+              <div style="display:flex;gap:4px">
+                <button id="tv-week" onclick="setTrainVolRange('week')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:rgba(255,255,255,0.3);color:#fff;cursor:pointer">Weekly</button>
+                <button id="tv-month" onclick="setTrainVolRange('month')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:transparent;color:rgba(255,255,255,0.65);cursor:pointer">Monthly</button>
+              </div>
+            </div>
+            <div style="padding:14px 16px"><div id="train-vol-wrap" style="height:260px"></div></div>
+          </div>
+          <div id="week-grid-wrap"></div>
+          <div class="consist-stats" id="consist-stats"></div>
+          <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+            <div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">💪 Muscle balance · last 30 days</div>
+            <div style="padding:14px 16px;height:220px" id="train-muscle-wrap"></div>
+          </div>
+          <select class="pr-select" id="pr-select" onchange="renderChart()"></select>
+          <div class="stats-grid" id="stats-grid"></div>
+          <div id="chart-wrap">
+            <p>Top set weight per session (kg)</p>
+            <canvas id="prog-chart" style="max-height:360px"></canvas>
+          </div>
+          <div class="pr-board-title">Personal records</div>
+          <div id="pr-board"></div>
+        </div>
+      </div>
+      <div id="sub-body" class="hidden">
+        <div id="weight-section"></div>
+        <div id="weight-goal-section"></div>
+      </div>
+      <div id="sub-nutrition" class="hidden">
+        <div id="nutrition-content"></div>
+      </div>
+      <div id="sub-finance" class="hidden">
+        <!-- Account-derived cards first: this tab was almost entirely budget data, with the
+             net worth chart buried below four budget cards. -->
+        <div id="bs-balance-wrap"></div>
+        <div id="bs-acctgrowth-wrap"></div>
+        <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+          <div style="background:var(--accent);padding:8px 14px;font-size:13px;font-weight:500;color:#fff;display:flex;justify-content:space-between;align-items:center">
+            <span>📈 Spending trends</span>
+            <div style="display:flex;gap:4px">
+              <button id="bst-monthly" onclick="setBSTrendRange('monthly')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:rgba(255,255,255,0.3);color:#fff;cursor:pointer">Monthly</button>
+              <button id="bst-yearly" onclick="setBSTrendRange('yearly')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:transparent;color:rgba(255,255,255,0.65);cursor:pointer">Yearly</button>
+              <button id="bst-alltime" onclick="setBSTrendRange('alltime')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:transparent;color:rgba(255,255,255,0.65);cursor:pointer">All time</button>
+            </div>
+          </div>
+          <div style="padding:14px 16px"><div id="bs-trend-wrap"></div></div>
+        </div>
+        <div id="bs-progress-wrap"></div>
+        <div id="bs-bestworst-wrap"></div>
+        <div id="bs-catbreak-wrap"></div>
+        <div id="bs-consist-wrap"></div>
+        <div id="bs-records-wrap"></div>
+        <div id="bs-goals-wrap"></div>
       </div>
     </section>
 
@@ -901,9 +902,9 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v16M18 4v16"/><path d="M3 8h3M18 8h3M3 16h3M18 16h3"/><path d="M6 12h12"/></svg>
     Log
   </button>
-  <button class="nav-btn" data-view="stats" onclick="setView('stats')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
-    Stats
+  <button class="nav-btn" data-view="kitchen" onclick="setView('kitchen')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 10h14v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z"/><path d="M3 10h18"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+    Kitchen
   </button>
 </nav>
 

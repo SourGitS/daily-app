@@ -1,4 +1,9 @@
-const CACHE_NAME = 'daily-v202';
+// BUMP THIS ON EVERY RELEASE THAT CHANGES ANY FILE IN ASSETS.
+// The fetch handler is cache-first, so an installed PWA keeps serving the old bundle until the
+// cache NAME changes — a deploy with the same name reaches nobody who already has the app on
+// their home screen. v203: the card-system pass (shared card anatomy, --accent-text, new Home
+// cards, Kitchen in the bottom nav).
+const CACHE_NAME = 'daily-v203';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

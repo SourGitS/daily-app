@@ -29,11 +29,12 @@
 #swipe-deck{display:flex;flex-direction:row;width:400%;height:100%;will-change:transform;transition:none;backface-visibility:hidden;-webkit-backface-visibility:hidden}
 #swipe-deck.snapping{transition:transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)}
 .swipe-panel{width:25%;flex-shrink:0;height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:16px;padding-bottom:calc(104px + env(safe-area-inset-bottom));box-sizing:border-box;will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden}
-/* Visual order home→budget→log→stats (DOM order is home,log,stats,budget). */
+/* Visual order home→budget→log→kitchen, matching NAV_ORDER in js/app.js.
+   Stats left the deck for the hamburger menu; Kitchen took its slot. */
 #view-home{order:0}
 #view-budget{order:1}
 #view-log{order:2}
-#view-stats{order:3}
+#view-kitchen{order:3}
 /* Non-swipe views (kitchen/settings/plans/notes) overlay the deck when shown. */
 #app-main>section{position:absolute;top:0;left:0;right:0;bottom:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px;padding-bottom:calc(104px + env(safe-area-inset-bottom));background:var(--bg);z-index:5;box-sizing:border-box;animation:fadeIn 0.18s ease}
 

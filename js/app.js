@@ -1613,7 +1613,12 @@ function setView(v, direction, opts){
   if(v!=='home' && homeEditMode){ homeEditMode=false; const b=document.getElementById('home-edit-btn'); if(b){ b.textContent='Edit layout'; b.classList.remove('active'); } }
   updateNavBadges();
 }
-const NAV_ORDER=['home','budget','log','stats'];
+// The four swipeable tabs, in swipe order. Kitchen replaced Stats here: Kitchen is used daily
+// and Stats is a look-back-occasionally screen, so Stats moved to the hamburger menu.
+// This list IS the deck — a view named here must be a .swipe-panel inside #swipe-deck, and one
+// that isn't must be a direct <section> child of #app-main (see setView). Changing the list
+// without moving the markup gives you a tab you can swipe to but not tap, or the reverse.
+const NAV_ORDER=['home','budget','log','kitchen'];
 
 // ── Swipe deck (native-feel tab paging) ──────────────────────────
 // The four bottom-nav views sit side-by-side in #swipe-deck and track the finger in real
