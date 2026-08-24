@@ -438,29 +438,39 @@
      intentional. Row spacing moved from each card's own margin-bottom to the grid's row-gap:
      with the wrapper now a flex column, a child margin would be measured inside the stretched
      box and desynchronise the rows it is supposed to separate. */
-  /* SINGLE COLUMN on desktop, same as mobile — settled after five different multi-column
-     attempts (stretch-to-tallest, a min-height floor, a 250px row-quantisation grid, a
-     440px-minmax 2-4 column auto-fit grid, and a fine-grained masonry via grid-auto-flow:dense)
-     all failed the same requirement for the same underlying reason: ANY layout that puts more
-     than one card in a shared "row" leaves a gap under whichever card in that row is shorter
-     than its row-mates, because a CSS grid row's height is always the tallest item in it,
-     full stop — there is no configuration of grid/align-items that changes that. The masonry
-     attempt could reduce it but not eliminate it, and it introduced a real overlap bug (a card
-     bled into the one below it when async content — the weather widget's live reading — grew
-     the card after its span had already been measured and fixed).
-     One column removes the entire class of problem: with nothing beside a card, there is no
-     "shorter than its row-mate" to leave a gap under. Every card just stacks directly beneath
-     the one before it, exactly like the phone layout, at a comfortable reading width rather
-     than mobile's edge-to-edge. Max-width chosen to sit close to what a two-column layout gave
-     the wider cards (session, notes) rather than a narrow phone-width column stretched across
-     a monitor. */
-  #view-home .home-grid-cols{display:flex;flex-direction:column;gap:14px;align-items:center;max-width:760px;margin:0 auto}
-  #view-home .home-grid-cols > .home-card{width:100%;min-width:0;display:flex;flex-direction:column}
-  /* !important because several cards carry margin-bottom as an INLINE style written by
+  /* TWO columns, fixed — `1fr 1fr`, not auto-fit. This is the long-standing desktop layout and
+     it is what Home is meant to look like. auto-fit was tried and is wrong: it added a THIRD
+     column on a wide external monitor, which reads as cluttered and, more practically, makes no
+     sense on the 13–16" laptop this is normally used on. Two columns at every desktop width.
+     align-items:stretch is what removes the gap BETWEEN rows: both cards in a row share the
+     taller one's height, so the next row starts flush rather than after a strip of background
+     under the shorter card. The alternative (`start`, cards sized to their own content) leaves
+     exactly that strip, which is the gap complaint. The cost is that the shorter card of a pair
+     carries the difference as internal space — that is the accepted trade here, and it is much
+     smaller with two columns than with three or four, where a row's tallest card can dwarf its
+     partners.
+     Do not "fix" the internal space by forcing a uniform card height — a min-height floor and a
+     grid-auto-rows row-quantisation scheme were both tried and were far worse (up to ~220px of
+     dead space inside a single card, because any card whose content sat just past a row
+     boundary was rounded up a whole row). See CLAUDE.md. */
+  #view-home .home-grid-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;align-items:stretch}
+  #view-home .home-grid-cols > .home-card{min-width:0;display:flex;flex-direction:column}
+  /* The wrapper is what the grid stretches; without flex:1 1 auto the inner .card keeps its
+     natural height and the gap simply reappears inside the wrapper.
+     !important because several cards carry margin-bottom as an INLINE style written by
      renderHome (the quick-tiles .home-grid, the hero and net-worth cards), and an inline style
      outranks any selector. Mobile still needs that margin for row spacing, so it is overridden
      only here, inside the desktop grid, where row-gap does the same job. */
-  #view-home .home-grid-cols > .home-card > *{margin-bottom:0 !important;display:flex;flex-direction:column}
+  #view-home .home-grid-cols > .home-card > *{flex:1 1 auto;margin-bottom:0 !important;
+    display:flex;flex-direction:column}
+  /* Centre the BODY of a stretched card, never the header — otherwise each card's title drifts
+     down by however much slack that card happens to have, and titles that should line up don't.
+     :nth-child(2):last-child so this applies ONLY when the body is a single block sitting under
+     the header (the calorie ring, net worth). Applied to :last-child alone it also hit cards
+     whose body is a LIST of sibling rows, where the last row is one row of the body rather than
+     the body itself — Notes rendered as "row 1, big gap, row 2" because the auto margins were
+     centring the final row instead of the group. */
+  #view-home .home-grid-cols > .home-card > * > *:nth-child(2):last-child{margin-top:auto;margin-bottom:auto}
   /* Per-card preference now (Settings → Home Layout), not a hardcoded set of card ids. */
   #view-home .home-card-wide{grid-column:1 / -1}
   /* Cards that grow with your data are capped so one long card can't blow out its whole row for

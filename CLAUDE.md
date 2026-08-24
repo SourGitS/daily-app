@@ -123,33 +123,39 @@ the accent or the theme must go through those, not set `--accent` directly.
   children of `#app-main`. That selector only ever styles the overlay views (Kitchen, Settings,
   Plans, Notes). Anything meant to apply to every screen needs both selectors; this is how the
   two halves silently drifted apart before (see the desktop width cap in `budget-home.css`).
-- **Home's desktop layout is a SINGLE COLUMN, settled after five attempts — do not reintroduce
-  multi-column.** `#view-home .home-grid-cols` is `display:flex;flex-direction:column;
-  max-width:760px;margin:0 auto`. Every card stacks directly under the one before it, at a
-  fixed 14px gap, with no card-height logic of any kind (no stretch, no floor, no row grid, no
-  measurement, no spans) — that absence is the point, not a gap to fill in later.
-  The full history, because it's long and someone will be tempted to redo part of it: (1)
-  `stretch` equalised every card in a row to the tallest, padding short cards with dead space.
-  (2) a fixed `min-height` floor did the same on a smaller scale. (3) a `grid-auto-rows`
-  row-quantisation scheme forced every card into a whole multiple of a 210–250px row (up to
-  ~220px of dead space inside a single card). (4) a `repeat(auto-fit,minmax(440px,1fr))`
-  multi-column grid with `align-items:start` fixed the dead-space-inside-a-card problem but
-  left a gap in the ROW below any card shorter than its row-mates — CSS grid row height is
-  always the tallest item in that row, and no combination of grid properties changes that.
-  (5) a fine-grained masonry attempt (`grid-auto-flow:dense` over ~4px rows, spans computed per
-  card in `applyHomeCardCaps()`) reduced the gap but did not eliminate it, and introduced a real
-  bug: a card whose content changed asynchronously AFTER its span was measured (the weather
-  widget's live reading landing after the initial render) grew taller than its reserved span
-  and visibly overlapped the card below it, because `align-items:start` does not clip a card to
-  its grid area.
-  Single column is the only configuration that removes the *category* of problem rather than
-  minimising it: with nothing beside a card, there is no row-mate for it to be shorter or
-  taller than, so a gap-under-a-short-card can't exist. This was the explicit, direct request
-  after (4) and (5) both still showed visible gaps on a real screen — the multi-column
-  auto-fit-by-width grid described in older prompts/commit messages is gone, not paused.
-  `HOME_CAPPABLE` in `applyHomeCardCaps()` (`js/app.js`) still caps the few genuinely UNBOUNDED
-  list cards (habits/notes/recent) at a flat 280px `max-height`, so one very long list doesn't
-  make the single column absurdly tall — that part is unrelated to the column-count history
+- **Home's desktop layout is TWO fixed columns — `1fr 1fr`, with `align-items:stretch`.** This
+  is the long-standing design and what Home is supposed to look like; treat it as the baseline,
+  not as one option among several. `#view-home .home-grid-cols` is
+  `display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;align-items:stretch`, and
+  `.home-card-wide{grid-column:1/-1}` lets any individual card span the full width — that is a
+  saved per-card user preference (`homeLayout().wide`, Settings → Home Layout), not a hardcoded
+  list of ids.
+  **Do not make the column count derive from viewport width.** `repeat(auto-fit,minmax(…,1fr))`
+  was tried and is wrong twice over: it produces a third column on a wide external monitor
+  (cluttered), and the app is normally used on a 13–16" laptop where that width never exists
+  anyway. Two columns at every desktop width.
+  **`align-items:stretch` is load-bearing — it is what removes the gap BETWEEN rows.** Both
+  cards in a row share the taller one's height, so the next row starts flush instead of after a
+  strip of background under the shorter card. The cost is that the shorter card of a pair
+  carries the height difference as internal space; that is the accepted trade, and it stays
+  small precisely BECAUSE there are only two columns (with three or four, one tall card dwarfs
+  its row partners and the internal space becomes the bigger problem).
+  Four different attempts to remove that internal space by forcing a uniform card height have
+  all been reverted, each worse than what it replaced: a fixed `min-height` floor; a
+  `grid-auto-rows` row-quantisation scheme at 210px then 250px (any card whose content landed
+  just past a row boundary was rounded up a whole row — up to ~220px of dead space inside a
+  single card); a `minmax` multi-column grid with `align-items:start` (fixed the internal space
+  but reintroduced the between-rows gap, which is the more visible problem); and a fine-grained
+  masonry via `grid-auto-flow:dense` with per-card measured spans (reduced the gap without
+  eliminating it, and introduced a real overlap bug — the weather card's live reading arrives
+  asynchronously AFTER its span was measured, so the card outgrew its reserved grid area and
+  bled into the card below, since `align-items:start` does not clip a card to its box).
+  Single column was also tried once, in error, and rejected immediately — it was never asked
+  for. If the internal space in a short card ever needs addressing, the fix is to that card's
+  own content, not to the grid.
+  `HOME_CAPPABLE` in `applyHomeCardCaps()` (`js/app.js`) separately caps the genuinely UNBOUNDED
+  list cards (habits/notes/recent) at a flat 280px `max-height` with a "Show all" toggle, so one
+  very long list can't blow out its whole row. That is unrelated to the column/height history
   above and was never in question.
 - **One width cap for every view**, `max-width:2200px` on `#app-main>section,#app-main
   .swipe-panel` (see the note above about those being disjoint selector halves). Do not add a
