@@ -11948,6 +11948,27 @@ function kitRenderFilterChips(){
 }
 
 // ── Cooking mode ──────────────────────────────────────────────────
+// Which of the recipe's ingredients this step's text actually names — deliberately simple
+// word-boundary matching, not NLP. Tries the ingredient's full name first (how AI-authored
+// steps already reference them, e.g. "800 g baby potatoes"); if that isn't found, falls back
+// to just the last word of the name (e.g. "potatoes" alone) so a looser phrasing still
+// counts. A miss here just means that ingredient sits in the full list instead of also being
+// called out — never a correctness problem, so there's no need for anything heavier.
+function kitStepIngredients(text, ingredients){
+  const t=' '+String(text||'').toLowerCase()+' ';
+  const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const hasWord=phrase=>{
+    const p=phrase.toLowerCase().trim(); if(!p) return false;
+    return new RegExp('(^|[^a-z0-9])'+esc(p)+'s?([^a-z0-9]|$)','i').test(t);
+  };
+  return (ingredients||[]).filter(i=>{
+    const name=(i&&i.name||'').trim(); if(!name) return false;
+    if(hasWord(name)) return true;
+    const words=name.split(/\s+/);
+    const last=words[words.length-1];
+    return last.length>=4 && hasWord(last);
+  });
+}
 const kitCookState={recipeId:null,step:0,timerTotal:0,timerRemaining:0,timerStart:null,timerRunning:false,wakeLock:null,tickId:null};
 function kitStartCooking(id){
   const r=kitRecipes.find(x=>x.id===id); if(!r) return;
@@ -12091,11 +12112,16 @@ function kitCookRender(){
   // convention kitRenderDetail uses, so a batch cook scaled up before hitting "Start cooking"
   // shows the same scaled amounts here rather than reverting to the recipe's base servings.
   const cur=kitState.scaleServings||r.servings;
-  const ingHTML=(r.ingredients||[]).filter(i=>i&&i.name).map(i=>{
+  const ingRowHTML=i=>{
     const amt=kitScaledAmount(i.amount,r.servings,cur);
     const right=[amt,i.unit].filter(x=>x!=='' && x!=null).join(' ');
     return '<div class="kit-cook-ing-row"><span>'+kitEsc(i.name)+'</span><span class="kit-cook-ing-amt">'+kitEsc(right)+'</span></div>';
-  }).join('');
+  };
+  const allIngs=(r.ingredients||[]).filter(i=>i&&i.name);
+  const stepIngs=kitStepIngredients(text, allIngs);
+  const allIngHTML=allIngs.map(ingRowHTML).join('');
+  const stepIngHTML=stepIngs.length ? stepIngs.map(ingRowHTML).join('')
+    : '<div class="kit-cook-ing-empty">No ingredients from the list are named in this step.</div>';
   ov.innerHTML=
     '<div class="kit-cook-topbar">'+
       '<button class="kit-cook-exit" onclick="kitExitCooking()">✕ Exit</button>'+
@@ -12105,17 +12131,23 @@ function kitCookRender(){
     '<div class="kit-cook-progress-bar"><div class="kit-cook-progress-fill" style="width:'+pct+'%"></div></div>'+
     '<div class="kit-cook-step-label">Step '+( idx+1)+' of '+total+'</div>'+
     '<div class="kit-cook-content">'+
+      // Kept on screen through every step rather than tucked behind a toggle — the point
+      // raised was that switching to the ingredients list mid-step (e.g. the detail view)
+      // loses your place in the method. Split in two: the full list is a fixed reference,
+      // "For this step" re-filters on every kitCookRender() call so it tracks whichever step
+      // you're on. Each panel scopes its own scroll so a long list can't push Prev/Next off
+      // screen — see kitStepIngredients for how the step text is matched to ingredient names.
+      (allIngHTML?'<div class="kit-cook-ing-panel kit-cook-ing-all">'+
+        '<div class="kit-cook-ing-hd">📋 Ingredients'+(cur!==r.servings?' · '+cur+' serving'+(cur===1?'':'s'):'')+'</div>'+
+        allIngHTML+
+      '</div>':'')+
       '<div class="kit-cook-body">'+
         '<div class="kit-cook-step-text">'+kitEsc(text)+'</div>'+
         '<div id="kit-cook-timer"></div>'+
       '</div>'+
-      // Kept on screen through every step rather than tucked behind a toggle — the point
-      // raised was that switching to the ingredients list mid-step (e.g. the detail view)
-      // loses your place in the method. Scoped to its own scroll region so a long ingredient
-      // list can't push the Prev/Next bar off screen.
-      (ingHTML?'<div class="kit-cook-ing-panel">'+
-        '<div class="kit-cook-ing-hd">📋 Ingredients'+(cur!==r.servings?' · '+cur+' serving'+(cur===1?'':'s'):'')+'</div>'+
-        ingHTML+
+      (allIngHTML?'<div class="kit-cook-ing-panel kit-cook-ing-step">'+
+        '<div class="kit-cook-ing-hd">👉 For this step</div>'+
+        stepIngHTML+
       '</div>':'')+
     '</div>'+
     '<div class="kit-cook-nav">'+
