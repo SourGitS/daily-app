@@ -12320,7 +12320,7 @@ const KIT_STANDARD_TAGS=[
   {val:'vegetarian',label:'Vegetarian'},
   {val:'bulk-cook',label:'Bulk Cook'},
 ];
-const KIT_UNITS=['g','ml','cup','tbsp','tsp','piece','oz','lb'];
+const KIT_UNITS=['g','kg','ml','L','cup','tbsp','tsp','piece','oz','lb'];
 // The tile always shows something, so cards line up whether or not a recipe carries an emoji
 // — several seeded ones (Butter Garlic Prawns) have none and previously rendered no glyph at
 // all, leaving their titles hanging where every other card had one.
@@ -12559,7 +12559,18 @@ function kitOpenForm(id){
 function kitFormAddIng(data){
   const wrap=document.getElementById('kit-f-ings'); if(!wrap) return;
   const d=(data&&typeof data==='object')?data:{name:'',amount:'',unit:'g'};
-  const unitSel=KIT_UNITS.map(u=>'<option value="'+u+'"'+((d.unit||'g')===u?' selected':'')+'>'+u+'</option>').join('');
+  // '' is a real, deliberate unit (see kitParseImport/KIT_IMPORT_CATS) — it means "countable",
+  // e.g. "4 salmon fillets". Recipes can also carry a unit KIT_UNITS never listed (kg, L — both
+  // appear in the preloaded recipes). Either way, without a matching <option> no choice is
+  // actually selected and the browser defaults to whichever renders first — so editing the
+  // recipe and saving without touching that dropdown silently rewrote the ingredient's real
+  // unit to whatever that first option happened to be. Always include the ingredient's own
+  // current unit as an option, even if it isn't one KIT_UNITS knows about, so nothing already
+  // saved can be swapped out from under it just by opening the editor.
+  const unitVal=(d.unit===undefined||d.unit===null)?'g':d.unit;
+  const knownUnits=unitVal!==''&&KIT_UNITS.indexOf(unitVal)<0 ? [unitVal,...KIT_UNITS] : KIT_UNITS;
+  const unitSel='<option value=""'+(unitVal===''?' selected':'')+'>Count / pieces</option>'+
+    knownUnits.map(u=>'<option value="'+u+'"'+(unitVal===u?' selected':'')+'>'+u+'</option>').join('');
   const row=document.createElement('div');
   row.className='kit-f-ing-row';
   row.innerHTML=
