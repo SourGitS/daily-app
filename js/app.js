@@ -5075,13 +5075,15 @@ function buildAIReviewMarkdown(months){
   L.push('');
   L.push('## What I want from you');
   L.push('');
-  L.push('Read the data below and give me:');
-  L.push('1. **How the period actually went** — spending vs targets, savings rate, net-worth movement, training consistency and progression. Call out what moved and why, not just the numbers.');
-  L.push('2. **What is going wrong** — the two or three habits or categories costing me the most, with the evidence from the tables.');
-  L.push('3. **Next month\'s budget** — a per-category weekly target, adjusted from what I actually spent rather than what I previously planned. Say which ones I am kidding myself about.');
-  L.push('4. **Next month\'s training and body goals** — concrete, based on the progression below.');
+  L.push('**Budget is the priority — spend most of your answer there.** Read the data below and give me:');
   L.push('');
-  L.push('Be direct. If the data does not support a conclusion, say so rather than guessing.');
+  L.push('1. **Where my money actually went this period.** Rank variable categories by total spend and by how far each ran over its target. Separate the ones that are genuinely fixed from the ones I control. Use the weekly tables — point at specific weeks, not averages alone.');
+  L.push('2. **Where to cut back, in order.** Name the two or three categories with the most realistic savings in them, say roughly how much per week each is worth, and why you picked those over the others. Do not suggest cutting something the data shows is already lean.');
+  L.push('3. **Next month\'s targets.** A per-category weekly number, derived from what I actually spent rather than what I previously planned. Flag any current target I am clearly kidding myself about, and give me one overall weekly spending goal to aim at. Say what that adds up to per month and what it would do to my savings rate.');
+  L.push('4. **Am I on track?** Savings rate trend, net-worth movement, and whether my debt payoff position is improving or sliding. If a target is unrealistic on my current income, say so plainly.');
+  L.push('5. **Training and body**, briefly — consistency and progression, and one concrete goal for next month.');
+  L.push('');
+  L.push('Rules: be direct and specific — a number I can act on beats a principle. Quote the figures you are reasoning from. If the data does not support a conclusion, say so rather than guessing. Ignore categories marked archived when setting future targets; they are finished, though their past spending is real and still counts in the history.');
   L.push('');
 
   // ── Profile ──
@@ -5112,13 +5114,22 @@ function buildAIReviewMarkdown(months){
   L.push('');
   L.push('| Type | Item | Weekly target |');
   L.push('| --- | --- | --- |');
-  const planRow=(label,c)=>L.push('| '+label+' | '+md(c.name)+' | '+((c.budget==null||c.budget==='')&&c.default==null?'not set':money(catBudget(c)))+' |');
+  // Archived categories are flagged, not hidden: their history still appears in the spending
+  // tables below, so leaving them unmarked would invite budget advice for a job I've left or
+  // a spend I no longer have.
+  const planRow=(label,c)=>L.push('| '+label+' | '+md(c.name)+(catIsArchived(c)?' _(archived — no longer active)_':'')+' | '+
+    (catIsArchived(c)?'—':((c.budget==null||c.budget==='')&&c.default==null?'not set':money(catBudget(c))))+' |');
   incCats.forEach(c=>planRow('Income',c));
   fixCats.forEach(c=>planRow('Fixed',c));
   varCats.forEach(c=>planRow('Variable',c));
   if(budDefaults&&budDefaults.savingsGoal!=null) L.push('| Savings | Weekly savings goal | '+money(parseFloat(budDefaults.savingsGoal)||0)+' |');
+  // The self-imposed cap on variable spending — distinct from "money left over", which is
+  // whatever income happens to leave behind. Advice that ignores it misses the actual target.
+  const _vgDefault=(typeof getVarGoalDefault==='function')?getVarGoalDefault():null;
+  if(_vgDefault!=null) L.push('| Spending goal | Weekly cap on variable spending | '+money(_vgDefault)+' |');
   L.push('');
   L.push('Planned weekly: income '+money(configIncomeTotal())+' · fixed '+money(configFixedTotal())+' · variable '+money(configVariableTotal())+'.');
+  if(_vgDefault!=null) L.push('My variable spending goal is '+money(_vgDefault)+'/week. Judge variable spending against this, not just against leftover.');
   L.push('');
 
   if(!weekKeys.length){
@@ -5127,11 +5138,17 @@ function buildAIReviewMarkdown(months){
   } else {
     L.push('### Weekly actuals');
     L.push('');
-    L.push('| Week (Mon) | Income | Fixed | Variable | Saved | Leftover |');
-    L.push('| --- | --- | --- | --- | --- | --- |');
+    // Each week carries the spending goal that applied AT THE TIME (var_goal), so raising the
+    // goal later never rewrites how a past week is judged.
+    L.push('| Week (Mon) | Income | Fixed | Variable | Spending goal | Under goal? | Saved | Leftover |');
+    L.push('| --- | --- | --- | --- | --- | --- | --- | --- |');
     weekKeys.forEach(k=>{
       const d=budgetData[k];
-      L.push('| '+k+' | '+money(weekIncome(d))+' | '+money(weekFixedTotal(d))+' | '+money(weekVarTotal(d))+' | '+money(weekSavedAmt(d))+' | '+money(weekLeftover(d))+' |');
+      const v=weekVarTotal(d);
+      const g=(typeof getWeekVarGoal==='function')?getWeekVarGoal(d):null;
+      L.push('| '+k+' | '+money(weekIncome(d))+' | '+money(weekFixedTotal(d))+' | '+money(v)+' | '+
+        (g!=null?money(g):'—')+' | '+(g!=null?(v<=g?'yes':'NO — over by '+money(v-g)):'—')+' | '+
+        money(weekSavedAmt(d))+' | '+money(weekLeftover(d))+' |');
     });
     L.push('');
 
@@ -5223,9 +5240,19 @@ function buildAIReviewMarkdown(months){
   } else {
     L.push('| Account | Type | Current |');
     L.push('| --- | --- | --- |');
-    accounts.forEach(a=>L.push('| '+md(a.name)+' | '+(a.type==='debt'?'Debt':'Asset')+' | '+money(parseFloat(a.current)||0)+' |'));
+    accounts.forEach(a=>L.push('| '+md(a.name)+' | '+(a.type==='debt'?'Debt':(acctIsSaver(a)?'Asset (savers — parked, not for clearing debt)':'Asset'))+' | '+money(parseFloat(a.current)||0)+' |'));
     L.push('');
     L.push('Assets '+money(accountsAssetsTotal())+' · debts '+money(accountsDebtsTotal())+' · **net worth '+money(accountsAssetsTotal()-accountsDebtsTotal())+'**');
+    // Savers are money deliberately parked to earn interest, so the honest "could I clear my
+    // debts today" figure holds them back. Without this the AI would count them as available.
+    const _sav=(typeof accountsSaverTotal==='function')?accountsSaverTotal():0;
+    if(_sav>0){
+      const _pos=accountsPayoffPosition();
+      L.push('');
+      L.push('Of those assets, '+money(_sav)+' sits in savers accounts I do not want to raid to clear debt. '+
+        'Debt payoff position (assets − savers − debts) is **'+money(_pos)+'** — '+
+        (_pos>=0?'covered, with that much spare.':'I am short by '+money(Math.abs(_pos))+'.'));
+    }
     L.push('');
     // Balance history within the window, so the AI can see the trend rather than one number.
     accounts.forEach(a=>{
