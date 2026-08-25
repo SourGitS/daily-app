@@ -5077,43 +5077,83 @@ function importData(e){
   const file=e.target.files&&e.target.files[0];
   if(!file){ return; }
   const reader=new FileReader();
-  reader.onload=function(ev){
-    let parsed;
-    try{ parsed=JSON.parse(ev.target.result); }catch(err){ alert('Invalid backup file — could not read JSON.'); return; }
-    // Accept both {data:{...}} (this app's format) and a flat {key:value} object
-    const data=(parsed && parsed.data && typeof parsed.data==='object') ? parsed.data : parsed;
-    if(!data || typeof data!=='object'){ alert('Invalid backup file.'); return; }
-    const keys=Object.keys(data).filter(k=>/^(daily_|wt_|kitchen_)/.test(k));
-    if(!keys.length){ alert('No Daily data found in this file.'); return; }
-    const signedIn = !!(firebaseReady && auth && auth.currentUser && db);
-    if(!confirm('Restore '+keys.length+' data keys from this backup?\n\n'+
-      'This replaces the data on this device'+
-      (signedIn?' AND in your synced account, on every device.':'.'))){ e.target.value=''; return; }
-    keys.forEach(k=>{
-      if(/_ts$/.test(k)) return; // re-stamped below — never restore a stale timestamp
-      const v=data[k];
-      localStorage.setItem(k, typeof v==='string' ? v : JSON.stringify(v));
-    });
-    // A restore is authoritative: the file is meant to BECOME the truth, not to be merged
-    // with whatever the cloud happens to hold. Restoring the backup's own _ts values would
-    // do the exact opposite — they are by definition older than anything saved since, so the
-    // first sync after reload reads the cloud as "newer" and wipes the restore. Stamping now
-    // is what makes the restored copy win.
-    const now=Date.now();
-    keys.forEach(k=>{ if(!/_ts$/.test(k)) localStorage.setItem(k+'_ts', String(now)); });
-    if(!signedIn){ alert('Data restored. Reloading…'); location.reload(); return; }
-    // Signed in: push before reloading. The cloud-wins stores (profile, budget defaults,
-    // personal info, habits) adopt the cloud copy unconditionally when their listeners
-    // re-attach, so a restore of those only survives if it reaches the cloud first.
-    restorePushToCloud().then(ok=>{
-      alert(ok ? 'Data restored and synced to your account. Reloading…'
-               : 'Data restored on this device, but syncing to the cloud failed.\n\n'+
-                 'Do not open Daily on another device until you have retried, or the older '+
-                 'cloud copy may overwrite this one.');
-      location.reload();
-    });
-  };
+  reader.onload=function(ev){ if(!restoreFromText(ev.target.result)) e.target.value=''; };
   reader.readAsText(file);
+}
+// Shared by the file picker and the paste box — a backup that arrived as pasted text is the
+// same backup, and on a phone it is often the ONLY form it arrives in (the JSON comes back
+// from a chat, not as a downloaded file). Returns false when nothing was restored so the
+// caller can keep its own input intact; `report` lets the paste box show the reason inline
+// instead of firing an alert over the top of the text the user just pasted.
+function restoreFromText(text, report){
+  const fail=m=>{ if(report) report(m); else alert(m); return false; };
+  let parsed;
+  try{ parsed=JSON.parse(text); }
+  catch(err){ return fail('Could not read that as JSON — check you pasted the whole backup, starting at { and ending at }.'); }
+  // Accept both {data:{...}} (this app's format) and a flat {key:value} object
+  const data=(parsed && parsed.data && typeof parsed.data==='object') ? parsed.data : parsed;
+  if(!data || typeof data!=='object') return fail('That is valid JSON, but not a Daily backup.');
+  const keys=Object.keys(data).filter(k=>/^(daily_|wt_|kitchen_)/.test(k));
+  if(!keys.length) return fail('No Daily data found in that text.');
+  const signedIn = !!(firebaseReady && auth && auth.currentUser && db);
+  if(!confirm('Restore '+keys.length+' data keys from this backup?\n\n'+
+    'This replaces the data on this device'+
+    (signedIn?' AND in your synced account, on every device.':'.'))) return false;
+  keys.forEach(k=>{
+    if(/_ts$/.test(k)) return; // re-stamped below — never restore a stale timestamp
+    const v=data[k];
+    localStorage.setItem(k, typeof v==='string' ? v : JSON.stringify(v));
+  });
+  // A restore is authoritative: the file is meant to BECOME the truth, not to be merged
+  // with whatever the cloud happens to hold. Restoring the backup's own _ts values would
+  // do the exact opposite — they are by definition older than anything saved since, so the
+  // first sync after reload reads the cloud as "newer" and wipes the restore. Stamping now
+  // is what makes the restored copy win.
+  const now=Date.now();
+  keys.forEach(k=>{ if(!/_ts$/.test(k)) localStorage.setItem(k+'_ts', String(now)); });
+  if(!signedIn){ alert('Data restored. Reloading…'); location.reload(); return true; }
+  // Signed in: push before reloading. The cloud-wins stores (profile, budget defaults,
+  // personal info, habits) adopt the cloud copy unconditionally when their listeners
+  // re-attach, so a restore of those only survives if it reaches the cloud first.
+  restorePushToCloud().then(ok=>{
+    alert(ok ? 'Data restored and synced to your account. Reloading…'
+             : 'Data restored on this device, but syncing to the cloud failed.\n\n'+
+               'Do not open Daily on another device until you have retried, or the older '+
+               'cloud copy may overwrite this one.');
+    location.reload();
+  });
+  return true;
+}
+function openPasteRestore(){
+  const box=document.getElementById('paste-restore-box'); if(!box) return;
+  box.innerHTML=
+    '<div class="modal-header">'+
+      '<button class="back-btn" data-back="closePasteRestore" aria-label="Back">'+BACK_CHEVRON+'</button>'+
+      '<div class="modal-title">Paste backup</div>'+
+    '</div>'+
+    '<div class="modal-body">'+
+      '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">'+
+        'Paste the full contents of a Daily backup — the whole thing, from the first '+
+        '<code>{</code> to the last <code>}</code>.</div>'+
+      '<textarea id="paste-restore-text" rows="8" placeholder=\'{"app":"daily","version":1,…}\' '+
+        'style="width:100%;padding:10px;border-radius:12px;border:1px solid var(--border);'+
+        'background:var(--bg);color:var(--text);font-size:13px;font-family:monospace"></textarea>'+
+      '<div id="paste-restore-msg" style="font-size:12.5px;font-weight:600;margin-top:8px;min-height:17px;color:var(--danger)"></div>'+
+      '<div style="display:flex;gap:10px;margin-top:14px">'+
+        '<button class="modal-btn secondary" onclick="closePasteRestore()">Cancel</button>'+
+        '<button class="modal-btn primary" onclick="doPasteRestore()">Restore</button>'+
+      '</div>'+
+    '</div>';
+  document.getElementById('paste-restore-overlay').classList.remove('hidden');
+}
+function closePasteRestore(){ const o=document.getElementById('paste-restore-overlay'); if(o) o.classList.add('hidden'); }
+function doPasteRestore(){
+  const msg=document.getElementById('paste-restore-msg');
+  const txt=(document.getElementById('paste-restore-text')||{}).value||'';
+  if(!txt.trim()){ if(msg) msg.textContent='Nothing pasted yet.'; return; }
+  if(msg) msg.textContent='';
+  // The overlay stays open on failure so the pasted text is not lost.
+  restoreFromText(txt, m=>{ if(msg) msg.textContent=m; });
 }
 // Full-replacement push of every synced store, used only by a restore. Ordinary saves must
 // never call this — merge-on-write is right for day-to-day editing across two devices, and
