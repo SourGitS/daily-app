@@ -24,10 +24,40 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferr
 // so document.body already exists) — as early as possible, before any user interaction.
 document.body.addEventListener('click', function(){}, false);
 
+// Returns the sign-in promise so callers can report failures. It used to swallow every error
+// with an empty catch, which left any caller waiting on a result that was never coming —
+// most visibly an in-app browser (ChatGPT, Instagram, Messenger) where Google refuses OAuth
+// outright and the popup opens blank.
 function handleAuth(){
-  if(!firebaseReady || !auth) return;
-  if(auth.currentUser){ auth.signOut(); return; }
-  auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(()=>{});
+  if(!firebaseReady || !auth) return Promise.resolve(null);
+  if(auth.currentUser){ auth.signOut(); return Promise.resolve(null); }
+  return auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+}
+// Button-facing wrapper: same sign-in, but a failure surfaces as a toast instead of an
+// unhandled rejection. handleAuth() no longer swallows errors, so every caller needs this.
+function handleAuthUI(){
+  const p=handleAuth();
+  if(p&&p.catch) p.catch(err=>{ if(typeof showToast==='function') showToast(authErrorMessage(err)); });
+}
+// Plain-language reason for a Firebase auth failure, so a dead end explains itself.
+function authErrorMessage(err){
+  const code=(err&&err.code)||'';
+  if(code==='auth/popup-closed-by-user'||code==='auth/cancelled-popup-request') return 'Sign-in was cancelled.';
+  if(code==='auth/popup-blocked') return 'Your browser blocked the sign-in popup. Allow popups for this site, or open Daily in Safari or Chrome.';
+  if(code==='auth/operation-not-supported-in-this-environment'||code==='auth/web-storage-unsupported')
+    return 'This browser will not allow Google sign-in. Open Daily directly in Safari or Chrome rather than inside another app.';
+  if(code==='auth/unauthorized-domain') return 'This address is not authorised for sign-in in Firebase.';
+  if(code==='auth/network-request-failed') return 'No connection — check your internet and try again.';
+  return 'Sign-in failed'+(code?' ('+code+')':'')+'. Try opening Daily in Safari or Chrome.';
+}
+// Google blocks OAuth inside embedded/in-app browsers, so the popup opens blank and never
+// resolves. Detecting it lets us say so up front instead of leaving the user waiting.
+function isEmbeddedBrowser(){
+  const ua=navigator.userAgent||'';
+  if(/FBAN|FBAV|Instagram|Line\/|Twitter|WhatsApp|Snapchat|LinkedInApp|ChatGPT/i.test(ua)) return true;
+  // iOS in-app WebViews report Safari's engine without "Safari" in the UA.
+  if(/iPhone|iPad/.test(ua) && !/Safari/.test(ua)) return true;
+  return false;
 }
 function updateHeaderAvatar(){
   const btn=document.getElementById('header-avatar'); if(!btn) return;
@@ -4113,7 +4143,7 @@ function applySettingsCollapsed(){
 }
 function settingsProfileCardTap(){
   const user=(firebaseReady&&auth)?auth.currentUser:null;
-  if(user){ openSettingsSection('account'); } else { handleAuth(); }
+  if(user){ openSettingsSection('account'); } else { handleAuthUI(); }
 }
 function renderSettingsTopCard(){
   const av=document.getElementById('stg-avatar');
@@ -4303,14 +4333,14 @@ function renderAccountSection(){
             '<div style="font-size:12px;color:var(--success);margin-top:2px">● Synced to cloud</div>'+
           '</div>'+
         '</div>'+
-        '<button onclick="handleAuth()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer">Sign out</button>'+
+        '<button onclick="handleAuthUI()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer">Sign out</button>'+
       '</div>';
   } else {
     signIn=
       '<div class="settings-card">'+
         '<div class="settings-card-title" style="cursor:default">Account</div>'+
         '<div style="font-size:13px;color:var(--muted);margin-bottom:14px">Not signed in — sign in to sync your data across devices.</div>'+
-        '<button onclick="handleAuth()" style="width:100%;padding:10px;border-radius:10px;border:none;background:#4285f4;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">'+
+        '<button onclick="handleAuthUI()" style="width:100%;padding:10px;border-radius:10px;border:none;background:#4285f4;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">'+
           '<svg viewBox="0 0 24 24" style="width:16px;height:16px;flex-shrink:0"><path fill="#fff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#fff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>'+
           'Sign in with Google'+
         '</button>'+
@@ -11203,7 +11233,9 @@ function obAddCustomHabit(){
 function obSignIn(){
   if(!(firebaseReady&&auth)){ obNext(); return; }
   obAttachAuthWatch();
-  handleAuth(); // opens the Google popup; the watcher advances to 'done' once it resolves
+  // Same reporting as the welcome-screen button: a blocked popup must not leave this step
+  // waiting silently for a result that never arrives.
+  handleAuth().catch(err=>{ if(typeof showToast==='function') showToast(authErrorMessage(err)); });
 }
 function obAttachAuthWatch(){
   if(!firebaseReady||!auth||obAuthUnsub) return;
@@ -11279,11 +11311,23 @@ function obDismiss(){
   if(typeof renderHome==='function') renderHome();
   if(typeof updateHeaderAvatar==='function') updateHeaderAvatar();
 }
+let _obOpenWatchdog=null;
 function obSignInExisting(){
   if(!(firebaseReady&&auth)) return;
-  const note=document.getElementById('ob-restore-note');
   const say=t=>{ const n=document.getElementById('ob-restore-note'); if(n) n.textContent=t; };
+  if(isEmbeddedBrowser()){
+    say('Google will not allow sign-in inside another app’s browser. Open Daily in Safari or Chrome, then tap this again.');
+    return;
+  }
   say('Opening sign-in…');
+  // A blocked popup can hang without ever rejecting, so never leave this state spinning
+  // with no explanation of what to do next.
+  clearTimeout(_obOpenWatchdog);
+  _obOpenWatchdog=setTimeout(()=>{
+    const n=document.getElementById('ob-restore-note');
+    if(n && /Opening sign-in/.test(n.textContent))
+      say('Still waiting on Google. If the sign-in window is blank, this browser is blocking it — open Daily in Safari or Chrome instead.');
+  },12000);
   obDetachAuthWatch();
   obAuthUnsub=auth.onAuthStateChanged(u=>{
     if(!u) return;
@@ -11309,7 +11353,13 @@ function obSignInExisting(){
       }
     },400);
   });
-  handleAuth();
+  // Report the failure rather than waiting on a result that is never coming.
+  handleAuth().catch(err=>{
+    clearTimeout(_obOpenWatchdog);
+    clearInterval(_obRestoreTimer);
+    obDetachAuthWatch();
+    say(authErrorMessage(err));
+  });
 }
 function obThemeHTML(){
   const opt=(val,label,icon)=>{
