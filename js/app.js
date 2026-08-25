@@ -132,7 +132,9 @@ function syncBlobListen(uid, path, lsKey, onUpdate){
 // syncBlobPush, or pre-migration) is treated as t=0, so a locally-stamped edit always wins
 // against it and converges the cloud to the new shape — no separate migration step needed.
 function lsSaveTS(key, value, tsKey, syncPath){
-  const now=Date.now();
+  // Same boot rule as lsSave: a migration or default written during init must not outrank a
+  // real edit sitting in the cloud.
+  const now=_bootPhase ? (parseInt(localStorage.getItem(tsKey)||'0',10)||0) : Date.now();
   try{
     localStorage.setItem(key, typeof value==='string'?value:JSON.stringify(value));
     localStorage.setItem(tsKey, String(now));
@@ -193,12 +195,23 @@ function lsLoad(key, fallback, validate){
 // Write to localStorage (JSON-encoded unless already a string) and, when a Firebase
 // blob `syncPath` is given, push it to the cloud. setItem is guarded so a quota /
 // private-mode failure can't throw out of the caller mid-render; the push is guarded too.
+// TRUE while the app is booting: default seeding and the one-time migrations all write during
+// init, and stamping those with Date.now() made an untouched device look like the most recent
+// editor. On sign-in the timestamped listeners then pushed those local DEFAULTS over real
+// cloud data — losing the training split and budget categories. Boot writes therefore keep
+// whatever timestamp the store already had (0 if it has never been edited here), so they can
+// never beat a genuine edit made on another device.
+let _bootPhase = true;
+function stampFor(key){
+  if(!_bootPhase) return Date.now();
+  return parseInt(localStorage.getItem(key+'_ts')||'0',10)||0;
+}
 function lsSave(key, value, syncPath){
   try{
     localStorage.setItem(key, typeof value==='string'?value:JSON.stringify(value));
     // Stamp every save so the sync listener can tell a real edit from an untouched default.
     // Without this the cloud copy carried no age and any device could claim to be newest.
-    localStorage.setItem(key+'_ts', String(Date.now()));
+    localStorage.setItem(key+'_ts', String(stampFor(key)));
   }catch(e){ console.warn('localStorage save failed for '+key, e); return; }
   if(syncPath){ try{ if(typeof syncBlobPush==='function') syncBlobPush(syncPath, key); }catch(e){} }
 }
@@ -12967,7 +12980,12 @@ try {
   checkOnboarding();
   checkWhatsNew();
   checkReminders();
+  // Boot is over: from here every save is a real edit and stamps the current time.
+  _bootPhase = false;
 } catch(e) {
+  // Cleared in the failure path too — otherwise an init error would leave every later save
+  // unstamped, and this device could never win a sync conflict again.
+  _bootPhase = false;
   console.error('App init failed:', e);
   const main=document.getElementById('app-main');
   if(main) main.innerHTML='<div style="padding:24px;color:var(--text);font-size:14px;line-height:1.6">'+
