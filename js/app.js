@@ -12087,6 +12087,15 @@ function kitCookRender(){
     kitCookState.timerStart=null;
     if(kitCookState.tickId){ clearInterval(kitCookState.tickId); kitCookState.tickId=null; }
   }
+  // Honour whatever serving scale is set on the detail view (kitState.scaleServings) — same
+  // convention kitRenderDetail uses, so a batch cook scaled up before hitting "Start cooking"
+  // shows the same scaled amounts here rather than reverting to the recipe's base servings.
+  const cur=kitState.scaleServings||r.servings;
+  const ingHTML=(r.ingredients||[]).filter(i=>i&&i.name).map(i=>{
+    const amt=kitScaledAmount(i.amount,r.servings,cur);
+    const right=[amt,i.unit].filter(x=>x!=='' && x!=null).join(' ');
+    return '<div class="kit-cook-ing-row"><span>'+kitEsc(i.name)+'</span><span class="kit-cook-ing-amt">'+kitEsc(right)+'</span></div>';
+  }).join('');
   ov.innerHTML=
     '<div class="kit-cook-topbar">'+
       '<button class="kit-cook-exit" onclick="kitExitCooking()">✕ Exit</button>'+
@@ -12095,9 +12104,19 @@ function kitCookRender(){
     '</div>'+
     '<div class="kit-cook-progress-bar"><div class="kit-cook-progress-fill" style="width:'+pct+'%"></div></div>'+
     '<div class="kit-cook-step-label">Step '+( idx+1)+' of '+total+'</div>'+
-    '<div class="kit-cook-body">'+
-      '<div class="kit-cook-step-text">'+kitEsc(text)+'</div>'+
-      '<div id="kit-cook-timer"></div>'+
+    '<div class="kit-cook-content">'+
+      '<div class="kit-cook-body">'+
+        '<div class="kit-cook-step-text">'+kitEsc(text)+'</div>'+
+        '<div id="kit-cook-timer"></div>'+
+      '</div>'+
+      // Kept on screen through every step rather than tucked behind a toggle — the point
+      // raised was that switching to the ingredients list mid-step (e.g. the detail view)
+      // loses your place in the method. Scoped to its own scroll region so a long ingredient
+      // list can't push the Prev/Next bar off screen.
+      (ingHTML?'<div class="kit-cook-ing-panel">'+
+        '<div class="kit-cook-ing-hd">📋 Ingredients'+(cur!==r.servings?' · '+cur+' serving'+(cur===1?'':'s'):'')+'</div>'+
+        ingHTML+
+      '</div>':'')+
     '</div>'+
     '<div class="kit-cook-nav">'+
       '<button class="kit-cook-nav-btn" onclick="kitCookGo(-1)"'+(hasPrev?'':' disabled')+'>← Prev</button>'+

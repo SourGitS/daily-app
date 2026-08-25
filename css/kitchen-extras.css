@@ -731,8 +731,24 @@
 .kit-cook-progress-bar{height:4px;background:var(--border);margin:0 16px 6px;border-radius:2px;flex-shrink:0}
 .kit-cook-progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .35s ease}
 .kit-cook-step-label{text-align:center;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:16px;flex-shrink:0}
-.kit-cook-body{flex:1;overflow-y:auto;padding:0 24px 16px;display:flex;flex-direction:column;align-items:center;gap:24px}
+/* Holds the step body + the ingredients panel. Column (stacked) on mobile so the ingredients
+   get their own capped strip without eating the step text's space; row (side-by-side) on
+   desktop where there's width to spare — see the min-width:1024px block below. */
+.kit-cook-content{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.kit-cook-body{flex:1;overflow-y:auto;padding:0 24px 16px;display:flex;flex-direction:column;align-items:center;gap:24px;min-height:0}
 .kit-cook-step-text{font-size:20px;font-weight:600;line-height:1.5;color:var(--text);text-align:center;max-width:480px}
+/* Stays on screen through every step — the point was to never have to leave the method view
+   to check a measurement. Its own scroll region, capped short on mobile, so a long ingredient
+   list can shrink itself rather than push the Prev/Next bar off screen. */
+.kit-cook-ing-panel{flex-shrink:0;max-height:30vh;overflow-y:auto;padding:10px 24px calc(6px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border)}
+.kit-cook-ing-hd{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px}
+.kit-cook-ing-row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13.5px;color:var(--text)}
+.kit-cook-ing-row:last-child{border-bottom:none}
+.kit-cook-ing-amt{color:var(--accent-text);font-weight:700;flex-shrink:0;text-align:right;font-family:'Space Grotesk',sans-serif}
+@media(min-width:1024px){
+  .kit-cook-content{flex-direction:row}
+  .kit-cook-ing-panel{max-height:none;width:300px;overflow-y:auto;border-top:none;border-left:1px solid var(--border);padding:24px 28px}
+}
 .kit-cook-timer-ring{position:relative;width:80px;height:80px;display:inline-flex;align-items:center;justify-content:center}
 .kit-cook-timer-ring svg{position:absolute;inset:0;width:80px;height:80px}
 .kit-cook-timer-time{font-size:18px;font-weight:700;font-family:'Space Grotesk',sans-serif;color:var(--text);position:relative;z-index:1}
