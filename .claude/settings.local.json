@@ -62,7 +62,10 @@
       "Bash(sed -i \"s/const CACHE_NAME = 'daily-v199'/const CACHE_NAME = 'daily-v200'/\" service-worker.js)",
       "Bash(sed -i \"s/const CACHE_NAME = 'daily-v200'/const CACHE_NAME = 'daily-v201'/\" service-worker.js)",
       "Bash(sed -i \"s/const CACHE_NAME = 'daily-v201'/const CACHE_NAME = 'daily-v202'/\" service-worker.js)",
-      "Bash(sed -i \"s/const CACHE_NAME = 'daily-v202'/const CACHE_NAME = 'daily-v203'/\" service-worker.js)"
+      "Bash(sed -i \"s/const CACHE_NAME = 'daily-v202'/const CACHE_NAME = 'daily-v203'/\" service-worker.js)",
+      "Bash(awk 'NR>=11490 && NR<=11546 && /^function /' js/app.js)",
+      "Bash(awk 'NR>=11440 && NR<=11546 && /^function /{print NR\": \"$0}' js/app.js)",
+      "Bash(sed -i \"s/const CACHE_NAME = 'daily-v204'/const CACHE_NAME = 'daily-v205'/\" service-worker.js)"
     ]
   }
 }

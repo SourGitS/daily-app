@@ -11255,7 +11255,61 @@ function obWelcomeHTML(){
       obFeature('🍳','Recipes, shopping &amp; pantry')+
     '</ul>'+
     '<button class="ob-btn-primary" onclick="obNext()">Get started →</button>'+
+    // Returning users could only sign in at the 'sync' step, second from last — six screens
+    // of setup before they could pull down the account they already had. This restores it
+    // immediately, and skips the rest once the cloud profile lands.
+    ((firebaseReady&&auth)?
+      '<button class="ob-btn-link" id="ob-restore-btn" onclick="obSignInExisting()">I already have an account — sign in</button>'+
+      '<div class="ob-restore-note" id="ob-restore-note"></div>'
+      :'')+
   '</div>';
+}
+// Sign in from the welcome screen and, if the account has data, skip onboarding entirely.
+// A brand-new Google account has nothing to restore, so that case falls through into the
+// normal flow rather than dropping the user into an empty app with no name.
+let _obRestoreTimer=null;
+// Close the overlay without saving any onboarding answers.
+function obDismiss(){
+  clearInterval(_obRestoreTimer);
+  obDetachAuthWatch();
+  const ov=document.getElementById('onboarding-overlay');
+  if(ov) ov.classList.add('hidden');
+  if(typeof applyTheme==='function') applyTheme();
+  if(typeof applyDayColour==='function') applyDayColour();
+  if(typeof renderHome==='function') renderHome();
+  if(typeof updateHeaderAvatar==='function') updateHeaderAvatar();
+}
+function obSignInExisting(){
+  if(!(firebaseReady&&auth)) return;
+  const note=document.getElementById('ob-restore-note');
+  const say=t=>{ const n=document.getElementById('ob-restore-note'); if(n) n.textContent=t; };
+  say('Opening sign-in…');
+  obDetachAuthWatch();
+  obAuthUnsub=auth.onAuthStateChanged(u=>{
+    if(!u) return;
+    say('Signed in — looking for your data…');
+    // The profile arrives asynchronously via fbReconcile. Poll briefly for a name rather than
+    // racing it; give up gracefully instead of hanging if this account is genuinely new.
+    // Real elapsed time, not a tick count: a backgrounded tab throttles setInterval to about
+    // once a second, so counting 400ms per tick stretched a 6s wait past 9s in practice.
+    const startedAt=Date.now();
+    clearInterval(_obRestoreTimer);
+    _obRestoreTimer=setInterval(()=>{
+      const named=!!(profileData&&(profileData.name||'').trim());
+      if(named){
+        clearInterval(_obRestoreTimer);
+        obDetachAuthWatch();
+        say('Welcome back, '+profileData.name+'!');
+        // Dismiss rather than finishOnboarding(): that writes the onboarding answers (name,
+        // split, habits) and would overwrite the account we just restored.
+        setTimeout(obDismiss,600);
+      } else if(Date.now()-startedAt>=6000){
+        clearInterval(_obRestoreTimer);
+        say('Signed in, but this account has no saved data yet — continuing setup. Anything you enter now will sync.');
+      }
+    },400);
+  });
+  handleAuth();
 }
 function obThemeHTML(){
   const opt=(val,label,icon)=>{

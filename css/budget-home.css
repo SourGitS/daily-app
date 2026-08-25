@@ -638,6 +638,12 @@
 .ob-section-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin:18px 0 10px}
 .ob-btn-primary{width:100%;padding:16px;border-radius:12px;border:none;background:var(--accent);color:#fff;font-size:16px;font-weight:700;cursor:pointer;margin-top:16px;-webkit-tap-highlight-color:transparent}
 .ob-btn-skip{padding:14px 18px;border-radius:12px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:15px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
+/* "I already have an account" — quieter than the primary action, since setting up fresh is
+   still the common path; a returning user is looking for this and will find it. */
+.ob-btn-link{width:100%;padding:12px;margin-top:10px;border:none;background:transparent;
+  color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;text-decoration:underline;text-underline-offset:3px}
+.ob-restore-note{font-size:12.5px;color:var(--muted);line-height:1.45;margin-top:8px;min-height:18px}
 .ob-btn-block{width:100%;margin-top:10px}
 .ob-btn-row{display:flex;gap:10px;margin-top:16px}
 .ob-btn-row .ob-btn-skip{flex:0 0 auto}
