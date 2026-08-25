@@ -143,7 +143,12 @@ function lsSaveTS(key, value, tsKey, syncPath){
     db.ref('users/'+auth.currentUser.uid+'/'+syncPath).set({v:localStorage.getItem(key), t:now});
   }
 }
+// Every blob store that has registered a listener this session, as {path, lsKey, tsKey}.
+// Built here rather than kept as a second hardcoded list because the two would drift: a new
+// store added below would sync fine but be silently skipped by a restore (see restorePush).
+const SYNC_BLOB_REG=[];
 function syncBlobListenTS(uid, path, lsKey, tsKey, onUpdate){
+  if(!SYNC_BLOB_REG.some(b=>b.lsKey===lsKey)) SYNC_BLOB_REG.push({path, lsKey, tsKey});
   const ref=db.ref('users/'+uid+'/'+path);
   const localT=()=>parseInt(localStorage.getItem(tsKey)||'0',10)||0;
   // Seed an empty cloud slot from this device (behaviour the untimestamped listener had).
@@ -5080,15 +5085,75 @@ function importData(e){
     if(!data || typeof data!=='object'){ alert('Invalid backup file.'); return; }
     const keys=Object.keys(data).filter(k=>/^(daily_|wt_|kitchen_)/.test(k));
     if(!keys.length){ alert('No Daily data found in this file.'); return; }
-    if(!confirm('Restore '+keys.length+' data keys from this backup?\nThis overwrites the current data on this device.')){ e.target.value=''; return; }
+    const signedIn = !!(firebaseReady && auth && auth.currentUser && db);
+    if(!confirm('Restore '+keys.length+' data keys from this backup?\n\n'+
+      'This replaces the data on this device'+
+      (signedIn?' AND in your synced account, on every device.':'.'))){ e.target.value=''; return; }
     keys.forEach(k=>{
+      if(/_ts$/.test(k)) return; // re-stamped below — never restore a stale timestamp
       const v=data[k];
       localStorage.setItem(k, typeof v==='string' ? v : JSON.stringify(v));
     });
-    alert('Data restored. Reloading…');
-    location.reload();
+    // A restore is authoritative: the file is meant to BECOME the truth, not to be merged
+    // with whatever the cloud happens to hold. Restoring the backup's own _ts values would
+    // do the exact opposite — they are by definition older than anything saved since, so the
+    // first sync after reload reads the cloud as "newer" and wipes the restore. Stamping now
+    // is what makes the restored copy win.
+    const now=Date.now();
+    keys.forEach(k=>{ if(!/_ts$/.test(k)) localStorage.setItem(k+'_ts', String(now)); });
+    if(!signedIn){ alert('Data restored. Reloading…'); location.reload(); return; }
+    // Signed in: push before reloading. The cloud-wins stores (profile, budget defaults,
+    // personal info, habits) adopt the cloud copy unconditionally when their listeners
+    // re-attach, so a restore of those only survives if it reaches the cloud first.
+    restorePushToCloud().then(ok=>{
+      alert(ok ? 'Data restored and synced to your account. Reloading…'
+               : 'Data restored on this device, but syncing to the cloud failed.\n\n'+
+                 'Do not open Daily on another device until you have retried, or the older '+
+                 'cloud copy may overwrite this one.');
+      location.reload();
+    });
   };
   reader.readAsText(file);
+}
+// Full-replacement push of every synced store, used only by a restore. Ordinary saves must
+// never call this — merge-on-write is right for day-to-day editing across two devices, and
+// wholesale replacement is right only when the user has explicitly said "this file is the
+// truth". Sessions and weights are replaced rather than unioned for that reason: after a
+// restore the union would resurrect exactly the entries the backup was taken to be rid of.
+function restorePushToCloud(){
+  if(!(firebaseReady && auth && auth.currentUser && db)) return Promise.resolve(false);
+  const uid=auth.currentUser.uid, jobs=[];
+  let failed=false;
+  const put=(path,val)=>jobs.push(
+    db.ref('users/'+uid+'/'+path).set(val).catch(()=>{ failed=true; }));
+  const putJSON=(path,key)=>{
+    const raw=localStorage.getItem(key); if(raw==null||raw==='') return;
+    try{ put(path, JSON.parse(raw)); }catch(err){}
+  };
+  // Keyed collections — same id scheme each listener writes, so the shapes still match.
+  const putKeyed=(path,key,idOf)=>{
+    const raw=localStorage.getItem(key); if(raw==null||raw==='') return;
+    try{
+      const arr=JSON.parse(raw); if(!Array.isArray(arr)) return;
+      put(path, Object.fromEntries(arr.filter(x=>x&&idOf(x)).map(x=>[idOf(x),x])));
+    }catch(err){}
+  };
+  ['profile:daily_profile','budgetDefaults:daily_budget_defaults',
+   'personalInfo:wt_personalinfo','habits:daily_habits','budgetData:daily_budget']
+    .forEach(pair=>{ const [p,k]=pair.split(':'); putJSON(p,k); });
+  putKeyed('sessions','wt_sessions', s=>String(s.id||''));
+  putKeyed('weights','wt_weight', w=>String(w.date||'').replace(/-/g,''));
+  putKeyed('savingsLog','daily_savings_log', s=>String(s.date||'').replace(/-/g,''));
+  // Blob stores, as the {v,t} envelope the listeners expect, at the freshly stamped time.
+  SYNC_BLOB_REG.forEach(b=>{
+    const raw=localStorage.getItem(b.lsKey); if(raw==null||raw==='') return;
+    put(b.path, {v:raw, t:parseInt(localStorage.getItem(b.tsKey)||'0',10)||Date.now()});
+  });
+  setSyncStatus('Restoring…');
+  return Promise.all(jobs).then(()=>{
+    setSyncStatus(failed?'Sync failed':'Synced ✓');
+    return !failed;
+  });
 }
 
 // ── AI review export ─────────────────────────────────────────────
