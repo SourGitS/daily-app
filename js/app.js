@@ -11950,6 +11950,7 @@ function kitRenderList(){
         (kitMenuOpenId===r.id?
           '<div class="kit-menu-dropdown" onclick="event.stopPropagation()">'+
             '<button onclick="kitMenuOpenId=null;kitOpenForm(\''+r.id+'\')">✏️ Edit</button>'+
+            '<button onclick="kitMenuOpenId=null;kitCopyRecipe(\''+r.id+'\')">🤖 Copy for AI</button>'+
             '<button class="danger" onclick="kitMenuOpenId=null;kitDeleteRecipe(\''+r.id+'\')">🗑️ Delete</button>'+
           '</div>':'')+
       '</div>';
@@ -12161,6 +12162,73 @@ function kitParseImport(text){
   }
   return {recipes:out};
 }
+// ── Export recipes for AI ──────────────────────────────────────────
+// Emits the SAME schema kitParseImport accepts, so the round trip closes: copy a recipe out,
+// ask an assistant to change it, paste the result straight back into Import. Anything that
+// only produced prose would have to be retyped by hand.
+function kitRecipeToExport(r){
+  const num=v=>{ const n=parseFloat(v); return isNaN(n)?null:n; };
+  return {
+    name:r.name||'',
+    emoji:r.emoji||'🍽️',
+    category:KIT_IMPORT_CATS.indexOf(r.category)>=0?r.category:'dinner',
+    servings:Math.max(1,parseInt(r.servings)||1),
+    description:r.description||'',
+    cookTime:num(r.cookTime),
+    ingredients:(r.ingredients||[]).map(i=>({
+      name:i.name||'',
+      amount:(i.amount===''||i.amount==null)?'':(num(i.amount)!=null?num(i.amount):i.amount),
+      unit:i.unit||''
+    })),
+    // Steps keep whichever shape they were stored in; both import cleanly.
+    steps:(r.steps||[]).map(s=>(s&&typeof s==='object'&&s.text)
+      ? {text:s.text, timerMinutes:(s.timerMinutes==null?null:parseInt(s.timerMinutes)||null)}
+      : String(s)),
+    tags:Array.isArray(r.tags)?r.tags.slice():[],
+    calories:num(r.calories), protein:num(r.protein), carbs:num(r.carbs), fat:num(r.fat)
+  };
+}
+// The wrapper explains the format to an assistant that has never seen this app, so the pasted
+// block is useful on its own rather than needing the separate briefing prompt every time.
+function kitBuildExportText(recipes,intro){
+  const payload={recipes:recipes.map(kitRecipeToExport)};
+  return [
+    intro,
+    '',
+    'Rules for any version you give back:',
+    '- Reply with ONE ```json code block in exactly this shape and nothing else inside the fences.',
+    '- category must be one of: '+KIT_IMPORT_CATS.join(', ')+'.',
+    '- tags must come from: '+KIT_STANDARD_TAGS.map(t=>t.val).join(', ')+'.',
+    '- amount is a number and the unit goes in "unit" (one of: '+KIT_UNITS.join(', ')+', or "" for countable things).',
+    '- Name ingredients as they would be BOUGHT ("Onion", not "finely diced onion") — my shopping list merges identical names.',
+    '- calories/protein/carbs/fat are PER SERVING, numbers only. Use null rather than guessing.',
+    '- steps are plain strings, or {"text": "...", "timerMinutes": N} for a timed step.',
+    '',
+    '```json',
+    JSON.stringify(payload,null,2),
+    '```'
+  ].join('\n');
+}
+function kitCopyText(text,msg){
+  const done=()=>{ if(typeof showToast==='function') showToast(msg); };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done));
+  } else fallbackCopy(text,done);
+}
+function kitCopyRecipe(id){
+  const r=kitRecipes.find(x=>x.id===id); if(!r) return;
+  kitCopyText(kitBuildExportText([r],
+    'Here is one recipe from my recipe app. Suggest improvements, adapt it, or scale it as I ask — '+
+    'then give it back in the same format so I can import it straight back.'),
+    'Recipe copied — paste it into your AI chat');
+}
+function kitCopyAllRecipes(){
+  if(!kitRecipes.length){ if(typeof showToast==='function') showToast('No recipes to copy'); return; }
+  kitCopyText(kitBuildExportText(kitRecipes,
+    'Here is my whole recipe book ('+kitRecipes.length+' recipes). Use it to understand what I actually cook '+
+    'when suggesting meal plans or new recipes. Give anything new back in the same format so I can import it.'),
+    kitRecipes.length+' recipes copied');
+}
 function kitOpenImport(){
   const box=document.getElementById('kit-import-box'); if(!box) return;
   box.innerHTML=
@@ -12182,6 +12250,8 @@ function kitOpenImport(){
       '<details style="margin-top:6px"><summary style="font-size:12px;color:var(--muted);cursor:pointer">Show the format</summary>'+
         '<pre style="font-size:11px;line-height:1.45;overflow-x:auto;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:8px">'+
 _catEscHtml(KIT_IMPORT_EXAMPLE)+'</pre></details>'+
+      // Export lives beside import: the two halves of the same round trip.
+      '<button class="modal-btn secondary" style="width:100%;margin-top:12px" onclick="kitCopyAllRecipes()">🤖 Copy my whole recipe book for AI</button>'+
       '<div style="display:flex;gap:10px;margin-top:14px">'+
         '<button class="modal-btn secondary" onclick="kitCloseImport()">Cancel</button>'+
         '<button class="modal-btn primary" onclick="kitDoImport()">Import</button>'+
