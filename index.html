@@ -422,6 +422,7 @@
             <div style="padding:14px 16px;height:220px" id="train-muscle-wrap"></div>
           </div>
           <select class="pr-select" id="pr-select" onchange="renderChart()"></select>
+          <div id="training-swap-note"></div>
           <div class="stats-grid" id="stats-grid"></div>
           <div id="chart-wrap">
             <p>Top set weight per session (kg)</p>
@@ -726,7 +727,7 @@
   <div class="modal-overlay hidden" id="po-modal" onclick="closePOModal()">
     <div class="modal-box">
       <div class="modal-title">🏆 Progression achieved!</div>
-      <div style="font-size:13px;color:var(--muted);margin-bottom:14px">You matched or beat last session on these exercises — consider adding weight next time:</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Your recent sessions show a sustained improvement on these exact exercises:</div>
       <div id="po-items"></div>
       <button class="modal-btn green" style="width:100%;margin-top:16px" onclick="closePOModal()">Got it 💪</button>
     </div>

@@ -1438,6 +1438,26 @@ function rtStart(){
   rtUpdateControls();
   updateLapFab();
 }
+function startWorkout(){
+  if(S.sessionStart) return;
+  S.sessionStart=Date.now();
+  rtStartUi();
+  saveSetData();
+  renderLog();
+  showToast('Workout started');
+  haptic(20);
+}
+function rtStartFresh(){
+  rtPause();
+  rtOffset=0;
+  rtStartTime=null;
+  rtLaps=[];
+  rtStart();
+  rtRenderLaps();
+  renderTimerCard();
+  rtUpdateDisplay(rtGetElapsed());
+  rtUpdateSessionLabels();
+}
 function rtPause(){
   if(!rtRunning) return;
   rtOffset+=Date.now()-rtStartTime;
@@ -2497,6 +2517,21 @@ function logAddExercise(name, muscle){
   showToast('Exercise added');
   haptic(15);
 }
+function logPromoteExercise(name){
+  const item=(S.sessionAdds||[]).find(a=>a.name===name); if(!item) return;
+  const base=typeForDayIdx(S.dayIdx);
+  const c=dayCustomFor(base.id);
+  if(!(c.added||[]).some(a=>a.name===name)){
+    if(!c.added) c.added=[];
+    c.added.push({name,sets:Math.max(1,(S.setData[name]||[]).filter(s=>s.type!=='warmup').length),muscle:item.muscle||'other'});
+  }
+  S.sessionAdds=S.sessionAdds.filter(a=>a.name!==name);
+  saveDayCustom();
+  saveSetData();
+  renderLog();
+  showToast('Added to '+base.name);
+  haptic(20);
+}
 // Add-exercise picker — pulls from the Exercise Library, excluding ones already in the day.
 function openAddExercise(){
   const m=document.getElementById('log-add-picker'); if(!m) return;
@@ -2524,6 +2559,10 @@ document.addEventListener('click',function(e){
   if(delEx){ logRemoveExercise(delEx.dataset.name); return; }
   const pick=e.target.closest('[data-action="logpick-add"]');
   if(pick){ logAddExercise(pick.dataset.name, pick.dataset.muscle); closeAddExercise(); return; }
+  const promote=e.target.closest('[data-action="log-promote-exercise"]');
+  if(promote){ logPromoteExercise(promote.dataset.name); return; }
+  const trainEx=e.target.closest('[data-training-ex]');
+  if(trainEx){ selectTrainingExercise(trainEx.dataset.trainingEx); return; }
 });
 
 function toggleMenu(){
@@ -2628,6 +2667,7 @@ function renderLog(animateEntrance){
         '</div>'+
         '<div class="ldh-progress-row"><span>'+done+' of '+total+' done</span><span>'+pct+'%</span></div>'+
         '<div class="ldh-bar"><div class="ldh-bar-fill" style="width:'+pct+'%"></div></div>'+
+        (!S.sessionStart?'<button class="ldh-start" onclick="startWorkout()">Start workout</button>':'')+
       '</div>';
     renderTimerCard();
     rtUpdateDisplay(rtGetElapsed()); rtUpdateSessionLabels(); // sync the freshly-rendered timer
@@ -2670,8 +2710,9 @@ function renderLog(animateEntrance){
   }).join('');
 
   document.getElementById('save-msg').style.display='none';
-  document.getElementById('save-btn').textContent='Save session';
-  document.getElementById('save-btn').style.background='';
+  const saveBtn=document.getElementById('save-btn');
+  if(saveBtn) saveBtn.textContent=(total>0&&done===total)?'Finish workout':'Save partial workout';
+  if(saveBtn) saveBtn.style.background='';
 
   checkSessionComplete();
 }
@@ -2783,7 +2824,8 @@ function renderExCard(ex, ei){
       <div class="ex-left" onclick="setActiveExercise(${ei})" style="cursor:pointer" title="Set as current exercise">
         <div class="ex-name">${displayName}</div>
         ${exSummary?`<div class="ex-collapse-summary">${exSummary}</div>`:''}
-        ${isSwapped?`<div class="swap-badge">swapped</div>`:''}
+        ${isSwapped?`<div class="swap-badge">Replacing ${_catEscHtml(ex.name)}</div>`:''}
+        ${ex.sessionOnly?`<div class="session-only-badge">Today only <button type="button" data-action="log-promote-exercise" data-name="${_catEsc(ex.name)}">Add to ${_catEscHtml(type(S.dayIdx).name)}</button></div>`:''}
         ${ex.note?`<div style="font-size:11px;color:rgba(255,255,255,0.7);margin-top:2px">${ex.note}</div>`:''}
         ${badge?`<div class="ex-badges">${badge}</div>`:''}
       </div>
@@ -2896,7 +2938,8 @@ function toggleExCollapse(ei){
 function addSet(ei, setType){
   const ex = type(S.dayIdx).exercises[ei];
   const arr = S.setData[ex.name] || (S.setData[ex.name]=[]);
-  const ns = {weight:'',reps:'',type:setType==='warmup'?'warmup':'working',done:false};
+  const prior=[...arr].reverse().find(s=>s.type!=='warmup');
+  const ns = {weight:setType==='warmup'?'':(prior&&prior.weight||''),reps:'',type:setType==='warmup'?'warmup':'working',done:false};
   if(setType==='warmup') arr.unshift(ns); else arr.push(ns); // warmups sit at the top
   recomputeChecked(); saveSetData(); renderLog();
 }
@@ -2916,6 +2959,11 @@ function toggleWarmup(ei, si){
 function toggleSetDone(ei, si){
   const ex = type(S.dayIdx).exercises[ei];
   const s = S.setData[ex.name] && S.setData[ex.name][si]; if(!s) return;
+  if(!s.done && !String(s.weight||'').trim() && !String(s.reps||'').trim()){
+    showToast('Enter weight or reps first');
+    haptic(20);
+    return;
+  }
   s.done = !s.done;
   const justMarkedDone = s.done;
   recomputeChecked(); saveSetData();
@@ -2939,7 +2987,13 @@ function toggleSetDone(ei, si){
       if(nowDone){ card.classList.add('ex-card-done-glow'); setTimeout(()=>card.classList.remove('ex-card-done-glow'), 800); }
     }
     // Day-complete gets its own toast+haptic below — don't stack both on the final set.
-    if(!dayComplete){ showToast('Set saved'); haptic(30); }
+    if(!dayComplete){
+      if(s.type!=='warmup'){
+        rtStartFresh();
+        showToast('Set saved · Rest started');
+      } else showToast('Warmup saved');
+      haptic(30);
+    }
   }
 
   // Day complete — 5 celebration rings scattered across the viewport
@@ -3017,7 +3071,8 @@ function saveSession(){
     dayNum: S.dayIdx+1,
     sessionType: t.name,
     duration: getDurationMins(),
-    exercises
+    exercises,
+    completed: t.exercises.length>0 && S.checked.size===t.exercises.length
   };
   if(note) sessionObj.note = note;
 
@@ -3050,7 +3105,7 @@ function saveSession(){
   showPostSaveEffortPrompt(sessionObj.id);
 
   setTimeout(()=>{
-    btn.textContent = 'Save session';
+    btn.textContent = 'Save partial workout';
     btn.style.background = '';
     if(poSuggestions.length) showPOModal(poSuggestions);
   }, 900);
@@ -3113,7 +3168,7 @@ function checkPO(newSession){
   (newSession.exercises||[]).forEach(ex=>{
     const hist=poHistoryFor(ex.name,newSession.sessionType);
     const reason=poShouldIncrease(hist);
-    if(reason) suggestions.push({name:dn(ex.name),weight:hist[0].weight,reps:hist[0].reps,reason});
+    if(reason) suggestions.push({name:ex.name,weight:hist[0].weight,reps:hist[0].reps,reason});
   });
   return suggestions;
 }
@@ -3276,7 +3331,7 @@ function openSwapModal(ei){
   const cur = S.swaps[ex.name];
   // Show the current swap (if any) in the LABEL, not the search box.
   document.getElementById('swap-original-label').textContent =
-    cur ? `${ex.name} → ${cur}` : `Default: ${ex.name}`;
+    cur ? `${ex.name} → ${cur}. This replacement applies everywhere in your program.` : `Replacing ${ex.name} changes every occurrence until you reset it.`;
   // Start the search box EMPTY so the whole library renders. Prefilling it with the current
   // swap name (frequently a custom name absent from the library) made renderSwapList filter
   // the list down to zero rows — the "swap list is empty / swap won't save" bug, since with
@@ -3687,8 +3742,13 @@ function renderTraining(){
   if(content) content.classList.remove('hidden');
   const sel = document.getElementById('pr-select');
   const prev = sel.value;
-  const exNames = allExerciseNames();
-  sel.innerHTML = exNames.map(n=>`<option value="${n}"${n===prev?' selected':''}>${dn(n)}</option>`).join('');
+  // A chart option's label and value must identify the same literal performed exercise.
+  // Include current program display names plus every historical name so resets, swaps,
+  // session-only additions and renames never make valid history disappear.
+  const programmed=splitTypes().flatMap(t=>(t.exercises||[]).map(e=>dn(e.name)));
+  const logged=S.sessions.flatMap(s=>(s.exercises||[]).map(e=>e.name));
+  const exNames=[...new Set([...programmed,...logged])].sort((a,b)=>a.localeCompare(b));
+  sel.innerHTML = exNames.map(n=>`<option value="${_catEsc(n)}"${n===prev?' selected':''}>${_catEscHtml(n)}</option>`).join('');
   if(!sel.value && exNames.length) sel.value = exNames[0];
   renderTrainStreak();
   renderVolumeTrend();
@@ -3936,6 +3996,7 @@ function renderConsistStats(){
 
 function renderChart(){
   const exName = document.getElementById('pr-select').value;
+  renderTrainingSwapNote(exName);
   const pts = getPoints(exName);
 
   const pr = getPR(exName);
@@ -3995,6 +4056,23 @@ function renderChart(){
       }
     }
   });
+}
+
+function selectTrainingExercise(name){
+  const sel=document.getElementById('pr-select');
+  if(!sel) return;
+  sel.value=name;
+  renderChart();
+}
+function renderTrainingSwapNote(name){
+  const el=document.getElementById('training-swap-note'); if(!el) return;
+  const links=[];
+  const to=S.swaps[name];
+  if(to) links.push('Currently replaced by <button type="button" data-training-ex="'+_catEsc(to)+'">'+_catEscHtml(to)+'</button>. New sessions are logged there.');
+  Object.keys(S.swaps||{}).forEach(original=>{
+    if(S.swaps[original]===name) links.push('Currently used in place of '+_catEscHtml(original)+'. Earlier sessions may remain under <button type="button" data-training-ex="'+_catEsc(original)+'">'+_catEscHtml(original)+'</button>.');
+  });
+  el.innerHTML=links.length?'<div class="training-swap-note">'+links.join('<br>')+'</div>':'';
 }
 
 function renderPRBoard(){
