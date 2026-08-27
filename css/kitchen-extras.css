@@ -1028,3 +1028,118 @@
   .ob-desc{font-size:13px}
   .ob-feature-list{gap:8px;margin-bottom:14px}
 }
+
+/* ══ Daily + AI hub ═══════════════════════════════════════════════
+   A builder (left) and its output (right). Every colour is a token, so the runtime accent and
+   both themes are carried without a second palette. Accent rules: --accent for FILLS that
+   white text sits on, --accent-text for accent-coloured text on --bg/--card. */
+.aihub-wrap{padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 40px)}
+.aih-grid{display:grid;grid-template-columns:1fr;gap:0}
+.aih-col{min-width:0}
+.aih-card{margin-bottom:12px}
+.aih-hint{font-size:12.5px;color:var(--muted);line-height:1.45;margin:-2px 0 10px}
+
+/* ── Pills (preset + period) ── */
+.aih-pills{display:flex;flex-wrap:wrap;gap:7px}
+.aih-pill{appearance:none;font-family:inherit;font-size:13px;font-weight:650;cursor:pointer;
+  padding:8px 13px;border-radius:var(--radius-pill);border:1px solid var(--border);
+  background:transparent;color:var(--text-2);transition:background .15s ease,color .15s ease,border-color .15s ease}
+.aih-pill.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* ── Custom date row ── */
+.aih-dates{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+.aih-date{flex:1 1 150px;min-width:0;display:flex;flex-direction:column;gap:5px}
+.aih-date>span{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.aih-date input{width:100%;min-width:0;font-family:inherit;font-size:14px;color:var(--text);
+  background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px}
+
+/* ── Scope checklist ──
+   Buttons rather than <input type=checkbox> so the whole row is the target on a phone; the
+   role/aria-checked pair carries the semantics that markup would have given for free. */
+.aih-scopes{display:flex;flex-direction:column;gap:6px}
+.aih-scope,.aih-sub{display:flex;align-items:flex-start;gap:11px;width:100%;text-align:left;
+  appearance:none;font-family:inherit;cursor:pointer;padding:10px 12px;border-radius:13px;
+  border:1px solid var(--border);background:transparent;transition:border-color .15s ease,background .15s ease}
+.aih-scope.on,.aih-sub.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.08)}
+.aih-sub{margin-left:22px;width:calc(100% - 22px)}
+.aih-box{flex-shrink:0;width:19px;height:19px;margin-top:1px;border-radius:6px;
+  border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;color:#fff}
+.aih-scope.on .aih-box,.aih-sub.on .aih-box{background:var(--accent);border-color:var(--accent)}
+.aih-box svg{width:12px;height:12px}
+.aih-scope-t{display:flex;flex-direction:column;gap:2px;min-width:0}
+.aih-scope-n{font-size:14px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.aih-scope-h{font-size:12px;font-weight:500;color:var(--muted);line-height:1.35}
+/* Semantic, not accent: "handle with care" has to read the same whatever hue the accent is. */
+.aih-tag{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;
+  padding:2px 6px;border-radius:6px;background:rgba(245,158,11,.16);color:#b45309}
+[data-theme="dark"] .aih-tag{background:rgba(245,158,11,.18);color:#fbbf24}
+
+/* ── Request box ── */
+.aih-textarea{width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;line-height:1.5;
+  color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:12px;
+  padding:11px 12px;resize:vertical;min-height:96px}
+.aih-textarea:focus{outline:none;border-color:var(--accent)}
+
+/* ── Export summary ── */
+.aih-sum-line{display:flex;gap:10px;align-items:baseline;padding:5px 0;font-size:13px}
+.aih-sum-k{flex:0 0 78px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.aih-sum-v{flex:1;min-width:0;color:var(--text-2);font-weight:600;overflow-wrap:anywhere}
+.aih-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px}
+.aih-chip{font-family:var(--font-num);font-size:12px;font-weight:700;color:var(--text-2);
+  background:var(--track);border-radius:8px;padding:4px 8px;white-space:nowrap}
+.aih-sensitive{margin-top:10px;padding:10px 12px;border-radius:12px;font-size:12.5px;line-height:1.45;
+  background:rgba(245,158,11,.12);color:var(--text);border:1px solid rgba(245,158,11,.3)}
+.aih-note{margin-top:8px;font-size:12.5px;color:var(--muted);line-height:1.45}
+.aih-preview-toggle{margin-top:12px;appearance:none;background:none;border:none;padding:0;
+  font-family:inherit;font-size:12.5px;font-weight:700;color:var(--accent-text);cursor:pointer}
+.aih-fmt{display:flex;gap:6px;margin-top:10px}
+.aih-fmt-btn{appearance:none;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;
+  padding:5px 11px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--text-2)}
+.aih-fmt-btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+/* The preview is wide monospace text: it scrolls inside its own box so the page body never does. */
+.aih-preview{margin:10px 0 0;max-height:340px;overflow:auto;-webkit-overflow-scrolling:touch;
+  background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;line-height:1.5;
+  color:var(--text-2);white-space:pre;tab-size:2}
+
+/* ── Actions ── */
+.aih-actions{margin-top:14px;display:flex;flex-direction:column;gap:8px}
+.aih-btn-row{display:flex;gap:8px;flex-wrap:wrap}
+.aih-btn{flex:1 1 140px;appearance:none;font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer;
+  padding:11px 12px;border-radius:11px;border:1.5px solid var(--border);background:transparent;color:var(--text)}
+.aih-btn-primary{flex:1 1 auto;font-size:15px;padding:13px;border:none;background:var(--accent);color:#fff}
+.aih-foot{margin-top:12px;font-size:11.5px;line-height:1.5;color:var(--muted)}
+
+/* ── Desktop: builder left, output right ──
+   The output column is sticky so Copy stays reachable while the (long) scope list scrolls.
+   The left column is capped: a full-width text field on a 1600px monitor is uncomfortable to
+   read back, which is the same reason the app caps every view at 2200px. */
+@media (min-width:1024px){
+  .aihub-wrap{padding:20px 24px 48px}
+  .aih-grid{grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:16px;align-items:start;max-width:1180px}
+  .aih-card{margin-bottom:14px}
+  .aih-sticky{position:sticky;top:12px}
+  .aih-preview{max-height:min(52vh,520px)}
+}
+
+/* ── Landscape phone ──
+   Wide and short: side by side is the only layout that leaves the output visible while the
+   options are being set. The generic overlay shell (padding, topbar) is inherited from the
+   .app-overlay rule above; only the internals need reshaping. */
+@media (orientation:landscape) and (max-width:1023px) and (max-height:600px){
+  .aihub-wrap{padding:10px 0 calc(env(safe-area-inset-bottom,0px) + 20px)}
+  .aih-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start}
+  .aih-card{margin-bottom:10px;padding:12px}
+  .aih-hint{font-size:11.5px;margin-bottom:8px}
+  .aih-pill{font-size:12px;padding:6px 10px}
+  .aih-scope,.aih-sub{padding:8px 10px;gap:9px;border-radius:11px}
+  .aih-scope-n{font-size:13px}
+  .aih-scope-h{font-size:11px}
+  .aih-textarea{min-height:70px;font-size:13px}
+  /* Sticky would pin the actions against a 390px-tall viewport and squeeze the preview out. */
+  .aih-sticky{position:static}
+  .aih-preview{max-height:180px;font-size:10.5px}
+  .aih-btn{padding:9px 10px;font-size:12.5px}
+  .aih-btn-primary{padding:11px;font-size:14px}
+  .aih-foot{font-size:10.5px}
+}
