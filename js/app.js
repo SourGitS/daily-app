@@ -1165,8 +1165,13 @@ function setAccentMode(mode){
 // of these is >=4.5:1 on white and hue-separated from --danger (a burnt orange at dawn read
 // too close to the error red, so dawn/dusk sit in amber instead).
 const WEATHER_ACCENTS={
-  'clear-dawn':'#A05E18','clear-noon':'#0072EA','clear-day':'#0072EA','clear-dusk':'#98591A','clear-night':'#2B3566',
-  'partly-dawn':'#96662F','partly-noon':'#3E6E99','partly-day':'#3E6E99','partly-dusk':'#83572A','partly-night':'#313B57',
+  // Dusk is magenta, not amber, now that the dusk sky is pink rather than orange — the accent
+  // has to follow the scene or the app fights the card it came from. Both still clear the
+  // white-text floor (6.28:1 and 5.9:1) and sit FURTHER from --danger's hue 6 than the ambers
+  // they replace did: 45 and 51 degrees against the old 24 and 27. Dawn stays amber, which is
+  // now also what tells the two apart.
+  'clear-dawn':'#A05E18','clear-noon':'#0072EA','clear-day':'#0072EA','clear-dusk':'#9B3D7A','clear-night':'#2B3566',
+  'partly-dawn':'#96662F','partly-noon':'#3E6E99','partly-day':'#3E6E99','partly-dusk':'#8A4A78','partly-night':'#313B57',
   'cloudy-day':'#5C5C5C','cloudy-night':'#35393D','fog':'#5E6368',
   'rain-day':'#3D5A70','rain-night':'#2A3A48','storm':'#4B3A66',
   'snow-day':'#4F6C82','snow-night':'#33454F'

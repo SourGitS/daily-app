@@ -412,12 +412,20 @@
 .home-weather-card[data-scene="clear-dawn"]{background:radial-gradient(ellipse 80% 150% at 20% 120%,rgba(255,186,132,.55),transparent 60%),linear-gradient(to bottom,#33407A 0%,#7A5490 32%,#BE6789 58%,#EE9370 84%,#F7B98C 100%)}
 .home-weather-card[data-scene="clear-noon"]{background:radial-gradient(ellipse 70% 130% at 50% 122%,rgba(255,255,255,.42),transparent 62%),linear-gradient(to bottom,#2F8FD8 0%,#5FBAEC 46%,#94D4F3 78%,#B9E6FA 100%)}
 .home-weather-card[data-scene="clear-day"]{background:radial-gradient(ellipse 70% 130% at 50% 122%,rgba(255,255,255,.28),transparent 62%),linear-gradient(to bottom,#1E6FD0 0%,#3F9BE0 44%,#6FC0EA 78%,#98D6F2 100%)}
-.home-weather-card[data-scene="clear-dusk"]{background:radial-gradient(ellipse 80% 150% at 80% 120%,rgba(255,178,110,.55),transparent 60%),linear-gradient(to bottom,#2B2D5C 0%,#654A90 32%,#BC5A7C 60%,#EC8A5C 86%,#F5B27E 100%)}
+/* Dusk runs pink/magenta rather than orange. The previous ramp spent its bottom 40% in
+   #EC8A5C→#F5B27E, so the card read as an orange wash with a purple strip on top — and since
+   the accent follows the scene, the whole app went orange with it. Sunset is the one sky that
+   can be pink without looking wrong, and it keeps dusk distinct from dawn, which stays golden
+   (they were near-identical ramps before, only mirrored). The sun's own glow is left warm — a
+   gold sun in a pink sky is what the real thing looks like, and it stops the card going
+   monochrome. */
+.home-weather-card[data-scene="clear-dusk"]{background:radial-gradient(ellipse 80% 150% at 80% 120%,rgba(255,150,195,.5),transparent 60%),linear-gradient(to bottom,#21193F 0%,#452A75 26%,#7C3688 48%,#B4498C 70%,#E0709F 88%,#F2A0B8 100%)}
 .home-weather-card[data-scene="clear-night"]{background:radial-gradient(ellipse 100% 140% at 50% 128%,rgba(86,116,176,.26),transparent 66%),linear-gradient(to bottom,#070C1A 0%,#111B36 48%,#1C2A4C 100%)}
 .home-weather-card[data-scene="partly-dawn"]{background:radial-gradient(ellipse 80% 150% at 20% 120%,rgba(236,176,138,.45),transparent 60%),linear-gradient(to bottom,#3A4272 0%,#75568A 34%,#AE6E86 60%,#D49179 86%,#E0AE92 100%)}
 .home-weather-card[data-scene="partly-noon"]{background:radial-gradient(ellipse 70% 130% at 50% 122%,rgba(255,255,255,.34),transparent 62%),linear-gradient(to bottom,#4C86B8 0%,#79A9CC 46%,#A3C6DD 78%,#C0D8E8 100%)}
 .home-weather-card[data-scene="partly-day"]{background:radial-gradient(ellipse 70% 130% at 50% 122%,rgba(255,255,255,.22),transparent 62%),linear-gradient(to bottom,#3E70A4 0%,#6A98C0 46%,#94B9D5 78%,#B2CCE0 100%)}
-.home-weather-card[data-scene="partly-dusk"]{background:radial-gradient(ellipse 80% 150% at 80% 120%,rgba(230,166,120,.45),transparent 60%),linear-gradient(to bottom,#2F3158 0%,#5E4A7E 34%,#A05E76 62%,#CC8461 86%,#DBA47C 100%)}
+/* Same pink dusk, muted — cloud cover greys the sky down rather than changing its hue. */
+.home-weather-card[data-scene="partly-dusk"]{background:radial-gradient(ellipse 80% 150% at 80% 120%,rgba(226,160,190,.42),transparent 60%),linear-gradient(to bottom,#2B2450 0%,#4E3670 30%,#78447E 52%,#A05C86 74%,#C4849E 90%,#D4A3B4 100%)}
 .home-weather-card[data-scene="partly-night"]{background:radial-gradient(ellipse 100% 140% at 50% 128%,rgba(86,116,176,.22),transparent 66%),linear-gradient(to bottom,#0C1424 0%,#1A2740 48%,#26364F 100%)}
 .home-weather-card[data-scene="cloudy-day"]{background:linear-gradient(to bottom,#67757F 0%,#8794A0 52%,#A5B2BD 100%)}
 .home-weather-card[data-scene="cloudy-night"]{background:linear-gradient(to bottom,#12171C 0%,#242C34 56%,#353E47 100%)}
