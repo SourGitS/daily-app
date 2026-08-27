@@ -8183,9 +8183,11 @@ function renderMonth(){
   const catEl=document.getElementById('month-categories');
   if(catEl){
     const MONTH_CAT_COLORS=['#52B788','#f59e0b','#6366f1','#3b82f6','#ec4899','#8b5cf6','#FF6B35','#14b8a6'];
+    // varCatAmount, not a raw var_ read: a category backed by transactions has its total in
+    // the ledger, and reading the manual field directly reported it as zero.
     const catTotals=activeCats(loadVarCats()).map((c,i)=>({
       label:catLabel(c),
-      val:keys.reduce((s,k)=>s+(parseFloat(budgetData[k]?.['var_'+c.id])||0),0),
+      val:keys.reduce((s,k)=>s+varCatAmount(budgetData[k],k,c.id),0),
       color:MONTH_CAT_COLORS[i%MONTH_CAT_COLORS.length]
     }));
     const maxVal=Math.max(1,...catTotals.map(c=>c.val));
@@ -8208,11 +8210,16 @@ function renderMonth(){
         return mon.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
       });
       const data=keys.map(k=>budgetData[k]);
+      // Income sits in its own stack; spent / committed / saved STACK together, because they
+      // are components of one figure rather than four independent measures. The old chart drew
+      // "Total expenses" as a fifth bar beside "CC / variable" and "Fixed" — its own two
+      // components — so the same money was graphed twice at equal visual weight and the tallest
+      // bar was always a duplicate. Stacked, the components sum to the total by construction
+      // and the comparison that matters (income vs everything it has to cover) is left-to-right.
       const legend=budChartLegend([
         {c:BUD_CHART_COLORS.income,l:'Income'},
-        {c:BUD_CHART_COLORS.spending,l:'Total expenses'},
-        {c:BUD_CHART_COLORS.variable,l:'CC / variable'},
-        {c:BUD_CHART_COLORS.fixed,l:'Fixed'},
+        {c:BUD_CHART_COLORS.variable,l:'Spent'},
+        {c:BUD_CHART_COLORS.fixed,l:'Committed'},
         {c:BUD_CHART_COLORS.saved,l:'Saved'},
       ]);
       wl.innerHTML='<div class="chart-legend">'+legend+'</div><div id="month-weeks-chart-wrap" style="height:220px"><canvas id="month-weeks-chart"></canvas></div>';
@@ -8223,11 +8230,10 @@ function renderMonth(){
         data:{
           labels,
           datasets:[
-            {label:'Income',data:data.map(weekIncome),backgroundColor:BUD_CHART_COLORS.income,borderRadius:3,order:0},
-            {label:'Total expenses',data:data.map(weekSpending),backgroundColor:BUD_CHART_COLORS.spending,borderRadius:3,order:1},
-            {label:'CC / variable',data:data.map(weekVarTotal),backgroundColor:BUD_CHART_COLORS.variable,borderRadius:3,order:2},
-            {label:'Fixed',data:data.map(weekFixed),backgroundColor:BUD_CHART_COLORS.fixed,borderRadius:3,order:3},
-            {label:'Saved',data:data.map(weekSavedAmt),backgroundColor:BUD_CHART_COLORS.saved,borderRadius:3,order:4},
+            {label:'Income',data:data.map(weekIncome),backgroundColor:BUD_CHART_COLORS.income,borderRadius:3,stack:'in',order:0},
+            {label:'Spent',data:keys.map((k,i)=>weekVarTotal(data[i],k)),backgroundColor:BUD_CHART_COLORS.variable,borderRadius:3,stack:'out',order:1},
+            {label:'Committed',data:data.map(weekFixed),backgroundColor:BUD_CHART_COLORS.fixed,borderRadius:3,stack:'out',order:2},
+            {label:'Saved',data:data.map(weekSavedAmt),backgroundColor:BUD_CHART_COLORS.saved,borderRadius:3,stack:'out',order:3},
           ]
         },
         options:{
@@ -8237,12 +8243,36 @@ function renderMonth(){
             tooltip:{callbacks:{label:c=>c.dataset.label+': $'+c.parsed.y.toFixed(0)}}
           },
           scales:{
-            x:{grid:{display:false},ticks:{color:tc,font:{size:11}}},
-            y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>'$'+v},beginAtZero:true}
+            // stacked:true on both axes is what makes the 'in' / 'out' stack groups above
+            // render as two columns per week rather than seven separate bars.
+            x:{stacked:true,grid:{display:false},ticks:{color:tc,font:{size:11}}},
+            y:{stacked:true,grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>'$'+v},beginAtZero:true}
           }
         }
       });
     }
+  }
+
+  // Biggest purchases this month — only possible now the ledger exists, and the fastest way to
+  // answer "where did it actually go?" after a month reads worse than expected. A month total
+  // and a category bar both stop one level short of the thing you actually recognise.
+  const bigEl=document.getElementById('month-biggest');
+  if(bigEl){
+    const monthTxns=keys.flatMap(k=>txnsForWeek(k));
+    const top=[...monthTxns].sort((a,b)=>(parseFloat(b.amount)||0)-(parseFloat(a.amount)||0)).slice(0,5);
+    bigEl.innerHTML = top.length
+      ? '<div class="card"><div class="sec-label">Biggest purchases</div>'+
+          top.map(t=>{
+            const cat=activeCats(loadVarCats()).find(c=>c.id===t.catId);
+            return '<div class="up-row">'+
+              '<span class="up-name">'+(t.merchant?_catEscHtml(t.merchant):'Expense')+
+                (cat?'<span class="txn-count">'+_catEscHtml(catLabel(cat))+'</span>':'')+'</span>'+
+              '<span class="up-when" style="flex:0 0 auto">'+fmtDate(t.date)+'</span>'+
+              '<span class="up-amt">'+fmtMoneyExact(parseFloat(t.amount)||0)+'</span>'+
+            '</div>';
+          }).join('')+
+        '</div>'
+      : '';
   }
 }
 
@@ -8269,7 +8299,9 @@ function budYearMonths(year){
   for(let m=0;m<=lastMonth;m++){
     months.push({m, ym:year+'-'+String(m+1).padStart(2,'0'),
       label:new Date(year,m,1).toLocaleDateString('en-AU',{month:'short'}),
-      income:0, fixed:0, variable:0, saved:0, weeks:0});
+      // keys: the week keys that fed this month, so per-category figures can be recomputed
+      // later (the rising-categories comparison) without re-scanning all of budgetData.
+      income:0, fixed:0, variable:0, saved:0, weeks:0, keys:[]});
   }
   Object.keys(budgetData).forEach(k=>{
     if(k.substring(0,4)!==String(year)) return;
@@ -8278,7 +8310,7 @@ function budYearMonths(year){
     const d=budgetData[k]; if(!d) return;
     const M=months[mi];
     M.income+=weekIncome(d); M.fixed+=weekFixed(d);
-    M.variable+=weekVarTotal(d); M.saved+=weekSavedAmt(d); M.weeks++;
+    M.variable+=weekVarTotal(d,k); M.saved+=weekSavedAmt(d); M.weeks++; M.keys.push(k);
   });
   return months;
 }
@@ -8314,6 +8346,12 @@ function renderYear(){
       {val:'$'+Math.round(totSaved).toLocaleString(),lbl:'Saved in '+year,color:BUD_CHART_COLORS.saved},
       {val:avgRate.toFixed(0)+'%',lbl:'Average savings rate',color:BUD_CHART_COLORS.rate},
       {val:best?best.label:'—',lbl:best?'Best month · $'+Math.round(best.saved).toLocaleString():'Best month',color:BUD_CHART_COLORS.saved},
+      // Annual cost of every recurring charge still running. Individually a subscription reads
+      // as a few dollars a week and never looks worth cancelling; the yearly figure is the one
+      // that makes the case either way, and it is the number nobody ever works out by hand.
+      {val:'$'+Math.round(loadFixCats().filter(c=>catCycle(c)!=='weekly'&&catIsCharging(c))
+            .reduce((s,c)=>s+((parseFloat(catAmount(c))||0)*({monthly:12,yearly:1}[catCycle(c)]||0)),0)).toLocaleString(),
+       lbl:'Recurring, per year',color:BUD_CHART_COLORS.fixed},
     ].map(s=>'<div class="sum-card"><div class="sum-card-val" style="color:'+s.color+'">'+s.val+'</div><div class="sum-card-lbl">'+s.lbl+'</div></div>').join('');
   }
 
@@ -8336,6 +8374,39 @@ function renderYear(){
           '</div>';
         }).join('')
       : '<div style="text-align:center;color:var(--muted);font-size:13px;padding:18px 0">Nothing recorded in '+year+' yet.</div>';
+  }
+
+  // ── Which categories are rising ──
+  // A yearly total says what you spent; it doesn't say what is getting worse. This compares the
+  // last 3 months of data against the 3 before them, per variable category, so a habit that has
+  // crept up is visible while it is still worth acting on. Needs 4+ months of data to mean
+  // anything — below that the two windows overlap or one is empty, and the comparison would be
+  // noise dressed up as a trend, so the card simply doesn't render.
+  const trendsEl=document.getElementById('year-trends');
+  if(trendsEl){
+    trendsEl.innerHTML='';
+    if(withData.length>=4){
+      const recent=withData.slice(-3), prior=withData.slice(-6,-3);
+      if(prior.length){
+        const sumCat=(mons,catId)=>mons.reduce((s,m)=>
+          s+(m.keys||[]).reduce((t,k)=>t+varCatAmount(budgetData[k],k,catId),0),0);
+        const rows=activeCats(loadVarCats()).map(c=>{
+          const now=sumCat(recent,c.id)/recent.length, was=sumCat(prior,c.id)/prior.length;
+          return {label:catLabel(c), now, was, diff:now-was,
+                  pct: was>0 ? ((now-was)/was*100) : (now>0?100:0)};
+        }).filter(r=>r.diff>0 && r.now>0).sort((a,b)=>b.diff-a.diff).slice(0,4);
+        if(rows.length){
+          trendsEl.innerHTML='<div class="card"><div class="sec-label">Rising fastest</div>'+
+            '<div class="up-hint" style="border:none;margin:0 0 8px;padding:0">Average per month, last 3 vs the 3 before</div>'+
+            rows.map(r=>'<div class="up-row">'+
+              '<span class="up-name">'+_catEscHtml(r.label)+'</span>'+
+              '<span class="up-when" style="flex:0 0 auto;color:var(--danger)">+'+Math.round(r.pct)+'%</span>'+
+              '<span class="up-amt">'+fmtMoney(r.was)+' → '+fmtMoney(r.now)+'</span>'+
+            '</div>').join('')+
+          '</div>';
+        }
+      }
+    }
   }
 
   // ── Stacked bar + savings-rate line ──
