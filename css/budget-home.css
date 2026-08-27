@@ -130,6 +130,11 @@
   color:var(--accent-text);font-size:12px;font-weight:700;cursor:pointer;text-align:left;
   -webkit-tap-highlight-color:transparent}
 /* Modal internals */
+/* Home's quick-capture button. Sits at the foot of the weekly budget card. */
+.txn-quick{width:100%;margin-top:12px;padding:9px;border-radius:10px;border:1px solid var(--card-border);
+  background:var(--card);color:var(--accent-text);font-size:12px;font-weight:700;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.txn-quick:active{background:var(--track)}
 .txn-lbl{display:block;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;
   letter-spacing:.04em;margin:12px 0 6px}
 .txn-lbl:first-of-type{margin-top:0}

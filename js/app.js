@@ -4852,14 +4852,16 @@ function renderSavedFoods(){
 //   config items to the live variable categories by a best-effort name match (see matchVarCat);
 //   when no confident match exists the "actual" columns are left blank rather than guessed.
 //
-// • Subscriptions are NOT double-counted: subscriptionsData (Settings → Subscriptions) is a
-//   flat CURRENT list, not stored per historical week, so its prorated weekly figure is the
-//   same value on every week/month row — an informational cross-reference column, exactly as
-//   asked for. It is never added into Total Out/Leftover, because the week's actual
-//   subscriptions cost already lives inside Total Fixed via the (independently editable)
-//   fix_subs line item that weekFixedTotal sums. Section 8's "Total Fixed Spent" is the one
-//   place that EXCLUDES fix_subs — its summary table also lists Total Subscriptions rows, and
-//   the rows there are meant to be mutually exclusive so the table can be summed.
+// • Recurring charges are NOT double-counted. They are read from the LIVE fixed categories
+//   (any category whose cycle isn't weekly), not from the retired daily_subscriptions list —
+//   that list was folded into fixed categories by migrateSubscriptionsToFixedOnce and is
+//   "left in storage, unread" everywhere else, so reading it here was exporting a frozen
+//   pre-migration snapshot that no longer matched the Budget tab.
+//   The prorated weekly figure is a CURRENT rate, not per-historical-week, so it is the same
+//   value on every week/month row — an informational cross-reference column. It is never added
+//   into Total Out/Leftover, because each recurring category's actual cost already lives inside
+//   Total Fixed via weekFixedTotal. Section 8's "Total Fixed Spent" is the one place that
+//   EXCLUDES the fix_subs line, so that table's rows stay mutually exclusive and summable.
 //
 // • "Running Savings Balance" starts from the EARLIEST entry in the daily_savings_log balance
 //   history (savingsLog) — the earliest balance actually on record — or 0 if none exists, then
@@ -4893,9 +4895,17 @@ function exportBudgetCSV(){
   }
   function varActual(d,id){ return parseFloat(d&&d['var_'+id])||0; }
 
-  // Current subscription tracker, prorated to weekly (see design note above: not historical).
-  const subsMonthly=r2(subscriptionsData.reduce((s,sub)=>s+(parseFloat(sub.monthlyCost)||0),0));
-  const subsWeekly=r2(subsMonthly/4.33);
+  // Recurring cost, read from the LIVE fixed categories rather than the retired
+  // daily_subscriptions list. That list was folded into fixed categories by
+  // migrateSubscriptionsToFixedOnce and is explicitly "left in storage, unread" everywhere
+  // else in the app — but this export was still reading it, so the subscription columns were
+  // reporting a frozen pre-migration snapshot that no longer matched anything the Budget tab
+  // showed, and stayed wrong for anyone who has added or repriced a subscription since.
+  // Anything on a non-weekly cycle is by definition a recurring charge; weekly fixed costs
+  // (rent, etc.) are ordinary fixed expenses and are already counted in Total Fixed.
+  const recurCats=fixCats.filter(c=>catCycle(c)!=='weekly');
+  const subsWeekly=r2(recurCats.reduce((s,c)=>s+(parseFloat(catWeeklyFromAmount(catAmount(c),catCycle(c)))||0),0));
+  const subsMonthly=r2(subsWeekly*52/12);
 
   // Savings-balance history → base + current balance (see design note above).
   const savLogSorted=[...savingsLog].filter(e=>e&&e.date).sort((a,b)=>a.date<b.date?-1:1);
@@ -4910,7 +4920,7 @@ function exportBudgetCSV(){
     const income=weekIncome(d);
     const saved=weekSavedAmt(d);
     const totalFixed=weekFixedTotal(d);
-    const totalVar=weekVarTotal(d);
+    const totalVar=weekVarTotal(d,k);   // pass the week explicitly so transactions resolve
     const totalOut=r2(saved+totalFixed+totalVar);
     const leftover = income>0 ? r2(income-totalOut) : '';
     const leftoverPct = income>0 ? r2((income-totalOut)/income*100) : '';
@@ -5082,15 +5092,28 @@ function exportBudgetCSV(){
   rows.push(row(['Totals',r2(vBudgetWkTotal),r2(vBudgetMoTotal),r2(vBudgetYrTotal),'','','']));
 
   // ── SECTION 7 — SUBSCRIPTIONS ────────────────────────────────────
-  rows.push(''); rows.push('SUBSCRIPTIONS');
-  rows.push(row(['Name','Emoji','Billing Cycle','Original Cost per Cycle','Monthly Cost','Annual Cost']));
+  // Recurring charges, from the live fixed categories (see the subsWeekly note above for why
+  // this no longer reads daily_subscriptions). "Charged" is what the user actually typed in
+  // their own billing cycle; the monthly/annual columns are derived from it.
+  rows.push(''); rows.push('RECURRING CHARGES');
+  rows.push(row(['Name','Billing Cycle','Charged per Cycle','Weekly Equivalent','Monthly Cost','Annual Cost','Website']));
   let subsMoTotal=0,subsYrTotal=0;
-  subscriptionsData.forEach(sub=>{
-    const mo=parseFloat(sub.monthlyCost)||0, yr=r2(mo*12);
+  // Monthly and annual are derived from the CHARGED amount and its cycle, not from the rounded
+  // weekly equivalent — going via the weekly figure compounds its 2dp rounding, which made a
+  // $790 yearly charge export an annual cost of $789.88. A yearly charge's annual cost must be
+  // exactly what is charged.
+  const PER_YEAR={weekly:52, monthly:12, yearly:1};
+  recurCats.forEach(c=>{
+    const cyc=catCycle(c);
+    const charged=parseFloat(catAmount(c))||0;
+    const perYear=PER_YEAR[cyc]||1;
+    const yr=r2(charged*perYear), mo=r2(yr/12);
+    const wkEq=parseFloat(catWeeklyFromAmount(charged,cyc))||0;
     subsMoTotal+=mo; subsYrTotal+=yr;
-    rows.push(row([sub.name||'',sub.emoji||'',sub.cycle||'monthly',sub.originalCost??'',mo,yr]));
+    rows.push(row([catLabel(c),cyc,charged,wkEq,mo,yr,c.site||'']));
   });
-  rows.push(row(['Totals','','','',r2(subsMoTotal),r2(subsYrTotal)]));
+  if(!recurCats.length) rows.push(row(['No recurring charges set up','','','','','','']));
+  rows.push(row(['Totals','','','',r2(subsMoTotal),r2(subsYrTotal),'']));
 
   // ── SECTION 8 — OVERALL SUMMARY ──────────────────────────────────
   rows.push(''); rows.push('OVERALL SUMMARY');
@@ -10301,6 +10324,10 @@ function renderHome(){
         (budPacePct!==null?'<div class="card-bar-pace" style="left:calc('+budPacePct+'% - 1px)" title="Where you should be today"></div>':'')+
       '</div>'+
       (budCaption?'<div class="card-cap">'+budCaption+'</div>':'')+
+      // Capture from Home as well as Budget. A spending tracker is only as good as how fast a
+      // purchase can be logged, and Home is the screen that is actually open when you walk out
+      // of a shop. stopPropagation because the card itself navigates to the Budget tab.
+      '<button class="txn-quick" onclick="event.stopPropagation();openTxnModal()">+ Add expense</button>'+
     '</div>';
 
   // Calorie / overview card
