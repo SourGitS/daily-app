@@ -99,6 +99,43 @@
 .hl-dots{display:flex;gap:3px;margin-top:7px;padding-top:6px;border-top:0.5px solid var(--border)}
 .hl-dots>i{width:9px;height:9px;border-radius:2.5px;background:var(--border)}
 .hl-dots>i.on{background:var(--accent)}
+
+/* Home Layout is an ordered dashboard editor, not a stack of unrelated Settings forms. */
+.hl-layout-intro{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 2px 14px}
+.hl-layout-intro>div:first-child{display:flex;flex-direction:column;gap:3px;min-width:0}
+.hl-layout-intro>div:first-child>strong{font-size:17px;color:var(--text)}
+.hl-layout-intro>div:first-child>span{font-size:12px;line-height:1.45;color:var(--muted)}
+.hl-layout-count{display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0}
+.hl-layout-count strong{font-family:var(--font-num);font-size:20px;line-height:1;color:var(--text)}
+.hl-layout-count span{font-size:10px;color:var(--muted);margin-top:3px;white-space:nowrap}
+.hl-layout-note{font-size:11px;line-height:1.45;color:var(--muted);background:rgba(var(--accent-rgb),.07);border:1px solid rgba(var(--accent-rgb),.13);border-radius:11px;padding:9px 11px;margin-bottom:12px}
+.hl-layout-list{display:flex;flex-direction:column;gap:10px}
+.hl-widget{background:var(--card);border:1px solid var(--card-border);border-radius:14px;padding:12px;transition:opacity .18s,border-color .18s}
+.hl-widget.is-hidden{opacity:.58}
+.hl-widget-head{display:flex;align-items:center;gap:9px;min-height:30px}
+.hl-widget-order{display:flex;align-items:center;justify-content:center;width:25px;height:25px;flex:0 0 25px;border-radius:8px;background:var(--bg);border:1px solid var(--border);font-family:var(--font-num);font-size:11px;font-weight:800;color:var(--muted)}
+.hl-widget-name{display:flex;flex:1;min-width:0;flex-direction:column;gap:1px}
+.hl-widget-name strong{font-size:14px;line-height:1.25;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hl-widget-name small{font-size:9px;font-weight:750;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.hl-show{display:flex;align-items:center;gap:7px;flex-shrink:0;font-size:11px;font-weight:700;color:var(--muted)}
+.hl-always{font-size:10px;font-weight:750;color:var(--muted);padding:5px 8px;border-radius:999px;background:var(--bg);white-space:nowrap}
+.hl-widget-preview .hl-prev{margin:10px 0 9px}
+.hl-widget-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:9px;border-top:1px solid var(--border)}
+.hl-order-actions{display:flex;gap:6px}
+.hl-order-actions button{width:42px;height:40px;border:1px solid var(--border);border-radius:9px;background:transparent;color:var(--text);font-size:15px;font-weight:800;cursor:pointer}
+.hl-order-actions button:disabled{opacity:.25;cursor:default}
+.hl-width-btn{display:flex;align-items:center;gap:8px;min-height:40px;padding:0 10px;border:1px solid var(--border);border-radius:9px;background:transparent;color:var(--muted);font-family:inherit;cursor:pointer}
+.hl-width-btn span{font-size:10px}
+.hl-width-btn strong{font-size:11px;color:var(--text)}
+.hl-width-btn.is-wide{border-color:rgba(var(--accent-rgb),.45);background:rgba(var(--accent-rgb),.08)}
+[data-theme="dark"] .hl-widget{background:linear-gradient(180deg,rgba(255,255,255,.095),rgba(255,255,255,.055))}
+@media(min-width:700px){
+  .hl-widget{display:grid;grid-template-columns:minmax(0,1fr) 210px;grid-template-areas:"head preview" "actions preview";column-gap:16px;align-items:center;padding:14px}
+  .hl-widget-head{grid-area:head;align-self:end}
+  .hl-widget-preview{grid-area:preview}
+  .hl-widget-preview .hl-prev{margin:0;min-height:72px;box-sizing:border-box}
+  .hl-widget-actions{grid-area:actions;align-self:start;margin-top:9px}
+}
 .settings-field{margin-bottom:10px}
 .settings-field label{display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:5px}
 .settings-field input,.settings-field select{width:100%;height:44px;border:1.5px solid var(--border);border-radius:8px;font-size:15px;padding:0 12px;background:var(--card);color:var(--text);-webkit-appearance:none;appearance:none}

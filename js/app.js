@@ -11167,12 +11167,18 @@ function migrateDefaultWideOnce(){
 // hidden filter — mirroring effectiveExercises' order-then-hidden overlay application.
 function effectiveHomeWidgetIds(cards){
   const l=homeLayout();
-  const keys=[];
-  l.order.forEach(k=>{ if(cards[k]!==undefined && keys.indexOf(k)<0) keys.push(k); });
-  HOME_DEFAULT_ORDER.forEach(k=>{ if(cards[k]!==undefined && keys.indexOf(k)<0) keys.push(k); });
-  Object.keys(cards).forEach(k=>{ if(keys.indexOf(k)<0) keys.push(k); });
+  const keys=homeLayoutOrderIds(l);
   const hidden=new Set(l.hidden);
-  return keys.filter(k=>{ const w=HOME_WIDGETS.find(x=>x.id===k); return (w&&w.fixed) || !hidden.has(k); });
+  return keys.filter(k=>cards[k]!==undefined).filter(k=>{ const w=HOME_WIDGETS.find(x=>x.id===k); return (w&&w.fixed) || !hidden.has(k); });
+}
+function homeLayoutOrderIds(layout){
+  const l=layout||homeLayout();
+  const keys=[];
+  const valid=new Set(HOME_WIDGETS.map(w=>w.id));
+  l.order.forEach(k=>{ if(valid.has(k)&&keys.indexOf(k)<0) keys.push(k); });
+  HOME_DEFAULT_ORDER.forEach(k=>{ if(valid.has(k)&&keys.indexOf(k)<0) keys.push(k); });
+  HOME_WIDGETS.forEach(w=>{ if(keys.indexOf(w.id)<0) keys.push(w.id); });
+  return keys;
 }
 function saveHomeOrder(){
   // Both layouts now put every card in one container in visual order (desktop is a single
@@ -11186,30 +11192,39 @@ function saveHomeOrder(){
   l.order=order.concat(HOME_DEFAULT_ORDER.filter(k=>order.indexOf(k)<0));
   saveHomeLayout(l);
 }
-// Settings → Home Layout: per-widget show/hide toggles grouped by tab.
+// Settings → Home Layout: one ordered list matching the dashboard, with each widget's source
+// area kept as a small label rather than splitting the order into unrelated groups.
 function renderHomeLayoutSection(){
   const wrap=document.getElementById('settings-homelayout-section'); if(!wrap) return;
-  const hidden=new Set(homeLayout().hidden);
-  const wide=new Set(homeLayout().wide);
-  const tabs=[...new Set(HOME_WIDGETS.map(w=>w.tab))];
+  const layout=homeLayout();
+  const hidden=new Set(layout.hidden);
+  const wide=new Set(layout.wide);
+  const order=homeLayoutOrderIds(layout);
+  const visibleCount=HOME_WIDGETS.filter(w=>w.fixed||!hidden.has(w.id)).length;
+  const wideCount=HOME_WIDGETS.filter(w=>wide.has(w.id)).length;
   wrap.innerHTML=
-    '<p style="font-size:13px;color:var(--muted);margin-bottom:14px">Choose which cards show on the Home tab. Hiding a card never deletes its data — turn it back on any time. Reorder cards by dragging them via Home → Edit layout (works on phone and desktop).</p>'+
-    tabs.map(tab=>'<div class="settings-card">'+
-      '<div class="settings-card-title">'+tab+'</div>'+
-      HOME_WIDGETS.filter(w=>w.tab===tab).map(w=>
-        '<div class="settings-row" style="padding:7px 0;flex-direction:column;align-items:stretch">'+
-          '<div style="display:flex;justify-content:space-between;align-items:center">'+
-            '<span class="settings-row-label">'+w.label+(w.fixed?' <span style="font-size:11px;color:var(--muted)">· always shown</span>':'')+'</span>'+
-            (w.fixed?'':'<label class="toggle-switch"><input type="checkbox"'+(hidden.has(w.id)?'':' checked')+' onchange="homeWidgetToggle(\''+w.id+'\',this.checked)"><span class="toggle-slider"></span></label>')+
-          '</div>'+
-          // Desktop-only: the phone layout is a single column, so every card is full width there.
-          '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">'+
-            '<span style="font-size:12px;color:var(--muted)">Full width on desktop</span>'+
-            '<label class="toggle-switch"><input type="checkbox"'+(wide.has(w.id)?' checked':'')+' onchange="homeWidgetWidth(\''+w.id+'\',this.checked)"><span class="toggle-slider"></span></label>'+
-          '</div>'+
-          (w.preview?w.preview():'')+
-        '</div>').join('')+
-      '</div>').join('');
+    '<div class="hl-layout-intro">'+
+      '<div><strong>Your dashboard</strong><span>Arrange the cards in the exact order they should appear on Home.</span></div>'+
+      '<div class="hl-layout-count"><strong>'+visibleCount+'</strong><span>of '+HOME_WIDGETS.length+' shown</span></div>'+
+    '</div>'+
+    '<div class="hl-layout-note">Phone uses one column. Desktop uses two; '+wideCount+' card'+(wideCount===1?'':'s')+' currently span'+(wideCount===1?'s':'')+' both columns.</div>'+
+    '<div class="hl-layout-list">'+order.map((id,index)=>{
+      const w=HOME_WIDGETS.find(x=>x.id===id);
+      const off=!w.fixed&&hidden.has(id);
+      const isWide=wide.has(id);
+      return '<article class="hl-widget'+(off?' is-hidden':'')+'" data-hl-widget="'+id+'">'+
+        '<div class="hl-widget-head">'+
+          '<span class="hl-widget-order">'+(index+1)+'</span>'+
+          '<span class="hl-widget-name"><strong>'+w.label+'</strong><small>'+w.tab+'</small></span>'+
+          (w.fixed?'<span class="hl-always">Always shown</span>':'<label class="hl-show"><span>Show</span><span class="toggle-switch"><input type="checkbox"'+(off?'':' checked')+' onchange="homeWidgetToggle(\''+id+'\',this.checked)"><span class="toggle-slider"></span></span></label>')+
+        '</div>'+
+        '<div class="hl-widget-preview">'+(w.preview?w.preview():'')+'</div>'+
+        '<div class="hl-widget-actions">'+
+          '<div class="hl-order-actions"><button type="button" aria-label="Move '+w.label+' up" onclick="homeWidgetMove(\''+id+'\',-1)"'+(index===0?' disabled':'')+'>↑</button><button type="button" aria-label="Move '+w.label+' down" onclick="homeWidgetMove(\''+id+'\',1)"'+(index===order.length-1?' disabled':'')+'>↓</button></div>'+
+          '<button type="button" class="hl-width-btn'+(isWide?' is-wide':'')+'" aria-pressed="'+(isWide?'true':'false')+'" onclick="homeWidgetWidth(\''+id+'\','+(!isWide)+')"><span>Desktop</span><strong>'+(isWide?'Full row':'Half row')+'</strong></button>'+
+        '</div>'+
+      '</article>';
+    }).join('')+'</div>';
 }
 // Half-width (one grid column) vs full-width (both) on the desktop Home grid.
 function homeWidgetWidth(id,on){
@@ -11218,6 +11233,7 @@ function homeWidgetWidth(id,on){
   if(on) l.wide.push(id);
   saveHomeLayout(l);
   if(typeof renderHome==='function') renderHome();
+  renderHomeLayoutSection();
 }
 function homeWidgetToggle(id,on){
   const l=homeLayout();
@@ -11225,6 +11241,19 @@ function homeWidgetToggle(id,on){
   if(!on) l.hidden.push(id);
   saveHomeLayout(l);
   if(typeof renderHome==='function') renderHome();
+  renderHomeLayoutSection();
+}
+function homeWidgetMove(id,direction){
+  const l=homeLayout();
+  const order=homeLayoutOrderIds(l);
+  const from=order.indexOf(id);
+  const to=from+direction;
+  if(from<0||to<0||to>=order.length) return;
+  [order[from],order[to]]=[order[to],order[from]];
+  l.order=order;
+  saveHomeLayout(l);
+  if(typeof renderHome==='function') renderHome();
+  renderHomeLayoutSection();
 }
 // ── Height cap for cards that grow with your data ──────────────────
 // Cards on the desktop grid size to their own content (align-items:start in CSS) — nothing
