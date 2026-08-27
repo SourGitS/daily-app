@@ -133,7 +133,7 @@
   /* Declared on :root so both #app (which pads itself clear of the rail) and #bottom-nav
      (which IS the rail) read the same number — they are siblings, so a value set on one of
      them would not reach the other. */
-  :root{--rail-w:60px}
+  :root{--rail-w:56px}
 
   /* The 480px cap is a portrait phone measure; in landscape it would letterbox an 844px screen
      into a 480px column. The rail's width is padded off the left instead, so #app-main's own
@@ -181,12 +181,12 @@
   }
   .nav-btn{
     flex:0 0 auto;
-    min-height:52px;
+    min-height:50px;
     padding:6px 2px;
     font-size:9px;
     gap:3px;
     border-radius:12px;
-    margin:0 5px;
+    margin:0 4px;
   }
   .nav-btn svg{width:21px;height:21px}
   /* The pill and the sliding underline are both horizontal-axis effects driven by measured
@@ -194,7 +194,7 @@
      so it is hidden and the pill is positioned by the same function using top/height instead —
      see updateNavPill's landscape branch. */
   #nav-indicator{display:none}
-  #nav-pill{left:5px;right:5px;width:auto;bottom:auto;border-radius:12px;
+  #nav-pill{left:4px;right:4px;width:auto;bottom:auto;border-radius:12px;
     transition:top 0.25s cubic-bezier(0.4,0,0.2,1),height 0.25s cubic-bezier(0.4,0,0.2,1),background 0.3s ease}
   /* Badge sits top-right of the icon rather than beside a centred label. */
   .nav-badge{top:4px;left:auto;right:9px}

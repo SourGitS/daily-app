@@ -2090,6 +2090,10 @@ const LANDSCAPE_MQ=(typeof window.matchMedia==='function')
   ? window.matchMedia('(orientation:landscape) and (max-width:1023px) and (max-height:600px)')
   : null;
 function isLandscapePhone(){ return !!(LANDSCAPE_MQ && LANDSCAPE_MQ.matches); }
+// Kitchen's landscape recipe book uses the same list/detail composition as desktop. Keep the
+// breakpoint in one predicate so rendering does not mistake that visible detail pane for the
+// portrait overlay model and leave it empty.
+function kitUsesSplitPane(){ return window.innerWidth>=1024 || isLandscapePhone(); }
 function updateNavPill(v){
   const idx=NAV_ORDER.indexOf(v);
   const n=NAV_ORDER.length;
@@ -2159,6 +2163,7 @@ window.addEventListener('resize',function(){ if(typeof S!=='undefined'&&S.view) 
     if(now===was) return;
     was=now;
     if(typeof S!=='undefined'&&S.view==='home'&&typeof renderHome==='function') renderHome();
+    if(typeof S!=='undefined'&&S.view==='kitchen'&&typeof kitRenderList==='function') kitRenderList();
     // Budget's two desktop columns are a re-parenting of the same nodes, so crossing 1024px has
     // to redistribute them. Cheap and self-guarding — it no-ops unless the mode actually
     // changed — and it works whether or not Budget is the visible tab.
@@ -13366,7 +13371,7 @@ function kitRenderList(){
     }).join('');
   }
   // Desktop: keep the persistent detail column in sync
-  if(window.innerWidth>=1024){
+  if(kitUsesSplitPane()){
     const col=document.getElementById('kit-detail-col');
     if(col){
       if(kitState.selectedId && kitRecipes.some(r=>r.id===kitState.selectedId)) kitRenderDetail(kitState.selectedId,col);
@@ -13394,7 +13399,7 @@ function kitOpenDetail(id){
   kitState.selectedId=id;
   const r=kitRecipes.find(x=>x.id===id); if(!r) return;
   kitState.scaleServings=r.servings;
-  if(window.innerWidth>=1024){
+  if(kitUsesSplitPane()){
     kitRenderList(); // re-render list (highlight) + detail column
   } else {
     const ov=document.getElementById('kit-detail-overlay');
@@ -13406,10 +13411,10 @@ function kitCloseDetail(){
   const ov=document.getElementById('kit-detail-overlay');
   if(ov) ov.style.display='none';
   kitState.selectedId=null;
-  if(window.innerWidth>=1024) kitRenderList();
+  if(kitUsesSplitPane()) kitRenderList();
 }
 function kitRefreshOpenDetail(){
-  if(window.innerWidth>=1024){
+  if(kitUsesSplitPane()){
     const col=document.getElementById('kit-detail-col');
     if(col&&kitState.selectedId) kitRenderDetail(kitState.selectedId,col);
   } else {
@@ -13451,7 +13456,7 @@ function kitRenderDetail(id,target){
     '</div>';
   }
   const cookInfo=(r.cookTime?'<span class="kit-cal-badge">⏱ '+r.cookTime+' min</span>':'');
-  const backBtn=window.innerWidth>=1024?'':'<button class="back-btn" data-back="kitCloseDetail" aria-label="Back">'+BACK_CHEVRON+'</button>';
+  const backBtn=kitUsesSplitPane()?'':'<button class="back-btn" data-back="kitCloseDetail" aria-label="Back">'+BACK_CHEVRON+'</button>';
   target.innerHTML=
     '<div class="kit-detail-head">'+backBtn+
       '<button class="kit-fav'+(r.favourite?' on':'')+'" onclick="kitToggleFav(\''+r.id+'\')" style="margin-left:auto" aria-label="Favourite">'+(r.favourite?'⭐':'☆')+'</button>'+
@@ -13494,7 +13499,7 @@ function kitDeleteRecipe(id){
   if(!confirm('Delete "'+r.name+'"?')) return;
   kitRecipes=kitRecipes.filter(x=>x.id!==id);
   kitSaveRecipes();
-  if(window.innerWidth<1024) kitCloseDetail();
+  if(!kitUsesSplitPane()) kitCloseDetail();
   else { kitState.selectedId=null; }
   kitRenderList();
 }
