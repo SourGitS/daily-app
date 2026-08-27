@@ -2094,6 +2094,27 @@ window.addEventListener('resize',function(){ if(typeof S!=='undefined'&&S.view) 
   // for browsers that fire one without the other.
   window.addEventListener('orientationchange',()=>setTimeout(onGeometryChange,150));
 })();
+// Chart.js sizes its canvas from a MEASUREMENT taken when the chart was built, so a chart that
+// existed before a rotation keeps the old width until something tells it otherwise. This is
+// the one case the task's "don't rerender on rotation" rule explicitly allows for, and it is a
+// resize() rather than a rebuild: the data is unchanged, only the box it draws into moved.
+// Chart.js keeps its live instances in Chart.instances, so this reaches every chart in the app
+// without having to enumerate the eight or so module-level handles by hand.
+(function(){
+  let raf=0;
+  function resizeCharts(){
+    if(typeof Chart==='undefined'||!Chart.instances) return;
+    try{ Object.keys(Chart.instances).forEach(k=>{ const c=Chart.instances[k]; if(c&&c.resize) c.resize(); }); }catch(e){}
+  }
+  function schedule(){
+    if(raf) cancelAnimationFrame(raf);
+    // One frame after the resize settles, so the canvas is measured against the NEW viewport
+    // rather than the one being torn down.
+    raf=requestAnimationFrame(()=>{ raf=0; setTimeout(resizeCharts,60); });
+  }
+  window.addEventListener('resize',schedule);
+  window.addEventListener('orientationchange',()=>setTimeout(schedule,180));
+})();
 // ── Weekday wordmark tint ─────────────────────────────────────────
 // Publishes --day-color (one colour per weekday when dynamic colours are on, else the static
 // accent). The wordmark is a real logo image now, so this only drives the active Stats pill
@@ -8598,7 +8619,12 @@ function renderBudTrend(){
       ]
     },
     options:{
-      responsive:true,maintainAspectRatio:true,
+      responsive:true,
+      // The only chart in the app that keeps its aspect ratio. On a landscape phone that means
+      // a ~780px-wide canvas computes a ~440px-tall one — taller than the whole viewport — so
+      // the CSS max-height cap alone cannot save it (Chart.js would keep resizing back). Ratio
+      // is dropped at that size only; every other viewport keeps the existing behaviour.
+      maintainAspectRatio:(typeof isLandscapePhone==='function' && isLandscapePhone())?false:true,
       plugins:{
         legend:{display:true,labels:{color:tc,font:{size:12},usePointStyle:true,pointStyleWidth:10}},
         tooltip:{callbacks:{label:c=>c.dataset.label+': $'+c.parsed.y.toFixed(0)}}

@@ -485,9 +485,15 @@
   .ex-card{padding:11px 12px;margin-bottom:8px}
   .ex-name{font-size:15px}
   .set-row{gap:7px;padding:5px 0}
-  .set-kg-input,.set-reps-input{height:38px;font-size:15px}
-  .set-check{width:34px;height:34px}
-  .set-warmup-btn{width:26px;height:26px}
+  /* .set-row input is the real selector (there is no .set-kg-input class — an earlier draft of
+     this block invented one and silently did nothing). 40px against the portrait 46px: still a
+     comfortable target, and the 18px figure type is kept so a weight is readable at a glance
+     mid-set. */
+  #view-log .set-row input{height:40px;font-size:17px}
+  /* Done and warm-up stay near their portrait size — these are the two controls hit most often
+     mid-set and the ones least forgiving of a miss. */
+  #view-log .set-check{width:34px;height:34px}
+  #view-log .set-warmup-btn{width:26px;height:36px}
 
   /* Keyboard clearance. When a set input is focused the on-screen keyboard covers roughly the
      bottom half of an already-short viewport, and the browser will only scroll the input into
