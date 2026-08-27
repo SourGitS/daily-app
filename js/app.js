@@ -6787,13 +6787,62 @@ function migrateCatBudgetsOnce(){
   localStorage.setItem('daily_cat_budgets_migrated','1');
 }
 
+// ── Per-week frozen recurring rates ───────────────────────────────
+// A blank fixed cell means "the standard amount was charged" — but resolving that to the
+// category's CURRENT budget made past weeks rewrite themselves: raising Netflix from $15 to
+// $20 today retroactively made every historical week with a blank Netflix cell report $20,
+// and adding a brand-new fixed category made it appear in weeks that pre-dated it entirely.
+// Each week therefore freezes the rates that applied to it, once, the first time it is
+// written: d.fixRates = {catId: amountAtTheTime}.
+//   • A category IN fixRates with a blank cell resolves to the frozen rate, not today's price.
+//   • A category NOT in fixRates did not exist when that week was live, so it contributes
+//     nothing — which is what stops a new expense back-dating itself across your history.
+// Weeks written before this existed have no fixRates and keep the old behaviour, so nothing
+// silently changes value; budFreezeLegacyRatesOnce() below pins them at what they currently
+// display, which stops the drift without inventing numbers.
+function budEnsureFixRates(d){
+  if(!d || d.fixRates) return;
+  const rates={};
+  loadFixCats().forEach(c=>{ rates[c.id]=catBudget(c); });
+  d.fixRates=rates;
+}
+// One-time pin for weeks that predate fixRates. Without this they keep floating forever: the
+// fix above only protects weeks written from now on. Freezing them at TODAY'S rates is
+// deliberately not a guess at history — it is exactly the number each of those weeks is
+// already displaying, so nothing a user has seen changes, and it can never drift again.
+// Only weeks that actually hold data are touched; empty placeholders are left alone.
+function budFreezeLegacyRatesOnce(){
+  if(localStorage.getItem('daily_budget_rates_frozen')) return;
+  try{
+    let changed=false;
+    Object.keys(budgetData||{}).forEach(k=>{
+      const d=budgetData[k];
+      if(!d || typeof d!=='object' || d.fixRates) return;
+      if(!Object.keys(d).length) return;       // nothing recorded for that week
+      budEnsureFixRates(d);
+      changed=true;
+    });
+    // Local-only on purpose. Budget weeks sync per-week (syncBudgetDataToFirebase), not as a
+    // blob, so lsSave's blob path would be the wrong channel; and because the frozen value is
+    // identical to what the week already displayed, there is nothing here another device needs
+    // urgently — each device pins its own copy on first boot, and the next real edit to a week
+    // syncs it through the normal path.
+    if(changed) localStorage.setItem('daily_budget', JSON.stringify(budgetData));
+  }catch(e){}
+  localStorage.setItem('daily_budget_rates_frozen','1');
+}
 function weekFixedTotal(d){
   let t=0;
+  const rates=d&&d.fixRates;
   loadFixCats().forEach(c=>{
     const v=d&&d['fix_'+c.id];
-    // A blank fixed cell means the standard amount was charged, so it falls back to the
-    // category's budget. (Variable is the opposite — blank there means nothing was spent.)
-    t += (v!==undefined&&v!=='') ? (parseFloat(v)||0) : catBudget(c);
+    if(v!==undefined&&v!=='') { t+=parseFloat(v)||0; return; }   // explicit entry always wins
+    if(rates){
+      // Frozen week: only categories that existed then count, at the rate that applied then.
+      if(Object.prototype.hasOwnProperty.call(rates,c.id)) t+=parseFloat(rates[c.id])||0;
+      return;
+    }
+    t += catBudget(c);   // legacy week with no frozen rates — original behaviour
   });
   return t;
 }
@@ -7572,6 +7621,7 @@ function budSaveDraft(){
   if(!budgetData[key]) budgetData[key]={};
   const d=budgetData[key];
   const before=JSON.stringify(d);
+  budEnsureFixRates(d);   // freeze this week's recurring prices the first time it is written
   budWriteFields(d);
   if(!d.saved) d.draft=true;
   // Only a REAL change stamps and syncs. Draft flushes also fire on render/week-nav with
@@ -7587,6 +7637,7 @@ function budSaveCurrentWeek(){
   const key=weekKey(monday);
   if(!budgetData[key]) budgetData[key]={};
   const d=budgetData[key];
+  budEnsureFixRates(d);   // freeze this week's recurring prices the first time it is written
   budWriteFields(d);
   d.saved=true; delete d.draft;
   d.updatedAt=Date.now(); // explicit user save — always stamp
@@ -13372,6 +13423,7 @@ try {
   migrateSubscriptionsToFixedOnce(); // one-time: fold subscriptions into fixed categories
   migrateDropSubsAggregateOnce(); // one-time: drop the leftover aggregate 'subs' category
   migrateRetiredAccentOnce(); // one-time: retired orange default → neutral grey
+  budFreezeLegacyRatesOnce(); // one-time: pin pre-existing weeks so recurring prices stop floating
   migrateDefaultWideOnce();   // one-time: three full-width Home cards → just the session hero
   budCleanupUnnamedCatsOnce(); // one-time: clear machine-id rows left by unnamed categories
   // Warm the timed-exercise cache at boot: getPR/getPoints read it, and Stats can render
