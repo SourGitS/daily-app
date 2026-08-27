@@ -723,7 +723,10 @@
        a spending tracker lives or dies on how fast a purchase can be logged. -->
   <div class="modal-overlay hidden" id="txn-modal" onclick="if(event.target===this)closeTxnModal()">
     <div class="modal-box">
-      <div class="modal-title" id="txn-modal-title">Add expense</div>
+      <div class="txn-modal-topbar">
+        <div class="modal-title" id="txn-modal-title">Add expense</div>
+        <button type="button" class="txn-modal-close" onclick="closeTxnModal()" aria-label="Close expense form"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </div>
       <label class="txn-lbl">Amount ($)</label>
       <input class="modal-input txn-amount" type="text" inputmode="decimal" id="txn-amount" placeholder="0.00">
       <label class="txn-lbl">Category</label>

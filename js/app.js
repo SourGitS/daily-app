@@ -1710,6 +1710,13 @@ const NAV_ORDER=['home','budget','log','kitchen'];
 let deckIdx = 0;
 let deckRaf = 0;      // handle of the pending touchmove frame (0 = none) — must be cancellable
 let deckSnapH = null; // active snap's transitionend handler, so we can pull it off early
+// Mobile WebKit can paint an input's caret in the wrong place when the field sits inside a
+// transformed, momentum-scrolling pager. Keep the normal GPU pager for navigation, but park
+// it with margin positioning while a field is being edited so the native text renderer has an
+// untransformed ancestor chain. See the focus handlers below.
+let deckTextInputMode = false;
+let deckTextInputPanel = null;
+let deckTextInputBlurTimer = 0;
 // Width of ONE panel, measured from the DOM — never window.innerWidth. #app is
 // `max-width:480px; margin:0 auto` (base.css), so on any viewport wider than 480 the panels are
 // 480 and innerWidth is not. Paging by innerWidth overshot by (innerWidth-480) per panel, which
@@ -1731,9 +1738,51 @@ function deckCancelPending(deck){
   if(deckRaf){ cancelAnimationFrame(deckRaf); deckRaf=0; }
   if(deckSnapH){ deck.removeEventListener('transitionend',deckSnapH); deckSnapH=null; }
 }
+function deckApplyTextInputPosition(){
+  const deck=document.getElementById('swipe-deck'); if(!deck) return;
+  deck.style.marginLeft=(-(deckIdx*deckPanelW()))+'px';
+}
+function deckEnterTextInputMode(){
+  if(deckTextInputMode || window.innerWidth>=1024) return;
+  const deck=document.getElementById('swipe-deck'); if(!deck) return;
+  deckCancelPending(deck);
+  deck.style.transition='none';
+  deck.style.transform='none';
+  deck.style.willChange='auto';
+  deck.style.backfaceVisibility='visible';
+  deck.style.webkitBackfaceVisibility='visible';
+  deckTextInputPanel=deck.querySelector('.swipe-panel.deck-active');
+  if(deckTextInputPanel){
+    deckTextInputPanel.style.willChange='auto';
+    deckTextInputPanel.style.backfaceVisibility='visible';
+    deckTextInputPanel.style.webkitBackfaceVisibility='visible';
+  }
+  deckTextInputMode=true;
+  deckApplyTextInputPosition();
+}
+function deckLeaveTextInputMode(){
+  if(!deckTextInputMode) return;
+  const deck=document.getElementById('swipe-deck');
+  if(deck){
+    deck.style.marginLeft='';
+    deck.style.willChange='';
+    deck.style.backfaceVisibility='';
+    deck.style.webkitBackfaceVisibility='';
+  }
+  if(deckTextInputPanel){
+    deckTextInputPanel.style.willChange='';
+    deckTextInputPanel.style.backfaceVisibility='';
+    deckTextInputPanel.style.webkitBackfaceVisibility='';
+  }
+  deckTextInputPanel=null;
+  deckTextInputMode=false;
+}
 function setDeckPosition(idx, animate){
   const deck=document.getElementById('swipe-deck'); if(!deck) return;
   idx=Math.max(0, Math.min(NAV_ORDER.length-1, idx));
+  // A nav tap can change tabs while the previous field still owns focus. Restore the pager
+  // before moving it, otherwise its margin offset and transform would stack.
+  deckLeaveTextInputMode();
   // A touchmove frame or a previous snap's cleanup may still be queued; either would clobber the
   // transform we are about to set (that is what left the deck stranded mid-screen on a flick).
   deckCancelPending(deck);
@@ -1758,7 +1807,10 @@ function setDeckPosition(idx, animate){
 }
 // A width change (rotation, resize, desktop breakpoint) changes the panel width, so the deck's
 // px transform has to be recomputed or the panels drift out of alignment.
-window.addEventListener('resize',function(){ setDeckPosition(deckIdx,false); });
+window.addEventListener('resize',function(){
+  if(deckTextInputMode && window.innerWidth<1024){ deckApplyTextInputPosition(); return; }
+  setDeckPosition(deckIdx,false);
+});
 // #app-main must NEVER scroll horizontally — the deck is positioned purely by transform, so any
 // scrollLeft stacks on top of it and pushes the panel off-screen (blank deck showing through).
 // overflow:hidden only stops the *user* scrolling; scrollIntoView() on any descendant still
@@ -1796,6 +1848,26 @@ function safeScrollIntoView(el, opts){
   sc.scrollBy({top:delta, left:0, behavior:opts.behavior||'auto'});
   pinDeckScroll();
 }
+function isDeckTextField(el){
+  return !!(el && el.matches && el.matches('input,textarea,[contenteditable="true"]') && el.closest('#swipe-deck'));
+}
+document.addEventListener('focusin',function(e){
+  if(isDeckTextField(e.target)){
+    clearTimeout(deckTextInputBlurTimer);
+    deckEnterTextInputMode();
+  }
+});
+document.addEventListener('focusout',function(){
+  if(!deckTextInputMode) return;
+  // Moving between fields keeps the safe mode on; moving to a modal, nav, or another view
+  // restores the regular pager on the next event turn once document.activeElement is current.
+  clearTimeout(deckTextInputBlurTimer);
+  deckTextInputBlurTimer=setTimeout(function(){
+    if(isDeckTextField(document.activeElement)) return;
+    deckLeaveTextInputMode();
+    setDeckPosition(deckIdx,false);
+  },0);
+});
 (function(){
   const deck=document.getElementById('swipe-deck'); if(!deck) return;
   const MAX=NAV_ORDER.length-1;
@@ -7408,6 +7480,11 @@ function txnRecentMerchants(catId){
 }
 function openTxnModal(opts){
   const o=opts||{};
+  const modal=document.getElementById('txn-modal');
+  // #app is a fixed iOS shell while the persistent phone nav sits above it in the document.
+  // Transaction capture must cover that nav, so promote this one full-screen flow to <body>
+  // before displaying it rather than relying on an inner z-index that cannot escape the shell.
+  if(modal&&modal.parentElement!==document.body) document.body.appendChild(modal);
   _txnEditId=o.id||null;
   const existing=_txnEditId?txnData.find(t=>t&&t.id===_txnEditId):null;
   _txnCatId = existing ? existing.catId : (o.catId || txnRecentCatIds()[0] || (activeCats(loadVarCats())[0]||{}).id || null);
@@ -7422,7 +7499,7 @@ function openTxnModal(opts){
   document.getElementById('txn-save-btn').textContent = existing?'Save changes':'Save expense';
   txnRenderCats();
   txnRenderMerchants();
-  document.getElementById('txn-modal').classList.remove('hidden');
+  if(modal) modal.classList.remove('hidden');
   setTimeout(()=>{ const a=document.getElementById('txn-amount'); if(a){ a.focus(); a.select(); } },60);
 }
 function closeTxnModal(){
@@ -11499,14 +11576,20 @@ function confirmSavingsBalance(){
 function adjustModalsForKeyboard(){
   if(!window.visualViewport) return;
   const kb = window.innerHeight - window.visualViewport.height;
+  const txnBox=document.querySelector('#txn-modal:not(.hidden) .modal-box');
   if(kb > 100){ // >100px ≈ a keyboard (ignore URL-bar / minor viewport jitter)
-    document.querySelectorAll('.modal-overlay:not(.hidden) .modal-box').forEach(box=>{
+    // Transaction capture is a full phone screen, not a bottom sheet. Keep it anchored and
+    // lift only its sticky action row; applying the generic margin lift would move the entire
+    // form around while the user types.
+    if(txnBox) txnBox.style.setProperty('--txn-kb-inset',kb+'px');
+    document.querySelectorAll('.modal-overlay:not(.hidden):not(#txn-modal) .modal-box').forEach(box=>{
       box.style.transition = 'margin-bottom 0.2s ease';
       box.style.marginBottom = kb + 'px';
       // Constrain the box to the space above the keyboard so its (pinned) buttons stay on screen.
       box.style.maxHeight = (window.visualViewport.height - 12) + 'px';
     });
   } else {
+    if(txnBox) txnBox.style.removeProperty('--txn-kb-inset');
     document.querySelectorAll('.modal-box').forEach(box=>{ box.style.marginBottom = ''; box.style.maxHeight = ''; });
   }
 }

@@ -30,6 +30,18 @@
 .modal-btn.green{background:var(--accent);color:#fff}
 .modal-btn.danger{background:transparent;border:1.5px solid var(--danger);color:var(--danger)}
 
+/* Expense capture is used standing at a checkout. On a phone it must be a stable screen, not
+   a bottom sheet whose Save action can fall behind the persistent navigation or keyboard. */
+.txn-modal-topbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.txn-modal-topbar .modal-title{margin-bottom:14px}
+.txn-modal-close{display:none}
+@media(max-width:1023px){
+  #txn-modal{z-index:300;align-items:stretch}
+  #txn-modal .modal-box{height:100%;max-height:none;flex:0 0 100%;box-sizing:border-box;border-radius:0;padding:calc(env(safe-area-inset-top,0px) + 18px) 20px calc(env(safe-area-inset-bottom,0px) + 20px + var(--txn-kb-inset,0px));overscroll-behavior:contain}
+  #txn-modal .txn-modal-close{display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;margin-top:-8px;border:1px solid var(--border);border-radius:12px;background:transparent;color:var(--text);cursor:pointer;-webkit-tap-highlight-color:transparent}
+  #txn-modal .modal-btn-row{bottom:var(--txn-kb-inset,0px);padding:10px 0 2px;margin-top:18px}
+}
+
 /* PO modal items */
 .po-item{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
 .po-item:last-child{border-bottom:none}

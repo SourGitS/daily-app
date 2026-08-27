@@ -1,8 +1,8 @@
 // BUMP THIS ON EVERY RELEASE THAT CHANGES ANY FILE IN ASSETS.
 // The fetch handler is cache-first, so an installed PWA keeps serving the old bundle until the
 // cache NAME changes — a deploy with the same name reaches nobody who already has the app on
-// their home screen. v226: clearer Home Layout editor and direct widget ordering controls.
-const CACHE_NAME = 'daily-v226';
+// their home screen. v227: fixed phone expense capture and Safari input-caret positioning.
+const CACHE_NAME = 'daily-v227';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
