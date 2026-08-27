@@ -71,6 +71,10 @@
 .acct-spark{display:block;width:100%;height:28px;overflow:visible}
 .acct-change{font-size:11px;font-weight:700;margin-top:3px}
 .acct-change-flat{color:var(--muted)}
+.acct-order-controls{display:flex;gap:4px;flex-shrink:0}
+.acct-order-controls button{width:36px;height:36px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:9px;background:transparent;color:var(--text);font-size:17px;font-weight:700;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.acct-order-controls button:active:not(:disabled){background:var(--border)}
+.acct-order-controls button:disabled{color:var(--muted);opacity:.3;cursor:default}
 
 /* Recurring (monthly/yearly) fixed expenses — one summary row that expands to a read-only
    breakdown. No inputs: their prorated share is already counted, so typing would double it. */

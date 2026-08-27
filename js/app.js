@@ -11267,7 +11267,7 @@ function renderAccountsPage(){
     if(!accounts.length){
       listEl.innerHTML='<div class="card" style="text-align:center;color:var(--muted);font-size:13px;padding:24px 16px">No accounts yet. Tap “+ Add account” to add your savings, credit card, or any other balance you want to track.</div>';
     } else {
-      listEl.innerHTML=accounts.map(a=>{
+      listEl.innerHTML=accounts.map((a,acctIndex)=>{
         const isDebt=a.type==='debt';
         const curCol=isDebt?'var(--danger)':'var(--text)';
         let stmt='';
@@ -11370,6 +11370,12 @@ function renderAccountsPage(){
               ? '<input class="bud-cat-name-input" value="'+_catEsc(a.name)+'" placeholder="Account name" onchange="accountRename(\''+a.id+'\',this.value)" style="flex:1;font-weight:700">'
               : '<div style="flex:1;min-width:0;font-weight:700;font-size:15px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_catEscHtml(a.name||'Untitled')+'</div>')+
             '<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:'+typeCol+';margin:0 8px;white-space:nowrap">'+typeTag+'</span>'+
+            (_acctEditMode
+              ? '<div class="acct-order-controls">'+
+                  '<button onclick="accountMove(\''+a.id+'\',-1)" aria-label="Move account up"'+(acctIndex===0?' disabled':'')+'>↑</button>'+
+                  '<button onclick="accountMove(\''+a.id+'\',1)" aria-label="Move account down"'+(acctIndex===accounts.length-1?' disabled':'')+'>↓</button>'+
+                '</div>'
+              : '')+
             // Destructive, so it only exists while deliberately in edit mode.
             (_acctEditMode?'<button class="lib-del-btn" onclick="accountDelete(\''+a.id+'\')" aria-label="Delete account">×</button>':'')+
           '</div>'+
@@ -11446,6 +11452,16 @@ function accountsAddCancel(){ _acctAddOpen=false; renderAccountsPage(); }
 function accountsAddSetType(t){ _acctAddType=t; if(t!=='debt') _acctAddTracks=false; else _acctAddSaver=false; renderAccountsPage(); }
 function accountsAddSetSaver(on){ _acctAddSaver=!!on; }
 function accountsAddSetTracks(on){ _acctAddTracks=!!on; }
+function accountMove(id,delta){
+  const from=accounts.findIndex(a=>a&&a.id===id);
+  const to=from+delta;
+  if(from<0||to<0||to>=accounts.length) return;
+  const moved=accounts.splice(from,1)[0];
+  accounts.splice(to,0,moved);
+  saveAccounts(accounts);
+  renderAccountsPage();
+  if(S.view==='home'&&typeof renderHome==='function') renderHome();
+}
 function accountsAddConfirm(){
   const name=(document.getElementById('acct-new-name')?.value||'').trim();
   if(!name){ document.getElementById('acct-new-name')?.focus(); return; }
