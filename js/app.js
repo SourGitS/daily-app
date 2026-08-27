@@ -1476,13 +1476,15 @@ function renderTimerCard(){
   el.innerHTML=
     '<div class="log-timer-card">'+
       '<button class="lt-body" data-action="timer-expand" aria-label="Open timer">'+
-        '<span class="lt-dot"></span>'+
+        '<span class="lt-dot'+(rtRunning?' running':'')+'"></span>'+
         '<span id="rt-bar-time" class="lt-time">0.0</span>'+
         '<span id="rt-bar-session" class="lt-session">Session: 0:00</span>'+
         '<svg class="lt-expand" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>'+
       '</button>'+
       '<button id="lt-toggle" class="lt-toggle'+(rtRunning?' running':'')+'" onclick="rtToggle();renderTimerCard();rtUpdateDisplay(rtGetElapsed());rtUpdateSessionLabels()">'+
-        (rtRunning?'Stop':'Start')+
+        (rtRunning
+          ?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>Pause rest</span>'
+          :'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg><span>Start rest</span>')+
       '</button>'+
     '</div>';
 }
@@ -8518,16 +8520,43 @@ function accountsHistoryDates(){
 // container rather than hardcoded to one. One function means the two can't drift apart; the
 // Chart instances are tracked per container so re-rendering one never destroys the other's.
 const _nwCharts={};
+let nwChartRange='3m';
+const nwChartSeries={assets:false,debts:false};
+function nwChartRefresh(){
+  ['accounts-chart','bs-balance-wrap'].forEach(id=>{ if(document.getElementById(id)) renderNetWorthChartInto(id); });
+}
+function setNWChartRange(range){ nwChartRange=range; nwChartRefresh(); }
+function toggleNWChartSeries(series){
+  if(series==='assets'||series==='debts') nwChartSeries[series]=!nwChartSeries[series];
+  nwChartRefresh();
+}
+function nwChartDates(allDates){
+  if(nwChartRange==='all') return allDates.slice();
+  const months={ '1m':1, '3m':3, '1y':12 }[nwChartRange]||3;
+  const cut=localMidnight(getLocalDate()); cut.setMonth(cut.getMonth()-months);
+  const cutStr=dateStr(cut);
+  const shown=allDates.filter(d=>d>=cutStr);
+  const prior=allDates.filter(d=>d<cutStr).pop();
+  if(prior) shown.unshift(prior); // carry one anchor in so the period change has a real baseline
+  return shown.length>=2?shown:allDates.slice(-2);
+}
+function nwCompactMoney(v){
+  const n=Math.abs(v), sign=v<0?'−':'';
+  if(n>=1000000) return sign+'$'+(n/1000000).toFixed(n>=10000000?0:1).replace('.0','')+'m';
+  if(n>=1000) return sign+'$'+(n/1000).toFixed(n>=100000?0:1).replace('.0','')+'k';
+  return sign+'$'+Math.round(n);
+}
 function renderBSBalance(){ renderNetWorthChartInto('bs-balance-wrap'); }
 function renderNetWorthChartInto(wrapId){
   const wrap=document.getElementById(wrapId); if(!wrap) return;
   if(_nwCharts[wrapId]){ _nwCharts[wrapId].destroy(); _nwCharts[wrapId]=null; }
   const canvasId=wrapId+'-nwcanvas';
-  const dates=accountsHistoryDates();
-  if(dates.length<2){
+  const allDates=accountsHistoryDates();
+  if(allDates.length<2){
     wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+acctIcon('trend',13)+'Net worth over time</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Update at least 2 account balances in Accounts to see the trend.</div></div>';
     return;
   }
+  const dates=nwChartDates(allDates);
   // Assets, debts and net worth at each recorded date (each account carried forward from its
   // last known balance on/before that date — same convention as the old CC line).
   const assetAccts=accounts.filter(a=>a&&a.type==='asset'), debtAccts=accounts.filter(a=>a&&a.type==='debt');
@@ -8535,36 +8564,55 @@ function renderNetWorthChartInto(wrapId){
   const debtsData =dates.map(d=>debtAccts.reduce((s,a)=>s+accountBalanceAt(a,d),0));
   const netData   =dates.map((d,i)=>assetsData[i]-debtsData[i]);
   const curNet=netData[netData.length-1];
-  const netCol=curNet>=0?'var(--success)':'var(--danger)';
+  const firstNet=netData[0], change=curNet-firstNet;
+  const changePct=firstNet?change/Math.abs(firstNet)*100:null;
+  const changeCol=change>0?'var(--success)':change<0?'var(--danger)':'var(--muted)';
+  const changeText=(change>0?'+':change<0?'−':'')+fmtMoney(Math.abs(change))+
+    (changePct===null?'':' · '+(changePct>0?'+':'')+changePct.toFixed(1)+'%');
   const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#FF6B35').trim();
-  wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden">'+
-    '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center">'+
-      // Last chrome emoji on the Accounts screen. Shared with Stats → Finance, so both get the
-      // icon — which is the point: same chart, same header, one look.
-      '<span style="display:inline-flex;align-items:center;gap:6px">'+acctIcon('trend',13)+'Net worth over time</span>'+
-      '<span style="font-size:13px;font-weight:800;text-transform:none;letter-spacing:0;color:'+netCol+'">'+(curNet>=0?'+$':'-$')+Math.abs(Math.round(curNet)).toLocaleString()+' net</span>'+
+  const stale=accounts.filter(a=>a&&(a.history||[]).length).map(a=>{
+    const h=a.history.slice().filter(e=>e&&e.date).sort((x,y)=>x.date<y.date?-1:1);
+    if(!h.length) return null;
+    const days=Math.floor((localMidnight(getLocalDate())-localMidnight(h[h.length-1].date))/864e5);
+    return days>14?{name:a_name(a),days}:null;
+  }).filter(Boolean);
+  const latest=allDates[allDates.length-1];
+  const ranges=[['1m','1M'],['3m','3M'],['1y','1Y'],['all','ALL']];
+  wrap.innerHTML='<div class="card nw-chart-card">'+
+    '<div class="nw-chart-head">'+
+      '<div><div class="nw-chart-kicker">'+acctIcon('trend',13)+'Net worth</div>'+
+        '<div class="nw-chart-value">'+fmtMoney(curNet)+'</div>'+
+        '<div class="nw-chart-change" style="color:'+changeCol+'">'+changeText+'</div></div>'+
+      '<div class="nw-chart-ranges">'+ranges.map(r=>'<button onclick="setNWChartRange(\''+r[0]+'\')" class="'+(nwChartRange===r[0]?'on':'')+'">'+r[1]+'</button>').join('')+'</div>'+
     '</div>'+
-    '<div style="padding:14px 16px"><canvas id="'+canvasId+'" style="max-height:360px"></canvas></div></div>';
+    '<div class="nw-chart-canvas"><canvas id="'+canvasId+'"></canvas></div>'+
+    '<div class="nw-chart-series">'+
+      '<span class="on"><i style="background:'+accent+'"></i>Net worth</span>'+
+      '<button onclick="toggleNWChartSeries(\'assets\')" class="'+(nwChartSeries.assets?'on':'')+'"><i></i>Assets</button>'+
+      (debtAccts.length?'<button onclick="toggleNWChartSeries(\'debts\')" class="'+(nwChartSeries.debts?'on':'')+'"><i></i>Debts</button>':'')+
+    '</div>'+
+    '<div class="nw-chart-foot">Based on recorded balances · Latest update '+fmtDate(latest)+
+      (stale.length?'<span class="nw-chart-stale">'+_catEscHtml(stale.map(x=>x.name+' '+x.days+'d').join(' · '))+' old</span>':'')+
+    '</div></div>';
   const ctx=document.getElementById(canvasId); if(!ctx) return;
   const {gc,tc}=budChartGridColors();
-  const datasets=[
-    {label:'Assets',data:assetsData,borderColor:'#52B788',backgroundColor:'rgba(82,183,136,0.12)',borderWidth:2.5,pointRadius:3,pointBackgroundColor:'#52B788',fill:true,tension:0.3},
-    {label:'Net worth',data:netData,borderColor:accent,backgroundColor:'transparent',borderWidth:2.5,pointRadius:3,pointBackgroundColor:accent,fill:false,tension:0.3}
-  ];
-  // Only plot the debt line if there's any debt account — a debt-free user shouldn't see a flat 0 line.
-  if(debtAccts.length) datasets.splice(1,0,{label:'Debts',data:debtsData,borderColor:'#E74C3C',backgroundColor:'transparent',borderWidth:2.5,pointRadius:3,pointBackgroundColor:'#E74C3C',fill:false,tension:0.3});
+  const latestPoint=c=>c.dataIndex===dates.length-1?4:0;
+  const datasets=[{label:'Net worth',data:netData,borderColor:accent,backgroundColor:'rgba('+hexToRgb(accent)+',.08)',borderWidth:3,pointRadius:latestPoint,pointHoverRadius:5,pointBackgroundColor:accent,pointBorderColor:S.theme==='dark'?'#171717':'#fff',pointBorderWidth:2,fill:true,stepped:'after',tension:0}];
+  if(nwChartSeries.assets) datasets.push({label:'Assets',data:assetsData,borderColor:'#52B788',backgroundColor:'transparent',borderWidth:1.75,borderDash:[5,4],pointRadius:0,pointHoverRadius:4,fill:false,stepped:'after',tension:0});
+  if(debtAccts.length&&nwChartSeries.debts) datasets.push({label:'Debts',data:debtsData,borderColor:'#E74C3C',backgroundColor:'transparent',borderWidth:1.75,borderDash:[5,4],pointRadius:0,pointHoverRadius:4,fill:false,stepped:'after',tension:0});
   _nwCharts[wrapId]=new Chart(ctx,{
     type:'line',
-    data:{ labels:dates.map(e=>e.substring(5)), datasets },
+    data:{ labels:dates.map(e=>new Date(e+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'})), datasets },
     options:{
       responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
       plugins:{
-        legend:{display:true,labels:{color:tc,font:{size:12},usePointStyle:true,pointStyleWidth:10}},
-        tooltip:{callbacks:{label:c=>c.dataset.label+': $'+c.parsed.y.toLocaleString()}}
+        legend:{display:false},
+        tooltip:{displayColors:true,backgroundColor:S.theme==='dark'?'#222':'#fff',titleColor:tc,bodyColor:tc,borderColor:gc,borderWidth:1,padding:12,callbacks:{label:c=>c.dataset.label+': '+fmtMoney(c.parsed.y)}}
       },
       scales:{
-        x:{grid:{color:gc},ticks:{color:tc,font:{size:11},maxTicksLimit:8}},
-        y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>'$'+v},beginAtZero:false}
+        x:{grid:{display:false},border:{display:false},ticks:{color:tc,font:{size:10,weight:'600'},maxTicksLimit:5,maxRotation:0}},
+        y:{position:'right',grid:{color:gc,drawTicks:false},border:{display:false},ticks:{color:tc,font:{size:10,weight:'600'},padding:8,callback:nwCompactMoney},beginAtZero:false}
       }
     }
   });

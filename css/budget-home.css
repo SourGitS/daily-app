@@ -709,6 +709,26 @@
 .vg-default-btn{padding:5px 11px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--text-2,var(--text));font-size:11px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .vg-default-btn:active{background:var(--border)}
 
+/* ── Net-worth chart (Accounts + Stats → Finance) ── */
+.nw-chart-card{padding:0;overflow:hidden;margin-bottom:12px}
+.nw-chart-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 16px 4px}
+.nw-chart-kicker{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.nw-chart-value{font-family:var(--font-num);font-size:32px;font-weight:800;line-height:1;letter-spacing:-.025em;margin-top:8px;color:var(--text)}
+.nw-chart-change{font-family:var(--font-num);font-size:12px;font-weight:700;margin-top:6px}
+.nw-chart-ranges{display:flex;gap:2px;padding:3px;background:var(--border);border-radius:10px;flex-shrink:0}
+.nw-chart-ranges button{height:28px;min-width:32px;padding:0 7px;border:0;border-radius:7px;background:transparent;color:var(--muted);font-size:10px;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.nw-chart-ranges button.on{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.nw-chart-canvas{height:230px;padding:12px 10px 4px 4px}
+.nw-chart-series{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 16px 10px}
+.nw-chart-series span,.nw-chart-series button{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid var(--border);border-radius:999px;background:transparent;color:var(--muted);font-size:11px;font-weight:700}
+.nw-chart-series button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.nw-chart-series .on{background:rgba(var(--accent-rgb),.08);border-color:rgba(var(--accent-rgb),.28);color:var(--text)}
+.nw-chart-series i{display:block;width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.nw-chart-series button:first-of-type i{background:var(--success)}
+.nw-chart-series button:last-of-type:not(:first-of-type) i{background:var(--danger)}
+.nw-chart-foot{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:10px 16px 14px;border-top:1px solid var(--border);font-size:10px;font-weight:600;color:var(--muted);line-height:1.4}
+.nw-chart-stale{color:var(--amber-dark)}
+
 /* ── Debt payoff position card (Accounts) ── */
 .acct-payoff-card{text-align:center;padding:18px 16px;margin-bottom:12px}
 /* Net worth and payoff are two halves of one answer, so their labels and figures are sized
@@ -732,3 +752,8 @@
 .acct-util-label{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2)}
 .acct-util-pct{font-family:var(--font-num);font-size:20px;font-weight:800;line-height:1;letter-spacing:-.02em}
 .acct-util-cap{font-size:11px;font-weight:600;color:var(--muted);margin-top:5px;line-height:1.4}
+
+@media(min-width:1024px){
+  .nw-chart-value{font-size:38px}
+  .nw-chart-canvas{height:300px;padding:16px 18px 4px 10px}
+}
