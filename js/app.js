@@ -5804,12 +5804,92 @@ function renderCatBudgetList(containerId, type){
           '<option value="">Move…</option>'+moveOpts+
         '</select>'+
       '</div>';
-    return row+sub;
+    // Third line, recurring charges only: when it next bills and whether it is still running.
+    // A weekly fixed cost (rent) has neither concept in a useful sense — it just charges every
+    // week — so the row stays as it was for those.
+    let recur='';
+    if(cycles && cyc!=='weekly'){
+      const days=catDaysUntilDue(c);
+      const st=catStatus(c);
+      const dueHint = days===null
+        ? '<span class="bud-edit-hint">set a date to see it in Upcoming</span>'
+        : '<span class="bud-edit-hint'+(days<=3?' soon':'')+'">'+
+            (days===0?'charges today':days===1?'charges tomorrow':'in '+days+' days')+'</span>';
+      const hist=Array.isArray(c.priceHistory)?c.priceHistory:[];
+      const last=hist.length?hist[hist.length-1]:null;
+      recur=
+        '<div class="bud-edit-sub bud-edit-recur">'+
+          '<input class="bud-edit-due" type="date" value="'+(c.dueDate?String(c.dueDate).slice(0,10):'')+'" '+
+            'aria-label="Next billing date" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'dueDate\',this.value)">'+
+          dueHint+
+          '<select class="bud-edit-status'+(st!=='active'?' off':'')+'" aria-label="Status" '+
+            'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'status\',this.value)">'+
+            CAT_STATUSES.map(o=>'<option value="'+o.id+'"'+(o.id===st?' selected':'')+'>'+o.label+'</option>').join('')+
+          '</select>'+
+        '</div>'+
+        (last?'<div class="bud-edit-pricehist">Was $'+r2(last.from)+' until '+fmtDate(last.date)+
+          ' · now $'+r2(last.to)+(last.to>last.from?' <span class="ph-up">↑</span>':' <span class="ph-down">↓</span>')+'</div>':'');
+    }
+    return row+sub+recur;
   }).join('')+
     '<button class="bud-add-item" onclick="catAddItem(\''+type+'\')">+ Add '+CAT_TYPE_LABEL[type]+'</button>';
 }
+// ── Recurring charge management ───────────────────────────────────
+// A recurring fixed category (anything not on a weekly cycle) is a subscription in all but
+// name. Budgeting only needed its prorated weekly cost, but MANAGING one needs three things
+// the model had no room for: when it next charges, whether it is still active, and what it
+// used to cost. All three are optional and absent on every existing category, so nothing
+// needs migrating and an untouched category behaves exactly as before.
+const CAT_STATUSES=[
+  {id:'active',   label:'Active'},
+  {id:'trial',    label:'Trial'},
+  {id:'paused',   label:'Paused'},
+  {id:'cancelled',label:'Cancelled'}
+];
+function catStatus(c){ return (c&&c.status)||'active'; }
+// Paused and cancelled charges stop counting toward the budget — that is the whole point of
+// recording the state — but the category is KEPT so its history and price record survive.
+function catIsCharging(c){ const s=catStatus(c); return s==='active'||s==='trial'; }
+// The next date this charge lands, rolled forward from the anchor date the user set.
+// Returns null when no date is known, which every caller treats as "not scheduled" rather
+// than guessing — a wrong date is worse than no date on a bill reminder.
+function catNextDue(c, fromDate){
+  if(!c||!c.dueDate) return null;
+  const cyc=catCycle(c);
+  const start=localMidnight(String(c.dueDate).slice(0,10));
+  if(isNaN(start.getTime())) return null;
+  const today=localMidnight(fromDate||getLocalDate());
+  const d=new Date(start.getTime());
+  let guard=0;
+  while(d<today && guard++<600){
+    if(cyc==='yearly') d.setFullYear(d.getFullYear()+1);
+    else if(cyc==='monthly') d.setMonth(d.getMonth()+1);
+    else d.setDate(d.getDate()+7);
+  }
+  return d;
+}
+function catDaysUntilDue(c, fromDate){
+  const due=catNextDue(c, fromDate);
+  if(!due) return null;
+  const today=localMidnight(fromDate||getLocalDate());
+  return Math.round((due-today)/864e5);
+}
+// Every recurring charge due within `days`, soonest first. Drives the Upcoming card.
+function upcomingCharges(days){
+  const win=days||30;
+  const out=[];
+  loadFixCats().forEach(c=>{
+    if(catCycle(c)==='weekly') return;        // rent-like, not a subscription
+    if(!catIsCharging(c)) return;             // paused/cancelled don't charge
+    const n=catDaysUntilDue(c);
+    if(n===null||n>win) return;
+    out.push({cat:c, days:n, date:catNextDue(c), amount:parseFloat(catAmount(c))||0});
+  });
+  return out.sort((a,b)=>a.days-b.days);
+}
 function catUpdateField(type,id,field,val){
   const cats=BUD_CAT_LOAD[type](); const c=cats.find(x=>x.id===id); if(!c) return;
+  const prevAmount=(field==='amount')?parseFloat(catAmount(c)):null;
   // Empty stays empty rather than becoming 0 — "no target set" and "target of zero" are
   // different things, and only the first should leave the field blank next time.
   c[field]= (field==='budget'||field==='amount') ? (String(val).trim()===''?'':(parseFloat(val)||0)) : val;
@@ -5818,6 +5898,17 @@ function catUpdateField(type,id,field,val){
   if(type==='fix'&&(field==='amount'||field==='cycle')){
     const a=catAmount(c);
     c.budget=(a===''||a==null)?'':catWeeklyFromAmount(a,catCycle(c));
+  }
+  // Price history, recorded automatically. "Which subscription went up?" is unanswerable
+  // without it, and asking the user to log a price rise by hand guarantees it never happens.
+  // Only real changes on recurring charges are kept, so ordinary edits don't accumulate noise.
+  if(type==='fix'&&field==='amount'&&catCycle(c)!=='weekly'){
+    const now=parseFloat(catAmount(c));
+    if(!isNaN(now)&&!isNaN(prevAmount)&&prevAmount!==now){
+      c.priceHistory=Array.isArray(c.priceHistory)?c.priceHistory:[];
+      c.priceHistory.push({date:getLocalDate(), from:prevAmount, to:now});
+      if(c.priceHistory.length>24) c.priceHistory=c.priceHistory.slice(-24);
+    }
   }
   BUD_CAT_SAVE[type](cats);
   refreshCatBudgetUI();
@@ -6830,10 +6921,14 @@ function migrateCatBudgetsOnce(){
 // Weeks written before this existed have no fixRates and keep the old behaviour, so nothing
 // silently changes value; budFreezeLegacyRatesOnce() below pins them at what they currently
 // display, which stops the drift without inventing numbers.
+// What a category actually contributes to a week's fixed total. A paused or cancelled
+// recurring charge is kept (its history and price record are worth having) but stops costing
+// money — which is the practical reason to record the state at all rather than deleting it.
+function catChargeableBudget(c){ return catIsCharging(c) ? catBudget(c) : 0; }
 function budEnsureFixRates(d){
   if(!d || d.fixRates) return;
   const rates={};
-  loadFixCats().forEach(c=>{ rates[c.id]=catBudget(c); });
+  loadFixCats().forEach(c=>{ rates[c.id]=catChargeableBudget(c); });
   d.fixRates=rates;
 }
 // One-time pin for weeks that predate fixRates. Without this they keep floating forever: the
@@ -6872,7 +6967,7 @@ function weekFixedTotal(d){
       if(Object.prototype.hasOwnProperty.call(rates,c.id)) t+=parseFloat(rates[c.id])||0;
       return;
     }
-    t += catBudget(c);   // legacy week with no frozen rates — original behaviour
+    t += catChargeableBudget(c);   // legacy week with no frozen rates — original behaviour
   });
   return t;
 }
@@ -7285,6 +7380,45 @@ function txnToggleCat(catId){
   if(_txnOpenCats.has(catId)) _txnOpenCats.delete(catId); else _txnOpenCats.add(catId);
   if(typeof renderBudgetTab==='function') renderBudgetTab();
 }
+// ── Upcoming charges ──────────────────────────────────────────────
+// "$3.23/week" tells you how to budget for Spotify; it does not tell you that $13.99 leaves
+// your account on Thursday. This is the forward-looking half of recurring costs, and the only
+// place in the app that answers "what is about to be charged?" before it happens.
+// Only renders when at least one charge has a date set — with none, it would be an empty card
+// asking to be configured, which is worse than not being there.
+function renderUpcomingCard(){
+  const list=upcomingCharges(30);
+  const recur=loadFixCats().filter(c=>catCycle(c)!=='weekly'&&catIsCharging(c));
+  if(!recur.length) return '';
+  const dated=recur.filter(c=>c.dueDate).length;
+  if(!dated) return '';
+  const total=list.reduce((s,x)=>s+x.amount,0);
+  // A cluster of charges landing together is the thing that actually catches people out, so
+  // it gets called out rather than left to be inferred from the list.
+  const within7=list.filter(x=>x.days<=7);
+  const cluster=within7.length>=2
+    ? '<div class="up-warn">'+within7.length+' charges land within 7 days — '+fmtMoney(within7.reduce((s,x)=>s+x.amount,0))+' total</div>'
+    : '';
+  const rows=list.length
+    ? list.map(x=>{
+        const soon=x.days<=3;
+        const when=x.days===0?'today':x.days===1?'tomorrow':'in '+x.days+' days';
+        return '<div class="up-row'+(soon?' soon':'')+'">'+
+          '<span class="up-when">'+when+'</span>'+
+          '<span class="up-name">'+_catEscHtml(catLabel(x.cat))+
+            (catStatus(x.cat)==='trial'?'<span class="up-trial">trial</span>':'')+'</span>'+
+          '<span class="up-amt">'+fmtMoneyExact(x.amount)+'</span>'+
+        '</div>';
+      }).join('')
+    : '<div class="up-none">Nothing due in the next 30 days.</div>';
+  const undated=recur.length-dated;
+  return '<div class="card" data-bud-key="upcoming">'+
+    budCardHead('upcoming','📅 Upcoming charges',false)+
+    cluster+rows+
+    (list.length?'<div class="up-total"><span>Next 30 days</span><span>'+fmtMoney(total)+'</span></div>':'')+
+    (undated?'<div class="up-hint">'+undated+' recurring charge'+(undated===1?'':'s')+' without a billing date — add one in Settings → Budget categories to see '+(undated===1?'it':'them')+' here.</div>':'')+
+  '</div>';
+}
 function renderVariableCard(data,isCur){
   const editing=budEditMode.var && isCur;
   const cats=activeCats(loadVarCats()); // archived keep counting in totals, just no row
@@ -7493,6 +7627,8 @@ function renderBudgetTab(){
   if(incWrap) incWrap.innerHTML=renderIncomeCard(data,editable);
   const fixWrap=document.getElementById('bud-fixed-card');
   if(fixWrap) fixWrap.innerHTML=renderFixedCard(data,editable);
+  const upWrap=document.getElementById('bud-upcoming-card');
+  if(upWrap) upWrap.innerHTML=renderUpcomingCard();
   const goalWrap=document.getElementById('bud-vargoal-card');
   if(goalWrap) goalWrap.innerHTML=renderVarGoalCard(data,editable);
   const varWrap=document.getElementById('bud-variable-card');

@@ -130,6 +130,40 @@
   color:var(--accent-text);font-size:12px;font-weight:700;cursor:pointer;text-align:left;
   -webkit-tap-highlight-color:transparent}
 /* Modal internals */
+/* ── Recurring charge editor extras (Settings → Budget categories) ── */
+.bud-edit-recur{align-items:center}
+.bud-edit-due{flex:0 0 auto;height:34px;border:1px solid var(--border);border-radius:8px;background:transparent;
+  color:var(--text);font-size:12px;font-weight:600;padding:0 8px;font-family:inherit}
+.bud-edit-status{flex:0 0 auto;height:34px;border:1px solid var(--border);border-radius:8px;background:transparent;
+  color:var(--text);font-size:12px;font-weight:600;padding:0 8px;font-family:inherit;margin-left:auto}
+/* Anything not actively charging is dimmed, so a paused or cancelled row reads as inactive
+   at a glance rather than looking identical to a live one. */
+.bud-edit-status.off{color:var(--muted);border-style:dashed}
+.bud-edit-hint.soon{color:#f59e0b;font-weight:700}
+.bud-edit-pricehist{font-size:11px;font-weight:600;color:var(--muted);padding:2px 2px 8px}
+.ph-up{color:var(--danger);font-weight:800}
+.ph-down{color:var(--positive);font-weight:800}
+
+/* ── Upcoming charges card ── */
+.up-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+.up-row:last-of-type{border-bottom:none}
+/* Amber, not accent: "this is about to happen" has to read the same whatever hue the app is
+   wearing that day. */
+.up-row.soon .up-when{color:#f59e0b}
+.up-when{flex:0 0 82px;font-size:12px;font-weight:700;color:var(--muted)}
+.up-name{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--text);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.up-trial{font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:2px 6px;
+  border-radius:999px;background:rgba(99,102,241,.16);color:var(--purple)}
+.up-amt{font-family:var(--font-num);font-size:14px;font-weight:800;color:var(--text);flex-shrink:0}
+.up-total{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;
+  border-top:1px solid var(--border);font-size:13px;font-weight:700;color:var(--text)}
+.up-total span:last-child{font-family:var(--font-num);font-weight:800}
+.up-warn{font-size:12px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.12);
+  border-radius:9px;padding:8px 10px;margin-bottom:8px}
+.up-none{font-size:13px;color:var(--muted);padding:6px 0}
+.up-hint{font-size:11px;color:var(--muted);line-height:1.45;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)}
+
 /* Home's quick-capture button. Sits at the foot of the weekly budget card. */
 .txn-quick{width:100%;margin-top:12px;padding:9px;border-radius:10px;border:1px solid var(--card-border);
   background:var(--card);color:var(--accent-text);font-size:12px;font-weight:700;cursor:pointer;
