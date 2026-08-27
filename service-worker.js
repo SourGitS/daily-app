@@ -3,7 +3,7 @@
 // cache NAME changes — a deploy with the same name reaches nobody who already has the app on
 // their home screen. v203: the card-system pass (shared card anatomy, --accent-text, new Home
 // cards, Kitchen in the bottom nav).
-const CACHE_NAME = 'daily-v214';
+const CACHE_NAME = 'daily-v215';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

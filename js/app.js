@@ -12122,6 +12122,12 @@ function kitCookRender(){
   const allIngHTML=allIngs.map(ingRowHTML).join('');
   const stepIngHTML=stepIngs.length ? stepIngs.map(ingRowHTML).join('')
     : '<div class="kit-cook-ing-empty">No ingredients from the list are named in this step.</div>';
+  // Real cards (cardHeader + CARD_ICONS, the shared vocabulary in css/kitchen-extras.css —
+  // see the CLAUDE.md note on using it for new cards) rather than a hand-rolled header on a
+  // flush hairline-bordered strip. Header stays put; only the row list scrolls, via the inner
+  // .kit-cook-ing-rows — that's what keeps a capped-height card from clipping its own title
+  // when the ingredient list is long.
+  const servingsNote=cur!==r.servings?'<span class="kit-cook-ing-servings">'+cur+' serving'+(cur===1?'':'s')+'</span>':'';
   ov.innerHTML=
     '<div class="kit-cook-topbar">'+
       '<button class="kit-cook-exit" onclick="kitExitCooking()">✕ Exit</button>'+
@@ -12137,17 +12143,17 @@ function kitCookRender(){
       // "For this step" re-filters on every kitCookRender() call so it tracks whichever step
       // you're on. Each panel scopes its own scroll so a long list can't push Prev/Next off
       // screen — see kitStepIngredients for how the step text is matched to ingredient names.
-      (allIngHTML?'<div class="kit-cook-ing-panel kit-cook-ing-all">'+
-        '<div class="kit-cook-ing-hd">📋 Ingredients'+(cur!==r.servings?' · '+cur+' serving'+(cur===1?'':'s'):'')+'</div>'+
-        allIngHTML+
+      (allIngHTML?'<div class="kit-cook-ing-panel kit-cook-ing-all card">'+
+        cardHeader('pot','Ingredients',servingsNote)+
+        '<div class="kit-cook-ing-rows">'+allIngHTML+'</div>'+
       '</div>':'')+
       '<div class="kit-cook-body">'+
         '<div class="kit-cook-step-text">'+kitEsc(text)+'</div>'+
         '<div id="kit-cook-timer"></div>'+
       '</div>'+
-      (allIngHTML?'<div class="kit-cook-ing-panel kit-cook-ing-step">'+
-        '<div class="kit-cook-ing-hd">👉 For this step</div>'+
-        stepIngHTML+
+      (allIngHTML?'<div class="kit-cook-ing-panel kit-cook-ing-step card">'+
+        cardHeader('check','For this step')+
+        '<div class="kit-cook-ing-rows">'+stepIngHTML+'</div>'+
       '</div>':'')+
     '</div>'+
     '<div class="kit-cook-nav">'+

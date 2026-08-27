@@ -1,235 +1,288 @@
-# Daily — Project Reference
+# Daily — Agent Handoff
 
-Personal lifestyle web app for Francois: workout tracking, kitchen/recipes, budget, and
-habit/notes tracking. No build step, deployed via GitHub Pages from `main` at
-sourgits.github.io/daily-app (repo renamed from workout-tracker on 2026-08-09; the old
-URL now 404s — see manifest.json/service-worker.js history if PWA install issues resurface).
+Technical reference for a coding agent (Codex/ChatGPT or otherwise) picking up this repo.
+Factual as of 2026-08-27. This doc replaces an earlier copy that duplicated `CLAUDE.md`
+almost verbatim — if you find `CLAUDE.md` still present, treat it as the longer-form design
+history/rationale doc and this file as the safety-critical operating reference. Where they
+disagree, re-grep the code; both files have gone stale before.
 
-This file has been out of sync with the app before (an old written description said "4 tabs,
-single HTML file" long after the app outgrew that). Trust what's actually in the repo over any
-older summary — re-grep before assuming a fact from here is still true if it looks surprising.
+## What the app is
 
-## Stack
+"Daily" — Francois Peters's personal lifestyle web app. Single user in practice (one Google
+account signs in), no multi-tenant concerns beyond what the Firebase rules already enforce.
+Four main areas plus supporting screens:
 
-- Vanilla HTML/CSS/JS — no framework, no bundler, no npm build step.
-- Entry point `index.html`. Styles split into six files, loaded in this order (cascade order
-  matters, don't reorder the `<link>` tags): `css/base.css`, `css/layout.css`, `css/workout.css`,
-  `css/nutrition-modals.css`, `css/budget-home.css`, `css/kitchen-extras.css`. Split from one
-  `style.css` partway through the project (commit `52f32d0`).
-- All logic in one `js/app.js` (~10,000 lines).
-- PWA: `manifest.json` + `service-worker.js`, installable to iOS/Android home screen,
-  `display: standalone`.
-- Optional cross-device sync: Firebase Realtime Database + Google Auth. localStorage is the
-  source of truth; Firebase mirrors it when signed in.
-- Chart.js (cdnjs), Tabler Icons (jsdelivr), Google Fonts — Manrope (UI) + Space Grotesk
-  (numerals/wordmark).
+- **Home** — dashboard of independently show/hideable widget cards (session hero, budget
+  snapshot, calorie ring, net worth, notes, habits, etc.)
+- **Log** — workout logging: sets/reps, rest timer, session timer, exercise swap, exercise
+  library, effort rating.
+- **Stats** — history/training/body/nutrition/finance sub-tabs, charts, PRs.
+- **Kitchen** — recipe book, shopping list, pantry tracker, cooking mode.
+- **Budget** — weekly income/expense tracker, CSV export, charts.
+- **Accounts** — net worth / debt payoff tracking.
+- **Plans**, **Notes**, **Settings** — secondary screens (see `CLAUDE.md` for full detail per
+  area if you need it; not reproduced here).
 
-## Navigation (restructured many times over the project's life — this is current as of 2026-07-21)
+## Tech stack, hosting, structure
 
-- **Mobile bottom nav** (`#bottom-nav`, 4 fixed tabs): Home, Budget, Log, Stats.
-- **Mobile hamburger menu** (`#side-menu`, list populated dynamically in JS): Kitchen, Accounts,
-  Plans, Notes, Exercise Library, Settings.
-- **Desktop** (`#desktop-sidebar`, ≥1024px): all of the above as one persistent left sidebar,
-  plus an inline quick-settings popover instead of a separate Settings screen.
+- Vanilla HTML/CSS/JS. **No build step, no bundler, no package.json, no npm scripts.**
+- Entry point `index.html`, loads six CSS files in a fixed cascade order (do not reorder the
+  `<link>` tags) and one `js/app.js` (~13,800 lines, all app logic).
+- PWA: `manifest.json` + `service-worker.js` (cache-first fetch handler).
+- External deps loaded from CDN, no local copies: Chart.js (cdnjs), Tabler Icons (jsdelivr),
+  Google Fonts (Manrope + Space Grotesk), Firebase compat SDK.
+- Repo: `github.com/SourGitS/daily-app` (renamed from `workout-tracker` 2026-08-09).
+- **Hosting/deploy: GitHub Pages serving `main` directly.** There is no CI, no staging
+  environment, no PR review gate found in this repo — pushing to `main` **is** the deploy.
+  Live at `sourgits.github.io/daily-app`.
+- **Run locally**: no dev server config exists. Serve the folder statically (e.g.
+  `npx serve .` or `python -m http.server`) and open `index.html` — anything that serves
+  static files over HTTP works; `file://` will break the service worker and Firebase auth
+  popup origin checks.
 
-## What's in each area
+## Firebase
 
-- **Home** — dashboard of widget cards, each independently show/hideable via
-  Settings → Home Layout. Today's session hero, weekly budget snapshot, calorie card,
-  savings/CC balance, notes bubble, habits.
-- **Log** (was "Train") — workout logging. Training split type is user-editable, not hardcoded
-  to a fixed split. Log sets (weight/reps, warmup toggle, ± sign for negative-load exercises),
-  swap an exercise from the library mid-session, exercise library management (custom
-  exercises/groups, assisted/negative toggle per exercise), drag-to-reorder, done-check with
-  auto-collapse, per-day session notes, rest timer (sticky bar + fullscreen, timestamp-based so
-  it keeps correct time if the phone locks or the app backgrounds), session timer, optional
-  effort rating (Easy/Moderate/Hard/Brutal), optional hours-worked tracking.
-- **Stats** — Overview + History / Training / Body / Nutrition / Finance sub-tabs. Per-exercise
-  history view, swap-aware personal records, progress charts, 8-week consistency grid,
-  body-weight log/chart, budget charts.
-- **Kitchen** — Recipe Book (9 preloaded + custom), Shopping List (from recipes + pantry
-  staples), Spice & Pantry Tracker, cooking mode with per-step timers, favourites/recently
-  cooked. Firebase-synced.
-- **Budget** — weekly tracker. Income sources, savings target, and fixed/variable categories are
-  all user-configurable now — see "Known history" below, these used to be hardcoded to
-  Francois's specific numbers and were deliberately made dynamic. Credit-card balance tracking,
-  comprehensive 8-section CSV export, collapsible sections, monthly/yearly charts. A weekly
-  **spending goal** card sits between Fixed and Variable (a self-imposed cap on variable
-  spending, distinct from "money left over"): the goal input is behind the card's Edit button
-  (`budEditMode.vargoal`, same convention as the other budget cards), the usual goal is
-  `budDefaults.varGoal`, and each week stores the goal that applied to it as `var_goal` so past
-  weeks aren't rewritten later.
-- **Accounts** — net-worth tracking across accounts; added after Budget, migrated from the old
-  savings/CC logs. An asset can be flagged `saver:true` ("Savers account"): it still counts in
-  net worth but is excluded from the **debt payoff position** card
-  (`(assets − savers) − debts`), which answers "am I covered" rather than "what am I worth".
-- **Plans** — import/export, streak tracking, plus an "HTML plan" type (import any HTML file,
-  view it in a sandboxed iframe).
-- **Notes** — date-tracked notes, fullscreen view, optional home-screen bubble.
-- **Settings** — dark/light theme (warm gray dark palette, deliberately not pure black), personal
-  info + Mifflin-St Jeor TDEE calculator (Bulk/Maintain/Cut), daily calorie log with midnight
-  reset, dynamic per-muscle-group day colours, full data backup export/import, Home Layout
-  widget toggles.
+Config lives in plaintext at the top of `js/app.js` (lines ~4–13) — this is normal for a
+Firebase **web** client key (it's not a secret; access control is enforced by the database
+rules below, not by hiding this value). Project: `workout-tracker-5dd55`.
 
-## Design tokens (`css/base.css`)
+- **Auth**: Google Sign-In only, via `firebase.auth.GoogleAuthProvider()` and
+  `signInWithPopup` (not redirect) — see `handleAuth()` at `js/app.js:31`.
+- **Database**: Firebase Realtime Database (not Firestore). Root ref pattern is
+  `users/<uid>/<path>`.
+- **Storage**: no Firebase Storage usage found — recipe/profile images etc. are not
+  file-uploaded anywhere in this codebase.
+- **Security rules** (`database.rules.json`, deployed via `firebase.json` /
+  `firebase deploy --only database` — Firebase CLI, not part of the GitHub Pages deploy):
+  ```json
+  {
+    "rules": {
+      ".read": false,
+      ".write": false,
+      "users": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid"
+        }
+      }
+    }
+  }
+  ```
+  Each user can only read/write their own `users/<uid>` subtree. If you change these rules,
+  they must be deployed separately with the Firebase CLI — editing the JSON file alone does
+  nothing to the live database.
+- **Data model**: `localStorage` is the source of truth on-device; Firebase mirrors it only
+  when signed in. Two sync mechanisms coexist:
+  - **Keyed collections** (sessions, weights, savings log) — synced item-by-item under their
+    own Firebase path, keyed by id/date.
+  - **Blob stores** (most simple settings: budget data, profile, personal info, habits,
+    budget defaults, exercise library, training split, kitchen data, etc.) — synced as a
+    `{v: <JSON string>, t: <ms timestamp>}` envelope under `users/<uid>/<path>`, compared by
+    timestamp. Registered dynamically in `SYNC_BLOB_REG` (`js/app.js:149`) as each store's
+    listener attaches — **do not hardcode a second list of sync paths anywhere**; a store
+    that isn't in `SYNC_BLOB_REG` will sync fine day-to-day but silently be skipped by a full
+    restore (`restorePushToCloud()`, `js/app.js:5163`).
+  - Newer-timestamp-wins is the general conflict rule. Budget week data instead **merges**
+    per-week (`mergeBudgetWeeks()`, `js/app.js:92`) since weeks are never deleted, so a union
+    is safe and a stale device can't wipe a different week than the one it touched.
 
-```
---radius-card: 22px    --radius-hero: 24px    --radius-pill: 14px    --radius: 16px
---font-ui: 'Manrope'   --font-num: 'Space Grotesk'
---accent: #5C5C5C neutral slate (--accent-rgb for rgba() use)   --accent-text
---positive / --success: #52B788   --danger: #E74C3C   --purple: #6366f1
---bg / --card / --card-border / --card-top / --text / --text-2 / --text-3 / --muted / --border
-```
+## Known bugs / risk areas
 
-Light values live in `:root` as defaults; `[data-theme="dark"]` overrides colour tokens only
-(dark `--bg: #080808`, `--card` becomes a translucent white gradient "glass" look — never a
-pure-black card surface).
+### Google sign-in inside embedded/in-app browsers
+Google refuses to render its OAuth popup inside in-app WebViews (ChatGPT, Instagram,
+Messenger, Facebook, Line, Twitter/X, WhatsApp, Snapchat, LinkedIn — and any iOS in-app
+WebView, which reports Safari's engine but omits "Safari" from the UA string). The popup opens
+blank and never resolves. This is Google's behavior, not an app bug, but it used to strand
+users on a spinner forever because `handleAuth()` ended in an empty `.catch()` that swallowed
+every rejection.
 
-The app no longer ships the old orange `#FF6B35` — that is `RETIRED_ACCENT` in `js/app.js`,
-migrated away from once. `--accent` is whatever the user's Appearance settings resolve to:
-one of four presets, a free colour picker, a per-training-day colour, or a weather scene
-(`currentAccentHex()` is the single source of truth). Treat it as an arbitrary runtime hex.
+**Status: mitigated, not eliminated.** `isEmbeddedBrowser()` (`js/app.js:55`) detects the
+known UA patterns up front and `authErrorMessage()` (`js/app.js:43`) turns Firebase auth error
+codes into an actionable message ("open Daily in Safari or Chrome"), with a 12s watchdog for
+the case where a blocked popup hangs without ever rejecting. This is UA-sniffing against a
+fixed list — a new embedded browser (or a UA string that changes upstream) will not be
+detected and will silently fail again until someone adds it to the regex in
+`isEmbeddedBrowser()`. If a sign-in failure report comes in, check `navigator.userAgent` from
+the affected device first.
 
-**`--accent` vs `--accent-text` — pick the right one.** Every accent value the app can hold
-is tuned to CARRY white text (checked ≥4.5:1 with `#fff` on top). That makes it the wrong
-colour to use AS text on the app background — against dark `--bg` the night weather scenes
-measure 1.7:1. Rule of thumb:
+### Cloud data appearing reset/missing after sign-in (fixed, but read the mechanism before touching sync)
+Multiple related incidents, most recently commit `9f151a2` (2026-08-25, "URGENT: stop a fresh
+device overwriting cloud data on sign-in"). Root cause: `lsSave`/`lsSaveTS` stamp every write
+with `Date.now()`, and the app performs writes **during boot** — default seeding
+(`splitCfg()`) and several one-time migrations all save as they run. On a fresh device with no
+data, those boot writes stamped local *defaults* with the current time; signing in then ran
+the timestamped sync listeners, which resolve by age, so the fresh device's seconds-old
+defaults beat the real cloud data that was actually days old — silently replacing a user's
+training split and budget categories with blank defaults.
 
-- fills, borders, progress bars, and any surface that white text sits on → `--accent`
-- accent-coloured **text or icons** on `--bg` / `--card` → `--accent-text`
+Fix: a `_bootPhase` flag (`js/app.js:209`) makes writes during init keep whatever timestamp
+the store already had (0 if never edited on this device) instead of stamping `Date.now()`, so
+boot-time defaults can never outrank a genuine edit synced from elsewhere. `_bootPhase` clears
+once init finishes, on both the success and failure path, so an init error can't strand a
+device permanently unable to win a sync conflict.
 
-`--accent-text` is derived at runtime by `accentTextHex()` (hue and saturation kept, lightness
-moved until it clears 5.0:1 against the current theme's background) and written by
-`applyAccent()`. It is theme-dependent, so `applyTheme()` re-runs it — anything that changes
-the accent or the theme must go through those, not set `--accent` directly.
+**This is the load-bearing invariant for the whole sync system**: anything that writes during
+app init/boot MUST go through `lsSave`/`lsSaveTS` (or otherwise respect `_bootPhase`/
+`stampFor()`), never write with a raw `Date.now()` stamp directly. This exact class of bug
+(untimestamped or wrongly-timestamped writes silently overwriting newer cloud data) has
+recurred at least three times in this repo's history (`a86d2c2`, `7fb9395`, `9f151a2`) — treat
+any change touching boot-time writes, migrations, or default-seeding as sync-sensitive by
+default, even if the change looks unrelated to sync.
 
-## Known history worth knowing before touching these areas
+A related fix, commit `8a53cd8` ("Restore: make importing a backup authoritative over the
+cloud"): restoring a backup writes old `_ts` values from the backup file, which used to lose
+the restore on the very next sync (cloud looked newer than the just-restored data). Restored
+keys are now re-stamped to "now" so the restore wins.
 
-- **iOS cold-launch layout glitch**: `100dvh` mis-computes at cold launch on iOS standalone
-  PWAs (black gap / shifted content until a rotation). Fixed by giving `#app` a
-  `position:fixed; inset:0` shell instead of `100dvh`. Don't reintroduce `dvh` sizing on the
-  app shell.
-- **Status bar**: `apple-mobile-web-app-status-bar-style` is deliberately `"black"` (opaque),
-  not `"black-translucent"` — translucent forces white status-bar icons in every theme
-  (unreadable in light mode) and previously caused the safe-area value to race on cold launch.
-  `theme-color` is kept in sync with the live `--bg` at runtime via `applyTheme()` in
-  `js/app.js`. If a screen's top spacing looks off, check whether it's still adding
-  `env(safe-area-inset-top)` padding that the opaque bar has already reserved —
-  `#app-header` in `css/layout.css` is the reference implementation that got this right;
-  several other sticky sub-headers hadn't been brought in line as of 2026-07-21.
-- **`#app-main>section` does NOT reach the four paged tabs.** Home, Log, Stats and Budget are
-  `.swipe-panel` elements inside `#swipe-deck`. On desktop `#swipe-deck` is `display:contents`,
-  which flattens them for *layout* but not for *selector matching* — they are still not direct
-  children of `#app-main`. That selector only ever styles the overlay views (Kitchen, Settings,
-  Plans, Notes). Anything meant to apply to every screen needs both selectors; this is how the
-  two halves silently drifted apart before (see the desktop width cap in `budget-home.css`).
-- **Home's desktop layout is TWO fixed columns — `1fr 1fr`, with `align-items:stretch`.** This
-  is the long-standing design and what Home is supposed to look like; treat it as the baseline,
-  not as one option among several. `#view-home .home-grid-cols` is
-  `display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;align-items:stretch`, and
-  `.home-card-wide{grid-column:1/-1}` lets any individual card span the full width — that is a
-  saved per-card user preference (`homeLayout().wide`, Settings → Home Layout), not a hardcoded
-  list of ids.
-  **Do not make the column count derive from viewport width.** `repeat(auto-fit,minmax(…,1fr))`
-  was tried and is wrong twice over: it produces a third column on a wide external monitor
-  (cluttered), and the app is normally used on a 13–16" laptop where that width never exists
-  anyway. Two columns at every desktop width.
-  **`align-items:stretch` is load-bearing — it is what removes the gap BETWEEN rows.** Both
-  cards in a row share the taller one's height, so the next row starts flush instead of after a
-  strip of background under the shorter card. The cost is that the shorter card of a pair
-  carries the height difference as internal space; that is the accepted trade, and it stays
-  small precisely BECAUSE there are only two columns (with three or four, one tall card dwarfs
-  its row partners and the internal space becomes the bigger problem).
-  Four different attempts to remove that internal space by forcing a uniform card height have
-  all been reverted, each worse than what it replaced: a fixed `min-height` floor; a
-  `grid-auto-rows` row-quantisation scheme at 210px then 250px (any card whose content landed
-  just past a row boundary was rounded up a whole row — up to ~220px of dead space inside a
-  single card); a `minmax` multi-column grid with `align-items:start` (fixed the internal space
-  but reintroduced the between-rows gap, which is the more visible problem); and a fine-grained
-  masonry via `grid-auto-flow:dense` with per-card measured spans (reduced the gap without
-  eliminating it, and introduced a real overlap bug — the weather card's live reading arrives
-  asynchronously AFTER its span was measured, so the card outgrew its reserved grid area and
-  bled into the card below, since `align-items:start` does not clip a card to its box).
-  Single column was also tried once, in error, and rejected immediately — it was never asked
-  for. If the internal space in a short card ever needs addressing, the fix is to that card's
-  own content, not to the grid.
-  `HOME_CAPPABLE` in `applyHomeCardCaps()` (`js/app.js`) separately caps the genuinely UNBOUNDED
-  list cards (habits/notes/recent) at a flat 280px `max-height` with a "Show all" toggle, so one
-  very long list can't blow out its whole row. That is unrelated to the column/height history
-  above and was never in question.
-- **One width cap for every view**, `max-width:2200px` on `#app-main>section,#app-main
-  .swipe-panel` (see the note above about those being disjoint selector halves). Do not add a
-  per-view override — a 1180/1760 split existed briefly and letterboxed every tab except Home.
-- **`HOME_DEFAULT_WIDE` is a seed, not a setting.** `homeLayout()` applies it only while the
-  stored layout has no `wide` array, and `saveHomeOrder()` writes the whole object back — so
-  the first drag freezes the current seed into storage permanently. Changing the constant
-  reaches new and untouched installs only; existing users need a one-time migration guarded on
-  the exact old value (`migrateDefaultWideOnce`, modelled on `migrateRetiredAccentOnce`).
-- **Sub-10px type is deliberate, not a bug.** Every `font-size` below 10px in the codebase is
-  inside a miniature mock-up — the Settings → Home Layout preview thumbnails (`.hl-*`) or the
-  onboarding mini screens (`.ob-mini-*`). They are scaled-down replicas of real cards. Don't
-  "fix" them to a legibility floor; check what they belong to first.
-- **Roughly half the app's typography is inline in JS**, not in the stylesheets — `js/app.js`
-  and `index.html` carry ~420 `font-size` declarations between them against ~420 in all six CSS
-  files. A CSS-only type-scale sweep would therefore make the app *less* consistent, not more.
-- **Budget card collapse state is keyed by `data-bud-key`**, not by card index (it was
-  index-based, which mis-applied the saved state whenever the card count changed — the due
-  banner and previous-weeks list render `.card`s conditionally). Any new card in
-  `#budget-week-view` that should remember its collapsed state needs that attribute.
-- **Three separate collapse/expand systems exist side by side**: generic `.card.collapsed` +
-  `.card-collapse-header/body`, `.ex-card.collapsed` (a fully separate ruleset in
-  `workout.css`), and `.bud-collapsed`/`.bud-toggle` (budget-only, different naming
-  entirely). Know which one a given screen uses — they don't share logic, and merging them
-  is a bigger job than it looks.
-- **`js/app.js` builds some class names via string concatenation** (e.g. the Kitchen
-  recipe-tile card: `` `kit-card kit-c-${category}${sel}` ``). Grep for both the literal class
-  name and for concatenation patterns before renaming or removing any CSS class — a plain
-  find-replace can miss these.
-- **Card and button CSS grew one class per feature area**, not from a shared base — expect
-  near-duplicate patterns (e.g. multiple independent "hero card" implementations with slightly
-  different padding/gradient values) rather than one canonical definition per component type.
-- **There IS now a shared card vocabulary — use it for new cards** (`css/kitchen-extras.css`,
-  which loads last so it wins ties). Anatomy, top to bottom: `.card-hd` (with `.card-hd-l`,
-  `.card-hd-ico`, `.card-hd-act`) → `.card-fig` + `.card-fig-u` (ONE primary number per card)
-  → `.card-shape` → `.card-cap`. Plus `.card-bar`/`.card-bar-fill`/`.card-bar-pace` for
-  progress with a pace marker, and `.card-split` for the two-or-three-up-with-divider pattern.
-  In JS, build headers with `cardHeader(icon, label, rightHtml)` and icons from `CARD_ICONS`
-  via `cardIcon(name)` — do not hand-roll another inline `11px/uppercase` header.
-  `sparkline(vals, {target, height})` renders an inline-SVG trend line (no Chart.js needed for
-  in-card shapes).
-- **Emoji do not belong in card CHROME** — they ignore `currentColor`, so they can't follow the
-  theme or the accent, and they render differently per OS. Use `CARD_ICONS`. Emoji the *user*
-  typed (note titles, recipe names, `sub.emoji`) are content and must be left alone — and note
-  `catDisplayName()` exists specifically to strip a legacy emoji prefix off stored category
-  names, so never bulk find-and-replace emoji.
-- **Accent means "press this".** Only the session hero (`.hero-workout-card`) carries the
-  full-strength accent gradient. Cards that need to signal good/bad use SEMANTIC colour
-  (`--positive` / amber / `--danger`), because the accent can be any hue at runtime and a
-  colour pairing that works for one accent won't for another. The weather card is the one
-  scene-gradient exception.
-- **Home cards must not restate a number another card already shows.** The Week in Review card
-  was three-quarters duplicate (its Workouts cell recomputed the streak card's figure exactly),
-  which is what made Home feel busy without being informative. It now shows week-over-week
-  DELTAS instead — a delta is not a duplicate. Before adding a figure to a card, check whether
-  another widget already shows it.
-- **Every Home card needs a real empty state**, and delta/trend UI must not treat missing data
-  as zero (the review chips read "no last week" rather than inventing an improvement; the
-  calorie strip hides itself under three logged days rather than drawing a chart of gaps).
-- **Specific hero-card gotchas** confirmed while consolidating these (2026-07-21, see
-  `Prompts/08-*`): `.card.hero-card` (Home) is a NEUTRAL card, not an accent one — its
-  background is `var(--card)`, so don't assume every "hero" class wants white text.
-  `.log-day-hero-card`'s gradient/shadow are set INLINE per-training-day in `js/app.js`
-  (~line 1979), not in CSS — a fixed CSS gradient there would fight the dynamic day-colour
-  system. The Budget tab's actual weekly hero card (the one Francois sees every week) is
-  `#budget-hero-card` — an ID with inline styles in `index.html` — NOT the `.budget-hero-card`
-  class; that class is only used by the onboarding mini-hero / Settings → Appearance theme
-  preview. A CSS-only consolidation can't reach the real one without touching markup.
+## Auth-related changes already made (most recent first)
 
-## Workflow
+All committed to `main`, all in `js/app.js` unless noted:
 
-- Francois is not a developer. He runs prompts from the `Prompts/` folder
-  (`NN-MODEL-slug.md`, numbered sequentially, tagged with the model it's meant for) through
-  Codex himself. That folder is both the changelog of every past session and the format
-  to match for new prompts: codebase context → spec (with exact code where possible) →
-  a numbered verification checklist he can eyeball on his phone.
-- Single git repo, deployed via GitHub Pages from `main`.
+| Commit | Summary |
+|---|---|
+| `9f151a2` | Stop boot-time default writes from outranking real cloud data on sign-in (`_bootPhase`). |
+| `4d143fb` | `handleAuth()` no longer swallows errors; added `authErrorMessage()`, embedded-browser detection, 12s watchdog. |
+| `04059c6` | Added a "sign in" option on the onboarding welcome screen (previously sign-in was buried at step 6 of 7). Dismisses onboarding on successful restore rather than calling `finishOnboarding()`, which would otherwise overwrite the restored data with onboarding answers. |
+| `8a53cd8` | Backup restore re-stamps timestamps to "now" so a restored file wins the next sync instead of being overwritten by cloud. |
+| `9b6a3ee` | Backup restore also accepts pasted text, not just a file upload; shares the same restore path (and therefore the same timestamp fix) as the file picker. |
+
+No changes to the Firebase project config, OAuth client, or `database.rules.json` are in this
+list — auth work so far has all been client-side error handling and sync-timing fixes.
+
+## Data-preservation rules — do not violate without explicit approval from Francois
+
+- **Never write a boot-time/migration/default value with a fresh `Date.now()` stamp.** Use
+  `lsSave`/`lsSaveTS` and respect `_bootPhase`. This is the exact bug class in `9f151a2`,
+  `7fb9395`, and `a86d2c2` — three separate incidents.
+- **Never add a new sync-relevant `localStorage` key without registering it** the same way
+  existing blob stores are (through `syncBlobListenTS`/`SYNC_BLOB_REG`, or the keyed-collection
+  pattern for arrays). An unregistered store will not be reachable by `restorePushToCloud()`
+  and will silently be dropped from every future backup/restore.
+- **Never replace a synced store wholesale** unless the operation is explicitly a restore
+  (i.e. the user has said "this file is the truth"). Ordinary syncs must merge/compare by
+  timestamp, not overwrite. Budget week data specifically must stay merged per-week, not
+  blob-replaced — see `mergeBudgetWeeks()`.
+- **Never silently drop or downgrade the Firebase security rules** (`database.rules.json`) to
+  something more permissive to work around a bug — the `.read`/`.write` scoping to
+  `auth.uid === $uid` is the only thing stopping one signed-in user from reading another's
+  data.
+- **Never bump the service worker cache name without a real content change**, and always bump
+  it (`CACHE_NAME` in `service-worker.js`) when shipping any change to a cached asset — the
+  fetch handler is cache-first, so a same-name deploy reaches nobody who already has the app
+  installed to a home screen.
+- **Treat any change to boot sequencing, migrations, onboarding-finish, or restore/backup code
+  as sync-sensitive by default** — verify against a fresh (no local data) profile signing into
+  an account that already has cloud data, not just against a single already-synced device.
+
+## Coding conventions
+
+- No semicolon-free style, no ES modules — everything is global-scope functions/consts in one
+  script, loaded via a plain `<script defer>` tag.
+- Functions and localStorage keys use short prefixes by feature area: `kit*`/`daily_kitchen*`
+  (Kitchen), `bud*`/`daily_budget*` (Budget), `wt_*` (workout/legacy keys), `acct*`/
+  `daily_accounts` (Accounts), `ob*`/`.ob-*` (onboarding). Follow the existing prefix for the
+  area you're touching rather than inventing a new one.
+- Comments are sparse and reserved for **why**, not what — matches the existing style; don't
+  add explanatory comments for self-evident code, but do explain non-obvious constraints (sync
+  timing, iOS quirks, a past bug this code prevents).
+- Shared card UI vocabulary exists in `css/kitchen-extras.css` (loads last, wins cascade ties)
+  — `cardHeader()`, `CARD_ICONS`/`cardIcon()`, `.card-hd`/`.card-fig`/`.card-shape`/`.card-cap`,
+  `.card-bar`, `.card-split`, `sparkline()`. Use it for any new card rather than hand-rolling
+  another header/figure pattern — see `CLAUDE.md` for the full anatomy if adding one.
+- `js/app.js` sometimes builds CSS class names via string concatenation (e.g. `` `kit-card
+  kit-c-${category}${sel}` ``) — grep for concatenation patterns, not just literal class names,
+  before renaming/removing a CSS class.
+- Full design-token list, navigation structure, and per-area layout history/gotchas (Home's
+  2-column desktop grid, status-bar safe-area handling, the three separate collapse/expand
+  systems, etc.) are documented in `CLAUDE.md`, not repeated here — read it before doing
+  layout or CSS work outside a small, obviously-scoped fix.
+
+## Recipe import and the ingredient-unit bug
+
+- Recipes are imported by **paste only** — there is no file upload or backend endpoint. An
+  assistant (Claude, ChatGPT, etc.) is given the schema via `kitBuildExportText()`
+  (`js/app.js:12472`) or independently produces matching JSON, the user pastes it into
+  Kitchen → Recipe Book → Import, and `kitParseImport()` (`js/app.js:12397`) validates it
+  strictly — a bad paste is rejected with a specific error, never half-applied.
+- Import schema: `{recipes:[{name, emoji, category, servings, description, cookTime,
+  ingredients:[{name, amount, unit}], steps, tags, calories, protein, carbs, fat}]}`. `category`
+  must be one of `breakfast|lunch|dinner|dessert` (defaults to `dinner` if invalid). `unit`
+  must be one of `KIT_UNITS` (`g, kg, ml, L, cup, tbsp, tsp, piece, oz, lb`) **or `""` for a
+  countable ingredient** (e.g. "4 salmon fillets") — `""` is a valid, deliberate value, not a
+  missing one.
+- **Ingredient-unit bug (fixed in `19d1623`, 2026-08-25)**: the recipe editor's unit `<select>`
+  only ever offered the options in `KIT_UNITS`. Two failure modes:
+  1. A countable ingredient (`unit:""`) has no matching `<option value="">`, so nothing in the
+     dropdown is actually selected and the browser silently defaults to the first option
+     (`g`) — opening and saving the recipe **without touching the unit field at all** silently
+     rewrote it to grams.
+  2. `KIT_UNITS` was missing `kg` and `L` entirely, even though two of the preloaded recipes
+     use them — same failure, wider blast radius.
+
+  Fix, in `kitFormAddIng()` (`js/app.js:12616`): the ingredient's own current unit is always
+  injected into the `<select>` as an option, even if `KIT_UNITS` has never heard of it, so
+  nothing already saved can be swapped out just by opening the editor. `kg` and `L` were also
+  added to `KIT_UNITS` itself. **If you touch `kitFormAddIng`, `KIT_UNITS`, or the recipe
+  editor's save path again, re-verify this specific case**: open an existing recipe with a
+  countable ingredient (or a `kg`/`L` ingredient), save without changing any unit dropdown,
+  and confirm the stored unit is unchanged.
+
+## Testing / release checklist
+
+**There is no automated test suite, no linter config, and no CI pipeline in this repo.**
+Verification is manual, against the live-reloaded static files, before every push to `main`
+(which is the deploy).
+
+Before pushing to `main`:
+1. Serve the folder locally (see Run locally, above) and open it in a browser — check the
+   console for JS errors on load.
+2. Exercise the specific feature you changed end-to-end, including its empty/edge states.
+3. **If you touched anything sync-related** (boot writes, migrations, onboarding finish,
+   backup/restore, any `lsSave`/`lsSaveTS`/`SYNC_BLOB_REG` call site): test against a signed-in
+   account with real cloud data, from a "fresh" profile (clear localStorage or use a private
+   window) — not just from an already-synced device. This is the scenario every past sync
+   incident was missed by testing only the common case.
+4. **If you touched anything in `js/app.js`, `index.html`, or the CSS files**: bump
+   `CACHE_NAME` in `service-worker.js` to a new value and update the version comment above it.
+   A same-name deploy will not reach anyone with the PWA already installed.
+5. Check both light and dark theme if the change touches colour/CSS.
+6. Check mobile viewport (this is primarily a phone PWA) in addition to desktop if the change
+   touches layout.
+7. Francois is not a developer — he runs prompt files from `Prompts/` (numbered,
+   `NN-MODEL-slug.md`) through the coding agent and verifies against a numbered checklist he
+   can eyeball on his phone. If you're producing a prompt file yourself, match that format:
+   codebase context → spec → numbered verification checklist.
+
+No staging environment exists — a push to `main` is live immediately at
+`sourgits.github.io/daily-app`.
+
+## Current unfinished work
+
+Uncommitted changes on `main` as of this handoff (not yet committed, so not yet deployed):
+- `js/app.js` + `css/kitchen-extras.css`: converting the cooking-mode ingredient panels (full
+  list / per-step list, added in commit `e7cd901`) to use the shared card vocabulary
+  (`cardHeader()`, `.card`) instead of a hand-rolled hairline-bordered strip. In progress —
+  the panel markup and CSS have been updated but this has not been visually re-verified or
+  committed.
+- `service-worker.js`: `CACHE_NAME` bumped `v214` → `v215` locally for the above, not yet
+  committed/deployed.
+- `.claude/settings.local.json`: local Claude Code permission settings, not app-relevant.
+
+**Recommended next task**: finish and verify the cooking-mode ingredient card conversion above
+(check both the mobile stacked layout and the desktop side-by-side layout at ≥1024px, and
+confirm the header stays pinned while only the ingredient rows scroll inside the capped
+`max-height`), then commit and bump the service worker cache version as part of that commit
+per the release checklist above.
+
+## Uncertain / not verified — flagging rather than guessing
+
+- No Google Cloud Console / OAuth consent screen configuration (authorized domains, consent
+  screen publishing status, test-user list) is visible from this repo — if a sign-in failure
+  is domain- or consent-screen-related rather than embedded-browser-related, that needs
+  checking in the Firebase/Google Cloud console directly, not in this codebase.
+- No record in this repo of whether `firebase deploy` (for `database.rules.json`) has ever
+  been run for the current rules content, or who has the Firebase CLI credentials to do so —
+  confirm the rules file matches what's actually live before assuming a rules change here is
+  the same as a rules change deployed.
+- No explicit multi-user/multi-account handling was found beyond the single Google account
+  Francois uses — if a second user ever signs in, behavior is untested.
