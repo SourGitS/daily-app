@@ -6091,6 +6091,45 @@ function accountsPayoffPosition(){ return (accountsAssetsTotal()-accountsSaverTo
 function accountsAssetsTotal(){ return accounts.filter(a=>a&&a.type==='asset').reduce((s,a)=>s+(parseFloat(a.current)||0),0); }
 function accountsDebtsTotal(){  return accounts.filter(a=>a&&a.type==='debt' ).reduce((s,a)=>s+(parseFloat(a.current)||0),0); }
 function accountsNetWorth(){ return accountsAssetsTotal()-accountsDebtsTotal(); }
+// Chrome icons for the Accounts screen and its alerts. Deliberately NOT cardIcon(): that
+// applies .card-hd-ico, which pins colour to var(--text-2) — correct for a card header, wrong
+// here, where every one of these sits inside something already carrying a colour (an amber
+// alert row, a semantic red/green figure, a blue "Savers" tag) and needs to inherit it.
+// These emit bare currentColor SVGs so they take the colour of whatever they're placed in,
+// which is the thing emoji fundamentally cannot do — see the Home statement row, which solved
+// this first and is the pattern being finished here.
+const ACCT_ICONS={
+  card:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/>',
+  lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  check:'<circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>',
+  alert:'<path d="M12 4.5 2.8 20h18.4z"/><path d="M12 10v4"/><path d="M12 17.2v.1"/>',
+  trend:'<path d="M3 17l6-6 4 4 7-7"/><path d="M20 8v5h-5"/>'
+};
+// Debts grouped by category, biggest first, as [{label, total}]. The only place account
+// categories aggregate — and deliberately so: a total per category is a list with extra steps
+// when you have four accounts, but the SPLIT between kinds of debt changes what you'd do about
+// it. A credit card compounds and shows up on a credit file; $300 owed to a friend does
+// neither. Uncategorised debts fold into one "Other" bucket rather than being dropped, so the
+// parts always reconcile with accountsDebtsTotal().
+// Short labels here, not ACCT_CATEGORIES' full ones — this renders as one inline line.
+const ACCT_DEBT_SHORT={card:'cards',loan:'loans',person:'owed to people',bill:'bills'};
+function accountsDebtsByKind(){
+  const byKind={};
+  accounts.filter(a=>a&&a.type==='debt').forEach(a=>{
+    const amt=parseFloat(a.current)||0; if(!amt) return;
+    const key=ACCT_DEBT_SHORT[a.category]||'other';
+    byKind[key]=(byKind[key]||0)+amt;
+  });
+  return Object.entries(byKind).map(([label,total])=>({label,total}))
+    .sort((x,y)=>y.total-x.total);
+}
+function acctIcon(name,size){
+  const d=ACCT_ICONS[name]; if(!d) return '';
+  const s=size||14;
+  return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" '+
+    'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" '+
+    'style="flex-shrink:0;vertical-align:-2px" aria-hidden="true">'+d+'</svg>';
+}
 // Balance of one account on or before `date` (last history entry ≤ date; else earliest entry;
 // else its current). History is kept sorted ascending by every writer below.
 function accountBalanceAt(acc, date){
@@ -7135,12 +7174,16 @@ function renderDueBanner(monday){
     && String(a.dueDate).slice(0,10)>=mondayStr && String(a.dueDate).slice(0,10)<=sundayStr);
   if(!hits.length){ el.innerHTML=''; return; }
   el.innerHTML=hits.map(a=>{
-    const due=new Date(String(a.dueDate).slice(0,10)+'T12:00:00');
-    const dueTxt=isNaN(due.getTime())?a.dueDate:due.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
+    // Was a local date format; now the shared acctDueText so this banner and the Accounts
+    // screen never disagree about the same due date. Inside this banner's own week window the
+    // helper always returns the countdown form, which is the whole point of the banner.
+    const dueTxt=acctDueText(a)||'';
     const amt=parseFloat(a.statementBalance)||0;
     return '<div class="card" style="background:var(--amber-bg);border:1px solid var(--amber-border);padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:8px">'+
-      '<span style="font-size:18px">💳</span>'+
-      '<span style="font-size:13px;font-weight:600;color:var(--amber-dark)">'+_catEscHtml(a.name)+': '+fmtMoney(amt)+' due '+dueTxt+'</span>'+
+      // Icon, not 💳: the stroke inherits the row's amber via currentColor. Same reasoning
+      // (and the same glyph) as the Home statement row, which got this right first.
+      '<span style="color:var(--amber-dark);display:flex">'+acctIcon('card',16)+'</span>'+
+      '<span style="font-size:13px;font-weight:600;color:var(--amber-dark)">'+_catEscHtml(a.name)+': '+fmtMoney(amt)+(dueTxt?' · '+dueTxt:'')+'</span>'+
     '</div>';
   }).join('');
 }
@@ -8399,7 +8442,7 @@ function renderNetWorthChartInto(wrapId){
   const canvasId=wrapId+'-nwcanvas';
   const dates=accountsHistoryDates();
   if(dates.length<2){
-    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">💰 Net worth over time</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Update at least 2 account balances in Accounts to see the trend.</div></div>';
+    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+acctIcon('trend',13)+'Net worth over time</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Update at least 2 account balances in Accounts to see the trend.</div></div>';
     return;
   }
   // Assets, debts and net worth at each recorded date (each account carried forward from its
@@ -8413,7 +8456,9 @@ function renderNetWorthChartInto(wrapId){
   const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#FF6B35').trim();
   wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden">'+
     '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center">'+
-      '<span>💰 Net worth over time</span>'+
+      // Last chrome emoji on the Accounts screen. Shared with Stats → Finance, so both get the
+      // icon — which is the point: same chart, same header, one look.
+      '<span style="display:inline-flex;align-items:center;gap:6px">'+acctIcon('trend',13)+'Net worth over time</span>'+
       '<span style="font-size:13px;font-weight:800;text-transform:none;letter-spacing:0;color:'+netCol+'">'+(curNet>=0?'+$':'-$')+Math.abs(Math.round(curNet)).toLocaleString()+' net</span>'+
     '</div>'+
     '<div style="padding:14px 16px"><canvas id="'+canvasId+'" style="max-height:360px"></canvas></div></div>';
@@ -8509,9 +8554,18 @@ function renderBSRecords(){
 function renderBSGoals(){
   const wrap=document.getElementById('bs-goals-wrap'); if(!wrap) return;
   const goals=budDefaults.goals||[];
-  // Savings-goal progress tracks total assets from daily_accounts (the generalised "savings
-  // balance"), not the retired savingsLog.
-  const curBal=accountsAssetsTotal();
+  // Savings-goal progress tracks daily_accounts, not the retired savingsLog. It used to sum
+  // EVERY asset, which counted the everyday spending account as progress toward a savings
+  // goal and reported roughly double the real figure. The `saver` flag already draws exactly
+  // the line this needs — money deliberately set aside vs. money that's going to get spent —
+  // and accountsPayoffPosition() has always honoured it, so reading it here makes one
+  // definition of "savings" hold across the app instead of two contradictory ones.
+  // Falls back to all assets when nothing is flagged, so an install that never touched the
+  // toggle behaves exactly as before.
+  const saverTot=accountsSaverTotal();
+  const usingSavers=accounts.some(acctIsSaver);
+  const curBal=usingSavers?saverTot:accountsAssetsTotal();
+  const balSrc=usingSavers?'savers accounts':'all assets';
   const goalsHTML=goals.map((g,i)=>{
     const pct=g.target>0?Math.min(100,Math.round(curBal/g.target*100)):0;
     const remaining=Math.max(0,g.target-curBal);
@@ -8530,7 +8584,7 @@ function renderBSGoals(){
         <div style="width:${pct}%;height:100%;background:${bc};border-radius:3px"></div>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)">
-        <span>${pct}%${curBal>0?' ($'+curBal.toLocaleString()+')':''}</span>
+        <span>${pct}%${curBal>0?' ($'+curBal.toLocaleString()+' in '+balSrc+')':''}</span>
         <span>${pct>=100?'🎉 Reached!':(remaining>0?'$'+remaining.toLocaleString()+' to go':'')+(weeklyNeeded?' · '+weeklyNeeded:'')}</span>
       </div>
     </div>`;
@@ -10930,12 +10984,30 @@ function closeAccounts(){
 }
 
 function fmtMoney(n){ const v=Math.round(Math.abs(n)).toLocaleString(); return (n<0?'-$':'$')+v; }
+// A bare date ("Due 14 Sep") is a fact, not a signal — you still have to work out how close
+// that is. Inside a fortnight the countdown carries the urgency instead, since that's the
+// window where it changes what you'd do; beyond it the date is the more useful form because
+// "due in 47 days" is noise. Overdue always leads with the count, which is the one case where
+// the number IS the message.
+function acctDueDays(acc){
+  if(!acc||!acc.dueDate) return null;
+  const s=String(acc.dueDate); const due=new Date(s.length<=10?s.slice(0,10)+'T12:00:00':s);
+  if(isNaN(due.getTime())) return null;
+  const today=new Date(getLocalDate()+'T12:00:00');
+  return Math.round((due-today)/864e5);
+}
 function acctDueText(acc){
   if(!acc||!acc.dueDate) return '';
-  const s=String(acc.dueDate); const due=new Date(s.length<=10?s+'T12:00:00':s);
+  const s=String(acc.dueDate); const due=new Date(s.length<=10?s.slice(0,10)+'T12:00:00':s);
   if(isNaN(due.getTime())) return '';
-  const overdue = due < new Date(getLocalDate()+'T12:00:00');
-  return (overdue?'Overdue · ':'Due ')+due.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
+  const d=acctDueDays(acc);
+  const dateTxt=due.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
+  if(d===null) return 'Due '+dateTxt;
+  if(d<0)  return 'Overdue by '+Math.abs(d)+' day'+(Math.abs(d)===1?'':'s');
+  if(d===0) return 'Due today';
+  if(d===1) return 'Due tomorrow';
+  if(d<=14) return 'Due in '+d+' days · '+dateTxt;
+  return 'Due '+dateTxt;
 }
 
 // ── Per-account trend ─────────────────────────────────────────────
@@ -10998,19 +11070,30 @@ function renderPayoffCard(){
     ? '<div class="acct-payoff-note">Holding back '+fmtMoney(saverTot)+' in '+
         savers.map(a=>_catEscHtml(a.name||'Savers')).join(', ')+' — excluded from this total, still counted in net worth.</div>'
     : '<div class="acct-payoff-note">Flip on “Savers account” below to keep an interest account out of this total.</div>';
+  // What KIND of debt, not just how much — only shown once there's an actual mix to report,
+  // since "$2,512 cards" alone says nothing the figure above doesn't already.
+  const kinds=accountsDebtsByKind();
+  const kindLine=(debts>0&&kinds.length>1)
+    ? '<div class="acct-payoff-kinds">'+kinds.map(k=>fmtMoney(k.total)+' '+k.label).join(' · ')+'</div>'
+    : '';
   el.innerHTML=
     // THREE groups, matching the net-worth card directly above: label, figure, detail. The
     // shared desktop rule spreads them with space-between, which is what puts the figure in
     // the middle — a two-group version left it hard against the left edge while net worth's
     // sat centred, and the two cards read as unrelated.
     '<div class="card acct-payoff-card">'+
-      '<div class="acct-payoff-label">'+(clear?'✅':'⚠️')+' Debt payoff position</div>'+
+      // Icon takes the same semantic colour as the figure rather than the label's muted grey —
+      // an emoji could never follow either, and this card's whole job is signalling covered vs
+      // short. Colour is semantic (success/danger), never the accent, which can be any hue.
+      '<div class="acct-payoff-label"><span style="color:'+col+';display:inline-flex;margin-right:5px">'+
+        acctIcon(clear?'check':'alert')+'</span>Debt payoff position</div>'+
       '<div class="acct-payoff-fig">'+
         '<div class="acct-payoff-amt" style="color:'+col+'">'+fmtMoney(Math.abs(pos))+'</div>'+
         '<div class="acct-payoff-sub">'+headline+'</div>'+
       '</div>'+
       '<div class="acct-payoff-aside">'+
         (debts>0?'<div class="acct-payoff-math">'+fmtMoney(accountsAssetsTotal()-saverTot)+' spendable − '+fmtMoney(debts)+' debts</div>':'')+
+        kindLine+
         saverLine+
       '</div>'+
     '</div>';
@@ -11088,22 +11171,34 @@ function renderAccountsPage(){
           '</div>';
         // Credit limit — debts only, and only meaningful for revolving credit, but offered on
         // any debt since a loan's original principal works the same way as a progress figure.
-        let limitRow='';
+        let limitRow='', utilStrip='';
         if(isDebt){
           const util=acctUtilisation(a);
+          // The limit INPUT is configuration — set once, belongs down with the other config.
+          // The resulting utilisation is live status, and it was rendering as an 11px sub-label
+          // on that config row: the Home card gave the same number more prominence than the
+          // screen you'd actually come to in order to act on it. Split the two — figure and bar
+          // move up directly under the balance, the input stays put.
+          if(util!==null){
+            const uc=acctUtilColour(util);
+            utilStrip=
+              '<div class="acct-util-strip">'+
+                '<div class="acct-util-head">'+
+                  '<span class="acct-util-label">Credit used</span>'+
+                  '<span class="acct-util-pct" style="color:'+uc+'">'+util.toFixed(0)+'%</span>'+
+                '</div>'+
+                '<div class="card-bar"><div class="card-bar-fill" style="width:'+Math.min(100,util).toFixed(1)+'%;background:'+uc+'"></div></div>'+
+                '<div class="acct-util-cap">'+fmtMoney(parseFloat(a.current)||0)+' of '+fmtMoney(parseFloat(a.limit)||0)+
+                  (util>=80?' · high — this hurts your credit score':(util>=30?' · above the 30% healthy mark':''))+'</div>'+
+              '</div>';
+          }
           limitRow=
             '<div class="bud-row" style="border-bottom:none;padding-top:6px">'+
               '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Credit limit</div>'+
-                (util!==null
-                  ? '<div class="bud-row-budget" style="color:'+acctUtilColour(util)+';font-weight:700">'+util.toFixed(0)+'% used'+
-                    (util>=80?' · high':'')+'</div>'
-                  : '<div class="bud-row-budget">Optional — shows how much of it you are using</div>')+
+                (util!==null?'':'<div class="bud-row-budget">Optional — shows how much of it you are using</div>')+
               '</div>'+
               '<input class="bud-row-input" type="number" inputmode="decimal" placeholder="$0" value="'+(a.limit?a.limit:'')+'" onchange="accountSetLimit(\''+a.id+'\',this.value)">'+
-            '</div>'+
-            (util!==null
-              ? '<div class="card-bar" style="margin:2px 2px 8px"><div class="card-bar-fill" style="width:'+Math.min(100,util).toFixed(1)+'%;background:'+acctUtilColour(util)+'"></div></div>'
-              : '');
+            '</div>';
         }
         // Assets can be flagged as a savers account: still net worth, held out of the payoff total.
         let saverRow='';
@@ -11115,7 +11210,9 @@ function renderAccountsPage(){
               '<label class="toggle-switch"><input type="checkbox"'+(a.saver?' checked':'')+' onchange="accountToggleSaver(\''+a.id+'\',this.checked)"><span class="toggle-slider"></span></label>'+
             '</div>';
         }
-        const typeTag=(!isDebt&&a.saver)?'🔒 Savers':(isDebt?'Debt':'Asset');
+        // Lock icon inherits typeCol via currentColor; the emoji it replaces rendered at 11px
+        // as an OS-specific picture that couldn't take the tag's blue.
+        const typeTag=(!isDebt&&a.saver)?acctIcon('lock',11)+' Savers':(isDebt?'Debt':'Asset');
         const typeCol=isDebt?'var(--danger)':((a.saver)?'var(--blue)':'var(--success)');
         return '<div class="card">'+
           '<div class="bud-row" style="border-bottom:1px solid var(--border)">'+
@@ -11135,6 +11232,8 @@ function renderAccountsPage(){
               '<button class="sav-update-btn" onclick="accountUpdateBalanceFromInput(\''+a.id+'\')">Update</button>'+
             '</div>'+
           '</div>'+
+          // Live status sits directly under the balance, above the set-once config below it.
+          utilStrip+
           // Clarify that a debt balance is a standalone running total, not weekly spending —
           // the note that used to live in the retired Budget-tab CC editor.
           catRow+
