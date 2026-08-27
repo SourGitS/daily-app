@@ -138,7 +138,7 @@
   color:var(--accent-text);font-size:12px;font-weight:700;cursor:pointer;text-align:left;
   -webkit-tap-highlight-color:transparent}
 /* Modal internals */
-/* ── Recurring charge editor extras (Settings → Budget categories) ── */
+/* ── Recurring charge editor extras (Settings → Budget setup) ── */
 .bud-edit-recur{align-items:center}
 .bud-edit-due{flex:0 0 auto;height:34px;border:1px solid var(--border);border-radius:8px;background:transparent;
   color:var(--text);font-size:12px;font-weight:600;padding:0 8px;font-family:inherit}
@@ -159,8 +159,9 @@
    wearing that day. */
 .up-row.soon .up-when{color:#f59e0b}
 .up-when{flex:0 0 82px;font-size:12px;font-weight:700;color:var(--muted)}
-.up-name{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--text);overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.up-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;color:var(--text);overflow:hidden}
+.up-title{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.up-account{font-size:10.5px;font-weight:600;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .up-trial{font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:2px 6px;
   border-radius:999px;background:rgba(99,102,241,.16);color:var(--purple)}
 .up-amt{font-family:var(--font-num);font-size:14px;font-weight:800;color:var(--text);flex-shrink:0}
@@ -297,6 +298,68 @@
 .bud-edit-del{width:38px;height:38px;flex-shrink:0;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--danger);font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .bud-add-item{width:100%;padding:9px;margin-top:10px;border:1.5px dashed var(--border);border-radius:8px;background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 [data-theme="dark"] .bud-edit-name,[data-theme="dark"] .bud-edit-amt{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.1)}
+
+/* ── Budget Setup ────────────────────────────────────────────────
+   The old editor rendered every category as a dense multi-row form. Summary-first details
+   keep the list scannable while leaving the full billing controls one tap away. */
+.budget-setup-wrap{padding:18px 16px calc(env(safe-area-inset-bottom,0px) + 36px);max-width:860px;margin:0 auto}
+.budget-setup-intro{font-size:13px;line-height:1.55;color:var(--muted);margin:0 0 16px}
+.budget-setup-section{background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius-card);padding:16px;margin-bottom:14px;overflow:hidden}
+.budget-setup-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:5px}
+.budget-setup-heading>span{font-size:15px;font-weight:800;color:var(--text)}
+.budget-setup-heading>small{font-size:11px;font-weight:650;color:var(--muted);text-align:right}
+.budget-setup-help{font-size:12px;line-height:1.5;color:var(--muted);margin:0 0 12px}
+.budget-setup-subheading{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2);margin:18px 0 8px}
+.budget-setup-config{border-top:1px solid var(--border)}
+.budget-setup-config .bud-row{padding:11px 0;gap:10px}
+.budget-setup-config .bud-row-input{width:128px;flex-shrink:0}
+.budget-setup-field-row{display:flex!important;flex-direction:row!important;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)}
+.budget-setup-field-row>span{flex:1;min-width:0}
+.budget-setup-field-row>input{width:104px!important;flex:0 0 104px}
+.budget-setup-item{border:1px solid var(--border);border-radius:12px;margin-bottom:8px;background:rgba(var(--accent-rgb),.025);overflow:hidden}
+.budget-setup-item.inactive>.budget-setup-summary{opacity:.62}
+.budget-setup-summary{list-style:none;display:flex;align-items:center;gap:10px;min-height:62px;padding:10px 11px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.budget-setup-summary::-webkit-details-marker{display:none}
+.budget-setup-icon{display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.budget-setup-summary-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px}
+.budget-setup-summary-copy strong{font-size:14px;font-weight:750;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.budget-setup-summary-copy small{font-size:10.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.budget-setup-summary-copy small:empty{display:none}
+.budget-setup-summary-value{font-family:var(--font-num);font-size:12px;font-weight:700;color:var(--text-2);text-align:right;white-space:nowrap}
+.budget-setup-chevron{font-size:22px;color:var(--muted);line-height:1;transform:rotate(90deg);transition:transform .18s ease}
+.budget-setup-item[open] .budget-setup-chevron{transform:rotate(-90deg)}
+.budget-setup-item-body{padding:13px 12px 12px;border-top:1px solid var(--border)}
+.budget-setup-primary-fields{display:grid;grid-template-columns:1fr;gap:10px}
+.budget-setup-field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.budget-setup-field>span{font-size:11px;font-weight:750;color:var(--text-2)}
+.budget-setup-field>span>strong{display:block;font-size:13px;color:var(--text)}
+.budget-setup-field small{display:block;font-size:10px;font-weight:500;line-height:1.35;color:var(--muted);margin-top:2px}
+.budget-setup-field .soon{color:#f59e0b;font-weight:750}
+.budget-setup-field input,.budget-setup-field select{width:100%;height:40px;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);padding:0 10px;font:inherit;font-size:13px}
+.budget-setup-field .bud-edit-amt{text-align:left}
+.budget-setup-field input:focus,.budget-setup-field select:focus{outline:none;border-color:var(--accent)}
+.budget-setup-field .bud-edit-status.charging{border-color:rgba(82,183,136,.5)}
+.budget-setup-field .bud-edit-status.off{color:var(--muted);border-style:dashed}
+.budget-setup-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px solid var(--border);padding-top:12px;margin-top:4px}
+.budget-setup-actions button,.budget-setup-actions select{min-height:38px;border:1px solid var(--border);border-radius:9px;background:transparent;font:inherit;font-size:12px;font-weight:700;padding:0 11px;color:var(--muted)}
+.budget-setup-actions .bud-edit-move{margin-right:auto;max-width:none}
+.budget-setup-actions .budget-setup-delete{color:var(--danger);border-color:rgba(var(--danger-rgb),.3)}
+.budget-setup-actions button:disabled{opacity:.35;cursor:not-allowed}
+.budget-setup-empty{font-size:12px;color:var(--muted);padding:8px 2px}
+.budget-archived-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+.budget-archived-row:last-child{border-bottom:none}
+.budget-archived-row>span{display:flex;min-width:0;flex-direction:column;gap:2px}
+.budget-archived-row strong{font-size:13px;color:var(--text)}
+.budget-archived-row small{font-size:10px;color:var(--muted)}
+.budget-archived-row button{min-height:36px;padding:0 12px;border:1px solid var(--border);border-radius:9px;background:transparent;color:var(--accent-text);font-size:12px;font-weight:750}
+[data-theme="dark"] .budget-setup-section{background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.075));border-color:var(--card-border)}
+[data-theme="dark"] .budget-setup-item{background:rgba(0,0,0,.12)}
+@media (min-width:700px){
+  .budget-setup-wrap{padding:28px 24px 50px}
+  .budget-setup-section{padding:20px}
+  .budget-setup-primary-fields{grid-template-columns:minmax(180px,1fr) minmax(130px,.55fr)}
+  .budget-setup-primary-fields.has-cycle{grid-template-columns:minmax(180px,1fr) minmax(130px,.55fr) minmax(130px,.55fr)}
+}
 .summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
 .sum-card{border-radius:14px;padding:12px 8px;text-align:center;border:1px solid rgba(0,0,0,0.07);background:#f5f5f5}
 [data-theme="dark"] .sum-card{background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.07)}

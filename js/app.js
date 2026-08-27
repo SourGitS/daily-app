@@ -5830,75 +5830,115 @@ function renderBudgetEditList(containerId,type){
     '<button class="bud-add-item" onclick="addBudgetItem(\''+type+'\')">+ Add item</button>';
 }
 
-// ── Category budget editor (Settings → Budget categories) ─────────
+// ── Category budget editor (Settings → Budget setup) ──────────────
 // Edits the live categories themselves — the same list the Budget tab enters weekly amounts
 // against — so a category added in either place carries its target everywhere and the two
 // can no longer drift. Ids are never rewritten, so saved weekly history stays attached.
-const CAT_TYPE_LABEL={inc:'income source', fix:'fixed expense', var:'variable expense'};
-function renderCatBudgetList(containerId, type){
+const CAT_TYPE_LABEL={inc:'income source', fix:'fixed expense', var:'spending category'};
+const _budgetSetupOpen=new Set();
+function budgetSetupToggle(type,id,details){
+  const key=type+':'+id;
+  // summary click fires before the browser changes <details>. Store the state it is about to
+  // enter so an auto-save re-render does not collapse the item midway through editing.
+  if(details&&details.open) _budgetSetupOpen.delete(key); else _budgetSetupOpen.add(key);
+}
+function catPaymentAccount(c){
+  if(!c||!c.paymentAccountId) return null;
+  return loadAccounts().find(a=>a&&a.id===c.paymentAccountId)||null;
+}
+function catPaymentAccountOptions(c){
+  const selected=c&&c.paymentAccountId?String(c.paymentAccountId):'';
+  const list=loadAccounts().filter(a=>a&&a.id);
+  let html='<option value="">Not linked</option>';
+  if(selected&&!list.some(a=>a.id===selected)){
+    html+='<option value="'+_catEsc(selected)+'" selected>Unavailable account</option>';
+  }
+  return html+list.map(a=>{
+    const suffix=a.type==='debt'?' · debt':' · asset';
+    return '<option value="'+_catEsc(a.id)+'"'+(a.id===selected?' selected':'')+'>'+_catEscHtml(a.name||'Unnamed account')+suffix+'</option>';
+  }).join('');
+}
+function renderCatBudgetList(containerId, type, kind){
   const el=document.getElementById(containerId); if(!el) return;
-  const cats=BUD_CAT_LOAD[type]?BUD_CAT_LOAD[type]():[];
+  const all=BUD_CAT_LOAD[type]?BUD_CAT_LOAD[type]():[];
+  let cats=activeCats(all);
+  if(type==='fix'&&kind==='weekly') cats=cats.filter(c=>catCycle(c)==='weekly');
+  if(type==='fix'&&kind==='recurring') cats=cats.filter(c=>catCycle(c)!=='weekly');
   // Only fixed expenses get a billing cycle: variable spend is per-week by definition, and
   // income is entered per pay against the week it lands in.
   const cycles=type==='fix';
-  el.innerHTML=cats.map(c=>{
+  const cards=cats.map(c=>{
     const amt=cycles?catAmount(c):(c.budget??'');
     const cyc=catCycle(c);
     const weekly=catBudget(c);
-    const row=
-      '<div class="bud-edit-row">'+
-        (cycles?catIconHtml(c,26):'')+
-        '<input class="bud-edit-name" value="'+_catEsc(c.name||'')+'" placeholder="Name" '+
-          'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'name\',this.value)">'+
-        '<input class="bud-edit-amt" type="number" inputmode="decimal" value="'+(amt===''?'':amt)+'" placeholder="0" '+
-          'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\''+(cycles?'amount':'budget')+'\',this.value)">'+
-        (cycles?'<select class="bud-edit-cycle" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'cycle\',this.value)">'+
-          CAT_CYCLES.map(o=>'<option value="'+o.id+'"'+(o.id===cyc?' selected':'')+'>'+o.suffix+'</option>').join('')+
-        '</select>':'')+
-        '<button class="bud-edit-del" title="Remove" onclick="catRemoveItem(\''+type+'\',\''+c.id+'\')">🗑️</button>'+
-      '</div>';
-    // Second line: website (fixed only, drives the logo), the weekly conversion, and the
-    // move control — which carries saved history with it rather than stranding it.
+    const recurring=cycles&&cyc!=='weekly';
+    const st=catStatus(c);
+    const account=recurring?catPaymentAccount(c):null;
+    const summaryValue=cycles
+      ? (amt===''||amt==null?'No amount set':fmtMoneyExact(amt)+' '+cyc)
+      : (amt===''||amt==null?'No weekly target':fmtMoneyExact(amt)+'/week');
+    const summaryMeta=[];
+    if(recurring&&weekly>0) summaryMeta.push('≈ '+fmtMoneyExact(weekly)+'/week');
+    if(recurring&&account) summaryMeta.push(account.name||'Linked account');
+    if(recurring&&st!=='active') summaryMeta.push(CAT_STATUSES.find(o=>o.id===st)?.label||st);
     const moveOpts=['inc','fix','var'].filter(t=>t!==type)
       .map(t=>'<option value="'+t+'">→ '+CAT_TYPE_PLURAL[t]+'</option>').join('');
-    const sub=
-      '<div class="bud-edit-sub">'+
-        (cycles?'<input class="bud-edit-site" value="'+_catEsc(c.site||'')+'" placeholder="website (e.g. stan.com.au) — optional" '+
-          'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'site\',this.value)">':'<span class="bud-edit-spacer"></span>')+
-        ((cycles&&cyc!=='weekly'&&weekly>0)?'<span class="bud-edit-hint">≈ $'+weekly.toFixed(2)+'/wk</span>':'')+
-        '<select class="bud-edit-move" onchange="catMoveTo(\''+type+'\',\''+c.id+'\',this.value)" aria-label="Move category">'+
-          '<option value="">Move…</option>'+moveOpts+
-        '</select>'+
-      '</div>';
-    // Third line, recurring charges only: when it next bills and whether it is still running.
-    // A weekly fixed cost (rent) has neither concept in a useful sense — it just charges every
-    // week — so the row stays as it was for those.
-    let recur='';
-    if(cycles && cyc!=='weekly'){
+    let recurFields='';
+    if(recurring){
       const days=catDaysUntilDue(c);
-      const st=catStatus(c);
       const dueHint = days===null
-        ? '<span class="bud-edit-hint">set a date to see it in Upcoming</span>'
-        : '<span class="bud-edit-hint'+(days<=3?' soon':'')+'">'+
+        ? 'Set a date to show this in Upcoming charges'
+        : '<span class="'+(days<=3?'soon':'')+'">'+
             (days===0?'charges today':days===1?'charges tomorrow':'in '+days+' days')+'</span>';
       const hist=Array.isArray(c.priceHistory)?c.priceHistory:[];
       const last=hist.length?hist[hist.length-1]:null;
-      recur=
-        '<div class="bud-edit-sub bud-edit-recur">'+
-          '<input class="bud-edit-due" type="date" value="'+(c.dueDate?String(c.dueDate).slice(0,10):'')+'" '+
-            'aria-label="Next billing date" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'dueDate\',this.value)">'+
-          dueHint+
-          '<select class="bud-edit-status'+(st!=='active'?' off':'')+'" aria-label="Status" '+
-            'onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'status\',this.value)">'+
-            CAT_STATUSES.map(o=>'<option value="'+o.id+'"'+(o.id===st?' selected':'')+'>'+o.label+'</option>').join('')+
-          '</select>'+
-        '</div>'+
-        (last?'<div class="bud-edit-pricehist">Was $'+r2(last.from)+' until '+fmtDate(last.date)+
-          ' · now $'+r2(last.to)+(last.to>last.from?' <span class="ph-up">↑</span>':' <span class="ph-down">↓</span>')+'</div>':'');
+      recurFields=
+        '<label class="budget-setup-field"><span>Next billing date<small>'+dueHint+'</small></span><input class="bud-edit-due" type="date" value="'+(c.dueDate?String(c.dueDate).slice(0,10):'')+'" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'dueDate\',this.value)"></label>'+
+        '<label class="budget-setup-field"><span>Status<small>Paused and cancelled items stop counting toward future commitments</small></span><select class="bud-edit-status '+(catIsCharging(c)?'charging':'off')+'" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'status\',this.value)">'+
+          CAT_STATUSES.map(o=>'<option value="'+o.id+'"'+(o.id===st?' selected':'')+'>'+o.label+'</option>').join('')+'</select></label>'+
+        '<label class="budget-setup-field"><span>Payment account<small>Where this bill or subscription is charged</small></span><select class="bud-edit-account" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'paymentAccountId\',this.value)">'+catPaymentAccountOptions(c)+'</select></label>'+
+        '<label class="budget-setup-field"><span>Website<small>Optional — also helps Daily find a recognisable logo</small></span><input class="bud-edit-site" value="'+_catEsc(c.site||'')+'" placeholder="example.com" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'site\',this.value)"></label>'+
+        (last?'<div class="bud-edit-pricehist">Previous price: '+fmtMoneyExact(last.from)+' until '+fmtDate(last.date)+' · now '+fmtMoneyExact(last.to)+(last.to>last.from?' <span class="ph-up">↑</span>':' <span class="ph-down">↓</span>')+'</div>':'');
     }
-    return row+sub+recur;
-  }).join('')+
-    '<button class="bud-add-item" onclick="catAddItem(\''+type+'\')">+ Add '+CAT_TYPE_LABEL[type]+'</button>';
+    const canArchive=activeCats(all).length>1;
+    const open=catIsUnnamed(c)||_budgetSetupOpen.has(type+':'+c.id);
+    return '<details class="budget-setup-item'+(recurring&&!catIsCharging(c)?' inactive':'')+'" data-cat-key="'+type+':'+_catEsc(c.id)+'"'+(open?' open':'')+'>'+
+      '<summary class="budget-setup-summary" onclick="budgetSetupToggle(\''+type+'\',\''+c.id+'\',this.parentElement)">'+
+        (cycles?'<span class="budget-setup-icon">'+catIconHtml(c,30)+'</span>':'')+
+        '<span class="budget-setup-summary-copy"><strong>'+_catEscHtml(catLabel(c))+'</strong><small>'+summaryMeta.join(' · ')+'</small></span>'+
+        '<span class="budget-setup-summary-value">'+summaryValue+'</span><span class="budget-setup-chevron">›</span>'+
+      '</summary>'+
+      '<div class="budget-setup-item-body">'+
+        '<div class="budget-setup-primary-fields'+(cycles?' has-cycle':'')+'">'+
+          '<label class="budget-setup-field"><span>Name</span><input class="bud-edit-name" value="'+_catEsc(c.name||'')+'" placeholder="Name" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'name\',this.value)"></label>'+
+          '<label class="budget-setup-field"><span>'+(cycles?'Billed amount':'Weekly target')+'</span><input class="bud-edit-amt" type="number" inputmode="decimal" value="'+(amt===''?'':amt)+'" placeholder="0" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\''+(cycles?'amount':'budget')+'\',this.value)"></label>'+
+          (cycles?'<label class="budget-setup-field"><span>Billing cycle</span><select class="bud-edit-cycle" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'cycle\',this.value)">'+CAT_CYCLES.map(o=>'<option value="'+o.id+'"'+(o.id===cyc?' selected':'')+'>'+o.label+'</option>').join('')+'</select></label>':'')+
+        '</div>'+recurFields+
+        '<div class="budget-setup-actions">'+
+          '<select class="bud-edit-move" onchange="catMoveTo(\''+type+'\',\''+c.id+'\',this.value)" aria-label="Move category"><option value="">Move to…</option>'+moveOpts+'</select>'+
+          '<button type="button" class="budget-setup-archive" onclick="catArchive(\''+type+'\',\''+c.id+'\',true)"'+(canArchive?'':' disabled')+'>Archive</button>'+
+          '<button type="button" class="budget-setup-delete" onclick="catRemoveItem(\''+type+'\',\''+c.id+'\')">Delete permanently</button>'+
+        '</div>'+
+      '</div></details>';
+  }).join('');
+  const addLabel=type==='fix'&&kind==='weekly'?'weekly commitment':type==='fix'&&kind==='recurring'?'bill or subscription':CAT_TYPE_LABEL[type];
+  const cycle=type==='fix'&&kind==='recurring'?'monthly':type==='fix'?'weekly':'';
+  el.innerHTML=(cards||'<div class="budget-setup-empty">None set up yet.</div>')+
+    '<button class="bud-add-item" onclick="catAddItem(\''+type+'\',\''+cycle+'\')">+ Add '+addLabel+'</button>';
+}
+function renderArchivedBudgetItems(){
+  const wrap=document.getElementById('be-archived');
+  const section=document.getElementById('be-archived-section');
+  if(!wrap||!section) return;
+  const labels={inc:'Income',fix:'Commitment',var:'Spending'};
+  const rows=[];
+  ['inc','fix','var'].forEach(type=>{
+    (BUD_CAT_LOAD[type]?BUD_CAT_LOAD[type]():[]).filter(catIsArchived).forEach(c=>{
+      rows.push('<div class="budget-archived-row"><span><strong>'+_catEscHtml(catLabel(c))+'</strong><small>'+labels[type]+' · historical data retained</small></span><button type="button" onclick="catArchive(\''+type+'\',\''+c.id+'\',false)">Restore</button></div>');
+    });
+  });
+  section.style.display=rows.length?'block':'none';
+  wrap.innerHTML=rows.join('');
 }
 // ── Recurring charge management ───────────────────────────────────
 // A recurring fixed category (anything not on a weekly cycle) is a subscription in all but
@@ -5955,6 +5995,8 @@ function upcomingCharges(days){
 }
 function catUpdateField(type,id,field,val){
   const cats=BUD_CAT_LOAD[type](); const c=cats.find(x=>x.id===id); if(!c) return;
+  const details=document.querySelector('.budget-setup-item[data-cat-key="'+type+':'+CSS.escape(String(id))+'"]');
+  if(details&&details.open) _budgetSetupOpen.add(type+':'+id);
   const prevAmount=(field==='amount')?parseFloat(catAmount(c)):null;
   // Empty stays empty rather than becoming 0 — "no target set" and "target of zero" are
   // different things, and only the first should leave the field blank next time.
@@ -5979,11 +6021,12 @@ function catUpdateField(type,id,field,val){
   BUD_CAT_SAVE[type](cats);
   refreshCatBudgetUI();
 }
-function catAddItem(type){
+function catAddItem(type, cycle){
   const cats=BUD_CAT_LOAD[type]();
   const item={id:genCatId(type), name:'', budget:''};
-  if(type==='fix'){ item.amount=''; item.cycle='weekly'; }
+  if(type==='fix'){ item.amount=''; item.cycle=cycle||'weekly'; }
   cats.push(item);
+  _budgetSetupOpen.add(type+':'+item.id);
   BUD_CAT_SAVE[type](cats);
   refreshCatBudgetUI();
 }
@@ -6015,15 +6058,19 @@ function catMoveTo(fromType,id,toType){
     msg+='\n\nHeads up: as a variable expense, a week you don’t fill in counts as $0 instead of the usual $'+catBudget(cat).toFixed(2)+'.';
     if(catIsRecurring(cat)) msg+='\nIts '+catCycle(cat)+' billing will also stop being spread across weeks automatically.';
   }
+  if(fromType==='fix'&&catIsRecurring(cat)){
+    msg+='\n\nIts billing date, status, payment-account link and price history will be retained, but stay inactive unless it is moved back to Fixed expenses.';
+  }
   if(!confirm(msg)){ refreshCatBudgetUI(); return; }
 
   weeks.forEach(k=>{ const d=budgetData[k]; d[toKey]=d[fromKey]; delete d[fromKey]; d.updatedAt=Date.now(); });
 
-  const moved={id:newId, name:cat.name, budget:cat.budget};
-  if(cat.site) moved.site=cat.site;
-  if(cat.default!=null) moved.default=cat.default;
-  // Cycles only exist on fixed expenses; arriving there needs one, leaving drops it so a
-  // stale cycle can't linger on a category that no longer prorates.
+  // Keep the whole category record. Fields such as dueDate, paymentAccountId and priceHistory
+  // are ignored outside Fixed, but retaining them prevents a category move from becoming an
+  // undocumented data-loss operation and restores the subscription intact if it moves back.
+  const moved=Object.assign({},cat,{id:newId, name:cat.name, budget:cat.budget});
+  // A category arriving in Fixed for the first time needs an amount and cycle. A former Fixed
+  // category already carries both, so its original billing setup is restored.
   if(toType==='fix'){
     moved.amount=(cat.amount!=null&&cat.amount!=='')?cat.amount:(cat.budget??'');
     moved.cycle=catCycle(cat);
@@ -6311,6 +6358,8 @@ function saveAccounts(list){
   // treats this as authoritative (offline edits win) rather than discarding it for the cloud.
   try{ localStorage.removeItem('daily_accounts_migrated'); }catch(e){}
   lsSave('daily_accounts', accounts, 'accounts');
+  const be=document.getElementById('view-budget-editor');
+  if(be&&be.style.display!=='none'&&typeof renderBudgetEditor==='function') renderBudgetEditor();
 }
 function genAccountId(){ return 'acct_'+Date.now()+'_'+Math.floor(Math.random()*1e4); }
 
@@ -6831,7 +6880,7 @@ function catBudget(c){
   if(c.budget!=null&&c.budget!=='') return parseFloat(c.budget)||0;
   return parseFloat(c.default)||0;   // pre-migration fixed categories
 }
-function catBudgetTotal(type){ return (BUD_CAT_LOAD[type]?BUD_CAT_LOAD[type]():[]).reduce((s,c)=>s+catBudget(c),0); }
+function catBudgetTotal(type){ return activeCats(BUD_CAT_LOAD[type]?BUD_CAT_LOAD[type]():[]).reduce((s,c)=>s+catBudget(c),0); }
 // One-time fold of the separate subscriptions list into the fixed categories. The two lists
 // were never actually connected — subscriptions only ever wrote to a legacy defaults key and
 // to a DOM input that usually wasn't on screen — so a $125/wk subscription load sat entirely
@@ -6990,7 +7039,7 @@ function migrateCatBudgetsOnce(){
 // What a category actually contributes to a week's fixed total. A paused or cancelled
 // recurring charge is kept (its history and price record are worth having) but stops costing
 // money — which is the practical reason to record the state at all rather than deleting it.
-function catChargeableBudget(c){ return catIsCharging(c) ? catBudget(c) : 0; }
+function catChargeableBudget(c){ return !catIsArchived(c)&&catIsCharging(c) ? catBudget(c) : 0; }
 function budEnsureFixRates(d){
   if(!d || d.fixRates) return;
   const rates={};
@@ -7188,7 +7237,7 @@ function renderFixedCard(data,isCur){
           '<span class="bud-recur-chev">▾</span></div>'+
       '</div>'+
       '<div class="bud-recur-list" style="display:none">'+items+
-        '<div class="bud-recur-note">Counted automatically each week from their billing cycle — nothing to enter. Edit them in Settings → Budget categories.</div>'+
+        '<div class="bud-recur-note">Counted automatically each week from their billing cycle — nothing to enter. Edit them in Settings → Budget setup.</div>'+
       '</div>';
   }
 
@@ -7485,13 +7534,15 @@ function renderUpcomingCard(){
     ? '<div class="up-warn">'+within7.length+' charges land within 7 days — '+fmtMoney(within7.reduce((s,x)=>s+x.amount,0))+' total</div>'
     : '';
   const rows=list.length
-    ? list.map(x=>{
+      ? list.map(x=>{
         const soon=x.days<=3;
         const when=x.days===0?'today':x.days===1?'tomorrow':'in '+x.days+' days';
+        const account=catPaymentAccount(x.cat);
         return '<div class="up-row'+(soon?' soon':'')+'">'+
           '<span class="up-when">'+when+'</span>'+
-          '<span class="up-name">'+_catEscHtml(catLabel(x.cat))+
+          '<span class="up-name"><span class="up-title">'+_catEscHtml(catLabel(x.cat))+
             (catStatus(x.cat)==='trial'?'<span class="up-trial">trial</span>':'')+'</span>'+
+            (account?'<span class="up-account">'+_catEscHtml(account.name||'Linked account')+'</span>':'')+'</span>'+
           '<span class="up-amt">'+fmtMoneyExact(x.amount)+'</span>'+
         '</div>';
       }).join('')
@@ -7501,7 +7552,7 @@ function renderUpcomingCard(){
     budCardHead('upcoming','📅 Upcoming charges',false)+
     cluster+rows+
     (list.length?'<div class="up-total"><span>Next 30 days</span><span>'+fmtMoney(total)+'</span></div>':'')+
-    (undated?'<div class="up-hint">'+undated+' recurring charge'+(undated===1?'':'s')+' without a billing date — add one in Settings → Budget categories to see '+(undated===1?'it':'them')+' here.</div>':'')+
+    (undated?'<div class="up-hint">'+undated+' recurring charge'+(undated===1?'':'s')+' without a billing date — add one in Settings → Budget setup to see '+(undated===1?'it':'them')+' here.</div>':'')+
   '</div>';
 }
 // A new transaction is always dated today (openTxnModal defaults to getLocalDate()), so every
@@ -7534,7 +7585,7 @@ const BUD_LAYOUT={
   // Mobile: one linear stack, in the order the week is actually worked through.
   mobile:[['bud-col-left',['bud-income-card','bud-savings-card','bud-fixed-card','bud-upcoming-card',
     'bud-vargoal-card','bud-record-card','bud-variable-card','bud-stranded-card','bud-result-card',
-    'prev-weeks-section','bud-calc-card','bud-config-card']]],
+    'prev-weeks-section','bud-calc-card']]],
   // Desktop: left is the plan and this week's entry, right is the action, the outcome and the
   // supporting tools. Upcoming and the calculator move right because the left stack (a long
   // Variable card especially) is what makes the page tall.
@@ -7542,7 +7593,7 @@ const BUD_LAYOUT={
     ['bud-col-left',['bud-income-card','bud-savings-card','bud-fixed-card','bud-vargoal-card',
       'bud-variable-card','bud-stranded-card']],
     ['bud-col-right',['bud-record-card','bud-result-card','bud-upcoming-card','prev-weeks-section',
-      'bud-calc-card','bud-config-card']]
+      'bud-calc-card']]
   ]
 };
 let _budLayoutMode=null;
@@ -7839,7 +7890,7 @@ function renderDueBanner(monday){
   }).join('');
 }
 
-// ── Budget config: pay days + weekly savings target (relocated from Settings) ──
+// ── Budget setup: pay days + weekly savings target ─────────────────
 // These feed the Home tab (pay-day countdown + budget-left projection) and the
 // legacy-week savings fallback. Stored in budDefaults alongside the fixed defaults.
 const BUD_DAY_NAMES=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -7851,7 +7902,7 @@ function renderBudgetConfig(){
   const wrap=document.getElementById('bud-payday-rows');
   if(wrap){
     const dayOpts=(cur)=>BUD_DAY_NAMES.map((d,v)=>'<option value="'+v+'"'+(v===cur?' selected':'')+'>'+d+'</option>').join('');
-    const cats=loadIncCats();
+    const cats=activeCats(loadIncCats());
     wrap.innerHTML = cats.length
       ? cats.map(c=>{
           const name=catIsUnnamed(c)?'Income source':c.name.trim();
@@ -7874,7 +7925,7 @@ function budSaveConfig(){
   const sg=document.getElementById('bud-cfg-savings-goal');
   if(sg){ const n=parseFloat(sg.value); budDefaults.savingsGoal = isNaN(n)?undefined:n; }
   // Read every generated pay-day selector back into budDefaults.payDays (keyed by source id).
-  loadIncCats().forEach(c=>{
+  activeCats(loadIncCats()).forEach(c=>{
     const el=document.getElementById('bud-payday-'+c.id);
     if(el){ const v=parseInt(el.value); if(!isNaN(v)) setPayDay(c.id, v); }
     const rateEl=document.getElementById('bud-rate-'+c.id);
@@ -11746,15 +11797,18 @@ function saveSplitEditor(){
 function openBudgetEditor(){
   const v=document.getElementById('view-budget-editor'); if(!v) return;
   v.style.display='block';
-  v.style.left=window.innerWidth>=1024?'260px':'0';
+  v.style.left=window.innerWidth>=1024?'160px':'0';
   renderBudgetEditor();
   if(typeof closeMenu==='function') closeMenu();
 }
 function renderBudgetEditor(){
-  // Categories, not budgetConfig — this screen sets each category's weekly budget directly.
+  // Categories, not budgetConfig — this screen sets each category's planning values directly.
   renderCatBudgetList('be-inc','inc');
-  renderCatBudgetList('be-fix','fix');
+  renderCatBudgetList('be-fix-weekly','fix','weekly');
+  renderCatBudgetList('be-fix-recur','fix','recurring');
   renderCatBudgetList('be-var','var');
+  renderArchivedBudgetItems();
+  renderBudgetConfig();
 }
 function closeBudgetEditor(){
   // Prune categories the user added but never named, so backing out of "+ Add category"

@@ -309,6 +309,12 @@
 /* Exercise picker sheet */
 .se-picker-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200}
 .se-picker{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:100%;max-width:520px;max-height:72vh;display:flex;flex-direction:column;background:var(--bg);border-radius:20px 20px 0 0;z-index:201;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 16px);box-shadow:0 -8px 40px rgba(0,0,0,.3)}
+/* The swap sheet lives inside #app's fixed stacking context while the phone nav is its sibling.
+   On iOS the nav can therefore paint over the sheet despite the sheet's larger child z-index.
+   Lift this one action sheet by the measured nav height so Save always remains tappable. */
+@media (orientation:portrait) and (max-width:1023px){
+  #swap-modal{bottom:var(--nav-height,calc(74px + env(safe-area-inset-bottom,0px)));padding-bottom:16px}
+}
 .se-picker-head{display:flex;align-items:center;justify-content:space-between;font-size:16px;font-weight:700;margin-bottom:12px}
 .se-picker-x{background:none;border:none;color:var(--muted);font-size:24px;line-height:1;cursor:pointer;padding:0 4px}
 .se-picker-search{width:100%;height:42px;border:1px solid var(--border);border-radius:11px;padding:0 12px;font-size:15px;background:var(--card);color:var(--text);margin-bottom:10px}

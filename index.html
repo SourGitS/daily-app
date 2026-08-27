@@ -311,16 +311,6 @@
           </div>
         </div>
 
-        <!-- Budget config: pay days + suggestive savings goal (drive the Home tab) -->
-        <div class="card" id="bud-config-card" data-bud-key="config">
-          <div class="sec-label bud-toggle"><span class="bud-head-label">&#9881;&#65039; Pay days &amp; savings goal</span><span class="bud-head-right"><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span></div>
-          <div class="bud-row">
-            <div class="bud-row-left"><div class="bud-row-name">Weekly savings goal</div><div class="bud-row-budget">Suggestive only — colours the savings figure when reached</div></div>
-            <input class="bud-row-input" type="number" inputmode="decimal" placeholder="$200" id="bud-cfg-savings-goal" oninput="budSaveConfig()">
-          </div>
-          <div id="bud-payday-rows"></div>
-        </div>
-
         </div><!-- /#bud-col-left: on desktop budApplyLayout() splits these across the two columns -->
         <div id="bud-col-right"></div>
         </div><!-- /.budget-desktop-grid -->
@@ -856,19 +846,49 @@
 <div id="view-budget-editor" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
   <div class="detail-topbar">
     <button class="back-btn with-label" data-back="closeBudgetEditor"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Settings</button>
-    <span class="detail-title">Budget categories</span>
+    <span class="detail-title">Budget setup</span>
     <button class="detail-action" onclick="closeBudgetEditor()">Done</button>
   </div>
-  <div style="padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 32px);max-width:520px;margin:0 auto">
-    <p style="font-size:13px;color:var(--muted);margin-bottom:6px">Name each category and set what you expect it to cost per week. These are the same categories you fill in on the Budget tab, so the weekly budget you set here is what your actual spending gets measured against. Changes save automatically.</p>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Leave a budget blank if you don't want a target for that category yet.</p>
-    <div class="ob-section-label">Income sources <span style="float:right;font-weight:500;text-transform:none;letter-spacing:0">Expected / week</span></div>
-    <div id="be-inc"></div>
-    <div class="ob-section-label" style="margin-top:16px">Fixed expenses <span style="float:right;font-weight:500;text-transform:none;letter-spacing:0">Amount / cycle</span></div>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 6px">Enter what you're actually billed and how often — yearly rego, a monthly subscription — and it's converted to a weekly figure for you.</p>
-    <div id="be-fix"></div>
-    <div class="ob-section-label" style="margin-top:16px">Variable expenses <span style="float:right;font-weight:500;text-transform:none;letter-spacing:0">Budget / week</span></div>
-    <div id="be-var"></div>
+  <div class="budget-setup-wrap">
+    <p class="budget-setup-intro">Set the structure behind Budget here. Weekly entries stay in the Budget tab; changes here update future planning without rewriting saved history.</p>
+
+    <section class="budget-setup-section">
+      <div class="budget-setup-heading"><span>Income &amp; pay</span><small>Expected each week</small></div>
+      <p class="budget-setup-help">Add each source you get paid from, then set its usual pay day and optional hourly rate.</p>
+      <div id="be-inc"></div>
+      <div class="budget-setup-subheading">Pay schedule &amp; savings goal</div>
+      <div class="budget-setup-config">
+        <label class="budget-setup-field budget-setup-field-row">
+          <span><strong>Weekly savings goal</strong><small>A planning target, not money automatically moved</small></span>
+          <input class="bud-row-input" type="number" inputmode="decimal" placeholder="$200" id="bud-cfg-savings-goal" oninput="budSaveConfig()">
+        </label>
+        <div id="bud-payday-rows"></div>
+      </div>
+    </section>
+
+    <section class="budget-setup-section">
+      <div class="budget-setup-heading"><span>Weekly commitments</span><small>Amount per week</small></div>
+      <p class="budget-setup-help">Regular weekly costs such as rent or repayments. These are committed automatically each week.</p>
+      <div id="be-fix-weekly"></div>
+    </section>
+
+    <section class="budget-setup-section">
+      <div class="budget-setup-heading"><span>Bills &amp; subscriptions</span><small>Amount per billing cycle</small></div>
+      <p class="budget-setup-help">Monthly and yearly charges are converted to a weekly commitment. Open an item to manage its next date, status and payment account.</p>
+      <div id="be-fix-recur"></div>
+    </section>
+
+    <section class="budget-setup-section">
+      <div class="budget-setup-heading"><span>Spending categories</span><small>Weekly target</small></div>
+      <p class="budget-setup-help">Categories for purchases you record during the week. Leave a target blank when you only want to track actual spending.</p>
+      <div id="be-var"></div>
+    </section>
+
+    <section class="budget-setup-section" id="be-archived-section" style="display:none">
+      <div class="budget-setup-heading"><span>Archived</span><small>Kept in history</small></div>
+      <p class="budget-setup-help">Archived items no longer appear in weekly entry lists, but their saved history still counts.</p>
+      <div id="be-archived"></div>
+    </section>
   </div>
 </div>
 
