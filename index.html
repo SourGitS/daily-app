@@ -162,35 +162,41 @@
             </div>
             <button onclick="changeWeek(1)" id="week-next-btn" style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer">&#8250;</button>
           </div>
-          <div id="bud-hero-income" style="font-family:var(--font-num);font-size:42px;font-weight:800;color:#fff;letter-spacing:-.02em;line-height:1;margin-bottom:2px">$0</div>
-          <div style="font-size:10px;font-weight:700;letter-spacing:.12em;color:rgba(255,255,255,.6);margin-bottom:16px;text-transform:uppercase">Income this week</div>
+          <!-- The hero leads with ONE figure: what is actually still available to spend this
+               week. It used to lead with income — a number that never changes and that you
+               already know — and then stacked saved / left over / status / debts / net worth
+               under it, which is five competing figures answering four different questions.
+               Debts and net worth moved out entirely: they belong to Accounts and don't help
+               answer "what can I spend today". -->
+          <div id="bud-hero-avail" style="font-family:var(--font-num);font-size:42px;font-weight:800;color:#fff;letter-spacing:-.02em;line-height:1;margin-bottom:2px">$0</div>
+          <div id="bud-hero-avail-lbl" style="font-size:10px;font-weight:700;letter-spacing:.12em;color:rgba(255,255,255,.6);margin-bottom:4px;text-transform:uppercase">Available to spend</div>
+          <!-- Safe daily pace: the available figure divided by the days left. This is the
+               number that actually governs a decision at the shop counter. -->
+          <div id="bud-hero-pace" style="font-size:12px;font-weight:600;color:rgba(255,255,255,.75);margin-bottom:14px"></div>
+          <!-- SPENT / COMMITTED / SAVED, deliberately three separate words. "Spent" used to
+               include the accrued share of bills that had not actually been charged, which
+               made a yearly rego bill look like it left the account every week. Committed is
+               money reserved toward recurring costs; spent is money that has actually gone. -->
           <div style="display:flex;align-items:center;margin-bottom:10px">
+            <div style="flex:1;text-align:center">
+              <div id="bud-hero-spent" style="font-family:var(--font-num);font-size:20px;font-weight:700;color:#fff">$0</div>
+              <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.6);margin-top:2px;text-transform:uppercase">Spent</div>
+            </div>
+            <div style="width:1px;height:28px;background:rgba(255,255,255,.25)"></div>
+            <div style="flex:1;text-align:center">
+              <div id="bud-hero-committed" style="font-family:var(--font-num);font-size:20px;font-weight:700;color:#fff">$0</div>
+              <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.6);margin-top:2px;text-transform:uppercase">Committed</div>
+            </div>
+            <div style="width:1px;height:28px;background:rgba(255,255,255,.25)"></div>
             <div style="flex:1;text-align:center">
               <div id="bud-hero-saved" style="font-family:var(--font-num);font-size:20px;font-weight:700;color:#fff">$0</div>
               <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.6);margin-top:2px;text-transform:uppercase">Saved</div>
             </div>
-            <div style="width:1px;height:28px;background:rgba(255,255,255,.25)"></div>
-            <div style="flex:1;text-align:center">
-              <div id="bud-hero-leftover" style="font-family:var(--font-num);font-size:20px;font-weight:700;color:#fff">—</div>
-              <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.6);margin-top:2px;text-transform:uppercase">Left over</div>
-            </div>
-            <div style="width:1px;height:28px;background:rgba(255,255,255,.25)"></div>
-            <div style="flex:1;text-align:center">
-              <div id="week-status-pill-hero" style="background:rgba(255,255,255,.2);color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;display:inline-block">On track</div>
-            </div>
           </div>
-          <div style="display:flex;align-items:center;margin-bottom:14px">
-            <div style="flex:1;text-align:center">
-              <div id="bud-hero-cc" style="font-family:var(--font-num);font-size:20px;font-weight:700;color:#fff">$0</div>
-              <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.6);margin-top:2px;text-transform:uppercase">Debts</div>
-            </div>
-            <div style="width:1px;height:28px;background:rgba(255,255,255,.25)"></div>
-            <div style="flex:1;text-align:center">
-              <div id="bud-hero-net" style="font-family:var(--font-num);font-size:20px;font-weight:700;color:#fff">—</div>
-              <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.6);margin-top:2px;text-transform:uppercase">Net worth</div>
-            </div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:12px">
+            <div id="week-status-pill-hero" style="background:rgba(255,255,255,.2);color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;display:inline-block">On track</div>
+            <span id="bud-hero-income-note" style="font-size:11px;font-weight:600;color:rgba(255,255,255,.6)"></span>
           </div>
-          <button onclick="openAccounts()" style="width:100%;margin-bottom:12px;padding:8px;border-radius:20px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.15);color:#fff;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent">Manage Accounts →</button>
           <div style="height:4px;background:rgba(255,255,255,.2);border-radius:4px;overflow:hidden;margin-bottom:6px">
             <div id="budget-bar" style="height:100%;background:#fff;border-radius:4px;width:0%;transition:width .4s ease"></div>
           </div>
@@ -198,6 +204,8 @@
             <span id="budget-bar-label-l"></span>
             <span id="budget-bar-label-r"></span>
           </div>
+          <!-- Accounts is one small link now rather than half the hero. -->
+          <button onclick="openAccounts()" style="width:100%;margin-top:12px;padding:7px;border-radius:20px;border:1px solid rgba(255,255,255,.28);background:transparent;color:rgba(255,255,255,.85);font-size:11px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent">Accounts &amp; net worth →</button>
         </div>
 
         <div id="bud-due-banner"></div>

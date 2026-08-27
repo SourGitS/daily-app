@@ -7896,21 +7896,43 @@ function budRecalc(animate){
     else{pill.className='status-pill over';pill.textContent='🔴 Over budget';}
   }
 
-  // Hero summary card
-  $('bud-hero-income',  totalIncome>0?'$'+totalIncome.toFixed(0):'$0');
-  $('bud-hero-saved',   '$'+totalSaved.toFixed(0));
-  $('bud-hero-leftover',leftover!==null?(leftover>=0?'+$':'-$')+Math.abs(leftover).toFixed(0):'—');
-  // Debts + net worth now source from daily_accounts (assets − debts), not the old CC/savings logs.
-  const ccDebt=accountsDebtsTotal();
-  const assetsTot=accountsAssetsTotal();
-  const netSav=assetsTot-ccDebt;
-  $('bud-hero-cc', '$'+ccDebt.toFixed(0));
-  $('bud-hero-net', accounts.length?((netSav>=0?'+$':'-$')+Math.abs(netSav).toFixed(0)):'—');
+  // ── Hero: SPENT vs COMMITTED vs AVAILABLE ──
+  // "Spent" used to mean saved + fixed + variable all added together, with the fixed half
+  // including the prorated share of bills that had not actually been charged yet. That made a
+  // yearly rego bill look like money leaving the account every week, and blended four
+  // different kinds of money under one word.
+  //   spent      — money that has actually gone: variable spending (transactions or manual)
+  //   committed  — the accrued share of recurring/fixed costs, reserved but not necessarily
+  //                charged. Still deducted, because it is genuinely not available to spend.
+  //   saved      — deliberately allocated
+  //   available  — income minus all three; what is actually still spendable this week
+  // Proration is kept, exactly as the review asked; only the LABEL changes, so the smoothing
+  // stays useful without pretending an annual bill is charged weekly.
+  const spentNow   = totalVar;
+  const committed  = totalFixed;
+  const available  = totalIncome>0 ? (totalIncome - spentNow - committed - totalSaved) : null;
+  $('bud-hero-avail', available===null ? '$0' : (available>=0?'':'-')+'$'+Math.abs(available).toFixed(0));
+  $('bud-hero-spent', '$'+spentNow.toFixed(0));
+  $('bud-hero-committed', '$'+committed.toFixed(0));
+  $('bud-hero-saved', '$'+totalSaved.toFixed(0));
+  $('bud-hero-income-note', totalIncome>0?('of $'+totalIncome.toFixed(0)+' income'):'');
+  // Safe daily pace — the figure that actually governs a decision at the counter. Only shown
+  // for the CURRENT week: a past week has no "rest of the week" left to pace against.
+  const paceEl=document.getElementById('bud-hero-pace');
+  if(paceEl){
+    const daysLeft=(currentWeekIdx===0&&typeof varGoalDaysLeft==='function')?varGoalDaysLeft():0;
+    paceEl.textContent = (available!==null && available>0 && daysLeft>0)
+      ? '$'+Math.floor(available/daysLeft)+'/day for the '+(daysLeft===1?'rest of today':daysLeft+' days left')
+      : (available!==null && available<0 ? 'Over by $'+Math.abs(available).toFixed(0)+' this week' : '');
+  }
+  const availLbl=document.getElementById('bud-hero-avail-lbl');
+  if(availLbl) availLbl.textContent = (available!==null&&available<0) ? 'Over budget' : 'Available to spend';
   if(animate){
     const _el=id=>document.getElementById(id);
-    if(totalIncome>0) countUp(_el('bud-hero-income'), totalIncome);
+    if(available!==null&&available>0) countUp(_el('bud-hero-avail'), available);
+    countUp(_el('bud-hero-spent'), spentNow);
+    countUp(_el('bud-hero-committed'), committed);
     countUp(_el('bud-hero-saved'), totalSaved);
-    countUp(_el('bud-hero-cc'), ccDebt);
   }
   const heroPill=document.getElementById('week-status-pill-hero');
   if(heroPill){
@@ -7922,6 +7944,9 @@ function budRecalc(animate){
   const barL=document.getElementById('budget-bar-label-l');
   const barR=document.getElementById('budget-bar-label-r');
   if(totalIncome>0){
+    // "allocated", not "spent": totalOut is spent + committed + saved. Money put into savings
+    // has not been spent, and an accrued share of a yearly bill has not been charged — which
+    // is the conflation the hero above now separates into three named figures.
     const pct=Math.min(110,Math.round(totalOut/totalIncome*100));
     if(barEl){
       if(animate){
@@ -7932,7 +7957,7 @@ function budRecalc(animate){
         requestAnimationFrame(()=>{ barEl.classList.remove('budget-hero-bar-fill-animate'); barEl.style.transition='width 0.65s cubic-bezier(0.22,0.61,0.36,1)'; barEl.style.width=_tgt; });
       } else { barEl.style.width=Math.min(100,pct)+'%'; }
     }
-    if(barL) barL.textContent='$'+totalOut.toFixed(0)+' spent';
+    if(barL) barL.textContent='$'+totalOut.toFixed(0)+' allocated';
     if(barR) barR.textContent=pct+'% of income';
   } else {
     if(barEl) barEl.style.width='0%';
@@ -8118,7 +8143,7 @@ function renderMonth(){
     const pct=Math.min(110,Math.round(totalOut/totalIncome*100));
     const bc=pct>100?'var(--danger)':pct>85?'var(--warn)':'var(--success)';
     if(barEl){barEl.style.width=Math.min(100,pct)+'%';barEl.style.background=bc;}
-    if(barL) barL.textContent='$'+totalOut.toFixed(0)+' spent';
+    if(barL) barL.textContent='$'+totalOut.toFixed(0)+' allocated';
     if(barR) barR.textContent=pct+'% of income';
   } else {
     if(barEl) barEl.style.width='0%';
