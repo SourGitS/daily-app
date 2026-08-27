@@ -414,3 +414,118 @@
 .ldh-breathe{animation:gradient-breathe 3.5s ease-in-out infinite}
 .ldh-enter{animation:hero-enter 0.38s cubic-bezier(0.22,0.61,0.36,1) both,gradient-breathe 3.5s ease-in-out 0.38s infinite}
 .ex-card-enter{animation:card-enter 0.35s cubic-bezier(0.22,0.61,0.36,1) both}
+
+/* ══════════════════════════════════════════════════════════════════
+   LANDSCAPE PHONE — Log (the screen this mode is really for)
+   ══════════════════════════════════════════════════════════════════
+   A phone sitting sideways on a bench between sets. The controls you touch mid-workout —
+   session timer, rest timer, what's next — must never scroll away, and only the exercise
+   cards should carry the long scroll.
+   Reuses the EXISTING .log-cols / .log-left / .log-right markup (already in index.html and
+   already used by the ≥1024px layout) rather than adding a landscape-only DOM. The exercise
+   jump list is already rendered unconditionally by renderLog(); only its CSS was
+   desktop-gated. */
+@media (orientation:landscape) and (max-width:1023px) and (max-height:600px){
+
+  /* The panel itself stops scrolling; the two regions scroll independently, and only the
+     right-hand one has any real distance to travel. */
+  #view-log{overflow:hidden;display:flex;flex-direction:column}
+  #view-log .log-cols{display:flex;gap:12px;flex:1;min-height:0}
+  /* 38% keeps the day hero's title readable and the timer controls at a real tap size.
+     The column itself does NOT scroll: the day hero and the timer card are pinned, and only the
+     exercise jump list below them scrolls. That is the whole point of this layout — the timer
+     has to stay on screen while you move between sets, and a plain overflow:auto column would
+     let it scroll away the moment the jump list got long enough to overflow (it did: 412px of
+     content in a 328px column). */
+  #view-log .log-left{width:38%;max-width:290px;flex-shrink:0;overflow:hidden;
+    display:flex;flex-direction:column;min-height:0}
+  #view-log .log-left > #log-day-hero,
+  #view-log .log-left > #log-timer-card{flex:0 0 auto}
+  /* The jump list is the only part that gives: it takes the leftover height and scrolls inside
+     it, so a 20-exercise day still leaves the timer where it was. */
+  #view-log #desktop-exercise-nav{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  #view-log .log-right{flex:1;min-width:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    padding-right:2px;padding-bottom:24px}
+
+  /* Day hero compressed. Everything here comes out of chrome — padding, gaps, the day-name
+     type — never out of a control: the Start workout button and the day arrows keep full-size
+     touch targets, because those are the two things you actually press on this card.
+     Uncompressed it was 205px of a 328px column, leaving 23px for the jump list. */
+  #view-log .log-day-hero-card{padding:10px 12px !important;margin-bottom:8px !important}
+  #view-log .ldh-title{font-size:17px !important;line-height:1.15 !important}
+  #view-log .ldh-sub,#view-log .ldh-date{font-size:10px !important}
+  #view-log .ldh-nav{margin-bottom:6px !important}
+  #view-log .ldh-arrow{width:30px;height:30px}
+  #view-log .ldh-progress-row{font-size:11px !important;margin-bottom:4px !important}
+  /* 42px still clears the 44px-ish thumb target once its own padding is counted, and it is the
+     single most important control on the screen. */
+  #view-log .ldh-start{height:42px !important;margin-top:8px !important;font-size:14px !important}
+  #view-log .log-timer-card{margin-top:0}
+
+  /* The exercise jump list earns its place here — it is how you get between exercises without
+     scrolling the right pane by hand. Same component as desktop, tighter. */
+  /* Scoped under #view-log (two IDs) so it outranks the base `#desktop-exercise-nav{display:none}`
+     in budget-home.css, which loads AFTER this file and would otherwise win the tie. */
+  #view-log #desktop-exercise-nav{display:flex;flex-direction:column;gap:2px;margin-top:10px}
+  #view-log .den-item{padding:7px 9px;border-radius:8px;font-size:12px;cursor:pointer;color:var(--text);
+    display:flex;align-items:center;gap:7px}
+  #view-log .den-item.done{color:var(--green);text-decoration:line-through;opacity:.6}
+  /* No hover rule here on purpose — this is a touch device; :hover on touch sticks after a tap
+     and reads as a stuck selection. */
+
+  /* The rest timer stays in the left column IN FLOW (not fixed, not floating): it is one of the
+     controls that must stay visible while the right pane scrolls, and the left pane doesn't
+     scroll in practice. The desktop treatment turns it into a draggable floating panel, which
+     would cover exercise cards on a 390px-tall screen. */
+  #rt-bar{position:static;inset:auto;width:auto;min-width:0;margin:10px 0 0;box-shadow:none;cursor:default}
+  .log-timer-card{margin-top:10px}
+
+  /* Set rows keep full-size touch targets — the height saving comes from card chrome, never
+     from the controls you have to hit mid-set. */
+  .ex-card{padding:11px 12px;margin-bottom:8px}
+  .ex-name{font-size:15px}
+  .set-row{gap:7px;padding:5px 0}
+  .set-kg-input,.set-reps-input{height:38px;font-size:15px}
+  .set-check{width:34px;height:34px}
+  .set-warmup-btn{width:26px;height:26px}
+
+  /* Keyboard clearance. When a set input is focused the on-screen keyboard covers roughly the
+     bottom half of an already-short viewport, and the browser will only scroll the input into
+     the visible strip if there is somewhere to scroll TO. Without this the last exercise card
+     cannot be lifted above the keyboard at all. Ample bottom padding on the scrolling region
+     gives that room; scroll-margin keeps a focused row clear of the pane's top edge when the
+     browser scrolls it into view. */
+  #view-log .log-right{scroll-padding-bottom:60vh}
+  #view-log .ex-card{scroll-margin-top:8px;scroll-margin-bottom:60vh}
+  #view-log .set-row{scroll-margin-bottom:60vh}
+  #exercise-list{padding-bottom:55vh}
+
+  /* Save / notes / library sit after the exercise list in the right pane and stay reachable by
+     scrolling — they are end-of-session controls, not mid-set ones. */
+  .session-notes-textarea{min-height:60px}
+  #save-btn{padding:11px}
+
+  /* ── Fullscreen rest timer ──
+     Its portrait composition is a tall column: close, session label, giant time, laps, buttons.
+     At 390px tall the giant time alone is most of the viewport. Landscape splits it in two —
+     time on the left, controls on the right — so the primary figure and every control are
+     visible together without scrolling. */
+  #rt-fullscreen{
+    padding:8px 14px;
+    padding-left:calc(14px + env(safe-area-inset-left,0px));
+    padding-right:calc(14px + env(safe-area-inset-right,0px));
+    padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    grid-template-areas:"close close" "time controls" "laps controls";
+    grid-template-rows:auto 1fr auto;
+    column-gap:16px;align-items:center;
+  }
+  .rt-fs-close{grid-area:close;justify-self:start;align-self:start;width:36px;height:36px}
+  #rt-fs-session{grid-area:close;justify-self:center;align-self:start;margin-top:8px;font-size:12px}
+  #rt-fs-time{grid-area:time;font-size:60px;margin:0;align-self:center;justify-self:center;letter-spacing:-2px}
+  .rt-fs-btn-row{grid-area:controls;display:flex;flex-direction:column;gap:10px;width:100%;margin-bottom:0;align-self:center}
+  .rt-fs-btn{height:48px;font-size:15px;flex:0 0 auto}
+  #rt-fs-laps{grid-area:laps;width:100%;max-height:88px;margin-top:0;align-self:end}
+  .rt-lap-row{padding:6px 0;font-size:12px}
+}

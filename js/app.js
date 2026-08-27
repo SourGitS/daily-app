@@ -2007,19 +2007,48 @@ function refreshHomeTab(){
   if(fb){ fb.style.transition='opacity .2s ease'; fb.style.opacity='.5'; setTimeout(()=>fb.style.opacity='1',300); }
 }
 
+// ── Landscape phone ───────────────────────────────────────────────
+// ONE definition of "is this a phone on its side", matched to the CSS breakpoint character for
+// character. Everything that needs to know asks this rather than re-deriving it from
+// innerWidth > innerHeight, which would disagree with the stylesheet at the edges (a desktop
+// monitor is "landscape" by that test, and a portrait tablet is not).
+// Nothing about app STATE depends on it — it only ever affects measured geometry that CSS
+// cannot express, which today is the nav pill.
+const LANDSCAPE_MQ=(typeof window.matchMedia==='function')
+  ? window.matchMedia('(orientation:landscape) and (max-width:1023px) and (max-height:600px)')
+  : null;
+function isLandscapePhone(){ return !!(LANDSCAPE_MQ && LANDSCAPE_MQ.matches); }
 function updateNavPill(v){
   const idx=NAV_ORDER.indexOf(v);
   const n=NAV_ORDER.length;
   const pill=document.getElementById('nav-pill');
   if(pill){
-    if(idx<0){ pill.style.left=(idx*25)+'%'; pill.style.width='25%'; } // off-screen on overlay views
-    else {
-      // Every tab's pill has a small side margin; tabs 1 & 4 get extra inset on their OUTER
-      // edge so the pill curves inward and never touches the left/right screen edge.
-      const base=4, outer=10;
-      const li=base+(idx===0?outer:0), ri=base+(idx===n-1?outer:0);
-      pill.style.left='calc('+(idx*25)+'% + '+li+'px)';
-      pill.style.width='calc(25% - '+(li+ri)+'px)';
+    // On the landscape rail the tabs stack vertically, so the pill has to travel on the other
+    // axis. It is positioned from the button's MEASURED offsetTop/offsetHeight rather than an
+    // nth-of-4 percentage: the rail is centred in whatever height is left over, so the buttons
+    // do not start at 0 and are not a fixed fraction of the rail.
+    if(isLandscapePhone()){
+      const btn=idx>=0?document.querySelector('.nav-btn[data-view="'+v+'"]'):null;
+      if(btn){
+        pill.style.left=''; pill.style.width='';
+        pill.style.top=(btn.offsetTop+3)+'px';
+        pill.style.height=Math.max(0,btn.offsetHeight-6)+'px';
+        pill.style.opacity='1';
+      } else {
+        pill.style.opacity='0';   // overlay view: no tab is active
+      }
+    } else {
+      // Portrait/desktop: clear anything the landscape branch set, then the original logic.
+      pill.style.top=''; pill.style.height=''; pill.style.opacity='';
+      if(idx<0){ pill.style.left=(idx*25)+'%'; pill.style.width='25%'; } // off-screen on overlay views
+      else {
+        // Every tab's pill has a small side margin; tabs 1 & 4 get extra inset on their OUTER
+        // edge so the pill curves inward and never touches the left/right screen edge.
+        const base=4, outer=10;
+        const li=base+(idx===0?outer:0), ri=base+(idx===n-1?outer:0);
+        pill.style.left='calc('+(idx*25)+'% + '+li+'px)';
+        pill.style.width='calc(25% - '+(li+ri)+'px)';
+      }
     }
   }
   // Accent underline: measured from the active button (offsetLeft/offsetWidth), centred on the
@@ -2029,7 +2058,9 @@ function updateNavPill(v){
   const ind=document.getElementById('nav-indicator');
   if(ind){
     const btn=document.querySelector('.nav-btn[data-view="'+v+'"]');
-    if(idx>=0 && btn){
+    // CSS already hides the underline on the rail; skipping the measurement too keeps it from
+    // writing stale horizontal geometry that would flash on the way back to portrait.
+    if(idx>=0 && btn && !isLandscapePhone()){
       const w=btn.offsetWidth*0.4;
       ind.style.left=(btn.offsetLeft+(btn.offsetWidth-w)/2)+'px';
       ind.style.width=w+'px';
@@ -2041,17 +2072,27 @@ function updateNavPill(v){
 }
 // Button geometry shifts on resize/rotation — re-measure the underline for the current view.
 window.addEventListener('resize',function(){ if(typeof S!=='undefined'&&S.view) updateNavPill(S.view); });
-// Home's card markup differs across the 1024px breakpoint (flat list on mobile, two flex
-// columns on desktop), so it has to be rebuilt when the viewport crosses it. Only on an
-// actual crossing — re-rendering on every resize tick would fight the enter animation.
+// Home's card markup differs by layout — a flat list in the portrait stack, a two-column grid
+// on desktop AND on the landscape rail — so it has to be rebuilt when the viewport crosses
+// either boundary. Rotating a phone crosses the landscape one without going anywhere near
+// 1024px, so watching only the desktop cutoff left landscape showing the portrait list.
+// Only on an ACTUAL crossing: re-rendering on every resize tick would fight the card enter
+// animation, and a rotation must not otherwise disturb the screen (entered values, timers and
+// scroll position all have to survive it).
 (function(){
-  let wasDesktop=window.innerWidth>=1024;
-  window.addEventListener('resize',function(){
-    const isDesktop=window.innerWidth>=1024;
-    if(isDesktop===wasDesktop) return;
-    wasDesktop=isDesktop;
+  const layoutKind=()=> window.innerWidth>=1024 ? 'desktop' : (isLandscapePhone() ? 'landscape' : 'portrait');
+  let was=layoutKind();
+  function onGeometryChange(){
+    const now=layoutKind();
+    if(now===was) return;
+    was=now;
     if(typeof S!=='undefined'&&S.view==='home'&&typeof renderHome==='function') renderHome();
-  });
+  }
+  window.addEventListener('resize',onGeometryChange);
+  // orientationchange can fire before the new viewport metrics settle on iOS, so the resize
+  // that follows it is what actually does the work; this is a belt-and-braces second chance
+  // for browsers that fire one without the other.
+  window.addEventListener('orientationchange',()=>setTimeout(onGeometryChange,150));
 })();
 // ── Weekday wordmark tint ─────────────────────────────────────────
 // Publishes --day-color (one colour per weekday when dynamic colours are on, else the static
@@ -10717,15 +10758,18 @@ function renderHome(){
   // media query, where the grid lives.
   const _wide=new Set(homeLayout().wide);
   const _cardHtml=k=>'<div class="home-card'+(_wide.has(k)?' home-card-wide':'')+'" data-card-id="'+k+'">'+homeCards[k]+'</div>';
-  if(window.innerWidth>=1024){
-    // Desktop: ONE grid holding every card in saved order, so visual order == DOM order.
-    // This replaced a column-major layout (cards dealt alternately into two flex columns)
-    // that packed more tightly but made the visual order unreadable from the DOM — which is
-    // why saveHomeOrder() used to refuse to run on desktop and drag-to-reorder was mobile-only.
-    // Ordering has to win over packing for reordering to work at all: in a packed/masonry
-    // layout a dragged card can't land where it was dropped. The cost is that a short card
-    // beside a tall one leaves a gap rather than the columns finishing flush.
+  if(window.innerWidth>=1024 || isLandscapePhone()){
+    // Desktop AND landscape phone: ONE grid holding every card in saved order, so visual order
+    // == DOM order. This replaced a column-major layout (cards dealt alternately into two flex
+    // columns) that packed more tightly but made the visual order unreadable from the DOM —
+    // which is why saveHomeOrder() used to refuse to run on desktop and drag-to-reorder was
+    // mobile-only. Ordering has to win over packing for reordering to work at all: in a
+    // packed/masonry layout a dragged card can't land where it was dropped. The cost is that a
+    // short card beside a tall one leaves a gap rather than the columns finishing flush.
     // Weather is no longer pulled out and pinned last — it's an ordinary ordered card.
+    // Landscape uses the SAME wrapper and the same two-column rule rather than a parallel
+    // layout: a phone on its side has desktop's problem (width to spend, order to preserve)
+    // at phone scale, and .home-card-wide has to keep spanning both columns in both.
     wrap.innerHTML='<div class="home-grid-cols">'+_homeIds.map(_cardHtml).join('')+'</div>';
   } else {
     wrap.innerHTML=_homeIds.map(_cardHtml).join('');
@@ -11060,7 +11104,10 @@ function applyHomeCardCaps(){
     const old=w.querySelector(':scope > .home-card-more'); if(old) old.remove();
     w.classList.remove('home-card-capped','home-card-hasmore');
     const id=w.dataset.cardId;
-    if(window.innerWidth<1024 || HOME_CAPPABLE.indexOf(id)<0) return;
+    // Caps apply wherever cards share a row — desktop and the landscape rail layout alike.
+    // In the portrait single-column stack a tall card costs nothing but its own scroll, so
+    // there is nothing to cap.
+    if((window.innerWidth<1024 && !isLandscapePhone()) || HOME_CAPPABLE.indexOf(id)<0) return;
     const inner=w.firstElementChild; if(!inner) return;
     const expanded=_homeExpanded.has(id);
     // Measure uncapped, so a card that only just fits keeps no button at all.
@@ -13899,15 +13946,7 @@ function kitPantryDeleteCustom(id){
 // "orientation":"portrait" only covers Android/installed PWAs. This overlay is the real
 // enforcement. Width-guarded to 1024 so the desktop layout (always landscape on a monitor)
 // is never blocked — only phone-width viewports rotated to landscape get the prompt.
-function checkOrientation(){
-  const overlay=document.getElementById('rotate-overlay');
-  if(!overlay) return;
-  const landscape = window.innerWidth > window.innerHeight && window.innerWidth < 1024;
-  overlay.style.display = landscape ? 'flex' : 'none';
-}
-window.addEventListener('resize', checkOrientation);
-window.addEventListener('orientationchange', checkOrientation);
-checkOrientation(); // run on boot
+
 
 // ── Boot ──────────────────────────────────────────────────────────
 // Wrapped so a single render/init error surfaces a visible message instead of
@@ -14020,6 +14059,17 @@ function syncNavPadding(){
   var nav=document.getElementById('bottom-nav');
   var main=document.getElementById('app-main');
   if(!nav||!main) return;
+  // In landscape the nav is a full-height rail down the LEFT side, so its height is the whole
+  // viewport and there is nothing along the bottom edge to clear. Measuring it here wrote the
+  // rail's ~390px as bottom padding, which pushed #app-main past its parent, made its height
+  // indefinite, and collapsed #swipe-deck (height:100%) to zero — every panel lost its height
+  // and the Log columns measured 0 tall. The rail's WIDTH is handled in CSS by #app's
+  // padding-left; nothing is needed here.
+  if(typeof isLandscapePhone==='function' && isLandscapePhone()){
+    main.style.paddingBottom='';
+    document.documentElement.style.removeProperty('--nav-height');
+    return;
+  }
   var h=Math.round(nav.getBoundingClientRect().height);
   if(h>0){
     main.style.paddingBottom=Math.max(h+12, 88)+'px';

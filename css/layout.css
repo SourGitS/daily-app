@@ -111,3 +111,106 @@
 @keyframes nav-bounce{0%{transform:scale(1)}35%{transform:scale(0.78)}70%{transform:scale(1.15)}100%{transform:scale(1)}}
 .nav-icon-bounce{animation:nav-bounce 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards}
 
+
+/* ══════════════════════════════════════════════════════════════════
+   LANDSCAPE PHONE
+   ══════════════════════════════════════════════════════════════════
+   One breakpoint for the whole app: landscape orientation, below the desktop cutoff, AND
+   short. All three conditions matter — orientation alone would catch a desktop monitor, and
+   width alone would catch a portrait tablet. max-height is what actually identifies "a phone
+   on its side", which is the case this layout is for.
+
+   The scarce resource here is HEIGHT, not width: ~360–430px of it. So chrome gets shorter and
+   moves to the side, and the extra width is spent on grouping rather than on more simultaneous
+   information.
+
+   #app keeps its position:fixed; inset:0 shell — that is the iOS cold-launch fix (see
+   CLAUDE.md), and dvh units must not come back. Landscape introduces LEFT/RIGHT safe areas
+   (the notch sits on one side), which portrait never had to deal with, so those insets are
+   handled here rather than assumed to be zero. */
+@media (orientation:landscape) and (max-width:1023px) and (max-height:600px){
+
+  /* Declared on :root so both #app (which pads itself clear of the rail) and #bottom-nav
+     (which IS the rail) read the same number — they are siblings, so a value set on one of
+     them would not reach the other. */
+  :root{--rail-w:60px}
+
+  /* The 480px cap is a portrait phone measure; in landscape it would letterbox an 844px screen
+     into a 480px column. The rail's width is padded off the left instead, so #app-main's own
+     scrolling children never sit under it. */
+  #app{
+    max-width:none;
+    padding-left:calc(var(--rail-w) + env(safe-area-inset-left,0px));
+    padding-right:env(safe-area-inset-right,0px);
+  }
+
+  /* #app-main is a flex item with the default min-height:auto, which refuses to shrink below
+     its content's min-content height. In portrait there is enough room that this never binds;
+     at 390px tall the panels' content pushed it to 402px inside a 352px slot, so it overflowed
+     its parent — and an overflowing flex item's height stops being DEFINITE, which in turn made
+     #swipe-deck's height:100% resolve against nothing and collapse the deck to 0. Every panel
+     then had no height and the Log columns measured 0 tall.
+     min-height:0 lets flex size it properly again, which restores the whole percentage chain
+     below it. */
+  #app-main{min-height:0}
+
+  /* ── Header: shorter, and the wordmark gives way to the controls ── */
+  /* 56px of header out of 360px of screen is 15% of the viewport spent on a logo. Halved, with
+     the profile and menu controls kept at a full 34px touch target — the height comes out of
+     padding and the wordmark, never out of something you have to hit. */
+  #app-header{min-height:38px;padding:0 12px}
+  #header-title .wordmark-img{height:16px}
+  #app-header #header-avatar,#app-header #header-menu{width:32px;height:32px}
+
+  /* ── Bottom nav becomes a left rail ── */
+  /* Same markup, same buttons, same badges — only the axis changes. A bottom bar costs ~64px
+     of the 360px height; on the left it costs width, which is the resource there is plenty of.
+     Fixed to the viewport (it sits outside #app in the DOM, so #app's padding does not move
+     it) and padded for the left safe area so it clears a landscape notch. */
+  #bottom-nav{
+    flex-direction:column;
+    justify-content:center;
+    gap:2px;
+    top:0;bottom:0;left:0;right:auto;
+    width:calc(var(--rail-w) + env(safe-area-inset-left,0px));
+    max-width:none;height:auto;
+    padding-left:env(safe-area-inset-left,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    border-top:none;
+    border-right:1px solid var(--border);
+  }
+  .nav-btn{
+    flex:0 0 auto;
+    min-height:52px;
+    padding:6px 2px;
+    font-size:9px;
+    gap:3px;
+    border-radius:12px;
+    margin:0 5px;
+  }
+  .nav-btn svg{width:21px;height:21px}
+  /* The pill and the sliding underline are both horizontal-axis effects driven by measured
+     button geometry (updateNavPill). On a vertical rail the underline has no meaningful place,
+     so it is hidden and the pill is positioned by the same function using top/height instead —
+     see updateNavPill's landscape branch. */
+  #nav-indicator{display:none}
+  #nav-pill{left:5px;right:5px;width:auto;bottom:auto;border-radius:12px;
+    transition:top 0.25s cubic-bezier(0.4,0,0.2,1),height 0.25s cubic-bezier(0.4,0,0.2,1),background 0.3s ease}
+  /* Badge sits top-right of the icon rather than beside a centred label. */
+  .nav-badge{top:4px;left:auto;right:9px}
+
+  /* ── Panels ── */
+  /* The bottom padding existed to clear the bottom bar. With the bar gone from the bottom edge
+     there is nothing to clear, and reclaiming it is most of the height this layout gains. */
+  .swipe-panel,#app-main>section{
+    padding:10px 14px;
+    padding-bottom:calc(14px + env(safe-area-inset-bottom,0px));
+  }
+  /* The floating "+" and the shopping add-bar are anchored to the bottom bar's old position. */
+  .kit-fab{bottom:calc(14px + env(safe-area-inset-bottom,0px));right:calc(14px + env(safe-area-inset-right,0px));
+    width:48px;height:48px;font-size:24px}
+  .kitshop-addbar{left:calc(var(--rail-w) + env(safe-area-inset-left,0px));right:0;max-width:none;
+    bottom:0;padding:8px 14px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px))}
+  /* The scroll fade is tuned to the bottom bar's height; at 360px tall it eats real content. */
+  #scroll-fade{display:none}
+}
