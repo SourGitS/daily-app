@@ -297,8 +297,15 @@
             <div class="sec-label" style="margin-bottom:6px">&#128221; Notes</div>
             <textarea class="bud-notes-textarea" id="week-notes" placeholder="What happened this week?" oninput="budSaveCurrentWeek()"></textarea>
           </div>
-          <button onclick="budSaveWeekExplicit()" style="width:100%;padding:12px;background:var(--header);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer" id="save-week-btn">Save week</button>
-          <div id="save-week-msg" style="display:none;text-align:center;color:var(--green);font-size:13px;font-weight:500;padding:8px 0">Saved &#10003;</div>
+          <!-- Was "Save week", beside a week that already autosaves every keystroke — so the
+               button looked like it did the saving, and its actual job was invisible. It does
+               not lock anything either (past weeks stay editable via "Edit week"), so calling
+               it a lock would be wrong too. What it really does: marks the week reviewed, which
+               clears the Budget reminder badge and releases the week-in-review summary. Named
+               and explained for that. -->
+          <button onclick="budSaveWeekExplicit()" style="width:100%;padding:12px;background:var(--header);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer" id="save-week-btn">Finish week</button>
+          <div id="save-week-hint" style="text-align:center;color:var(--muted);font-size:11px;line-height:1.45;padding:8px 4px 0">Your entries save automatically. Finishing marks the week reviewed — it clears the Budget reminder and unlocks this week's summary. You can still edit it afterwards.</div>
+          <div id="save-week-msg" style="display:none;text-align:center;color:var(--green);font-size:13px;font-weight:500;padding:8px 0">Week finished &#10003;</div>
         </div>
 
         <div id="prev-weeks-section"></div>
@@ -730,6 +737,8 @@
       <label class="txn-lbl">Where / what <span class="txn-opt">optional</span></label>
       <input class="modal-input" type="text" id="txn-merchant" placeholder="e.g. Woolworths" autocomplete="off">
       <div id="txn-recent-merchants" class="txn-recent"></div>
+      <label class="txn-lbl">Paid with <span class="txn-opt">optional</span></label>
+      <select class="modal-input" id="txn-account"></select>
       <label class="txn-lbl">Date</label>
       <input class="modal-input" type="date" id="txn-date">
       <label class="txn-lbl">Note <span class="txn-opt">optional</span></label>

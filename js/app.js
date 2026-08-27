@@ -7301,6 +7301,7 @@ function openTxnModal(opts){
   document.getElementById('txn-merchant').value = existing?(existing.merchant||''):'';
   document.getElementById('txn-note').value = existing?(existing.note||''):'';
   document.getElementById('txn-date').value = existing?existing.date:(o.date||getLocalDate());
+  txnRenderAccounts(existing?existing.acctId:null);
   document.getElementById('txn-err').textContent='';
   document.getElementById('txn-delete-btn').classList.toggle('hidden', !existing);
   document.getElementById('txn-save-btn').textContent = existing?'Save changes':'Save expense';
@@ -7339,6 +7340,23 @@ function txnRenderMerchants(){
     : '';
 }
 function txnPickMerchant(m){ const el=document.getElementById('txn-merchant'); if(el) el.value=m; }
+// Which account paid. Recorded ONLY — it deliberately does not move the account's balance.
+// Doing that safely would mean modelling transfers and card repayments too, and without those
+// a spend would decrement an account that a later manual balance update then decrements again,
+// so cash and debt figures would drift apart in a way that is very hard to unpick. This is the
+// read-only half the review asked for: it enables "what went on the Visa this week" and lets
+// you eyeball tracked spending against a card's real balance movement.
+function txnRenderAccounts(selectedId){
+  const sel=document.getElementById('txn-account'); if(!sel) return;
+  const list=(typeof accounts!=='undefined'&&Array.isArray(accounts))?accounts:[];
+  if(!list.length){ sel.innerHTML='<option value="">No accounts set up</option>'; sel.disabled=true; return; }
+  sel.disabled=false;
+  // Default to the account used most recently, since it is nearly always the same card.
+  const lastUsed=[...txnData].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).find(t=>t&&t.acctId);
+  const want=selectedId!==undefined&&selectedId!==null?selectedId:(lastUsed?lastUsed.acctId:'');
+  sel.innerHTML='<option value="">Not recorded</option>'+
+    list.map(a=>'<option value="'+_catEsc(a.id)+'"'+(a.id===want?' selected':'')+'>'+_catEscHtml(a.name||'Account')+'</option>').join('');
+}
 function txnSave(){
   const amtRaw=(document.getElementById('txn-amount').value||'').replace(/[^0-9.\-]/g,'');
   const amt=parseFloat(amtRaw);
@@ -7348,11 +7366,12 @@ function txnSave(){
   const date=document.getElementById('txn-date').value||getLocalDate();
   const merchant=(document.getElementById('txn-merchant').value||'').trim();
   const note=(document.getElementById('txn-note').value||'').trim();
+  const acctId=(document.getElementById('txn-account')||{}).value||'';
   if(_txnEditId){
     const t=txnData.find(x=>x&&x.id===_txnEditId);
-    if(t){ t.amount=amt; t.catId=_txnCatId; t.date=date; t.merchant=merchant; t.note=note; }
+    if(t){ t.amount=amt; t.catId=_txnCatId; t.date=date; t.merchant=merchant; t.note=note; t.acctId=acctId; }
   } else {
-    txnData.push({id:genTxnId(), date, catId:_txnCatId, amount:amt, merchant, note, createdAt:Date.now()});
+    txnData.push({id:genTxnId(), date, catId:_txnCatId, amount:amt, merchant, note, acctId, createdAt:Date.now()});
   }
   saveTxns();
   closeTxnModal();
@@ -7448,7 +7467,9 @@ function renderVariableCard(data,isCur){
         '<button type="button" class="txn-item" data-id="'+_catEsc(t.id)+'" onclick="openTxnModal({id:this.dataset.id})">'+
           '<span class="txn-item-l">'+
             '<span class="txn-item-name">'+(t.merchant?_catEscHtml(t.merchant):'Expense')+'</span>'+
-            '<span class="txn-item-meta">'+fmtDate(t.date)+(t.note?' · '+_catEscHtml(t.note):'')+'</span>'+
+            '<span class="txn-item-meta">'+fmtDate(t.date)+
+              (t.acctId?' · '+_catEscHtml(((accounts||[]).find(a=>a&&a.id===t.acctId)||{}).name||''):'')+
+              (t.note?' · '+_catEscHtml(t.note):'')+'</span>'+
           '</span>'+
           '<span class="txn-item-amt">'+fmtMoneyExact(parseFloat(t.amount)||0)+'</span>'+
         '</button>').join('')+
@@ -7642,7 +7663,15 @@ function renderBudgetTab(){
 
   const saveBtn=document.getElementById('save-week-btn');
   const saveMsg=document.getElementById('save-week-msg');
-  if(saveBtn) saveBtn.style.display=editable?'block':'none';
+  const saveHint=document.getElementById('save-week-hint');
+  if(saveBtn){
+    saveBtn.style.display=editable?'block':'none';
+    // A week already marked reviewed says so, rather than offering the same button again as
+    // though nothing had happened.
+    const done=!!(data&&data.saved);
+    saveBtn.textContent=done?'✓ Week finished — tap to update':'Finish week';
+  }
+  if(saveHint) saveHint.style.display=editable?'block':'none';
   if(saveMsg) saveMsg.style.display='none';
 
   budRecalc(true);
@@ -8031,10 +8060,10 @@ function budSaveWeekExplicit(){
   budSaveCurrentWeek();
   const btn=document.getElementById('save-week-btn');
   const msg=document.getElementById('save-week-msg');
-  if(btn){btn.textContent='✓ Saved!';btn.style.background='var(--accent)';}
+  if(btn){btn.textContent='✓ Week finished';btn.style.background='var(--accent)';}
   if(msg) msg.style.display='block';
   setTimeout(()=>{
-    if(btn){btn.textContent='Save week';btn.style.background='';}
+    if(btn){btn.textContent='Finish week';btn.style.background='';}
     if(msg) msg.style.display='none';
   },1800);
 }
