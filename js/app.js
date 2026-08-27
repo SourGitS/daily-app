@@ -11107,8 +11107,13 @@ function renderAccountsPage(){
     const col=nw>=0?'var(--success)':'var(--danger)';
     nwEl.innerHTML=
       '<div class="card" style="text-align:center;padding:20px 16px">'+
-        '<div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Net worth</div>'+
-        '<div style="font-family:var(--font-num);font-size:40px;font-weight:800;line-height:1;color:'+col+'">'+fmtMoney(nw)+'</div>'+
+        '<div class="acct-nw-label">Net worth</div>'+
+        // Sizing moved to .acct-nw-amt so this figure and the payoff card's can be kept equal
+        // from one place. Inline font-size beats a stylesheet without !important, so the two
+        // had silently diverged in BOTH directions — 40 vs 34 on mobile, and 40 vs 52 on
+        // desktop, where the payoff rule carries !important. Only the colour stays inline,
+        // because it's semantic and computed per render.
+        '<div class="acct-nw-amt" style="color:'+col+'">'+fmtMoney(nw)+'</div>'+
         '<div style="font-size:12px;color:var(--muted);margin-top:8px">'+fmtMoney(assets)+' assets · '+fmtMoney(debts)+' debts</div>'+
       '</div>';
   }
@@ -11138,10 +11143,16 @@ function renderAccountsPage(){
         if(isDebt){
           const dueTxt=acctDueText(a);
           stmt=
-            '<div class="bud-row" style="border-bottom:none;padding-top:6px">'+
-              '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Track statement due date</div></div>'+
-              '<label class="toggle-switch"><input type="checkbox"'+(a.tracksStatement?' checked':'')+' onchange="accountToggleStatement(\''+a.id+'\',this.checked)"><span class="toggle-slider"></span></label>'+
-            '</div>'+
+            // The TOGGLE is configuration — set once per account, so it lives behind Edit with
+            // the other set-once fields. The statement balance, due date and "mark paid" below
+            // are not: they're the monthly cycle of actually using the account, and hiding
+            // those behind an edit mode would mean toggling into config every statement.
+            (_acctEditMode
+              ? '<div class="bud-row" style="border-bottom:none;padding-top:6px">'+
+                  '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Track statement due date</div></div>'+
+                  '<label class="toggle-switch"><input type="checkbox"'+(a.tracksStatement?' checked':'')+' onchange="accountToggleStatement(\''+a.id+'\',this.checked)"><span class="toggle-slider"></span></label>'+
+                '</div>'
+              : '')+
             (a.tracksStatement?
               // Wrapped so the three controls can sit inline on a wide screen (see
               // .acct-stmt-row); on mobile they stay stacked exactly as before.
@@ -11161,7 +11172,7 @@ function renderAccountsPage(){
         // Category picker — one optional select per account. "Unset" is a real option, and the
         // default, so existing accounts are untouched until deliberately categorised.
         const catList=ACCT_CATEGORIES[isDebt?'debt':'asset'];
-        const catRow=
+        const catRow=!_acctEditMode ? '' :
           '<div class="bud-row" style="border-bottom:none;padding-top:6px">'+
             '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Category</div></div>'+
             '<select class="bud-row-input" style="text-align:left" onchange="accountSetCategory(\''+a.id+'\',this.value)">'+
@@ -11181,6 +11192,11 @@ function renderAccountsPage(){
           // move up directly under the balance, the input stays put.
           if(util!==null){
             const uc=acctUtilColour(util);
+            // Over 100% is a real state, not bad input — a card can be over its limit through
+            // fees or an overlimit purchase. The bar physically cannot show it (it clamps at
+            // full), so the caption has to say it outright rather than letting a full bar read
+            // as merely "at the limit".
+            const over=util>100;
             utilStrip=
               '<div class="acct-util-strip">'+
                 '<div class="acct-util-head">'+
@@ -11188,11 +11204,14 @@ function renderAccountsPage(){
                   '<span class="acct-util-pct" style="color:'+uc+'">'+util.toFixed(0)+'%</span>'+
                 '</div>'+
                 '<div class="card-bar"><div class="card-bar-fill" style="width:'+Math.min(100,util).toFixed(1)+'%;background:'+uc+'"></div></div>'+
-                '<div class="acct-util-cap">'+fmtMoney(parseFloat(a.current)||0)+' of '+fmtMoney(parseFloat(a.limit)||0)+
-                  (util>=80?' · high — this hurts your credit score':(util>=30?' · above the 30% healthy mark':''))+'</div>'+
+                '<div class="acct-util-cap"'+(over?' style="color:var(--danger);font-weight:700"':'')+'>'+
+                  fmtMoney(parseFloat(a.current)||0)+' of '+fmtMoney(parseFloat(a.limit)||0)+
+                  (over?' · over the limit by '+fmtMoney((parseFloat(a.current)||0)-(parseFloat(a.limit)||0))
+                       :(util>=80?' · high — this hurts your credit score'
+                       :(util>=30?' · above the 30% healthy mark':'')))+'</div>'+
               '</div>';
           }
-          limitRow=
+          limitRow=!_acctEditMode ? '' :
             '<div class="bud-row" style="border-bottom:none;padding-top:6px">'+
               '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Credit limit</div>'+
                 (util!==null?'':'<div class="bud-row-budget">Optional — shows how much of it you are using</div>')+
@@ -11202,7 +11221,7 @@ function renderAccountsPage(){
         }
         // Assets can be flagged as a savers account: still net worth, held out of the payoff total.
         let saverRow='';
-        if(!isDebt){
+        if(!isDebt && _acctEditMode){
           saverRow=
             '<div class="bud-row" style="border-bottom:none;padding-top:6px">'+
               '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Savers account</div>'+
@@ -11239,7 +11258,14 @@ function renderAccountsPage(){
           catRow+
           limitRow+
           saverRow+
-          (isDebt?'<div class="acct-note" style="font-size:12px;color:var(--muted);line-height:1.45;padding:2px 2px 4px">This is the total currently owed — a separate running debt, not counted in your weekly leftover. Enter card purchases in your Variable spending categories as usual, same as cash.</div>':'')+
+          // Onboarding prose, not a permanent label. It rendered once per debt account on every
+          // visit — 76px each, growing with every debt added — to explain something you only
+          // need told once. Now it appears while a debt has no logged history (genuinely new,
+          // so the explanation is doing work) and in edit mode, where you're configuring the
+          // account and the distinction is actually relevant again.
+          (isDebt&&(_acctEditMode||!(a.history&&a.history.length))
+            ?'<div class="acct-note" style="font-size:12px;color:var(--muted);line-height:1.45;padding:2px 2px 4px">This is the total currently owed — a separate running debt, not counted in your weekly leftover. Enter card purchases in your Variable spending categories as usual, same as cash.</div>'
+            :'')+
           stmt+
         '</div>';
       }).join('');

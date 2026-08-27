@@ -579,7 +579,7 @@
   .acct-payoff-label, .acct-payoff-aside{flex:1 1 0}
   #accounts-networth .card>div:nth-child(2), .acct-payoff-fig{flex:0 0 auto}
   #accounts-networth .card>div:nth-child(3){text-align:right}
-  .acct-payoff-amt{font-size:52px !important}
+  .acct-nw-amt,.acct-payoff-amt{font-size:52px !important}
   .acct-payoff-sub{margin-top:4px !important}
   /* The note's divider is a top border in the stacked layout; side by side it needs no rule. */
   .acct-payoff-note{border-top:none !important;padding-top:0 !important;margin-top:6px !important}
@@ -711,8 +711,12 @@
 
 /* ── Debt payoff position card (Accounts) ── */
 .acct-payoff-card{text-align:center;padding:18px 16px;margin-bottom:12px}
-.acct-payoff-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-.acct-payoff-amt{font-family:var(--font-num);font-size:34px;font-weight:800;line-height:1;letter-spacing:-.02em}
+/* Net worth and payoff are two halves of one answer, so their labels and figures are sized
+   together here rather than one inline and one in CSS — which is how they drifted to 40 vs 34
+   on mobile and 40 vs 52 on desktop while a comment claimed they matched. Semantic colour, not
+   size, is what separates them. */
+.acct-nw-label,.acct-payoff-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.acct-nw-amt,.acct-payoff-amt{font-family:var(--font-num);font-size:40px;font-weight:800;line-height:1;letter-spacing:-.02em}
 .acct-payoff-sub{font-size:12px;font-weight:600;color:var(--muted);margin-top:6px}
 .acct-payoff-math{font-family:var(--font-num);font-size:11px;font-weight:600;color:var(--muted);opacity:.8;margin-top:8px}
 .acct-payoff-note{font-size:11px;color:var(--muted);line-height:1.45;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
