@@ -532,6 +532,13 @@ if(firebaseReady){
     syncBlobListen(user.uid,'accentFavourites','daily_accent_favourites',()=>{ if(S.view==='settings'&&typeof renderDayColorPickers==='function') renderDayColorPickers(); });
     syncBlobListen(user.uid,'appTheme','wt_theme',()=>{ S.theme=localStorage.getItem('wt_theme')||S.theme; if(typeof applyTheme==='function') applyTheme(); });
     syncBlobListen(user.uid,'swaps','wt_swaps',()=>{ try{ S.swaps=JSON.parse(localStorage.getItem('wt_swaps')||'{}')||{}; }catch(e){} if(S.view==='log'&&typeof renderLog==='function') renderLog(); });
+    // Transactions are a flat list, so they sync as one blob rather than per-week like
+    // budgetData. Re-read into memory and re-render, since every variable total is derived
+    // from them — a stale in-memory copy would show the wrong week total after a remote edit.
+    syncBlobListen(user.uid,'transactions','daily_transactions',()=>{
+      try{ txnData=loadTxns(); }catch(e){}
+      if(typeof txnAfterChange==='function') txnAfterChange();
+    });
     syncBlobListen(user.uid,'dayCustom','wt_day_custom',()=>{ try{ dayCustom=JSON.parse(localStorage.getItem('wt_day_custom')||'{}')||{}; }catch(e){} if(S.view==='log'&&typeof renderLog==='function') renderLog(); if(S.view==='home'&&typeof renderHome==='function') renderHome(); });
     syncBlobListenTS(user.uid,'exerciseLib','wt_exercise_lib','wt_exercise_lib_ts',()=>{ if(typeof renderExerciseLibList==='function') renderExerciseLibList(); if(typeof SE!=='undefined' && SE.target>=0 && document.getElementById('se-picker-list')) document.getElementById('se-picker-list').innerHTML=sePickerListHTML(); });
     syncBlobListen(user.uid,'customMuscles','wt_custom_muscles',()=>{ try{ const v=document.getElementById('view-exercise-library'); if(v && v.style.display!=='none' && typeof renderMuscleFilterRow==='function') renderMuscleFilterRow(); }catch(e){} });
@@ -6846,8 +6853,61 @@ function weekFixedTotal(d){
   });
   return t;
 }
-function weekVarTotal(d){
+// ── Transaction ledger ────────────────────────────────────────────
+// Variable spending used to be one number per category per week: spend $18 then $42 and you
+// had to do the arithmetic yourself and overwrite the field, leaving no record of what was
+// actually bought. Transactions are individual purchases — {id, date, catId, amount, merchant,
+// note} — and they roll up into the same weekly category totals the rest of the Budget tab
+// already reads, so nothing downstream had to change.
+// PRECEDENCE, deliberately: for a given week+category, if any transactions exist they ARE the
+// total and the manual field is ignored. Adding them together would silently double-count
+// every week that already has a manual figure, which is every week that exists today. Manual
+// entry therefore still works exactly as before wherever no transaction has been logged, which
+// is what makes this safe to roll out onto live data.
+function loadTxns(){ const a=lsLoad('daily_transactions', []); return Array.isArray(a)?a:[]; }
+let txnData = loadTxns();
+function saveTxns(){ lsSave('daily_transactions', txnData, 'transactions'); }
+function genTxnId(){ return 'txn_'+Date.now()+'_'+Math.floor(Math.random()*1e4); }
+// Every transaction dated inside the week starting `mondayStr`.
+function txnsForWeek(mondayStr){
+  if(!mondayStr) return [];
+  const mon=localMidnight(mondayStr);
+  const sun=new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+6);
+  const sunStr=dateStr(sun);
+  return txnData.filter(t=>t&&t.date>=mondayStr&&t.date<=sunStr);
+}
+function txnsForWeekCat(mondayStr,catId){
+  return txnsForWeek(mondayStr).filter(t=>t.catId===catId)
+    .sort((a,b)=> a.date===b.date ? (b.createdAt||0)-(a.createdAt||0) : (a.date<b.date?1:-1));
+}
+function txnCatTotal(mondayStr,catId){
+  return txnsForWeekCat(mondayStr,catId).reduce((s,t)=>s+(parseFloat(t.amount)||0),0);
+}
+// The effective spend for one variable category in one week: transactions if any exist,
+// otherwise the manually-typed weekly figure.
+function varCatAmount(d,mondayStr,catId){
+  const n=txnsForWeekCat(mondayStr,catId).length;
+  if(n) return txnCatTotal(mondayStr,catId);
+  return parseFloat(d&&d['var_'+catId])||0;
+}
+// Which week a budget object belongs to. budgetData is KEYED by the Monday string, so the
+// object itself doesn't inherently know — but every caller of weekVarTotal/weekSpending passes
+// only the object. Rather than thread a key through a dozen call sites (and miss one), the
+// object resolves its own: d.wk is stamped on write, and anything older is found by identity
+// in budgetData. That means every existing caller became transaction-aware without changing.
+function weekKeyOf(d){
+  if(!d) return null;
+  if(d.wk) return d.wk;
+  try{
+    for(const k in budgetData){ if(budgetData[k]===d){ d.wk=k; return k; } }
+  }catch(e){}
+  return null;
+}
+function weekVarTotal(d,mondayStr){
+  const wk=mondayStr||weekKeyOf(d);
   let t=0;
+  if(wk){ loadVarCats().forEach(c=>{ t += varCatAmount(d,wk,c.id); }); return t; }
+  // No resolvable week (a detached object) — fall back to the manual figures, as before.
   loadVarCats().forEach(c=>{ t += parseFloat(d&&d['var_'+c.id])||0; });
   return t;
 }
@@ -7092,20 +7152,157 @@ function budPersistDefaults(){
   localStorage.setItem('daily_budget_defaults', JSON.stringify(budDefaults));
   syncBudDefaultsToFirebase();
 }
+// ── Add / edit expense ────────────────────────────────────────────
+let _txnEditId=null;      // set when editing an existing transaction rather than adding
+let _txnCatId=null;       // currently selected category in the modal
+// Categories the user actually spends in, most-recently-used first, so the common choice is
+// the first thing under the thumb rather than alphabetical luck.
+function txnRecentCatIds(){
+  const seen=[];
+  [...txnData].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).forEach(t=>{
+    if(t&&t.catId&&seen.indexOf(t.catId)<0) seen.push(t.catId);
+  });
+  return seen;
+}
+function txnRecentMerchants(catId){
+  const seen=[];
+  [...txnData].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).forEach(t=>{
+    if(!t||!t.merchant) return;
+    if(catId && t.catId!==catId) return;
+    if(seen.indexOf(t.merchant)<0 && seen.length<6) seen.push(t.merchant);
+  });
+  return seen;
+}
+function openTxnModal(opts){
+  const o=opts||{};
+  _txnEditId=o.id||null;
+  const existing=_txnEditId?txnData.find(t=>t&&t.id===_txnEditId):null;
+  _txnCatId = existing ? existing.catId : (o.catId || txnRecentCatIds()[0] || (activeCats(loadVarCats())[0]||{}).id || null);
+  document.getElementById('txn-modal-title').textContent = existing?'Edit expense':'Add expense';
+  document.getElementById('txn-amount').value = existing?existing.amount:'';
+  document.getElementById('txn-merchant').value = existing?(existing.merchant||''):'';
+  document.getElementById('txn-note').value = existing?(existing.note||''):'';
+  document.getElementById('txn-date').value = existing?existing.date:(o.date||getLocalDate());
+  document.getElementById('txn-err').textContent='';
+  document.getElementById('txn-delete-btn').classList.toggle('hidden', !existing);
+  document.getElementById('txn-save-btn').textContent = existing?'Save changes':'Save expense';
+  txnRenderCats();
+  txnRenderMerchants();
+  document.getElementById('txn-modal').classList.remove('hidden');
+  setTimeout(()=>{ const a=document.getElementById('txn-amount'); if(a){ a.focus(); a.select(); } },60);
+}
+function closeTxnModal(){
+  document.getElementById('txn-modal').classList.add('hidden');
+  _txnEditId=null;
+}
+function txnRenderCats(){
+  const wrap=document.getElementById('txn-cat-list'); if(!wrap) return;
+  const cats=activeCats(loadVarCats());
+  if(!cats.length){ wrap.innerHTML='<div class="txn-empty">Add a variable spending category first.</div>'; return; }
+  const recent=txnRecentCatIds();
+  const ordered=[...cats].sort((a,b)=>{
+    const ia=recent.indexOf(a.id), ib=recent.indexOf(b.id);
+    if(ia<0&&ib<0) return 0;
+    if(ia<0) return 1;
+    if(ib<0) return -1;
+    return ia-ib;
+  });
+  if(!_txnCatId || !cats.some(c=>c.id===_txnCatId)) _txnCatId=ordered[0].id;
+  wrap.innerHTML=ordered.map(c=>
+    '<button type="button" class="txn-cat'+(c.id===_txnCatId?' on':'')+'" data-cat="'+_catEsc(c.id)+'" '+
+    'onclick="txnPickCat(this.dataset.cat)">'+_catEscHtml(catLabel(c))+'</button>').join('');
+}
+function txnPickCat(id){ _txnCatId=id; txnRenderCats(); txnRenderMerchants(); }
+function txnRenderMerchants(){
+  const wrap=document.getElementById('txn-recent-merchants'); if(!wrap) return;
+  const list=txnRecentMerchants(_txnCatId);
+  wrap.innerHTML=list.length
+    ? list.map(m=>'<button type="button" class="txn-chip" data-m="'+_catEsc(m)+'" onclick="txnPickMerchant(this.dataset.m)">'+_catEscHtml(m)+'</button>').join('')
+    : '';
+}
+function txnPickMerchant(m){ const el=document.getElementById('txn-merchant'); if(el) el.value=m; }
+function txnSave(){
+  const amtRaw=(document.getElementById('txn-amount').value||'').replace(/[^0-9.\-]/g,'');
+  const amt=parseFloat(amtRaw);
+  const err=document.getElementById('txn-err');
+  if(isNaN(amt)||amt===0){ err.textContent='Enter an amount.'; document.getElementById('txn-amount').focus(); return; }
+  if(!_txnCatId){ err.textContent='Pick a category.'; return; }
+  const date=document.getElementById('txn-date').value||getLocalDate();
+  const merchant=(document.getElementById('txn-merchant').value||'').trim();
+  const note=(document.getElementById('txn-note').value||'').trim();
+  if(_txnEditId){
+    const t=txnData.find(x=>x&&x.id===_txnEditId);
+    if(t){ t.amount=amt; t.catId=_txnCatId; t.date=date; t.merchant=merchant; t.note=note; }
+  } else {
+    txnData.push({id:genTxnId(), date, catId:_txnCatId, amount:amt, merchant, note, createdAt:Date.now()});
+  }
+  saveTxns();
+  closeTxnModal();
+  txnAfterChange();
+  if(typeof showToast==='function') showToast(_txnEditId?'Expense updated':'Expense added');
+}
+function txnDeleteCurrent(){
+  if(!_txnEditId) return;
+  txnData=txnData.filter(t=>t&&t.id!==_txnEditId);
+  saveTxns();
+  closeTxnModal();
+  txnAfterChange();
+  if(typeof showToast==='function') showToast('Expense deleted');
+}
+// A transaction changes the week's variable total, so anything showing that figure has to
+// re-read. The manual per-category inputs are rebuilt by renderBudgetTab.
+function txnAfterChange(){
+  try{ if(typeof renderBudgetTab==='function' && S.view==='budget') renderBudgetTab(); }catch(e){}
+  try{ if(typeof renderHome==='function' && S.view==='home') renderHome(); }catch(e){}
+  try{ if(typeof updateNavBadges==='function') updateNavBadges(); }catch(e){}
+}
+// Expand/collapse a category's purchase list inside the Variable card.
+const _txnOpenCats=new Set();
+function txnToggleCat(catId){
+  if(_txnOpenCats.has(catId)) _txnOpenCats.delete(catId); else _txnOpenCats.add(catId);
+  if(typeof renderBudgetTab==='function') renderBudgetTab();
+}
 function renderVariableCard(data,isCur){
   const editing=budEditMode.var && isCur;
   const cats=activeCats(loadVarCats()); // archived keep counting in totals, just no row
+  const wk=weekKey(getMondayOf(currentWeekIdx));
   const rows=cats.map(c=>{
+    const txns=txnsForWeekCat(wk,c.id);
+    const hasTxns=txns.length>0;
     // Show empty placeholder for no/zero spend — never a filled "0"
     const num=parseFloat(data['var_'+c.id]);
     const val=(!isNaN(num)&&num!==0)?data['var_'+c.id]:'';
-    return '<div class="bud-row bud-cat-row" data-cat-id="'+c.id+'">'+
+    // With transactions logged, the weekly figure IS their sum — showing an editable field
+    // beside it would imply the two combine, which they deliberately don't (see varCatAmount).
+    // Without any, the manual field behaves exactly as it always has.
+    const amountCell = hasTxns
+      ? '<button type="button" class="bud-row-calc txn-total" onclick="txnToggleCat(\''+_catEsc(c.id)+'\')" '+
+          'title="'+txns.length+' purchase'+(txns.length===1?'':'s')+' — tap to see them">'+
+          fmtMoneyExact(txnCatTotal(wk,c.id))+
+          '<span class="txn-count">'+txns.length+'</span></button>'
+      : '<input class="bud-row-input" type="number" inputmode="decimal" id="var-'+c.id+'" placeholder="$0" value="'+val+'" oninput="budRecalc();budSaveDraft()"'+(isCur?'':' disabled')+'>';
+    let row='<div class="bud-row bud-cat-row" data-cat-id="'+c.id+'">'+
       budCatNameHtml('var',c,isCur,editing)+
-      '<input class="bud-row-input" type="number" inputmode="decimal" id="var-'+c.id+'" placeholder="$0" value="'+val+'" oninput="budRecalc();budSaveDraft()"'+(isCur?'':' disabled')+'>'+
+      amountCell+
       (editing?'<button class="delete-cat-btn" data-type="var" data-id="'+c.id+'" aria-label="Remove category">×</button>':'')+
     '</div>';
+    if(hasTxns && _txnOpenCats.has(c.id)){
+      row+='<div class="txn-list">'+txns.map(t=>
+        '<button type="button" class="txn-item" data-id="'+_catEsc(t.id)+'" onclick="openTxnModal({id:this.dataset.id})">'+
+          '<span class="txn-item-l">'+
+            '<span class="txn-item-name">'+(t.merchant?_catEscHtml(t.merchant):'Expense')+'</span>'+
+            '<span class="txn-item-meta">'+fmtDate(t.date)+(t.note?' · '+_catEscHtml(t.note):'')+'</span>'+
+          '</span>'+
+          '<span class="txn-item-amt">'+fmtMoneyExact(parseFloat(t.amount)||0)+'</span>'+
+        '</button>').join('')+
+        (isCur?'<button type="button" class="txn-add-inline" data-cat="'+_catEsc(c.id)+'" onclick="openTxnModal({catId:this.dataset.cat})">+ Add to '+_catEscHtml(catLabel(c))+'</button>':'')+
+      '</div>';
+    }
+    return row;
   }).join('');
-  return '<div class="card" data-bud-key="var">'+budCardHead('var','🛒 Variable expenses',isCur)+rows+
+  return '<div class="card" data-bud-key="var">'+budCardHead('var','🛒 Variable expenses',isCur)+
+    (isCur?'<button class="txn-add-btn" onclick="openTxnModal()">+ Add expense</button>':'')+
+    rows+
     '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total variable</div><div class="bud-row-calc" id="calc-variable" style="color:var(--muted)">$0</div></div>'+
     (editing?'<button class="add-cat-btn" data-type="var">+ Add variable expense</button>':'')+
   '</div>';
@@ -7485,19 +7682,19 @@ function budRecalc(animate){
     return el ? (parseFloat(el.value)||0) : (parseFloat(_wk[pre+'_'+c.id])||0); };
   loadIncCats().forEach(c=>{ totalIncome += liveOrSaved('inc',c); });
 
-  // Dynamic fixed + variable totals (sum across the user's custom categories).
-  // Fixed must mirror weekFixedTotal exactly: a blank (or absent) input means "the standard
-  // amount was charged", so it falls back to the category's budget. Summing only the input
-  // values under-reported the total by every category the user hadn't typed into — and
-  // recurring categories have no input at all now, so they'd have counted as zero.
-  let totalFixed=0;
-  loadFixCats().forEach(c=>{
-    const el=document.getElementById('fix-'+c.id);
-    const raw=el?el.value:'';
-    totalFixed += (raw!==undefined&&raw!=='') ? (parseFloat(raw)||0) : catBudget(c);
-  });
-  let totalVar=0;
-  loadVarCats().forEach(c=>{ totalVar += liveOrSaved('var',c); });
+  // Fixed + variable totals are computed by the CANONICAL readers (weekFixedTotal /
+  // weekVarTotal) against a copy of the week with the live input values merged over it, rather
+  // than by re-implementing their rules here. This used to be a hand-rolled parallel
+  // calculation and it had already drifted once (recurring categories have no input, so a
+  // naive sum counted them as zero); with frozen fixRates and transaction-backed variable
+  // spending there are now three separate precedence rules to keep in step, and duplicating
+  // them is how the on-screen total ends up disagreeing with the saved week.
+  const _wkKey=weekKey(getMondayOf(currentWeekIdx));
+  const _live=Object.assign({}, _wk);
+  loadFixCats().forEach(c=>{ const el=document.getElementById('fix-'+c.id); if(el) _live['fix_'+c.id]=el.value||''; });
+  loadVarCats().forEach(c=>{ const el=document.getElementById('var-'+c.id); if(el) _live['var_'+c.id]=el.value||''; });
+  const totalFixed=weekFixedTotal(_live);
+  const totalVar=weekVarTotal(_live,_wkKey);
 
   // Savings is a free per-week amount (no fixed target); the goal is display-only.
   const totalSaved  = parseFloat(document.getElementById('sav-amount')?.value)||0;
@@ -7622,6 +7819,7 @@ function budSaveDraft(){
   const d=budgetData[key];
   const before=JSON.stringify(d);
   budEnsureFixRates(d);   // freeze this week's recurring prices the first time it is written
+  d.wk=key;               // so weekKeyOf can resolve transactions without a reverse lookup
   budWriteFields(d);
   if(!d.saved) d.draft=true;
   // Only a REAL change stamps and syncs. Draft flushes also fire on render/week-nav with
@@ -7638,6 +7836,7 @@ function budSaveCurrentWeek(){
   if(!budgetData[key]) budgetData[key]={};
   const d=budgetData[key];
   budEnsureFixRates(d);   // freeze this week's recurring prices the first time it is written
+  d.wk=key;               // so weekKeyOf can resolve transactions without a reverse lookup
   budWriteFields(d);
   d.saved=true; delete d.draft;
   d.updatedAt=Date.now(); // explicit user save — always stamp
@@ -11166,6 +11365,16 @@ function closeAccounts(){
 }
 
 function fmtMoney(n){ const v=Math.round(Math.abs(n)).toLocaleString(); return (n<0?'-$':'$')+v; }
+// Whole dollars are right for a weekly or monthly total, but wrong for a single purchase: a
+// $23.50 coffee run rendering as "$24" loses the exact figure the user just typed in, and a
+// ledger whose line items disagree with the receipt is not an audit trail. Cents are shown
+// only when there are any, so a clean $30 still reads "$30" rather than "$30.00".
+function fmtMoneyExact(n){
+  const abs=Math.abs(parseFloat(n)||0);
+  const hasCents=Math.round(abs*100)%100!==0;
+  const v=abs.toLocaleString(undefined,{minimumFractionDigits:hasCents?2:0,maximumFractionDigits:2});
+  return (n<0?'-$':'$')+v;
+}
 // A bare date ("Due 14 Sep") is a fact, not a signal — you still have to work out how close
 // that is. Inside a fortnight the countdown carries the urgency instead, since that's the
 // window where it changes what you'd do; beyond it the date is the more useful form because

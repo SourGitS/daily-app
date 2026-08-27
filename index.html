@@ -709,6 +709,31 @@
     </div>
   </div>
 
+  <!-- ADD EXPENSE MODAL — the transaction capture flow. Amount first and autofocused, because
+       a spending tracker lives or dies on how fast a purchase can be logged. -->
+  <div class="modal-overlay hidden" id="txn-modal" onclick="if(event.target===this)closeTxnModal()">
+    <div class="modal-box">
+      <div class="modal-title" id="txn-modal-title">Add expense</div>
+      <label class="txn-lbl">Amount ($)</label>
+      <input class="modal-input txn-amount" type="text" inputmode="decimal" id="txn-amount" placeholder="0.00">
+      <label class="txn-lbl">Category</label>
+      <div id="txn-cat-list" class="txn-cats"></div>
+      <label class="txn-lbl">Where / what <span class="txn-opt">optional</span></label>
+      <input class="modal-input" type="text" id="txn-merchant" placeholder="e.g. Woolworths" autocomplete="off">
+      <div id="txn-recent-merchants" class="txn-recent"></div>
+      <label class="txn-lbl">Date</label>
+      <input class="modal-input" type="date" id="txn-date">
+      <label class="txn-lbl">Note <span class="txn-opt">optional</span></label>
+      <input class="modal-input" type="text" id="txn-note" placeholder="Anything worth remembering">
+      <div id="txn-err" class="txn-err"></div>
+      <div class="modal-btn-row">
+        <button class="modal-btn secondary" onclick="closeTxnModal()">Cancel</button>
+        <button class="modal-btn primary" id="txn-save-btn" onclick="txnSave()">Save expense</button>
+      </div>
+      <button class="txn-delete hidden" id="txn-delete-btn" onclick="txnDeleteCurrent()">Delete this expense</button>
+    </div>
+  </div>
+
   <!-- SAVINGS BALANCE MODAL -->
   <div class="modal-overlay hidden" id="savings-modal" onclick="if(event.target===this)closeSavingsModal()">
     <div class="modal-box">

@@ -104,6 +104,50 @@
 .add-cat-btn{width:100%;padding:10px;margin-top:8px;border:1.5px dashed var(--border);border-radius:8px;background:transparent;color:var(--accent-text);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .add-cat-btn:active{opacity:0.6}
 /* Accounts page: Asset/Debt segmented control on the add-account form */
+/* ── Transactions (Budget → Variable expenses) ──
+   Semantic colours only — no --accent — because the accent is runtime-variable (weather/day)
+   and money state has to read the same whatever hue the app is wearing. */
+.txn-add-btn{width:100%;margin:2px 0 10px;padding:11px;border-radius:12px;border:1.5px dashed var(--border);
+  background:transparent;color:var(--accent-text);font-size:14px;font-weight:700;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.txn-add-btn:active{background:rgba(var(--accent-rgb),.08)}
+/* The category's weekly figure once purchases back it — a button, because it opens the list. */
+.txn-total{display:inline-flex;align-items:center;gap:7px;border:none;background:transparent;
+  font-family:var(--font-num);font-weight:800;color:var(--text) !important;cursor:pointer;padding:4px 2px;
+  -webkit-tap-highlight-color:transparent}
+.txn-count{font-family:var(--font-ui);font-size:10px;font-weight:800;line-height:1;padding:3px 6px;
+  border-radius:999px;background:var(--track);color:var(--muted)}
+.txn-list{padding:2px 0 10px 2px;border-bottom:1px solid var(--border)}
+.txn-item{display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;
+  padding:9px 8px;border:none;background:transparent;border-radius:10px;cursor:pointer;text-align:left;
+  -webkit-tap-highlight-color:transparent}
+.txn-item:active{background:var(--track)}
+.txn-item-l{display:flex;flex-direction:column;min-width:0}
+.txn-item-name{font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.txn-item-meta{font-size:11px;font-weight:600;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.txn-item-amt{font-family:var(--font-num);font-size:14px;font-weight:800;color:var(--text);flex-shrink:0}
+.txn-add-inline{width:100%;margin-top:4px;padding:8px;border:none;background:transparent;
+  color:var(--accent-text);font-size:12px;font-weight:700;cursor:pointer;text-align:left;
+  -webkit-tap-highlight-color:transparent}
+/* Modal internals */
+.txn-lbl{display:block;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.04em;margin:12px 0 6px}
+.txn-lbl:first-of-type{margin-top:0}
+.txn-opt{text-transform:none;letter-spacing:0;font-weight:600;opacity:.7}
+/* Amount is the one field that matters most, so it is typed at figure scale. */
+.txn-amount{font-family:var(--font-num);font-size:26px !important;font-weight:800;text-align:center}
+.txn-cats{display:flex;flex-wrap:wrap;gap:6px}
+.txn-cat{padding:8px 13px;border-radius:999px;border:1.5px solid var(--border);background:transparent;
+  color:var(--text);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.txn-cat.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.14);color:var(--accent-text);font-weight:700}
+.txn-recent{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.txn-chip{padding:6px 11px;border-radius:999px;border:1px solid var(--border);background:transparent;
+  color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.txn-chip:active{background:var(--track);color:var(--text)}
+.txn-err{min-height:16px;font-size:12px;font-weight:600;color:var(--danger);margin-top:10px}
+.txn-empty{font-size:13px;color:var(--muted);padding:4px 0}
+.txn-delete{width:100%;margin-top:10px;padding:10px;border:none;background:transparent;
+  color:var(--danger);font-size:13px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .acct-type-seg{display:flex;gap:4px;background:var(--border);border-radius:8px;padding:3px}
 .acct-type-btn{padding:6px 16px;border:none;border-radius:6px;background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .acct-type-btn.on{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,0.12)}
