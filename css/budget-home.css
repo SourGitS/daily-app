@@ -107,10 +107,18 @@
 /* ── Transactions (Budget → Variable expenses) ──
    Semantic colours only — no --accent — because the accent is runtime-variable (weather/day)
    and money state has to read the same whatever hue the app is wearing. */
-.txn-add-btn{width:100%;margin:2px 0 10px;padding:11px;border-radius:12px;border:1.5px dashed var(--border);
-  background:transparent;color:var(--accent-text);font-size:14px;font-weight:700;cursor:pointer;
-  -webkit-tap-highlight-color:transparent}
-.txn-add-btn:active{background:rgba(var(--accent-rgb),.08)}
+/* Record spending. This is the primary capture action for the whole spending system, so it is
+   the one budget control that carries the full accent fill — "press this". Every accent the app
+   can hold is tuned to carry white text, so #fff is safe on it (see CLAUDE.md). It replaced a
+   dashed outline button that lived inside the Variable expenses card and read as configuration
+   for that list rather than as the way you log a purchase. */
+.rec-spend-cap{font-size:13px;line-height:1.45;color:var(--muted);margin-bottom:12px}
+.rec-add-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:13px;border-radius:14px;border:none;background:var(--accent);color:#fff;
+  font-family:var(--font-ui);font-size:15px;font-weight:800;cursor:pointer;
+  box-shadow:0 6px 18px rgba(var(--accent-rgb),.28);-webkit-tap-highlight-color:transparent}
+.rec-add-btn:active{transform:translateY(1px);box-shadow:0 3px 10px rgba(var(--accent-rgb),.24)}
+.rec-add-plus{font-size:19px;font-weight:700;line-height:1}
 /* The category's weekly figure once purchases back it — a button, because it opens the list. */
 .txn-total{display:inline-flex;align-items:center;gap:7px;border:none;background:transparent;
   font-family:var(--font-num);font-weight:800;color:var(--text) !important;cursor:pointer;padding:4px 2px;
@@ -623,8 +631,13 @@
   #view-stats .charts-row{display:flex;gap:20px}
   #view-stats .charts-row>*{flex:1}
 
-  /* Budget tab */
-  #view-budget .budget-desktop-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+  /* Budget tab. Two equal columns; which cards land in which is decided in JS by
+     budApplyLayout() (it MOVES the nodes, so DOM order always matches visual order). The width
+     ratio was never the problem — the left stack simply carried almost every card, so the right
+     ran out of content a couple of screens early. align-items:start keeps both columns starting
+     at the same line and lets each run to its own natural length. */
+  #view-budget .budget-desktop-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 20px;align-items:start}
+  #view-budget #bud-col-left,#view-budget #bud-col-right{min-width:0}
 
   /* Settings tab: the grouped list is centred; each item pushes a full-screen detail overlay
      (offset past the sidebar by JS), so no special stacked-column desktop layout is needed. */
@@ -894,11 +907,16 @@
   #view-budget .bud-view-switch,#budget-hero-card{position:sticky;top:0;z-index:6}
   #budget-hero-card{padding:12px 14px !important}
   #bud-hero-avail{font-size:30px !important}
-  #view-budget .budget-cards-grid{
+  /* #bud-col-left carries every card in this layout (budApplyLayout only splits the two columns
+     at >=1024px), so it is the grid here. This previously named .budget-cards-grid, a class that
+     exists on no element — so landscape got no columns AND no gap, since the margin-bottom:0
+     below assumes a grid gap is doing that job. */
+  #view-budget #bud-col-left{
     display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start;
   }
+  #view-budget #bud-col-left > *{min-width:0}
   /* A card that is genuinely wide (the calculator's keypad, a chart) stays full width rather
      than being squeezed into half. */
-  #view-budget .budget-cards-grid > .bud-span-2{grid-column:1 / -1}
+  #view-budget #bud-col-left > .bud-span-2{grid-column:1 / -1}
   #view-budget .card{padding:13px;margin-bottom:0}
 }

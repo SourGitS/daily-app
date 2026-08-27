@@ -2087,6 +2087,10 @@ window.addEventListener('resize',function(){ if(typeof S!=='undefined'&&S.view) 
     if(now===was) return;
     was=now;
     if(typeof S!=='undefined'&&S.view==='home'&&typeof renderHome==='function') renderHome();
+    // Budget's two desktop columns are a re-parenting of the same nodes, so crossing 1024px has
+    // to redistribute them. Cheap and self-guarding — it no-ops unless the mode actually
+    // changed — and it works whether or not Budget is the visible tab.
+    if(typeof budApplyLayout==='function') budApplyLayout();
   }
   window.addEventListener('resize',onGeometryChange);
   // orientationchange can fire before the new viewport metrics settle on iOS, so the resize
@@ -7500,6 +7504,67 @@ function renderUpcomingCard(){
     (undated?'<div class="up-hint">'+undated+' recurring charge'+(undated===1?'':'s')+' without a billing date — add one in Settings → Budget categories to see '+(undated===1?'it':'them')+' here.</div>':'')+
   '</div>';
 }
+// A new transaction is always dated today (openTxnModal defaults to getLocalDate()), so every
+// "log a purchase" affordance has to be gated on the CURRENT week being on screen — not on the
+// week being editable. Unlocking a past week with "Edit week" makes it editable, and offering
+// capture there would file the purchase into this week while the user believes they are
+// editing that one.
+function budIsCurrentWeek(){ return currentWeekIdx===0; }
+// Record spending. The primary capture action for the whole spending system, given its own
+// card rather than living as a dashed control inside Variable expenses, where it read as
+// configuration for that one category list. One button, one path — it opens the same
+// openTxnModal() the Home quick-capture and the per-category inline adds use.
+function renderRecordCard(){
+  const cur=budIsCurrentWeek();
+  return '<div class="card">'+
+    cardHeader('receipt','Record spending')+
+    (cur
+      ? '<div class="rec-spend-cap">Log a purchase and Daily will update the category totals below.</div>'+
+        '<button type="button" class="rec-add-btn" onclick="openTxnModal()">'+
+          '<span class="rec-add-plus" aria-hidden="true">+</span>Add expense</button>'
+      : '<div class="rec-spend-cap">You’re looking at a past week. New purchases are always dated today, so they’d land in the current week — switch back to this week to log one.</div>')+
+  '</div>';
+}
+// Desktop splits the one mobile stack into two columns of roughly equal workload. The cards are
+// MOVED, so the DOM (and therefore tab order and screen-reader order) always matches what is on
+// screen — no CSS `order`, no duplicate copies with duplicate ids and handlers. Every id below
+// is a stable wrapper element; its renderer replaces innerHTML, never the element itself, so
+// re-parenting survives any number of re-renders and keeps each card's data-bud-key intact.
+const BUD_LAYOUT={
+  // Mobile: one linear stack, in the order the week is actually worked through.
+  mobile:[['bud-col-left',['bud-income-card','bud-savings-card','bud-fixed-card','bud-upcoming-card',
+    'bud-vargoal-card','bud-record-card','bud-variable-card','bud-stranded-card','bud-result-card',
+    'prev-weeks-section','bud-calc-card','bud-config-card']]],
+  // Desktop: left is the plan and this week's entry, right is the action, the outcome and the
+  // supporting tools. Upcoming and the calculator move right because the left stack (a long
+  // Variable card especially) is what makes the page tall.
+  desktop:[
+    ['bud-col-left',['bud-income-card','bud-savings-card','bud-fixed-card','bud-vargoal-card',
+      'bud-variable-card','bud-stranded-card']],
+    ['bud-col-right',['bud-record-card','bud-result-card','bud-upcoming-card','prev-weeks-section',
+      'bud-calc-card','bud-config-card']]
+  ]
+};
+let _budLayoutMode=null;
+function budApplyLayout(force){
+  const mode=window.innerWidth>=1024?'desktop':'mobile';
+  if(mode===_budLayoutMode && !force) return;
+  const plan=BUD_LAYOUT[mode];
+  // Bail rather than half-apply if the markup isn't there (Budget lives in index.html, but this
+  // also runs before first render on some paths).
+  if(!plan.every(([colId])=>document.getElementById(colId))) return;
+  plan.forEach(([colId,ids])=>{
+    const col=document.getElementById(colId);
+    const want=ids.map(id=>document.getElementById(id)).filter(Boolean);
+    const have=Array.from(col.children);
+    // Leave the DOM completely alone when it is already right. Re-appending a node that is
+    // already in place still detaches and re-inserts it, which would drop focus out of a
+    // budget input mid-typing on any stray call.
+    if(have.length===want.length && want.every((el,i)=>have[i]===el)) return;
+    want.forEach(el=>col.appendChild(el));
+  });
+  _budLayoutMode=mode;
+}
 function renderVariableCard(data,isCur){
   const editing=budEditMode.var && isCur;
   const cats=activeCats(loadVarCats()); // archived keep counting in totals, just no row
@@ -7535,13 +7600,12 @@ function renderVariableCard(data,isCur){
           '</span>'+
           '<span class="txn-item-amt">'+fmtMoneyExact(parseFloat(t.amount)||0)+'</span>'+
         '</button>').join('')+
-        (isCur?'<button type="button" class="txn-add-inline" data-cat="'+_catEsc(c.id)+'" onclick="openTxnModal({catId:this.dataset.cat})">+ Add to '+_catEscHtml(catLabel(c))+'</button>':'')+
+        (budIsCurrentWeek()?'<button type="button" class="txn-add-inline" data-cat="'+_catEsc(c.id)+'" onclick="openTxnModal({catId:this.dataset.cat})">+ Add to '+_catEscHtml(catLabel(c))+'</button>':'')+
       '</div>';
     }
     return row;
   }).join('');
   return '<div class="card" data-bud-key="var">'+budCardHead('var','🛒 Variable expenses',isCur)+
-    (isCur?'<button class="txn-add-btn" onclick="openTxnModal()">+ Add expense</button>':'')+
     rows+
     '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total variable</div><div class="bud-row-calc" id="calc-variable" style="color:var(--muted)">$0</div></div>'+
     (editing?'<button class="add-cat-btn" data-type="var">+ Add variable expense</button>':'')+
@@ -7714,6 +7778,8 @@ function renderBudgetTab(){
   if(upWrap) upWrap.innerHTML=renderUpcomingCard();
   const goalWrap=document.getElementById('bud-vargoal-card');
   if(goalWrap) goalWrap.innerHTML=renderVarGoalCard(data,editable);
+  const recWrap=document.getElementById('bud-record-card');
+  if(recWrap) recWrap.innerHTML=renderRecordCard();
   const varWrap=document.getElementById('bud-variable-card');
   if(varWrap) varWrap.innerHTML=renderVariableCard(data,editable);
   // Empty string when nothing is stranded, so this slot collapses to nothing in normal use.
@@ -7741,6 +7807,10 @@ function renderBudgetTab(){
   renderBudgetConfig();
   loadCCInput();
   renderDueBanner(monday);
+  // Before restoring collapse state, so the keyed lookup runs over the cards where they
+  // finally sit. (It queries #budget-week-view, which both columns live inside, so the order
+  // of these two is belt-and-braces rather than load-bearing.)
+  budApplyLayout();
   restoreBudgetCollapseState();
 }
 // Visual reminder only (never touches the leftover calc): for the week being viewed, surface
@@ -10355,7 +10425,8 @@ const CARD_ICONS={
   note:'<path d="M14 3v5h5M15 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z"/>',
   pot:'<path d="M5 10h14v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4zM3 10h18M8 10V7a4 4 0 0 1 8 0v3"/>',
   calendar:'<path d="M8 3v3M16 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>',
-  flame:'<path d="M12 3c3 4 6 5.5 6 9a6 6 0 0 1-12 0c0-2 1-3.5 2.5-5 .3 1.2 1 2 2 2.2C10 7 11 4.6 12 3z"/>'
+  flame:'<path d="M12 3c3 4 6 5.5 6 9a6 6 0 0 1-12 0c0-2 1-3.5 2.5-5 .3 1.2 1 2 2 2.2C10 7 11 4.6 12 3z"/>',
+  receipt:'<path d="M6 3h12v18l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L6 21zM9.5 8h5M9.5 12h5"/>'
 };
 function cardIcon(name){
   const d=CARD_ICONS[name];

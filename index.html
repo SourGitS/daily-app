@@ -203,15 +203,21 @@
         <div id="bud-due-banner"></div>
 
         <!-- Desktop ≥1024px: two-column grid (see #view-budget .budget-desktop-grid in
-             budget-home.css). On mobile the wrapper and its two inner divs are unstyled,
-             so the cards just stack in document order exactly as before. Hero + due banner
-             stay full-width above the grid. -->
+             budget-home.css). On mobile the wrapper and both column divs are unstyled, the
+             right column is empty, and the cards just stack in document order. Hero + due
+             banner stay full-width above the grid. -->
         <div class="budget-desktop-grid">
-        <div><!-- left column: money-in + spending inputs -->
+        <!-- DOM order below is the MOBILE order, because that is the layout the app is used in
+             most and it needs no JS to be correct. budApplyLayout() (js/app.js) redistributes
+             these same elements into the two columns at >=1024px by MOVING them, not by CSS
+             `order` — so visual order and DOM/keyboard order never disagree. Every card here is
+             a stable element whose innerHTML gets replaced by its renderer, so re-parenting is
+             safe and preserves data-bud-key collapse state. -->
+        <div id="bud-col-left">
 
         <div id="bud-income-card"></div>
 
-        <div class="card" data-bud-key="sav">
+        <div class="card" id="bud-savings-card" data-bud-key="sav">
           <!-- Same head structure as budCardHead() so the collapsed summary has a slot to sit
                in. #sav-head-sum is filled by budRecalc and only shows while collapsed. -->
           <div class="sec-label bud-toggle"><span class="bud-head-label">&#127974; Savings</span><span class="bud-head-right"><span class="bud-head-sum" id="sav-head-sum"></span><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span></div>
@@ -238,15 +244,44 @@
              it's the ceiling the Variable card below has to stay under. -->
         <div id="bud-vargoal-card"></div>
 
+        <!-- Record spending: the primary capture action for the whole spending system. It used
+             to be a dashed button INSIDE the Variable expenses card, where it read as a
+             configuration control belonging to that one category list rather than the one place
+             you log any purchase, to any category, on any account. -->
+        <div id="bud-record-card"></div>
+
         <div id="bud-variable-card"></div>
 
         <!-- Only rendered when a deleted category still has saved amounts in past weeks. -->
         <div id="bud-stranded-card"></div>
 
+        <div class="card" id="bud-result-card" data-bud-key="result">
+          <div class="sec-label bud-toggle">&#128202; Weekly result<svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <div><div style="font-size:13px;color:var(--muted);margin-bottom:2px">Money left over</div><div style="font-size:28px;font-weight:800;line-height:1" id="calc-leftover">&#8212;</div></div>
+            <div id="week-status-pill" class="status-pill good">&#128994; On track</div>
+          </div>
+          <div style="margin-bottom:10px">
+            <div class="sec-label" style="margin-bottom:6px">&#128221; Notes</div>
+            <textarea class="bud-notes-textarea" id="week-notes" placeholder="What happened this week?" oninput="budSaveCurrentWeek()"></textarea>
+          </div>
+          <!-- Was "Save week", beside a week that already autosaves every keystroke — so the
+               button looked like it did the saving, and its actual job was invisible. It does
+               not lock anything either (past weeks stay editable via "Edit week"), so calling
+               it a lock would be wrong too. What it really does: marks the week reviewed, which
+               clears the Budget reminder badge and releases the week-in-review summary. Named
+               and explained for that. -->
+          <button onclick="budSaveWeekExplicit()" style="width:100%;padding:12px;background:var(--header);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer" id="save-week-btn">Finish week</button>
+          <div id="save-week-hint" style="text-align:center;color:var(--muted);font-size:11px;line-height:1.45;padding:8px 4px 0">Your entries save automatically. Finishing marks the week reviewed — it clears the Budget reminder and unlocks this week's summary. You can still edit it afterwards.</div>
+          <div id="save-week-msg" style="display:none;text-align:center;color:var(--green);font-size:13px;font-weight:500;padding:8px 0">Week finished &#10003;</div>
+        </div>
+
+        <div id="prev-weeks-section" class="bud-span-2"></div>
+
         <!-- Standalone calculator. Deliberately NOT wired into the budget inputs: the previous
              version hijacked field taps and stole focus, so a sync refresh could overwrite an
              in-progress entry (see commit 05e1cd1). This one is self-contained. -->
-        <div class="card" data-bud-key="calc">
+        <div class="card bud-span-2" id="bud-calc-card" data-bud-key="calc">
           <div class="sec-label bud-toggle">&#129518; Calculator<svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
           <div class="bud-collapse-body">
             <div id="bcalc-expr" class="bcalc-expr">&nbsp;</div>
@@ -276,34 +311,8 @@
           </div>
         </div>
 
-        </div><!-- /left column -->
-        <div><!-- right column: results, history, config -->
-
-        <div class="card" data-bud-key="result">
-          <div class="sec-label bud-toggle">&#128202; Weekly result<svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-            <div><div style="font-size:13px;color:var(--muted);margin-bottom:2px">Money left over</div><div style="font-size:28px;font-weight:800;line-height:1" id="calc-leftover">&#8212;</div></div>
-            <div id="week-status-pill" class="status-pill good">&#128994; On track</div>
-          </div>
-          <div style="margin-bottom:10px">
-            <div class="sec-label" style="margin-bottom:6px">&#128221; Notes</div>
-            <textarea class="bud-notes-textarea" id="week-notes" placeholder="What happened this week?" oninput="budSaveCurrentWeek()"></textarea>
-          </div>
-          <!-- Was "Save week", beside a week that already autosaves every keystroke — so the
-               button looked like it did the saving, and its actual job was invisible. It does
-               not lock anything either (past weeks stay editable via "Edit week"), so calling
-               it a lock would be wrong too. What it really does: marks the week reviewed, which
-               clears the Budget reminder badge and releases the week-in-review summary. Named
-               and explained for that. -->
-          <button onclick="budSaveWeekExplicit()" style="width:100%;padding:12px;background:var(--header);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer" id="save-week-btn">Finish week</button>
-          <div id="save-week-hint" style="text-align:center;color:var(--muted);font-size:11px;line-height:1.45;padding:8px 4px 0">Your entries save automatically. Finishing marks the week reviewed — it clears the Budget reminder and unlocks this week's summary. You can still edit it afterwards.</div>
-          <div id="save-week-msg" style="display:none;text-align:center;color:var(--green);font-size:13px;font-weight:500;padding:8px 0">Week finished &#10003;</div>
-        </div>
-
-        <div id="prev-weeks-section"></div>
-
         <!-- Budget config: pay days + suggestive savings goal (drive the Home tab) -->
-        <div class="card" data-bud-key="config">
+        <div class="card" id="bud-config-card" data-bud-key="config">
           <div class="sec-label bud-toggle"><span class="bud-head-label">&#9881;&#65039; Pay days &amp; savings goal</span><span class="bud-head-right"><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span></div>
           <div class="bud-row">
             <div class="bud-row-left"><div class="bud-row-name">Weekly savings goal</div><div class="bud-row-budget">Suggestive only — colours the savings figure when reached</div></div>
@@ -312,7 +321,8 @@
           <div id="bud-payday-rows"></div>
         </div>
 
-        </div><!-- /right column -->
+        </div><!-- /#bud-col-left: on desktop budApplyLayout() splits these across the two columns -->
+        <div id="bud-col-right"></div>
         </div><!-- /.budget-desktop-grid -->
       </div>
 
