@@ -475,13 +475,11 @@ if(firebaseReady){
       ()=>subscriptionsData, v=>{ subscriptionsData=Array.isArray(v)?v:Object.values(v||{}); },
       ()=>{});
 
-    // Sync notes — one-shot pull/seed on sign-in (fbReconcile's seedWhen guard keeps an empty
-    // local store from wiping a populated cloud one, and only overwrites local when the cloud
-    // snapshot exists). set() writes localStorage ONLY (saveNotesLocalOnly) — the cloud already
-    // holds the value we just pulled.
-    fbReconcile('notes','wt_notes',
-      ()=>loadNotes(), v=>{ saveNotesLocalOnly(Array.isArray(v)?v:Object.values(v||{})); },
-      ()=>{ renderNotes(); renderHomeNotesBubble(); });
+    // Journal (still stored at wt_notes / users/<uid>/notes). A LIVE listener with a per-record
+    // union merge, replacing the one-shot fbReconcile + whole-array set(): that pair had no way
+    // to tell two devices apart, so whichever saved second pushed its own stale copy of every
+    // other record and the first device's edit vanished with no conflict and no error.
+    jrnAttachSync(user.uid);
 
     // ── Sync data added after the original sync was built ──
     const budEditing=()=>{ const a=document.activeElement; return a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'); };
@@ -777,23 +775,172 @@ function loadPlans(){
 function savePlans(data){
   lsSaveTS('wt_plans', data, 'wt_plans_ts', 'plans');
 }
-// Array-guarded: Firebase returns a plain object for a sparse array, and a single malformed
-// record must not be able to blank the whole screen.
-function loadNotes(){ const a=lsLoad('wt_notes', []); return Array.isArray(a)?a:[]; }
-// Save + push to Firebase, matching savePlans' pattern (localStorage is source of truth; the
-// cloud mirrors it when signed in).
-function saveNotes(n){
-  try{ localStorage.setItem('wt_notes',JSON.stringify(n)); }catch(e){ console.warn('notes save failed',e); }
-  try{
-    if(firebaseReady&&auth&&auth.currentUser&&db){
-      db.ref('users/'+auth.currentUser.uid+'/notes').set(n);
-    }
-  }catch(e){ console.warn('notes firebase sync failed',e); }
+// ── Journal store (the store behind Notes) ─────────────────────────
+// One versioned record shape, kept in the EXISTING wt_notes key so every backup Francois
+// already holds stays restorable. Records carry their own schemaVersion and are normalised on
+// READ, not by a one-shot boot migration — so a v1 record arriving later from a device that
+// has not updated yet converts on the way in instead of fighting the migrated copy, and the
+// migration is idempotent by construction rather than by a flag that could be wrong.
+const JRN_SCHEMA = 2;
+// Deleted records are kept as tombstones INDEFINITELY, not purged after 30 days. A purge is
+// only safe if every device purges the same record, and nothing here can know that: a device
+// dropping a tombstone the cloud still holds just pulls it back on the next merge, and
+// removing the cloud copy instead would let a device that had not synced since the delete
+// resurrect the record as live. A tombstone is a couple of hundred bytes. The Trash shows the
+// last 30 days of them; the rest simply sit there. Revisit only with a real convergence
+// argument, never to save space.
+const JRN_TRASH_WINDOW_MS = 30*24*60*60*1000;
+
+// Milliseconds for a legacy record, in descending order of trustworthiness:
+//   1. the id — every note this app has ever created is `note_<Date.now()>`, so the id still
+//      carries the millisecond precision the stored date string threw away;
+//   2. local midnight of the stored YYYY-MM-DD createdAt;
+//   3. 0.
+// NEVER Date.now(). Stamping migration time would reorder history, and doing it during boot is
+// the exact bug class of 9f151a2. Records that fall through to 0 are disambiguated by id in the
+// comparator rather than being handed an invented timestamp.
+function jrnLegacyMs(rec){
+  const m=/^[a-z]+_(\d{10,})/.exec(String((rec&&rec.id)||''));
+  if(m){
+    const ms=parseInt(m[1],10);
+    if(ms>946684800000 && ms<4102444800000) return ms;   // 2000-01-01 … 2100-01-01
+  }
+  const d=String((rec&&rec.createdAt)||'');
+  if(/^\d{4}-\d{2}-\d{2}$/.test(d)){
+    const t=localMidnight(d).getTime();
+    if(!isNaN(t)) return t;
+  }
+  return 0;
 }
-// localStorage-only write — used by the sign-in reconcile so a just-pulled cloud value isn't
-// immediately written straight back to the cloud (pointless round-trip).
-function saveNotesLocalOnly(n){
-  try{ localStorage.setItem('wt_notes',JSON.stringify(n)); }catch(e){ console.warn('notes save failed',e); }
+// Idempotent: normalising an already-normalised record returns an equal record, which is what
+// makes running the migration twice a no-op and makes read-time normalisation free of drift.
+function jrnNormalise(rec){
+  if(!rec||typeof rec!=='object') return null;
+  const id=String(rec.id||''); if(!id) return null;
+  const legacy = !(rec.schemaVersion>=JRN_SCHEMA);
+  const pos=(v,f)=>{ const n=Number(v); return (isFinite(n)&&n>0)?n:f; };
+  const createdAt = legacy ? jrnLegacyMs(rec) : pos(rec.createdAt, jrnLegacyMs(rec));
+  const updatedAt = legacy ? createdAt : pos(rec.updatedAt, createdAt);
+  // The legacy `type` (work|personal) becomes a tag. The legacy `date` is a DUE date and only
+  // ever a due date — nothing in the old model recorded which day an entry was ABOUT, so
+  // dateAbout starts empty and no existing note is guessed into the journal timeline.
+  let tags = Array.isArray(rec.tags) ? rec.tags.filter(t=>typeof t==='string'&&t) : [];
+  if(legacy && !tags.length) tags=[rec.type==='work'?'work':'personal'];
+  const about=String(rec.dateAbout||'');
+  return {
+    id,
+    schemaVersion: JRN_SCHEMA,
+    kind: rec.kind==='entry' ? 'entry' : 'note',
+    title: String(rec.title||''),
+    body: String(rec.body||''),
+    dateAbout: /^\d{4}-\d{2}-\d{2}$/.test(about) ? about : '',
+    createdAt,
+    updatedAt,
+    deletedAt: pos(rec.deletedAt, null),
+    mood: (Number(rec.mood)>=1&&Number(rec.mood)<=5) ? Math.round(Number(rec.mood)) : null,
+    tags,
+    pinned: !!(legacy ? rec.priority : rec.pinned),
+    dateType: (rec.dateType==='reminder'||rec.dateType==='expiry') ? rec.dateType : 'none',
+    dueDate: String((legacy ? rec.date : rec.dueDate)||'')
+  };
+}
+// Every read goes through here, so no screen ever sees a legacy or malformed record. Duplicate
+// ids collapse to the first occurrence rather than rendering twice.
+function loadNotes(){
+  const raw=lsLoad('wt_notes', []);
+  const arr=Array.isArray(raw)?raw:Object.values(raw||{});
+  const out=[], seen={};
+  arr.forEach(r=>{ const n=jrnNormalise(r); if(n&&!seen[n.id]){ seen[n.id]=1; out.push(n); } });
+  return out;
+}
+// What every screen except the Trash should read.
+function jrnLive(){ return loadNotes().filter(r=>!r.deletedAt); }
+function jrnTrash(){
+  const cut=Date.now()-JRN_TRASH_WINDOW_MS;
+  return loadNotes().filter(r=>r.deletedAt&&r.deletedAt>=cut).sort((a,b)=>b.deletedAt-a.deletedAt);
+}
+// Local write only. lsSaveTS keeps the STORE timestamp boot-safe; the per-record updatedAt is
+// stamped in jrnPut, which only ever runs from a user action.
+function jrnSaveLocal(arr){ lsSaveTS('wt_notes', arr, 'wt_notes_ts', null); }
+function jrnRef(){
+  return (firebaseReady&&auth&&auth.currentUser&&db) ? db.ref('users/'+auth.currentUser.uid+'/notes') : null;
+}
+// One record per write. The whole-array set() this replaces meant two open devices silently
+// overwrote each other: the second to save pushed its own stale copy of every OTHER record too.
+function jrnPushOne(rec){
+  try{ const r=jrnRef(); if(r) r.child(rec.id).set(rec); }catch(e){ console.warn('journal sync failed',e); }
+}
+function jrnPut(rec){
+  const out=jrnNormalise(Object.assign({}, rec, {schemaVersion:JRN_SCHEMA, updatedAt:Date.now()}));
+  if(!out) return null;
+  const arr=loadNotes();
+  const i=arr.findIndex(r=>r.id===out.id);
+  if(i>=0) arr[i]=out; else arr.push(out);
+  jrnSaveLocal(arr);
+  jrnPushOne(out);
+  return out;
+}
+// A tombstone needs no special merge rule: deleting stamps a NEW updatedAt, so plain
+// "newer updatedAt wins" makes it beat the live copy on every device — including one that was
+// offline at the time and would otherwise resurrect the record. Restoring stamps another one,
+// so an intentional recovery beats the tombstone in turn.
+function jrnDelete(id){
+  const rec=loadNotes().find(r=>r.id===id);
+  if(!rec||rec.deletedAt) return null;
+  return jrnPut(Object.assign({}, rec, {deletedAt:Date.now()}));
+}
+function jrnRestore(id){
+  const rec=loadNotes().find(r=>r.id===id);
+  if(!rec||!rec.deletedAt) return null;
+  return jrnPut(Object.assign({}, rec, {deletedAt:null}));
+}
+// Union by id, newer updatedAt wins. A tie keeps the cloud copy, matching mergeBudgetWeeks.
+function jrnMerge(localArr, cloudArr){
+  const map={}, localNewer=[];
+  (cloudArr||[]).forEach(r=>{ if(r&&r.id) map[r.id]=r; });
+  (localArr||[]).forEach(r=>{
+    if(!r||!r.id) return;
+    const c=map[r.id];
+    if(!c || (r.updatedAt||0)>(c.updatedAt||0)){ map[r.id]=r; localNewer.push(r); }
+  });
+  return {records:Object.values(map), localNewer};
+}
+function jrnRerender(){
+  // Never yank text out from under an open editor.
+  const fs=document.getElementById('note-view-overlay');
+  if(fs && fs.style.display==='block') return;
+  if(document.getElementById('note-edit-overlay')) return;
+  if(typeof S==='object' && S.view==='notes' && typeof renderNotes==='function') renderNotes();
+  if(typeof renderHomeNotesBubble==='function') renderHomeNotesBubble();
+}
+// Live listener, replacing the one-shot fbReconcile. Reads BOTH wire shapes: until every device
+// has this build, an older one can still set() a bare ARRAY over this node. The record's own id
+// field is the authority, so the wire key never matters and either shape merges identically.
+function jrnAttachSync(uid){
+  const ref=db.ref('users/'+uid+'/notes');
+  ref.on('value', snap=>{
+    const val=snap.val();
+    const wasArray=Array.isArray(val);
+    const cloud=(val==null?[]:(wasArray?val:Object.values(val)))
+      .map(jrnNormalise).filter(Boolean);
+    const local=loadNotes();
+    const m=jrnMerge(local, cloud);
+    const sig=a=>JSON.stringify(a.map(r=>r.id+':'+r.updatedAt).sort());
+    const changed = sig(local)!==sig(m.records);
+    if(changed) jrnSaveLocal(m.records);
+    if(wasArray){
+      // Convert the legacy array node to id-keyed in ONE write. Piecemeal child() writes would
+      // leave the old numeric keys behind as duplicates alongside the new ones. The payload is
+      // the merge result, so this replaces the node with a superset of what it held — never
+      // with less. The echo comes back object-shaped, so this cannot loop.
+      const keyed={}; m.records.forEach(r=>{ keyed[r.id]=r; });
+      try{ ref.set(keyed); }catch(e){ console.warn('journal rekey failed',e); }
+    } else if(m.localNewer.length){
+      m.localNewer.forEach(r=>{ try{ ref.child(r.id).set(r); }catch(e){} });
+    }
+    if(changed) jrnRerender();
+  });
+  return ref;
 }
 // Merge two savings logs by date, keeping the most recently-edited entry per date (by `t`).
 // Prevents a stale cloud copy from clobbering a fresh local update on the next load.
@@ -5456,16 +5603,17 @@ function restorePushToCloud(){
       put(path, Object.fromEntries(arr.filter(x=>x&&idOf(x)).map(x=>[idOf(x),x])));
     }catch(err){}
   };
-  // `notes` is in this list for the same reason the four cloud-wins stores are: its sign-in
-  // listener (fbReconcile) adopts the cloud snapshot unconditionally, so a restore that never
-  // reached the cloud was silently undone by the reload that follows it — the restored notes
-  // were replaced by the older cloud copy while the app reported success. It is written as a
-  // bare array here because that is the shape saveNotes() writes today; when notes move to a
-  // per-record keyed node this entry moves to putKeyed alongside sessions and weights.
   ['profile:daily_profile','budgetDefaults:daily_budget_defaults',
-   'personalInfo:wt_personalinfo','habits:daily_habits','budgetData:daily_budget',
-   'notes:wt_notes']
+   'personalInfo:wt_personalinfo','habits:daily_habits','budgetData:daily_budget']
     .forEach(pair=>{ const [p,k]=pair.split(':'); putJSON(p,k); });
+  // Journal, keyed by record id like sessions and weights. Without this a restore never reached
+  // the cloud at all, and the reload that follows it silently replaced the restored notes with
+  // the older cloud copy while the app reported success. loadNotes() normalises on the way out,
+  // so restoring a pre-Journal backup lands in the cloud already in the current shape.
+  try{
+    const jrn=loadNotes();
+    if(jrn.length) put('notes', Object.fromEntries(jrn.map(r=>[r.id, r])));
+  }catch(err){}
   putKeyed('sessions','wt_sessions', s=>String(s.id||''));
   putKeyed('weights','wt_weight', w=>String(w.date||'').replace(/-/g,''));
   putKeyed('savingsLog','daily_savings_log', s=>String(s.date||'').replace(/-/g,''));
@@ -5940,10 +6088,13 @@ function aiKitchenScope(fullRecipes){
   return {fullRecipeContents:!!fullRecipes, recipes, shopping, pantry};
 }
 
+// Deleted records are excluded outright: a tombstone is not context, and exporting text the
+// user deleted would be a disclosure they did not agree to. Range filtering and the
+// titles-only/full-text control land with the Journal scope work.
 function aiNotesScope(){
-  return (loadNotes()||[]).filter(n=>n&&typeof n==='object').map(n=>{
+  return jrnLive().map(n=>{
     const row={title:String(n.title||'')};
-    if(n.date) row.date=String(n.date);
+    if(n.dueDate) row.date=String(n.dueDate);
     if(n.body) row.body=String(n.body);
     return row;
   });
@@ -15979,18 +16130,24 @@ function notesDayDiff(dateA, dateB){
 // a legacy record with no createdAt threw TypeError here, and WHETHER it threw depended on
 // where the sort happened to place it — an intermittent blank Notes screen. Equal keys now
 // return 0 rather than 1, so the order is deterministic instead of engine-dependent.
+// Ties break on id last, so records that migrated to createdAt:0 (no usable legacy timestamp
+// anywhere) still order identically on every device instead of taking an invented Date.now().
 function notesSortCmp(a,b){
-  const pa=!!(a&&a.priority), pb=!!(b&&b.priority);
+  const pa=!!(a&&a.pinned), pb=!!(b&&b.pinned);
   if(pa!==pb) return pa?-1:1;
-  const da=String((a&&a.date)||''), db=String((b&&b.date)||'');
-  if(da&&db) return da<db?-1:(da>db?1:0);
-  if(da) return -1;
-  if(db) return 1;
-  return String((b&&b.createdAt)||'').localeCompare(String((a&&a.createdAt)||''));
+  const da=String((a&&a.dueDate)||''), db=String((b&&b.dueDate)||'');
+  if(da&&db&&da!==db) return da<db?-1:1;
+  if(da&&!db) return -1;
+  if(db&&!da) return 1;
+  const ca=Number((a&&a.createdAt)||0), cb=Number((b&&b.createdAt)||0);
+  if(ca!==cb) return cb-ca;
+  return String((a&&a.id)||'').localeCompare(String((b&&b.id)||''));
 }
-function notesTypeOf(n){ return (n&&n.type==='work')?'work':'personal'; }
+// Work/Personal is a tag now. Anything without one reads as personal, matching what the old
+// `type` field defaulted to.
+function notesTypeOf(n){ return (n&&Array.isArray(n.tags)&&n.tags.indexOf('work')>=0)?'work':'personal'; }
 function notesDueBadgeHtml(n, today){
-  const d=String((n&&n.date)||'');
+  const d=String((n&&n.dueDate)||'');
   if(!d || !n.dateType || n.dateType==='none') return '';
   const diff=notesDayDiff(d, today);
   const label=n.dateType==='expiry'?'Expires':'Reminder';
@@ -16006,7 +16163,7 @@ function notesCardHtml(n, today){
   return `<div data-note-open="${escAttr((n&&n.id)||'')}" style="background:var(--card);border-radius:16px;padding:14px 16px;margin-bottom:10px;position:relative;cursor:pointer">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
           <span style="background:${typeColor};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px">${typeLabel}</span>
-          ${n&&n.priority?'<span style="font-size:13px">⭐</span>':''}
+          ${n&&n.pinned?'<span style="font-size:13px">⭐</span>':''}
           ${notesDueBadgeHtml(n, today)}
         </div>
         <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">${escText((n&&n.title)||'')}</div>
@@ -16017,7 +16174,7 @@ function notesEmptyHtml(msg, sub){
   return `<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">📝</div><div style="font-size:16px;font-weight:600;margin-bottom:6px">${escText(msg)}</div>${sub?`<div style="font-size:14px">${escText(sub)}</div>`:''}</div>`;
 }
 function notesListHtml(filter){
-  const all=loadNotes().filter(n=>n&&typeof n==='object');
+  const all=jrnLive();   // tombstones never reach a list
   if(!all.length) return notesEmptyHtml('No notes yet','Tap + New note to get started');
   const shown=filter==='all'?all:all.filter(n=>notesTypeOf(n)===filter);
   if(!shown.length) return notesEmptyHtml('No notes');
@@ -16053,10 +16210,16 @@ document.addEventListener('click',function(e){
   if(open){ notesOpenEdit(open.getAttribute('data-note-open')); }
 });
 
+// A brand-new record is built through jrnNormalise so it is a v2 record from the first
+// keystroke — nothing in the app ever constructs the legacy shape any more.
+function jrnNewRecord(kind){
+  const now=Date.now();
+  return jrnNormalise({id:(kind==='entry'?'jrn_':'note_')+now, schemaVersion:JRN_SCHEMA,
+    kind:kind||'note', createdAt:now, updatedAt:now, tags:['personal']});
+}
 function notesOpenEdit(id){
-  const notes=loadNotes();
-  const note=id?notes.find(n=>n&&n.id===id):null;
-  const n=note||{id:'note_'+Date.now(),title:'',body:'',type:'personal',dateType:'none',date:'',priority:false,createdAt:getLocalDate()};
+  const note=id?loadNotes().find(n=>n&&n.id===id&&!n.deletedAt):null;
+  const n=note||jrnNewRecord('note');
 
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
@@ -16101,8 +16264,8 @@ function notesOpenEdit(id){
   q('#ne-body').value=String(n.body||'');
   q('#ne-type').value=notesTypeOf(n);
   q('#ne-datetype').value=(n.dateType==='reminder'||n.dateType==='expiry')?n.dateType:'none';
-  q('#ne-date').value=String(n.date||'');
-  q('#ne-priority').checked=!!n.priority;
+  q('#ne-date').value=String(n.dueDate||'');
+  q('#ne-priority').checked=!!n.pinned;
   const syncDateVis=()=>{ q('#ne-date').style.display=q('#ne-datetype').value==='none'?'none':'block'; };
   syncDateVis();
   q('#ne-datetype').addEventListener('change', syncDateVis);
@@ -16113,16 +16276,19 @@ function notesOpenEdit(id){
   if(del) del.addEventListener('click',()=>{ if(notesDelete(id)) overlay.remove(); });
 }
 
-// Reads whatever the compact editor currently holds.
-function notesEditorFields(){
+// Reads whatever the compact editor currently holds, in v2 field names. Work/Personal is a tag,
+// so it replaces only those two values and leaves any other tag on the record alone.
+function notesEditorFields(base){
   const g=s=>document.getElementById(s);
+  const want=g('ne-type')?g('ne-type').value:'personal';
+  const keep=(base&&Array.isArray(base.tags)?base.tags:[]).filter(t=>t!=='work'&&t!=='personal');
   return {
     title:(g('ne-title')?g('ne-title').value:'').trim(),
     body: g('ne-body')?g('ne-body').value:'',
-    type: g('ne-type')?g('ne-type').value:'personal',
+    tags: keep.concat([want==='work'?'work':'personal']),
     dateType: g('ne-datetype')?g('ne-datetype').value:'none',
-    date: g('ne-date')?g('ne-date').value:'',
-    priority: g('ne-priority')?!!g('ne-priority').checked:false
+    dueDate: g('ne-date')?g('ne-date').value:'',
+    pinned: g('ne-priority')?!!g('ne-priority').checked:false
   };
 }
 // Persists the in-progress edit before swapping surfaces. MERGES over the stored record rather
@@ -16132,22 +16298,18 @@ function notesEditorFields(){
 // typed into used to be written out here as {title:'',body:''}, leaving a permanent blank
 // record that synced to the cloud and rendered as an empty card you could not explain.
 function notesSaveDraft(id){
-  const notes=loadNotes();
-  const idx=notes.findIndex(n=>n&&n.id===id);
-  const f=notesEditorFields();
-  if(idx<0 && !f.title && !f.body.trim()) return null;
-  const base=idx>=0?notes[idx]:{id, createdAt:getLocalDate()};
-  const updated={...base, ...f, id};
-  if(idx>=0) notes[idx]=updated; else notes.push(updated);
-  saveNotes(notes);
-  return updated;
+  const stored=loadNotes().find(n=>n&&n.id===id)||null;
+  const f=notesEditorFields(stored);
+  if(!stored && !f.title && !f.body.trim()) return null;
+  const now=Date.now();
+  return jrnPut(Object.assign({}, stored||{id, kind:'note', createdAt:now}, f));
 }
 function notesViewFullscreen(id){
   const g=s=>document.getElementById(s);
   const saved = id ? notesSaveDraft(id) : null;
   // Nothing persisted yet. Carry the metadata forward in memory so the fullscreen editor can
   // create the record the moment there IS content, instead of writing a blank one now.
-  _noteViewPending = saved ? null : Object.assign({id, createdAt:getLocalDate()}, notesEditorFields());
+  _noteViewPending = saved ? null : Object.assign({id, kind:'note', createdAt:Date.now()}, notesEditorFields(null));
   const title = saved ? saved.title : (g('ne-title')?g('ne-title').value:'');
   const body  = saved ? saved.body  : (g('ne-body') ? g('ne-body').value : '');
   const ov=g('note-edit-overlay'); if(ov) ov.remove();
@@ -16163,8 +16325,9 @@ function showNoteView(title, body, id){
   const v=document.getElementById('note-view-overlay');
   if(v){ v.style.display='block'; v.scrollTop=0; }
 }
-// Writes the fullscreen edit back. Mutates the stored record in place, so every field this
-// screen doesn't show survives untouched; creates the record only once there is real content.
+// Writes the fullscreen edit back. Only title and body are touched, over the stored record, so
+// every field this screen doesn't show survives untouched; the record is created only once
+// there is real content.
 function noteViewWrite(){
   clearTimeout(_noteViewSaveTimer); _noteViewSaveTimer=null;
   if(!_noteViewId) return;
@@ -16173,18 +16336,16 @@ function noteViewWrite(){
   if(!t&&!b) return;
   const title=(t?t.value:'').trim();
   const body=b?b.value:'';
-  const notes=loadNotes();
-  const idx=notes.findIndex(n=>n&&n.id===_noteViewId);
-  if(idx>=0){
-    if(notes[idx].title===title && notes[idx].body===body) return; // no-op: don't churn the cloud
-    notes[idx].title=title; notes[idx].body=body;
-  } else {
-    if(!title && !body.trim()) return;
-    const base=_noteViewPending||{id:_noteViewId,type:'personal',dateType:'none',date:'',priority:false,createdAt:getLocalDate()};
-    notes.push(Object.assign({}, base, {id:_noteViewId, title, body}));
-    _noteViewPending=null;
+  const stored=loadNotes().find(n=>n&&n.id===_noteViewId)||null;
+  if(stored){
+    if(stored.title===title && stored.body===body) return; // no-op: don't churn the cloud
+    jrnPut(Object.assign({}, stored, {title, body}));
+    return;
   }
-  saveNotes(notes);
+  if(!title && !body.trim()) return;
+  const base=_noteViewPending||{id:_noteViewId, kind:'note', createdAt:Date.now()};
+  jrnPut(Object.assign({}, base, {id:_noteViewId, title, body}));
+  _noteViewPending=null;
 }
 function noteViewSave(){
   clearTimeout(_noteViewSaveTimer);
@@ -16222,30 +16383,27 @@ function copyNoteView(){
 }
 
 function notesSave(id){
-  const f=notesEditorFields();
+  const stored=loadNotes().find(n=>n&&n.id===id)||null;
+  const f=notesEditorFields(stored);
   if(!f.title){ alert('Add a title'); return; }
-  const notes=loadNotes();
-  const idx=notes.findIndex(n=>n&&n.id===id);
-  const base=idx>=0?notes[idx]:{id, createdAt:getLocalDate()};
-  const updated={...base, ...f, id, body:f.body.trim()};
-  if(idx>=0) notes[idx]=updated; else notes.push(updated);
-  saveNotes(notes);
+  jrnPut(Object.assign({}, stored||{id, kind:'note', createdAt:Date.now()}, f, {body:f.body.trim()}));
   const ov=document.getElementById('note-edit-overlay'); if(ov) ov.remove();
   renderNotes();
   renderHomeNotesBubble();
 }
 
-// Returns true only when a note was actually removed, so the caller knows whether to close the
+// Returns true only when a note was actually deleted, so the caller knows whether to close the
 // editor. Every other destructive action in Daily confirms first (sessions, accounts, recipes,
 // plans, savings history); Notes was the sole exception, and it is the only store whose contents
-// exist nowhere else in the app. Recoverable deletion arrives with the Trash in the next stage.
+// exist nowhere else in the app. The delete is now a tombstone, so it is recoverable from the
+// Trash and — more importantly — converges: a hard removal from the array let any device that
+// was offline at the time push the record straight back as live.
 function notesDelete(id){
-  const notes=loadNotes();
-  const n=notes.find(x=>x&&x.id===id);
+  const n=loadNotes().find(x=>x&&x.id===id&&!x.deletedAt);
   if(!n) return false;
   const label=String(n.title||'').trim();
-  if(!confirm('Delete '+(label?'“'+label+'”':'this note')+'?\n\nThis cannot be undone.')) return false;
-  saveNotes(notes.filter(x=>!(x&&x.id===id)));
+  if(!confirm('Delete '+(label?'“'+label+'”':'this note')+'?\n\nYou can restore it from Trash for 30 days.')) return false;
+  jrnDelete(id);
   renderNotes();
   renderHomeNotesBubble();
   return true;
@@ -16258,16 +16416,16 @@ function buildHomeNotesCard(){
   // which happens to come out right at a positive UTC offset and off by one at a negative.
   const in7=localMidnight(today); in7.setDate(in7.getDate()+7);
   const in7Str=dateStr(in7);
-  const all=loadNotes().filter(n=>n&&typeof n==='object');
-  const dated=n=>n.date&&n.dateType!=='none';
-  // Each note lands in exactly ONE bucket. Priority wins first (accent, "pinned"); the other
-  // three exclude priority so nothing renders twice. `recent` = undated notes (the default
-  // dateType for a new note), newest first, capped so the card can't grow unbounded.
-  const priority=all.filter(n=>n.priority);
-  const urgent  =all.filter(n=>!n.priority&&dated(n)&&n.date>=today&&n.date<=in7Str);
-  const upcoming=all.filter(n=>!n.priority&&dated(n)&&n.date>in7Str);
-  const recent  =all.filter(n=>!n.priority&&!dated(n))
-    .sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
+  const all=jrnLive();
+  const dated=n=>n.dueDate&&n.dateType!=='none';
+  // Each note lands in exactly ONE bucket. Pinned wins first (accent); the other three exclude
+  // pinned so nothing renders twice. `recent` = undated notes (the default for a new note),
+  // newest first, capped so the card can't grow unbounded.
+  const priority=all.filter(n=>n.pinned);
+  const urgent  =all.filter(n=>!n.pinned&&dated(n)&&n.dueDate>=today&&n.dueDate<=in7Str);
+  const upcoming=all.filter(n=>!n.pinned&&dated(n)&&n.dueDate>in7Str);
+  const recent  =all.filter(n=>!n.pinned&&!dated(n))
+    .sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))
     .slice(0,3);
   // Whole card taps through to the Notes tab (rows inherit the click via bubbling).
   const row=(dotCol,titleWeight,title,rightHtml)=>
@@ -16283,7 +16441,7 @@ function buildHomeNotesCard(){
     });
     // 2) Urgent — danger dot, due within 7 days.
     urgent.forEach(n=>{
-      const diff=notesDayDiff(String(n.date||''), today);
+      const diff=notesDayDiff(String(n.dueDate||''), today);
       const label=diff<=0?'Today':diff===1?'Tomorrow':'In '+diff+' days';
       html+=row('var(--danger)','600',n.title,`<div style="font-size:12px;color:var(--danger);font-weight:600">${label}</div>`);
     });
@@ -16293,7 +16451,7 @@ function buildHomeNotesCard(){
     });
     // 4) Upcoming — muted dot, due after 7 days.
     upcoming.forEach(n=>{
-      html+=row('var(--muted)','500',n.title,`<div style="font-size:12px;color:var(--muted)">${escText(n.date)}</div>`);
+      html+=row('var(--muted)','500',n.title,`<div style="font-size:12px;color:var(--muted)">${escText(n.dueDate)}</div>`);
     });
   }
   html+='</div>';
