@@ -1,10 +1,13 @@
 // BUMP THIS ON EVERY RELEASE THAT CHANGES ANY FILE IN ASSETS.
 // The fetch handler is cache-first, so an installed PWA keeps serving the old bundle until the
 // cache NAME changes — a deploy with the same name reaches nobody who already has the app on
-// their home screen. v241: Notes becomes Journal — a day-grouped timeline with Open Loops
-// pinned above it, one full-screen editor replacing the modal/fullscreen pair, desktop
-// master/detail, search, jump-to-date and a 30-day Trash.
-const CACHE_NAME = 'daily-v241';
+// their home screen. v242: two features landing together. Notes becomes Journal — a day-grouped
+// timeline with Open Loops pinned above it, one full-screen editor replacing the
+// modal/fullscreen pair, desktop master/detail, search, jump-to-date and a 30-day Trash. And
+// Stats becomes an evidence-led insight system with canonical finance, literal training
+// history, honest coverage states, and source-record drill-downs.
+// (Both branches independently picked v241; the merged deploy has to outrank both.)
+const CACHE_NAME = 'daily-v242';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

@@ -131,6 +131,7 @@
           <div id="post-save-weight"></div>
           <div id="post-save-effort"></div>
           <button data-action="open-exercise-library" style="width:100%;margin-top:16px;padding:12px;border-radius:12px;border:1px solid var(--border);background:none;color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent">Manage Exercise Library</button>
+          <button onclick="openWorkoutHistory()" style="width:100%;margin-top:8px;padding:12px;border-radius:12px;border:1px solid var(--border);background:none;color:var(--text);font-size:14px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent">Workout history →</button>
         </div>
       </div>
     </section>
@@ -402,8 +403,7 @@
     <!-- KITCHEN VIEW -->
     <section id="view-stats" class="hidden">
       <div class="stats-tab-row" id="stats-tab-row">
-        <button class="stats-tab-btn active" id="st-ov-btn" onclick="setStatsTab('overview')">Overview</button>
-        <button class="stats-tab-btn" id="st-hist-btn" onclick="setStatsTab('history')">History</button>
+        <button class="stats-tab-btn active" id="st-ov-btn" onclick="setStatsTab('overview')">Review</button>
         <button class="stats-tab-btn" id="st-train-btn" onclick="setStatsTab('training')">Training</button>
         <button class="stats-tab-btn" id="st-body-btn" onclick="setStatsTab('body')">Body</button>
         <button class="stats-tab-btn" id="st-nut-btn" onclick="setStatsTab('nutrition')">Nutrition</button>
@@ -412,16 +412,16 @@
       <div id="sub-overview">
         <div id="overview-content"></div>
       </div>
-      <div id="sub-history" class="hidden">
-        <div id="history-list"></div>
-      </div>
       <div id="sub-training" class="hidden">
         <div id="train-empty"></div>
         <div id="train-content">
+          <div id="train-insight-summary"></div>
           <div class="stats-grid" id="train-streak-grid"></div>
+          <select class="pr-select" id="pr-select" onchange="renderChart()"></select>
+          <div id="training-swap-note"></div>
           <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
             <div style="background:var(--accent);padding:8px 14px;font-size:13px;font-weight:500;color:#fff;display:flex;justify-content:space-between;align-items:center">
-              <span>🏋️ Training volume</span>
+              <span id="train-vol-title">Comparable work</span>
               <div style="display:flex;gap:4px">
                 <button id="tv-week" onclick="setTrainVolRange('week')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:rgba(255,255,255,0.3);color:#fff;cursor:pointer">Weekly</button>
                 <button id="tv-month" onclick="setTrainVolRange('month')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:transparent;color:rgba(255,255,255,0.65);cursor:pointer">Monthly</button>
@@ -435,8 +435,6 @@
             <div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">💪 Muscle balance · last 30 days</div>
             <div style="padding:14px 16px;height:220px" id="train-muscle-wrap"></div>
           </div>
-          <select class="pr-select" id="pr-select" onchange="renderChart()"></select>
-          <div id="training-swap-note"></div>
           <div class="stats-grid" id="stats-grid"></div>
           <div id="chart-wrap">
             <p>Top set weight per session (kg)</p>
@@ -469,12 +467,7 @@
           </div>
           <div style="padding:14px 16px"><div id="bs-trend-wrap"></div></div>
         </div>
-        <div id="bs-progress-wrap"></div>
-        <div id="bs-bestworst-wrap"></div>
         <div id="bs-catbreak-wrap"></div>
-        <div id="bs-consist-wrap"></div>
-        <div id="bs-records-wrap"></div>
-        <div id="bs-goals-wrap"></div>
       </div>
     </section>
 
@@ -595,6 +588,8 @@
             <button class="settings-save-btn" id="pi-save-btn" onclick="savePersonalInfo()">Save info</button>
             <div id="tdee-section"></div>
           </div>
+          <div id="health-weight-section"></div>
+          <div id="health-weight-goal-section"></div>
         </div>
 
         <div id="settings-habits-section" class="hidden">
@@ -671,6 +666,22 @@
     </section>
 
   </main>
+
+  <div id="view-workout-history" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:110;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
+    <div class="detail-header">
+      <button class="back-btn" onclick="closeWorkoutHistory()" aria-label="Back to Log"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <div class="detail-title">Workout history</div><div style="width:36px"></div>
+    </div>
+    <div id="history-list" class="workout-history-content"></div>
+  </div>
+
+  <div id="view-stats-evidence" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:115;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
+    <div class="detail-header">
+      <button class="back-btn" onclick="closeStatsEvidence()" aria-label="Back to analysis"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <div class="detail-title" id="stats-evidence-title">Evidence</div><div style="width:36px"></div>
+    </div>
+    <div id="stats-evidence-content" class="stats-evidence-content"></div>
+  </div>
 
   <div id="calorie-overlay" style="display:none">
     <div id="calorie-overlay-inner"></div>
