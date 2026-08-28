@@ -140,6 +140,7 @@
 
     <!-- BUDGET VIEW -->
     <section id="view-budget" class="swipe-panel">
+      <button id="source-return-bar" class="source-return-bar hidden" type="button" onclick="returnFromSourceView()"></button>
       <!-- Toggle pill -->
       <div class="sub-toggle" style="display:flex;background:var(--border);border-radius:10px;padding:3px;margin-bottom:16px">
         <button id="bv-week-btn" onclick="setBudgetView('week')" style="flex:1;padding:8px;border:none;background:var(--card);border-radius:8px;font-size:14px;font-weight:700;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,0.1)">Week</button>
@@ -400,10 +401,12 @@
 
     </div><!-- /#swipe-deck -->
 
-    <!-- KITCHEN VIEW -->
+    <!-- STATS VIEW — Overview (orientation) → Review (interpretation) → four domain tabs.
+         Raw workout history stays in Log; it is deliberately not a Stats tab. -->
     <section id="view-stats" class="hidden">
       <div class="stats-tab-row" id="stats-tab-row">
-        <button class="stats-tab-btn active" id="st-ov-btn" onclick="setStatsTab('overview')">Review</button>
+        <button class="stats-tab-btn active" id="st-ov-btn" onclick="setStatsTab('overview')">Overview</button>
+        <button class="stats-tab-btn" id="st-rev-btn" onclick="setStatsTab('review')">Review</button>
         <button class="stats-tab-btn" id="st-train-btn" onclick="setStatsTab('training')">Training</button>
         <button class="stats-tab-btn" id="st-body-btn" onclick="setStatsTab('body')">Body</button>
         <button class="stats-tab-btn" id="st-nut-btn" onclick="setStatsTab('nutrition')">Nutrition</button>
@@ -412,35 +415,24 @@
       <div id="sub-overview">
         <div id="overview-content"></div>
       </div>
+      <div id="sub-review" class="hidden">
+        <div id="review-content"></div>
+      </div>
       <div id="sub-training" class="hidden">
         <div id="train-empty"></div>
         <div id="train-content">
-          <div id="train-insight-summary"></div>
-          <div class="stats-grid" id="train-streak-grid"></div>
-          <select class="pr-select" id="pr-select" onchange="renderChart()"></select>
-          <div id="training-swap-note"></div>
-          <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-            <div style="background:var(--accent);padding:8px 14px;font-size:13px;font-weight:500;color:#fff;display:flex;justify-content:space-between;align-items:center">
-              <span id="train-vol-title">Comparable work</span>
-              <div style="display:flex;gap:4px">
-                <button id="tv-week" onclick="setTrainVolRange('week')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:rgba(255,255,255,0.3);color:#fff;cursor:pointer">Weekly</button>
-                <button id="tv-month" onclick="setTrainVolRange('month')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:transparent;color:rgba(255,255,255,0.65);cursor:pointer">Monthly</button>
-              </div>
-            </div>
-            <div style="padding:14px 16px"><div id="train-vol-wrap" style="height:260px"></div></div>
-          </div>
+          <div id="train-frequency"></div>
           <div id="week-grid-wrap"></div>
-          <div class="consist-stats" id="consist-stats"></div>
-          <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-            <div style="background:transparent;padding:12px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">💪 Muscle balance · last 30 days</div>
-            <div style="padding:14px 16px;height:220px" id="train-muscle-wrap"></div>
+          <div id="train-ex-panel">
+            <div class="stats-sec-label">Per-exercise records</div>
+            <select class="pr-select" id="pr-select" onchange="renderChart()" aria-label="Choose an exercise"></select>
+            <div id="training-swap-note"></div>
+            <div id="train-ex-summary"></div>
+            <div id="train-ex-recent"></div>
+            <div id="train-vol-card"></div>
           </div>
-          <div class="stats-grid" id="stats-grid"></div>
-          <div id="chart-wrap">
-            <p>Top set weight per session (kg)</p>
-            <canvas id="prog-chart" style="max-height:360px"></canvas>
-          </div>
-          <div class="pr-board-title">Personal records</div>
+          <div id="train-muscle-card"></div>
+          <div class="stats-sec-label">Personal records</div>
           <div id="pr-board"></div>
         </div>
       </div>
@@ -452,21 +444,12 @@
         <div id="nutrition-content"></div>
       </div>
       <div id="sub-finance" class="hidden">
-        <!-- Account-derived cards first: this tab was almost entirely budget data, with the
-             net worth chart buried below four budget cards. -->
+        <!-- Ordered as one financial picture: what the latest closed week did, what the
+             balance sheet is doing, which accounts drove it, then the spending detail. -->
+        <div id="bs-week-wrap"></div>
         <div id="bs-balance-wrap"></div>
         <div id="bs-acctgrowth-wrap"></div>
-        <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
-          <div style="background:var(--accent);padding:8px 14px;font-size:13px;font-weight:500;color:#fff;display:flex;justify-content:space-between;align-items:center">
-            <span>📈 Spending trends</span>
-            <div style="display:flex;gap:4px">
-              <button id="bst-monthly" onclick="setBSTrendRange('monthly')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:rgba(255,255,255,0.3);color:#fff;cursor:pointer">Monthly</button>
-              <button id="bst-yearly" onclick="setBSTrendRange('yearly')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:transparent;color:rgba(255,255,255,0.65);cursor:pointer">Yearly</button>
-              <button id="bst-alltime" onclick="setBSTrendRange('alltime')" style="padding:5px 11px;border-radius:20px;border:none;font-size:12px;font-weight:600;background:transparent;color:rgba(255,255,255,0.65);cursor:pointer">All time</button>
-            </div>
-          </div>
-          <div style="padding:14px 16px"><div id="bs-trend-wrap"></div></div>
-        </div>
+        <div id="bs-trend-wrap-card"></div>
         <div id="bs-catbreak-wrap"></div>
       </div>
     </section>
@@ -706,6 +689,7 @@
       <div class="jrn-ed-inner">
         <input id="jrn-ed-title" class="jrn-ed-title" placeholder="Title (optional)" autocomplete="off">
         <textarea id="jrn-ed-body" class="jrn-ed-body" placeholder="How was today?"></textarea>
+        <div id="jrn-ed-context"></div>
       </div>
     </div>
     <div class="jrn-ed-foot" id="jrn-ed-foot"></div>

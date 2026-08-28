@@ -303,8 +303,7 @@ if(firebaseReady){
       if(cloudMissingSome) dbRef.set(mergedMap);
       if(S.view==='stats'){
         if(document.getElementById('view-workout-history')?.style.display==='block') renderHistory();
-        if(statsSubTab==='training') renderTraining();
-        else if(statsSubTab==='overview') renderStatsOverview();
+        refreshStatsForData(['overview','review','training']);
       }
     });
 
@@ -323,7 +322,7 @@ if(firebaseReady){
       // merged while signed out must be re-applied here and pushed back up.
       if(mergeLegacyWeightEntries()) persistWeights();
       else localStorage.setItem('wt_weight', JSON.stringify(S.weights));
-      if(S.view==='stats'&&(statsSubTab==='body'||statsSubTab==='overview')) setStatsTab(statsSubTab,true);
+      if(S.view==='stats') refreshStatsForData(['overview','review','body']);
     });
 
     // One-time migration: fold the old duplicate weight log (daily_weight_log locally,
@@ -419,6 +418,7 @@ if(firebaseReady){
         if(scrubbed||merged.cloudNeedsUpdate) budDataRef.set(budgetData);
         if(S.view==='budget') renderBudgetTab();
         if(S.view==='home') renderHome();
+        if(S.view==='stats') refreshStatsForData(['overview','review','finance']);
       }
     });
 
@@ -466,7 +466,7 @@ if(firebaseReady){
     // Sync weight goal
     fbReconcile('weightGoal','daily_weight_goal',
       ()=>weightGoal, v=>{ weightGoal=v||{}; },
-      ()=>{ if(S.view==='stats') renderWeightGoal(); },
+      ()=>{ if(S.view==='stats') refreshStatsForData(['overview','review','body']); },
       ()=>!!weightGoal.target);
 
     // Subscriptions are retired as a separate list (folded into fixed categories), but the
@@ -500,7 +500,7 @@ if(firebaseReady){
       accounts=loadAccounts();
       if(S.view==='home'&&typeof renderHome==='function') renderHome();
       if(S.view==='budget'&&typeof renderBudgetTab==='function') renderBudgetTab();
-      if(S.view==='stats'&&statsSubTab==='finance'&&typeof renderBSBalance==='function') renderBSBalance();
+      if(S.view==='stats') refreshStatsForData(['overview','review','finance']);
       if(typeof renderAccountsPage==='function'&&document.getElementById('view-accounts')&&document.getElementById('view-accounts').style.display!=='none') renderAccountsPage();
     };
     const _acctListen=()=>syncBlobListen(user.uid,'accounts','daily_accounts',_acctRerender);
@@ -538,14 +538,14 @@ if(firebaseReady){
       if(typeof txnAfterChange==='function') txnAfterChange();
     });
     syncBlobListen(user.uid,'dayCustom','wt_day_custom',()=>{ try{ dayCustom=JSON.parse(localStorage.getItem('wt_day_custom')||'{}')||{}; }catch(e){} if(S.view==='log'&&typeof renderLog==='function') renderLog(); if(S.view==='home'&&typeof renderHome==='function') renderHome(); });
-    syncBlobListenTS(user.uid,'exerciseLib','wt_exercise_lib','wt_exercise_lib_ts',()=>{ if(typeof renderExerciseLibList==='function') renderExerciseLibList(); if(typeof SE!=='undefined' && SE.target>=0 && document.getElementById('se-picker-list')) document.getElementById('se-picker-list').innerHTML=sePickerListHTML(); });
+    syncBlobListenTS(user.uid,'exerciseLib','wt_exercise_lib','wt_exercise_lib_ts',()=>{ if(typeof renderExerciseLibList==='function') renderExerciseLibList(); if(typeof SE!=='undefined' && SE.target>=0 && document.getElementById('se-picker-list')) document.getElementById('se-picker-list').innerHTML=sePickerListHTML(); if(S.view==='stats') refreshStatsForData(['overview','review','training']); });
     syncBlobListen(user.uid,'customMuscles','wt_custom_muscles',()=>{ try{ const v=document.getElementById('view-exercise-library'); if(v && v.style.display!=='none' && typeof renderMuscleFilterRow==='function') renderMuscleFilterRow(); }catch(e){} });
     syncBlobListen(user.uid,'libHidden','wt_lib_hidden',()=>{ if(typeof renderExerciseLibList==='function') renderExerciseLibList(); });
     syncBlobListenTS(user.uid,'trainingSplit','wt_split','wt_split_ts',()=>{
       splitConfig=null; splitCfg(); // reload from the just-updated localStorage copy
       if(S.view==='log'&&typeof renderLog==='function') renderLog();
       if(S.view==='home'&&typeof renderHome==='function') renderHome();
-      if(S.view==='stats'&&statsSubTab==='training'&&typeof renderTraining==='function') renderTraining();
+      if(S.view==='stats') refreshStatsForData(['overview','review','training']);
       if(typeof renderSplitEditor==='function'&&document.getElementById('view-split-editor')&&document.getElementById('view-split-editor').style.display!=='none') renderSplitEditor();
     });
     // ── Kitchen sync ──
@@ -563,11 +563,11 @@ if(firebaseReady){
       if(typeof renderCalorieLog==='function') renderCalorieLog();        // self-guards if not mounted
       const _co=document.getElementById('calorie-overlay');
       if(_co&&_co.style.display!=='none'&&typeof renderCalorieOverlay==='function') renderCalorieOverlay();
-      if(S.view==='stats'&&statsSubTab==='nutrition'&&typeof renderNutrition==='function') renderNutrition();
+      if(S.view==='stats') refreshStatsForData(['overview','review','nutrition']);
     });
     syncBlobListen(user.uid,'calorieHistory','daily_cal_history',()=>{
       try{ calorieHistory=loadCalorieHistory(); }catch(e){}
-      if(S.view==='stats'&&statsSubTab==='nutrition'&&typeof renderNutrition==='function') renderNutrition();
+      if(S.view==='stats') refreshStatsForData(['overview','review','nutrition']);
       const _co=document.getElementById('calorie-overlay');
       if(_co&&_co.style.display!=='none'&&typeof renderCalorieOverlay==='function') renderCalorieOverlay();
     });
@@ -1835,6 +1835,7 @@ function initDay(idx){
 let statsSubTab = 'overview';
 function setView(v, direction, opts){
   opts = opts || {};
+  clearSourceReturn();
   const _libOv=document.getElementById('view-exercise-library');
   if(_libOv&&_libOv.style.display!=='none'){_libOv.style.display='none';_libOv.style.left='0';}
   // Accounts is a fixed overlay (not an #app-main>section), so — like the library above — it
@@ -2962,25 +2963,31 @@ function updateNavBadges(){
   if(bb) bb.style.display=showBudget?'block':'none';
 }
 // Old sub-tab names (saved state, header-pill contexts) map onto the new structure.
+// 'overview' used to mean the Review screen; a stored value of it now lands on the new
+// Overview, which is the intended default anyway.
 const STATS_TAB_ALIASES={progress:'training', budget:'finance', weight:'body', history:'training'};
+const STATS_PANES={overview:'sub-overview',review:'sub-review',training:'sub-training',body:'sub-body',nutrition:'sub-nutrition',finance:'sub-finance'};
+const STATS_BTNS={overview:'st-ov-btn',review:'st-rev-btn',training:'st-train-btn',body:'st-body-btn',nutrition:'st-nut-btn',finance:'st-fin-btn'};
 function invalidateStatsTabs(){
-  ['sub-overview','sub-training','sub-body','sub-nutrition','sub-finance'].forEach(id=>{
+  Object.values(STATS_PANES).forEach(id=>{
     const pane=document.getElementById(id); if(pane) delete pane.dataset.statsRendered;
   });
 }
+function refreshStatsForData(tabs){
+  invalidateStatsTabs();
+  if(S.view==='stats'&&tabs.includes(statsSubTab)) setStatsTab(statsSubTab,true);
+}
 function setStatsTab(tab,force){
   tab=STATS_TAB_ALIASES[tab]||tab;
-  const paneIds={overview:'sub-overview',training:'sub-training',body:'sub-body',nutrition:'sub-nutrition',finance:'sub-finance'};
-  const btnIds={overview:'st-ov-btn',training:'st-train-btn',body:'st-body-btn',nutrition:'st-nut-btn',finance:'st-fin-btn'};
-  if(!paneIds[tab]) tab='overview';
-  const targetPane=document.getElementById(paneIds[tab]);
+  if(!STATS_PANES[tab]) tab='overview';
+  const targetPane=document.getElementById(STATS_PANES[tab]);
   const alreadyRendered=targetPane&&targetPane.dataset.statsRendered==='1';
   statsSubTab = tab;
-  Object.keys(paneIds).forEach(t=>{
-    const pane=document.getElementById(paneIds[t]); if(pane) pane.classList.toggle('hidden',t!==tab);
-    const btn=document.getElementById(btnIds[t]); if(btn) btn.classList.toggle('active',t===tab);
+  Object.keys(STATS_PANES).forEach(t=>{
+    const pane=document.getElementById(STATS_PANES[t]); if(pane) pane.classList.toggle('hidden',t!==tab);
+    const btn=document.getElementById(STATS_BTNS[t]); if(btn){ btn.classList.toggle('active',t===tab); btn.setAttribute('aria-selected',t===tab?'true':'false'); }
   });
-  const activeBtn=document.getElementById(btnIds[tab]);
+  const activeBtn=document.getElementById(STATS_BTNS[tab]);
   // Scroll ONLY the sub-tab strip. scrollIntoView() walks every scrollable ancestor, and
   // #app-main is one (overflow:hidden is still programmatically scrollable, and it holds the
   // 400%-wide swipe deck) — so it used to scroll #app-main sideways on top of the deck's
@@ -3007,6 +3014,7 @@ function setStatsTab(tab,force){
     return;
   }
   if(tab==='overview') renderStatsOverview();
+  if(tab==='review') renderStatsReview();
   if(tab==='training') renderTraining();
   if(tab==='body') renderBody();
   if(tab==='nutrition') renderNutrition();
@@ -3014,12 +3022,77 @@ function setStatsTab(tab,force){
   if(targetPane) targetPane.dataset.statsRendered='1';
 }
 
+// ── Shared Stats vocabulary ──────────────────────────────────────
+// Every completed-period figure in Stats measures the same thing the same way: whole Monday
+// weeks that have already finished. Defining it once is what stops Overview, Review and the
+// Training tab quietly disagreeing about "the last 4 weeks".
+function statsPeriod(weeks){
+  const n=weeks||4;
+  const currentMonday=localMidnight(weekKey(getMondayOf(0)));
+  const end=new Date(currentMonday); end.setDate(end.getDate()-1);
+  const start=new Date(currentMonday); start.setDate(start.getDate()-n*7);
+  const priorEnd=new Date(start); priorEnd.setDate(priorEnd.getDate()-1);
+  const priorStart=new Date(start); priorStart.setDate(priorStart.getDate()-n*7);
+  return {weeks:n,currentMonday,from:dateStr(start),to:dateStr(end),priorFrom:dateStr(priorStart),priorTo:dateStr(priorEnd),
+    label:fmtDate(dateStr(start))+' – '+fmtDate(dateStr(end))};
+}
+// A trained day is a distinct calendar date with at least one saved session. Session count is
+// separate workload context and is never folded into this number.
+function trainedDaysIn(from,to){
+  return new Set((S.sessions||[]).filter(s=>s.date>=from&&s.date<=to).map(s=>s.date)).size;
+}
+function sessionsIn(from,to){
+  return (S.sessions||[]).filter(s=>s.date>=from&&s.date<=to).length;
+}
+// Status pill. Semantic only — never the runtime accent, which can be any hue.
+function statsChip(cls,label){
+  return '<span class="stats-status '+(cls||'neutral')+'">'+label+'</span>';
+}
+function statsDeltaChip(delta,unit,invert){
+  if(!delta) return statsChip('neutral','No change');
+  return statsChip('neutral',(delta>0?'+':'−')+Math.abs(delta)+(unit||''));
+}
+// Neutral segmented control. Replaces the accent-filled bars with white pills that used to sit
+// on top of two chart cards — accent means "press this", not "this is a chart header".
+function statsSeg(group,options,active,fn){
+  return '<div class="stats-seg" role="group">'+options.map(o=>
+    '<button type="button" id="'+group+'-'+o[0]+'" class="'+(active===o[0]?'on':'')+'" aria-pressed="'+(active===o[0]?'true':'false')+'" onclick="'+fn+'(\''+o[0]+'\')">'+o[1]+'</button>').join('')+'</div>';
+}
+// One figure + its unit + a caption, in the shared card vocabulary.
+function statsFigure(value,unit,caption,small){
+  return '<div class="card-fig'+(small?' card-fig-sm':'')+'">'+value+(unit?'<span class="card-fig-u">'+unit+'</span>':'')+'</div>'+
+    (caption?'<div class="card-cap">'+caption+'</div>':'');
+}
+function statsSplit(cells){
+  return '<div class="card-split">'+cells.map((c,i)=>
+    (i?'<div class="card-split-div"></div>':'')+'<div><div class="card-split-l">'+c[0]+'</div><div class="card-split-v">'+c[1]+'</div></div>').join('')+'</div>';
+}
+
 // ── Stats evidence drill-down ────────────────────────────────────
 // A single source-record overlay keeps the active tab/range intact underneath it. Domain
 // renderers supply only recorded facts; closing returns to the exact analysis context.
 let _statsEvidenceExercise='';
-let _statsFinanceEvidence=[];
-let _statsAccountEvidence=[];
+// Keyed, not indexed. These used to be arrays whose positions were baked into onclick
+// handlers — so any re-render between drawing a row and tapping it (a theme toggle, a
+// transaction sync, opening Review after Finance) could point the same link at a different
+// category. Keys are derived from the record's own identity, so re-registering overwrites
+// rather than renumbers.
+const _statsFinanceEvidence={}, _statsAccountEvidence={};
+const _statsEvidenceKeys={}; let _statsEvidenceSeq=0;
+function statsEvidenceKey(sig,prefix){
+  if(!_statsEvidenceKeys[sig]) _statsEvidenceKeys[sig]=prefix+(++_statsEvidenceSeq);
+  return _statsEvidenceKeys[sig];
+}
+function statsRegisterFinanceEvidence(c){
+  const key=statsEvidenceKey('fin|'+c.kind+'|'+c.id+'|'+c.label,'fc');
+  _statsFinanceEvidence[key]=c;
+  return key;
+}
+function statsRegisterAccountEvidence(r){
+  const key=statsEvidenceKey('acct|'+((r.a&&(r.a.id||r.a.name))||'?'),'ac');
+  _statsAccountEvidence[key]=r;
+  return key;
+}
 function openStatsEvidence(title,html){
   const v=document.getElementById('view-stats-evidence'); if(!v) return;
   const t=document.getElementById('stats-evidence-title'); if(t) t.textContent=title||'Evidence';
@@ -3036,6 +3109,14 @@ function openEvidenceExerciseDetail(){
   closeStatsEvidence();
   if(_statsEvidenceExercise) openExerciseDetail(_statsEvidenceExercise);
 }
+function openWorkoutDayFromStats(date){
+  closeStatsEvidence();
+  openWorkoutHistory();
+  setTimeout(()=>{
+    const row=document.querySelector('.session-card[data-session-date="'+date+'"]');
+    if(row) row.scrollIntoView({block:'center'});
+  },40);
+}
 function openExerciseEvidence(name,from,to,periodLabel){
   _statsEvidenceExercise=name;
   const end=to||from;
@@ -3051,7 +3132,7 @@ function openExerciseEvidence(name,from,to,periodLabel){
   openStatsEvidence(name+' · '+label,
     '<div class="stats-data-note">Literal saved sessions and sets. Session notes are context only and are not treated as causes.</div>'+
     '<div class="stats-source-list">'+(rows||'<div class="stats-source-row">No matching saved sessions.</div>')+'</div>'+
-    statsSourceActions(['<button onclick="openEvidenceExerciseDetail()">Open full exercise history →</button>','<button onclick="closeStatsEvidence();setView(\'log\');openWorkoutHistory()">Open workout records →</button>']));
+    statsSourceActions(['<button onclick="openEvidenceExerciseDetail()">Open full exercise history →</button>','<button onclick="closeStatsEvidence();openWorkoutHistory()">Open workout records →</button>']));
 }
 function openExerciseVolumeEvidence(name,key,range){
   if(range==='week'){
@@ -3106,8 +3187,8 @@ function openNutritionEvidence(date){
     '<div class="stats-data-note">Daily calorie totals are the available historical source. Historical macros and old food-entry detail were not persisted.</div><div class="stats-source-list">'+rows+'</div>'+
     statsSourceActions(['<button onclick="closeStatsEvidence();openCalorieOverlay()">Open today’s food log →</button>']));
 }
-function openFinanceCategoryEvidence(index){
-  const c=_statsFinanceEvidence[index]; if(!c) return;
+function openFinanceCategoryEvidence(key){
+  const c=_statsFinanceEvidence[key]; if(!c) return;
   const rows=(c.weeks||[]).slice().reverse().map(w=>{
     const d=budgetData[w.key]||{};
     let detail='';
@@ -3120,7 +3201,7 @@ function openFinanceCategoryEvidence(index){
       const explicit=d['fix_'+c.id];
       detail=explicit!==undefined&&explicit!==''?'Saved weekly field · '+fmtMoneyExact(explicit):'Frozen weekly rate · '+fmtMoneyExact(w.val);
     }else detail='Legacy aggregate only; category-level source metadata was not stored.';
-    return '<button class="stats-source-row" onclick="closeStatsEvidence();openBudgetWeekFromStats(\''+w.key+'\')"><div class="stats-source-top"><span>Week of '+fmtDate(w.key)+'</span><span>'+fmtMoneyExact(w.val)+'</span></div><div class="stats-source-meta">'+detail+'</div><div class="stats-review-link">Open source week →</div></button>';
+    return '<button class="stats-source-row" onclick="closeStatsEvidence();openBudgetWeekFromStats(\''+w.key+'\')"><div class="stats-source-top"><span>Week of '+fmtDate(w.key)+(w.label?' · '+_catEscHtml(w.label):'')+'</span><span>'+fmtMoneyExact(w.val)+'</span></div><div class="stats-source-meta">'+detail+'</div><div class="stats-review-link">Open source week →</div></button>';
   }).join('');
   const sourceRule=c.kind==='Variable'
     ? 'Variable category. Transactions govern whenever one or more matching records exist.'
@@ -3138,8 +3219,8 @@ function openNetWorthEvidence(date){
   }).join('');
   openStatsEvidence('Net worth evidence · '+fmtDate(date),'<div class="stats-data-note">Every value below identifies the balance update establishing this chart point. Carried-forward balances are explicit.</div><div class="stats-source-list">'+rows+'</div>'+statsSourceActions(['<button onclick="closeStatsEvidence();openAccounts()">Open account records →</button>']));
 }
-function openAccountGrowthEvidence(index){
-  const r=_statsAccountEvidence[index]; if(!r) return;
+function openAccountGrowthEvidence(key){
+  const r=_statsAccountEvidence[key]; if(!r) return;
   const all=(r.a.history||[]).filter(e=>e&&e.date).slice().sort((a,b)=>a.date<b.date?-1:1);
   const baseline=accountEntryAt(r.a,r.from)||all[0]||null;
   const entries=all.filter(e=>e.date>=r.from);
@@ -3971,7 +4052,7 @@ function renderHistory(){
 
     const dayStr = Number.isFinite(Number(s.dayNum)) && Number(s.dayNum)>0 ? ` · Day ${Number(s.dayNum)}` : '';
     const durStr = s.duration ? ` · ${fmtDuration(s.duration)}` : '';
-    return `<div class="session-card">
+    return `<div class="session-card" data-session-date="${escAttr(s.date||'')}">
       <div class="session-card-top">
         <div class="session-date-str">${fmtDate(s.date)}${dayStr}${durStr}</div>
         <div style="display:flex;align-items:center;gap:8px">
@@ -4264,7 +4345,7 @@ function weightGoalAnalysis(){
   const storedStart=parseFloat(weightGoal&&weightGoal.startWeight);
   const goalReadings=startedAt?sorted.filter(w=>w.date>=startedAt):[];
   const start=!isNaN(storedStart)&&storedStart>0?storedStart:(goalReadings.length?parseFloat(goalReadings[0].weight):null);
-  const out={sorted,cur,target,startedAt,start,goalReadings,hasGoal:!isNaN(target)&&target>0,legacy:false,rate:null,rateReady:false,staleDays:null,pace:null,mode:null};
+  const out={sorted,cur,target,startedAt,start,goalReadings,hasGoal:!isNaN(target)&&target>0,legacy:false,rate:null,rateReady:false,rateNoisy:false,rateReason:'',staleDays:null,pace:null,mode:null};
   if(out.hasGoal&&!startedAt) out.legacy=true;
   if(out.hasGoal&&start!==null) out.mode=Math.abs(target-start)<0.2?'maintain':target<start?'cut':'bulk';
   if(cur) out.staleDays=Math.max(0,Math.floor((localMidnight(getLocalDate())-localMidnight(cur.date))/864e5));
@@ -4272,8 +4353,17 @@ function weightGoalAnalysis(){
     const first=goalReadings[0], last=goalReadings[goalReadings.length-1];
     const span=Math.round((localMidnight(last.date)-localMidnight(first.date))/864e5);
     if(span>=21&&out.staleDays!==null&&out.staleDays<=14){
-      out.rate=(parseFloat(last.weight)-parseFloat(first.weight))/(span/7);
-      out.rateReady=true;
+      const xs=goalReadings.map(w=>(localMidnight(w.date)-localMidnight(first.date))/864e5);
+      const ys=goalReadings.map(w=>parseFloat(w.weight));
+      const mx=xs.reduce((a,b)=>a+b,0)/xs.length, my=ys.reduce((a,b)=>a+b,0)/ys.length;
+      const den=xs.reduce((a,x)=>a+Math.pow(x-mx,2),0);
+      const slope=den?xs.reduce((a,x,i)=>a+(x-mx)*(ys[i]-my),0)/den:0;
+      const intercept=my-slope*mx;
+      const rms=Math.sqrt(ys.reduce((a,y,i)=>a+Math.pow(y-(intercept+slope*xs[i]),2),0)/ys.length);
+      const signal=Math.abs(slope*span);
+      out.rateNoisy=rms>Math.max(.35,signal);
+      out.rateReason=out.rateNoisy?'Readings vary more than the measured trend, so a weekly rate is withheld.':'';
+      if(!out.rateNoisy){ out.rate=slope*7; out.rateReady=true; }
     }
   }
   const gd=weightGoal&&weightGoal.date?String(weightGoal.date).slice(0,10):'';
@@ -4294,6 +4384,8 @@ function weightGoalAnalysis(){
   }
   return out;
 }
+// ── BODY: measured value first, then the goal episode. The insight rebuild led with a
+// sentence and never printed the actual weight; the number is the point of the screen.
 function renderBodyInsight(){
   const weightWrap=document.getElementById('weight-section');
   const goalWrap=document.getElementById('weight-goal-section');
@@ -4306,12 +4398,25 @@ function renderBodyInsight(){
   }
   const recent=a.sorted.slice(-30);
   const first=recent[0], delta=+(parseFloat(a.cur.weight)-parseFloat(first.weight)).toFixed(1);
-  const freshness=a.staleDays===0?'Measured today':a.staleDays+' day'+(a.staleDays===1?'':'s')+' since latest check-in';
-  weightWrap.innerHTML='<div class="card stats-conclusion-card">'+
-    cardHeader('scale','Measured weight','<button class="card-hd-act" onclick="openHealthSettings()">Manage check-ins →</button>')+
-    '<div class="stats-conclusion">'+(delta===0?'Stable across the visible readings':(delta>0?'Up ':'Down ')+Math.abs(delta).toFixed(1)+' kg across '+recent.length+' check-ins')+'</div>'+
-    '<div class="stats-data-note">'+fmtDate(first.date)+' to '+fmtDate(a.cur.date)+' · '+freshness+'. Individual readings can be noisy; the line is descriptive, not a diagnosis.</div>'+
-    (recent.length>=2?'<div class="stats-chart-box"><canvas id="body-weight-chart" aria-label="Body weight trend"></canvas></div>':'')+
+  const cut=new Date(localMidnight(getLocalDate())); cut.setDate(cut.getDate()-28);
+  const win=statsWeightWindow(a.sorted,dateStr(cut));
+  const lo=Math.min(...recent.map(w=>parseFloat(w.weight)));
+  const hi=Math.max(...recent.map(w=>parseFloat(w.weight)));
+  const freshChip=a.staleDays>14?statsChip('warn',a.staleDays+' days old'):statsChip(a.staleDays===0?'good':'neutral',a.staleDays===0?'Today':a.staleDays+'d ago');
+  weightWrap.innerHTML='<div class="card">'+
+    cardHeader('scale','Measured weight',freshChip+'<button class="card-hd-act" onclick="openHealthSettings()">Check-ins &rarr;</button>')+
+    statsFigure(parseFloat(a.cur.weight),'kg','Latest check-in · '+fmtDate(a.cur.date))+
+    statsSplit([
+      ['Change · 28 days',win?(win.delta>0?'+':win.delta<0?'−':'')+Math.abs(win.delta)+' kg':'—'],
+      ['Range · '+recent.length+' readings',lo+'–'+hi+' kg'],
+      ['Target',a.hasGoal?a.target+' kg':'None']
+    ])+
+    (recent.length>=2?'<div class="card-shape"><div class="card-cap">'+fmtDate(first.date)+' – '+fmtDate(a.cur.date)+' · '+
+        (delta===0?'no net change across these readings':(delta>0?'up ':'down ')+Math.abs(delta).toFixed(1)+' kg across these readings')+
+        ' · tap a point for its check-in</div>'+
+      '<div class="stats-chart-box"><canvas id="body-weight-chart" aria-label="Body weight trend"></canvas></div></div>'
+      :'<div class="stats-note-panel">One check-in recorded — a trend line starts from the second.</div>')+
+    (win?'':'<div class="stats-data-note">No 28-day change is shown: fewer than two check-ins fall inside that window.</div>')+
     '</div>';
   if(recent.length>=2){
     const ctx=document.getElementById('body-weight-chart');
@@ -4321,25 +4426,36 @@ function renderBodyInsight(){
     if(a.hasGoal&&a.startedAt) sets.push({label:'Current goal target',data:recent.map(w=>w.date>=a.startedAt?a.target:null),borderColor:tc,borderDash:[6,4],borderWidth:1.5,pointRadius:0,fill:false,spanGaps:false});
     S.bodyWeightChart=new Chart(ctx,{type:'line',data:{labels:recent.map(w=>fmtDate(w.date)),datasets:sets},options:{responsive:true,maintainAspectRatio:false,onClick:(event,elements)=>{if(elements.length&&elements[0].datasetIndex===0)openWeightEvidence(recent[elements[0].index].date);},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y+' kg'}}},scales:{x:{grid:{display:false},ticks:{color:tc,maxTicksLimit:6,maxRotation:0}},y:{grid:{color:gc},ticks:{color:tc,callback:v=>v+'kg'},beginAtZero:false}}}});
   }
+
+  const goalHead=cardHeader('target','Goal episode','<button class="card-hd-act" onclick="openHealthSettings()">Edit in Health &rarr;</button>');
   let goalHtml='';
   if(!a.hasGoal){
-    goalHtml='<div class="stats-conclusion">No active weight goal</div><div class="stats-data-note">Set one in Health to assess direction and pace.</div>';
+    goalHtml='<div class="stats-note-panel">No active weight goal. Set one in Health and Stats will assess direction and pace against it.</div>';
   }else if(a.legacy){
-    goalHtml='<div class="stats-conclusion">Goal needs a trustworthy starting point</div><div class="stats-data-note">This goal predates goal episodes. Open Health and save it again to begin future pace tracking without rewriting old weigh-ins.</div>';
+    goalHtml='<div class="stats-note-panel">This goal predates goal episodes, so it has no trusted starting point. Open Health and save it again to begin pace tracking — old weigh-ins are never rewritten.</div>';
   }else{
-    const dir=a.mode==='bulk'?'gain target':a.mode==='cut'?'loss target':'maintenance reference';
+    const dirWord=a.mode==='bulk'?'to gain':a.mode==='cut'?'to lose':'from the maintenance reference';
     const remaining=Math.abs(a.target-parseFloat(a.cur.weight)).toFixed(1);
-    const pace=a.pace?'<span class="stats-status '+(a.pace.onPace?'good':'warn')+'">'+a.pace.label+'</span>':'';
+    const goalDate=weightGoal.date?String(weightGoal.date).slice(0,10):'';
     let rate='Recent rate unavailable';
-    if(!a.goalReadings.length) rate='No check-in since this goal began; latest weight shown is older than the goal';
-    else if(a.rateReady) rate=(a.rate>0?'+':'')+a.rate.toFixed(2)+' kg/week across '+a.goalReadings.length+' readings';
-    else if(a.goalReadings.length<6) rate='Need '+(6-a.goalReadings.length)+' more goal-period reading'+(6-a.goalReadings.length===1?'':'s')+' for a recent rate';
-    else rate='Need readings spanning 21+ days and a check-in within 14 days for a recent rate';
-    goalHtml='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'+
-      '<div><div class="stats-conclusion">'+remaining+' kg from '+dir+'</div><div class="stats-data-note">Baseline '+a.start+' kg on '+fmtDate(a.startedAt)+' · target '+a.target+' kg'+(weightGoal.date?' by '+fmtDate(weightGoal.date):'')+'</div></div>'+pace+'</div>'+
-      '<div class="stats-evidence-row"><span>Evidence</span><strong>'+rate+'</strong></div>';
+    if(!a.goalReadings.length) rate='No check-in since this goal began — the latest weight predates it';
+    else if(a.rateReady) rate=(a.rate>0?'+':'')+a.rate.toFixed(2)+' kg/week measured across '+a.goalReadings.length+' readings';
+    else if(a.rateNoisy) rate=a.rateReason;
+    else if(a.goalReadings.length<6) rate='Needs '+(6-a.goalReadings.length)+' more reading'+(6-a.goalReadings.length===1?'':'s')+' in this episode before a rate is calculated';
+    else rate='Needs readings spanning 21+ days and a check-in inside 14 days before a rate is calculated';
+    goalHtml=statsFigure(remaining,'kg',(a.mode==='maintain'?'From the maintenance reference':'Remaining '+dirWord)+' · '+
+        (a.pace&&a.rateReady?a.pace.label.toLowerCase():a.pace?'pace withheld until the trend is trustworthy':'no target date, so pace is not assessed'))+
+      statsSplit([
+        ['Baseline',a.start+' kg'],
+        ['Episode start',fmtDate(a.startedAt)],
+        ['Target date',goalDate?fmtDate(goalDate):'—']
+      ])+
+      (a.pace&&a.rateReady?'<div class="stats-goal-row">'+statsChip(a.pace.onPace?'good':'warn',a.pace.label)+
+        '<span>Expected '+a.pace.expected.toFixed(1)+' kg by '+fmtDate(a.cur.date)+' on a straight path to the target date</span></div>':'')+
+      '<div class="stats-evidence-row"><span>Measured rate</span><strong>'+rate+'</strong></div>'+
+      '<button class="stats-inline-link" style="margin-top:12px" onclick="openWeightEvidence(\''+a.cur.date+'\')">See the latest check-in &rarr;</button>';
   }
-  goalWrap.innerHTML='<div class="card">'+cardHeader('target','Goal evidence','<button class="card-hd-act" onclick="openHealthSettings()">Edit in Health →</button>')+goalHtml+'</div>';
+  goalWrap.innerHTML='<div class="card">'+goalHead+goalHtml+'</div>';
 }
 
 // ── BODY sub-tab (analysis only; check-ins and goal edits live in Health) ─────────────
@@ -4347,12 +4463,15 @@ function renderBody(){
   renderBodyInsight();
 }
 
-// ── TRAINING sub-tab (formerly Progress, minus the weight widgets) ─
+// ── TRAINING sub-tab ──────────────────────────────────────────────
+// Order: how often (frequency + calendar) → one exercise in depth (records, literal recent
+// sessions, progress, comparable work) → muscle coverage → every PR. Raw scanning first,
+// explanation only where a number would otherwise be misread.
 function renderTraining(){
   const empty=document.getElementById('train-empty');
   const content=document.getElementById('train-content');
   if(!S.sessions.length){
-    if(empty) empty.innerHTML=emptyState('📊','No workout data yet','Complete and save a session to see your progress charts here');
+    if(empty) empty.innerHTML=emptyState('📊','No workout data yet','Complete and save a session in Log to see your training records here');
     if(content) content.classList.add('hidden');
     return;
   }
@@ -4368,54 +4487,41 @@ function renderTraining(){
   const exNames=[...new Set([...programmed,...logged])].sort((a,b)=>a.localeCompare(b));
   sel.innerHTML = exNames.map(n=>`<option value="${_catEsc(n)}"${n===prev?' selected':''}>${_catEscHtml(n)}</option>`).join('');
   if(!sel.value && exNames.length) sel.value = exNames[0];
-  const currentMonday=localMidnight(weekKey(getMondayOf(0)));
-  const end=new Date(currentMonday); end.setDate(end.getDate()-1);
-  const start=new Date(currentMonday); start.setDate(start.getDate()-28);
-  const priorStart=new Date(currentMonday); priorStart.setDate(priorStart.getDate()-56);
-  const priorEnd=new Date(currentMonday); priorEnd.setDate(priorEnd.getDate()-29);
-  const days=(a,b)=>new Set(S.sessions.filter(s=>s.date>=dateStr(a)&&s.date<=dateStr(b)).map(s=>s.date)).size;
-  const nowDays=days(start,end), beforeDays=days(priorStart,priorEnd), delta=nowDays-beforeDays;
-  const summary=document.getElementById('train-insight-summary');
-  if(summary) summary.innerHTML='<div class="card stats-conclusion-card">'+cardHeader('calendar','Training frequency · completed periods')+
-    '<div class="stats-conclusion">'+nowDays+' trained day'+(nowDays===1?'':'s')+' in the last 4 completed weeks'+(delta?' · '+(delta>0?'+':'')+delta+' versus the prior 4':' · unchanged versus the prior 4')+'</div>'+
-    '<div class="stats-data-note">'+fmtDate(dateStr(start))+'–'+fmtDate(dateStr(end))+' · distinct calendar days. '+S.sessions.filter(s=>s.date>=dateStr(start)&&s.date<=dateStr(end)).length+' saved sessions are shown separately as workload.</div></div>';
-  renderTrainStreak();
+  renderTrainFrequency();
   renderWeeklyGrid();
-  renderConsistStats();
   renderMuscleBalance();
   renderChart();
   renderPRBoard();
 }
 
-// ── Training: workout streak (any calendar day with ≥1 saved session) ─
-function calcSessionStreak(){
-  const dates=[...new Set(S.sessions.map(s=>s.date))].sort();
-  if(!dates.length) return {current:0,longest:0};
-  // Current: walk back from today; an unfinished today doesn't break a streak that ran
-  // through yesterday, so the walk may start one day back.
-  const set=new Set(dates);
-  const d=localMidnight(getLocalDate());
-  if(!set.has(dateStr(d))) d.setDate(d.getDate()-1);
-  let current=0;
-  while(set.has(dateStr(d))){ current++; d.setDate(d.getDate()-1); }
-  let longest=1, run=1;
-  for(let i=1;i<dates.length;i++){
-    const diff=Math.round((new Date(dates[i]+'T12:00:00')-new Date(dates[i-1]+'T12:00:00'))/864e5);
-    if(diff===1){ run++; if(run>longest) longest=run; }
-    else run=1;
-  }
-  return {current, longest:Math.max(longest,current)};
+// One frequency card. This replaced three overlapping ones (an insight summary, a streak grid
+// and a consistency strip) that each recomputed the same window — and it drops the flame/
+// longest-streak pair deliberately: a streak is a judgement, not a measurement.
+function renderTrainFrequency(){
+  const el=document.getElementById('train-frequency'); if(!el) return;
+  const P=statsPeriod(4);
+  const now=trainedDaysIn(P.from,P.to), prev=trainedDaysIn(P.priorFrom,P.priorTo);
+  const sess=sessionsIn(P.from,P.to);
+  const durs=(S.sessions||[]).filter(s=>s.date>=P.from&&s.date<=P.to&&s.duration>0).map(s=>s.duration);
+  const avgDur=durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length):null;
+  const allDays=new Set((S.sessions||[]).map(s=>s.date)).size;
+  const thisWeek=trainedDaysIn(weekKey(getMondayOf(0)),getLocalDate());
+  el.innerHTML='<div class="card">'+
+    cardHeader('calendar','Training frequency',statsDeltaChip(now-prev,' days'))+
+    statsFigure(now,'days','Distinct trained days · 4 completed weeks · '+P.label)+
+    statsSplit([['Sessions saved',sess],['Avg session',avgDur?avgDur+' min':'—'],['Prior 4 wks',prev+' days']])+
+    '<div class="stats-data-note">Trained days are distinct calendar dates; saved sessions are separate workload context. '+
+      thisWeek+' trained so far this week (of '+scheduleLen()+' scheduled) · '+allDays+' trained days on record. '+
+      'Past weeks are not re-scored against today’s schedule.</div>'+
+    '</div>';
 }
-function renderTrainStreak(){
-  const el=document.getElementById('train-streak-grid'); if(!el) return;
-  const {current,longest}=calcSessionStreak();
-  const total=[...new Set(S.sessions.map(s=>s.date))].length;
-  el.innerHTML=[
-    {l:'Current streak',v:'🔥 '+current},
-    {l:'Longest streak',v:longest},
-    {l:'Days trained',v:total},
-  ].map(s=>`<div class="stat-card"><div class="stat-val">${s.v}</div><div class="stat-lbl">${s.l}</div></div>`).join('');
-  animateStatVals(el);
+
+// A working set: not a warm-up, and carrying either a non-zero load (assistance is negative,
+// and still real work) or positive reps. Analysis and its own evidence overlay used to apply
+// two different rules here, so a muscle bar could disagree with the sets behind it.
+function statsIsWorkingSet(set){
+  if(!set||set.type==='warmup') return false;
+  return parseFloat(set.reps)>0;
 }
 
 // ── Training: comparable loaded work for one literal exercise ─
@@ -4423,12 +4529,6 @@ let trainVolRange='week';
 let trainVolChart=null;
 function setTrainVolRange(range){
   trainVolRange=range;
-  ['week','month'].forEach(r=>{
-    const btn=document.getElementById('tv-'+r); if(!btn) return;
-    const a=r===range;
-    btn.style.background=a?'rgba(255,255,255,0.3)':'transparent';
-    btn.style.color=a?'#fff':'rgba(255,255,255,0.65)';
-  });
   renderVolumeTrend();
 }
 function exerciseWorkingVolume(s,name){
@@ -4449,49 +4549,52 @@ function mondayKeyOf(ds){
   return dateStr(d);
 }
 function renderVolumeTrend(){
-  const wrap=document.getElementById('train-vol-wrap'); if(!wrap) return;
+  const wrap=document.getElementById('train-vol-card'); if(!wrap) return;
   if(trainVolChart){ trainVolChart.destroy(); trainVolChart=null; }
   const name=document.getElementById('pr-select')?.value||'';
-  const title=document.getElementById('train-vol-title');
-  if(title) title.textContent=name?'Comparable work · '+name:'Comparable work';
-  if(!name){ wrap.innerHTML='<div class="stats-evidence-empty">Choose an exercise to see comparable working-set volume.</div>'; return; }
+  const seg=statsSeg('tv',[['week','Weekly'],['month','Monthly']],trainVolRange,'setTrainVolRange');
+  const card=(body,withSeg)=>'<div class="card">'+cardHeader('trend','Comparable work',withSeg?seg:'')+body+'</div>';
+  // Unsupported measurement types get a plain stated reason, not a greyed-out chart frame —
+  // they are a different kind of exercise, not a lesser one.
+  const reason=t=>card('<div class="stats-note-panel">'+t+'</div>',false);
+  if(!name){ wrap.innerHTML=reason('Choose an exercise to see its comparable working-set volume.'); return; }
   const metric=exerciseMetricInfo(name);
-  if(metric.kind==='mixed'){
-    wrap.innerHTML='<div class="stats-evidence-empty">Saved measurement units changed, so these sessions are not combined into one work total.</div>';
-    return;
-  }
-  if(metric.kind==='seconds'){
-    wrap.innerHTML='<div class="stats-evidence-empty">Timed movements are measured in seconds, so they are not converted into kg·reps.</div>';
-    return;
-  }
-  if(metric.kind==='reps'){
-    wrap.innerHTML='<div class="stats-evidence-empty">No external load is recorded, so repetition progress is shown above instead of a meaningless 0 kg·reps total.</div>';
-    return;
-  }
+  if(metric.kind==='mixed'){ wrap.innerHTML=reason('Saved sessions for '+_catEscHtml(name)+' use different measurement units, so they are never combined into one work total.'); return; }
+  if(metric.kind==='seconds'){ wrap.innerHTML=reason(_catEscHtml(name)+' is timed. Seconds are not convertible into kg·reps, so the longest hold above is the comparable measure.'); return; }
+  if(metric.kind==='reps'){ wrap.innerHTML=reason('No external load is recorded for '+_catEscHtml(name)+'. Repetition progress is charted above rather than a meaningless 0 kg·reps total.'); return; }
   const groups={};
   S.sessions.forEach(s=>{
     const vol=exerciseWorkingVolume(s,name); if(vol===null) return;
     const key=trainVolRange==='week'?mondayKeyOf(s.date):s.date.substring(0,7);
     groups[key]=(groups[key]||0)+vol;
   });
-  const keys=Object.keys(groups).sort().slice(-12);
-  if(keys.length<2){
-    wrap.innerHTML='<div class="stats-evidence-empty">Not enough comparable positive-load working sets yet. Bodyweight, assisted/negative-load and warm-up sets are deliberately excluded.</div>';
+  const keys=[];
+  if(trainVolRange==='week'){
+    const currentMonday=localMidnight(weekKey(getMondayOf(0)));
+    for(let i=12;i>=1;i--){ const d=new Date(currentMonday); d.setDate(d.getDate()-i*7); keys.push(dateStr(d)); }
+  }else{
+    const currentMonth=localMidnight(getLocalDate()); currentMonth.setDate(1);
+    for(let i=12;i>=1;i--){ const d=new Date(currentMonth); d.setMonth(d.getMonth()-i); keys.push(dateStr(d).slice(0,7)); }
+  }
+  const recorded=keys.filter(k=>(groups[k]||0)>0).length;
+  if(recorded<2){
+    wrap.innerHTML=reason('Not enough comparable positive-load working sets yet. Warm-ups, bodyweight sets and assisted/negative loads are deliberately excluded from kg·reps.');
     return;
   }
   const labels=keys.map(k=>trainVolRange==='week'
     ? new Date(k+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'})
     : new Date(k+'-01T12:00:00').toLocaleDateString('en-AU',{month:'short',year:'2-digit'}));
-  wrap.innerHTML='<canvas id="train-vol-chart"></canvas>';
+  wrap.innerHTML=card('<div class="card-cap">Loaded working sets only (weight × reps) for '+_catEscHtml(name)+' · 12 completed '+(trainVolRange==='week'?'weeks':'months')+' · '+recorded+' with comparable work · tap a bar for its sets</div>'+
+    '<div class="stats-chart-box stats-chart-sm"><canvas id="train-vol-chart" aria-label="Comparable working-set volume"></canvas></div>',true);
   const ctx=document.getElementById('train-vol-chart'); if(!ctx) return;
   const {gc,tc}=budChartGridColors();
-  const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#FF6B35').trim();
-  const accentRgb=(getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb')||'255,107,53').trim();
+  const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#777').trim();
+  const accentRgb=(getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb')||'92,92,92').trim();
   trainVolChart=new Chart(ctx,{
     type:'bar',
     data:{
       labels,
-      datasets:[{label:'Volume',data:keys.map(k=>Math.round(groups[k])),backgroundColor:'rgba('+accentRgb+',0.6)',borderColor:accent,borderWidth:1,borderRadius:6,maxBarThickness:48}]
+      datasets:[{label:'Volume',data:keys.map(k=>Math.round(groups[k]||0)),backgroundColor:'rgba('+accentRgb+',0.55)',borderColor:accent,borderWidth:1,borderRadius:6,maxBarThickness:44}]
     },
     options:{
       responsive:true,maintainAspectRatio:false,
@@ -4501,8 +4604,8 @@ function renderVolumeTrend(){
         tooltip:{callbacks:{label:c=>c.parsed.y.toLocaleString()+' kg·reps'}}
       },
       scales:{
-        x:{grid:{display:false},ticks:{color:tc,font:{size:11},maxTicksLimit:12,maxRotation:0,minRotation:0}},
-        y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>v>=1000?(v/1000).toFixed(1)+'k':v},beginAtZero:true}
+        x:{grid:{display:false},ticks:{color:tc,font:{size:10},maxTicksLimit:8,maxRotation:0,minRotation:0}},
+        y:{grid:{color:gc},ticks:{color:tc,font:{size:10},callback:v=>v>=1000?(v/1000).toFixed(1)+'k':v},beginAtZero:true}
       }
     }
   });
@@ -4511,7 +4614,7 @@ function renderVolumeTrend(){
 // ── Training: muscle-group balance (sets per group, last 30 days) ──
 const MUSCLE_COLOURS={chest:'#3B82F6',back:'#8B5CF6',shoulders:'#F59E0B',arms:'#EC4899',legs:'#EF4444',core:'#52B788',other:'#94a3b8'};
 function renderMuscleBalance(){
-  const wrap=document.getElementById('train-muscle-wrap'); if(!wrap) return;
+  const wrap=document.getElementById('train-muscle-card'); if(!wrap) return;
   const byName={};
   loadExerciseLib().forEach(e=>{ byName[e.name]=e.muscle; });
   const cutoff=localMidnight(getLocalDate());
@@ -4524,7 +4627,7 @@ function renderMuscleBalance(){
     (s.exercises||[]).forEach(ex=>{
       const isLegacy=!ex.muscle;
       const m=ex.muscle||byName[ex.name]||libGuessMuscle(ex.name);
-      const n=(ex.sets||[]).filter(set=>(set.type?set.type!=='warmup':true)&&(set.weight>0||set.reps>0)).length;
+      const n=(ex.sets||[]).filter(statsIsWorkingSet).length;
       counts[counts[m]!==undefined?m:'other']+=n;
       if(isLegacy) legacySets+=n;
     });
@@ -4532,19 +4635,24 @@ function renderMuscleBalance(){
   const rows=Object.keys(counts).filter(m=>counts[m]>0||m!=='other');
   const max=Math.max(1,...rows.map(m=>counts[m]));
   const total=rows.reduce((a,m)=>a+counts[m],0);
+  const head=cardHeader('target','Muscle balance · last 30 days');
   if(!total){
-    wrap.innerHTML='<div style="text-align:center;color:var(--muted);font-size:13px;padding:8px 0">No sets logged in the last 30 days.</div>';
+    wrap.innerHTML='<div class="card">'+head+'<div class="stats-note-panel">No working sets recorded in the last 30 days.</div></div>';
     return;
   }
-  wrap.innerHTML=rows.map(m=>{
-    const pct=Math.round(counts[m]/max*100);
-    const label=m.charAt(0).toUpperCase()+m.slice(1);
-    return '<button type="button" class="stats-muscle-row" onclick="openMuscleEvidence(\''+m+'\',\''+cutoffStr+'\')"><div class="muscle-bar-row">'+
-      '<div class="muscle-bar-label">'+label+'</div>'+
-      '<div class="muscle-bar-track"><div class="muscle-bar-fill" style="width:'+pct+'%;background:'+MUSCLE_COLOURS[m]+'"></div></div>'+
-      '<div class="muscle-bar-count">'+counts[m]+' set'+(counts[m]!==1?'s':'')+'</div>'+
-    '</div></button>';
-  }).join('')+(legacySets?'<div class="stats-data-note">'+legacySets+' legacy set'+(legacySets===1?'':'s')+' use today’s library classification or name inference; newer sessions keep the classification saved at the time.</div>':'');
+  wrap.innerHTML='<div class="card">'+head+
+    '<div class="card-cap">'+total+' working sets since '+fmtDate(cutoffStr)+' · tap a group for the sets behind it</div>'+
+    '<div class="card-shape">'+rows.map(m=>{
+      const pct=Math.round(counts[m]/max*100);
+      const label=m.charAt(0).toUpperCase()+m.slice(1);
+      return '<button type="button" class="stats-muscle-row" onclick="openMuscleEvidence(\''+m+'\',\''+cutoffStr+'\')"><div class="muscle-bar-row">'+
+        '<div class="muscle-bar-label">'+label+'</div>'+
+        '<div class="muscle-bar-track"><div class="muscle-bar-fill" style="width:'+pct+'%;background:'+MUSCLE_COLOURS[m]+'"></div></div>'+
+        '<div class="muscle-bar-count">'+counts[m]+'</div>'+
+      '</div></button>';
+    }).join('')+'</div>'+
+    (legacySets?'<div class="stats-data-note">'+legacySets+' set'+(legacySets===1?'':'s')+' predate saved muscle classification and fall back to today’s library or name inference. Newer sessions keep the classification saved with them.</div>':'')+
+    '</div>';
 }
 
 // Display colour for a split day in the consistency grid + legend. Legacy day types keep
@@ -4560,7 +4668,11 @@ function renderWeeklyGrid(targetId){
   const typeByName={};
   splitTypes().forEach(t=>{ typeByName[t.name]=t; });
   const sessionMap = {};
-  S.sessions.forEach(s=>{ sessionMap[s.date] = typeByName[s.sessionType] ? typeGridColor(typeByName[s.sessionType]) : '#94a3b8'; });
+  S.sessions.forEach(s=>{
+    const item=sessionMap[s.date]||(sessionMap[s.date]={color:typeByName[s.sessionType]?typeGridColor(typeByName[s.sessionType]):'#94a3b8',count:0,names:[]});
+    item.count++;
+    if(s.sessionType&&!item.names.includes(s.sessionType)) item.names.push(s.sessionType);
+  });
 
   const todayStr = getLocalDate();
   const today = localMidnight(todayStr);
@@ -4570,9 +4682,9 @@ function renderWeeklyGrid(targetId){
   const startDate = new Date(thisMonday); startDate.setDate(thisMonday.getDate()-49);
 
   const DAY_LABELS=['M','T','W','T','F','S','S'];
-  let html=`<div class="week-section">
-    <div class="week-section-title">8-week consistency</div>
-    <div class="week-section-sub">Each square = one day · coloured = session logged</div>
+  const trained8=[...new Set(S.sessions.map(s=>s.date))].filter(d=>d>=dateStr(startDate)&&d<=todayStr).length;
+  let html=`<div class="card">${cardHeader('check','8-week consistency')}
+    <div class="card-cap">${trained8} trained day${trained8===1?'':'s'} since ${startDate.toLocaleDateString('en-AU',{day:'numeric',month:'short'})} · one square per calendar day</div>
     <div class="week-day-labels"><div></div>${DAY_LABELS.map(d=>`<div class="week-day-lbl">${d}</div>`).join('')}</div>`;
 
   for(let w=0;w<8;w++){
@@ -4582,13 +4694,19 @@ function renderWeeklyGrid(targetId){
     for(let d=0;d<7;d++){
       const cellDate=new Date(weekStart); cellDate.setDate(weekStart.getDate()+d);
       const ds=dateStr(cellDate);
-      const col=sessionMap[ds]||'';
+      const saved=sessionMap[ds]||null;
+      const col=saved?saved.color:'';
       const isToday=ds===todayStr?' today':'';
       const styles=[];
       if(cellDate>today) styles.push('opacity:0.25');
       if(col) styles.push('background:'+col);
       const styleAttr=styles.length?` style="${styles.join(';')}"`:'';
-      html+=`<div class="day-cell${isToday}"${styleAttr}></div>`;
+      if(saved){
+        const label=fmtDate(ds)+': '+saved.count+' saved session'+(saved.count===1?'':'s')+(saved.names.length?' · '+saved.names.join(', '):'');
+        html+=`<button type="button" class="day-cell has-session${isToday}"${styleAttr} aria-label="${_catEsc(label)}" title="${_catEsc(label)}" onclick="openWorkoutDayFromStats('${ds}')"><span aria-hidden="true">✓</span></button>`;
+      }else{
+        html+=`<div class="day-cell${isToday}"${styleAttr} aria-label="${_catEsc(fmtDate(ds)+(cellDate>today?': future day':': no saved session'))}"></div>`;
+      }
     }
     html+='</div>';
   }
@@ -4627,97 +4745,95 @@ function animateStatVals(container){
   });
 }
 
-function renderConsistStats(){
-  const today=localMidnight(getLocalDate());
-  const dow=today.getDay(), daysToMon=dow===0?6:dow-1;
-  const thisMonday=new Date(today); thisMonday.setDate(today.getDate()-daysToMon);
-  const fourWeeksAgo=new Date(thisMonday); fourWeeksAgo.setDate(thisMonday.getDate()-28);
-
-  const thisWeek=new Set(S.sessions.filter(s=>{const d=new Date(s.date+'T12:00:00');return d>=thisMonday;}).map(s=>s.date)).size;
-  const last4=new Set(S.sessions.filter(s=>{const d=new Date(s.date+'T12:00:00');return d>=fourWeeksAgo&&d<thisMonday;}).map(s=>s.date)).size;
-  const durations=S.sessions.filter(s=>s.duration>0).map(s=>s.duration);
-  const avgDur=durations.length?Math.round(durations.reduce((a,b)=>a+b,0)/durations.length):null;
-
-  const perWeek=scheduleLen();
-  document.getElementById('consist-stats').innerHTML=[
-    {l:'Trained days · week',v:`${thisWeek}/${perWeek}`},
-    {l:'Trained days · 4 completed wk',v:last4},
-    {l:'Avg session',v:avgDur?`${avgDur} min`:'—'},
-  ].map(s=>`<div class="stat-card"><div class="stat-val">${s.v}</div><div class="stat-lbl">${s.l}</div></div>`).join('');
-  animateStatVals(document.getElementById('consist-stats'));
+// The per-exercise panel. Everything here is literal: one saved name, its own sets, and a
+// measurement type stated up front so a "best" value can never be read as the wrong thing.
+function trainMetricChip(metric){
+  const map={load:['neutral','Load · kg'],reps:['neutral','Reps only'],seconds:['neutral','Timed · seconds'],mixed:['warn','Mixed units']};
+  const m=map[metric.kind]||['neutral','—'];
+  return statsChip(m[0],m[1]);
 }
-
-function renderChart(){
-  const exName = document.getElementById('pr-select').value;
-  const metric=exerciseMetricInfo(exName);
-  renderTrainingSwapNote(exName);
-  renderVolumeTrend();
-  const pts = getPoints(exName);
-
-  const pr = getPR(exName);
-  const hasPR=pr!==null;
-  const totalSets = S.sessions.reduce((acc,s)=>{
-    const ex=s.exercises.find(e=>e.name===exName);
-    return acc+(ex?ex.sets.filter(set=>set&&set.type!=='warmup').length:0);
-  },0);
-  const sessions = S.sessions.filter(s=>s.exercises.some(e=>e.name===exName)).length;
-  document.getElementById('stats-grid').innerHTML = [
-    {l:'Sessions',v:sessions||'—'},
-    {l:'Working sets',v:totalSets||'—'},
-    {l:metric.label,v:hasPR?pr+metric.unit:'—'},
-  ].map(s=>`<div class="stat-card"><div class="stat-val">${s.v}</div><div class="stat-lbl">${s.l}</div></div>`).join('');
-  animateStatVals(document.getElementById('stats-grid'));
-
+function renderExSummary(name,metric){
+  const el=document.getElementById('train-ex-summary'); if(!el) return;
   if(S.chart){ S.chart.destroy(); S.chart=null; }
-  const ctx = document.getElementById('prog-chart');
-  const chartLabel=ctx&&ctx.parentElement.querySelector('p');
-  if(chartLabel) chartLabel.textContent=metric.chartLabel;
-
-  if(!pts.length){
-    ctx.style.display='none';
-    const msg=ctx.parentElement.querySelector('.no-data-msg');
-    if(!msg){
-      const p=document.createElement('p');
-      p.className='no-data-msg';
-      p.style.cssText='text-align:center;color:var(--muted);padding:20px 0;font-size:14px';
-      p.textContent=metric.kind==='mixed'
-        ? 'These sessions use different saved measurement units, so they are not combined.'
-        : 'No comparable working-set data yet.';
-      ctx.parentElement.appendChild(p);
+  const hist=S.sessions.filter(s=>(s.exercises||[]).some(e=>e.name===name));
+  const pr=getPR(name), hasPR=pr!==null;
+  let prDate='';
+  hist.forEach(s=>{
+    if(prDate) return;
+    const e=(s.exercises||[]).find(x=>x.name===name);
+    if(e&&hasPR&&(e.sets||[]).some(x=>setMetricValue(x,metric)!==null&&setMetricValue(x,metric)>=pr)) prDate=s.date;
+  });
+  const workingSets=hist.reduce((acc,s)=>{
+    const ex=(s.exercises||[]).find(e=>e.name===name);
+    return acc+(ex?(ex.sets||[]).filter(statsIsWorkingSet).length:0);
+  },0);
+  const lastDone=hist.length?hist[hist.length-1].date:null;
+  const pts=getPoints(name);
+  const chartPart=pts.length>=2
+    ? '<div class="card-shape"><div class="card-cap">'+metric.chartLabel+'</div>'+
+      '<div class="stats-chart-box stats-chart-sm"><canvas id="prog-chart" aria-label="'+_catEsc(metric.chartLabel)+'"></canvas></div></div>'
+    : '<div class="stats-note-panel">'+(metric.kind==='mixed'
+        ? 'Saved sessions use different measurement units, so no single progress line is drawn.'
+        : pts.length===1?'One comparable session logged — the trend line starts from the second.'
+        : 'No comparable working-set data for this exercise yet.')+'</div>';
+  el.innerHTML='<div class="card">'+
+    cardHeader('trophy',_catEscHtml(name),trainMetricChip(metric))+
+    statsFigure(hasPR?pr:'—',hasPR?metric.unit.trim():'',
+      hasPR?metric.label+(prDate?' · first reached '+fmtDate(prDate):''):'No qualifying working set recorded')+
+    statsSplit([['Sessions',hist.length||'—'],['Working sets',workingSets||'—'],['Last done',lastDone?fmtDate(lastDone):'—']])+
+    chartPart+'</div>';
+  if(pts.length>=2){
+    const ctx=document.getElementById('prog-chart');
+    if(ctx&&typeof Chart!=='undefined'){
+      const {gc,tc}=budChartGridColors();
+      const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#777').trim();
+      S.chart=new Chart(ctx,{
+        type:'line',
+        data:{labels:pts.map(pt=>fmtDate(pt.date)),
+          datasets:[{data:pts.map(pt=>pt.weight),borderColor:accent,backgroundColor:'transparent',borderWidth:2.5,pointRadius:4,pointBackgroundColor:accent,fill:false,tension:0.3}]},
+        options:{
+          responsive:true,maintainAspectRatio:false,
+          onClick:(event,elements)=>{ if(elements.length) openExerciseEvidence(name,pts[elements[0].index].date); },
+          plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y+metric.unit}}},
+          scales:{
+            x:{grid:{display:false},ticks:{color:tc,font:{size:10},maxTicksLimit:6,maxRotation:0,minRotation:0}},
+            y:{grid:{color:gc},ticks:{color:tc,font:{size:10},callback:v=>v+metric.unit},beginAtZero:false}
+          }
+        }
+      });
     }
+  }
+}
+// The raw context the insight rebuild lost: the last few performed sessions, exactly as saved.
+function renderExRecent(name,metric){
+  const el=document.getElementById('train-ex-recent'); if(!el) return;
+  const hist=S.sessions.filter(s=>(s.exercises||[]).some(e=>e.name===name));
+  const head=cardHeader('note','Recent records','<button class="card-hd-act" data-ex="'+_catEsc(name)+'" onclick="openExerciseDetail(this.dataset.ex)">Full history &rarr;</button>');
+  if(!hist.length){
+    el.innerHTML='<div class="card">'+head+'<div class="stats-note-panel">No saved sessions under this name yet.</div></div>';
     return;
   }
-
-  ctx.style.display='';
-  const nm=ctx.parentElement.querySelector('.no-data-msg');
-  if(nm) nm.remove();
-
-  const isDark = S.theme==='dark';
-  const gc=isDark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)';
-  const tc=isDark?'#888':'#94a3b8';
-  const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#52B788').trim();
-
-  S.chart = new Chart(ctx,{
-    type:'line',
-    data:{
-      labels:pts.map(p=>fmtDate(p.date)),
-      datasets:[{
-        data:pts.map(p=>p.weight),
-        borderColor:accent,backgroundColor:'transparent',
-        borderWidth:2.5,pointRadius:5,pointBackgroundColor:accent,
-        fill:true,tension:0.3
-      }]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      onClick:(event,elements)=>{ if(elements.length) openExerciseEvidence(exName,pts[elements[0].index].date); },
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y+metric.unit}}},
-      scales:{
-        x:{grid:{color:gc},ticks:{color:tc,font:{size:11},maxTicksLimit:6,maxRotation:0,minRotation:0}},
-          y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>v+metric.unit},beginAtZero:false}
-      }
-    }
-  });
+  const rows=hist.slice(-5).reverse().map(s=>{
+    const ex=(s.exercises||[]).find(e=>e.name===name);
+    const unit=ex.unit||(_secsNames.has(name)?'secs':'reps');
+    const sets=(ex.sets||[]).map((set,i)=>'<span class="ex-set-pill'+(set&&set.type==='warmup'?' warm':'')+'">'+
+      (set&&set.type==='warmup'?'W':i+1)+' <b>'+fmtLoggedSet(set,unit)+'</b></span>').join('');
+    return '<button type="button" class="ex-recent-row" data-ex="'+_catEsc(name)+'" data-date="'+s.date+'" onclick="openExerciseEvidence(this.dataset.ex,this.dataset.date)">'+
+      '<div class="ex-recent-top"><span>'+fmtDate(s.date)+'</span><span>'+_catEscHtml(s.sessionType||'Session')+'</span></div>'+
+      '<div class="ex-recent-sets">'+(sets||'<span class="ex-set-pill">No sets saved</span>')+'</div></button>';
+  }).join('');
+  el.innerHTML='<div class="card">'+head+
+    '<div class="card-cap">Last '+Math.min(5,hist.length)+' of '+hist.length+' saved session'+(hist.length===1?'':'s')+' · W marks a warm-up, which never counts toward a record</div>'+
+    '<div class="ex-recent-list">'+rows+'</div></div>';
+}
+function renderChart(){
+  const sel=document.getElementById('pr-select'); if(!sel) return;
+  const exName=sel.value;
+  const metric=exerciseMetricInfo(exName);
+  renderTrainingSwapNote(exName);
+  renderExSummary(exName,metric);
+  renderExRecent(exName,metric);
+  renderVolumeTrend();
 }
 
 function selectTrainingExercise(name){
@@ -5929,7 +6045,7 @@ function openPasteRestore(){
     '</div>';
   document.getElementById('paste-restore-overlay').classList.remove('hidden');
 }
-function closePasteRestore(){ const o=document.getElementById('paste-restore-overlay'); if(o) o.classList.add('hidden'); }
+function closePasteRestore(){ const o=document.getElementById('paste-restore-overlay'); if(o){ o.classList.add('hidden'); o.classList.remove('jrn-sheet'); } }
 function doPasteRestore(){
   const msg=document.getElementById('paste-restore-msg');
   const txt=(document.getElementById('paste-restore-text')||{}).value||'';
@@ -5998,7 +6114,9 @@ function restorePushToCloud(){
 // raw var_<id> cells instead of the transaction-aware helpers, and had drifted away from what
 // the Budget screen actually shows.
 const AI_CTX_SCHEMA   = 'daily-context';
-const AI_CTX_VERSION  = 1;
+// v2 makes Journal records range-scoped, kind-aware and metadata-first instead of exporting
+// every saved note body under the v1 shape.
+const AI_CTX_VERSION  = 2;
 const AI_CTX_CURRENCY = 'AUD';
 // Stated in the export rather than left for the reader to assume: a week spanning a month
 // boundary has to land somewhere, and "wherever its Monday falls" is the rule every rollup
@@ -6063,7 +6181,7 @@ const AI_SCOPES=[
   {id:'body',          label:'Body',          hint:'Weight log, goal and personal details', sensitive:true},
   {id:'habits',        label:'Habits',        hint:'Completion rates over the period'},
   {id:'kitchen',       label:'Kitchen',       hint:'Recipes, shopping list and pantry'},
-  {id:'notes',         label:'Journal',       hint:'Your journal entries and notes, in full', sensitive:true}
+  {id:'notes',         label:'Journal',       hint:'Entries and Open Loops in the selected period; text is optional', sensitive:true}
 ];
 function aiScope(id){ return AI_SCOPES.find(x=>x.id===id)||null; }
 function aiScopeLabel(id){ const s=aiScope(id); return s?s.label:String(id||''); }
@@ -6447,15 +6565,28 @@ function aiKitchenScope(fullRecipes){
 }
 
 // Deleted records are excluded outright: a tombstone is not context, and exporting text the
-// user deleted would be a disclosure they did not agree to. Range filtering and the
-// titles-only/full-text control land with the Journal scope work.
-function aiNotesScope(){
+// user deleted would be a disclosure they did not agree to. Entries are ranged by dateAbout;
+// Open Loops by their creation day (a future due date is metadata, not when the note existed).
+// Body text is a separate, explicit disclosure and defaults off in the hub.
+function aiNotesScope(range,fullText){
   return jrnLive().map(n=>{
-    const row={title:String(n.title||'')};
-    if(n.dueDate) row.date=String(n.dueDate);
-    if(n.body) row.body=String(n.body);
+    const entry=n.kind==='entry';
+    const created=Number(n.createdAt)||0;
+    const scopeDate=entry?jrnEntryDay(n):(created?dateStr(new Date(created)):null);
+    if(!scopeDate||scopeDate<range.from||scopeDate>range.to) return null;
+    const row={kind:entry?'entry':'open_loop', date:scopeDate, title:String(n.title||'')};
+    if(n.updatedAt) row.updatedAt=new Date(Number(n.updatedAt)).toISOString();
+    if(Array.isArray(n.tags)&&n.tags.length) row.tags=n.tags.map(String);
+    if(entry){
+      if(n.mood) row.mood={id:Number(n.mood),label:jrnMoodLabel(Number(n.mood))};
+    } else {
+      row.pinned=!!n.pinned;
+      row.dateType=String(n.dateType||'none');
+      if(n.dueDate) row.dueDate=String(n.dueDate);
+    }
+    if(fullText&&n.body) row.body=String(n.body);
     return row;
-  });
+  }).filter(Boolean);
 }
 
 // ── The one context object ───────────────────────────────────────
@@ -6476,7 +6607,7 @@ function buildDailyContext(options){
   if(has('body'))          data.body=aiBodyScope(range);
   if(has('habits'))        data.habits=aiHabitsScope(range);
   if(has('kitchen'))       data.kitchen=aiKitchenScope(!!o.fullRecipes);
-  if(has('notes'))         data.notes=aiNotesScope();
+  if(has('notes'))         data.notes=aiNotesScope(range,!!o.fullJournalText);
   return {
     schema:AI_CTX_SCHEMA,
     version:AI_CTX_VERSION,
@@ -6507,7 +6638,10 @@ function aiContextCounts(ctx){
   if(d.body)          c.weighIns=(d.body.log||[]).length;
   if(d.habits)        c.habits=(d.habits.habits||[]).length;
   if(d.kitchen)       c.recipes=(d.kitchen.recipes||[]).length;
-  if(d.notes)         c.notes=d.notes.length;
+  if(d.notes){
+    c.journalEntries=d.notes.filter(n=>n.kind==='entry').length;
+    c.openLoops=d.notes.filter(n=>n.kind==='open_loop').length;
+  }
   return c;
 }
 
@@ -6809,13 +6943,33 @@ function renderDailyContextMarkdown(ctx){
   if(d.notes){
     push('## Journal','');
     if(!d.notes.length){
-      push('_Nothing saved._','');
+      push('_No journal records fall inside the selected period._','');
     } else {
-      d.notes.forEach(n=>{
-        push('### '+aiCell(n.title||'Untitled')+(n.date?' — '+n.date:''));
-        if(n.body) push(n.body);
-        push('');
-      });
+      const entries=d.notes.filter(n=>n.kind==='entry');
+      const loops=d.notes.filter(n=>n.kind==='open_loop');
+      if(entries.length){
+        push('### Entries','');
+        entries.forEach(n=>{
+          const meta=[n.date];
+          if(n.mood&&n.mood.label) meta.push('mood '+aiCell(n.mood.label));
+          if(n.tags&&n.tags.length) meta.push('tags '+n.tags.map(aiCell).join(', '));
+          push('#### '+aiCell(n.title||'Untitled')+' — '+meta.join(' · '));
+          if(n.body) push(n.body);
+          push('');
+        });
+      }
+      if(loops.length){
+        push('### Open Loops','');
+        loops.forEach(n=>{
+          const meta=['created '+n.date];
+          if(n.pinned) meta.push('pinned');
+          if(n.dueDate) meta.push((n.dateType||'dated')+' '+n.dueDate);
+          if(n.tags&&n.tags.length) meta.push('tags '+n.tags.map(aiCell).join(', '));
+          push('#### '+aiCell(n.title||'Untitled')+' — '+meta.join(' · '));
+          if(n.body) push(n.body);
+          push('');
+        });
+      }
     }
   }
 
@@ -6840,6 +6994,7 @@ const aiHubState={
   // Once the user edits the request, switching preset stops overwriting what they wrote.
   instructionsEdited:false,
   fullRecipes:false,
+  fullJournalText:false,
   previewFormat:'markdown',
   previewOpen:false
 };
@@ -6851,7 +7006,8 @@ function aiHubOptions(){
     scopes:aiHubState.scopes.slice(),
     range:{kind:aiHubState.rangeKind, from:aiHubState.from, to:aiHubState.to},
     instructions:aiHubState.instructions,
-    fullRecipes:aiHubState.fullRecipes
+    fullRecipes:aiHubState.fullRecipes,
+    fullJournalText:aiHubState.fullJournalText
   };
 }
 function aiHubContext(){ return buildDailyContext(aiHubOptions()); }
@@ -6931,6 +7087,10 @@ function aiHubToggleFullRecipes(on){
   // own tick and aria-checked have to move with it.
   renderAIHub();
 }
+function aiHubToggleFullJournalText(on){
+  aiHubState.fullJournalText=!!on;
+  renderAIHub();
+}
 function aiHubSetInstructions(val){
   aiHubState.instructions=val;
   aiHubState.instructionsEdited=true;
@@ -6977,7 +7137,9 @@ function aiHubCopy(){
 }
 
 const AI_COUNT_LABELS={weeks:'week',transactions:'transaction',subscriptions:'scheduled charge',
-  accounts:'account',sessions:'session',weighIns:'weigh-in',habits:'habit',recipes:'recipe',notes:'journal record'};
+  accounts:'account',sessions:'session',weighIns:'weigh-in',habits:'habit',recipes:'recipe',
+  journalEntries:'journal entry',openLoops:'open loop'};
+const AI_COUNT_PLURALS={journalEntries:'journal entries'};
 function aiHubSummaryHtml(){
   const ctx=aiHubContext();
   const md=renderDailyContextMarkdown(ctx);
@@ -6987,7 +7149,7 @@ function aiHubSummaryHtml(){
   const esc=_catEscHtml;
   const chips=Object.keys(counts).map(k=>{
     const n=counts[k], word=AI_COUNT_LABELS[k]||k;
-    return '<span class="aih-chip">'+n+' '+esc(word)+(n===1?'':'s')+'</span>';
+    return '<span class="aih-chip">'+n+' '+esc(n===1?word:(AI_COUNT_PLURALS[k]||word+'s'))+'</span>';
   }).join('');
   const sensitive=ctx.scopes.filter(aiScopeIsSensitive);
   const chars=text.length;
@@ -7008,6 +7170,9 @@ function aiHubSummaryHtml(){
   }
   if(ctx.scopes.indexOf('kitchen')>=0&&aiHubState.fullRecipes){
     html+='<div class="aih-note">Full recipe contents are included (ingredients and method).</div>';
+  }
+  if(ctx.scopes.indexOf('notes')>=0){
+    html+='<div class="aih-note">Journal export: '+(aiHubState.fullJournalText?'full entry and Open Loop text is included.':'titles and metadata only; body text is excluded.')+'</div>';
   }
   html+='<button class="aih-preview-toggle" onclick="aiHubTogglePreview()" aria-expanded="'+(aiHubState.previewOpen?'true':'false')+'">'+
     (aiHubState.previewOpen?'Hide':'Show')+' preview</button>';
@@ -7734,6 +7899,14 @@ function renderAIHub(){
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>':'')+'</span>'+
         '<span class="aih-scope-t"><span class="aih-scope-n">Full recipe contents</span>'+
         '<span class="aih-scope-h">Include every ingredient and step, not just names</span></span></button>';
+    }
+    if(s.id==='notes'&&checked){
+      row+='<button class="aih-sub'+(aiHubState.fullJournalText?' on':'')+'" role="checkbox" aria-checked="'+
+        (aiHubState.fullJournalText?'true':'false')+'" onclick="aiHubToggleFullJournalText('+(aiHubState.fullJournalText?'false':'true')+')">'+
+        '<span class="aih-box" aria-hidden="true">'+(aiHubState.fullJournalText?
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>':'')+'</span>'+
+        '<span class="aih-scope-t"><span class="aih-scope-n">Full Journal text</span>'+
+        '<span class="aih-scope-h">Include body text, not just titles, dates, moods, tags and due status</span></span></button>';
     }
     return row;
   }).join('');
@@ -9183,10 +9356,30 @@ function budEnsureFixRates(d){
 }
 function openBudgetWeekFromStats(key){
   if(!key) return;
+  const returnView=S.view==='notes'?'notes':'stats';
   const cur=getMondayOf(0), target=localMidnight(key);
   currentWeekIdx=Math.round((target-cur)/(7*864e5));
   budgetView='week'; budPastEdit=false;
   setView('budget');
+  showSourceReturn(returnView,returnView==='stats'?'finance':'');
+}
+let _sourceReturn=null;
+function clearSourceReturn(){
+  _sourceReturn=null;
+  const bar=document.getElementById('source-return-bar');
+  if(bar){ bar.classList.add('hidden'); bar.textContent=''; }
+}
+function showSourceReturn(view,tab){
+  _sourceReturn={view,tab};
+  const bar=document.getElementById('source-return-bar'); if(!bar) return;
+  bar.textContent=view==='notes'?'← Back to Journal':'← Back to Finance analysis';
+  bar.classList.remove('hidden');
+}
+function returnFromSourceView(){
+  const dest=_sourceReturn; _sourceReturn=null;
+  if(!dest) return;
+  setView(dest.view);
+  if(dest.view==='stats') setStatsTab(dest.tab||'finance');
 }
 // Forward-only analysis context. A week must carry the category names and targets that meant
 // something when it was live; otherwise Stats can only reinterpret it through today's setup.
@@ -9738,7 +9931,7 @@ function txnDeleteCurrent(){
 function txnAfterChange(){
   try{ if(typeof renderBudgetTab==='function' && S.view==='budget') renderBudgetTab(); }catch(e){}
   try{ if(typeof renderHome==='function' && S.view==='home') renderHome(); }catch(e){}
-  try{ if(S.view==='stats'&&statsSubTab==='finance') renderBudgetStats(); }catch(e){}
+  try{ if(S.view==='stats') refreshStatsForData(['overview','review','finance']); }catch(e){}
   try{ if(typeof updateNavBadges==='function') updateNavBadges(); }catch(e){}
 }
 // Expand/collapse a category's purchase list inside the Variable card.
@@ -11108,10 +11301,49 @@ function deleteGoal(i){
 // Account-derived cards lead: the Finance tab was almost entirely budget data with the net
 // worth chart buried below four budget cards, so account history was effectively hidden.
 function renderBudgetStats(){
+  renderBSWeek();
   renderBSBalance();
   renderBSAccountGrowth();
   renderBSTrend();
   renderBSCatBreakdown();
+}
+// The latest CLOSED week, read against the plan that was saved for that week. This used to
+// exist only as a Review card, which left the Finance tab opening on a net-worth chart with
+// no weekly result anywhere on it.
+function renderBSWeek(){
+  const wrap=document.getElementById('bs-week-wrap'); if(!wrap) return;
+  const weeks=statsCompletedWeeks();
+  const head=cardHeader('wallet','Latest completed week');
+  if(!weeks.length){
+    wrap.innerHTML='<div class="card">'+head+'<div class="stats-note-panel">No completed budget week yet. The current week is still in progress and is never scored as a result.</div></div>';
+    return;
+  }
+  const k=weeks[weeks.length-1], d=budgetData[k];
+  const parts=statsWeekParts(d,k), q=statsWeekSpendQuality(d,k);
+  const target=parseFloat(d.statsSnapshot&&d.statsSnapshot.totalTarget);
+  const comparable=!q.ambiguousLegacyVariable&&!isNaN(target)&&target>0;
+  const over=comparable&&parts.total>target;
+  const pct=comparable?Math.min(100,Math.round(parts.total/target*100)):0;
+  const saved=weekSavedAmt(d);
+  wrap.innerHTML='<div class="card">'+
+    cardHeader('wallet','Latest completed week',
+      (comparable?statsChip(over?'warn':'good',(over?'Over':'Under')+' plan'):statsChip('neutral',q.ambiguousLegacyVariable?'Legacy week':'No saved plan'))+
+      '<button class="card-hd-act" onclick="openBudgetWeekFromStats(\''+k+'\')">Open week &rarr;</button>')+
+    statsFigure(fmtMoney(Math.round(parts.total)),'','Spent · week of '+fmtDate(k)+(comparable?' · saved plan '+fmtMoney(target):''))+
+    (comparable?'<div class="card-bar"><div class="card-bar-fill" style="width:'+pct+'%;background:'+(over?'var(--danger)':'var(--positive)')+'"></div></div>':'')+
+    statsSplit([
+      ['Fixed',fmtMoney(Math.round(parts.fixed))],
+      ['Variable',fmtMoney(Math.round(parts.variable))],
+      ['Saved',fmtMoney(Math.round(saved))]
+    ])+
+    '<div class="stats-data-note">'+
+      (q.ambiguousLegacyVariable
+        ? 'This week stores only a legacy aggregate, and later transactions cannot be safely separated from it — the known figure is shown and no total is invented.'
+        : comparable
+          ? (over?'Over':'Under')+' by '+fmtMoney(Math.abs(parts.total-target))+'. The plan is the one saved with that week, not today’s budget settings.'
+          : 'No plan snapshot was saved for this week, so today’s targets are deliberately not substituted for it.')+
+      (parts.variableFromSnapshot?' Variable spend comes from the week’s stored aggregate; no per-category detail exists for it.':' Transactions override manual category figures wherever they exist.')+
+    '</div></div>';
 }
 
 // ── Finance: which accounts actually moved ────────────────────────
@@ -11131,7 +11363,6 @@ function bsGrowthFromDate(a){
 }
 function renderBSAccountGrowth(){
   const wrap=document.getElementById('bs-acctgrowth-wrap'); if(!wrap) return;
-  _statsAccountEvidence=[];
   const head=(body)=>'<div class="card" style="padding:0;overflow:hidden">'+
     '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px">'+
       '<span>📊 Account growth</span>'+
@@ -11140,17 +11371,17 @@ function renderBSAccountGrowth(){
           '<button onclick="setBSGrowthRange(\''+v+'\')" class="'+(bsGrowthRange===v?'on':'')+'">'+l+'</button>').join('')+
       '</div>'+
     '</div>'+body+'</div>';
-  const tracked=accounts.filter(a=>a&&(a.history||[]).filter(e=>e&&e.date).length>=2);
-  if(!tracked.length){
-    wrap.innerHTML=head('<div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Record at least two dated balances for an account to identify what moved.</div>');
+  const tracked=accounts.filter(a=>a&&(a.history||[]).some(e=>e&&e.date));
+  const completeDates=accountsHistoryDates().filter(d=>tracked.length===accounts.filter(Boolean).length&&tracked.every(a=>accountEntryAt(a,d)));
+  if(completeDates.length<2){
+    wrap.innerHTML=head('<div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Record comparable dated balances for every account to identify what moved.</div>');
     return;
   }
+  const boundary=bsGrowthRange==='all'?completeDates[0]:bsGrowthFromDate(tracked[0]);
+  const from=completeDates.filter(d=>d<=boundary).pop()||completeDates[0];
+  const to=completeDates[completeDates.length-1];
   const rows=tracked.map(a=>{
-    const all=a.history.filter(e=>e&&e.date).slice().sort((x,y)=>x.date<y.date?-1:1);
-    const boundary=bsGrowthFromDate(a);
-    const baseline=accountEntryAt(a,boundary)||all[0];
-    const latest=all[all.length-1];
-    const from=baseline.date, to=latest.date;
+    const baseline=accountEntryAt(a,from), latest=accountEntryAt(a,to);
     const then=parseFloat(baseline.balance)||0;
     const now=parseFloat(latest.balance)||0;
     const delta=Math.round((now-then)*100)/100;
@@ -11162,20 +11393,21 @@ function renderBSAccountGrowth(){
   const netChange=rows.reduce((s,r)=>s+r.nwEffect,0);
   const body='<div style="padding:6px 16px 14px">'+
     rows.map(r=>{
-      const evidenceIndex=_statsAccountEvidence.push(r)-1;
+      const evKey=statsRegisterAccountEvidence(r);
       const good=r.nwEffect>0, flat=r.nwEffect===0;
       const col=flat?'var(--muted)':(good?'var(--success)':'var(--danger)');
       const arrow=flat?'':(r.delta>0?'▲':'▼');
-      return '<button type="button" class="bs-growth-row" onclick="openAccountGrowthEvidence('+evidenceIndex+')">'+
+      return '<button type="button" class="bs-growth-row" onclick="openAccountGrowthEvidence(\''+evKey+'\')">'+
         '<div class="bs-growth-name">'+_catEscHtml(a_name(r.a))+
           '<span class="bs-growth-type">'+(r.a.type==='debt'?'Debt':'Asset')+'</span></div>'+
-        '<div class="bs-growth-spark">'+(acctSparklineHtml(r.a)||'')+'</div>'+
+        '<div class="bs-growth-spark">'+(acctSparklineHtml(r.a,r.from,r.to)||'')+'</div>'+
         '<div class="bs-growth-delta" style="color:'+col+'">'+
           (flat?'—':arrow+' '+fmtMoney(Math.abs(r.delta)))+
           (r.pct!==null&&!flat?'<span class="bs-growth-pct">'+(r.pct>0?'+':'')+r.pct+'%</span>':'')+
         '</div>'+
       '</button>';
     }).join('')+
+    '<div class="stats-data-note">Comparable account coverage · '+fmtDate(from)+' – '+fmtDate(to)+' · balances carry forward between updates.</div>'+
     '<div class="bs-growth-total">'+
       '<span>Net worth change</span>'+
       '<span style="color:'+(netChange>0?'var(--success)':netChange<0?'var(--danger)':'var(--muted)')+'">'+
@@ -11216,16 +11448,22 @@ function statsHasVariableDetail(d,key,defs){
     return (v!==undefined&&v!==''&&v!==null)||txnsForWeekCat(key,c.id).length>0;
   });
 }
-function statsWeekSpending(d,key){
+// One definition of a week's spend, split into the two halves the Finance tab shows. Each
+// half resolves independently: a transaction must override a manual variable figure without
+// discarding a legacy snapshot's only surviving fixed aggregate.
+function statsWeekParts(d,key){
   const fixed=statsWeekCatDefs(d,key,'fixed'), variable=statsWeekCatDefs(d,key,'variable');
-  const fixedTotal=statsHasFixedDetail(d,fixed)
+  const fixedDetail=statsHasFixedDetail(d,fixed), variableDetail=statsHasVariableDetail(d,key,variable);
+  const fixedTotal=fixedDetail
     ? fixed.reduce((sum,c)=>sum+statsFixedCatAmount(d,c.id),0)
     : (d&&d.snapshot?parseFloat(d.snapshot.fixed)||0:0);
-  const variableTotal=statsHasVariableDetail(d,key,variable)
+  const variableTotal=variableDetail
     ? variable.reduce((sum,c)=>sum+varCatAmount(d,key,c.id),0)
     : (d&&d.snapshot?parseFloat(d.snapshot.variable)||0:0);
-  return fixedTotal+variableTotal;
+  return {fixed:fixedTotal,variable:variableTotal,total:fixedTotal+variableTotal,
+    fixedFromSnapshot:!fixedDetail,variableFromSnapshot:!variableDetail};
 }
+function statsWeekSpending(d,key){ return statsWeekParts(d,key).total; }
 function statsWeekSpendQuality(d,key){
   const hasRawVariable=Object.keys(d||{}).some(k=>k.startsWith('var_')&&k!=='var_goal'&&d[k]!==''&&d[k]!==null&&d[k]!==undefined);
   const legacyVariable=parseFloat(d&&d.snapshot&&d.snapshot.variable)||0;
@@ -11235,7 +11473,6 @@ function statsWeekSpendQuality(d,key){
 }
 function renderBSCatBreakdown(){
   const wrap=document.getElementById('bs-catbreak-wrap'); if(!wrap) return;
-  _statsFinanceEvidence=[];
   const keys=Object.keys(budgetData)
     .filter(k=>{const d=budgetData[k]; return d&&(d.saved||d.draft||d.snapshot);})
     .sort().slice(-12);
@@ -11266,9 +11503,9 @@ function renderBSCatBreakdown(){
   if(total<=0){ wrap.innerHTML=''; return; }
   const max=Math.max(1,...cats.map(c=>c.val));
   const rows=cats.filter(c=>c.val>0).map((c,i)=>{
-    const evidenceIndex=_statsFinanceEvidence.push(c)-1;
+    const evidenceKey=statsRegisterFinanceEvidence(c);
     const pctOfTotal=Math.round(c.val/total*100);
-    return '<button type="button" class="stats-muscle-row" onclick="openFinanceCategoryEvidence('+evidenceIndex+')" aria-label="Open '+_catEsc(c.label)+' source records"><div class="muscle-bar-row">'+
+    return '<button type="button" class="stats-muscle-row" onclick="openFinanceCategoryEvidence(\''+evidenceKey+'\')" aria-label="Open '+_catEsc(c.label)+' source records"><div class="muscle-bar-row">'+
       '<div class="muscle-bar-label" style="width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+_catEsc(c.label)+'">'+_catEscHtml(c.label)+'</div>'+
       '<div class="muscle-bar-track"><div class="muscle-bar-fill" style="width:'+Math.round(c.val/max*100)+'%;background:'+CAT_COLORS[i%CAT_COLORS.length]+'"></div></div>'+
       '<div class="muscle-bar-count" style="width:78px">$'+Math.round(c.val).toLocaleString()+' · '+pctOfTotal+'%</div>'+
@@ -11350,38 +11587,56 @@ function renderNutrition(){
   if(todayTotal>0) totals[today]=todayTotal;
   const calendarDays=[]; const end=localMidnight(today);
   for(let i=29;i>=0;i--){ const d=new Date(end); d.setDate(d.getDate()-i); calendarDays.push(dateStr(d)); }
+  const isLogged=d=>Object.prototype.hasOwnProperty.call(totals,d)&&totals[d]>0;
   const last7=calendarDays.slice(-8,-1);
-  const logged7=last7.filter(d=>Object.prototype.hasOwnProperty.call(totals,d)&&totals[d]>0);
+  const logged7=last7.filter(isLogged);
   const vals7=logged7.map(d=>totals[d]);
   const avg7=vals7.length?Math.round(vals7.reduce((a,v)=>a+v,0)/vals7.length):null;
-  const logged30=calendarDays.filter(d=>Object.prototype.hasOwnProperty.call(totals,d)&&totals[d]>0);
-  let conclusion='No calorie days logged in the last 7 completed days.';
-  if(avg7!==null){
-    const relation=goalCals?Math.round(avg7-goalCals):null;
-    conclusion='Logged-day average '+avg7+' kcal'+(relation===null?'':relation===0?' · matches the current reference':(' · '+Math.abs(relation)+' kcal '+(relation>0?'above':'below')+' the current reference'));
-  }
-  wrap.innerHTML='<div class="card stats-conclusion-card">'+
-    cardHeader('receipt','Calorie evidence','<button class="card-hd-act" onclick="openCalorieOverlay()">Open food log →</button>')+
-    '<div class="stats-conclusion">'+conclusion+'</div>'+
-    '<div class="stats-data-note">'+logged7.length+' of 7 completed days logged · '+logged30.length+' of 30 chart days. Today is shown separately as in progress. Missing days are unknown, not zero.'+
-      (goalCals?' Current '+(c.goal||'maintain')+' goal ('+goalCals+' kcal) is a reference only; historical goal changes were not stored.':' Set up Health to add a current goal reference.')+'</div>'+
-    '<button class="stats-inline-link" style="margin-top:10px" onclick="openNutritionEvidence()">View dated evidence →</button>'+
-    '<div class="stats-grid" id="nut-stats-grid">'+[
-      {l:'Today logged',v:todayTotal||'—'},
-      {l:'Logged-day avg · 7d',v:avg7===null?'—':avg7},
-      {l:'Coverage · 7d',v:logged7.length+'/7'},
-    ].map(s=>'<div class="stat-card"><div class="stat-val">'+s.v+'</div><div class="stat-lbl">'+s.l+'</div></div>').join('')+'</div>'+
-    (logged30.length>=2?'<div class="stats-chart-box"><canvas id="nut-chart" aria-label="Daily calories over the last 30 calendar days"></canvas></div>':emptyState('🍽️','Not enough calendar coverage','Log at least two days to see a trend'))+
-    '<div class="stats-data-note">Historical protein, carbohydrate and fat totals are not stored, so Stats does not invent macro trends.</div>'+
+  const logged30=calendarDays.filter(isLogged);
+  const relation=avg7!==null&&goalCals?Math.round(avg7-goalCals):null;
+  // Seven-day coverage strip: a missing day is drawn as an outline, never as a zero bar.
+  const max7=Math.max(1,...vals7);
+  const strip=last7.map(d=>{
+    const v=isLogged(d)?totals[d]:null;
+    const h=v===null?0:Math.max(12,Math.round(v/max7*100));
+    return '<button type="button" class="ov-day'+(v===null?' none':'')+'" onclick="openNutritionEvidence(\''+d+'\')" '+
+      'aria-label="'+fmtDate(d)+(v===null?', not logged':', '+Math.round(v)+' kilocalories')+'">'+
+      '<div class="ov-day-track"><div class="ov-day-fill" style="height:'+h+'%"></div></div>'+
+      '<span>'+new Date(d+'T12:00:00').toLocaleDateString('en-AU',{weekday:'narrow'})+'</span></button>';
+  }).join('');
+  wrap.innerHTML='<div class="card">'+
+    cardHeader('receipt','Calorie coverage',
+      statsChip(logged7.length>=5?'good':'warn',logged7.length+' of 7 days')+
+      '<button class="card-hd-act" onclick="openCalorieOverlay()">Food log &rarr;</button>')+
+    statsFigure(avg7===null?'—':avg7.toLocaleString(),avg7===null?'':'kcal',
+      avg7===null?'No completed day logged in the last 7'
+        :'Logged-day average · '+fmtDate(last7[0])+' – '+fmtDate(last7[6]))+
+    statsSplit([
+      ['Today · in progress',todayTotal>0?todayTotal.toLocaleString()+' kcal':'Not logged'],
+      ['Coverage · 30 days',logged30.length+' of 30'],
+      ['Current reference',goalCals?goalCals.toLocaleString()+' kcal':'Not set']
+    ])+
+    '<div class="card-shape ov-days">'+strip+'</div>'+
+    '<div class="stats-data-note">Hollow bars are days with no record — unknown, never zero, and excluded from the average. Today is counted separately because it is still in progress.'+
+      (goalCals?' The '+(c.goal||'maintain')+' reference ('+goalCals.toLocaleString()+' kcal) is your CURRENT setting; historical goal changes were never stored, so it is not evidence of what a past day was aiming at.':' Set up Health to add a current calorie reference.')+
+      (relation!==null?' The logged-day average sits '+(relation===0?'exactly on':Math.abs(relation)+' kcal '+(relation>0?'above':'below'))+' that reference.':'')+
+    '</div>'+
+    '<button class="stats-inline-link" style="margin-top:10px" onclick="openNutritionEvidence()">See dated coverage &rarr;</button>'+
+  '</div>'+
+  '<div class="card">'+cardHeader('trend','Logged calories · 30 calendar days')+
+    (logged30.length>=2
+      ? '<div class="card-cap">Gaps are unlogged days and are not joined across · tap a point for that day’s record</div>'+
+        '<div class="stats-chart-box"><canvas id="nut-chart" aria-label="Daily calories over the last 30 calendar days"></canvas></div>'
+      : '<div class="stats-note-panel">Log at least two days in this window to see a trend.</div>')+
+    '<div class="stats-data-note">Protein, carbohydrate and fat were never stored per day, so no historical macro trend exists to show.</div>'+
   '</div>';
-  animateStatVals(document.getElementById('nut-stats-grid'));
   if(logged30.length>=2){
     const ctx=document.getElementById('nut-chart'); if(!ctx) return;
     const {gc,tc}=budChartGridColors();
-    const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#FF6B35').trim();
-    const accentRgb=(getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb')||'255,107,53').trim();
-    const datasets=[{label:'Logged calories',data:calendarDays.map(d=>Object.prototype.hasOwnProperty.call(totals,d)&&totals[d]>0?totals[d]:null),borderColor:accent,backgroundColor:'rgba('+accentRgb+',.08)',borderWidth:2.5,pointRadius:3,pointBackgroundColor:accent,fill:false,tension:0.25,spanGaps:false}];
-    if(goalCals) datasets.push({label:'Current goal reference',data:calendarDays.map(()=>goalCals),borderColor:'rgba(150,150,150,0.7)',borderDash:[6,4],borderWidth:1.5,pointRadius:0,fill:false});
+    const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#777').trim();
+    const accentRgb=(getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb')||'92,92,92').trim();
+    const datasets=[{label:'Logged calories',data:calendarDays.map(d=>isLogged(d)?totals[d]:null),borderColor:accent,backgroundColor:'rgba('+accentRgb+',.08)',borderWidth:2.5,pointRadius:3,pointBackgroundColor:accent,fill:false,tension:0.25,spanGaps:false}];
+    if(goalCals) datasets.push({label:'Current reference',data:calendarDays.map(()=>goalCals),borderColor:'rgba(150,150,150,0.7)',borderDash:[6,4],borderWidth:1.5,pointRadius:0,fill:false});
     nutChart=new Chart(ctx,{
       type:'line',
       data:{labels:calendarDays.map(d=>d===today?'Today · in progress':new Date(d+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'})),datasets},
@@ -11390,103 +11645,423 @@ function renderNutrition(){
         onClick:(event,elements)=>{if(elements.length&&elements[0].datasetIndex===0)openNutritionEvidence(calendarDays[elements[0].index]);},
         plugins:{legend:{display:false},tooltip:{callbacks:{label:cx=>cx.dataset.label+': '+cx.parsed.y+' kcal'}}},
         scales:{
-          x:{grid:{color:gc},ticks:{color:tc,font:{size:11},maxTicksLimit:6,maxRotation:0,minRotation:0}},
-          y:{grid:{color:gc},ticks:{color:tc,font:{size:11}},beginAtZero:false}
+          x:{grid:{color:gc},ticks:{color:tc,font:{size:10},maxTicksLimit:6,maxRotation:0,minRotation:0}},
+          y:{grid:{color:gc},ticks:{color:tc,font:{size:10}},beginAtZero:false}
         }
       }
     });
   }
 }
 
-function statsReviewCard(icon,label,conclusion,evidence,tab,status){
-  return '<button class="card stats-review-card" onclick="setStatsTab(\''+tab+'\')">'+
-    cardHeader(icon,label,status?'<span class="stats-status '+status.cls+'">'+status.label+'</span>':'')+
-    '<span class="stats-conclusion">'+conclusion+'</span><span class="stats-data-note">'+evidence+'</span>'+
-    '<span class="stats-review-link">See evidence →</span></button>';
+// ── Stats: Overview (orientation) ────────────────────────────────
+// Overview answers "what does my system look like now, and what moved?". It is deliberately
+// NOT Home (no inputs, no today-only widgets, no current-week remainder) and NOT Review (no
+// interpretation) — every figure names an explicit completed window and its coverage.
+
+// Best comparable value for one literal exercise inside a window. Warm-ups are excluded by
+// setMetricValue; mixed-unit histories return nothing rather than a merged number.
+function statsExerciseWindowBest(name,from,to){
+  const info=exerciseMetricInfo(name);
+  if(info.kind==='mixed') return null;
+  let best=null,date='';
+  (S.sessions||[]).forEach(s=>{
+    if(s.date<from||s.date>to) return;
+    const ex=(s.exercises||[]).find(e=>e.name===name); if(!ex) return;
+    (ex.sets||[]).forEach(set=>{
+      const v=setMetricValue(set,info);
+      if(v!==null&&(best===null||v>best)){ best=v; date=s.date; }
+    });
+  });
+  return best===null?null:{value:best,date,info};
 }
-// ── Stats: Review (cross-domain conclusions, never a second Home snapshot) ────────────────
+// The exercise performed on the most distinct days inside a window — the one literal signal
+// Overview shows, chosen by evidence volume rather than by anything the user configured.
+function statsTopExercise(from,to){
+  const days={};
+  (S.sessions||[]).forEach(s=>{
+    if(s.date<from||s.date>to) return;
+    (s.exercises||[]).forEach(ex=>{
+      if(!ex||!ex.name) return;
+      const has=(ex.sets||[]).some(statsIsWorkingSet);
+      if(!has) return;
+      (days[ex.name]=days[ex.name]||new Set()).add(s.date);
+    });
+  });
+  let best=null;
+  Object.keys(days).forEach(n=>{ if(!best||days[n].size>days[best].size) best=n; });
+  return best?{name:best,days:days[best].size}:null;
+}
+// Measured weight change strictly inside a window — no interpolation, no carry-forward.
+function statsWeightWindow(sorted,fromDate){
+  const inWin=sorted.filter(w=>w.date>=fromDate);
+  if(inWin.length<2) return null;
+  const a=parseFloat(inWin[0].weight), b=parseFloat(inWin[inWin.length-1].weight);
+  return {delta:+(b-a).toFixed(1),from:inWin[0].date,to:inWin[inWin.length-1].date,n:inWin.length};
+}
+function statsCalorieCoverage(days){
+  const today=getLocalDate();
+  const live=S.dailyLog&&S.dailyLog.date===today?S.dailyLog.entries.reduce((a,e)=>a+(e.kcal||0),0):0;
+  const end=new Date(localMidnight(today)); end.setDate(end.getDate()-1);
+  const out=[];
+  for(let i=days-1;i>=0;i--){
+    const d=new Date(end); d.setDate(d.getDate()-i);
+    const ds=dateStr(d);
+    const v=parseFloat((calorieHistory||{})[ds])||0;
+    out.push({date:ds,val:v>0?v:null});
+  }
+  const logged=out.filter(x=>x.val!==null);
+  return {days:out,logged,live,
+    avg:logged.length?Math.round(logged.reduce((a,x)=>a+x.val,0)/logged.length):null,
+    from:out[0].date,to:out[out.length-1].date};
+}
+// Completed budget weeks only, newest last. The live week is never treated as a result.
+function statsCompletedWeeks(){
+  const cur=weekKey(getMondayOf(0));
+  return Object.keys(budgetData||{})
+    .filter(k=>k<cur&&budgetData[k]&&(budgetData[k].saved||budgetData[k].snapshot||budgetData[k].draft))
+    .sort();
+}
+// Net worth movement, but only across dates where EVERY account has a recorded balance —
+// otherwise the "change" would be an account appearing, not money moving.
+function statsNetWorth(){
+  const tracked=accounts.filter(a=>a);
+  if(!tracked.length) return null;
+  if(!tracked.every(a=>(a.history||[]).some(e=>e&&e.date))) return {covered:false,accounts:tracked.length,
+    missing:tracked.filter(a=>!(a.history||[]).some(e=>e&&e.date)).length};
+  const dates=accountsHistoryDates().filter(d=>tracked.every(a=>accountEntryAt(a,d)));
+  if(dates.length<2) return {covered:false,accounts:tracked.length,missing:0,dates:dates.length};
+  const latest=dates[dates.length-1];
+  const cut=localMidnight(getLocalDate()); cut.setDate(cut.getDate()-30);
+  const baseline=dates.filter(d=>d<=dateStr(cut)).pop()||dates[0];
+  const stale=Math.max(...tracked.map(a=>{
+    const e=accountEntryAt(a,latest);
+    return e?Math.floor((localMidnight(getLocalDate())-localMidnight(e.date))/864e5):Infinity;
+  }));
+  return {covered:true,accounts:tracked.length,latest,baseline,
+    now:netWorthAt(latest),then:netWorthAt(baseline),delta:netWorthAt(latest)-netWorthAt(baseline),stale};
+}
+
+function ovBlock(icon,title,tab,body,chip){
+  return '<div class="card ov-block">'+
+    cardHeader(icon,title,(chip||'')+'<button class="card-hd-act" onclick="setStatsTab(\''+tab+'\')">Open '+title+' &rarr;</button>')+
+    body+'</div>';
+}
 function renderStatsOverview(){
   const wrap=document.getElementById('overview-content'); if(!wrap) return;
-  const currentMonday=localMidnight(weekKey(getMondayOf(0)));
-  const recentStart=new Date(currentMonday); recentStart.setDate(recentStart.getDate()-28);
-  const recentEnd=new Date(currentMonday); recentEnd.setDate(recentEnd.getDate()-1);
-  const priorStart=new Date(currentMonday); priorStart.setDate(priorStart.getDate()-56);
-  const priorEnd=new Date(currentMonday); priorEnd.setDate(priorEnd.getDate()-29);
-  const distinct=(a,b)=>new Set(S.sessions.filter(s=>s.date>=dateStr(a)&&s.date<=dateStr(b)).map(s=>s.date)).size;
-  const trained=distinct(recentStart,recentEnd), trainedPrev=distinct(priorStart,priorEnd);
+  const P=statsPeriod(4);
+  const trained=trainedDaysIn(P.from,P.to), trainedPrev=trainedDaysIn(P.priorFrom,P.priorTo);
   const trainDelta=trained-trainedPrev;
-  const cards=[statsReviewCard('calendar','Training frequency',
-    trained+' trained day'+(trained===1?'':'s')+' across the last 4 completed weeks'+(trainDelta?' · '+(trainDelta>0?'+':'')+trainDelta+' versus the prior 4':' · unchanged versus the prior 4'),
-    fmtDate(dateStr(recentStart))+'–'+fmtDate(dateStr(recentEnd))+' · adherence uses distinct calendar days, not session count. Historical plan targets are not stored, so today’s schedule is not applied retrospectively.',
-    'training',{cls:'neutral',label:trainDelta?(trainDelta>0?'+':'')+trainDelta+' days':'Same'})];
-
+  const sessions=sessionsIn(P.from,P.to);
   const wa=weightGoalAnalysis();
-  if(wa.cur){
-    let bodyConclusion='Latest check-in is '+wa.staleDays+' day'+(wa.staleDays===1?'':'s')+' old.';
-    let bodyStatus={cls:wa.staleDays>14?'warn':'neutral',label:wa.staleDays>14?'Stale':'Measured'};
-    if(wa.pace){ bodyConclusion=wa.mode==='maintain'?(wa.pace.onPace?'Latest weight is within the maintenance range.':'Latest weight is outside the maintenance range.'):(wa.pace.onPace?'Measured trend is on the goal path.':'Measured trend is behind the goal path.'); bodyStatus={cls:wa.pace.onPace?'good':'warn',label:wa.pace.label}; }
-    cards.push(statsReviewCard('scale','Body goal',bodyConclusion,
-      (wa.startedAt?'Goal episode since '+fmtDate(wa.startedAt)+'. ':'Legacy goal has no trusted start. ')+(wa.rateReady?(wa.rate>0?'+':'')+wa.rate.toFixed(2)+' kg/week recent rate.':'Rate withheld until 6 readings span 21+ days with a recent check-in.'),
-      'body',bodyStatus));
+  const cal=statsCalorieCoverage(7);
+  const weeks=statsCompletedWeeks();
+  const lastWeek=weeks.length?weeks[weeks.length-1]:null;
+  const lastSpend=lastWeek?statsWeekSpending(budgetData[lastWeek],lastWeek):null;
+  const lastQuality=lastWeek?statsWeekSpendQuality(budgetData[lastWeek],lastWeek):null;
+  const lastTarget=lastWeek?parseFloat(budgetData[lastWeek].statsSnapshot&&budgetData[lastWeek].statsSnapshot.totalTarget):NaN;
+  const planComparable=!!lastWeek&&!lastQuality.ambiguousLegacyVariable&&!isNaN(lastTarget)&&lastTarget>0;
+  const nw=statsNetWorth();
+
+  // ── Summary rail: the four highest-order facts, each naming its own window ──
+  const rail=[
+    {tab:'training',l:'Trained days',v:S.sessions.length?trained:'—',u:S.sessions.length?'/ 4 wks':'',
+     s:!S.sessions.length?'No saved sessions':(trainedPrev||trained?(trainDelta?(trainDelta>0?'+':'−')+Math.abs(trainDelta)+' vs prior 4 wks':'Same as prior 4 wks'):'No prior period'),
+     cls:''},
+    {tab:'body',l:'Weight',v:wa.cur?parseFloat(wa.cur.weight):'—',u:wa.cur?'kg':'',
+     s:wa.cur?(wa.staleDays===0?'Measured today':'Measured '+wa.staleDays+'d ago'):'No check-ins',
+     cls:wa.cur&&wa.staleDays>14?'stale':''},
+    {tab:'nutrition',l:'Calories logged',v:cal.logged.length+' / 7',u:'days',
+     s:cal.avg!==null?cal.avg.toLocaleString()+' kcal average':'Nothing logged in this window',cls:''},
+    {tab:'finance',l:'Last week spend',v:lastSpend===null?'—':fmtMoney(Math.round(lastSpend)),u:'',
+     s:lastWeek?(planComparable?(lastSpend<=lastTarget?'Under':'Over')+' plan by '+fmtMoney(Math.abs(lastSpend-lastTarget)):'No saved plan for that week'):'No completed week',
+     cls:planComparable?(lastSpend<=lastTarget?'up':'down'):''}
+  ].map(c=>'<button type="button" class="ov-cell" onclick="setStatsTab(\''+c.tab+'\')">'+
+      '<span class="ov-cell-l">'+c.l+'</span>'+
+      '<span class="ov-cell-v">'+c.v+(c.u?'<span class="ov-cell-u">'+c.u+'</span>':'')+'</span>'+
+      '<span class="ov-cell-s'+(c.cls?' '+c.cls:'')+'">'+c.s+'</span></button>').join('');
+
+  // ── Training block ──
+  let trainBody;
+  if(!S.sessions.length){
+    trainBody='<div class="ov-empty">No saved sessions yet. Finish a workout in Log and this fills in.</div>';
+  }else{
+    const perWeek=[];
+    for(let i=P.weeks*2-1;i>=0;i--){
+      const a=new Date(P.currentMonday); a.setDate(a.getDate()-(i+1)*7);
+      const b=new Date(a); b.setDate(b.getDate()+6);
+      perWeek.push(trainedDaysIn(dateStr(a),dateStr(b)));
+    }
+    const durs=(S.sessions||[]).filter(s=>s.date>=P.from&&s.date<=P.to&&s.duration>0).map(s=>s.duration);
+    const avgDur=durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length):null;
+    const top=statsTopExercise(P.from,P.to);
+    let signal='';
+    if(top){
+      const now=statsExerciseWindowBest(top.name,P.from,P.to);
+      if(now){
+        const before=statsExerciseWindowBest(top.name,P.priorFrom,P.priorTo);
+        const info=now.info, unit=info.unit;
+        const diff=before?+(now.value-before.value).toFixed(2):null;
+        const cmp=diff===null?'no comparable prior period'
+          :diff===0?'same as prior 4 weeks'
+          :(diff>0?'+':'−')+Math.abs(diff)+unit+' vs prior 4 weeks';
+        signal='<button type="button" class="ov-signal" onclick="openExerciseEvidence(this.dataset.ex,\''+P.from+'\',\''+P.to+'\',\''+_catEsc(P.label)+'\')" data-ex="'+_catEsc(top.name)+'">'+
+          '<span class="ov-signal-t">'+_catEscHtml(top.name)+'</span>'+
+          '<span class="ov-signal-v">'+info.label.toLowerCase()+' '+now.value+unit+'</span>'+
+          '<span class="ov-signal-m">'+top.days+' day'+(top.days===1?'':'s')+' logged · '+cmp+'</span>'+
+          '<span class="stats-review-link">See the sets &rarr;</span></button>';
+      }else{
+        const info=exerciseMetricInfo(top.name);
+        signal='<div class="ov-signal-none">'+_catEscHtml(top.name)+' was logged most often, but '+(info.kind==='mixed'?'its saved sessions use different measurement units':'it has no comparable working-set value')+', so no single best value is calculated.</div>';
+      }
+    }
+    trainBody=statsFigure(trained,'days','Distinct trained days · 4 completed weeks · '+P.label)+
+      statsSplit([['Sessions saved',sessions],['Avg session',avgDur?avgDur+' min':'—'],['Prior 4 wks',trainedPrev+' days']])+
+      '<div class="card-shape">'+(sparkline(perWeek,{height:34})||'')+'<div class="ov-spark-cap">Trained days per week · last 8 completed weeks</div></div>'+
+      signal;
   }
 
-  const calEnd=new Date(localMidnight(getLocalDate())); calEnd.setDate(calEnd.getDate()-1);
-  const calStart=new Date(calEnd); calStart.setDate(calStart.getDate()-6);
-  const calDays=[]; for(let i=0;i<7;i++){ const d=new Date(calStart); d.setDate(d.getDate()+i); calDays.push(dateStr(d)); }
-  const calVals=calDays.filter(d=>calorieHistory[d]>0).map(d=>calorieHistory[d]);
-  const calAvg=calVals.length?Math.round(calVals.reduce((a,v)=>a+v,0)/calVals.length):null;
-  cards.push(statsReviewCard('receipt','Nutrition coverage',
-    calVals.length+' of 7 completed days logged'+(calAvg!==null?' · '+calAvg+' kcal per logged day':''),
-    fmtDate(dateStr(calStart))+'–'+fmtDate(dateStr(calEnd))+' · missing days are unknown, not zero · historical macros are unavailable.',
-    'nutrition',calVals.length>=5?{cls:'good',label:'Usable'}:{cls:'warn',label:'Sparse'}));
-
-  const completedBudget=Object.keys(budgetData).filter(k=>k<dateStr(currentMonday)&&budgetData[k]&&(budgetData[k].saved||budgetData[k].snapshot)).sort();
-  if(completedBudget.length){
-    const k=completedBudget[completedBudget.length-1], d=budgetData[k], spent=statsWeekSpending(d,k);
-    const spendQuality=statsWeekSpendQuality(d,k);
-    const target=parseFloat(d.statsSnapshot&&d.statsSnapshot.totalTarget);
-    const comparable=!spendQuality.ambiguousLegacyVariable&&!isNaN(target)&&target>0;
-    cards.push(statsReviewCard('wallet','Latest completed budget week',
-      (spendQuality.ambiguousLegacyVariable?'Known spend '+fmtMoney(Math.round(spent))+'; full legacy total unavailable':fmtMoney(Math.round(spent))+' spent'+(comparable?' · '+fmtMoney(Math.abs(spent-target))+' '+(spent<=target?'under':'over')+' its saved plan':'')),
-      'Week of '+fmtDate(k)+' · transaction-backed categories override manual totals.'+(spendQuality.ambiguousLegacyVariable?' A later transaction cannot be safely separated from this snapshot-only legacy aggregate.':comparable?' Saved plan '+fmtMoney(target)+'.':' No historical plan snapshot; today’s defaults are not substituted.'),
-      'finance',spendQuality.ambiguousLegacyVariable?{cls:'warn',label:'Incomplete legacy'}:comparable?{cls:spent<=target?'good':'warn',label:spent<=target?'Within plan':'Over plan'}:{cls:'neutral',label:'No saved plan'}));
+  // ── Body block ──
+  let bodyBody, bodyChip='';
+  if(!wa.cur){
+    bodyBody='<div class="ov-empty">No weight check-ins recorded. Add one in Health to see measured change here.</div>';
+  }else{
+    const cut=new Date(localMidnight(getLocalDate())); cut.setDate(cut.getDate()-28);
+    const win=statsWeightWindow(wa.sorted,dateStr(cut));
+    if(wa.staleDays>14) bodyChip=statsChip('warn',wa.staleDays+'d old');
+    const goalCells=[];
+    goalCells.push(['Change · 28 days',win?(win.delta>0?'+':win.delta<0?'−':'')+Math.abs(win.delta)+' kg':'—']);
+    goalCells.push(['Target',wa.hasGoal?wa.target+' kg':'None set']);
+    goalCells.push(['Target date',wa.hasGoal&&weightGoal.date?fmtDate(String(weightGoal.date).slice(0,10)):'—']);
+    let goalLine='';
+    if(wa.hasGoal&&wa.legacy){
+      goalLine='<div class="ov-note">This goal predates goal episodes, so it has no trusted baseline. Re-save it in Health to start pace tracking.</div>';
+    }else if(wa.hasGoal){
+      const modeWord=wa.mode==='cut'?'Cut':wa.mode==='bulk'?'Bulk':'Maintain';
+      const paceTxt=wa.pace&&wa.rateReady?wa.pace.label:'Pace withheld';
+      const rateTxt=wa.rateReady?(wa.rate>0?'+':'')+wa.rate.toFixed(2)+' kg/week measured'
+        :wa.rateNoisy?wa.rateReason:'Rate withheld — needs 6+ readings over 21+ days and a check-in inside 14 days';
+      goalLine='<div class="ov-goal">'+
+        '<span class="ov-goal-mode">'+modeWord+' episode since '+(wa.startedAt?fmtDate(wa.startedAt):'—')+'</span>'+
+        (wa.pace&&wa.rateReady?statsChip(wa.pace.onPace?'good':'warn',paceTxt):statsChip('neutral',wa.pace?'Pace withheld':'No target date'))+
+        '</div><div class="ov-note">'+rateTxt+'</div>';
+    }
+    bodyBody=statsFigure(parseFloat(wa.cur.weight),'kg','Latest check-in · '+fmtDate(wa.cur.date)+' · '+(wa.staleDays===0?'today':wa.staleDays+' day'+(wa.staleDays===1?'':'s')+' ago'))+
+      statsSplit(goalCells)+
+      (wa.sorted.length>=2?'<div class="card-shape">'+sparkline(wa.sorted.slice(-14).map(w=>parseFloat(w.weight)),{height:34,target:wa.hasGoal?wa.target:null})+
+        '<div class="ov-spark-cap">Last '+Math.min(14,wa.sorted.length)+' check-ins'+(wa.hasGoal?' · dashed line is the target':'')+'</div></div>':'')+
+      goalLine;
   }
-  const chartAccounts=accounts.filter(a=>a);
-  const completeDates=chartAccounts.length&&chartAccounts.every(a=>(a.history||[]).some(e=>e&&e.date))
-    ? accountsHistoryDates().filter(d=>chartAccounts.every(a=>accountEntryAt(a,d))) : [];
-  if(completeDates.length>=2){
-    const latest=completeDates[completeDates.length-1];
-    const cut=localMidnight(getLocalDate()); cut.setDate(cut.getDate()-30);
-    const baseline=completeDates.filter(d=>d<=dateStr(cut)).pop()||completeDates[0];
-    if(baseline!==latest){
-      const before=netWorthAt(baseline), now=netWorthAt(latest), delta=now-before;
-      const stale=chartAccounts.map(a=>{
-        const e=accountEntryAt(a,latest);
-        return e?Math.floor((localMidnight(getLocalDate())-localMidnight(e.date))/864e5):Infinity;
-      });
-      const oldest=Math.max(...stale);
-      cards.push(statsReviewCard('trend','Net worth movement',
-        (delta===0?'No recorded net-worth change':(delta>0?'Up ':'Down ')+fmtMoney(Math.abs(delta)))+' between comparable balance points.',
-        fmtDate(baseline)+'–'+fmtDate(latest)+' · all '+chartAccounts.length+' account'+(chartAccounts.length===1?'':'s')+' had a recorded starting balance; balances are carried forward between updates.'+(oldest>14?' At least one account is '+oldest+' days stale.':''),
-        'finance',oldest>14?{cls:'warn',label:'Stale balance'}:{cls:delta>0?'good':'neutral',label:delta===0?'No change':delta>0?'Improved':'Declined'}));
+
+  // ── Nutrition block ──
+  let nutBody;
+  if(!cal.logged.length&&!Object.keys(calorieHistory||{}).length){
+    nutBody='<div class="ov-empty">No calorie days recorded yet. Log a day and the 7-day coverage appears here.</div>';
+  }else{
+    const max=Math.max(1,...cal.logged.map(x=>x.val));
+    const strip=cal.days.map(d=>{
+      const h=d.val===null?0:Math.max(12,Math.round(d.val/max*100));
+      const lbl=new Date(d.date+'T12:00:00').toLocaleDateString('en-AU',{weekday:'narrow'});
+      return '<div class="ov-day'+(d.val===null?' none':'')+'" title="'+fmtDate(d.date)+(d.val===null?' · not logged':' · '+Math.round(d.val)+' kcal')+'">'+
+        '<div class="ov-day-track"><div class="ov-day-fill" style="height:'+h+'%"></div></div>'+
+        '<span>'+lbl+'</span></div>';
+    }).join('');
+    nutBody=statsFigure(cal.avg===null?'—':cal.avg.toLocaleString(),cal.avg===null?'':'kcal',
+        'Logged-day average · '+cal.logged.length+' of 7 completed days · '+fmtDate(cal.from)+' – '+fmtDate(cal.to))+
+      '<div class="card-shape ov-days">'+strip+'</div>'+
+      '<div class="ov-note">Hollow bars are days with no record — unknown, not zero.'+(cal.live>0?' Today is still in progress and is excluded.':'')+'</div>';
+  }
+
+  // ── Finance block ──
+  let finBody;
+  if(!lastWeek&&(!nw||!nw.covered)){
+    finBody='<div class="ov-empty">No completed budget week and no comparable account balances yet.</div>';
+  }else{
+    let weekPart='';
+    if(lastWeek){
+      const over=planComparable&&lastSpend>lastTarget;
+      const pct=planComparable?Math.min(100,Math.round(lastSpend/lastTarget*100)):0;
+      weekPart=statsFigure(fmtMoney(Math.round(lastSpend)),'',
+          'Week of '+fmtDate(lastWeek)+' · '+(lastQuality.ambiguousLegacyVariable?'known spend only; legacy total unavailable'
+            :planComparable?'saved plan '+fmtMoney(lastTarget):'no saved plan for that week'))+
+        (planComparable?'<div class="card-bar"><div class="card-bar-fill" style="width:'+pct+'%;background:'+(over?'var(--danger)':'var(--positive)')+'"></div></div>'+
+          '<div class="ov-note">'+(over?'Over':'Under')+' that week’s saved plan by '+fmtMoney(Math.abs(lastSpend-lastTarget))+'.</div>':'');
+    }
+    let nwPart='';
+    if(nw&&nw.covered){
+      const d=nw.delta;
+      nwPart=statsSplit([
+        ['Net worth',fmtMoney(nw.now)],
+        ['Change',(d===0?'—':(d>0?'+':'−')+fmtMoney(Math.abs(d)))],
+        ['Since',fmtDate(nw.baseline)]
+      ])+'<div class="ov-note">All '+nw.accounts+' account'+(nw.accounts===1?'':'s')+' had a recorded balance on both dates; balances carry forward between updates.'+
+        (nw.stale>14?' Oldest balance is '+nw.stale+' days old.':'')+'</div>';
+    }else if(nw){
+      nwPart='<div class="ov-note">Net worth change is withheld: '+(nw.missing?nw.missing+' account'+(nw.missing===1?' has':'s have')+' no recorded starting balance.':'fewer than two dates have a balance for every account.')+'</div>';
+    }
+    finBody=weekPart+nwPart;
+  }
+
+  wrap.innerHTML=
+    '<div class="ov-head"><span class="stats-kicker">Look-back</span>'+
+      '<span class="ov-head-range">'+P.label+' · completed periods only</span></div>'+
+    '<div class="ov-rail">'+rail+'</div>'+
+    '<div class="ov-grid">'+
+      ovBlock('calendar','Training','training',trainBody)+
+      ovBlock('scale','Body','body',bodyBody,bodyChip)+
+      ovBlock('receipt','Nutrition','nutrition',nutBody)+
+      ovBlock('wallet','Finance','finance',finBody)+
+    '</div>';
+}
+
+// ── Stats: Review (a short ranked set of conclusions) ────────────
+// Review is not a second Overview. It only holds items that cleared an evidence threshold,
+// ranked by how much they could change a decision. Fewer, stronger cards — and a calm state
+// when the data genuinely says nothing.
+function statsReviewInsights(){
+  const out=[], P=statsPeriod(4);
+
+  // Training frequency — needs a real prior period and a shift worth naming.
+  const now=trainedDaysIn(P.from,P.to), prev=trainedDaysIn(P.priorFrom,P.priorTo);
+  if((now||prev)&&Math.abs(now-prev)>=2){
+    const up=now>prev;
+    out.push({score:Math.abs(now-prev)*9,icon:'calendar',label:'Training frequency',
+      chip:statsChip('neutral',(up?'+':'−')+Math.abs(now-prev)+' days'),
+      conclusion:'You trained on '+now+' day'+(now===1?'':'s')+' in the last 4 completed weeks, '+(up?'up':'down')+' from '+prev+'.',
+      meta:P.label+' vs the 4 weeks before it · distinct calendar days · '+sessionsIn(P.from,P.to)+' saved sessions in the period',
+      actions:[['setStatsTab(\'training\')','Open Training']]});
+  }
+
+  // Body — goal-aware, and only when the rate is actually eligible.
+  const wa=weightGoalAnalysis();
+  if(wa.hasGoal&&!wa.legacy&&wa.cur){
+    if(wa.staleDays>21){
+      out.push({score:48,icon:'scale',label:'Body goal',chip:statsChip('warn','Stale'),
+        conclusion:'Goal pace cannot be assessed — the newest check-in is '+wa.staleDays+' days old.',
+        meta:'Goal episode since '+fmtDate(wa.startedAt)+' · target '+wa.target+' kg · no forecast is made from stale readings',
+        actions:[['openWeightEvidence(\''+wa.cur.date+'\')','See the check-in'],['setStatsTab(\'body\')','Open Body']]});
+    }else if(wa.pace&&wa.rateReady){
+      const cutting=wa.mode==='cut', maintaining=wa.mode==='maintain';
+      const verb=maintaining?'holding':(cutting?'losing':'gaining');
+      const rate=Math.abs(wa.rate).toFixed(2);
+      const conclusion=maintaining
+        ? (wa.pace.onPace?'Measured weight is inside the maintenance range.':'Measured weight has drifted outside the maintenance range.')
+        : (wa.pace.onPace?'On track for the '+(cutting?'cut':'bulk')+' — '+verb+' '+rate+' kg/week measured.'
+                         :'Behind the '+(cutting?'cut':'bulk')+' target — '+rate+' kg/week measured against the path this goal needs.');
+      out.push({score:wa.pace.onPace?34:72,icon:'scale',label:'Body goal',
+        chip:statsChip(wa.pace.onPace?'good':'warn',wa.pace.label),
+        conclusion,
+        meta:wa.goalReadings.length+' readings since '+fmtDate(wa.startedAt)+' · target '+wa.target+' kg'+(weightGoal.date?' by '+fmtDate(String(weightGoal.date).slice(0,10)):'')+' · rate is measured, not projected',
+        actions:[['openWeightEvidence(\''+wa.cur.date+'\')','See the check-in'],['setStatsTab(\'body\')','Open Body']]});
     }
   }
-  wrap.innerHTML='<div class="stats-review-intro"><div class="stats-review-title">What changed, and how trustworthy is it?</div><div class="stats-data-note">Only completed periods and explicitly recorded evidence appear here. Open a card for the supporting records.</div></div><div class="stats-review-grid">'+cards.join('')+'</div>';
+
+  // Nutrition — only worth raising when the record is too thin to compare periods at all.
+  const cal=statsCalorieCoverage(7);
+  if(Object.keys(calorieHistory||{}).length&&cal.logged.length<4){
+    out.push({score:40,icon:'receipt',label:'Calorie record',chip:statsChip('warn','Sparse'),
+      conclusion:'Only '+cal.logged.length+' of the last 7 completed days has a calorie record, so period comparisons are not meaningful yet.',
+      meta:fmtDate(cal.from)+' – '+fmtDate(cal.to)+' · unlogged days stay unknown and are never counted as zero',
+      actions:[['openNutritionEvidence()','See dated coverage'],['setStatsTab(\'nutrition\')','Open Nutrition']]});
+  }
+
+  // Finance — latest completed week against its own saved plan.
+  const weeks=statsCompletedWeeks();
+  if(weeks.length){
+    const k=weeks[weeks.length-1], d=budgetData[k];
+    const spent=statsWeekSpending(d,k), q=statsWeekSpendQuality(d,k);
+    const target=parseFloat(d.statsSnapshot&&d.statsSnapshot.totalTarget);
+    if(!q.ambiguousLegacyVariable&&!isNaN(target)&&target>0){
+      const diff=spent-target, pct=Math.round(Math.abs(diff)/target*100);
+      if(Math.abs(diff)>=25&&pct>=10){
+        const over=diff>0;
+        out.push({score:Math.min(88,pct*2.5),icon:'wallet',label:'Weekly plan',
+          chip:statsChip(over?'warn':'good',(over?'+':'−')+pct+'%'),
+          conclusion:'The week of '+fmtDate(k)+' finished '+fmtMoney(Math.abs(diff))+' '+(over?'over':'under')+' the plan saved for that week.',
+          meta:'Spent '+fmtMoney(Math.round(spent))+' against a saved plan of '+fmtMoney(target)+' · transactions override manual category figures',
+          actions:[['closeStatsEvidence();openBudgetWeekFromStats(\''+k+'\')','Open that budget week'],['setStatsTab(\'finance\')','Open Finance']]});
+      }
+    }
+    // A single variable category moving against its own recent baseline — the finance insight
+    // Overview deliberately does not carry.
+    const base=weeks.slice(-5,-1);
+    if(base.length>=3){
+      const defs=statsWeekCatDefs(d,k,'variable');
+      let bestCat=null;
+      defs.forEach(def=>{
+        const nowVal=varCatAmount(d,k,def.id);
+        const hist=base.map(wk=>varCatAmount(budgetData[wk],wk,def.id));
+        const seen=hist.filter(v=>v>0);
+        if(seen.length<3&&nowVal<=0) return;
+        const avg=hist.reduce((a,v)=>a+v,0)/hist.length;
+        if(avg<=0) return;
+        const diff=nowVal-avg, pct=Math.round(Math.abs(diff)/avg*100);
+        if(Math.abs(diff)<25||pct<40) return;
+        if(!bestCat||Math.abs(diff)>Math.abs(bestCat.diff)) bestCat={def,nowVal,avg,diff,pct};
+      });
+      if(bestCat){
+        const up=bestCat.diff>0;
+        const compared=base.concat([k]).map(wk=>{
+          const savedDef=statsWeekCatDefs(budgetData[wk],wk,'variable').find(x=>x.id===bestCat.def.id);
+          return {key:wk,val:varCatAmount(budgetData[wk],wk,bestCat.def.id),label:savedDef&&savedDef.snapshot?savedDef.label:null};
+        });
+        const savedLabels=[...new Set(compared.map(w=>w.label).filter(Boolean))];
+        const labelNote=savedLabels.length>1
+          ? 'The saved label changed across these weeks; each source row keeps its historical name'
+          : compared.every(w=>w.label)?'The category label was saved with every compared week'
+          : 'Some weeks lack a saved label; the archived category ID is retained without borrowing today’s name';
+        const evKey=statsRegisterFinanceEvidence({id:bestCat.def.id,label:bestCat.def.label,kind:'Variable',
+          weeks:compared});
+        out.push({score:Math.min(80,bestCat.pct),icon:'receipt',label:'Category shift',
+          chip:statsChip(up?'warn':'good',(up?'+':'−')+bestCat.pct+'%'),
+          conclusion:_catEscHtml(bestCat.def.label)+' was '+fmtMoney(Math.round(bestCat.nowVal))+' in the week of '+fmtDate(k)+', against a '+fmtMoney(Math.round(bestCat.avg))+' average over the '+base.length+' weeks before it.',
+          meta:labelNote+' · transaction-backed where transactions exist',
+          actions:[['openFinanceCategoryEvidence(\''+evKey+'\')','See the transactions'],['setStatsTab(\'finance\')','Open Finance']]});
+      }
+    }
+  }
+
+  // Balance-sheet trust: a net-worth figure resting on an old balance is a coverage problem,
+  // not a money problem, and it is worth saying so once.
+  const nw=statsNetWorth();
+  if(nw&&nw.covered&&nw.stale>21){
+    out.push({score:52,icon:'bank',label:'Account coverage',chip:statsChip('warn',nw.stale+'d stale'),
+      conclusion:'Net worth is resting on a balance that has not been updated for '+nw.stale+' days.',
+      meta:'Latest comparable date '+fmtDate(nw.latest)+' · balances carry forward between updates, so the figure is as old as its oldest input',
+      actions:[['openNetWorthEvidence(\''+nw.latest+'\')','See each balance'],['setStatsTab(\'finance\')','Open Finance']]});
+  }
+
+  return out.sort((a,b)=>b.score-a.score).slice(0,3);
+}
+function renderStatsReview(){
+  const wrap=document.getElementById('review-content'); if(!wrap) return;
+  const items=statsReviewInsights();
+  if(!items.length){
+    wrap.innerHTML='<div class="card stats-calm">'+cardHeader('check','Review')+
+      '<div class="stats-conclusion">Nothing needs attention from the available data.</div>'+
+      '<div class="stats-data-note">No completed-period comparison cleared its evidence threshold. Overview has the current figures and their coverage.</div>'+
+      '<button class="stats-inline-link" style="margin-top:12px" onclick="setStatsTab(\'overview\')">Back to Overview &rarr;</button></div>';
+    return;
+  }
+  wrap.innerHTML='<div class="rev-list">'+items.map(it=>
+    '<div class="card rev-card">'+
+      cardHeader(it.icon,it.label,it.chip||'')+
+      '<div class="rev-conclusion">'+it.conclusion+'</div>'+
+      '<div class="rev-meta">'+it.meta+'</div>'+
+      '<div class="rev-actions">'+it.actions.map((a,i)=>
+        '<button type="button" class="'+(i?'rev-act':'rev-act primary')+'" onclick="'+a[0]+'">'+a[1]+' &rarr;</button>').join('')+
+      '</div></div>').join('')+'</div>'+
+    '<div class="stats-data-note rev-foot">Completed periods only. Missing data is unknown, never zero, and nothing here is reconstructed from today’s settings.</div>';
 }
 function setBSTrendRange(range){
   bsTrendRange=range;
-  ['monthly','yearly','alltime'].forEach(r=>{
-    const btn=document.getElementById('bst-'+r); if(!btn) return;
-    const a=r===range;
-    btn.style.background=a?'rgba(255,255,255,0.3)':'transparent';
-    btn.style.color=a?'#fff':'rgba(255,255,255,0.65)';
-  });
   renderBSTrend();
 }
 function renderBSTrend(){
-  const wrap=document.getElementById('bs-trend-wrap'); if(!wrap) return;
+  const wrap=document.getElementById('bs-trend-wrap-card'); if(!wrap) return;
   // Always destroy a prior chart first so re-rendering can't conflict on the canvas
   if(bsChart){bsChart.destroy();bsChart=null;}
+  const seg=statsSeg('bst',[['monthly','12W'],['yearly','52W'],['alltime','All']],bsTrendRange,'setBSTrendRange');
+  const card=body=>'<div class="card">'+cardHeader('trend','Spending trend',seg)+body+'</div>';
   // Per-week spending: each saved week (daily_budget) is one bar. Grouping by month
   // previously hid everything until 2+ months existed; weeks within one month now show.
   const keys=Object.keys(budgetData)
@@ -11496,7 +12071,7 @@ function renderBSTrend(){
   const windowWeeks = bsTrendRange==='monthly' ? 12 : bsTrendRange==='yearly' ? 52 : keys.length;
   const shown = keys.slice(-windowWeeks);
   if(shown.length<1){
-    wrap.innerHTML=emptyState('💰','No budget history yet','Save a week in the Budget tab to see your spending trend here');
+    wrap.innerHTML=card('<div class="stats-note-panel">No budget history yet. Save a week in Budget to begin this trend.</div>');
     return;
   }
   const spent  = shown.map(k=>statsWeekSpending(budgetData[k],k));
@@ -11514,9 +12089,9 @@ function renderBSTrend(){
   const conclusion=latestDone
     ? 'Latest completed week: '+fmtMoney(Math.round(statsWeekSpending(budgetData[latestDone],latestDone)))+(latestAmbiguous?' known spend; full legacy total unavailable.':' spent.')
     : 'The current week is still in progress; no completed week is available in this range.';
-  wrap.innerHTML='<div class="stats-chart-summary">'+conclusion+(latestDone?' <button class="stats-inline-link" onclick="openBudgetWeekFromStats(\''+latestDone+'\')">Open source week →</button>':'')+'</div>'+
+  wrap.innerHTML=card('<div class="stats-chart-summary">'+conclusion+(latestDone?' <button class="stats-inline-link" onclick="openBudgetWeekFromStats(\''+latestDone+'\')">Open source week →</button>':'')+'</div>'+
     '<div class="stats-data-note">Saved plan available for '+goalCoverage+' of '+shown.length+' week'+(shown.length===1?'':'s')+'. Missing plans are not reconstructed from today’s defaults.'+(ambiguousCoverage?' '+ambiguousCoverage+' snapshot-only legacy week'+(ambiguousCoverage===1?' shows':'s show')+' known detail only.':'')+'</div>'+
-    '<canvas id="bs-trend-chart" style="max-height:360px"></canvas>';
+    '<div class="stats-chart-box"><canvas id="bs-trend-chart" aria-label="Weekly spending and saved plans"></canvas></div>');
   const ctx=document.getElementById('bs-trend-chart'); if(!ctx) return;
   const {gc,tc}=budChartGridColors();
   const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#FF6B35').trim();
@@ -14244,9 +14819,14 @@ function acctDueText(acc){
 // Inline SVG rather than a Chart.js instance per account: these are decorative 40px traces,
 // and spinning up N charts on a page that already hosts the net-worth one is a lot of canvas
 // for very little. Needs 2+ points to be a line at all.
-function acctSparklineHtml(a){
-  const hist=(a&&a.history||[]).filter(e=>e&&e.date)
+function acctSparklineHtml(a,from,to){
+  let hist=(a&&a.history||[]).filter(e=>e&&e.date)
     .slice().sort((x,y)=>x.date<y.date?-1:1);
+  if(from){
+    hist=hist.filter(e=>e.date>=from&&(!to||e.date<=to));
+    const baseline=accountEntryAt(a,from);
+    if(baseline&&!hist.some(e=>e.date===baseline.date)) hist.unshift(baseline);
+  }
   if(hist.length<2) return '';
   const vals=hist.map(e=>parseFloat(e.balance)||0);
   const min=Math.min.apply(null,vals), max=Math.max.apply(null,vals);
@@ -16713,6 +17293,174 @@ function jrnDueText(diff, dueDate){
   return String(dueDate||'');
 }
 
+// Read-only cross-domain context. These values are resolved live from the canonical stores;
+// they never become fields on a Journal record, so editing a workout or transaction cannot
+// leave a stale copy behind in prose metadata.
+function jrnWeekKeyForDate(ds){
+  const d=localMidnight(ds), dow=d.getDay();
+  d.setDate(d.getDate()-(dow===0?6:dow-1));
+  return dateStr(d);
+}
+function jrnCalorieTotalForDate(ds){
+  const today=getLocalDate();
+  if(ds===today&&S.dailyLog&&S.dailyLog.date===today){
+    const n=(S.dailyLog.entries||[]).reduce((sum,e)=>sum+(parseFloat(e.kcal)||0),0);
+    if(n>0) return n;
+  }
+  if(Object.prototype.hasOwnProperty.call(calorieHistory||{},ds)){
+    const n=parseFloat(calorieHistory[ds]);
+    if(!isNaN(n)&&n>0) return n;
+  }
+  return null;
+}
+function jrnVariableWeekFact(ds){
+  const key=jrnWeekKeyForDate(ds), d=budgetData&&budgetData[key];
+  const txns=txnsForWeek(key);
+  const hasRaw=Object.keys(d||{}).some(k=>k.startsWith('var_')&&k!=='var_goal'&&d[k]!==''&&d[k]!==null&&d[k]!==undefined);
+  if(txns.length||hasRaw) return {key, amount:weekVarTotal(d||{},key), source:txns.length?'transactions':'weekly fields'};
+  const legacy=parseFloat(d&&d.snapshot&&d.snapshot.variable);
+  if(!isNaN(legacy)) return {key, amount:legacy, source:'legacy weekly total'};
+  return null;
+}
+function jrnDayContext(ds){
+  if(!aiIsDate(ds)) return [];
+  const facts=[];
+  const sessions=(S.sessions||[]).filter(s=>s&&s.date===ds);
+  if(sessions.length){
+    const labels=[...new Set(sessions.map(s=>String(s.sessionType||'Session')))];
+    facts.push({kind:'workout',label:sessions.length===1?labels[0]:sessions.length+' sessions',detail:'Workout'});
+  }
+  const hlog=(typeof habitsLog==='object'&&habitsLog)?habitsLog:loadHabitsLog();
+  if(Object.prototype.hasOwnProperty.call(hlog||{},ds)){
+    const done=Array.isArray(hlog[ds])?hlog[ds].length:0;
+    facts.push({kind:'habits',label:done+' habit'+(done===1?'':'s')+' completed',detail:'Habits'});
+  }
+  const kcal=jrnCalorieTotalForDate(ds);
+  if(kcal!==null) facts.push({kind:'calories',label:Math.round(kcal).toLocaleString()+' kcal',detail:ds===getLocalDate()?'Food log · in progress':'Archived calorie total'});
+  const weight=(S.weights||[]).find(w=>w&&w.date===ds&&parseFloat(w.weight)>0);
+  if(weight) facts.push({kind:'weight',label:parseFloat(weight.weight)+' kg',detail:'Weight check-in'});
+  const dayTxns=(txnData||[]).filter(t=>t&&t.date===ds);
+  if(dayTxns.length){
+    const amount=dayTxns.reduce((sum,t)=>sum+(parseFloat(t.amount)||0),0);
+    facts.push({kind:'spending',label:fmtMoneyExact(amount),detail:dayTxns.length+' transaction'+(dayTxns.length===1?'':'s')+' that day'});
+  } else {
+    const wk=jrnVariableWeekFact(ds);
+    if(wk) facts.push({kind:'spending',label:fmtMoneyExact(wk.amount),detail:'Variable spend · week of '+fmtDate(wk.key)});
+  }
+  return facts;
+}
+function jrnDayContextHtml(ds){
+  const facts=jrnDayContext(ds);
+  if(!facts.length) return '';
+  return '<section class="jrn-context" aria-label="That day in Daily">'+
+    '<div class="jrn-context-head"><span>That day in Daily</span><span>'+escText(jrnLongDay(ds))+'</span></div>'+
+    '<div class="jrn-context-chips">'+facts.map(f=>
+      '<button class="jrn-context-chip" data-jrn="day-source" data-source="'+f.kind+'" data-date="'+ds+'" aria-label="Open '+escAttr(f.detail)+' source">'+
+        '<span class="jrn-context-value">'+escText(f.label)+'</span><span class="jrn-context-detail">'+escText(f.detail)+'</span><span aria-hidden="true">›</span>'+
+      '</button>').join('')+'</div>'+
+    '<div class="jrn-context-note">Recorded facts only. Missing areas are unknown, not zero.</div>'+
+  '</section>';
+}
+function jrnRenderDayContext(){
+  const el=document.getElementById('jrn-ed-context'); if(!el) return;
+  const r=jrnEdRec();
+  el.innerHTML=r&&r.kind==='entry'?jrnDayContextHtml(r.dateAbout||getLocalDate()):'';
+}
+function jrnOpenDaySource(kind,ds){
+  jrnCloseEditor();
+  if(kind==='workout'){
+    setView('log'); openWorkoutHistory();
+    setTimeout(()=>{ const row=document.querySelector('.session-card[data-session-date="'+ds+'"]'); if(row) row.scrollIntoView({block:'center'}); },40);
+    return;
+  }
+  if(kind==='habits'){
+    const log=(typeof habitsLog==='object'&&habitsLog)?habitsLog:loadHabitsLog();
+    const done=Array.isArray(log[ds])?log[ds]:[];
+    const rows=done.map(i=>'<div class="stats-source-row"><div class="stats-source-top"><span>'+escText(String(habitsData[i]||('Habit '+(i+1))))+'</span><span>Completed</span></div></div>').join('');
+    openStatsEvidence('Habit log · '+fmtDate(ds),'<div class="stats-data-note">This date has a saved habit-log record. Only completed habit indices are stored; unticked habits are not interpreted as failures.</div><div class="stats-source-list">'+(rows||'<div class="stats-source-row">No completions are present in the saved record.</div>')+'</div>'+statsSourceActions(['<button onclick="closeStatsEvidence();setView(\'home\')">Open Habits on Home →</button>']));
+    return;
+  }
+  if(kind==='calories'){
+    if(ds===getLocalDate()){ setView('home'); openCalorieOverlay(); }
+    else { setView('stats'); setStatsTab('nutrition',true); openNutritionEvidence(ds); }
+    return;
+  }
+  if(kind==='weight'){ setView('stats'); setStatsTab('body',true); openWeightEvidence(ds); return; }
+  if(kind==='spending'){ openBudgetWeekFromStats(jrnWeekKeyForDate(ds)); }
+}
+
+// Current-week reflection is deliberately ephemeral until Write is pressed and meaningful
+// content is entered. It summarises only recorded facts, including partial-week coverage.
+function jrnWeekReflection(){
+  const today=getLocalDate(), monday=weekKey(getMondayOf(0));
+  const days=[]; for(let d=localMidnight(monday),end=localMidnight(today);d<=end;d.setDate(d.getDate()+1)) days.push(dateStr(d));
+  const facts=[];
+  const sessions=(S.sessions||[]).filter(s=>s&&s.date>=monday&&s.date<=today);
+  if(sessions.length){
+    const trained=new Set(sessions.map(s=>s.date)).size;
+    facts.push({label:'Training',value:sessions.length+' session'+(sessions.length===1?'':'s'),detail:trained+' distinct trained day'+(trained===1?'':'s')});
+  }
+  const hlog=(typeof habitsLog==='object'&&habitsLog)?habitsLog:loadHabitsLog();
+  const habitDays=days.filter(d=>Object.prototype.hasOwnProperty.call(hlog||{},d));
+  if(habitDays.length){
+    const completed=habitDays.reduce((sum,d)=>sum+(Array.isArray(hlog[d])?hlog[d].length:0),0);
+    facts.push({label:'Habits',value:completed+' completion'+(completed===1?'':'s'),detail:habitDays.length+' day'+(habitDays.length===1?'':'s')+' with a habit log'});
+  }
+  const spend=jrnVariableWeekFact(today);
+  if(spend) facts.push({label:'Spending',value:fmtMoneyExact(spend.amount),detail:'Variable spend recorded · '+spend.source});
+  const calDays=days.map(d=>({d,n:jrnCalorieTotalForDate(d)})).filter(x=>x.n!==null);
+  if(calDays.length){
+    const avg=Math.round(calDays.reduce((sum,x)=>sum+x.n,0)/calDays.length);
+    facts.push({label:'Calories',value:avg.toLocaleString()+' kcal average',detail:calDays.length+' logged day'+(calDays.length===1?'':'s')+' · unlogged days excluded'});
+  }
+  const weights=(S.weights||[]).filter(w=>w&&w.date>=monday&&w.date<=today&&parseFloat(w.weight)>0).sort((a,b)=>a.date<b.date?-1:1);
+  if(weights.length){
+    const first=parseFloat(weights[0].weight), last=parseFloat(weights[weights.length-1].weight);
+    const change=weights.length>1?Math.round((last-first)*10)/10:null;
+    facts.push({label:'Weight',value:last+' kg',detail:change===null?'One check-in':weights.length+' check-ins · '+(change>0?'+':'')+change+' kg measured change'});
+  }
+  return {today,monday,days,facts,complete:localMidnight(today).getDay()===0};
+}
+function jrnReflectionHtml(compact){
+  const w=jrnWeekReflection();
+  if(compact){
+    return '<button class="jrn-reflect-card" data-jrn="reflect">'+
+      '<span><strong>Weekly reflection</strong><small>'+w.facts.length+' recorded area'+(w.facts.length===1?'':'s')+' ready to review</small></span><span aria-hidden="true">›</span>'+
+    '</button>';
+  }
+  const rows=w.facts.length?w.facts.map(f=>
+    '<div class="jrn-reflect-row"><span><strong>'+escText(f.label)+'</strong><small>'+escText(f.detail)+'</small></span><b>'+escText(f.value)+'</b></div>').join(''):
+    '<div class="jrn-reflect-empty">There are no recorded workout, habit, spending, calorie or weight facts for this week yet.</div>';
+  return '<div class="jrn-reflect">'+
+    '<div class="jrn-reflect-period">'+(w.complete?'This week':'This week so far')+' · '+escText(fmtDate(w.monday))+'–'+escText(fmtDate(w.today))+'</div>'+
+    '<div class="jrn-reflect-note">Only recorded facts are shown. This is a writing aid, not a score.</div>'+rows+
+    '<div class="jrn-reflect-question"><span>Optional question</span><strong>What felt most important this week?</strong></div>'+
+    '<button class="jrn-reflect-write" data-jrn="reflect-write">Write a reflection</button>'+
+  '</div>';
+}
+function jrnSundayReflectHtml(){ return localMidnight(getLocalDate()).getDay()===0?jrnReflectionHtml(true):''; }
+function jrnOpenReflection(){
+  jrnEdFlush();
+  const box=document.getElementById('paste-restore-box'), ov=document.getElementById('paste-restore-overlay');
+  if(!box||!ov) return;
+  // #bottom-nav is a body child while #app is its own fixed stacking context. A modal left
+  // inside #app can look visible yet lose hit-testing to the nav; park the shared sheet on
+  // body before opening it, just as the Journal editor is detached for phone use.
+  if(ov.parentElement!==document.body) document.body.appendChild(ov);
+  ov.classList.add('jrn-sheet');
+  box.innerHTML='<div class="modal-header"><button class="back-btn" data-back="jrnCloseReflection" aria-label="Back to Journal">'+
+    (typeof BACK_CHEVRON!=='undefined'?BACK_CHEVRON:'&#8249;')+'</button><div class="modal-title">Weekly reflection</div></div>'+
+    '<div class="modal-body">'+jrnReflectionHtml(false)+'</div>';
+  ov.classList.remove('hidden');
+}
+function jrnCloseReflection(){ const o=document.getElementById('paste-restore-overlay'); if(o){ o.classList.add('hidden'); o.classList.remove('jrn-sheet'); } }
+function jrnStartReflection(){
+  jrnCloseReflection();
+  jrnOpenEditor(null,'entry');
+  const b=document.getElementById('jrn-ed-body');
+  if(b) b.placeholder='What felt most important this week?';
+}
+
 // ── Screen ──
 // The editor element is moved between <body> (phone overlay) and the detail column (desktop),
 // so it must be parked on <body> before #notes-content is rewritten or the re-render would
@@ -16729,7 +17477,7 @@ function renderJournal(){
   // While a search is running the screen is a results view: the composer previews today's entry,
   // which is not a result, and showing it at the top of a search for something else reads as a
   // false match. It comes straight back when the query is cleared.
-  const rail=jrnHeadHtml()+(jrnQ()?'':jrnComposerHtml())+jrnLoopsHtml()+jrnBodyHtml();
+  const rail=jrnHeadHtml()+(jrnQ()?'':jrnComposerHtml()+jrnSundayReflectHtml())+jrnLoopsHtml()+jrnBodyHtml();
   wrap.innerHTML = jrnIsDesktop()
     ? '<div id="journal-root"><div class="jrn-rail">'+rail+'</div><div class="jrn-detail" id="jrn-detail"></div></div>'
     : '<div id="journal-root">'+rail+'</div>';
@@ -16749,7 +17497,11 @@ function jrnRefreshLists(){
 function jrnMountDetail(){
   const detail=document.getElementById('jrn-detail'); if(!detail) return;
   const ed=jrnDetachEditor();
-  const sel = jrnSelId ? loadNotes().find(r=>r.id===jrnSelId&&!r.deletedAt) : null;
+  const stored = jrnSelId ? loadNotes().find(r=>r.id===jrnSelId&&!r.deletedAt) : null;
+  // A new record is intentionally not stored until it has meaningful content. It still needs
+  // to mount in the desktop detail pane; requiring a stored match here made every New action
+  // flash and disappear before the first keystroke.
+  const sel = stored || (jrnEdPending&&jrnEdPending.id===jrnSelId?jrnEdPending:null);
   if(sel && ed){
     detail.innerHTML='';
     ed.classList.add('inline','open');
@@ -16766,8 +17518,10 @@ function jrnMountDetail(){
 function jrnHeadHtml(){
   const searchIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
   const calIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
+  const reflectIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M4 12h10M4 19h7"/><path d="m17 16 2 2 4-5"/></svg>';
   let h='<div class="jrn-head">'+
     '<div class="jrn-head-title">Journal</div>'+
+    '<button class="jrn-head-btn" data-jrn="reflect" aria-label="Weekly reflection" title="Weekly reflection">'+reflectIco+'</button>'+
     '<button class="jrn-head-btn'+(jrnSearchOpen?' on':'')+'" data-jrn="search-toggle" aria-label="Search Journal" aria-pressed="'+(jrnSearchOpen?'true':'false')+'">'+searchIco+'</button>'+
     '<button class="jrn-head-btn" data-jrn="cal" aria-label="Jump to a date">'+calIco+'</button>'+
   '</div>';
@@ -16944,6 +17698,8 @@ function jrnOpenCal(){
   const box=document.getElementById('paste-restore-box');
   const ov=document.getElementById('paste-restore-overlay');
   if(!box||!ov) return;
+  if(ov.parentElement!==document.body) document.body.appendChild(ov);
+  ov.classList.add('jrn-sheet');
   box.innerHTML=
     '<div class="modal-header">'+
       '<button class="back-btn" data-back="jrnCloseCal" aria-label="Back">'+(typeof BACK_CHEVRON!=='undefined'?BACK_CHEVRON:'&#8249;')+'</button>'+
@@ -16953,7 +17709,7 @@ function jrnOpenCal(){
   ov.classList.remove('hidden');
   jrnRenderCal();
 }
-function jrnCloseCal(){ const o=document.getElementById('paste-restore-overlay'); if(o) o.classList.add('hidden'); }
+function jrnCloseCal(){ const o=document.getElementById('paste-restore-overlay'); if(o){ o.classList.add('hidden'); o.classList.remove('jrn-sheet'); } }
 function jrnCalShift(n){
   const [y,m]=jrnCalMonth.split('-').map(Number);
   const d=new Date(y, m-1+n, 1);
@@ -17037,6 +17793,7 @@ function jrnOpenEditor(id, kind){
   const del=document.getElementById('jrn-ed-del');
   if(del) del.style.display = rec ? '' : 'none';
   jrnEdRenderFoot();
+  jrnRenderDayContext();
   jrnEdStatus('');
   const status=document.getElementById('jrn-ed-status'); if(status) status.style.opacity='0';
   if(jrnIsDesktop()){
@@ -17105,6 +17862,7 @@ function jrnEdRenderFoot(){
   foot.innerHTML=h;
   const pin=document.getElementById('jrn-ed-pin');
   if(pin){ pin.classList.toggle('on', !!r.pinned); pin.setAttribute('aria-pressed', r.pinned?'true':'false'); }
+  jrnRenderDayContext();
 }
 // Metadata is a discrete action, so it writes immediately; only typing is debounced.
 function jrnEdPatch(patch){
@@ -17252,6 +18010,9 @@ document.addEventListener('click',function(e){
   if(act==='cal-prev'){ jrnCalShift(-1); return; }
   if(act==='cal-next'){ jrnCalShift(1); return; }
   if(act==='cal-pick'){ jrnJumpTo(el.getAttribute('data-date')); return; }
+  if(act==='reflect'){ jrnOpenReflection(); return; }
+  if(act==='reflect-write'){ jrnStartReflection(); return; }
+  if(act==='day-source'){ jrnOpenDaySource(el.getAttribute('data-source'),el.getAttribute('data-date')); return; }
   if(act==='ed-date'){ jrnEdPatch({dateAbout:el.getAttribute('data-date')}); return; }
   if(act==='ed-mood'){ const v=parseInt(el.getAttribute('data-mood'),10); jrnEdPatch({mood:v>0?v:null}); return; }
   if(act==='ed-tags-open'){ jrnEdTagsOpen=true; jrnEdRenderFoot();
