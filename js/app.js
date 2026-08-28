@@ -8947,6 +8947,29 @@ function txnCreateRecord(f, meta){
   txnData.push(rec);
   return rec;
 }
+// The first itemised purchase must not make an existing weekly category total disappear.
+// Move that total into the ledger as a visible carry-forward transaction, then clear the old
+// field so the category has one source of truth from this point on. AI statement imports skip
+// this path deliberately: their transaction set is intended to replace rough manual totals.
+function txnCarryManualIntoLedger(date,catId,excludeTxnId){
+  const day=localMidnight(date);
+  const diff=(day.getDay()+6)%7;
+  day.setDate(day.getDate()-diff);
+  const wk=weekKey(day);
+  const existing=txnsForWeekCat(wk,catId).filter(t=>t.id!==excludeTxnId);
+  if(existing.length) return false;
+  const d=budgetData[wk];
+  const field='var_'+catId;
+  const amount=parseFloat(d&&d[field]);
+  if(!d||isNaN(amount)||amount===0) return false;
+  const rec=txnCreateRecord({date,catId,amount,merchant:'Earlier spending',
+    note:'Converted from the previous weekly total.'});
+  rec.createdAt-=1;
+  delete d[field];
+  d.updatedAt=Date.now();
+  budSaveData(wk);
+  return true;
+}
 function txnSave(){
   const amtRaw=(document.getElementById('txn-amount').value||'').replace(/[^0-9.\-]/g,'');
   const amt=parseFloat(amtRaw);
@@ -8959,8 +8982,12 @@ function txnSave(){
   const acctId=(document.getElementById('txn-account')||{}).value||'';
   if(_txnEditId){
     const t=txnData.find(x=>x&&x.id===_txnEditId);
-    if(t){ t.amount=amt; t.catId=_txnCatId; t.date=date; t.merchant=merchant; t.note=note; t.acctId=acctId; }
+    if(t){
+      txnCarryManualIntoLedger(date,_txnCatId,t.id);
+      t.amount=amt; t.catId=_txnCatId; t.date=date; t.merchant=merchant; t.note=note; t.acctId=acctId;
+    }
   } else {
+    txnCarryManualIntoLedger(date,_txnCatId,null);
     txnCreateRecord({date, catId:_txnCatId, amount:amt, merchant, note, acctId});
   }
   saveTxns();
