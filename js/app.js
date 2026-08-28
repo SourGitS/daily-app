@@ -5562,7 +5562,7 @@ const AI_PRESETS=[
    instructions:'Here is a snapshot of how I am tracking. Give me a short read on where I stand and anything that stands out.'},
   {id:'spending_review', label:'Spending review',
    scopes:['budget','transactions','subscriptions'],
-   instructions:'Where did my money actually go this period? Rank variable categories by spend and by how far each ran over its weekly target, point at specific weeks rather than averages, and tell me the two or three cuts worth making with a rough weekly value for each. Then give me a per-category weekly target for next month derived from what I actually spent.'},
+   instructions:'Where did my money actually go this period? Rank variable categories by spend and by how far each ran over its weekly target, point at specific weeks rather than averages, and tell me the two or three cuts worth making with a rough weekly value for each. Then give me a per-category weekly target for next month derived from what I actually spent. Also check whether Daily itself contains an obvious setup or data-entry mistake, such as a usual spending goal that conflicts sharply with recent weeks, and separate that correction from advice about changing my behaviour.'},
   {id:'subscription_audit', label:'Subscription audit',
    scopes:['subscriptions','transactions'],
    instructions:'Audit my recurring charges. Flag anything that has gone up in price, anything on a trial about to convert, anything paused or cancelled worth tidying up, and anything I appear to be paying for twice. Give me the annual cost of each and tell me which to drop first.'},
@@ -5667,6 +5667,28 @@ function aiBudgetScope(range){
       savingsRatePct: income>0?aiR2(saved/income*100):null
     };
   });
+  // Surface high-confidence setup inconsistencies as DATA for the reviewing assistant. This
+  // does not change anything by itself: it only makes a likely "$5 instead of $500" typo
+  // explicit enough to distinguish from a genuine decision to lower the goal.
+  const checks=[];
+  const usualGoal=targets.spendingGoalWeekly;
+  const pastGoals=weeks.filter(w=>w.state==='final'&&w.spendingGoal>0).map(w=>w.spendingGoal).sort((a,b)=>a-b);
+  if(pastGoals.length>=2){
+    const mid=Math.floor(pastGoals.length/2);
+    const typical=pastGoals.length%2?pastGoals[mid]:(pastGoals[mid-1]+pastGoals[mid])/2;
+    const current=weeks.find(w=>w.state==='draft');
+    const currentGoal=current&&current.spendingGoal>0?current.spendingGoal:null;
+    const outlier=n=>n>0&&Math.abs(n-typical)>=20&&(n/typical<0.25||n/typical>4);
+    const usualOutlier=outlier(usualGoal), currentOutlier=outlier(currentGoal);
+    if(usualOutlier||currentOutlier){
+      checks.push({
+        id:'spending_goal_outlier', severity:'warning',
+        usualGoal:usualGoal==null?null:aiR2(usualGoal), recentTypicalGoal:aiR2(typical), basisWeeks:pastGoals.length,
+        currentWeekGoal:currentGoal==null?null:aiR2(currentGoal), usualOutlier, currentOutlier,
+        message:'A spending-goal value differs sharply from the median goal used by recent completed weeks. Confirm whether this is a data-entry mistake.'
+      });
+    }
+  }
   const finish=(bucket,cats)=>Object.keys(totals[bucket]).map(id=>{
     const t=totals[bucket][id];
     const c=cats.find(x=>x.id===id);
@@ -5675,7 +5697,7 @@ function aiBudgetScope(range){
             avgPerWeek:aiR2(t.weeks?t.total/t.weeks:0), weeklyTarget:unset?null:aiR2(catBudget(c))};
   }).sort((a,b)=>b.total-a.total);
   return {
-    targets, weeks, months,
+    targets, weeks, months, checks,
     categoryTotals:{income:finish('inc',incCats), fixed:finish('fix',fixCats), variable:finish('var',varCats)},
     periodTotals:{
       income:      aiR2(aiSum(weeks.map(w=>w.income))),
@@ -6025,6 +6047,20 @@ function renderDailyContextMarkdown(ctx){
       (b.targets.savingsGoalWeekly!=null?' · savings goal '+aiMoney(b.targets.savingsGoalWeekly):'')+
       (b.targets.spendingGoalWeekly!=null?' · spending goal (cap on variable) '+aiMoney(b.targets.spendingGoalWeekly):'')+'.');
     blank();
+
+    if(b.checks&&b.checks.length){
+      push('### Daily setup checks','');
+      b.checks.forEach(c=>{
+        if(c.id==='spending_goal_outlier'){
+          push('- **Possible spending-goal error:** '+
+            (c.usualGoal==null?'usual goal not set':'usual goal '+aiMoney(c.usualGoal))+
+            (c.currentWeekGoal!=null?' · current week '+aiMoney(c.currentWeekGoal):'')+
+            ' versus a recent completed-week median of '+aiMoney(c.recentTypicalGoal)+' across '+c.basisWeeks+' weeks'+
+            '. Confirm before correcting it; past weeks should remain unchanged.');
+        } else if(c.message) push('- '+aiCell(c.message));
+      });
+      blank();
+    }
 
     if(!b.weeks.length){
       push('_No budget weeks recorded in this period._','');
@@ -6474,12 +6510,15 @@ function aiHubRefreshPreview(){
 // checkbox per action, and writes nothing at all until the user presses Apply.
 // Three rules shape the whole thing:
 //   1. Imported text is untrusted DATA. It is escaped everywhere it reaches the DOM, and it
-//      can never name a function, a storage key or a URL — only the four action types below.
+//      can never name a function, a storage key or a URL — only the action types below.
 //   2. Every write goes through the SAME canonical path the equivalent manual action uses
-//      (txnCreateRecord, BUD_CAT_SAVE, kitParseImport + kitSaveRecipes, kitShopSaveManual),
+//      (txnCreateRecord, BUD_CAT_SAVE, kitParseImport + kitSaveRecipes, kitShopSaveManual,
+//      budPersistDefaults + budSaveData),
 //      so nothing here is a second writer that could drift or skip sync.
 //   3. Validation is all-or-nothing per action and happens BEFORE any write, so a bad action
 //      at position 7 cannot leave actions 1–6 half-applied.
+// Corrections are equally closed: update_spending_goal can touch only the usual goal and,
+// when explicitly requested, the current week's goal. It can never rewrite a past week.
 // Deliberately out of scope for v1, and not merely unimplemented: deletes, account-balance
 // changes, workout logging, backup restore, arbitrary localStorage writes, arbitrary function
 // calls, executable code, HTML handlers and network requests.
@@ -6488,9 +6527,10 @@ const AI_ACT_VERSION = 1;
 const AI_ACT_MAX     = 50;       // actions per paste
 const AI_ACT_MAXSTR  = 2000;     // any single supplied string
 const AI_ACT_MAXTEXT = 500000;   // the whole paste
-const AI_ACT_TYPES   = ['add_expense','add_subscription','add_recipe','add_shopping_item'];
+const AI_ACT_TYPES   = ['add_expense','add_subscription','add_recipe','add_shopping_item','update_spending_goal'];
 const AI_ACT_LABELS  = {add_expense:'Expense', add_subscription:'Subscription',
-                        add_recipe:'Recipe',  add_shopping_item:'Shopping item'};
+                        add_recipe:'Recipe', add_shopping_item:'Shopping item',
+                        update_spending_goal:'Spending goal correction'};
 
 // ── Small shared validators ──
 // Returns the trimmed string, or null when absent. Throws nothing: length violations come back
@@ -6581,7 +6621,8 @@ function validateDailyAction(action){
   const data=action.data;
   if(!data||typeof data!=='object'||Array.isArray(data)) return {ok:false, id, type, error:'"data" must be an object.'};
   const fn={add_expense:aiValExpense, add_subscription:aiValSubscription,
-            add_recipe:aiValRecipe, add_shopping_item:aiValShoppingItem}[type];
+            add_recipe:aiValRecipe, add_shopping_item:aiValShoppingItem,
+            update_spending_goal:aiValSpendingGoal}[type];
   const res=fn(data, id);
   res.id=id; res.type=type;
   return res;
@@ -6716,16 +6757,69 @@ function aiValShoppingItem(d,id){
     }};
 }
 
+function aiGoalActionIds(){
+  return Array.isArray(budDefaults&&budDefaults.aiAppliedGoalActions)
+    ? budDefaults.aiAppliedGoalActions.map(String) : [];
+}
+function aiValSpendingGoal(d,id){
+  const amt=aiActMoney(d.amount);
+  if(isNaN(amt)) return {ok:false, error:'Spending-goal correction needs a numeric "amount".'};
+  if(amt<=0) return {ok:false, error:'Spending-goal "amount" must be greater than zero (got '+amt+').'};
+  if(amt>100000) return {ok:false, error:'Spending-goal "amount" is implausibly high ('+fmtMoneyExact(amt)+'). Check the units before applying it.'};
+  if(typeof d.applyToCurrentWeek!=='boolean') return {ok:false, error:'Spending-goal correction needs "applyToCurrentWeek": true or false so Daily never guesses whether to change this week.'};
+  const applyCurrent=d.applyToCurrentWeek;
+  const oldDefault=getVarGoalDefault();
+  const currentKey=weekKey(getMondayOf(0));
+  const currentData=budgetData[currentKey]||{};
+  const oldCurrent=getWeekVarGoal(currentData);
+  const sameDefault=oldDefault!==null&&Math.abs(oldDefault-amt)<0.0001;
+  const sameCurrent=!applyCurrent||(oldCurrent!==null&&Math.abs(oldCurrent-amt)<0.0001);
+  const summary='Change the usual weekly spending goal from '+(oldDefault===null?'not set':fmtMoneyExact(oldDefault))+
+    ' to '+fmtMoneyExact(amt)+(applyCurrent?' and change this week from '+(oldCurrent===null?'not set':fmtMoneyExact(oldCurrent))+
+    ' to '+fmtMoneyExact(amt):' without replacing any current-week override')+'. Past weeks stay unchanged.';
+  if(sameDefault&&sameCurrent) return {ok:true, summary, already:'The requested goal is already in place.',
+    dupKey:()=>false, collection:()=>[], apply:()=>({kind:'budget goal'})};
+  return {ok:true, summary,
+    dupKey:x=>x&&aiGoalActionIds().indexOf(id)>=0,
+    collection:()=>[budDefaults],
+    apply:(meta)=>{
+      const key=weekKey(getMondayOf(0));
+      const week=budgetData[key]||{};
+      const before={
+        actionId:id, amount:amt, applyCurrent, key,
+        hadDefault:Object.prototype.hasOwnProperty.call(budDefaults,'varGoal'),
+        defaultValue:budDefaults.varGoal,
+        hadWeekGoal:Object.prototype.hasOwnProperty.call(week,'var_goal'),
+        weekGoalValue:week.var_goal
+      };
+      budDefaults.varGoal=amt;
+      const ids=aiGoalActionIds().filter(x=>x!==id);
+      ids.push(id);
+      budDefaults.aiAppliedGoalActions=ids.slice(-100);
+      budPersistDefaults();
+      if(applyCurrent){
+        if(!budgetData[key]) budgetData[key]={};
+        const d=budgetData[key];
+        d.wk=key;
+        d.var_goal=String(amt);
+        if(!d.saved) d.draft=true;
+        d.updatedAt=Date.now();
+        budSaveData(key);
+      }
+      return {kind:'budget goal', undo:before};
+    }};
+}
+
 // ── preview ──────────────────────────────────────────────────────
 // Validates every action and works out which are new, which were already applied (by
-// aiActionId found in the destination collection — no separate idempotency store, so the
-// record travels through the existing sync) and which are broken. Writes nothing.
+// aiActionId on a created record, or a bounded action-id list inside the existing settings
+// store for corrections — never a second sync store) and which are broken. Writes nothing.
 function previewDailyActions(parsed){
   if(!parsed||parsed.error) return {error:(parsed&&parsed.error)||'Nothing to preview.'};
   const seen={}, rows=[];
   parsed.actions.forEach((a,i)=>{
     const res=validateDailyAction(a);
-    const row={index:i, id:res.id||'', type:res.type||'', label:AI_ACT_LABELS[res.type]||'Action'};
+    const row={index:i, action:a, id:res.id||'', type:res.type||'', label:AI_ACT_LABELS[res.type]||'Action'};
     if(!res.ok){ row.state='error'; row.error=res.error; rows.push(row); return; }
     // Duplicate ids WITHIN one paste are rejected: they would defeat the idempotency check,
     // since the second would look "already applied" the moment the first landed.
@@ -6753,8 +6847,16 @@ function applyDailyActions(rows, source){
   (rows||[]).forEach(row=>{
     if(row.state!=='new'||typeof row.apply!=='function'){ skipped.push(row); return; }
     try{
-      const out=row.apply({aiActionId:row.id, aiSource:source||''});
-      applied.push({id:row.id, type:row.type, kind:out&&out.kind, summary:row.summary});
+      // Re-resolve names, ids and current values at the last possible moment. A Firebase sync
+      // can legitimately change a category or setting while the preview is open.
+      const fresh=validateDailyAction(row.action);
+      if(!fresh.ok){ row.state='error'; row.error=fresh.error; skipped.push(row); return; }
+      if(fresh.already||(fresh.collection()||[]).some(fresh.dupKey)){
+        row.state='already'; row.note=fresh.already||'Already applied earlier — it will not be added twice.';
+        skipped.push(row); return;
+      }
+      const out=fresh.apply({aiActionId:row.id, aiSource:source||''});
+      applied.push({id:row.id, type:row.type, kind:out&&out.kind, undo:out&&out.undo, summary:fresh.summary});
     }catch(e){
       row.state='error'; row.error='Could not apply: '+(e&&e.message||e);
       skipped.push(row);
@@ -6771,7 +6873,7 @@ function aiUndoLastApply(){
   const last=aiInboxState.lastApply;
   if(!last||!last.ids.length) return {removed:0};
   const ids=last.ids;
-  let removed=0;
+  let removed=0, restored=0;
   const before=txnData.length;
   txnData=txnData.filter(t=>!(t&&t.aiActionId&&ids.indexOf(t.aiActionId)>=0));
   if(txnData.length!==before){ removed+=before-txnData.length; saveTxns(); txnAfterChange(); }
@@ -6791,9 +6893,35 @@ function aiUndoLastApply(){
     removed+=goneShop.length;
     kitShopSaveManual(); kitShopSaveChecked();
   }
+  // Setting corrections carry the exact previous values in memory. Restore only while the
+  // applied value is still present; a manual edit made after Apply always wins over Undo.
+  (last.items||[]).filter(x=>x&&x.type==='update_spending_goal'&&x.undo).slice().reverse().forEach(x=>{
+    const u=x.undo;
+    const nowDefault=getVarGoalDefault();
+    const safeDefault=nowDefault!==null&&Math.abs(nowDefault-u.amount)<0.0001;
+    let safeCurrent=true;
+    if(u.applyCurrent){
+      const d=budgetData[u.key];
+      const raw=d&&d.var_goal;
+      const now=raw==null||raw===''?null:parseFloat(raw);
+      safeCurrent=!!(d&&now!==null&&!isNaN(now)&&Math.abs(now-u.amount)<0.0001);
+    }
+    if(!safeDefault||!safeCurrent) return;
+    if(u.hadDefault) budDefaults.varGoal=u.defaultValue; else delete budDefaults.varGoal;
+    if(u.applyCurrent){
+      const d=budgetData[u.key];
+      if(u.hadWeekGoal) d.var_goal=u.weekGoalValue; else delete d.var_goal;
+      d.updatedAt=Date.now();
+      budSaveData(u.key);
+    }
+    const kept=aiGoalActionIds().filter(id=>id!==u.actionId);
+    if(kept.length) budDefaults.aiAppliedGoalActions=kept;
+    else delete budDefaults.aiAppliedGoalActions;
+    budPersistDefaults(); restored++;
+  });
   aiInboxState.lastApply=null;
   aiInboxRefreshViews();
-  return {removed};
+  return {removed, restored, changed:removed+restored};
 }
 
 function aiInboxRefreshViews(){
@@ -6833,7 +6961,7 @@ function aiInboxApply(){
   aiInboxState.result={applied:res.applied.length, skipped:res.skipped.length,
     total:pv.rows.length, items:res.applied};
   if(res.applied.length){
-    aiInboxState.lastApply={ids:res.applied.map(a=>a.id), at:Date.now()};
+    aiInboxState.lastApply={ids:res.applied.map(a=>a.id), items:res.applied, at:Date.now()};
     aiInboxState.text='';            // only cleared once something actually landed
     aiInboxState.preview=null;
     aiInboxState.selected={};
@@ -6845,7 +6973,7 @@ function aiInboxApply(){
 function aiInboxUndo(){
   const r=aiUndoLastApply();
   aiInboxState.result=null;
-  if(typeof showToast==='function') showToast(r.removed?('Removed '+r.removed+' record'+(r.removed===1?'':'s')):'Nothing to undo');
+  if(typeof showToast==='function') showToast(r.changed?('Undid '+r.changed+' change'+(r.changed===1?'':'s')):'Nothing to undo');
   renderAIHub();
 }
 function aiInboxCopyErrors(){
@@ -6862,8 +6990,8 @@ function aiInboxCopyErrors(){
 
 const AI_INBOX_SCHEMA_HINT=
   '{\n  "schema": "daily-actions",\n  "version": 1,\n  "source": "chatgpt",\n  "actions": [\n'+
-  '    { "id": "unique-1", "type": "add_expense",\n      "data": { "amount": 18.5, "date": "2026-08-27",\n'+
-  '                "categoryName": "Groceries", "merchant": "Woolworths" } }\n  ]\n}';
+  '    { "id": "unique-1", "type": "update_spending_goal",\n'+
+  '      "data": { "amount": 500, "applyToCurrentWeek": true } }\n  ]\n}';
 
 function aiInboxCopySchema(){
   const cats=activeCats(loadVarCats()).map(c=>catLabel(c)).join(', ');
@@ -6875,7 +7003,8 @@ function aiInboxCopySchema(){
     'add_subscription data: name, amount (>0), cycle ("monthly" or "yearly"), optional status (active/trial/paused/cancelled), nextBillingDate, website, paymentAccountName.\n'+
     'add_recipe data: one recipe object — name, category (breakfast/lunch/dinner/dessert), servings, ingredients [{name, amount, unit}], steps [].\n'+
     '  Use unit "" for countable things like "4 salmon fillets".\n'+
-    'add_shopping_item data: name, optional category ('+KITSHOP_CAT_ORDER.join('/')+'). Quantities are not stored.\n\n'+
+    'add_shopping_item data: name, optional category ('+KITSHOP_CAT_ORDER.join('/')+'). Quantities are not stored.\n'+
+    'update_spending_goal data: amount (>0) and applyToCurrentWeek (true or false). This changes the usual goal and can explicitly set the current week too; false leaves any current-week override alone. It never rewrites past weeks.\n\n'+
     'My live expense categories are: '+(cats||'(none set up yet)')+'.';
   const done=()=>{ if(typeof showToast==='function') showToast('Instructions copied — paste them to your AI'); };
   if(navigator.clipboard&&navigator.clipboard.writeText){
@@ -6891,7 +7020,7 @@ function aiInboxHtml(){
   const st=aiInboxState;
   let h='';
   h+=cardHeader('receipt','AI Inbox');
-  h+='<div class="aih-hint">Paste what your AI sends back. Daily checks every action and shows you exactly what it would add — nothing is written until you press Apply.</div>';
+  h+='<div class="aih-hint">Paste what your AI sends back. Daily checks every action and shows you exactly what it would add or change — nothing is written until you press Apply.</div>';
   h+='<button class="aih-link" onclick="aiInboxCopySchema()">Copy the format to give your AI →</button>';
   h+='<textarea id="aihub-inbox-text" class="aih-textarea aih-mono" rows="5" placeholder=\'{"schema":"daily-actions","version":1,"actions":[…]}\' oninput="aiInboxSetText(this.value)">'+esc(st.text)+'</textarea>';
   h+='<button class="aih-btn aih-btn-wide" onclick="aiInboxCheck()">Check actions</button>';
@@ -6928,7 +7057,7 @@ function aiInboxHtml(){
     h+='</div>';
     const sel=pv.rows.filter(r=>r.state==='new'&&st.selected[r.index]).length;
     if(c.new){
-      h+='<div class="aih-note">Undo is offered straight after applying and removes only the records that apply created.</div>';
+      h+='<div class="aih-note">Undo is offered straight after applying. It removes only records that Apply created and restores only settings that Apply changed.</div>';
       h+='<button class="aih-btn aih-btn-primary aih-btn-wide"'+(sel?'':' disabled')+' onclick="aiInboxApply()">'+
          (sel?'Apply '+sel+' action'+(sel===1?'':'s'):'Nothing selected')+'</button>';
     }
