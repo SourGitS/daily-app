@@ -302,8 +302,8 @@ if(firebaseReady){
       const cloudMissingSome = Object.keys(localMap).some(id=>!(id in cloudMap));
       if(cloudMissingSome) dbRef.set(mergedMap);
       if(S.view==='stats'){
-        if(statsSubTab==='history') renderHistory();
-        else if(statsSubTab==='training') renderTraining();
+        if(document.getElementById('view-workout-history')?.style.display==='block') renderHistory();
+        if(statsSubTab==='training') renderTraining();
         else if(statsSubTab==='overview') renderStatsOverview();
       }
     });
@@ -323,7 +323,7 @@ if(firebaseReady){
       // merged while signed out must be re-applied here and pushed back up.
       if(mergeLegacyWeightEntries()) persistWeights();
       else localStorage.setItem('wt_weight', JSON.stringify(S.weights));
-      if(S.view==='stats'&&(statsSubTab==='body'||statsSubTab==='overview')) setStatsTab(statsSubTab);
+      if(S.view==='stats'&&(statsSubTab==='body'||statsSubTab==='overview')) setStatsTab(statsSubTab,true);
     });
 
     // One-time migration: fold the old duplicate weight log (daily_weight_log locally,
@@ -1093,32 +1093,61 @@ function fmtDate(iso){
   const d = new Date(iso+'T12:00:00');
   return d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
 }
-// For a counted exercise the record is the heaviest load; for a timed one it's the longest
-// hold. Without this a bodyweight plank had a permanent PR of 0, because it carries no weight
-// for the comparison to find.
-function getPR(exName){
-  const timed=_secsNames.has(exName);
-  let pr=0;
-  S.sessions.forEach(s=>s.exercises.forEach(ex=>{
+// One literal exercise can be timed, bodyweight/repetition-based, externally loaded, or
+// assisted. Pick one honest metric from the performed records and refuse to join histories
+// whose saved measurement unit changed. New sessions snapshot their unit; legacy sessions
+// still have to fall back to the current library and are labelled wherever this is shown.
+function exerciseMetricInfo(exName){
+  const records=[]; let legacy=0;
+  S.sessions.forEach(s=>(s.exercises||[]).forEach(ex=>{
     if(ex.name!==exName) return;
-    ex.sets.forEach(set=>{
-      const v=parseFloat(timed?set.reps:set.weight);
-      if(!isNaN(v)&&v>pr) pr=v;
-    });
+    const unit=ex.unit||(_secsNames.has(exName)?'secs':'reps');
+    if(!ex.unit) legacy++;
+    records.push({ex,unit});
+  }));
+  const units=new Set(records.map(r=>r.unit));
+  if(units.size>1) return {kind:'mixed',unit:'',label:'Incomparable history',chartLabel:'Measurement unit changed across saved sessions',records,legacy};
+  if(units.has('secs')) return {kind:'seconds',unit:'s',label:'Longest hold',chartLabel:'Longest working hold per session (seconds)',records,legacy};
+  let hasNonZeroLoad=false, hasNegative=false;
+  records.forEach(r=>(r.ex.sets||[]).forEach(set=>{
+    if(!set||set.type==='warmup'||!(parseFloat(set.reps)>0)) return;
+    const w=parseFloat(set.weight);
+    if(!isNaN(w)&&w!==0) hasNonZeroLoad=true;
+    if(!isNaN(w)&&w<0) hasNegative=true;
+  }));
+  return hasNonZeroLoad
+    ? {kind:'load',unit:'kg',label:hasNegative?'Best external load':'Best weight',chartLabel:'Top working-set external load per session (kg)',records,legacy,hasNegative}
+    : {kind:'reps',unit:' reps',label:'Best set',chartLabel:'Most working-set reps per session',records,legacy};
+}
+function setMetricValue(set,info){
+  if(!set||set.type==='warmup') return null;
+  const reps=parseFloat(set.reps);
+  if(!(reps>0)) return null;
+  if(info.kind==='seconds'||info.kind==='reps') return reps;
+  if(info.kind==='load'){
+    const w=parseFloat(set.weight);
+    return isNaN(w)?null:w;
+  }
+  return null;
+}
+function getPR(exName){
+  const info=exerciseMetricInfo(exName);
+  if(info.kind==='mixed') return null;
+  let pr=null;
+  info.records.forEach(r=>(r.ex.sets||[]).forEach(set=>{
+    const v=setMetricValue(set,info);
+    if(v!==null&&(pr===null||v>pr)) pr=v;
   }));
   return pr;
 }
-// Same split for the progress chart. The old weight>0 filter dropped every set of a bodyweight
-// timed exercise, so those exercises produced no points and therefore no trend line at all.
 function getPoints(exName){
-  const timed=_secsNames.has(exName);
+  const info=exerciseMetricInfo(exName);
+  if(info.kind==='mixed') return [];
   const pts=[];
   S.sessions.forEach(s=>{
-    const ex=s.exercises.find(e=>e.name===exName);
-    if(ex&&ex.sets.length){
-      const vs=ex.sets.map(st=>parseFloat(timed?st.reps:st.weight)).filter(v=>!isNaN(v)&&v>0);
-      if(vs.length) pts.push({date:s.date,weight:Math.max(...vs)});
-    }
+    const ex=(s.exercises||[]).find(e=>e.name===exName); if(!ex) return;
+    const vs=(ex.sets||[]).map(set=>setMetricValue(set,info)).filter(v=>v!==null);
+    if(vs.length) pts.push({date:s.date,weight:Math.max(...vs)});
   });
   return pts;
 }
@@ -1145,7 +1174,10 @@ function setTheme(t){
   S.theme = t;
   lsSave('wt_theme', t, 'appTheme');
   applyTheme();
-  if(S.view==='stats') setStatsTab(statsSubTab); // re-render charts with the new theme colours
+  if(S.view==='stats'){
+    invalidateStatsTabs();
+    setStatsTab(statsSubTab,true); // re-render charts with the new theme colours
+  }
 }
 
 // ── Accent colour ─────────────────────────────────────────────────
@@ -1806,7 +1838,10 @@ function setView(v, direction, opts){
   // Daily + AI is the same kind of peer destination, so it needs the same explicit close.
   const _aiOv=document.getElementById('view-aihub');
   if(_aiOv&&_aiOv.style.display!=='none'){_aiOv.style.display='none';_aiOv.style.left='0';}
+  const _histOv=document.getElementById('view-workout-history');
+  if(_histOv&&_histOv.style.display!=='none'){_histOv.style.display='none';_histOv.style.left='0';}
   const prev=S.view;
+  if(prev==='stats'&&v!=='stats') invalidateStatsTabs();
   S.view = v;
   const swipeIdx=NAV_ORDER.indexOf(v);
   const isSwipe=swipeIdx>=0;
@@ -1835,7 +1870,7 @@ function setView(v, direction, opts){
     rtStopUi();
   }
   // Stats is a standalone top-level view (its own bottom-nav tab + desktop sidebar item).
-  if(v==='stats'){ setStatsTab(statsSubTab); }
+  if(v==='stats'){ setStatsTab(statsSubTab,true); }
   if(v==='budget') renderBudgetTab();
   if(v==='kitchen') kitRender();
   else if(typeof kitShopRenderAddBar==='function') kitShopRenderAddBar(false); // hide fixed shopping add-bar off-tab
@@ -2543,6 +2578,11 @@ function fmtSetAmount(v,unit){
   if(isNaN(n)) return '–';
   return unit==='secs' ? n+'s' : String(n);
 }
+function fmtLoggedSet(set,unit){
+  const w=parseFloat(set&&set.weight), amount=fmtSetAmount(set&&set.reps,unit);
+  if(unit==='secs') return (!isNaN(w)&&w!==0?w+'kg for ':'')+amount;
+  return !isNaN(w)&&w!==0 ? w+'kg × '+amount : amount+' reps';
+}
 let _libMuscle='all';
 function openExerciseLibrary(){
   const v=document.getElementById('view-exercise-library'); if(!v) return;
@@ -2915,12 +2955,19 @@ function updateNavBadges(){
   if(bb) bb.style.display=showBudget?'block':'none';
 }
 // Old sub-tab names (saved state, header-pill contexts) map onto the new structure.
-const STATS_TAB_ALIASES={progress:'training', budget:'finance', weight:'body'};
-function setStatsTab(tab){
+const STATS_TAB_ALIASES={progress:'training', budget:'finance', weight:'body', history:'training'};
+function invalidateStatsTabs(){
+  ['sub-overview','sub-training','sub-body','sub-nutrition','sub-finance'].forEach(id=>{
+    const pane=document.getElementById(id); if(pane) delete pane.dataset.statsRendered;
+  });
+}
+function setStatsTab(tab,force){
   tab=STATS_TAB_ALIASES[tab]||tab;
-  const paneIds={overview:'sub-overview',history:'sub-history',training:'sub-training',body:'sub-body',nutrition:'sub-nutrition',finance:'sub-finance'};
-  const btnIds={overview:'st-ov-btn',history:'st-hist-btn',training:'st-train-btn',body:'st-body-btn',nutrition:'st-nut-btn',finance:'st-fin-btn'};
+  const paneIds={overview:'sub-overview',training:'sub-training',body:'sub-body',nutrition:'sub-nutrition',finance:'sub-finance'};
+  const btnIds={overview:'st-ov-btn',training:'st-train-btn',body:'st-body-btn',nutrition:'st-nut-btn',finance:'st-fin-btn'};
   if(!paneIds[tab]) tab='overview';
+  const targetPane=document.getElementById(paneIds[tab]);
+  const alreadyRendered=targetPane&&targetPane.dataset.statsRendered==='1';
   statsSubTab = tab;
   Object.keys(paneIds).forEach(t=>{
     const pane=document.getElementById(paneIds[t]); if(pane) pane.classList.toggle('hidden',t!==tab);
@@ -2942,12 +2989,156 @@ function setStatsTab(tab){
     tabRow.scrollLeft+=delta; // the browser clamps to [0, max] — clamping by hand off-by-oned it
                               // on fractional widths and left the last tab a pixel short
   }
+  if(alreadyRendered&&!force){
+    // Preserve the existing chart objects on an ordinary revisit. A hidden canvas may have
+    // missed a responsive measurement, so resize in place after it becomes visible instead
+    // of destroying/recreating it and replaying every animation.
+    requestAnimationFrame(()=>{
+      if(typeof Chart==='undefined'||!Chart.instances||!targetPane) return;
+      try{ Object.keys(Chart.instances).forEach(k=>{ const c=Chart.instances[k]; if(c&&c.canvas&&targetPane.contains(c.canvas)&&c.resize) c.resize(); }); }catch(e){}
+    });
+    return;
+  }
   if(tab==='overview') renderStatsOverview();
-  if(tab==='history') renderHistory();
   if(tab==='training') renderTraining();
   if(tab==='body') renderBody();
   if(tab==='nutrition') renderNutrition();
   if(tab==='finance') renderBudgetStats();
+  if(targetPane) targetPane.dataset.statsRendered='1';
+}
+
+// ── Stats evidence drill-down ────────────────────────────────────
+// A single source-record overlay keeps the active tab/range intact underneath it. Domain
+// renderers supply only recorded facts; closing returns to the exact analysis context.
+let _statsEvidenceExercise='';
+let _statsFinanceEvidence=[];
+let _statsAccountEvidence=[];
+function openStatsEvidence(title,html){
+  const v=document.getElementById('view-stats-evidence'); if(!v) return;
+  const t=document.getElementById('stats-evidence-title'); if(t) t.textContent=title||'Evidence';
+  const c=document.getElementById('stats-evidence-content'); if(c) c.innerHTML=html||'';
+  v.style.display='block'; v.style.left=window.innerWidth>=1024?'260px':'0'; v.scrollTop=0;
+}
+function closeStatsEvidence(){
+  const v=document.getElementById('view-stats-evidence'); if(v){ v.style.display='none'; v.style.left='0'; }
+}
+function statsSourceActions(buttons){
+  return '<div class="stats-source-actions">'+buttons.join('')+'</div>';
+}
+function openEvidenceExerciseDetail(){
+  closeStatsEvidence();
+  if(_statsEvidenceExercise) openExerciseDetail(_statsEvidenceExercise);
+}
+function openExerciseEvidence(name,from,to,periodLabel){
+  _statsEvidenceExercise=name;
+  const end=to||from;
+  const sessions=(S.sessions||[]).filter(s=>s.date>=from&&s.date<=end&&(s.exercises||[]).some(e=>e.name===name));
+  const rows=sessions.map(s=>{
+    const ex=(s.exercises||[]).find(e=>e.name===name);
+    const unit=ex.unit||(_secsNames.has(name)?'secs':'reps');
+    const sets=(ex.sets||[]).map((set,i)=>'<div>'+((set.type==='warmup')?'Warm-up':'Set '+(i+1))+': '+fmtLoggedSet(set,unit)+'</div>').join('');
+    const context=s.note?'<div class="stats-source-detail">Session note: '+_catEscHtml(s.note)+'</div>':'';
+    return '<div class="stats-source-row"><div class="stats-source-top"><span>'+fmtDate(s.date)+'</span><span>'+_catEscHtml(s.sessionType||'Session')+'</span></div><div class="stats-source-meta">'+sets+'</div>'+context+'</div>';
+  }).join('');
+  const label=periodLabel||(from===end?fmtDate(from):fmtDate(from)+'–'+fmtDate(end));
+  openStatsEvidence(name+' · '+label,
+    '<div class="stats-data-note">Literal saved sessions and sets. Session notes are context only and are not treated as causes.</div>'+
+    '<div class="stats-source-list">'+(rows||'<div class="stats-source-row">No matching saved sessions.</div>')+'</div>'+
+    statsSourceActions(['<button onclick="openEvidenceExerciseDetail()">Open full exercise history →</button>','<button onclick="closeStatsEvidence();setView(\'log\');openWorkoutHistory()">Open workout records →</button>']));
+}
+function openExerciseVolumeEvidence(name,key,range){
+  if(range==='week'){
+    const end=localMidnight(key); end.setDate(end.getDate()+6);
+    openExerciseEvidence(name,key,dateStr(end),'Week of '+fmtDate(key));
+    return;
+  }
+  const start=key+'-01', end=localMidnight(start); end.setMonth(end.getMonth()+1); end.setDate(0);
+  const label=new Date(start+'T12:00:00').toLocaleDateString('en-AU',{month:'long',year:'numeric'});
+  openExerciseEvidence(name,start,dateStr(end),label);
+}
+function openMuscleEvidence(muscle,from){
+  const current={}; loadExerciseLib().forEach(e=>{ if(e&&e.name) current[e.name]=e.muscle; });
+  const rows=[];
+  (S.sessions||[]).forEach(s=>{
+    if(s.date<from) return;
+    (s.exercises||[]).forEach(ex=>{
+      const resolved=ex.muscle||current[ex.name]||libGuessMuscle(ex.name)||'other';
+      if(resolved!==muscle) return;
+      const n=(ex.sets||[]).filter(set=>{
+        if(!set||set.type==='warmup') return false;
+        const w=parseFloat(set.weight); return (!isNaN(w)&&w!==0)||parseFloat(set.reps)>0;
+      }).length;
+      if(!n) return;
+      rows.push('<button class="stats-source-row" data-ex="'+_catEsc(ex.name)+'" data-date="'+s.date+'" onclick="openExerciseEvidence(this.dataset.ex,this.dataset.date)"><div class="stats-source-top"><span>'+_catEscHtml(ex.name)+'</span><span>'+fmtDate(s.date)+'</span></div><div class="stats-source-meta">'+n+' working set'+(n===1?'':'s')+' · '+(ex.muscle?'classification saved with session':'legacy current/inferred classification')+'</div></button>');
+    });
+  });
+  openStatsEvidence(muscle.charAt(0).toUpperCase()+muscle.slice(1)+' evidence',
+    '<div class="stats-data-note">Sessions since '+fmtDate(from)+'. New records use their saved muscle classification; legacy fallbacks are labelled.</div><div class="stats-source-list">'+(rows.join('')||'<div class="stats-source-row">No matching saved sets.</div>')+'</div>');
+}
+function openWeightEvidence(date){
+  const entry=(S.weights||[]).find(w=>w.date===date);
+  const goal=weightGoalAnalysis();
+  const goalText=goal.hasGoal
+    ? (goal.legacy?'Goal exists, but its episode baseline is unavailable.':'Goal episode: '+goal.start+' kg on '+fmtDate(goal.startedAt)+' → '+goal.target+' kg'+(weightGoal.date?' by '+fmtDate(weightGoal.date):''))
+    : 'No active goal episode.';
+  openStatsEvidence('Weight check-in · '+fmtDate(date),
+    '<div class="stats-source-list"><div class="stats-source-row"><div class="stats-source-top"><span>Recorded weight</span><span>'+(entry?_catEscHtml(String(entry.weight))+' kg':'Unavailable')+'</span></div><div class="stats-source-meta">'+goalText+'</div></div></div>'+
+    statsSourceActions(['<button onclick="closeStatsEvidence();openHealthSettings()">Open Health check-ins →</button>']));
+}
+function openNutritionEvidence(date){
+  const today=getLocalDate();
+  const todayTotal=S.dailyLog.date===today?S.dailyLog.entries.reduce((a,e)=>a+(e.kcal||0),0):0;
+  const end=localMidnight(today), days=[];
+  for(let i=29;i>=0;i--){ const d=new Date(end); d.setDate(d.getDate()-i); days.push(dateStr(d)); }
+  const rows=days.filter(d=>!date||d===date).reverse().map(d=>{
+    const val=d===today&&todayTotal>0?todayTotal:calorieHistory[d];
+    const logged=parseFloat(val)>0;
+    return '<div class="stats-source-row"><div class="stats-source-top"><span>'+fmtDate(d)+(d===today?' · in progress':'')+'</span><span>'+(logged?Math.round(val)+' kcal':'Not logged')+'</span></div><div class="stats-source-meta">'+(logged?'Persisted daily calorie total':'Missing is unknown, not zero')+'</div></div>';
+  }).join('');
+  openStatsEvidence(date?'Calorie evidence · '+fmtDate(date):'Calorie evidence · 30 days',
+    '<div class="stats-data-note">Daily calorie totals are the available historical source. Historical macros and old food-entry detail were not persisted.</div><div class="stats-source-list">'+rows+'</div>'+
+    statsSourceActions(['<button onclick="closeStatsEvidence();openCalorieOverlay()">Open today’s food log →</button>']));
+}
+function openFinanceCategoryEvidence(index){
+  const c=_statsFinanceEvidence[index]; if(!c) return;
+  const rows=(c.weeks||[]).slice().reverse().map(w=>{
+    const d=budgetData[w.key]||{};
+    let detail='';
+    if(c.kind==='Variable'){
+      const txns=txnsForWeekCat(w.key,c.id);
+      detail=txns.length
+        ? txns.map(t=>fmtDate(t.date)+' · '+_catEscHtml(t.merchant||t.note||'Transaction')+' · '+fmtMoneyExact(t.amount)).join('<br>')
+        : 'Manual weekly field · '+fmtMoneyExact(w.val);
+    }else if(c.kind==='Fixed'){
+      const explicit=d['fix_'+c.id];
+      detail=explicit!==undefined&&explicit!==''?'Saved weekly field · '+fmtMoneyExact(explicit):'Frozen weekly rate · '+fmtMoneyExact(w.val);
+    }else detail='Legacy aggregate only; category-level source metadata was not stored.';
+    return '<button class="stats-source-row" onclick="closeStatsEvidence();openBudgetWeekFromStats(\''+w.key+'\')"><div class="stats-source-top"><span>Week of '+fmtDate(w.key)+'</span><span>'+fmtMoneyExact(w.val)+'</span></div><div class="stats-source-meta">'+detail+'</div><div class="stats-review-link">Open source week →</div></button>';
+  }).join('');
+  const sourceRule=c.kind==='Variable'
+    ? 'Variable category. Transactions govern whenever one or more matching records exist.'
+    : c.kind==='Fixed'
+      ? 'Fixed category. A saved weekly field governs; otherwise the week’s frozen rate is used.'
+      : 'Legacy aggregate. Category identity and item-level source metadata were not stored.';
+  openStatsEvidence(c.label+' · spend evidence','<div class="stats-data-note">'+sourceRule+'</div><div class="stats-source-list">'+rows+'</div>');
+}
+function openNetWorthEvidence(date){
+  const rows=accounts.filter(a=>a).map(a=>{
+    const e=accountEntryAt(a,date);
+    if(!e) return '<div class="stats-source-row"><div class="stats-source-top"><span>'+_catEscHtml(a_name(a))+'</span><span>Unknown</span></div><div class="stats-source-meta">No balance recorded on or before this date.</div></div>';
+    const carried=e.date<date;
+    return '<div class="stats-source-row"><div class="stats-source-top"><span>'+_catEscHtml(a_name(a))+' · '+(a.type==='debt'?'Debt':'Asset')+'</span><span>'+fmtMoneyExact(e.balance)+'</span></div><div class="stats-source-meta">Recorded '+fmtDate(e.date)+(carried?' · carried forward to '+fmtDate(date):' · exact chart date')+'</div></div>';
+  }).join('');
+  openStatsEvidence('Net worth evidence · '+fmtDate(date),'<div class="stats-data-note">Every value below identifies the balance update establishing this chart point. Carried-forward balances are explicit.</div><div class="stats-source-list">'+rows+'</div>'+statsSourceActions(['<button onclick="closeStatsEvidence();openAccounts()">Open account records →</button>']));
+}
+function openAccountGrowthEvidence(index){
+  const r=_statsAccountEvidence[index]; if(!r) return;
+  const all=(r.a.history||[]).filter(e=>e&&e.date).slice().sort((a,b)=>a.date<b.date?-1:1);
+  const baseline=accountEntryAt(r.a,r.from)||all[0]||null;
+  const entries=all.filter(e=>e.date>=r.from);
+  if(baseline&&!entries.some(e=>e.date===baseline.date)) entries.unshift(baseline);
+  const history=entries.map((e,i)=>'<div class="stats-source-row"><div class="stats-source-top"><span>'+fmtDate(e.date)+'</span><span>'+fmtMoneyExact(e.balance)+'</span></div><div class="stats-source-meta">'+(i===0&&e.date<r.from?'Recorded baseline carried into range':'Recorded balance update')+'</div></div>').join('');
+  openStatsEvidence(a_name(r.a)+' · account evidence','<div class="stats-data-note">Compared '+fmtDate(r.from)+'–'+fmtDate(r.to)+'. Debt reductions contribute positively to net worth; asset reductions contribute negatively.</div><div class="stats-source-list">'+(history||'<div class="stats-source-row">No recorded balance evidence.</div>')+'</div>'+statsSourceActions(['<button onclick="closeStatsEvidence();openAccounts()">Open account records →</button>']));
 }
 
 // ── LOG view ─────────────────────────────────────────────────────
@@ -3369,12 +3560,24 @@ function saveSession(){
   // changed what's displayed. Record each exercise under its SWAPPED name (dn) so history
   // lives under the movement actually performed — e.g. sets done after Bench→Dumbbell Press
   // are stored as "Dumbbell Press", matched literally by the per-exercise history view.
-  const exercises = t.exercises.map(ex=>({
-    name: dn(ex.name),
-    sets: S.setData[ex.name]
-      .map(s=>({weight:parseFloat(s.weight)||0, reps:parseInt(s.reps)||0, type:s.type==='warmup'?'warmup':'working'}))
-      .filter(s=>s.weight>0||s.reps>0)
-  })).filter(ex=>ex.sets.length>0);
+  const libByName={};
+  loadExerciseLib().forEach(e=>{ if(e&&e.name) libByName[e.name]=e; });
+  const exercises = t.exercises.map(ex=>{
+    const performed=dn(ex.name);
+    const libEx=libByName[performed];
+    return {
+      name:performed,
+      // Forward-only snapshot: later Exercise Library edits must not rewrite what this
+      // historical session meant. Legacy sessions without these fields stay explicitly legacy.
+      muscle:(libEx&&libEx.muscle)||libGuessMuscle(performed)||'other',
+      muscleSource:libEx?'library':'inferred',
+      unit:(libEx&&libEx.unit)||ex.unit||(_secsNames.has(performed)?'secs':'reps'),
+      unitSource:libEx?'library':'inferred',
+      sets:S.setData[ex.name]
+        .map(s=>({weight:parseFloat(s.weight)||0, reps:parseInt(s.reps)||0, type:s.type==='warmup'?'warmup':'working'}))
+        .filter(s=>s.weight!==0||s.reps>0)
+    };
+  }).filter(ex=>ex.sets.length>0);
 
   if(!exercises.length){
     const msg=document.getElementById('save-msg');
@@ -3545,7 +3748,9 @@ function renderWeekReviewCard(){
   const weekWeights=S.weights.filter(w=>w.date>=mondayStr&&w.date<=sundayStr).sort((a,b)=>a.date<b.date?-1:1);
   if(weekWeights.length>=2){
     const chg=+(weekWeights[weekWeights.length-1].weight-weekWeights[0].weight).toFixed(1);
-    const col=chg<0?'var(--success)':chg>0?'var(--danger)':'var(--muted)';
+    const goal=(calcGoalCals()||{}).goal;
+    const helpful=goal==='cut'?chg<0:goal==='bulk'?chg>0:false;
+    const col=chg===0||goal==='maintain'?'var(--muted)':helpful?'var(--success)':'var(--danger)';
     weightLine='<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border)"><span style="font-size:13px;color:var(--muted)">Weight</span><span style="font-size:13px;font-weight:600;color:'+col+'">'+(chg>0?'+':'')+chg+'kg this week</span></div>';
   }
 
@@ -3602,7 +3807,9 @@ function buildWeekReviewHTML(){
     weightHTML=weekWeights.map(w=>'<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="color:var(--muted)">'+fmtDate(w.date)+'</span><span style="font-weight:600">'+w.weight+'kg</span></div>').join('');
     if(weekWeights.length>=2){
       const chg=+(weekWeights[weekWeights.length-1].weight-weekWeights[0].weight).toFixed(1);
-      const col=chg<0?'var(--success)':chg>0?'var(--danger)':'var(--muted)';
+      const goal=(calcGoalCals()||{}).goal;
+      const helpful=goal==='cut'?chg<0:goal==='bulk'?chg>0:false;
+      const col=chg===0||goal==='maintain'?'var(--muted)':helpful?'var(--success)':'var(--danger)';
       weightHTML+='<div style="font-size:13px;font-weight:700;padding:8px 0 0;color:'+col+'">'+(chg>0?'+':'')+chg+'kg this week</div>';
     }
   }
@@ -3728,30 +3935,38 @@ function emptyState(emoji,heading,sub,btnLabel,btnAction){
 }
 
 // ── HISTORY view ──────────────────────────────────────────────────
+function openWorkoutHistory(){
+  const v=document.getElementById('view-workout-history'); if(!v) return;
+  v.style.display='block'; v.style.left=window.innerWidth>=1024?'260px':'0'; v.scrollTop=0;
+  renderHistory();
+}
+function closeWorkoutHistory(){
+  const v=document.getElementById('view-workout-history'); if(v){ v.style.display='none'; v.style.left='0'; }
+  if(S.view==='log') renderLog(false);
+}
 function renderHistory(){
   const list = document.getElementById('history-list');
   if(!S.sessions.length){
-    list.innerHTML=emptyState('🏋️','No sessions yet','Log your first workout to start tracking your progress','Go to Log →',"setView('log')");
+    list.innerHTML=emptyState('🏋️','No sessions yet','Log your first workout to start tracking your progress','Go to Log →',"closeWorkoutHistory();setView('log')");
     return;
   }
   list.innerHTML = [...S.sessions].reverse().map((s,ri)=>{
     const i = S.sessions.length-1-ri;
     const tc = splitTypes().find(t=>t.name===s.sessionType)||splitTypes()[0];
-    const summary = s.exercises.map(e=>`${dn(e.name)} (${e.sets.length} sets)`).join(' · ');
+    const summary = s.exercises.map(e=>`${_catEscHtml(e.name)} (${e.sets.length} sets)`).join(' · ');
     const detail = s.exercises.map(ex=>`
       <div class="session-ex-row">
-        <div class="session-ex-name">${dn(ex.name)}</div>
+        <div class="session-ex-name">${_catEscHtml(ex.name)}</div>
         ${ex.sets.map((set,si)=>{
-          const timed=isTimedExercise(ex);
-          const load=set.weight?set.weight+'kg':(timed?'':'—');
-          return `<div class="session-set-line">Set ${si+1}: ${timed?(load?load+' for ':'')+fmtSetAmount(set.reps,'secs'):load+' × '+(set.reps||'—')}</div>`;
+          return `<div class="session-set-line">Set ${si+1}: ${fmtLoggedSet(set,exerciseUnit(ex))}</div>`;
         }).join('')}
       </div>`).join('');
 
+    const dayStr = Number.isFinite(Number(s.dayNum)) && Number(s.dayNum)>0 ? ` · Day ${Number(s.dayNum)}` : '';
     const durStr = s.duration ? ` · ${fmtDuration(s.duration)}` : '';
     return `<div class="session-card">
       <div class="session-card-top">
-        <div class="session-date-str">${fmtDate(s.date)} · Day ${s.dayNum}${durStr}</div>
+        <div class="session-date-str">${fmtDate(s.date)}${dayStr}${durStr}</div>
         <div style="display:flex;align-items:center;gap:8px">
           ${s.effort&&effortMeta(s.effort)?`<div class="session-effort-pill" title="Session effort">${effortMeta(s.effort).emoji} ${effortMeta(s.effort).label}</div>`:''}
           <div class="session-type-pill ${tc.id}">${s.sessionType}</div>
@@ -3884,7 +4099,7 @@ function deleteWeight(date){
   renderWeightSection();
 }
 function renderWeightSection(){
-  const wrap = document.getElementById('weight-section');
+  const wrap = document.getElementById('health-weight-section');
   if(!wrap) return;
   const today  = getLocalDate();
   const sorted = [...S.weights].sort((a,b)=>a.date<b.date?-1:1);
@@ -3895,7 +4110,7 @@ function renderWeightSection(){
   wrap.innerHTML=`
     <div class="week-section" style="margin-bottom:14px">
       <div class="week-section-title">Body weight</div>
-      <div class="week-section-sub">Log your weight to track bulk progress</div>
+      <div class="week-section-sub">Record measured check-ins; Stats analyses the trend against your current goal.</div>
       <div style="display:flex;gap:8px;margin-bottom:12px;align-items:stretch">
         <div style="flex:1;display:flex;flex-direction:column;gap:6px">
           <input type="date" id="weight-date" value="${today}"
@@ -3967,38 +4182,29 @@ function saveWeightGoal(){
   const t = parseFloat(document.getElementById('wg-target')?.value);
   const d = document.getElementById('wg-date')?.value||null;
   if(!t||isNaN(t)) return;
-  weightGoal = {target:t, date:d};
+  const same=parseFloat(weightGoal&&weightGoal.target)===t&&(weightGoal&&weightGoal.date||null)===d;
+  const sorted=[...(S.weights||[])].sort((a,b)=>a.date<b.date?-1:1);
+  weightGoal = same
+    ? {...weightGoal,target:t,date:d}
+    : {target:t,date:d,startedAt:getLocalDate(),startWeight:sorted.length?sorted[sorted.length-1].weight:null};
   localStorage.setItem('daily_weight_goal', JSON.stringify(weightGoal));
   syncWeightGoalToFirebase();
   renderWeightGoal();
+  if(S.view==='stats'&&statsSubTab==='body') renderBody();
 }
 function renderWeightGoal(){
-  const wrap = document.getElementById('weight-goal-section');
+  const wrap = document.getElementById('health-weight-goal-section');
   if(!wrap) return;
   const sorted = [...S.weights].sort((a,b)=>a.date<b.date?-1:1);
   const target = weightGoal.target;
   const targetDate = weightGoal.date||'';
   let progressHTML = '';
-  if(sorted.length && target){
-    const startW = sorted[0].weight;
+  if(sorted.length && target && weightGoal.startedAt && parseFloat(weightGoal.startWeight)>0){
+    const startW = parseFloat(weightGoal.startWeight);
     const curW   = sorted[sorted.length-1].weight;
     const range  = target - startW;
     const pct    = range!==0 ? Math.max(0, Math.min(100, (curW - startW) / range * 100)) : 100;
     const rem    = Math.abs(target - curW).toFixed(1);
-    let etaStr   = '';
-    if(sorted.length >= 2){
-      const last4    = sorted.slice(-4);
-      const days     = (new Date(last4[last4.length-1].date) - new Date(last4[0].date)) / 86400000;
-      const change   = last4[last4.length-1].weight - last4[0].weight;
-      if(days > 0 && change !== 0){
-        const daysNeeded = (target - curW) / (change / days);
-        if(daysNeeded > 0){
-          const eta = new Date();
-          eta.setDate(eta.getDate() + Math.round(daysNeeded));
-          etaStr = eta.toLocaleDateString('en-CA');
-        }
-      }
-    }
     progressHTML = `
       <div style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
@@ -4011,9 +4217,11 @@ function renderWeightGoal(){
         <div class="stats-grid" style="margin-top:10px">
           <div class="stat-card"><div class="stat-val">${curW}kg</div><div class="stat-lbl">Current</div></div>
           <div class="stat-card"><div class="stat-val">${rem}kg</div><div class="stat-lbl">Remaining</div></div>
-          ${etaStr?`<div class="stat-card"><div class="stat-val" style="font-size:13px">${etaStr}</div><div class="stat-lbl">Est. date</div></div>`:''}
+          <div class="stat-card"><div class="stat-val" style="font-size:13px">${targetDate?fmtDate(targetDate):'—'}</div><div class="stat-lbl">Target date</div></div>
         </div>
       </div>`;
+  } else if(sorted.length&&target&&!weightGoal.startedAt){
+    progressHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:8px 0">This goal predates goal episodes. Save it again to start pace tracking without rewriting old weigh-ins.</div>';
   } else if(!sorted.length){
     progressHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:8px 0">Log weight entries to see progress</div>';
   }
@@ -4040,10 +4248,96 @@ function renderWeightGoal(){
   animateStatVals(wrap);
 }
 
-// ── BODY sub-tab (consolidated weight tracker + goal) ─────────────
+function openHealthSettings(){ openSettingsSection('health'); }
+function weightGoalAnalysis(){
+  const sorted=[...(S.weights||[])].filter(w=>w&&w.date&&parseFloat(w.weight)>0).sort((a,b)=>a.date<b.date?-1:1);
+  const cur=sorted.length?sorted[sorted.length-1]:null;
+  const target=parseFloat(weightGoal&&weightGoal.target);
+  const startedAt=weightGoal&&weightGoal.startedAt?String(weightGoal.startedAt).slice(0,10):'';
+  const storedStart=parseFloat(weightGoal&&weightGoal.startWeight);
+  const goalReadings=startedAt?sorted.filter(w=>w.date>=startedAt):[];
+  const start=!isNaN(storedStart)&&storedStart>0?storedStart:(goalReadings.length?parseFloat(goalReadings[0].weight):null);
+  const out={sorted,cur,target,startedAt,start,goalReadings,hasGoal:!isNaN(target)&&target>0,legacy:false,rate:null,rateReady:false,staleDays:null,pace:null,mode:null};
+  if(out.hasGoal&&!startedAt) out.legacy=true;
+  if(out.hasGoal&&start!==null) out.mode=Math.abs(target-start)<0.2?'maintain':target<start?'cut':'bulk';
+  if(cur) out.staleDays=Math.max(0,Math.floor((localMidnight(getLocalDate())-localMidnight(cur.date))/864e5));
+  if(goalReadings.length>=6){
+    const first=goalReadings[0], last=goalReadings[goalReadings.length-1];
+    const span=Math.round((localMidnight(last.date)-localMidnight(first.date))/864e5);
+    if(span>=21&&out.staleDays!==null&&out.staleDays<=14){
+      out.rate=(parseFloat(last.weight)-parseFloat(first.weight))/(span/7);
+      out.rateReady=true;
+    }
+  }
+  const gd=weightGoal&&weightGoal.date?String(weightGoal.date).slice(0,10):'';
+  if(out.hasGoal&&start!==null&&startedAt&&gd&&cur&&cur.date>=startedAt){
+    const t0=localMidnight(startedAt).getTime(), t1=localMidnight(gd).getTime(), measuredAt=localMidnight(cur.date).getTime();
+    if(t1>t0&&measuredAt>=t0){
+      const frac=Math.max(0,Math.min(1,(measuredAt-t0)/(t1-t0)));
+      const expected=start+(target-start)*frac;
+      if(out.mode==='maintain'){
+        const distance=Math.abs(parseFloat(cur.weight)-expected);
+        out.pace={expected,ahead:-distance,onPace:distance<=0.5,date:gd,label:distance<=0.5?'Within range':'Outside range'};
+      }else{
+        const direction=Math.sign(target-start);
+        const ahead=(parseFloat(cur.weight)-expected)*direction;
+        out.pace={expected,ahead,onPace:ahead>=-0.2,date:gd,label:ahead>=-0.2?'On pace':'Behind pace'};
+      }
+    }
+  }
+  return out;
+}
+function renderBodyInsight(){
+  const weightWrap=document.getElementById('weight-section');
+  const goalWrap=document.getElementById('weight-goal-section');
+  if(!weightWrap||!goalWrap) return;
+  const a=weightGoalAnalysis();
+  if(S.bodyWeightChart){ S.bodyWeightChart.destroy(); S.bodyWeightChart=null; }
+  if(!a.cur){
+    weightWrap.innerHTML=emptyState('⚖️','No weight trend yet','Record check-ins in Health before Stats can assess change','Open Health →','openHealthSettings()');
+    goalWrap.innerHTML=''; return;
+  }
+  const recent=a.sorted.slice(-30);
+  const first=recent[0], delta=+(parseFloat(a.cur.weight)-parseFloat(first.weight)).toFixed(1);
+  const freshness=a.staleDays===0?'Measured today':a.staleDays+' day'+(a.staleDays===1?'':'s')+' since latest check-in';
+  weightWrap.innerHTML='<div class="card stats-conclusion-card">'+
+    cardHeader('scale','Measured weight','<button class="card-hd-act" onclick="openHealthSettings()">Manage check-ins →</button>')+
+    '<div class="stats-conclusion">'+(delta===0?'Stable across the visible readings':(delta>0?'Up ':'Down ')+Math.abs(delta).toFixed(1)+' kg across '+recent.length+' check-ins')+'</div>'+
+    '<div class="stats-data-note">'+fmtDate(first.date)+' to '+fmtDate(a.cur.date)+' · '+freshness+'. Individual readings can be noisy; the line is descriptive, not a diagnosis.</div>'+
+    (recent.length>=2?'<div class="stats-chart-box"><canvas id="body-weight-chart" aria-label="Body weight trend"></canvas></div>':'')+
+    '</div>';
+  if(recent.length>=2){
+    const ctx=document.getElementById('body-weight-chart');
+    const {gc,tc}=budChartGridColors();
+    const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#777').trim();
+    const sets=[{label:'Weight',data:recent.map(w=>w.weight),borderColor:accent,backgroundColor:'transparent',borderWidth:2.5,pointRadius:3,tension:.25}];
+    if(a.hasGoal&&a.startedAt) sets.push({label:'Current goal target',data:recent.map(w=>w.date>=a.startedAt?a.target:null),borderColor:tc,borderDash:[6,4],borderWidth:1.5,pointRadius:0,fill:false,spanGaps:false});
+    S.bodyWeightChart=new Chart(ctx,{type:'line',data:{labels:recent.map(w=>fmtDate(w.date)),datasets:sets},options:{responsive:true,maintainAspectRatio:false,onClick:(event,elements)=>{if(elements.length&&elements[0].datasetIndex===0)openWeightEvidence(recent[elements[0].index].date);},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y+' kg'}}},scales:{x:{grid:{display:false},ticks:{color:tc,maxTicksLimit:6,maxRotation:0}},y:{grid:{color:gc},ticks:{color:tc,callback:v=>v+'kg'},beginAtZero:false}}}});
+  }
+  let goalHtml='';
+  if(!a.hasGoal){
+    goalHtml='<div class="stats-conclusion">No active weight goal</div><div class="stats-data-note">Set one in Health to assess direction and pace.</div>';
+  }else if(a.legacy){
+    goalHtml='<div class="stats-conclusion">Goal needs a trustworthy starting point</div><div class="stats-data-note">This goal predates goal episodes. Open Health and save it again to begin future pace tracking without rewriting old weigh-ins.</div>';
+  }else{
+    const dir=a.mode==='bulk'?'gain target':a.mode==='cut'?'loss target':'maintenance reference';
+    const remaining=Math.abs(a.target-parseFloat(a.cur.weight)).toFixed(1);
+    const pace=a.pace?'<span class="stats-status '+(a.pace.onPace?'good':'warn')+'">'+a.pace.label+'</span>':'';
+    let rate='Recent rate unavailable';
+    if(!a.goalReadings.length) rate='No check-in since this goal began; latest weight shown is older than the goal';
+    else if(a.rateReady) rate=(a.rate>0?'+':'')+a.rate.toFixed(2)+' kg/week across '+a.goalReadings.length+' readings';
+    else if(a.goalReadings.length<6) rate='Need '+(6-a.goalReadings.length)+' more goal-period reading'+(6-a.goalReadings.length===1?'':'s')+' for a recent rate';
+    else rate='Need readings spanning 21+ days and a check-in within 14 days for a recent rate';
+    goalHtml='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'+
+      '<div><div class="stats-conclusion">'+remaining+' kg from '+dir+'</div><div class="stats-data-note">Baseline '+a.start+' kg on '+fmtDate(a.startedAt)+' · target '+a.target+' kg'+(weightGoal.date?' by '+fmtDate(weightGoal.date):'')+'</div></div>'+pace+'</div>'+
+      '<div class="stats-evidence-row"><span>Evidence</span><strong>'+rate+'</strong></div>';
+  }
+  goalWrap.innerHTML='<div class="card">'+cardHeader('target','Goal evidence','<button class="card-hd-act" onclick="openHealthSettings()">Edit in Health →</button>')+goalHtml+'</div>';
+}
+
+// ── BODY sub-tab (analysis only; check-ins and goal edits live in Health) ─────────────
 function renderBody(){
-  renderWeightSection();
-  renderWeightGoal();
+  renderBodyInsight();
 }
 
 // ── TRAINING sub-tab (formerly Progress, minus the weight widgets) ─
@@ -4053,7 +4347,6 @@ function renderTraining(){
   if(!S.sessions.length){
     if(empty) empty.innerHTML=emptyState('📊','No workout data yet','Complete and save a session to see your progress charts here');
     if(content) content.classList.add('hidden');
-    ensureHabitsStatsInProgress();
     return;
   }
   if(empty) empty.innerHTML='';
@@ -4068,14 +4361,23 @@ function renderTraining(){
   const exNames=[...new Set([...programmed,...logged])].sort((a,b)=>a.localeCompare(b));
   sel.innerHTML = exNames.map(n=>`<option value="${_catEsc(n)}"${n===prev?' selected':''}>${_catEscHtml(n)}</option>`).join('');
   if(!sel.value && exNames.length) sel.value = exNames[0];
+  const currentMonday=localMidnight(weekKey(getMondayOf(0)));
+  const end=new Date(currentMonday); end.setDate(end.getDate()-1);
+  const start=new Date(currentMonday); start.setDate(start.getDate()-28);
+  const priorStart=new Date(currentMonday); priorStart.setDate(priorStart.getDate()-56);
+  const priorEnd=new Date(currentMonday); priorEnd.setDate(priorEnd.getDate()-29);
+  const days=(a,b)=>new Set(S.sessions.filter(s=>s.date>=dateStr(a)&&s.date<=dateStr(b)).map(s=>s.date)).size;
+  const nowDays=days(start,end), beforeDays=days(priorStart,priorEnd), delta=nowDays-beforeDays;
+  const summary=document.getElementById('train-insight-summary');
+  if(summary) summary.innerHTML='<div class="card stats-conclusion-card">'+cardHeader('calendar','Training frequency · completed periods')+
+    '<div class="stats-conclusion">'+nowDays+' trained day'+(nowDays===1?'':'s')+' in the last 4 completed weeks'+(delta?' · '+(delta>0?'+':'')+delta+' versus the prior 4':' · unchanged versus the prior 4')+'</div>'+
+    '<div class="stats-data-note">'+fmtDate(dateStr(start))+'–'+fmtDate(dateStr(end))+' · distinct calendar days. '+S.sessions.filter(s=>s.date>=dateStr(start)&&s.date<=dateStr(end)).length+' saved sessions are shown separately as workload.</div></div>';
   renderTrainStreak();
-  renderVolumeTrend();
   renderWeeklyGrid();
   renderConsistStats();
   renderMuscleBalance();
   renderChart();
   renderPRBoard();
-  ensureHabitsStatsInProgress();
 }
 
 // ── Training: workout streak (any calendar day with ≥1 saved session) ─
@@ -4109,7 +4411,7 @@ function renderTrainStreak(){
   animateStatVals(el);
 }
 
-// ── Training: total volume trend (Σ weight × reps, grouped by week or month) ─
+// ── Training: comparable loaded work for one literal exercise ─
 let trainVolRange='week';
 let trainVolChart=null;
 function setTrainVolRange(range){
@@ -4122,12 +4424,16 @@ function setTrainVolRange(range){
   });
   renderVolumeTrend();
 }
-function sessionVolume(s){
-  let vol=0;
-  (s.exercises||[]).forEach(ex=>(ex.sets||[]).forEach(set=>{
-    if(set.weight>0&&set.reps>0) vol+=set.weight*set.reps;
-  }));
-  return vol;
+function exerciseWorkingVolume(s,name){
+  const ex=(s.exercises||[]).find(e=>e.name===name); if(!ex) return null;
+  if((ex.unit||(_secsNames.has(name)?'secs':'reps'))==='secs') return null;
+  let vol=0, comparable=0;
+  (ex.sets||[]).forEach(set=>{
+    if(!set||set.type==='warmup') return;
+    const w=parseFloat(set.weight), reps=parseFloat(set.reps);
+    if(w>0&&reps>0){ vol+=w*reps; comparable++; }
+  });
+  return comparable?vol:null;
 }
 function mondayKeyOf(ds){
   const d=localMidnight(ds);
@@ -4138,14 +4444,32 @@ function mondayKeyOf(ds){
 function renderVolumeTrend(){
   const wrap=document.getElementById('train-vol-wrap'); if(!wrap) return;
   if(trainVolChart){ trainVolChart.destroy(); trainVolChart=null; }
+  const name=document.getElementById('pr-select')?.value||'';
+  const title=document.getElementById('train-vol-title');
+  if(title) title.textContent=name?'Comparable work · '+name:'Comparable work';
+  if(!name){ wrap.innerHTML='<div class="stats-evidence-empty">Choose an exercise to see comparable working-set volume.</div>'; return; }
+  const metric=exerciseMetricInfo(name);
+  if(metric.kind==='mixed'){
+    wrap.innerHTML='<div class="stats-evidence-empty">Saved measurement units changed, so these sessions are not combined into one work total.</div>';
+    return;
+  }
+  if(metric.kind==='seconds'){
+    wrap.innerHTML='<div class="stats-evidence-empty">Timed movements are measured in seconds, so they are not converted into kg·reps.</div>';
+    return;
+  }
+  if(metric.kind==='reps'){
+    wrap.innerHTML='<div class="stats-evidence-empty">No external load is recorded, so repetition progress is shown above instead of a meaningless 0 kg·reps total.</div>';
+    return;
+  }
   const groups={};
   S.sessions.forEach(s=>{
+    const vol=exerciseWorkingVolume(s,name); if(vol===null) return;
     const key=trainVolRange==='week'?mondayKeyOf(s.date):s.date.substring(0,7);
-    groups[key]=(groups[key]||0)+sessionVolume(s);
+    groups[key]=(groups[key]||0)+vol;
   });
   const keys=Object.keys(groups).sort().slice(-12);
   if(keys.length<2){
-    wrap.innerHTML='<div style="text-align:center;color:var(--muted);font-size:13px;padding:20px 0">Not enough data yet — keep logging sessions.</div>';
+    wrap.innerHTML='<div class="stats-evidence-empty">Not enough comparable positive-load working sets yet. Bodyweight, assisted/negative-load and warm-up sets are deliberately excluded.</div>';
     return;
   }
   const labels=keys.map(k=>trainVolRange==='week'
@@ -4164,13 +4488,14 @@ function renderVolumeTrend(){
     },
     options:{
       responsive:true,maintainAspectRatio:false,
+      onClick:(event,elements)=>{ if(elements.length) openExerciseVolumeEvidence(name,keys[elements[0].index],trainVolRange); },
       plugins:{
         legend:{display:false},
-        tooltip:{callbacks:{label:c=>c.parsed.y.toLocaleString()+' kg lifted'}}
+        tooltip:{callbacks:{label:c=>c.parsed.y.toLocaleString()+' kg·reps'}}
       },
       scales:{
-        x:{grid:{display:false},ticks:{color:tc,font:{size:11},maxTicksLimit:12}},
-        y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>(v>=1000?(v/1000)+'t':v+'kg')},beginAtZero:true}
+        x:{grid:{display:false},ticks:{color:tc,font:{size:11},maxTicksLimit:12,maxRotation:0,minRotation:0}},
+        y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>v>=1000?(v/1000).toFixed(1)+'k':v},beginAtZero:true}
       }
     }
   });
@@ -4186,12 +4511,15 @@ function renderMuscleBalance(){
   cutoff.setDate(cutoff.getDate()-29);
   const cutoffStr=dateStr(cutoff);
   const counts={chest:0,back:0,shoulders:0,arms:0,legs:0,core:0,other:0};
+  let legacySets=0;
   S.sessions.forEach(s=>{
     if(s.date<cutoffStr) return;
     (s.exercises||[]).forEach(ex=>{
-      const m=byName[ex.name]||libGuessMuscle(ex.name);
+      const isLegacy=!ex.muscle;
+      const m=ex.muscle||byName[ex.name]||libGuessMuscle(ex.name);
       const n=(ex.sets||[]).filter(set=>(set.type?set.type!=='warmup':true)&&(set.weight>0||set.reps>0)).length;
       counts[counts[m]!==undefined?m:'other']+=n;
+      if(isLegacy) legacySets+=n;
     });
   });
   const rows=Object.keys(counts).filter(m=>counts[m]>0||m!=='other');
@@ -4204,12 +4532,12 @@ function renderMuscleBalance(){
   wrap.innerHTML=rows.map(m=>{
     const pct=Math.round(counts[m]/max*100);
     const label=m.charAt(0).toUpperCase()+m.slice(1);
-    return '<div class="muscle-bar-row">'+
+    return '<button type="button" class="stats-muscle-row" onclick="openMuscleEvidence(\''+m+'\',\''+cutoffStr+'\')"><div class="muscle-bar-row">'+
       '<div class="muscle-bar-label">'+label+'</div>'+
       '<div class="muscle-bar-track"><div class="muscle-bar-fill" style="width:'+pct+'%;background:'+MUSCLE_COLOURS[m]+'"></div></div>'+
       '<div class="muscle-bar-count">'+counts[m]+' set'+(counts[m]!==1?'s':'')+'</div>'+
-    '</div>';
-  }).join('');
+    '</div></button>';
+  }).join('')+(legacySets?'<div class="stats-data-note">'+legacySets+' legacy set'+(legacySets===1?'':'s')+' use today’s library classification or name inference; newer sessions keep the classification saved at the time.</div>':'');
 }
 
 // Display colour for a split day in the consistency grid + legend. Legacy day types keep
@@ -4296,17 +4624,17 @@ function renderConsistStats(){
   const today=localMidnight(getLocalDate());
   const dow=today.getDay(), daysToMon=dow===0?6:dow-1;
   const thisMonday=new Date(today); thisMonday.setDate(today.getDate()-daysToMon);
-  const fourWeeksAgo=new Date(today); fourWeeksAgo.setDate(today.getDate()-27);
+  const fourWeeksAgo=new Date(thisMonday); fourWeeksAgo.setDate(thisMonday.getDate()-28);
 
-  const thisWeek=S.sessions.filter(s=>{const d=new Date(s.date+'T12:00:00');return d>=thisMonday;}).length;
-  const last4=S.sessions.filter(s=>{const d=new Date(s.date+'T12:00:00');return d>=fourWeeksAgo;}).length;
+  const thisWeek=new Set(S.sessions.filter(s=>{const d=new Date(s.date+'T12:00:00');return d>=thisMonday;}).map(s=>s.date)).size;
+  const last4=new Set(S.sessions.filter(s=>{const d=new Date(s.date+'T12:00:00');return d>=fourWeeksAgo&&d<thisMonday;}).map(s=>s.date)).size;
   const durations=S.sessions.filter(s=>s.duration>0).map(s=>s.duration);
   const avgDur=durations.length?Math.round(durations.reduce((a,b)=>a+b,0)/durations.length):null;
 
   const perWeek=scheduleLen();
   document.getElementById('consist-stats').innerHTML=[
-    {l:'This week',v:`${thisWeek}/${perWeek}`},
-    {l:'Last 4 weeks',v:`${last4}/${perWeek*4}`},
+    {l:'Trained days · week',v:`${thisWeek}/${perWeek}`},
+    {l:'Trained days · 4 completed wk',v:last4},
     {l:'Avg session',v:avgDur?`${avgDur} min`:'—'},
   ].map(s=>`<div class="stat-card"><div class="stat-val">${s.v}</div><div class="stat-lbl">${s.l}</div></div>`).join('');
   animateStatVals(document.getElementById('consist-stats'));
@@ -4314,24 +4642,29 @@ function renderConsistStats(){
 
 function renderChart(){
   const exName = document.getElementById('pr-select').value;
+  const metric=exerciseMetricInfo(exName);
   renderTrainingSwapNote(exName);
+  renderVolumeTrend();
   const pts = getPoints(exName);
 
   const pr = getPR(exName);
+  const hasPR=pr!==null;
   const totalSets = S.sessions.reduce((acc,s)=>{
     const ex=s.exercises.find(e=>e.name===exName);
-    return acc+(ex?ex.sets.length:0);
+    return acc+(ex?ex.sets.filter(set=>set&&set.type!=='warmup').length:0);
   },0);
   const sessions = S.sessions.filter(s=>s.exercises.some(e=>e.name===exName)).length;
   document.getElementById('stats-grid').innerHTML = [
     {l:'Sessions',v:sessions||'—'},
-    {l:'Total sets',v:totalSets||'—'},
-    {l:'Best weight',v:pr?pr+'kg':'—'},
+    {l:'Working sets',v:totalSets||'—'},
+    {l:metric.label,v:hasPR?pr+metric.unit:'—'},
   ].map(s=>`<div class="stat-card"><div class="stat-val">${s.v}</div><div class="stat-lbl">${s.l}</div></div>`).join('');
   animateStatVals(document.getElementById('stats-grid'));
 
   if(S.chart){ S.chart.destroy(); S.chart=null; }
   const ctx = document.getElementById('prog-chart');
+  const chartLabel=ctx&&ctx.parentElement.querySelector('p');
+  if(chartLabel) chartLabel.textContent=metric.chartLabel;
 
   if(!pts.length){
     ctx.style.display='none';
@@ -4340,7 +4673,9 @@ function renderChart(){
       const p=document.createElement('p');
       p.className='no-data-msg';
       p.style.cssText='text-align:center;color:var(--muted);padding:20px 0;font-size:14px';
-      p.textContent='No data yet — log some sessions first';
+      p.textContent=metric.kind==='mixed'
+        ? 'These sessions use different saved measurement units, so they are not combined.'
+        : 'No comparable working-set data yet.';
       ctx.parentElement.appendChild(p);
     }
     return;
@@ -4353,6 +4688,7 @@ function renderChart(){
   const isDark = S.theme==='dark';
   const gc=isDark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)';
   const tc=isDark?'#888':'#94a3b8';
+  const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#52B788').trim();
 
   S.chart = new Chart(ctx,{
     type:'line',
@@ -4360,17 +4696,18 @@ function renderChart(){
       labels:pts.map(p=>fmtDate(p.date)),
       datasets:[{
         data:pts.map(p=>p.weight),
-        borderColor:'#52B788',backgroundColor:'rgba(82,183,136,0.08)',
-        borderWidth:2.5,pointRadius:5,pointBackgroundColor:'#52B788',
+        borderColor:accent,backgroundColor:'transparent',
+        borderWidth:2.5,pointRadius:5,pointBackgroundColor:accent,
         fill:true,tension:0.3
       }]
     },
     options:{
       responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y+'kg'}}},
+      onClick:(event,elements)=>{ if(elements.length) openExerciseEvidence(exName,pts[elements[0].index].date); },
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y+metric.unit}}},
       scales:{
-        x:{grid:{color:gc},ticks:{color:tc,font:{size:11},maxTicksLimit:6}},
-        y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>v+'kg'},beginAtZero:false}
+        x:{grid:{color:gc},ticks:{color:tc,font:{size:11},maxTicksLimit:6,maxRotation:0,minRotation:0}},
+          y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>v+metric.unit},beginAtZero:false}
       }
     }
   });
@@ -4390,6 +4727,11 @@ function renderTrainingSwapNote(name){
   Object.keys(S.swaps||{}).forEach(original=>{
     if(S.swaps[original]===name) links.push('Currently used in place of '+_catEscHtml(original)+'. Earlier sessions may remain under <button type="button" data-training-ex="'+_catEsc(original)+'">'+_catEscHtml(original)+'</button>.');
   });
+  const metric=exerciseMetricInfo(name);
+  if(metric.kind==='mixed') links.push('Saved sessions use different measurement units. Stats keeps them separate instead of inventing one progress line.');
+  else if(metric.hasNegative) links.push('Negative kg is assistance and remains signed; moving closer to zero is progress. Assisted sets are excluded from kg·reps work totals.');
+  else if(metric.kind==='reps'&&metric.records.length) links.push('No external load is recorded, so progress compares working-set repetitions rather than showing a meaningless 0 kg line.');
+  if(metric.legacy) links.push(metric.legacy+' legacy session'+(metric.legacy===1?' has':'s have')+' no saved measurement unit and use the current Exercise Library as a fallback.');
   el.innerHTML=links.length?'<div class="training-swap-note">'+links.join('<br>')+'</div>':'';
 }
 
@@ -4411,9 +4753,11 @@ function renderPRBoard(){
       ${t.exercises.map(ex=>{
         const nm=dn(ex.name);
         const pr=getPR(nm);
+        const metric=exerciseMetricInfo(nm);
+        const hasPR=pr!==null;
         return `<div class="pr-row" data-ex="${_catEsc(nm)}" onclick="openExerciseDetail(this.dataset.ex)" style="cursor:pointer">
           <div class="pr-ex-name">${_catEscHtml(nm)}</div>
-          <div class="pr-val${pr?'':' none'}">${pr?pr+'kg':'—'}</div>
+          <div class="pr-val${hasPR?'':' none'}">${hasPR?pr+metric.unit:'—'}</div>
         </div>`;
       }).join('')}
     </div>`).join('')+
@@ -4422,9 +4766,11 @@ function renderPRBoard(){
       <div class="pr-section-label">Other logged</div>
       ${others.map(n=>{
         const pr=getPR(n);
+        const metric=exerciseMetricInfo(n);
+        const hasPR=pr!==null;
         return `<div class="pr-row" data-ex="${_catEsc(n)}" onclick="openExerciseDetail(this.dataset.ex)" style="cursor:pointer">
-          <div class="pr-ex-name">${_catEscHtml(dn(n))}</div>
-          <div class="pr-val${pr?'':' none'}">${pr?pr+'kg':'—'}</div>
+          <div class="pr-ex-name">${_catEscHtml(n)}</div>
+          <div class="pr-val${hasPR?'':' none'}">${hasPR?pr+metric.unit:'—'}</div>
         </div>`;
       }).join('')}
     </div>`:'');
@@ -4450,17 +4796,19 @@ function closeExerciseDetail(){
   if(_exDetailChart){ _exDetailChart.destroy(); _exDetailChart=null; }
 }
 function renderExerciseDetail(name){
-  const titleEl=document.getElementById('ex-detail-title'); if(titleEl) titleEl.textContent=dn(name);
+  const titleEl=document.getElementById('ex-detail-title'); if(titleEl) titleEl.textContent=name;
   const wrap=document.getElementById('ex-detail-content'); if(!wrap) return;
   if(_exDetailChart){ _exDetailChart.destroy(); _exDetailChart=null; }
 
   const hist=S.sessions.filter(s=>(s.exercises||[]).some(e=>e.name===name)); // chronological
+  const metric=exerciseMetricInfo(name);
   const pr=getPR(name);
+  const hasPR=pr!==null;
   let prDate='';
   hist.forEach(s=>{
     if(prDate) return;
     const e=(s.exercises||[]).find(x=>x.name===name);
-    if(e&&pr>0&&(e.sets||[]).some(x=>(parseFloat(x.weight)||0)>=pr)) prDate=s.date;
+    if(e&&hasPR&&(e.sets||[]).some(x=>setMetricValue(x,metric)!==null&&setMetricValue(x,metric)>=pr)) prDate=s.date;
   });
 
   // History is now literal: sessions are stored under the name actually performed (swaps log
@@ -4474,12 +4822,15 @@ function renderExerciseDetail(name){
     banners+=note('🔄 Currently swapped to “'+_catEscHtml(swappedTo)+'”. New sessions are logged under that name. ',
       '<span data-ex="'+_catEsc(swappedTo)+'" onclick="openExerciseDetail(this.dataset.ex)" style="text-decoration:underline;cursor:pointer">View “'+_catEscHtml(swappedTo)+'” history</span>');
   }
+  if(metric.kind==='mixed') banners+=note('Saved sessions use different measurement units, so no single record or progress line is calculated.');
+  else if(metric.hasNegative) banners+=note('Negative kg is assistance. Values closer to zero rank higher; assisted work is not converted into kg·reps volume.');
+  if(metric.legacy) banners+=note(metric.legacy+' legacy session'+(metric.legacy===1?' has':'s have')+' no saved measurement unit and use the current Exercise Library as a fallback.');
 
   const lastDone=hist.length?hist[hist.length-1].date:null;
   const statCard=
     '<div class="card" style="display:flex;text-align:center;padding:16px 8px">'+
-      '<div style="flex:1"><div style="font-family:var(--font-num);font-size:24px;font-weight:800;color:var(--accent-text)">'+(pr?pr+'kg':'—')+'</div>'+
-        '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:3px">PR'+(prDate?' · '+fmtDate(prDate):'')+'</div></div>'+
+      '<div style="flex:1"><div style="font-family:var(--font-num);font-size:24px;font-weight:800;color:var(--accent-text)">'+(hasPR?pr+metric.unit:'—')+'</div>'+
+        '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:3px">'+metric.label+(prDate?' · '+fmtDate(prDate):'')+'</div></div>'+
       '<div style="width:1px;background:var(--border)"></div>'+
       '<div style="flex:1"><div style="font-family:var(--font-num);font-size:24px;font-weight:800">'+hist.length+'</div>'+
         '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:3px">Sessions</div></div>'+
@@ -4488,20 +4839,18 @@ function renderExerciseDetail(name){
         '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:3px">Last done</div></div>'+
     '</div>';
 
-  const pts=getPoints(name); // reused: max working weight per session, chronological
+  const pts=getPoints(name);
   const chartCard=pts.length>=2
-    ? '<div class="card" style="padding:14px 16px"><div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px">📈 '+(_secsNames.has(name)?'Longest hold':'Top set weight')+'</div><canvas id="ex-detail-chart" style="max-height:220px"></canvas></div>'
-    : (pts.length===1?'<div class="card" style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">One session logged — the chart appears from the second.</div>':'');
+    ? '<div class="card" style="padding:14px 16px"><div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px">📈 '+metric.chartLabel+'</div><canvas id="ex-detail-chart" style="max-height:220px"></canvas></div>'
+    : (pts.length===1?'<div class="card" style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">One comparable session logged — the chart appears from the second.</div>':'');
 
   const histList=hist.length
-    ? [...hist].reverse().map(s=>{
+      ? [...hist].reverse().map(s=>{
         const e=(s.exercises||[]).find(x=>x.name===name);
-        const _timed=_secsNames.has(name);
+        const _unit=e.unit||(_secsNames.has(name)?'secs':'reps');
         const setLines=(e.sets||[]).map((x,si)=>{
           const lbl=(x.type==='warmup'?'W':'Set '+(si+1));
-          const load=x.weight?x.weight+'kg':(_timed?'':'—');
-          const val=_timed?((load?load+' for ':'')+fmtSetAmount(x.reps,'secs')):(load+' × '+(x.reps||'—'));
-          return '<div class="session-set-line">'+lbl+': '+val+'</div>';
+          return '<div class="session-set-line">'+lbl+': '+fmtLoggedSet(x,_unit)+'</div>';
         }).join('');
         return '<div style="padding:10px 0;border-bottom:1px solid var(--border)">'+
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'+
@@ -4525,11 +4874,11 @@ function renderExerciseDetail(name){
       _exDetailChart=new Chart(ctx,{
         type:'line',
         data:{ labels:pts.map(p=>p.date.substring(5)),
-          datasets:[{label:'Top set (kg)',data:pts.map(p=>p.weight),borderColor:accent,backgroundColor:'transparent',borderWidth:2.5,pointRadius:3,pointBackgroundColor:accent,tension:0.3}] },
+          datasets:[{label:metric.label,data:pts.map(p=>p.weight),borderColor:accent,backgroundColor:'transparent',borderWidth:2.5,pointRadius:3,pointBackgroundColor:accent,tension:0.3}] },
         options:{ responsive:true,maintainAspectRatio:false,
-          plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>c.parsed.y+'kg'}} },
-          scales:{ x:{grid:{color:gc},ticks:{color:tc,font:{size:10},maxTicksLimit:8}},
-                   y:{grid:{color:gc},ticks:{color:tc,font:{size:10},callback:v=>v+'kg'},beginAtZero:false} } }
+          plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>c.parsed.y+metric.unit}} },
+          scales:{ x:{grid:{color:gc},ticks:{color:tc,font:{size:10},maxTicksLimit:8,maxRotation:0,minRotation:0}},
+                   y:{grid:{color:gc},ticks:{color:tc,font:{size:10},callback:v=>v+metric.unit},beginAtZero:false} } }
       });
     }
   }
@@ -4631,6 +4980,8 @@ function openSettingsSection(key){
       const el=document.getElementById('pi-'+f); if(el&&pi[f]!=null) el.value=pi[f];
     });
     renderTDEESection();
+    renderWeightSection();
+    renderWeightGoal();
   }
   if(key==='habits') renderHabitsEditModal();
   if(key==='appearance'){ const th=document.getElementById('theme-toggle'); if(th) th.checked=S.theme==='dark'; renderAccentModeRow(); renderDayColorPickers(); }
@@ -5202,7 +5553,7 @@ function exportBudgetCSV(){
     const cat=fixCats.find(c=>c.id===id);
     return cat?(parseFloat(cat.default)||0):0;
   }
-  function varActual(d,id){ return parseFloat(d&&d['var_'+id])||0; }
+  function varActual(d,id,key){ return varCatAmount(d,key,id); }
 
   // Recurring cost, read from the LIVE fixed categories rather than the retired
   // daily_subscriptions list. That list was folded into fixed categories by
@@ -5239,7 +5590,7 @@ function exportBudgetCSV(){
     // Generic per-category actual map, covering EVERY live variable category (not just the 3
     // named ones) — Section 6 needs this to read a correctly-matched custom category's actual
     // value rather than hardcoding just food/pub/personal.
-    const varByCat={}; varCats.forEach(c=>{ varByCat[c.id]=varActual(d,c.id); });
+    const varByCat={}; varCats.forEach(c=>{ varByCat[c.id]=varActual(d,c.id,k); });
     // Per-income-source amounts and hours — one entry per live income category (not just
     // fuji/mcd), so the Section 1 income columns always sum to Total Income and any added
     // income source (e.g. Freelance) gets its own reconciling column. Hours are blank when
@@ -5258,7 +5609,7 @@ function exportBudgetCSV(){
       // Same value-or-default fallback weekFixedTotal applies to this line, so Section 8
       // can subtract it from Total Fixed exactly (not approximately).
       fixSubs:fixActual(d,'subs'),
-      varFood:varActual(d,'food'), varPub:varActual(d,'pub'), varPersonal:varActual(d,'personal'),
+      varFood:varActual(d,'food',k), varPub:varActual(d,'pub',k), varPersonal:varActual(d,'personal',k),
       varByCat, totalVar, totalFixed, subsWeekly, totalOut, leftover, leftoverPct,
       notes:d.notes||''
     };
@@ -6506,8 +6857,9 @@ function aiHubText(ctx,fmt){
 // The peer overlays all sit at the same z-index, so opening one on top of another would leave
 // the first showing underneath when this one closes. Each open function hides its peers.
 const AI_PEER_OVERLAYS=['view-accounts','view-exercise-library','view-aihub'];
+const APP_PEER_OVERLAYS=[...AI_PEER_OVERLAYS,'view-workout-history','view-stats-evidence','view-exercise-detail'];
 function aiHidePeerOverlays(keepId){
-  AI_PEER_OVERLAYS.forEach(id=>{
+  APP_PEER_OVERLAYS.forEach(id=>{
     if(id===keepId) return;
     const el=document.getElementById(id);
     if(el&&el.style.display!=='none'){ el.style.display='none'; el.style.left='0'; }
@@ -6517,7 +6869,7 @@ function aiHidePeerOverlays(keepId){
 // open time, so a peer left open across the 1024px boundary needs it recomputed.
 function aiSyncOverlayInset(){
   const inset=window.innerWidth>=1024?'260px':'0';
-  AI_PEER_OVERLAYS.forEach(id=>{
+  APP_PEER_OVERLAYS.forEach(id=>{
     const el=document.getElementById(id);
     if(el&&el.style.display!=='none'&&el.style.display!=='') el.style.left=inset;
   });
@@ -8036,9 +8388,16 @@ function weekIncome(d){
   return loadIncCats().reduce((s,c)=>s+(parseFloat(d['inc_'+c.id])||0),0);
 }
 function weekSpending(d){
-  if(d&&d.snapshot) return (parseFloat(d.snapshot.fixed)||0)+(parseFloat(d.snapshot.variable)||0);
-  // Sum across the user's dynamic fixed + variable categories
-  return weekFixedTotal(d)+weekVarTotal(d);
+  if(!d) return 0;
+  const wk=weekKeyOf(d);
+  const keys=Object.keys(d);
+  const hasFixed=!!d.fixRates||keys.some(k=>k.startsWith('fix_'));
+  const hasVariable=keys.some(k=>k.startsWith('var_')&&k!=='var_goal')||(wk&&txnsForWeek(wk).length>0);
+  // Resolve the two halves independently. A new transaction must override a manual variable
+  // figure without also discarding a legacy snapshot's only surviving fixed aggregate.
+  const fixed=hasFixed?weekFixedTotal(d):(d.snapshot?parseFloat(d.snapshot.fixed)||0:weekFixedTotal(d));
+  const variable=hasVariable?weekVarTotal(d,wk):(d.snapshot?parseFloat(d.snapshot.variable)||0:weekVarTotal(d,wk));
+  return fixed+variable;
 }
 function weekSavedAmt(d){
   if(!d) return 0;
@@ -8188,12 +8547,21 @@ function acctIcon(name,size){
 // else its current). History is kept sorted ascending by every writer below.
 function accountBalanceAt(acc, date){
   if(!acc) return 0;
-  const h=acc.history||[];
-  let last=null;
-  for(const e of h){ if(e && e.date<=date) last=e; else if(e && e.date>date) break; }
+  const h=(acc.history||[]).filter(e=>e&&e.date);
+  const last=accountEntryAt(acc,date);
   if(last) return parseFloat(last.balance)||0;
-  if(h.length) return parseFloat(h[0].balance)||0;
+  if(h.length){
+    const first=h.reduce((a,e)=>!a||e.date<a.date?e:a,null);
+    return parseFloat(first.balance)||0;
+  }
   return parseFloat(acc.current)||0;
+}
+function accountEntryAt(acc,date){
+  let last=null;
+  (acc&&acc.history||[]).forEach(e=>{
+    if(e&&e.date<=date&&(!last||e.date>last.date)) last=e;
+  });
+  return last;
 }
 // Net worth on a given date across all accounts (assets − debts, each at that date).
 function netWorthAt(date){
@@ -8806,6 +9174,38 @@ function budEnsureFixRates(d){
   loadFixCats().forEach(c=>{ rates[c.id]=catChargeableBudget(c); });
   d.fixRates=rates;
 }
+function openBudgetWeekFromStats(key){
+  if(!key) return;
+  const cur=getMondayOf(0), target=localMidnight(key);
+  currentWeekIdx=Math.round((target-cur)/(7*864e5));
+  budgetView='week'; budPastEdit=false;
+  setView('budget');
+}
+// Forward-only analysis context. A week must carry the category names and targets that meant
+// something when it was live; otherwise Stats can only reinterpret it through today's setup.
+// Existing historical weeks are deliberately left untouched — current labels are not evidence
+// of what an old category was called.
+function budEnsureStatsSnapshot(d,key,refreshTargets){
+  if(!d||key!==weekKey(getMondayOf(0))) return;
+  if(!d.statsSnapshot){
+    d.statsSnapshot={
+      version:1,
+      capturedOn:getLocalDate()
+    };
+  }
+  // The current week is still live, so its category identity follows deliberate edits until
+  // the week closes. Once the key is historical this helper refuses to touch it.
+  d.statsSnapshot.capturedOn=getLocalDate();
+  d.statsSnapshot.fixed=loadFixCats().map(c=>({id:c.id,label:catLabel(c),budget:catBudget(c)}));
+  d.statsSnapshot.variable=loadVarCats().map(c=>({id:c.id,label:catLabel(c),budget:catBudget(c)}));
+  if(refreshTargets||d.statsSnapshot.totalTarget===undefined){
+    const varGoal=parseFloat(d.var_goal);
+    d.statsSnapshot.fixedTarget=catBudgetTotal('fix');
+    d.statsSnapshot.variableTarget=!isNaN(varGoal)&&varGoal>0?varGoal:catBudgetTotal('var');
+    d.statsSnapshot.totalTarget=d.statsSnapshot.fixedTarget+d.statsSnapshot.variableTarget;
+    d.statsSnapshot.savingsTarget=getSavingsGoal();
+  }
+}
 // One-time pin for weeks that predate fixRates. Without this they keep floating forever: the
 // fix above only protects weeks written from now on. Freezing them at TODAY'S rates is
 // deliberately not a guess at history — it is exactly the number each of those weeks is
@@ -8834,15 +9234,21 @@ function budFreezeLegacyRatesOnce(){
 function weekFixedTotal(d){
   let t=0;
   const rates=d&&d.fixRates;
-  loadFixCats().forEach(c=>{
-    const v=d&&d['fix_'+c.id];
+  const current=loadFixCats(), byId={}; current.forEach(c=>{ byId[c.id]=c; });
+  const rawIds=new Set(Object.keys(d||{}).filter(k=>k.startsWith('fix_')).map(k=>k.slice(4)));
+  // Explicit historical fields define their own legacy category set. Only a truly fieldless,
+  // unfrozen object falls back to current defaults (the pre-dynamic-category behaviour).
+  const ids=new Set((rates||rawIds.size)?[...rawIds]:current.map(c=>c.id));
+  if(rates) Object.keys(rates).forEach(id=>ids.add(id));
+  ids.forEach(id=>{
+    const v=d&&d['fix_'+id];
     if(v!==undefined&&v!=='') { t+=parseFloat(v)||0; return; }   // explicit entry always wins
     if(rates){
       // Frozen week: only categories that existed then count, at the rate that applied then.
-      if(Object.prototype.hasOwnProperty.call(rates,c.id)) t+=parseFloat(rates[c.id])||0;
+      if(Object.prototype.hasOwnProperty.call(rates,id)) t+=parseFloat(rates[id])||0;
       return;
     }
-    t += catChargeableBudget(c);   // legacy week with no frozen rates — original behaviour
+    if(byId[id]) t += catChargeableBudget(byId[id]);   // legacy week with no frozen rates — original behaviour
   });
   return t;
 }
@@ -8899,9 +9305,17 @@ function weekKeyOf(d){
 function weekVarTotal(d,mondayStr){
   const wk=mondayStr||weekKeyOf(d);
   let t=0;
-  if(wk){ loadVarCats().forEach(c=>{ t += varCatAmount(d,wk,c.id); }); return t; }
+  if(wk){
+    const ids=new Set(loadVarCats().map(c=>c.id));
+    Object.keys(d||{}).filter(k=>k.startsWith('var_')&&k!=='var_goal').forEach(k=>ids.add(k.slice(4)));
+    txnsForWeek(wk).forEach(tx=>{ if(tx&&tx.catId) ids.add(tx.catId); });
+    ids.forEach(id=>{ t += varCatAmount(d,wk,id); });
+    return t;
+  }
   // No resolvable week (a detached object) — fall back to the manual figures, as before.
-  loadVarCats().forEach(c=>{ t += parseFloat(d&&d['var_'+c.id])||0; });
+  const ids=new Set(loadVarCats().map(c=>c.id));
+  Object.keys(d||{}).filter(k=>k.startsWith('var_')&&k!=='var_goal').forEach(k=>ids.add(k.slice(4)));
+  ids.forEach(id=>{ t += parseFloat(d&&d['var_'+id])||0; });
   return t;
 }
 // Sum of all fixed-category amounts for a week (same pattern as weekSpending's fixed half).
@@ -9317,6 +9731,7 @@ function txnDeleteCurrent(){
 function txnAfterChange(){
   try{ if(typeof renderBudgetTab==='function' && S.view==='budget') renderBudgetTab(); }catch(e){}
   try{ if(typeof renderHome==='function' && S.view==='home') renderHome(); }catch(e){}
+  try{ if(S.view==='stats'&&statsSubTab==='finance') renderBudgetStats(); }catch(e){}
   try{ if(typeof updateNavBadges==='function') updateNavBadges(); }catch(e){}
 }
 // Expand/collapse a category's purchase list inside the Variable card.
@@ -10028,6 +10443,7 @@ function budSaveDraft(){
   budEnsureFixRates(d);   // freeze this week's recurring prices the first time it is written
   d.wk=key;               // so weekKeyOf can resolve transactions without a reverse lookup
   budWriteFields(d);
+  budEnsureStatsSnapshot(d,key,false);
   if(!d.saved) d.draft=true;
   // Only a REAL change stamps and syncs. Draft flushes also fire on render/week-nav with
   // untouched inputs — stamping those would let a device with stale data pass it off as
@@ -10045,6 +10461,7 @@ function budSaveCurrentWeek(){
   budEnsureFixRates(d);   // freeze this week's recurring prices the first time it is written
   d.wk=key;               // so weekKeyOf can resolve transactions without a reverse lookup
   budWriteFields(d);
+  budEnsureStatsSnapshot(d,key,true);
   d.saved=true; delete d.draft;
   d.updatedAt=Date.now(); // explicit user save — always stamp
   budSaveData(key); renderPrevWeeks(); updateNavBadges();
@@ -10687,12 +11104,7 @@ function renderBudgetStats(){
   renderBSBalance();
   renderBSAccountGrowth();
   renderBSTrend();
-  renderBSProgress();
-  renderBSBestWorst();
   renderBSCatBreakdown();
-  renderBSConsist();
-  renderBSRecords();
-  renderBSGoals();
 }
 
 // ── Finance: which accounts actually moved ────────────────────────
@@ -10712,6 +11124,7 @@ function bsGrowthFromDate(a){
 }
 function renderBSAccountGrowth(){
   const wrap=document.getElementById('bs-acctgrowth-wrap'); if(!wrap) return;
+  _statsAccountEvidence=[];
   const head=(body)=>'<div class="card" style="padding:0;overflow:hidden">'+
     '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px">'+
       '<span>📊 Account growth</span>'+
@@ -10720,28 +11133,33 @@ function renderBSAccountGrowth(){
           '<button onclick="setBSGrowthRange(\''+v+'\')" class="'+(bsGrowthRange===v?'on':'')+'">'+l+'</button>').join('')+
       '</div>'+
     '</div>'+body+'</div>';
-  const tracked=accounts.filter(a=>a&&(a.history||[]).length>=1);
+  const tracked=accounts.filter(a=>a&&(a.history||[]).filter(e=>e&&e.date).length>=2);
   if(!tracked.length){
-    wrap.innerHTML=head('<div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Log a balance in Accounts to see which of them are moving.</div>');
+    wrap.innerHTML=head('<div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Record at least two dated balances for an account to identify what moved.</div>');
     return;
   }
   const rows=tracked.map(a=>{
-    const from=bsGrowthFromDate(a);
-    const then=accountBalanceAt(a,from);
-    const now=parseFloat(a.current)||0;
+    const all=a.history.filter(e=>e&&e.date).slice().sort((x,y)=>x.date<y.date?-1:1);
+    const boundary=bsGrowthFromDate(a);
+    const baseline=accountEntryAt(a,boundary)||all[0];
+    const latest=all[all.length-1];
+    const from=baseline.date, to=latest.date;
+    const then=parseFloat(baseline.balance)||0;
+    const now=parseFloat(latest.balance)||0;
     const delta=Math.round((now-then)*100)/100;
     // A debt shrinking RAISES net worth, so its contribution is the opposite of its delta.
     const nwEffect=(a.type==='debt')?-delta:delta;
     const pct=then?Math.round((delta/Math.abs(then))*1000)/10:null;
-    return {a,delta,nwEffect,pct};
+    return {a,from,to,delta,nwEffect,pct};
   }).sort((x,y)=>y.nwEffect-x.nwEffect);
   const netChange=rows.reduce((s,r)=>s+r.nwEffect,0);
   const body='<div style="padding:6px 16px 14px">'+
     rows.map(r=>{
+      const evidenceIndex=_statsAccountEvidence.push(r)-1;
       const good=r.nwEffect>0, flat=r.nwEffect===0;
       const col=flat?'var(--muted)':(good?'var(--success)':'var(--danger)');
       const arrow=flat?'':(r.delta>0?'▲':'▼');
-      return '<div class="bs-growth-row">'+
+      return '<button type="button" class="bs-growth-row" onclick="openAccountGrowthEvidence('+evidenceIndex+')">'+
         '<div class="bs-growth-name">'+_catEscHtml(a_name(r.a))+
           '<span class="bs-growth-type">'+(r.a.type==='debt'?'Debt':'Asset')+'</span></div>'+
         '<div class="bs-growth-spark">'+(acctSparklineHtml(r.a)||'')+'</div>'+
@@ -10749,7 +11167,7 @@ function renderBSAccountGrowth(){
           (flat?'—':arrow+' '+fmtMoney(Math.abs(r.delta)))+
           (r.pct!==null&&!flat?'<span class="bs-growth-pct">'+(r.pct>0?'+':'')+r.pct+'%</span>':'')+
         '</div>'+
-      '</div>';
+      '</button>';
     }).join('')+
     '<div class="bs-growth-total">'+
       '<span>Net worth change</span>'+
@@ -10762,42 +11180,100 @@ function renderBSAccountGrowth(){
 function a_name(a){ return (a&&a.name)||'Account'; }
 
 // ── Finance: spending category breakdown (fixed + variable, last 12 saved weeks) ─
+function statsWeekCatDefs(d,key,kind){
+  const snap=d&&d.statsSnapshot;
+  const prefix=kind==='fixed'?'fix_':'var_';
+  const snapDefs=snap&&Array.isArray(snap[kind])?snap[kind]:[];
+  const byId={}; snapDefs.forEach(c=>{ if(c&&c.id) byId[c.id]=c.label||('Category '+c.id); });
+  const ids=new Set(Object.keys(d||{}).filter(k=>k.startsWith(prefix)&&k!=='var_goal').map(k=>k.slice(prefix.length)));
+  snapDefs.forEach(c=>{ if(c&&c.id) ids.add(c.id); });
+  if(kind==='fixed'&&d&&d.fixRates) Object.keys(d.fixRates).forEach(id=>ids.add(id));
+  if(kind==='variable') txnsForWeek(key).forEach(t=>{ if(t&&t.catId) ids.add(t.catId); });
+  return [...ids].map(id=>({id,label:byId[id]||('Category '+id),snapshot:!!byId[id]}));
+}
+function statsFixedCatAmount(d,id){
+  const v=d&&d['fix_'+id];
+  if(v!==undefined&&v!=='') return parseFloat(v)||0;
+  if(d&&d.fixRates&&Object.prototype.hasOwnProperty.call(d.fixRates,id)) return parseFloat(d.fixRates[id])||0;
+  return 0;
+}
+function statsHasFixedDetail(d,defs){
+  return (defs||[]).some(c=>{
+    const v=d&&d['fix_'+c.id];
+    return (v!==undefined&&v!==''&&v!==null)||!!(d&&d.fixRates&&Object.prototype.hasOwnProperty.call(d.fixRates,c.id));
+  });
+}
+function statsHasVariableDetail(d,key,defs){
+  return (defs||[]).some(c=>{
+    const v=d&&d['var_'+c.id];
+    return (v!==undefined&&v!==''&&v!==null)||txnsForWeekCat(key,c.id).length>0;
+  });
+}
+function statsWeekSpending(d,key){
+  const fixed=statsWeekCatDefs(d,key,'fixed'), variable=statsWeekCatDefs(d,key,'variable');
+  const fixedTotal=statsHasFixedDetail(d,fixed)
+    ? fixed.reduce((sum,c)=>sum+statsFixedCatAmount(d,c.id),0)
+    : (d&&d.snapshot?parseFloat(d.snapshot.fixed)||0:0);
+  const variableTotal=statsHasVariableDetail(d,key,variable)
+    ? variable.reduce((sum,c)=>sum+varCatAmount(d,key,c.id),0)
+    : (d&&d.snapshot?parseFloat(d.snapshot.variable)||0:0);
+  return fixedTotal+variableTotal;
+}
+function statsWeekSpendQuality(d,key){
+  const hasRawVariable=Object.keys(d||{}).some(k=>k.startsWith('var_')&&k!=='var_goal'&&d[k]!==''&&d[k]!==null&&d[k]!==undefined);
+  const legacyVariable=parseFloat(d&&d.snapshot&&d.snapshot.variable)||0;
+  return {
+    ambiguousLegacyVariable:!!(legacyVariable&&!hasRawVariable&&txnsForWeek(key).length)
+  };
+}
 function renderBSCatBreakdown(){
   const wrap=document.getElementById('bs-catbreak-wrap'); if(!wrap) return;
+  _statsFinanceEvidence=[];
   const keys=Object.keys(budgetData)
-    .filter(k=>{const d=budgetData[k]; return d&&(d.saved||d.draft);})
+    .filter(k=>{const d=budgetData[k]; return d&&(d.saved||d.draft||d.snapshot);})
     .sort().slice(-12);
   if(!keys.length){ wrap.innerHTML=''; return; }
   const CAT_COLORS=['#52B788','#f59e0b','#6366f1','#3b82f6','#ec4899','#8b5cf6','#FF6B35','#14b8a6','#94a3b8','#d85a30'];
-  const cats=[];
-  // Fixed: blank weeks fall back to the category default (same convention as weekFixedTotal)
-  loadFixCats().forEach(c=>{
-    const val=keys.reduce((s,k)=>{
-      const v=budgetData[k]['fix_'+c.id];
-      return s+((v!==undefined&&v!=='')?(parseFloat(v)||0):(parseFloat(c.default)||0));
-    },0);
-    cats.push({label:catLabel(c), val, kind:'Fixed'});
+  const catMap={}; let legacyWeeks=0, ambiguousWeeks=0;
+  const add=(kind,def,val,key)=>{
+    if(!val) return;
+    const mapKey=kind+'|'+def.id+'|'+def.label;
+    if(!catMap[mapKey]) catMap[mapKey]={id:def.id,label:def.label,val:0,kind:kind==='fixed'?'Fixed':kind==='variable'?'Variable':'Legacy',weeks:[]};
+    catMap[mapKey].val+=val;
+    catMap[mapKey].weeks.push({key,val});
+  };
+  keys.forEach(k=>{
+    const d=budgetData[k];
+    if(!d.statsSnapshot) legacyWeeks++;
+    if(statsWeekSpendQuality(d,k).ambiguousLegacyVariable) ambiguousWeeks++;
+    const fixed=statsWeekCatDefs(d,k,'fixed'), variable=statsWeekCatDefs(d,k,'variable');
+    const fixedDetailed=statsHasFixedDetail(d,fixed), variableDetailed=statsHasVariableDetail(d,k,variable);
+    if(!fixedDetailed&&d.snapshot) add('legacy',{id:'fixed-aggregate',label:'Legacy fixed aggregate'},parseFloat(d.snapshot.fixed)||0,k);
+    if(!variableDetailed&&d.snapshot) add('legacy',{id:'variable-aggregate',label:'Legacy variable aggregate'},parseFloat(d.snapshot.variable)||0,k);
+    if(fixedDetailed) fixed.forEach(def=>add('fixed',def,statsFixedCatAmount(d,def.id),k));
+    if(variableDetailed) variable.forEach(def=>add('variable',def,varCatAmount(d,k,def.id),k));
   });
-  loadVarCats().forEach(c=>{
-    const val=keys.reduce((s,k)=>s+(parseFloat(budgetData[k]['var_'+c.id])||0),0);
-    cats.push({label:catLabel(c), val, kind:'Variable'});
-  });
+  const cats=Object.values(catMap);
   cats.sort((a,b)=>b.val-a.val);
   const total=cats.reduce((s,c)=>s+c.val,0);
   if(total<=0){ wrap.innerHTML=''; return; }
   const max=Math.max(1,...cats.map(c=>c.val));
   const rows=cats.filter(c=>c.val>0).map((c,i)=>{
+    const evidenceIndex=_statsFinanceEvidence.push(c)-1;
     const pctOfTotal=Math.round(c.val/total*100);
-    return '<div class="muscle-bar-row">'+
+    return '<button type="button" class="stats-muscle-row" onclick="openFinanceCategoryEvidence('+evidenceIndex+')" aria-label="Open '+_catEsc(c.label)+' source records"><div class="muscle-bar-row">'+
       '<div class="muscle-bar-label" style="width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+_catEsc(c.label)+'">'+_catEscHtml(c.label)+'</div>'+
       '<div class="muscle-bar-track"><div class="muscle-bar-fill" style="width:'+Math.round(c.val/max*100)+'%;background:'+CAT_COLORS[i%CAT_COLORS.length]+'"></div></div>'+
       '<div class="muscle-bar-count" style="width:78px">$'+Math.round(c.val).toLocaleString()+' · '+pctOfTotal+'%</div>'+
-    '</div>';
+    '</div></button>';
   }).join('');
   wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden">'+
-    '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">🧾 Where the money goes · last '+keys.length+' week'+(keys.length>1?'s':'')+'</div>'+
-    '<div style="padding:14px 16px">'+rows+
-      '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px;margin-top:4px"><span>Total spent</span><b style="color:var(--text)">$'+Math.round(total).toLocaleString()+'</b></div>'+
+    cardHeader('receipt','Where the money goes · last '+keys.length+' week'+(keys.length>1?'s':''))+
+    '<div style="padding:14px 16px">'+
+      (legacyWeeks?'<div class="stats-data-note">'+legacyWeeks+' legacy week'+(legacyWeeks===1?' has':'s have')+' no saved category labels. Archived IDs are retained, but current labels are not presented as historical fact.</div>':'')+
+      (ambiguousWeeks?'<div class="stats-data-note">'+ambiguousWeeks+' snapshot-only legacy week'+(ambiguousWeeks===1?' has':'s have')+' later transaction detail that cannot be safely reconciled with the old aggregate. Only known transaction detail is shown; no total is invented.</div>':'')+
+      rows+
+      '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px;margin-top:4px"><span>'+(ambiguousWeeks?'Known categorised spend':'Total spent')+'</span><b style="color:var(--text)">$'+Math.round(total).toLocaleString()+'</b></div>'+
     '</div></div>';
 }
 
@@ -10863,50 +11339,51 @@ function renderNutrition(){
   const todayTotal=S.dailyLog.date===today?S.dailyLog.entries.reduce((a,e)=>a+(e.kcal||0),0):0;
   const c=calcGoalCals();
   const goalCals=c?(c.goal==='cut'?c.cut:c.goal==='bulk'?c.bulk:c.maintain):null;
-
-  // Recorded days (history + live today), most recent 30 with data
   const totals={...calorieHistory};
-  if(todayTotal>0||totals[today]!==undefined) totals[today]=todayTotal;
-  const days=Object.keys(totals).filter(d=>totals[d]>0).sort().slice(-30);
-
-  let html='';
-  const goalLine=goalCals
-    ? '<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:10px"><span>Today: <b style="color:var(--text)">'+todayTotal+'</b> kcal</span><span>Goal: '+goalCals+' kcal ('+(c.goal||'maintain')+')</span></div>'
-    : '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">Set up your profile in Settings → Health to see a calorie goal line.</div>';
-
-  if(days.length>=2){
-    const vals=days.map(d=>totals[d]);
-    const avg7=Math.round(vals.slice(-7).reduce((a,v)=>a+v,0)/Math.min(7,vals.length));
-    html+='<div class="stats-grid" id="nut-stats-grid">'+[
-      {l:'Today',v:todayTotal||'—'},
-      {l:'7-day avg',v:avg7},
-      {l:'Days tracked',v:days.length},
-    ].map(s=>'<div class="stat-card"><div class="stat-val">'+s.v+'</div><div class="stat-lbl">'+s.l+'</div></div>').join('')+'</div>';
-    html+='<div class="card" style="padding:0;overflow:hidden">'+
-      '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">🍽️ Calorie trend</div>'+
-      '<div style="padding:14px 16px">'+goalLine+'<canvas id="nut-chart" style="max-height:360px"></canvas></div>'+
-    '</div>';
-  } else {
-    html+=goalLine+emptyState('🍽️','Not enough data yet','Daily calorie totals are archived automatically as you log food — check back after a few days of logging');
+  if(todayTotal>0) totals[today]=todayTotal;
+  const calendarDays=[]; const end=localMidnight(today);
+  for(let i=29;i>=0;i--){ const d=new Date(end); d.setDate(d.getDate()-i); calendarDays.push(dateStr(d)); }
+  const last7=calendarDays.slice(-8,-1);
+  const logged7=last7.filter(d=>Object.prototype.hasOwnProperty.call(totals,d)&&totals[d]>0);
+  const vals7=logged7.map(d=>totals[d]);
+  const avg7=vals7.length?Math.round(vals7.reduce((a,v)=>a+v,0)/vals7.length):null;
+  const logged30=calendarDays.filter(d=>Object.prototype.hasOwnProperty.call(totals,d)&&totals[d]>0);
+  let conclusion='No calorie days logged in the last 7 completed days.';
+  if(avg7!==null){
+    const relation=goalCals?Math.round(avg7-goalCals):null;
+    conclusion='Logged-day average '+avg7+' kcal'+(relation===null?'':relation===0?' · matches the current reference':(' · '+Math.abs(relation)+' kcal '+(relation>0?'above':'below')+' the current reference'));
   }
-  wrap.innerHTML=html;
+  wrap.innerHTML='<div class="card stats-conclusion-card">'+
+    cardHeader('receipt','Calorie evidence','<button class="card-hd-act" onclick="openCalorieOverlay()">Open food log →</button>')+
+    '<div class="stats-conclusion">'+conclusion+'</div>'+
+    '<div class="stats-data-note">'+logged7.length+' of 7 completed days logged · '+logged30.length+' of 30 chart days. Today is shown separately as in progress. Missing days are unknown, not zero.'+
+      (goalCals?' Current '+(c.goal||'maintain')+' goal ('+goalCals+' kcal) is a reference only; historical goal changes were not stored.':' Set up Health to add a current goal reference.')+'</div>'+
+    '<button class="stats-inline-link" style="margin-top:10px" onclick="openNutritionEvidence()">View dated evidence →</button>'+
+    '<div class="stats-grid" id="nut-stats-grid">'+[
+      {l:'Today logged',v:todayTotal||'—'},
+      {l:'Logged-day avg · 7d',v:avg7===null?'—':avg7},
+      {l:'Coverage · 7d',v:logged7.length+'/7'},
+    ].map(s=>'<div class="stat-card"><div class="stat-val">'+s.v+'</div><div class="stat-lbl">'+s.l+'</div></div>').join('')+'</div>'+
+    (logged30.length>=2?'<div class="stats-chart-box"><canvas id="nut-chart" aria-label="Daily calories over the last 30 calendar days"></canvas></div>':emptyState('🍽️','Not enough calendar coverage','Log at least two days to see a trend'))+
+    '<div class="stats-data-note">Historical protein, carbohydrate and fat totals are not stored, so Stats does not invent macro trends.</div>'+
+  '</div>';
   animateStatVals(document.getElementById('nut-stats-grid'));
-
-  if(days.length>=2){
+  if(logged30.length>=2){
     const ctx=document.getElementById('nut-chart'); if(!ctx) return;
     const {gc,tc}=budChartGridColors();
     const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#FF6B35').trim();
     const accentRgb=(getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb')||'255,107,53').trim();
-    const datasets=[{label:'Eaten',data:days.map(d=>totals[d]),borderColor:accent,backgroundColor:'rgba('+accentRgb+',.08)',borderWidth:2.5,pointRadius:3,pointBackgroundColor:accent,fill:true,tension:0.3}];
-    if(goalCals) datasets.push({label:'Goal',data:days.map(()=>goalCals),borderColor:'rgba(150,150,150,0.7)',borderDash:[6,4],borderWidth:1.5,pointRadius:0,fill:false});
+    const datasets=[{label:'Logged calories',data:calendarDays.map(d=>Object.prototype.hasOwnProperty.call(totals,d)&&totals[d]>0?totals[d]:null),borderColor:accent,backgroundColor:'rgba('+accentRgb+',.08)',borderWidth:2.5,pointRadius:3,pointBackgroundColor:accent,fill:false,tension:0.25,spanGaps:false}];
+    if(goalCals) datasets.push({label:'Current goal reference',data:calendarDays.map(()=>goalCals),borderColor:'rgba(150,150,150,0.7)',borderDash:[6,4],borderWidth:1.5,pointRadius:0,fill:false});
     nutChart=new Chart(ctx,{
       type:'line',
-      data:{labels:days.map(d=>new Date(d+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'})),datasets},
+      data:{labels:calendarDays.map(d=>d===today?'Today · in progress':new Date(d+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'})),datasets},
       options:{
         responsive:true,maintainAspectRatio:false,
+        onClick:(event,elements)=>{if(elements.length&&elements[0].datasetIndex===0)openNutritionEvidence(calendarDays[elements[0].index]);},
         plugins:{legend:{display:false},tooltip:{callbacks:{label:cx=>cx.dataset.label+': '+cx.parsed.y+' kcal'}}},
         scales:{
-          x:{grid:{color:gc},ticks:{color:tc,font:{size:11},maxTicksLimit:8}},
+          x:{grid:{color:gc},ticks:{color:tc,font:{size:11},maxTicksLimit:6,maxRotation:0,minRotation:0}},
           y:{grid:{color:gc},ticks:{color:tc,font:{size:11}},beginAtZero:false}
         }
       }
@@ -10914,79 +11391,80 @@ function renderNutrition(){
   }
 }
 
-// ── Stats: Overview (landing view) ────────────────────────────────
-// At-a-glance tiles + the full week-in-review, inline. Shares buildWeekReviewHTML
-// with the Home tab's week-review modal so the numbers can never disagree.
+function statsReviewCard(icon,label,conclusion,evidence,tab,status){
+  return '<button class="card stats-review-card" onclick="setStatsTab(\''+tab+'\')">'+
+    cardHeader(icon,label,status?'<span class="stats-status '+status.cls+'">'+status.label+'</span>':'')+
+    '<span class="stats-conclusion">'+conclusion+'</span><span class="stats-data-note">'+evidence+'</span>'+
+    '<span class="stats-review-link">See evidence →</span></button>';
+}
+// ── Stats: Review (cross-domain conclusions, never a second Home snapshot) ────────────────
 function renderStatsOverview(){
   const wrap=document.getElementById('overview-content'); if(!wrap) return;
-  const {mondayStr,sundayStr}=getWeekBounds();
-  const workoutDays=new Set(S.sessions.filter(s=>s.date>=mondayStr&&s.date<=sundayStr).map(s=>s.date)).size;
-  const {current:streak}=calcSessionStreak();
+  const currentMonday=localMidnight(weekKey(getMondayOf(0)));
+  const recentStart=new Date(currentMonday); recentStart.setDate(recentStart.getDate()-28);
+  const recentEnd=new Date(currentMonday); recentEnd.setDate(recentEnd.getDate()-1);
+  const priorStart=new Date(currentMonday); priorStart.setDate(priorStart.getDate()-56);
+  const priorEnd=new Date(currentMonday); priorEnd.setDate(priorEnd.getDate()-29);
+  const distinct=(a,b)=>new Set(S.sessions.filter(s=>s.date>=dateStr(a)&&s.date<=dateStr(b)).map(s=>s.date)).size;
+  const trained=distinct(recentStart,recentEnd), trainedPrev=distinct(priorStart,priorEnd);
+  const trainDelta=trained-trainedPrev;
+  const cards=[statsReviewCard('calendar','Training frequency',
+    trained+' trained day'+(trained===1?'':'s')+' across the last 4 completed weeks'+(trainDelta?' · '+(trainDelta>0?'+':'')+trainDelta+' versus the prior 4':' · unchanged versus the prior 4'),
+    fmtDate(dateStr(recentStart))+'–'+fmtDate(dateStr(recentEnd))+' · adherence uses distinct calendar days, not session count. Historical plan targets are not stored, so today’s schedule is not applied retrospectively.',
+    'training',{cls:'neutral',label:trainDelta?(trainDelta>0?'+':'')+trainDelta+' days':'Same'})];
 
-  // Latest weight + direction vs the previous entry. Status tints (ov-pos/ov-neg) are light,
-  // high-luminance greens/reds chosen to read clearly on the accent gradient in both themes.
-  const sortedW=[...S.weights].sort((a,b)=>a.date<b.date?-1:1);
-  let weightVal='—', weightSub='No entries yet';
-  if(sortedW.length){
-    const latest=sortedW[sortedW.length-1];
-    weightVal=latest.weight+'<span class="ov-hs-unit"> kg</span>';
-    if(sortedW.length>=2){
-      const chg=+(latest.weight-sortedW[sortedW.length-2].weight).toFixed(1);
-      const arrow=chg<0?'↓':chg>0?'↑':'→';
-      const cls=chg<0?'ov-pos':chg>0?'ov-neg':'';
-      weightSub='<span class="'+cls+'">'+arrow+' '+(chg>0?'+':'')+chg+'kg</span> since last entry';
-    } else {
-      weightSub='Logged '+fmtDate(latest.date);
+  const wa=weightGoalAnalysis();
+  if(wa.cur){
+    let bodyConclusion='Latest check-in is '+wa.staleDays+' day'+(wa.staleDays===1?'':'s')+' old.';
+    let bodyStatus={cls:wa.staleDays>14?'warn':'neutral',label:wa.staleDays>14?'Stale':'Measured'};
+    if(wa.pace){ bodyConclusion=wa.mode==='maintain'?(wa.pace.onPace?'Latest weight is within the maintenance range.':'Latest weight is outside the maintenance range.'):(wa.pace.onPace?'Measured trend is on the goal path.':'Measured trend is behind the goal path.'); bodyStatus={cls:wa.pace.onPace?'good':'warn',label:wa.pace.label}; }
+    cards.push(statsReviewCard('scale','Body goal',bodyConclusion,
+      (wa.startedAt?'Goal episode since '+fmtDate(wa.startedAt)+'. ':'Legacy goal has no trusted start. ')+(wa.rateReady?(wa.rate>0?'+':'')+wa.rate.toFixed(2)+' kg/week recent rate.':'Rate withheld until 6 readings span 21+ days with a recent check-in.'),
+      'body',bodyStatus));
+  }
+
+  const calEnd=new Date(localMidnight(getLocalDate())); calEnd.setDate(calEnd.getDate()-1);
+  const calStart=new Date(calEnd); calStart.setDate(calStart.getDate()-6);
+  const calDays=[]; for(let i=0;i<7;i++){ const d=new Date(calStart); d.setDate(d.getDate()+i); calDays.push(dateStr(d)); }
+  const calVals=calDays.filter(d=>calorieHistory[d]>0).map(d=>calorieHistory[d]);
+  const calAvg=calVals.length?Math.round(calVals.reduce((a,v)=>a+v,0)/calVals.length):null;
+  cards.push(statsReviewCard('receipt','Nutrition coverage',
+    calVals.length+' of 7 completed days logged'+(calAvg!==null?' · '+calAvg+' kcal per logged day':''),
+    fmtDate(dateStr(calStart))+'–'+fmtDate(dateStr(calEnd))+' · missing days are unknown, not zero · historical macros are unavailable.',
+    'nutrition',calVals.length>=5?{cls:'good',label:'Usable'}:{cls:'warn',label:'Sparse'}));
+
+  const completedBudget=Object.keys(budgetData).filter(k=>k<dateStr(currentMonday)&&budgetData[k]&&(budgetData[k].saved||budgetData[k].snapshot)).sort();
+  if(completedBudget.length){
+    const k=completedBudget[completedBudget.length-1], d=budgetData[k], spent=statsWeekSpending(d,k);
+    const spendQuality=statsWeekSpendQuality(d,k);
+    const target=parseFloat(d.statsSnapshot&&d.statsSnapshot.totalTarget);
+    const comparable=!spendQuality.ambiguousLegacyVariable&&!isNaN(target)&&target>0;
+    cards.push(statsReviewCard('wallet','Latest completed budget week',
+      (spendQuality.ambiguousLegacyVariable?'Known spend '+fmtMoney(Math.round(spent))+'; full legacy total unavailable':fmtMoney(Math.round(spent))+' spent'+(comparable?' · '+fmtMoney(Math.abs(spent-target))+' '+(spent<=target?'under':'over')+' its saved plan':'')),
+      'Week of '+fmtDate(k)+' · transaction-backed categories override manual totals.'+(spendQuality.ambiguousLegacyVariable?' A later transaction cannot be safely separated from this snapshot-only legacy aggregate.':comparable?' Saved plan '+fmtMoney(target)+'.':' No historical plan snapshot; today’s defaults are not substituted.'),
+      'finance',spendQuality.ambiguousLegacyVariable?{cls:'warn',label:'Incomplete legacy'}:comparable?{cls:spent<=target?'good':'warn',label:spent<=target?'Within plan':'Over plan'}:{cls:'neutral',label:'No saved plan'}));
+  }
+  const chartAccounts=accounts.filter(a=>a);
+  const completeDates=chartAccounts.length&&chartAccounts.every(a=>(a.history||[]).some(e=>e&&e.date))
+    ? accountsHistoryDates().filter(d=>chartAccounts.every(a=>accountEntryAt(a,d))) : [];
+  if(completeDates.length>=2){
+    const latest=completeDates[completeDates.length-1];
+    const cut=localMidnight(getLocalDate()); cut.setDate(cut.getDate()-30);
+    const baseline=completeDates.filter(d=>d<=dateStr(cut)).pop()||completeDates[0];
+    if(baseline!==latest){
+      const before=netWorthAt(baseline), now=netWorthAt(latest), delta=now-before;
+      const stale=chartAccounts.map(a=>{
+        const e=accountEntryAt(a,latest);
+        return e?Math.floor((localMidnight(getLocalDate())-localMidnight(e.date))/864e5):Infinity;
+      });
+      const oldest=Math.max(...stale);
+      cards.push(statsReviewCard('trend','Net worth movement',
+        (delta===0?'No recorded net-worth change':(delta>0?'Up ':'Down ')+fmtMoney(Math.abs(delta)))+' between comparable balance points.',
+        fmtDate(baseline)+'–'+fmtDate(latest)+' · all '+chartAccounts.length+' account'+(chartAccounts.length===1?'':'s')+' had a recorded starting balance; balances are carried forward between updates.'+(oldest>14?' At least one account is '+oldest+' days stale.':''),
+        'finance',oldest>14?{cls:'warn',label:'Stale balance'}:{cls:delta>0?'good':'neutral',label:delta===0?'No change':delta>0?'Improved':'Declined'}));
     }
   }
-
-  // Today's calories vs goal
-  const cg=calcGoalCals();
-  const goalCals=cg?(cg.goal==='cut'?cg.cut:cg.goal==='bulk'?cg.bulk:cg.maintain):null;
-  const kcalTotal=S.dailyLog.entries.reduce((a,e)=>a+(e.kcal||0),0);
-  const calVal=goalCals
-    ? kcalTotal+'<span class="ov-hs-unit"> / '+goalCals+'</span>'
-    : String(kcalTotal||'—');
-  const calSub=goalCals?(kcalTotal<=goalCals?(goalCals-kcalTotal)+' kcal left':'<span class="ov-neg">'+(kcalTotal-goalCals)+' kcal over</span>'):'No goal set';
-
-  // This week's budget status. The 🟢/🟡/🔴 emoji carries the status colour, so the sub text
-  // itself stays white — only the leftover figure is tinted.
-  const bd=budgetData[mondayStr];
-  let budVal='—', budSub='No data this week';
-  if(bd&&weekIncome(bd)>0){
-    const left=weekLeftover(bd);
-    budVal='<span class="'+(left>=0?'ov-pos':'ov-neg')+'">'+(left>=0?'+$':'-$')+Math.abs(left).toFixed(0)+'</span>';
-    budSub=left>=50?'🟢 On track':left>=0?'🟡 Tight week':'🔴 Over budget';
-  }
-
-  // Single accent-gradient hero (matches Home / Budget), with the same 4 tappable stats laid
-  // out as light-text sections. Light-mode gradient floor lives in .ov-hero (workout.css).
-  wrap.innerHTML=
-    '<div class="ov-hero">'+
-      '<div class="ov-hero-grid">'+
-        '<div class="ov-hs" onclick="setStatsTab(\'training\')">'+
-          '<div class="ov-hs-label">Workouts this week</div>'+
-          '<div class="ov-hs-val">'+workoutDays+'<span class="ov-hs-unit"> / '+scheduleLen()+'</span></div>'+
-          '<div class="ov-hs-sub">🔥 '+streak+' day streak</div>'+
-        '</div>'+
-        '<div class="ov-hs" onclick="setStatsTab(\'body\')">'+
-          '<div class="ov-hs-label">Weight</div>'+
-          '<div class="ov-hs-val">'+weightVal+'</div>'+
-          '<div class="ov-hs-sub">'+weightSub+'</div>'+
-        '</div>'+
-        '<div class="ov-hs" onclick="setStatsTab(\'nutrition\')">'+
-          '<div class="ov-hs-label">Calories today</div>'+
-          '<div class="ov-hs-val">'+calVal+'</div>'+
-          '<div class="ov-hs-sub">'+calSub+'</div>'+
-        '</div>'+
-        '<div class="ov-hs" onclick="setStatsTab(\'finance\')">'+
-          '<div class="ov-hs-label">Budget this week</div>'+
-          '<div class="ov-hs-val">'+budVal+'</div>'+
-          '<div class="ov-hs-sub">'+budSub+'</div>'+
-        '</div>'+
-      '</div>'+
-    '</div>'+
-    '<div class="card"><div class="sec-label" style="margin-bottom:12px">🗓️ Week in review</div>'+buildWeekReviewHTML()+'</div>';
+  wrap.innerHTML='<div class="stats-review-intro"><div class="stats-review-title">What changed, and how trustworthy is it?</div><div class="stats-data-note">Only completed periods and explicitly recorded evidence appear here. Open a card for the supporting records.</div></div><div class="stats-review-grid">'+cards.join('')+'</div>';
 }
 function setBSTrendRange(range){
   bsTrendRange=range;
@@ -11014,30 +11492,44 @@ function renderBSTrend(){
     wrap.innerHTML=emptyState('💰','No budget history yet','Save a week in the Budget tab to see your spending trend here');
     return;
   }
-  const spent  = shown.map(k=>weekSpending(budgetData[k]));
-  const labels = shown.map(k=>new Date(k+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'}));
-  // Budget goal reference line = the current plan's weekly spend (fixed + variable)
-  const goal = configFixedTotal()+configVariableTotal();
-  wrap.innerHTML='<canvas id="bs-trend-chart" style="max-height:360px"></canvas>';
+  const spent  = shown.map(k=>statsWeekSpending(budgetData[k],k));
+  const currentMonday=weekKey(getMondayOf(0));
+  const labels = shown.map(k=>new Date(k+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'})+(k===currentMonday?' · in progress':''));
+  const goals=shown.map(k=>{
+    const n=parseFloat(budgetData[k]?.statsSnapshot?.totalTarget);
+    return !isNaN(n)&&n>0?n:null;
+  });
+  const goalCoverage=goals.filter(v=>v!==null).length;
+  const ambiguousCoverage=shown.filter(k=>statsWeekSpendQuality(budgetData[k],k).ambiguousLegacyVariable).length;
+  const completed=shown.filter(k=>k<currentMonday);
+  const latestDone=completed.length?completed[completed.length-1]:null;
+  const latestAmbiguous=latestDone&&statsWeekSpendQuality(budgetData[latestDone],latestDone).ambiguousLegacyVariable;
+  const conclusion=latestDone
+    ? 'Latest completed week: '+fmtMoney(Math.round(statsWeekSpending(budgetData[latestDone],latestDone)))+(latestAmbiguous?' known spend; full legacy total unavailable.':' spent.')
+    : 'The current week is still in progress; no completed week is available in this range.';
+  wrap.innerHTML='<div class="stats-chart-summary">'+conclusion+(latestDone?' <button class="stats-inline-link" onclick="openBudgetWeekFromStats(\''+latestDone+'\')">Open source week →</button>':'')+'</div>'+
+    '<div class="stats-data-note">Saved plan available for '+goalCoverage+' of '+shown.length+' week'+(shown.length===1?'':'s')+'. Missing plans are not reconstructed from today’s defaults.'+(ambiguousCoverage?' '+ambiguousCoverage+' snapshot-only legacy week'+(ambiguousCoverage===1?' shows':'s show')+' known detail only.':'')+'</div>'+
+    '<canvas id="bs-trend-chart" style="max-height:360px"></canvas>';
   const ctx=document.getElementById('bs-trend-chart'); if(!ctx) return;
   const {gc,tc}=budChartGridColors();
   const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#FF6B35').trim();
   const datasets=[
     {type:'bar',label:'Spent',data:spent,backgroundColor:'rgba(231,76,60,0.6)',borderColor:BUD_CHART_COLORS.spending,borderWidth:1,borderRadius:6,maxBarThickness:48}
   ];
-  if(goal>0){
-    datasets.push({type:'line',label:'Budget goal',data:shown.map(()=>goal),borderColor:accent,borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,tension:0});
+  if(goalCoverage){
+    datasets.push({type:'line',label:'Saved plan',data:goals,borderColor:accent,borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,tension:0,spanGaps:false});
   }
   bsChart=new Chart(ctx,{
     data:{labels,datasets},
     options:{
       responsive:true,maintainAspectRatio:false,
+      onClick:(event,elements)=>{ if(elements.length){ closeStatsEvidence(); openBudgetWeekFromStats(shown[elements[0].index]); } },
       plugins:{
         legend:{display:true,labels:{color:tc,font:{size:12},usePointStyle:true,pointStyleWidth:10}},
-        tooltip:{callbacks:{label:c=>c.dataset.label+': $'+c.parsed.y.toFixed(0)}}
+        tooltip:{callbacks:{label:c=>c.parsed.y==null?c.dataset.label+': unavailable':c.dataset.label+': $'+c.parsed.y.toFixed(0)}}
       },
       scales:{
-        x:{grid:{color:gc},ticks:{color:tc,font:{size:11},maxTicksLimit:12}},
+        x:{grid:{color:gc},ticks:{color:tc,font:{size:11},maxTicksLimit:12,maxRotation:0,minRotation:0}},
         y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>'$'+v},beginAtZero:true}
       }
     }
@@ -11085,11 +11577,17 @@ function renderNetWorthChartInto(wrapId){
   if(_nwCharts[wrapId]){ _nwCharts[wrapId].destroy(); _nwCharts[wrapId]=null; }
   const canvasId=wrapId+'-nwcanvas';
   const allDates=accountsHistoryDates();
-  if(allDates.length<2){
-    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+acctIcon('trend',13)+'Net worth over time</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Update at least 2 account balances in Accounts to see the trend.</div></div>';
+  const chartAccounts=accounts.filter(a=>a);
+  const unrecorded=chartAccounts.filter(a=>!(a.history||[]).some(e=>e&&e.date));
+  const completeDates=unrecorded.length?[]:allDates.filter(d=>chartAccounts.every(a=>accountEntryAt(a,d)));
+  if(completeDates.length<2){
+    const why=unrecorded.length
+      ? 'Log a starting balance for '+_catEscHtml(unrecorded.map(a=>a_name(a)).join(', '))+' before calculating net worth history.'
+      : 'Record balances on at least 2 common dates in Accounts to see a comparable trend.';
+    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+acctIcon('trend',13)+'Net worth over time</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">'+why+'</div></div>';
     return;
   }
-  const dates=nwChartDates(allDates);
+  const dates=nwChartDates(completeDates);
   // Assets, debts and net worth at each recorded date (each account carried forward from its
   // last known balance on/before that date — same convention as the old CC line).
   const assetAccts=accounts.filter(a=>a&&a.type==='asset'), debtAccts=accounts.filter(a=>a&&a.type==='debt');
@@ -11109,7 +11607,7 @@ function renderNetWorthChartInto(wrapId){
     const days=Math.floor((localMidnight(getLocalDate())-localMidnight(h[h.length-1].date))/864e5);
     return days>14?{name:a_name(a),days}:null;
   }).filter(Boolean);
-  const latest=allDates[allDates.length-1];
+  const latest=completeDates[completeDates.length-1];
   const ranges=[['1m','1M'],['3m','3M'],['1y','1Y'],['all','ALL']];
   wrap.innerHTML='<div class="card nw-chart-card">'+
     '<div class="nw-chart-head">'+
@@ -11124,8 +11622,9 @@ function renderNetWorthChartInto(wrapId){
       '<button onclick="toggleNWChartSeries(\'assets\')" class="'+(nwChartSeries.assets?'on':'')+'"><i></i>Assets</button>'+
       (debtAccts.length?'<button onclick="toggleNWChartSeries(\'debts\')" class="'+(nwChartSeries.debts?'on':'')+'"><i></i>Debts</button>':'')+
     '</div>'+
-    '<div class="nw-chart-foot">Based on recorded balances · Latest update '+fmtDate(latest)+
+    '<div class="nw-chart-foot">Based on recorded balances carried forward between updates · Common coverage since '+fmtDate(completeDates[0])+' · Latest update '+fmtDate(latest)+
       (stale.length?'<span class="nw-chart-stale">'+_catEscHtml(stale.map(x=>x.name+' '+x.days+'d').join(' · '))+' old</span>':'')+
+      (wrapId==='bs-balance-wrap'?'<button class="stats-inline-link" onclick="openAccounts()">Open account records →</button>':'')+
     '</div></div>';
   const ctx=document.getElementById(canvasId); if(!ctx) return;
   const {gc,tc}=budChartGridColors();
@@ -11138,6 +11637,7 @@ function renderNetWorthChartInto(wrapId){
     data:{ labels:dates.map(e=>new Date(e+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'})), datasets },
     options:{
       responsive:true,maintainAspectRatio:false,
+      onClick:(event,elements)=>{ if(elements.length) openNetWorthEvidence(dates[elements[0].index]); },
       interaction:{mode:'index',intersect:false},
       plugins:{
         legend:{display:false},
@@ -11518,18 +12018,18 @@ function buildWeightGoalCard(){
   if(hasGoal){
     const toGo=+(target-cur.weight).toFixed(1);
     capParts.push(Math.abs(toGo)+' kg to go');
-    // Pace: where the straight line from the first reading to the target says you should be
-    // today. Losing and gaining are both handled because it compares distance covered against
-    // distance expected, not raw direction.
+  // Pace uses the explicit goal episode baseline; a legacy goal without one never borrows the
+  // first weigh-in and presents that guess as history.
     const gd=weightGoal.date?String(weightGoal.date).slice(0,10):'';
-    if(gd&&sorted.length>=2){
-      const t0=localMidnight(sorted[0].date).getTime();
+    const ga=weightGoalAnalysis();
+    if(gd&&ga.startedAt&&ga.start!==null){
+      const t0=localMidnight(ga.startedAt).getTime();
       const t1=localMidnight(gd).getTime();
       const now=localMidnight(getLocalDate()).getTime();
       if(t1>t0&&now>t0){
         const frac=Math.min(1,(now-t0)/(t1-t0));
-        const expected=sorted[0].weight+(target-sorted[0].weight)*frac;
-        const total=target-sorted[0].weight;
+        const expected=ga.start+(target-ga.start)*frac;
+        const total=target-ga.start;
         // "Ahead" means further along the intended direction than the line expects.
         const ahead=total===0 ? true : ((cur.weight-expected)/total)>=-0.02;
         pillHtml='<span class="budget-snap-pill'+(ahead?'':' warn')+'">'+(ahead?'On pace':'Behind pace')+'</span>';
@@ -11552,29 +12052,23 @@ function buildWeightGoalCard(){
 // nothing did), kitShopComputeItems() already builds the shopping list, and kitPantryNeeds()
 // already knows what is low or out.
 // ── Personal records ──────────────────────────────────────────────
-// getPR(name) returns a bare maximum and nothing else — no reps, no date, no previous best —
-// and it rescans every session, exercise and set on each call, so asking it for a Home card's
-// worth of exercises is O(sessions × exercises × sets) per exercise, every render.
-// This walks the history ONCE, in date order, and records a PR *event* whenever a working set
-// beats the running best for that exercise. One pass gives everything the card needs: what was
-// lifted, for how many reps, when, and what it beat.
-// Warmup sets are excluded (s.type==='warmup'); getPR counts them, which is a latent bug there
-// — harmless only because warmups are usually lighter.
+// Records use the same per-exercise metric resolver as Stats: seconds for timed movements,
+// signed external load for loaded/assisted movements, and repetitions for bodyweight sets.
+// Mixed saved units are deliberately omitted instead of being joined into a fake PR series.
 function computePRHistory(){
   const best={}, events=[];
+  const metrics={};
   [...(S.sessions||[])].sort((a,b)=>a.date<b.date?-1:1).forEach(s=>{
     (s.exercises||[]).forEach(ex=>{
       if(!ex||!ex.name) return;
-      // Timed exercises are ranked by seconds (stored in reps), matching getPR/getPoints.
-      const timed=(typeof _secsNames!=='undefined')&&_secsNames.has(ex.name);
+      const metric=metrics[ex.name]||(metrics[ex.name]=exerciseMetricInfo(ex.name));
+      if(metric.kind==='mixed') return;
       (ex.sets||[]).forEach(set=>{
-        if(!set||set.type==='warmup') return;
-        const val=parseFloat(timed?set.reps:set.weight);
-        if(isNaN(val)||val<=0) return;
+        const val=setMetricValue(set,metric); if(val===null) return;
         const prev=best[ex.name];
         if(prev===undefined||val>prev){
           events.push({name:ex.name, val, reps:parseFloat(set.reps)||null,
-                       date:s.date, prev:prev===undefined?null:prev, timed});
+                       date:s.date, prev:prev===undefined?null:prev, metric});
           best[ex.name]=val;
         }
       });
@@ -11601,7 +12095,7 @@ function buildPRCard(){
     if(seen.has(e.name)) continue;
     seen.add(e.name);
     const days=Math.floor((localMidnight(getLocalDate())-localMidnight(e.date))/864e5);
-    const val=e.timed ? e.val+'s' : e.val+' kg'+(e.reps?' × '+e.reps:'');
+    const val=e.val+e.metric.unit+(e.metric.kind==='load'&&e.reps?' × '+e.reps:'');
     rows.push('<div class="pr-row">'+
       '<span class="pr-name">'+_catEscHtml(e.name)+'</span>'+
       (days<=14?'<span class="pr-new">NEW</span>':'')+
@@ -12288,7 +12782,9 @@ const CARD_ICONS={
   pot:'<path d="M5 10h14v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4zM3 10h18M8 10V7a4 4 0 0 1 8 0v3"/>',
   calendar:'<path d="M8 3v3M16 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>',
   flame:'<path d="M12 3c3 4 6 5.5 6 9a6 6 0 0 1-12 0c0-2 1-3.5 2.5-5 .3 1.2 1 2 2 2.2C10 7 11 4.6 12 3z"/>',
-  receipt:'<path d="M6 3h12v18l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L6 21zM9.5 8h5M9.5 12h5"/>'
+  receipt:'<path d="M6 3h12v18l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L6 21zM9.5 8h5M9.5 12h5"/>',
+  trend:'<path d="M3 17l6-6 4 4 7-7"/><path d="M20 8v5h-5"/>',
+  target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>'
 };
 function cardIcon(name){
   const d=CARD_ICONS[name];
@@ -13265,7 +13761,7 @@ function buildHomeRecentCard(){
         : '<span class="rw-effort rw-effort-none">Not rated</span>')+
     '</div>';
   }).join('');
-  return '<div class="card" style="cursor:pointer" onclick="setView(\'stats\');setStatsTab(\'history\')">'+
+  return '<div class="card" style="cursor:pointer" onclick="setView(\'log\');openWorkoutHistory()">'+
     cardHeader('flame','Recent sessions','<span class="card-hd-act">History →</span>')+
     rows+
   '</div>';
@@ -14574,7 +15070,8 @@ function finishOnboarding(){
 
   // Weight goal (reuses the daily_weight_goal store + its Firebase sync)
   if(obData.wgTarget!==undefined && isFinite(obData.wgTarget)){
-    weightGoal = { target: obData.wgTarget, date: obData.wgDate||null };
+    weightGoal = { target: obData.wgTarget, date: obData.wgDate||null,
+      startedAt:getLocalDate(), startWeight:obData.weight||null };
     localStorage.setItem('daily_weight_goal', JSON.stringify(weightGoal));
     syncWeightGoalToFirebase();
   }

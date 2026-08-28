@@ -52,8 +52,9 @@
 .bs-growth-range{display:flex;gap:4px;flex-shrink:0}
 .bs-growth-range button{padding:4px 9px;border-radius:20px;border:none;font-size:11px;font-weight:700;background:transparent;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent}
 .bs-growth-range button.on{background:rgba(var(--accent-rgb),.16);color:var(--accent-text)}
-.bs-growth-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+.bs-growth-row{display:flex;align-items:center;gap:10px;padding:9px 0;border:0;border-bottom:1px solid var(--border);background:none;width:100%;font-family:inherit;text-align:left;color:inherit;cursor:pointer}
 .bs-growth-row:last-of-type{border-bottom:none}
+.bs-growth-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px}
 .bs-growth-name{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bs-growth-type{display:block;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:1px}
 .bs-growth-spark{width:74px;flex-shrink:0}
