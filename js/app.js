@@ -6566,6 +6566,10 @@ function aiActFmtDate(s){
   try{ return localMidnight(s).toLocaleDateString('en-AU',{day:'numeric',month:'short'}); }
   catch(e){ return s; }
 }
+function aiActFmtFullDate(s){
+  try{ return localMidnight(s).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}); }
+  catch(e){ return s; }
+}
 
 // Resolve a reference to a live record: stable id first, then an EXACT case-insensitive name
 // match — and only when that name matches exactly one record. An ambiguous name is an error,
@@ -6713,20 +6717,25 @@ function aiValSubscription(d,id){
     }};
 }
 
-function aiArchiveEntries(c){
-  return Array.isArray(c&&c.aiArchiveActions)
-    ? c.aiArchiveActions.filter(x=>x&&typeof x==='object'&&x.actionId).map(x=>({
-        actionId:String(x.actionId), subscriptionId:String(x.subscriptionId||c.id||''),
+function aiArchiveActionRecords(cats){
+  const records=Array.isArray(budDefaults&&budDefaults.aiAppliedSubscriptionArchiveActions)
+    ? budDefaults.aiAppliedSubscriptionArchiveActions.filter(x=>x&&typeof x==='object'&&x.actionId).map(x=>({
+        actionId:String(x.actionId), subscriptionId:String(x.subscriptionId||''),
         confirmedEndDate:String(x.confirmedEndDate||''), appliedAt:Number(x.appliedAt)||0,
         source:String(x.source||'')
       })) : [];
-}
-function aiFindArchiveAction(cats, actionId){
-  for(const c of cats||[]){
-    const entry=aiArchiveEntries(c).find(x=>x.actionId===actionId);
-    if(entry) return {cat:c, entry};
-  }
-  return null;
+  // v237 briefly stored this ledger on the category itself. Read those entries forever so an
+  // action applied during that release remains idempotent after v238; all new writes use the
+  // synced Budget-default ledger below.
+  (cats||[]).forEach(c=>{
+    (Array.isArray(c&&c.aiArchiveActions)?c.aiArchiveActions:[]).forEach(x=>{
+      if(!x||!x.actionId||records.some(r=>r.actionId===String(x.actionId))) return;
+      records.push({actionId:String(x.actionId), subscriptionId:String(x.subscriptionId||c.id||''),
+        confirmedEndDate:String(x.confirmedEndDate||''), appliedAt:Number(x.appliedAt)||0,
+        source:String(x.source||'')});
+    });
+  });
+  return records;
 }
 function aiValArchiveSubscription(d,id){
   const subscriptionId=aiActStr(d.subscriptionId);
@@ -6737,12 +6746,13 @@ function aiValArchiveSubscription(d,id){
   if(!aiActValidDate(confirmedEndDate)) return {ok:false, error:'"'+confirmedEndDate.slice(0,20)+'" is not a real confirmed end date — use YYYY-MM-DD.'};
 
   const cats=loadFixCats();
-  const prior=aiFindArchiveAction(cats,id);
+  const prior=aiArchiveActionRecords(cats).find(x=>x.actionId===id);
   if(prior){
-    if(prior.entry.subscriptionId!==subscriptionId||prior.entry.confirmedEndDate!==confirmedEndDate)
+    if(prior.subscriptionId!==subscriptionId||prior.confirmedEndDate!==confirmedEndDate)
       return {ok:false, error:'Action id "'+id+'" was already used for a different subscription archive. Use a new stable action id.'};
+    const priorTarget=cats.find(c=>c&&String(c.id)===subscriptionId);
     return {ok:true,
-      summary:'Archive '+catLabel(prior.cat)+' because you confirmed it ended on '+aiActFmtDate(confirmedEndDate)+'. Its history stays in past budgets and reports.',
+      summary:'Archive '+(priorTarget?catLabel(priorTarget):subscriptionId)+' after its confirmed end date, '+aiActFmtFullDate(confirmedEndDate)+'. Historical spending is retained.',
       already:'This archive action was already applied earlier — it will not be applied twice.',
       requiresConfirmation:true, dupKey:()=>false, collection:()=>[], apply:()=>({kind:'subscription archive'})};
   }
@@ -6750,12 +6760,12 @@ function aiValArchiveSubscription(d,id){
   const target=cats.find(c=>c&&String(c.id)===subscriptionId);
   if(!target) return {ok:false, error:'No recurring Fixed item has stable id "'+subscriptionId+'". Use the exact subscriptionId from Daily\'s context export; names are not accepted.'};
   if(!catIsRecurring(target)) return {ok:false, error:'"'+catLabel(target)+'" is not a subscription or recurring charge, so this action cannot archive it.'};
-  const summary='Archive '+catLabel(target)+' because you confirmed it ended on '+aiActFmtDate(confirmedEndDate)+'. Its history stays in past budgets and reports.';
+  const summary='Archive '+catLabel(target)+' after its confirmed end date, '+aiActFmtFullDate(confirmedEndDate)+'. Historical spending is retained.';
   if(catIsArchived(target)) return {ok:true, summary,
     already:catLabel(target)+' is already archived. No change is needed.',
     requiresConfirmation:true, dupKey:()=>false, collection:()=>[], apply:()=>({kind:'subscription archive'})};
   const today=getLocalDate();
-  if(confirmedEndDate>today) return {ok:false, error:catLabel(target)+' cannot be archived yet: its confirmed end date is '+confirmedEndDate+', which is after today ('+today+'). Daily does not schedule future archive writes.'};
+  if(confirmedEndDate>today) return {ok:false, error:'Cannot archive '+catLabel(target)+' before the confirmed end date '+aiActFmtFullDate(confirmedEndDate)+'. It will remain active until then.'};
   if(activeCats(cats).length<=1) return {ok:false, error:'Cannot archive the last active Fixed category.'};
 
   return {ok:true, summary, requiresConfirmation:true,
@@ -6765,12 +6775,13 @@ function aiValArchiveSubscription(d,id){
       const c=freshCats.find(x=>x&&String(x.id)===subscriptionId);
       if(!c) throw new Error('The subscription no longer exists. Check the actions again.');
       const entry={actionId:id, subscriptionId, confirmedEndDate, appliedAt:Date.now(), source:meta&&meta.aiSource||''};
-      const ledger=aiArchiveEntries(c).filter(x=>x.actionId!==id);
-      ledger.push(entry);
-      c.aiArchiveActions=ledger.slice(-100);
       c.aiArchiveActiveActionId=id;
       c.archived=true;
       BUD_CAT_SAVE.fix(freshCats);
+      const ledger=aiArchiveActionRecords(freshCats).filter(x=>x.actionId!==id);
+      ledger.push(entry);
+      budDefaults.aiAppliedSubscriptionArchiveActions=ledger.slice(-100);
+      budPersistDefaults();
       if(typeof refreshCatBudgetUI==='function') refreshCatBudgetUI();
       return {kind:'subscription archive', undo:{actionId:id, subscriptionId, confirmedEndDate, wasArchived:false}};
     }};
@@ -7000,14 +7011,16 @@ function aiUndoLastApply(){
     const cats=BUD_CAT_LOAD.fix();
     const c=cats.find(y=>y&&String(y.id)===String(u.subscriptionId));
     if(!c||!c.archived||c.aiArchiveActiveActionId!==u.actionId) return;
-    const matched=aiArchiveEntries(c).some(e=>e.actionId===u.actionId&&
+    const matched=aiArchiveActionRecords(cats).some(e=>e.actionId===u.actionId&&
       e.subscriptionId===String(u.subscriptionId)&&e.confirmedEndDate===u.confirmedEndDate);
     if(!matched) return;
     if(u.wasArchived) c.archived=true; else delete c.archived;
     delete c.aiArchiveActiveActionId;
-    const kept=aiArchiveEntries(c).filter(e=>e.actionId!==u.actionId);
-    if(kept.length) c.aiArchiveActions=kept; else delete c.aiArchiveActions;
     BUD_CAT_SAVE.fix(cats);
+    const kept=aiArchiveActionRecords(cats).filter(e=>e.actionId!==u.actionId);
+    if(kept.length) budDefaults.aiAppliedSubscriptionArchiveActions=kept;
+    else delete budDefaults.aiAppliedSubscriptionArchiveActions;
+    budPersistDefaults();
     if(typeof refreshCatBudgetUI==='function') refreshCatBudgetUI();
     restored++;
   });
@@ -7097,7 +7110,7 @@ function aiInboxCopySchema(){
     'Max '+AI_ACT_MAX+' actions per reply.\n'+
     'add_expense data: amount (>0), date (YYYY-MM-DD), categoryName or categoryId, optional merchant, note, paymentAccountName.\n'+
     'add_subscription data: name, amount (>0), cycle ("weekly", "monthly" or "yearly"), optional status (active/trial/paused/cancelled), nextBillingDate, website, paymentAccountName.\n'+
-    'archive_subscription data: subscriptionId (the exact stable id from Daily\'s context export) and confirmedEndDate (YYYY-MM-DD, today or earlier). Names are never accepted as targets. Daily will show this action unchecked and requires you to select it before Apply.\n'+
+    'archive_subscription data: subscriptionId (the exact stable id from Daily\'s context export) and a user-confirmed confirmedEndDate (YYYY-MM-DD, today or earlier). Use it only after the user explicitly confirms that end date. Names are descriptive only and never accepted as targets. Daily shows this action unchecked; it preserves history and never permanently deletes the item.\n'+
     'add_recipe data: one recipe object — name, category (breakfast/lunch/dinner/dessert), servings, ingredients [{name, amount, unit}], steps [].\n'+
     '  Use unit "" for countable things like "4 salmon fillets".\n'+
     'add_shopping_item data: name, optional category ('+KITSHOP_CAT_ORDER.join('/')+'). Quantities are not stored.\n'+

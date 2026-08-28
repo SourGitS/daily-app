@@ -1,9 +1,9 @@
 // BUMP THIS ON EVERY RELEASE THAT CHANGES ANY FILE IN ASSETS.
 // The fetch handler is cache-first, so an installed PWA keeps serving the old bundle until the
 // cache NAME changes — a deploy with the same name reaches nobody who already has the app on
-// their home screen. v237: Daily AI can archive a subscription only by stable id after an
-// explicitly confirmed end date, with default-off review, idempotency and safe undo.
-const CACHE_NAME = 'daily-v237';
+// their home screen. v238: subscription-archive action ids use the synced Budget-default ledger,
+// survive manual restore, reject collisions, and report the full confirmed end date.
+const CACHE_NAME = 'daily-v238';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
