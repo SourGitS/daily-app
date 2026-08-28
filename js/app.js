@@ -906,10 +906,10 @@ function jrnMerge(localArr, cloudArr){
   return {records:Object.values(map), localNewer};
 }
 function jrnRerender(){
-  // Never yank text out from under an open editor.
-  const fs=document.getElementById('note-view-overlay');
-  if(fs && fs.style.display==='block') return;
-  if(document.getElementById('note-edit-overlay')) return;
+  // Never yank text out from under the open editor — a sync landing mid-sentence must not
+  // rewrite the field being typed into.
+  const ed=document.getElementById('jrn-editor');
+  if(ed && ed.classList.contains('open')) return;
   if(typeof S==='object' && S.view==='notes' && typeof renderNotes==='function') renderNotes();
   if(typeof renderHomeNotesBubble==='function') renderHomeNotesBubble();
 }
@@ -1562,7 +1562,7 @@ function sessionFormat(ms){
 function rtUpdateSessionLabels(){
   const txt=sessionFormat(sessionGetElapsed());
   const bar=document.getElementById('rt-bar-session');
-  if(bar) bar.textContent='Session: '+txt;
+  if(bar) bar.textContent=txt;
   const fs=document.getElementById('rt-fs-session');
   if(fs) fs.textContent='Session '+txt;
   // Same ~per-second interval drives the lap button's live duration, so the current lap time
@@ -1633,8 +1633,15 @@ function renderTimerCard(){
     '<div class="log-timer-card">'+
       '<button class="lt-body" data-action="timer-expand" aria-label="Open timer">'+
         '<span class="lt-dot'+(rtRunning?' running':'')+'"></span>'+
-        '<span id="rt-bar-time" class="lt-time">0.0</span>'+
-        '<span id="rt-bar-session" class="lt-session">Session: 0:00</span>'+
+        '<span class="lt-metric lt-rest-metric">'+
+          '<span class="lt-label">Rest</span>'+
+          '<span id="rt-bar-time" class="lt-time">0.0</span>'+
+        '</span>'+
+        '<span class="lt-divider" aria-hidden="true"></span>'+
+        '<span class="lt-metric lt-session-metric">'+
+          '<span class="lt-label">Session</span>'+
+          '<span id="rt-bar-session" class="lt-session">0:00</span>'+
+        '</span>'+
         '<svg class="lt-expand" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>'+
       '</button>'+
       '<button id="lt-toggle" class="lt-toggle'+(rtRunning?' running':'')+'" onclick="rtToggle();renderTimerCard();rtUpdateDisplay(rtGetElapsed());rtUpdateSessionLabels()">'+
@@ -2405,7 +2412,7 @@ const MENU_NAV=[
   {id:'kitchen',label:'Kitchen'},
   {id:'budget',label:'Budget'},
   {id:'plans',label:'Plans'},
-  {id:'notes',label:'Notes'},
+  {id:'notes',label:'Journal'},
 ];
 function menuNav(v){ closeMenu(); setView(v); }
 function buildSideMenu(){
@@ -2420,8 +2427,8 @@ function buildSideMenu(){
     MENU_NAV.map(n=>{
       let html='<button class="side-menu-item" onclick="menuNav(\''+n.id+'\')"><span class="smi-label">'+n.label+'</span>'+chev+'</button>';
       if(n.id==='budget') html+='<button class="side-menu-item" onclick="openAccounts()"><span class="smi-label">Accounts</span>'+chev+'</button>';
-      // After Notes, matching the sidebar: the secondary tools read Accounts → Plans → Notes →
-      // Daily + AI, which is also roughly least-to-most occasional.
+      // After Journal, matching the sidebar: the secondary tools read Accounts → Plans →
+      // Journal → Daily + AI, roughly least-to-most occasional.
       if(n.id==='notes') html+='<button class="side-menu-item" onclick="openAIHub()"><span class="smi-label">Daily + AI</span>'+chev+'</button>';
       return html;
     }).join('')+
@@ -5705,7 +5712,7 @@ const AI_SCOPES=[
   {id:'body',          label:'Body',          hint:'Weight log, goal and personal details', sensitive:true},
   {id:'habits',        label:'Habits',        hint:'Completion rates over the period'},
   {id:'kitchen',       label:'Kitchen',       hint:'Recipes, shopping list and pantry'},
-  {id:'notes',         label:'Notes',         hint:'Your written notes, in full', sensitive:true}
+  {id:'notes',         label:'Journal',       hint:'Your journal entries and notes, in full', sensitive:true}
 ];
 function aiScope(id){ return AI_SCOPES.find(x=>x.id===id)||null; }
 function aiScopeLabel(id){ const s=aiScope(id); return s?s.label:String(id||''); }
@@ -6447,11 +6454,11 @@ function renderDailyContextMarkdown(ctx){
     }
   }
 
-  // ── Notes ──
+  // ── Journal ──
   if(d.notes){
-    push('## Notes','');
+    push('## Journal','');
     if(!d.notes.length){
-      push('_No notes saved._','');
+      push('_Nothing saved._','');
     } else {
       d.notes.forEach(n=>{
         push('### '+aiCell(n.title||'Untitled')+(n.date?' — '+n.date:''));
@@ -6618,7 +6625,7 @@ function aiHubCopy(){
 }
 
 const AI_COUNT_LABELS={weeks:'week',transactions:'transaction',subscriptions:'scheduled charge',
-  accounts:'account',sessions:'session',weighIns:'weigh-in',habits:'habit',recipes:'recipe',notes:'note'};
+  accounts:'account',sessions:'session',weighIns:'weigh-in',habits:'habit',recipes:'recipe',notes:'journal record'};
 function aiHubSummaryHtml(){
   const ctx=aiHubContext();
   const md=renderDailyContextMarkdown(ctx);
@@ -7395,15 +7402,9 @@ function renderAIHub(){
           cardHeader('check','What to include')+
           '<div class="aih-scopes">'+scopeRows+'</div>'+
         '</div>'+
-        '<div class="card aih-card">'+
-          cardHeader('receipt','What to ask for')+
-          '<div class="aih-hint">Optional. This is pasted at the top of the export as your request.</div>'+
-          '<textarea id="aihub-instructions" class="aih-textarea" rows="5" placeholder="e.g. Where can I realistically cut $50 a week?" '+
-            'oninput="aiHubSetInstructions(this.value)">'+esc(aiHubState.instructions)+'</textarea>'+
-        '</div>'+
       '</div>'+
       '<div class="aih-col aih-out">'+
-        '<div class="card aih-card">'+
+        '<div class="card aih-card aih-export-card">'+
           cardHeader('wallet','Export')+
           '<div id="aihub-summary">'+aiHubSummaryHtml()+'</div>'+
           '<div class="aih-actions">'+
@@ -7415,7 +7416,13 @@ function renderAIHub(){
           '</div>'+
           '<div class="aih-foot">Nothing here is sent anywhere. Daily has no AI connection — the export goes to your clipboard or your downloads, and you paste it wherever you want.</div>'+
         '</div>'+
-        '<div class="card aih-card">'+aiInboxHtml()+'</div>'+
+        '<div class="card aih-card aih-inbox-card">'+aiInboxHtml()+'</div>'+
+        '<div class="card aih-card aih-request-card">'+
+          cardHeader('receipt','What to ask for')+
+          '<div class="aih-hint">Optional. This is pasted at the top of the export as your request.</div>'+
+          '<textarea id="aihub-instructions" class="aih-textarea" rows="5" placeholder="e.g. Where can I realistically cut $50 a week?" '+
+            'oninput="aiHubSetInstructions(this.value)">'+esc(aiHubState.instructions)+'</textarea>'+
+        '</div>'+
       '</div>'+
     '</div>';
 }
@@ -8925,7 +8932,7 @@ const _catEscHtml=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(
 // loaded into value="..." as `5`, because the raw quote closed the attribute early, and the
 // next Save wrote that truncation back permanently. escAttr additionally escapes both quote
 // characters. Better still, where an element can be built empty, assign .value/.textContent as
-// a property and escape nothing — see notesOpenEdit().
+// a property and escape nothing — see jrnOpenEditor().
 const escText=s=>_catEscHtml(s==null?'':String(s));
 const escAttr=s=>escText(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 // Collapsible section header (shared markup) — collapse handled by the delegated
@@ -12896,11 +12903,12 @@ function hlPrevTiles(){
     '<div class="hl-tiles">'+tile('💰','$150','Saved')+tile('💵','$785','Last pay')+'</div>'+
   '</div>';
 }
+// Mirrors what the real card now shows: the write-about-today line first, then open loops.
 function hlPrevNotes(){
   return '<div class="hl-prev hl-prev-plain">'+
-    '<div class="hl-lbl">Notes</div>'+
+    '<div class="hl-lbl">Journal</div>'+
     '<div class="hl-list">'+
-      '<div class="hl-li"><i></i>Book physio <span style="margin-left:auto;color:var(--accent-text);font-size:8px">Priority</span></div>'+
+      '<div class="hl-li" style="color:var(--accent-text)">Write about today →</div>'+
       '<div class="hl-li"><i style="background:var(--danger)"></i>Rego due <span style="margin-left:auto;color:var(--muted);font-size:8px">3 days</span></div>'+
     '</div>'+
   '</div>';
@@ -12919,7 +12927,9 @@ const HOME_WIDGETS=[
   {id:'budget',   label:'Weekly Budget',        tab:'Budget', preview:hlPrevBudget},
   {id:'balance',  label:'Net Worth & Accounts', tab:'Budget', preview:hlPrevBalance},
   {id:'tiles',    label:'Money Quick Tiles',    tab:'Budget', preview:hlPrevTiles},
-  {id:'notes',    label:'Notes',                tab:'Notes', preview:hlPrevNotes},
+  // id stays 'notes' — it is persisted in the saved Home layout (order/wide/hidden), so
+  // renaming it would silently reset the user's dashboard. Only the label changed.
+  {id:'notes',    label:'Journal',              tab:'Journal', preview:hlPrevNotes},
 ];
 const HOME_DEFAULT_ORDER=['session','weather','streak','prs','calories','weight','review','habits','budget','balance','tiles','kitchen','notes','recent'];
 // Which cards span the full desktop grid row by default. User-editable per card
@@ -16103,22 +16113,21 @@ function nudgeLayout(){
   pinAppHeight();
   if(typeof syncNavPadding==='function') syncNavPadding();
 }
-// ── Notes ──────────────────────────────────────────────────────────
-// Everything stored here is DATA, never markup. Two rules keep it that way:
-//   1. Editor fields are rendered EMPTY and their .value assigned as a property afterwards.
-//      Interpolating a title into value="..." is how `Call the landlord re: 5" pipe` used to
-//      load as `Call the landlord re: 5` and get saved back truncated, and how a body holding
-//      a literal </textarea> lost everything after it.
-//   2. Everywhere an HTML string is unavoidable (the lists, the Home card), user text goes
-//      through escText/escAttr for the exact context it lands in. A body reading
-//      `He said <urgent> and to text back.` used to render with the word simply gone, eaten
-//      by the parser as an unknown tag.
-// The sort, the card template and the list builder each exist ONCE. renderNotes() and
-// notesFilter() previously held byte-identical copies, which is why the missing-createdAt
-// guard reached the Home card and neither list.
+// ── Journal ────────────────────────────────────────────────────────
+// One destination holding two structurally different jobs, separated by POSITION rather than
+// by a mode switch: journal entries are the timeline, and the old reminder/expiry/reference
+// notes sit above it as Open Loops. A diary entry is about the past and is permanent; a
+// reminder is about the future and exists in order to stop existing. Interleaving them is what
+// buries a passport expiry under three weeks of prose.
+// There is no Journal/Notes toggle anywhere: the AFFORDANCE encodes the kind. The composer
+// makes an entry, the + in the Open Loops header makes a note.
+// Ids stay "notes" throughout (view id, nav data-tab, Home widget id) because they are
+// persisted in the saved Home layout; only labels changed.
+const JRN_MOODS=[{v:1,label:'Rough'},{v:2,label:'Low'},{v:3,label:'OK'},{v:4,label:'Good'},{v:5,label:'Great'}];
+function jrnMoodLabel(m){ const x=JRN_MOODS.find(o=>o.v===m); return x?x.label:''; }
 
-// Whole days between two YYYY-MM-DD strings. Both sides are parsed as UTC midnight on purpose:
-// the difference is then an exact multiple of 24h with no DST hour to round past. localMidnight()
+// Whole days between two YYYY-MM-DD strings. Both sides parse as UTC midnight on purpose: the
+// difference is then an exact multiple of 24h with no DST hour to round past. localMidnight()
 // looks like the right helper here and is subtly wrong — across a DST boundary two LOCAL
 // midnights are 23 or 25 hours apart, and the rounding would report a day too many.
 function notesDayDiff(dateA, dateB){
@@ -16126,341 +16135,715 @@ function notesDayDiff(dateA, dateB){
   if(isNaN(a)||isNaN(b)) return NaN;
   return Math.round((a-b)/86400000);
 }
-// Priority first, then dated (soonest first), then newest. Every field is coerced before use:
-// a legacy record with no createdAt threw TypeError here, and WHETHER it threw depended on
-// where the sort happened to place it — an intermittent blank Notes screen. Equal keys now
-// return 0 rather than 1, so the order is deterministic instead of engine-dependent.
-// Ties break on id last, so records that migrated to createdAt:0 (no usable legacy timestamp
-// anywhere) still order identically on every device instead of taking an invented Date.now().
-function notesSortCmp(a,b){
-  const pa=!!(a&&a.pinned), pb=!!(b&&b.pinned);
-  if(pa!==pb) return pa?-1:1;
-  const da=String((a&&a.dueDate)||''), db=String((b&&b.dueDate)||'');
-  if(da&&db&&da!==db) return da<db?-1:1;
-  if(da&&!db) return -1;
-  if(db&&!da) return 1;
-  const ca=Number((a&&a.createdAt)||0), cb=Number((b&&b.createdAt)||0);
-  if(ca!==cb) return cb-ca;
-  return String((a&&a.id)||'').localeCompare(String((b&&b.id)||''));
-}
-// Work/Personal is a tag now. Anything without one reads as personal, matching what the old
-// `type` field defaulted to.
-function notesTypeOf(n){ return (n&&Array.isArray(n.tags)&&n.tags.indexOf('work')>=0)?'work':'personal'; }
-function notesDueBadgeHtml(n, today){
-  const d=String((n&&n.dueDate)||'');
-  if(!d || !n.dateType || n.dateType==='none') return '';
-  const diff=notesDayDiff(d, today);
-  const label=n.dateType==='expiry'?'Expires':'Reminder';
-  const urgentColor=diff<=7?'var(--danger)':diff<=30?'#f59e0b':'var(--success)';
-  const when=diff<=0?'Today':diff===1?'Tomorrow':escText(d);
-  return `<span style="background:${urgentColor};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px">${label}: ${when}</span>`;
-}
-function notesCardHtml(n, today){
-  const type=notesTypeOf(n);
-  const typeColor=type==='work'?'#3b82f6':'#52B788';
-  const typeLabel=type==='work'?'Work':'Personal';
-  const body=String((n&&n.body)||'');
-  return `<div data-note-open="${escAttr((n&&n.id)||'')}" style="background:var(--card);border-radius:16px;padding:14px 16px;margin-bottom:10px;position:relative;cursor:pointer">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <span style="background:${typeColor};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px">${typeLabel}</span>
-          ${n&&n.pinned?'<span style="font-size:13px">⭐</span>':''}
-          ${notesDueBadgeHtml(n, today)}
-        </div>
-        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">${escText((n&&n.title)||'')}</div>
-        ${body?`<div style="font-size:13px;color:var(--muted);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escText(body)}</div>`:''}
-      </div>`;
-}
-function notesEmptyHtml(msg, sub){
-  return `<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">📝</div><div style="font-size:16px;font-weight:600;margin-bottom:6px">${escText(msg)}</div>${sub?`<div style="font-size:14px">${escText(sub)}</div>`:''}</div>`;
-}
-function notesListHtml(filter){
-  const all=jrnLive();   // tombstones never reach a list
-  if(!all.length) return notesEmptyHtml('No notes yet','Tap + New note to get started');
-  const shown=filter==='all'?all:all.filter(n=>notesTypeOf(n)===filter);
-  if(!shown.length) return notesEmptyHtml('No notes');
-  const today=getLocalDate();
-  return [...shown].sort(notesSortCmp).map(n=>notesCardHtml(n, today)).join('');
-}
-// One render for both the initial paint and a filter change — the old notesFilter() spliced the
-// list back in by removing "everything after the first 2 children", which quietly depended on
-// the header markup never gaining a node. The active filter is kept on the wrapper so a
-// re-render triggered by a save or a sync doesn't throw the user back to All.
-function renderNotes(filter){
-  const wrap=document.getElementById('notes-content'); if(!wrap) return;
-  const f=['all','work','personal'].indexOf(filter)>=0 ? filter : (wrap.dataset.filter||'all');
-  const tab=(id,label)=>{
-    const on=f===id;
-    return `<button data-notes-filter="${id}" id="nf-${id}" style="flex:1;padding:8px;border-radius:10px;border:${on?'none':'1px solid var(--border)'};background:${on?'var(--accent)':'var(--card)'};color:${on?'#fff':'var(--text)'};font-size:13px;font-weight:600">${label}</button>`;
-  };
-  wrap.innerHTML=
-    `<button data-notes-new="1" style="width:100%;padding:12px;border-radius:14px;border:none;background:var(--accent);color:#fff;font-size:15px;font-weight:700;margin-bottom:16px">+ New note</button>`+
-    `<div style="display:flex;gap:8px;margin-bottom:16px">${tab('all','All')}${tab('work','Work')}${tab('personal','Personal')}</div>`+
-    notesListHtml(f);
-  wrap.dataset.filter=f;
-}
-function notesFilter(f){ renderNotes(f); }
-// Delegated, so a card can be rebuilt between press and release without swallowing the tap, and
-// so no record id is ever interpolated into an onclick string.
-document.addEventListener('click',function(e){
-  if(!e.target||!e.target.closest) return;
-  const f=e.target.closest('[data-notes-filter]');
-  if(f){ renderNotes(f.getAttribute('data-notes-filter')); return; }
-  if(e.target.closest('[data-notes-new]')){ notesOpenEdit(null); return; }
-  const open=e.target.closest('[data-note-open]');
-  if(open){ notesOpenEdit(open.getAttribute('data-note-open')); }
-});
-
-// A brand-new record is built through jrnNormalise so it is a v2 record from the first
-// keystroke — nothing in the app ever constructs the legacy shape any more.
+// Built through jrnNormalise so a new record is a v2 record from the first keystroke — nothing
+// in the app constructs the legacy shape any more.
 function jrnNewRecord(kind){
   const now=Date.now();
   return jrnNormalise({id:(kind==='entry'?'jrn_':'note_')+now, schemaVersion:JRN_SCHEMA,
-    kind:kind||'note', createdAt:now, updatedAt:now, tags:['personal']});
-}
-function notesOpenEdit(id){
-  const note=id?loadNotes().find(n=>n&&n.id===id&&!n.deletedAt):null;
-  const n=note||jrnNewRecord('note');
-
-  const overlay=document.createElement('div');
-  overlay.className='modal-overlay';
-  overlay.id='note-edit-overlay';
-  // No user text in this template at all — the fields are built empty and filled below.
-  overlay.innerHTML=`<div class="modal-box" style="max-width:480px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div style="font-size:17px;font-weight:700">${id?'Edit note':'New note'}</div>
-      <div style="display:flex;align-items:center;gap:4px">
-        <button id="ne-fullscreen" aria-label="Open fullscreen" title="Open fullscreen" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:4px;display:flex;-webkit-tap-highlight-color:transparent"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
-        <button id="ne-close" aria-label="Close" style="background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer;padding:0 4px">×</button>
-      </div>
-    </div>
-    <input id="ne-title" placeholder="Title" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:15px;margin-bottom:10px;box-sizing:border-box">
-    <textarea id="ne-body" placeholder="Note body (optional)" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;min-height:80px;box-sizing:border-box;resize:vertical;margin-bottom:10px"></textarea>
-    <div style="display:flex;gap:8px;margin-bottom:10px">
-      <select id="ne-type" style="flex:1;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px">
-        <option value="personal">Personal</option>
-        <option value="work">Work</option>
-      </select>
-      <select id="ne-datetype" style="flex:1;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px">
-        <option value="none">No date</option>
-        <option value="reminder">Reminder</option>
-        <option value="expiry">Expiry</option>
-      </select>
-    </div>
-    <input type="date" id="ne-date" style="width:100%;padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;margin-bottom:10px;box-sizing:border-box">
-    <label style="display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:14px;color:var(--text);cursor:pointer">
-      <input type="checkbox" id="ne-priority" style="width:16px;height:16px;accent-color:var(--accent)"> Priority note
-    </label>
-    <div style="display:flex;gap:8px">
-      ${id?`<button id="ne-delete" style="flex:1;padding:11px;border-radius:12px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-weight:600;font-size:14px">Delete</button>`:''}
-      <button id="ne-save" style="flex:1;padding:11px;border-radius:12px;border:none;background:var(--accent);color:#fff;font-weight:700;font-size:14px">Save</button>
-    </div>
-  </div>`;
-  document.body.appendChild(overlay);
-
-  const q=sel=>overlay.querySelector(sel);
-  // Stored text assigned as a PROPERTY: quotes, angle brackets, ampersands and a literal
-  // </textarea> all arrive intact because nothing here is ever parsed as markup.
-  q('#ne-title').value=String(n.title||'');
-  q('#ne-body').value=String(n.body||'');
-  q('#ne-type').value=notesTypeOf(n);
-  q('#ne-datetype').value=(n.dateType==='reminder'||n.dateType==='expiry')?n.dateType:'none';
-  q('#ne-date').value=String(n.dueDate||'');
-  q('#ne-priority').checked=!!n.pinned;
-  const syncDateVis=()=>{ q('#ne-date').style.display=q('#ne-datetype').value==='none'?'none':'block'; };
-  syncDateVis();
-  q('#ne-datetype').addEventListener('change', syncDateVis);
-  q('#ne-fullscreen').addEventListener('click',()=>notesViewFullscreen(n.id));
-  q('#ne-close').addEventListener('click',()=>overlay.remove());
-  q('#ne-save').addEventListener('click',()=>notesSave(n.id));
-  const del=q('#ne-delete');
-  if(del) del.addEventListener('click',()=>{ if(notesDelete(id)) overlay.remove(); });
+    kind:kind||'note', createdAt:now, updatedAt:now, tags:kind==='entry'?[]:['personal']});
 }
 
-// Reads whatever the compact editor currently holds, in v2 field names. Work/Personal is a tag,
-// so it replaces only those two values and leaves any other tag on the record alone.
-function notesEditorFields(base){
-  const g=s=>document.getElementById(s);
-  const want=g('ne-type')?g('ne-type').value:'personal';
-  const keep=(base&&Array.isArray(base.tags)?base.tags:[]).filter(t=>t!=='work'&&t!=='personal');
+let jrnQuery='';
+let jrnTab='timeline';      // timeline | notes | trash
+let jrnSearchOpen=false;
+let jrnSelId=null;          // desktop detail selection
+let jrnListsDirty=false;
+
+function jrnIsDesktop(){ return window.innerWidth>=1024; }
+function jrnEntries(){ return jrnLive().filter(r=>r.kind==='entry'); }
+function jrnNotesAll(){ return jrnLive().filter(r=>r.kind!=='entry'); }
+// An entry always carries dateAbout, but fall back to its creation day rather than dropping a
+// record out of the timeline if one ever arrives without it.
+function jrnEntryDay(r){
+  const d=String((r&&r.dateAbout)||'');
+  if(/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+  return dateStr(new Date(Number((r&&r.createdAt))||Date.now()));
+}
+function jrnMatch(r,q){
+  if(!q) return true;
+  const hay=(String(r.title||'')+'\n'+String(r.body||'')+'\n'+(Array.isArray(r.tags)?r.tags.join(' '):'')).toLowerCase();
+  return hay.indexOf(q)>=0;
+}
+function jrnQ(){ return jrnQuery.trim().toLowerCase(); }
+function jrnTimeOf(r){
+  const ms=Number(r&&r.createdAt)||0;
+  if(!ms) return '';
+  try{ return new Date(ms).toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'}); }catch(e){ return ''; }
+}
+function jrnLongDay(d){
+  try{ return localMidnight(d).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}); }
+  catch(e){ return d; }
+}
+function jrnMonthLabel(d){
+  try{ return localMidnight(d).toLocaleDateString('en-AU',{month:'long',year:'numeric'}); }
+  catch(e){ return d.slice(0,7); }
+}
+// Newest day first; within a day, newest moment first. Days with no entries are simply not
+// produced — an unwritten day is not rendered as a gap to feel bad about.
+function jrnGroupByDay(entries){
+  const map={};
+  entries.forEach(r=>{ const d=jrnEntryDay(r); (map[d]=map[d]||[]).push(r); });
+  return Object.keys(map).sort().reverse().map(d=>({
+    date:d, items:map[d].sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0))
+  }));
+}
+function jrnOpenLoops(){
+  const today=getLocalDate();
+  const in7=localMidnight(today); in7.setDate(in7.getDate()+7);
+  const in7Str=dateStr(in7);
+  const all=jrnNotesAll();
+  const dated=n=>n.dueDate&&n.dateType!=='none';
   return {
-    title:(g('ne-title')?g('ne-title').value:'').trim(),
-    body: g('ne-body')?g('ne-body').value:'',
-    tags: keep.concat([want==='work'?'work':'personal']),
-    dateType: g('ne-datetype')?g('ne-datetype').value:'none',
-    dueDate: g('ne-date')?g('ne-date').value:'',
-    pinned: g('ne-priority')?!!g('ne-priority').checked:false
+    all,
+    pinned : all.filter(n=>n.pinned),
+    due    : all.filter(n=>!n.pinned&&dated(n)&&n.dueDate<=in7Str).sort((a,b)=>a.dueDate<b.dueDate?-1:1),
+    later  : all.filter(n=>!n.pinned&&dated(n)&&n.dueDate>in7Str).sort((a,b)=>a.dueDate<b.dueDate?-1:1),
+    undated: all.filter(n=>!n.pinned&&!dated(n)).sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0))
   };
 }
-// Persists the in-progress edit before swapping surfaces. MERGES over the stored record rather
-// than rebuilding it from the DOM — a rebuild silently dropped any field this modal doesn't
-// show, which made adding a field to the model a data-loss bug waiting to happen.
-// Returns null when there is nothing worth persisting yet: a brand-new note the user has not
-// typed into used to be written out here as {title:'',body:''}, leaving a permanent blank
-// record that synced to the cloud and rendered as an empty card you could not explain.
-function notesSaveDraft(id){
-  const stored=loadNotes().find(n=>n&&n.id===id)||null;
-  const f=notesEditorFields(stored);
-  if(!stored && !f.title && !f.body.trim()) return null;
-  const now=Date.now();
-  return jrnPut(Object.assign({}, stored||{id, kind:'note', createdAt:now}, f));
+// Semantic, never the accent: the runtime accent can be any hue, so a colour pairing that
+// reads as "urgent" for one accent reads as decoration for another.
+function jrnDueColour(diff){
+  if(isNaN(diff)) return 'var(--muted)';
+  return diff<=7?'var(--danger)':diff<=30?'#f59e0b':'var(--success)';
 }
-function notesViewFullscreen(id){
-  const g=s=>document.getElementById(s);
-  const saved = id ? notesSaveDraft(id) : null;
-  // Nothing persisted yet. Carry the metadata forward in memory so the fullscreen editor can
-  // create the record the moment there IS content, instead of writing a blank one now.
-  _noteViewPending = saved ? null : Object.assign({id, kind:'note', createdAt:Date.now()}, notesEditorFields(null));
-  const title = saved ? saved.title : (g('ne-title')?g('ne-title').value:'');
-  const body  = saved ? saved.body  : (g('ne-body') ? g('ne-body').value : '');
-  const ov=g('note-edit-overlay'); if(ov) ov.remove();
-  showNoteView(title, body, id);
+function jrnDueText(diff, dueDate){
+  if(isNaN(diff)) return String(dueDate||'');
+  if(diff<0) return Math.abs(diff)+'d overdue';
+  if(diff===0) return 'Today';
+  if(diff===1) return 'Tomorrow';
+  if(diff<=30) return 'In '+diff+' days';
+  return String(dueDate||'');
 }
-let _noteViewId=null;
-let _noteViewPending=null;
-let _noteViewSaveTimer=null;
-function showNoteView(title, body, id){
-  _noteViewId=id;
-  const t=document.getElementById('note-view-title'); if(t) t.value=title||'';
-  const b=document.getElementById('note-view-body'); if(b) b.value=body||'';
-  const v=document.getElementById('note-view-overlay');
-  if(v){ v.style.display='block'; v.scrollTop=0; }
+
+// ── Screen ──
+// The editor element is moved between <body> (phone overlay) and the detail column (desktop),
+// so it must be parked on <body> before #notes-content is rewritten or the re-render would
+// destroy it along with its in-progress text.
+function jrnDetachEditor(){
+  const ed=document.getElementById('jrn-editor');
+  if(ed && ed.parentElement!==document.body) document.body.appendChild(ed);
+  return ed;
 }
-// Writes the fullscreen edit back. Only title and body are touched, over the stored record, so
-// every field this screen doesn't show survives untouched; the record is created only once
-// there is real content.
-function noteViewWrite(){
-  clearTimeout(_noteViewSaveTimer); _noteViewSaveTimer=null;
-  if(!_noteViewId) return;
-  const t=document.getElementById('note-view-title');
-  const b=document.getElementById('note-view-body');
-  if(!t&&!b) return;
-  const title=(t?t.value:'').trim();
-  const body=b?b.value:'';
-  const stored=loadNotes().find(n=>n&&n.id===_noteViewId)||null;
-  if(stored){
-    if(stored.title===title && stored.body===body) return; // no-op: don't churn the cloud
-    jrnPut(Object.assign({}, stored, {title, body}));
-    return;
+function renderNotes(){ renderJournal(); }
+function renderJournal(){
+  const wrap=document.getElementById('notes-content'); if(!wrap) return;
+  jrnDetachEditor();
+  // While a search is running the screen is a results view: the composer previews today's entry,
+  // which is not a result, and showing it at the top of a search for something else reads as a
+  // false match. It comes straight back when the query is cleared.
+  const rail=jrnHeadHtml()+(jrnQ()?'':jrnComposerHtml())+jrnLoopsHtml()+jrnBodyHtml();
+  wrap.innerHTML = jrnIsDesktop()
+    ? '<div id="journal-root"><div class="jrn-rail">'+rail+'</div><div class="jrn-detail" id="jrn-detail"></div></div>'
+    : '<div id="journal-root">'+rail+'</div>';
+  if(jrnIsDesktop()) jrnMountDetail();
+  const s=document.getElementById('jrn-search');
+  if(s && jrnSearchOpen && document.activeElement!==s){ s.value=jrnQuery; }
+}
+// Re-render deferred while the editor holds focus — on desktop the editor lives inside the
+// detail column, and moving it mid-keystroke would blur the field the user is typing into.
+function jrnRefreshLists(){
+  const ed=document.getElementById('jrn-editor');
+  if(ed && document.activeElement && ed.contains(document.activeElement)){ jrnListsDirty=true; return; }
+  jrnListsDirty=false;
+  renderJournal();
+  if(typeof renderHomeNotesBubble==='function') renderHomeNotesBubble();
+}
+function jrnMountDetail(){
+  const detail=document.getElementById('jrn-detail'); if(!detail) return;
+  const ed=jrnDetachEditor();
+  const sel = jrnSelId ? loadNotes().find(r=>r.id===jrnSelId&&!r.deletedAt) : null;
+  if(sel && ed){
+    detail.innerHTML='';
+    ed.classList.add('inline','open');
+    detail.appendChild(ed);
+  } else {
+    jrnSelId=null;
+    if(ed) ed.classList.remove('inline','open');
+    detail.innerHTML='<div class="jrn-detail-empty">'+
+      '<div class="jrn-empty-ttl">Nothing open</div>'+
+      '<div class="jrn-empty-sub">Pick an entry from the list, or write about today.</div>'+
+    '</div>';
   }
-  if(!title && !body.trim()) return;
-  const base=_noteViewPending||{id:_noteViewId, kind:'note', createdAt:Date.now()};
-  jrnPut(Object.assign({}, base, {id:_noteViewId, title, body}));
-  _noteViewPending=null;
 }
-function noteViewSave(){
-  clearTimeout(_noteViewSaveTimer);
-  _noteViewSaveTimer=setTimeout(noteViewWrite, 500);
+function jrnHeadHtml(){
+  const searchIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
+  const calIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
+  let h='<div class="jrn-head">'+
+    '<div class="jrn-head-title">Journal</div>'+
+    '<button class="jrn-head-btn'+(jrnSearchOpen?' on':'')+'" data-jrn="search-toggle" aria-label="Search Journal" aria-pressed="'+(jrnSearchOpen?'true':'false')+'">'+searchIco+'</button>'+
+    '<button class="jrn-head-btn" data-jrn="cal" aria-label="Jump to a date">'+calIco+'</button>'+
+  '</div>';
+  if(jrnSearchOpen){
+    const q=jrnQ();
+    const n = q ? jrnEntries().filter(r=>jrnMatch(r,q)).length + jrnNotesAll().filter(r=>jrnMatch(r,q)).length : 0;
+    h+='<div class="jrn-search-wrap">'+
+      '<input id="jrn-search" class="jrn-search" type="search" placeholder="Search entries, notes and tags" value="'+escAttr(jrnQuery)+'" autocomplete="off">'+
+      (jrnQuery?'<button class="jrn-search-clear" data-jrn="search-clear">Clear</button>':'')+
+    '</div>';
+    if(q) h+='<div class="jrn-search-count">'+n+' match'+(n===1?'':'es')+'</div>';
+  }
+  return h;
 }
-// iOS suspends a backgrounded PWA without warning, so a 500ms debounce is not a promise — the
-// last sentence typed before the phone locks was simply gone. Flush synchronously whenever the
-// page is hidden or torn down. Only fires when a write is actually pending, so this adds no
-// extra Firebase traffic during ordinary typing.
-function noteViewFlush(){ if(_noteViewSaveTimer) noteViewWrite(); }
-document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden') noteViewFlush(); });
-window.addEventListener('pagehide', noteViewFlush);
-function closeNoteView(){
-  noteViewFlush();
-  const v=document.getElementById('note-view-overlay'); if(v) v.style.display='none';
-  _noteViewId=null; _noteViewPending=null;
-  // The list and the Home card used to keep showing the pre-edit title after a fullscreen
-  // rename — the save had worked, but the user was shown evidence that it hadn't.
-  renderNotes(); renderHomeNotesBubble();
+// Permanently present and always first. Shows today's entry when one exists, so returning to an
+// unfinished write is the same one tap as starting it.
+function jrnComposerHtml(){
+  const today=getLocalDate();
+  const mine=jrnEntries().filter(r=>jrnEntryDay(r)===today)
+    .sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0));
+  const latest=mine[0];
+  const firstLine=latest ? (String(latest.title||'').trim() || String(latest.body||'').trim().split('\n')[0] || 'Untitled') : '';
+  let meta='';
+  if(latest){
+    const bits=[];
+    if(mine.length>1) bits.push(mine.length+' entries today');
+    if(latest.mood) bits.push(jrnMoodLabel(latest.mood));
+    if(bits.length) meta='<div class="jrn-comp-meta">'+escText(bits.join(' · '))+'</div>';
+  }
+  return '<button class="jrn-composer" data-jrn="'+(latest?'open':'new-entry')+'"'+(latest?' data-id="'+escAttr(latest.id)+'"':'')+'>'+
+    '<div class="jrn-comp-top">'+
+      '<span class="jrn-comp-eyebrow">'+(latest?"Today's entry":'Today')+'</span>'+
+      '<span class="jrn-comp-date">'+escText(jrnLongDay(today))+'</span>'+
+    '</div>'+
+    '<div class="jrn-comp-line'+(latest?'':' empty')+'">'+(latest?escText(firstLine):'How was today?')+'</div>'+
+    meta+
+  '</button>'+
+  (latest?'<button class="jrn-loops-btn" data-jrn="new-entry" style="align-self:flex-start;margin:-6px 0 0 2px">+ Add another moment today</button>':'');
 }
-function copyNoteView(){
-  const title=document.getElementById('note-view-title')?.value||'';
-  const body=document.getElementById('note-view-body')?.value||'';
-  const text=(title?title+'\n\n':'')+body;
-  const btn=document.getElementById('note-view-copy');
-  const done=()=>{ if(btn){ const o=btn.textContent; btn.textContent='Copied ✓'; setTimeout(()=>{ btn.textContent=o; },1500); } };
+function jrnLoopRow(n, today){
+  const diff=notesDayDiff(String(n.dueDate||''), today);
+  const dated=n.dueDate&&n.dateType!=='none';
+  const dot = n.pinned ? 'var(--accent)' : (dated ? jrnDueColour(diff) : 'var(--muted)');
+  const right = n.pinned
+    ? '<span class="jrn-loop-when" style="color:var(--accent-text)">Pinned</span>'
+    : (dated ? '<span class="jrn-loop-when" style="color:'+jrnDueColour(diff)+'">'+escText(jrnDueText(diff,n.dueDate))+'</span>' : '');
+  return '<button class="jrn-loop" data-jrn="open" data-id="'+escAttr(n.id)+'">'+
+    '<span class="jrn-loop-dot" style="background:'+dot+'"></span>'+
+    '<span class="jrn-loop-ttl">'+escText(String(n.title||'').trim()||'Untitled note')+'</span>'+
+    right+
+  '</button>';
+}
+// Above the timeline, permanently. This is the whole reason a reminder does not need its own
+// destination: you pass it every night on the way to writing.
+function jrnLoopsHtml(){
+  const q=jrnQ();
+  const L=jrnOpenLoops();
+  const today=getLocalDate();
+  let rows=L.pinned.concat(L.due);
+  if(q) rows=rows.filter(r=>jrnMatch(r,q));
+  const shown=rows.slice(0,5);
+  const total=L.all.length;
+  let h='<div class="jrn-loops">'+
+    '<div class="jrn-loops-hd">'+
+      '<span class="jrn-loops-ttl">Open loops</span>'+
+      (rows.length?'<span class="jrn-loops-n">'+rows.length+'</span>':'')+
+      '<span class="jrn-loops-act">'+
+        (total?'<button class="jrn-loops-btn" data-jrn="tab" data-tab-id="notes">All notes</button>':'')+
+        '<button class="jrn-loops-btn" data-jrn="new-note" aria-label="New note">+</button>'+
+      '</span>'+
+    '</div>';
+  if(!shown.length){
+    h+='<div class="jrn-loops-empty">'+(total?'Nothing pinned or due.':'Nothing due. Add a reminder with +')+'</div>';
+  } else {
+    shown.forEach(n=>{ h+=jrnLoopRow(n, today); });
+    if(rows.length>shown.length) h+='<button class="jrn-loops-btn" data-jrn="tab" data-tab-id="notes" style="padding-left:2px">'+(rows.length-shown.length)+' more →</button>';
+  }
+  return h+'</div>';
+}
+function jrnEntryCard(r, today){
+  const title=String(r.title||'').trim();
+  const body=String(r.body||'');
+  const chips=[];
+  if(r.mood) chips.push('<span class="jrn-chip mood">'+escText(jrnMoodLabel(r.mood))+'</span>');
+  (Array.isArray(r.tags)?r.tags:[]).forEach(t=>chips.push('<span class="jrn-chip">'+escText(t)+'</span>'));
+  const t=jrnTimeOf(r);
+  return '<button class="jrn-entry'+(jrnSelId===r.id?' sel':'')+'" data-jrn="open" data-id="'+escAttr(r.id)+'">'+
+    (title?'<div class="jrn-entry-ttl">'+escText(title)+'</div>':'')+
+    (body?'<div class="jrn-entry-body">'+escText(body)+'</div>':(title?'':'<div class="jrn-entry-body" style="color:var(--muted)">Empty entry</div>'))+
+    ((chips.length||t)?'<div class="jrn-entry-foot">'+chips.join('')+(t?'<span class="jrn-time" style="margin-left:auto">'+escText(t)+'</span>':'')+'</div>':'')+
+  '</button>';
+}
+function jrnTimelineHtml(){
+  const q=jrnQ();
+  const today=getLocalDate();
+  let list=jrnEntries();
+  if(q) list=list.filter(r=>jrnMatch(r,q));
+  if(!list.length){
+    return '<div class="jrn-empty">'+
+      '<div class="jrn-empty-ttl">'+(q?'No entries match':'No entries yet')+'</div>'+
+      '<div class="jrn-empty-sub">'+(q?'Try a different word, or check All notes.':'Tap the card above to write about today. Entries are grouped by the day they are about.')+'</div>'+
+    '</div>';
+  }
+  let h='', lastMonth='';
+  jrnGroupByDay(list).forEach(g=>{
+    const mon=g.date.slice(0,7);
+    if(mon!==lastMonth){ h+='<div class="jrn-month">'+escText(jrnMonthLabel(g.date))+'</div>'; lastMonth=mon; }
+    const diff=notesDayDiff(g.date, today);
+    const name = diff===0?'Today' : diff===-1?'Yesterday' : '';
+    h+='<div class="jrn-day">'+
+      (name?'<span class="jrn-day-name">'+name+'</span>':'')+
+      '<span class="jrn-day-date">'+escText(jrnLongDay(g.date))+'</span>'+
+      (g.items.length>1?'<span class="jrn-day-n">'+g.items.length+' entries</span>':'')+
+    '</div>';
+    g.items.forEach(r=>{ h+=jrnEntryCard(r, today); });
+  });
+  return h;
+}
+function jrnNotesListHtml(){
+  const q=jrnQ();
+  const L=jrnOpenLoops();
+  const today=getLocalDate();
+  const sec=(label, arr)=>{
+    let a = q ? arr.filter(r=>jrnMatch(r,q)) : arr;
+    if(!a.length) return '';
+    return '<div class="jrn-month">'+escText(label)+'</div><div class="jrn-loops">'+a.map(n=>jrnLoopRow(n,today)).join('')+'</div>';
+  };
+  const h = sec('Pinned', L.pinned)+sec('Due soon', L.due)+sec('Later', L.later)+sec('No date', L.undated);
+  if(h) return h;
+  return '<div class="jrn-empty">'+
+    '<div class="jrn-empty-ttl">'+(q?'No notes match':'No notes yet')+'</div>'+
+    '<div class="jrn-empty-sub">'+(q?'Try a different word.':'Notes are reminders, expiry dates and reference material — the things you need to see again, not the things you did.')+'</div>'+
+  '</div>';
+}
+function jrnTrashHtml(){
+  const t=jrnTrash();
+  if(!t.length){
+    return '<div class="jrn-empty"><div class="jrn-empty-ttl">Trash is empty</div>'+
+      '<div class="jrn-empty-sub">Deleted entries and notes stay here for 30 days.</div></div>';
+  }
+  const now=Date.now();
+  return '<div class="jrn-loops">'+t.map(r=>{
+    const days=Math.max(0, 30-Math.floor((now-r.deletedAt)/86400000));
+    return '<div class="jrn-trash-row">'+
+      '<span class="jrn-trash-ttl">'+escText(String(r.title||'').trim()||String(r.body||'').trim().split('\n')[0]||'Untitled')+'</span>'+
+      '<span class="jrn-trash-when">'+days+'d left</span>'+
+      '<button class="jrn-trash-btn" data-jrn="restore" data-id="'+escAttr(r.id)+'">Restore</button>'+
+    '</div>';
+  }).join('')+'</div>';
+}
+function jrnBodyHtml(){
+  const tab=(id,label)=>'<button class="jrn-pill'+(jrnTab===id?' on':'')+'" data-jrn="tab" data-tab-id="'+id+'">'+label+'</button>';
+  const trashN=jrnTrash().length;
+  const nav = (jrnTab==='timeline')
+    ? ''
+    : '<div class="jrn-ed-row" style="margin:2px 0 4px">'+tab('timeline','Timeline')+tab('notes','All notes')+tab('trash','Trash'+(trashN?' ('+trashN+')':''))+'</div>';
+  let body;
+  if(jrnTab==='notes') body=jrnNotesListHtml();
+  else if(jrnTab==='trash') body=jrnTrashHtml();
+  else body=jrnTimelineHtml();
+  const footer = (jrnTab==='timeline' && trashN)
+    ? '<button class="jrn-loops-btn" data-jrn="tab" data-tab-id="trash" style="align-self:flex-start">Trash ('+trashN+')</button>'
+    : '';
+  return '<div>'+nav+body+footer+'</div>';
+}
+
+// ── Jump to a date ──
+// Deliberately not the primary browse surface: a calendar optimises for "what happened on the
+// 14th", which is the rare question, and it renders every unwritten day as a visible hole.
+// Days WITH entries carry a dot; days without are simply undotted, never marked as missed.
+let jrnCalMonth=null;
+function jrnOpenCal(){
+  jrnCalMonth=jrnCalMonth||getLocalDate().slice(0,7);
+  const box=document.getElementById('paste-restore-box');
+  const ov=document.getElementById('paste-restore-overlay');
+  if(!box||!ov) return;
+  box.innerHTML=
+    '<div class="modal-header">'+
+      '<button class="back-btn" data-back="jrnCloseCal" aria-label="Back">'+(typeof BACK_CHEVRON!=='undefined'?BACK_CHEVRON:'&#8249;')+'</button>'+
+      '<div class="modal-title">Jump to a date</div>'+
+    '</div>'+
+    '<div class="modal-body"><div id="jrn-cal-body"></div></div>';
+  ov.classList.remove('hidden');
+  jrnRenderCal();
+}
+function jrnCloseCal(){ const o=document.getElementById('paste-restore-overlay'); if(o) o.classList.add('hidden'); }
+function jrnCalShift(n){
+  const [y,m]=jrnCalMonth.split('-').map(Number);
+  const d=new Date(y, m-1+n, 1);
+  jrnCalMonth=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  jrnRenderCal();
+}
+function jrnRenderCal(){
+  const el=document.getElementById('jrn-cal-body'); if(!el) return;
+  const [y,m]=jrnCalMonth.split('-').map(Number);
+  const first=new Date(y, m-1, 1);
+  const days=new Date(y, m, 0).getDate();
+  const lead=(first.getDay()+6)%7;            // Monday-first
+  const counts={};
+  jrnEntries().forEach(r=>{ const d=jrnEntryDay(r); counts[d]=(counts[d]||0)+1; });
+  const today=getLocalDate();
+  let cells='';
+  for(let i=0;i<lead;i++) cells+='<button class="jrn-cal-day blank" disabled aria-hidden="true"></button>';
+  for(let d=1;d<=days;d++){
+    const ds=y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const n=counts[ds]||0;
+    const cls='jrn-cal-day'+(n?' has':'')+(ds===today?' today':'');
+    const lbl=n?(n+' entr'+(n===1?'y':'ies')+' on '+jrnLongDay(ds)):jrnLongDay(ds);
+    cells+='<button class="'+cls+'" '+(n?'data-jrn="cal-pick" data-date="'+ds+'"':'disabled')+' aria-label="'+escAttr(lbl)+'">'+
+      '<span>'+d+'</span><span class="jrn-cal-dot'+(n?'':' none')+'"></span></button>';
+  }
+  const dow=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x=>'<div class="jrn-cal-dow">'+x+'</div>').join('');
+  el.innerHTML='<div class="jrn-cal">'+
+    '<div class="jrn-cal-hd">'+
+      '<button class="jrn-cal-nav" data-jrn="cal-prev" aria-label="Previous month">‹</button>'+
+      '<div class="jrn-cal-mon">'+escText(jrnMonthLabel(jrnCalMonth+'-01'))+'</div>'+
+      '<button class="jrn-cal-nav" data-jrn="cal-next" aria-label="Next month">›</button>'+
+    '</div>'+
+    '<div class="jrn-cal-grid">'+dow+cells+'</div>'+
+    '<div class="jrn-cal-note">Dotted days have entries. Days without one are simply days you did not write — nothing is missing.</div>'+
+  '</div>';
+}
+function jrnJumpTo(ds){
+  jrnCloseCal();
+  jrnQuery=''; jrnSearchOpen=false; jrnTab='timeline';
+  renderJournal();
+  const first=jrnEntries().filter(r=>jrnEntryDay(r)===ds)
+    .sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0))[0];
+  if(first) jrnOpenEditor(first.id);
+}
+
+// ── The editor ──
+let jrnEdId=null, jrnEdPending=null, jrnEdTimer=null, jrnEdStatusTimer=null, jrnEdTagsOpen=false;
+function jrnEdRec(){
+  if(!jrnEdId) return null;
+  return loadNotes().find(r=>r.id===jrnEdId) || jrnEdPending || null;
+}
+function jrnEdStatus(txt){
+  const el=document.getElementById('jrn-ed-status'); if(!el) return;
+  clearTimeout(jrnEdStatusTimer);
+  el.textContent=txt; el.style.opacity='1';
+  // Fades rather than sitting there: a permanent "Saved" badge is noise, and a "Saving…"
+  // that appears on every keystroke is a flicker.
+  jrnEdStatusTimer=setTimeout(()=>{ el.style.opacity='0'; }, 1400);
+}
+function jrnOpenEditor(id, kind){
+  const rec = id ? loadNotes().find(r=>r.id===id&&!r.deletedAt) : null;
+  if(id && !rec) return;
+  jrnEdTagsOpen=false;
+  if(rec){ jrnEdId=rec.id; jrnEdPending=null; }
+  else {
+    // Not persisted until it has content — this is what stops "open and back out" leaving a
+    // blank record behind, which the old editor did on every fullscreen jump.
+    const fresh=jrnNewRecord(kind==='note'?'note':'entry');
+    if(fresh.kind==='entry') fresh.dateAbout=getLocalDate();
+    jrnEdId=fresh.id; jrnEdPending=fresh;
+  }
+  const r=jrnEdRec();
+  const ed=document.getElementById('jrn-editor'); if(!ed) return;
+  const t=document.getElementById('jrn-ed-title'), b=document.getElementById('jrn-ed-body');
+  const isEntry=r.kind==='entry';
+  document.getElementById('jrn-ed-kind').textContent=isEntry?'Entry':'Note';
+  t.placeholder=isEntry?'Title (optional)':'Title';
+  b.placeholder=isEntry?'How was today?':'Details';
+  t.value=String(r.title||'');
+  b.value=String(r.body||'');
+  const del=document.getElementById('jrn-ed-del');
+  if(del) del.style.display = rec ? '' : 'none';
+  jrnEdRenderFoot();
+  jrnEdStatus('');
+  const status=document.getElementById('jrn-ed-status'); if(status) status.style.opacity='0';
+  if(jrnIsDesktop()){
+    jrnSelId=r.id;
+    renderJournal();
+  } else {
+    ed.classList.remove('inline');
+    ed.classList.add('open');
+    jrnEdSyncViewport();
+  }
+  // A new entry goes straight to the body: the title is optional and asking for one first is
+  // how a nightly habit dies.
+  setTimeout(()=>{
+    const bb=document.getElementById('jrn-ed-body');
+    const tt=document.getElementById('jrn-ed-title');
+    if(!rec && isEntry && bb) bb.focus();
+    else if(!rec && !isEntry && tt) tt.focus();
+  }, 60);
+}
+function jrnEdRenderFoot(){
+  const foot=document.getElementById('jrn-ed-foot'); if(!foot) return;
+  const r=jrnEdRec(); if(!r){ foot.innerHTML=''; return; }
+  const today=getLocalDate();
+  let h='';
+  if(r.kind==='entry'){
+    const about=r.dateAbout||today;
+    const y=localMidnight(today); y.setDate(y.getDate()-1);
+    const yStr=dateStr(y);
+    h+='<div class="jrn-ed-row">'+
+      '<span class="jrn-ed-lbl">Date</span>'+
+      '<button class="jrn-pill'+(about===today?' on':'')+'" data-jrn="ed-date" data-date="'+today+'">Today</button>'+
+      '<button class="jrn-pill'+(about===yStr?' on':'')+'" data-jrn="ed-date" data-date="'+yStr+'">Yesterday</button>'+
+      '<input type="date" class="jrn-ed-date" id="jrn-ed-about" value="'+escAttr(about)+'" max="'+today+'" aria-label="Date this entry is about">'+
+    '</div>';
+    h+='<div class="jrn-ed-row">'+
+      '<span class="jrn-ed-lbl">Mood</span>'+
+      JRN_MOODS.map(m=>'<button class="jrn-pill'+(r.mood===m.v?' on':'')+'" data-jrn="ed-mood" data-mood="'+m.v+'" aria-pressed="'+(r.mood===m.v?'true':'false')+'">'+m.label+'</button>').join('')+
+      (r.mood?'<button class="jrn-ed-more" data-jrn="ed-mood" data-mood="0">Clear</button>':'')+
+    '</div>';
+    const tags=(Array.isArray(r.tags)?r.tags:[]).filter(t=>t!=='work'&&t!=='personal');
+    if(jrnEdTagsOpen||tags.length){
+      h+='<div class="jrn-ed-row">'+
+        '<span class="jrn-ed-lbl">Tags</span>'+
+        tags.map(t=>'<button class="jrn-pill on" data-jrn="ed-untag" data-tag="'+escAttr(t)+'" aria-label="Remove tag '+escAttr(t)+'">'+escText(t)+' ×</button>').join('')+
+        '<input class="jrn-tag-in" id="jrn-ed-tag" placeholder="Add a tag, then Enter" aria-label="Add a tag" autocomplete="off">'+
+      '</div>';
+    } else {
+      h+='<div class="jrn-ed-row"><button class="jrn-ed-more" data-jrn="ed-tags-open">+ Add tags</button></div>';
+    }
+  } else {
+    const type=(Array.isArray(r.tags)&&r.tags.indexOf('work')>=0)?'work':'personal';
+    h+='<div class="jrn-ed-row">'+
+      '<span class="jrn-ed-lbl">Type</span>'+
+      '<button class="jrn-pill'+(type==='personal'?' on':'')+'" data-jrn="ed-type" data-type="personal">Personal</button>'+
+      '<button class="jrn-pill'+(type==='work'?' on':'')+'" data-jrn="ed-type" data-type="work">Work</button>'+
+    '</div>';
+    const dt=r.dateType||'none';
+    h+='<div class="jrn-ed-row">'+
+      '<span class="jrn-ed-lbl">Date</span>'+
+      '<button class="jrn-pill'+(dt==='none'?' on':'')+'" data-jrn="ed-dtype" data-dtype="none">No date</button>'+
+      '<button class="jrn-pill'+(dt==='reminder'?' on':'')+'" data-jrn="ed-dtype" data-dtype="reminder">Reminder</button>'+
+      '<button class="jrn-pill'+(dt==='expiry'?' on':'')+'" data-jrn="ed-dtype" data-dtype="expiry">Expiry</button>'+
+      (dt!=='none'?'<input type="date" class="jrn-ed-date" id="jrn-ed-due" value="'+escAttr(r.dueDate||'')+'" aria-label="Due date">':'')+
+    '</div>';
+  }
+  foot.innerHTML=h;
+  const pin=document.getElementById('jrn-ed-pin');
+  if(pin){ pin.classList.toggle('on', !!r.pinned); pin.setAttribute('aria-pressed', r.pinned?'true':'false'); }
+}
+// Metadata is a discrete action, so it writes immediately; only typing is debounced.
+function jrnEdPatch(patch){
+  if(!jrnEdId) return;
+  const stored=loadNotes().find(r=>r.id===jrnEdId);
+  if(stored) jrnPut(Object.assign({}, stored, patch));
+  else jrnEdPending=jrnNormalise(Object.assign({}, jrnEdPending||{}, patch));
+  jrnEdRenderFoot();
+  jrnRefreshLists();
+}
+function jrnEdWrite(){
+  clearTimeout(jrnEdTimer); jrnEdTimer=null;
+  if(!jrnEdId) return;
+  const t=document.getElementById('jrn-ed-title'), b=document.getElementById('jrn-ed-body');
+  if(!t||!b) return;
+  const title=t.value.trim(), body=b.value;
+  const stored=loadNotes().find(r=>r.id===jrnEdId);
+  if(stored){
+    if(stored.title===title && stored.body===body) return;   // no-op: don't churn the cloud
+    jrnPut(Object.assign({}, stored, {title, body}));
+  } else {
+    if(!title && !body.trim()) return;
+    jrnPut(Object.assign({}, jrnEdPending||{id:jrnEdId}, {title, body}));
+    jrnEdPending=null;
+    const del=document.getElementById('jrn-ed-del'); if(del) del.style.display='';
+  }
+  jrnEdStatus('Saved');
+  jrnRefreshLists();
+}
+function jrnEdQueue(){ clearTimeout(jrnEdTimer); jrnEdTimer=setTimeout(jrnEdWrite, 600); }
+// iOS suspends a backgrounded PWA without warning, so a debounce is not a promise.
+function jrnEdFlush(){ if(jrnEdTimer) jrnEdWrite(); }
+function jrnCloseEditor(){
+  jrnEdFlush();
+  const ed=document.getElementById('jrn-editor');
+  if(ed){ ed.classList.remove('open','inline'); ed.style.top=''; ed.style.height=''; ed.style.bottom=''; }
+  jrnDetachEditor();
+  jrnEdId=null; jrnEdPending=null; jrnSelId=null;
+  jrnListsDirty=false;
+  renderJournal();
+  if(typeof renderHomeNotesBubble==='function') renderHomeNotesBubble();
+}
+function jrnEdDelete(){
+  const r=jrnEdRec(); if(!r) return;
+  if(!loadNotes().find(x=>x.id===r.id)){ jrnCloseEditor(); return; }   // never persisted
+  const label=String(r.title||'').trim();
+  const what=r.kind==='entry'?'entry':'note';
+  if(!confirm('Move '+(label?'“'+label+'”':'this '+what)+' to Trash?\n\nYou can restore it for 30 days.')) return;
+  jrnDelete(r.id);
+  jrnCloseEditor();
+}
+function jrnEdCopy(){
+  const t=document.getElementById('jrn-ed-title'), b=document.getElementById('jrn-ed-body');
+  const text=((t&&t.value.trim())?t.value.trim()+'\n\n':'')+((b&&b.value)||'');
+  const done=()=>jrnEdStatus('Copied');
   try{
     if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done,()=>{}); return; }
   }catch(e){}
-  // Fallback for insecure contexts / older webviews
   try{
     const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
     document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); done();
   }catch(e){}
 }
-
-function notesSave(id){
-  const stored=loadNotes().find(n=>n&&n.id===id)||null;
-  const f=notesEditorFields(stored);
-  if(!f.title){ alert('Add a title'); return; }
-  jrnPut(Object.assign({}, stored||{id, kind:'note', createdAt:Date.now()}, f, {body:f.body.trim()}));
-  const ov=document.getElementById('note-edit-overlay'); if(ov) ov.remove();
-  renderNotes();
-  renderHomeNotesBubble();
+// The keyboard covers a fixed-bottom footer on iOS. Sizing the editor to visualViewport keeps
+// the metadata row reachable instead of buried, and avoids dvh, which mis-computes at cold
+// launch in a standalone PWA (see CLAUDE.md).
+function jrnEdSyncViewport(){
+  const ed=document.getElementById('jrn-editor');
+  if(!ed || !ed.classList.contains('open') || ed.classList.contains('inline')) return;
+  const vv=window.visualViewport;
+  if(!vv){ ed.style.top=''; ed.style.height=''; ed.style.bottom=''; return; }
+  ed.style.top=vv.offsetTop+'px';
+  ed.style.height=vv.height+'px';
+  ed.style.bottom='auto';
 }
-
-// Returns true only when a note was actually deleted, so the caller knows whether to close the
-// editor. Every other destructive action in Daily confirms first (sessions, accounts, recipes,
-// plans, savings history); Notes was the sole exception, and it is the only store whose contents
-// exist nowhere else in the app. The delete is now a tombstone, so it is recoverable from the
-// Trash and — more importantly — converges: a hard removal from the array let any device that
-// was offline at the time push the record straight back as live.
-function notesDelete(id){
-  const n=loadNotes().find(x=>x&&x.id===id&&!x.deletedAt);
-  if(!n) return false;
-  const label=String(n.title||'').trim();
-  if(!confirm('Delete '+(label?'“'+label+'”':'this note')+'?\n\nYou can restore it from Trash for 30 days.')) return false;
-  jrnDelete(id);
-  renderNotes();
-  renderHomeNotesBubble();
-  return true;
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', jrnEdSyncViewport);
+  window.visualViewport.addEventListener('scroll', jrnEdSyncViewport);
 }
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden') jrnEdFlush(); });
+window.addEventListener('pagehide', jrnEdFlush);
+let _jrnResizeT=null;
+window.addEventListener('resize',function(){
+  clearTimeout(_jrnResizeT);
+  _jrnResizeT=setTimeout(function(){
+    const view=(typeof S==='object')?S.view:'';
+    if(view!=='notes') return;
+    // Crossing the desktop boundary swaps the editor between overlay and detail column.
+    if(jrnEdId && jrnIsDesktop()){ jrnSelId=jrnEdId; }
+    renderJournal();
+    if(jrnEdId && !jrnIsDesktop()){
+      const ed=document.getElementById('jrn-editor');
+      if(ed){ ed.classList.remove('inline'); ed.classList.add('open'); }
+      jrnEdSyncViewport();
+    }
+  }, 160);
+});
 
+// ── Events ──
+document.addEventListener('input',function(e){
+  const t=e.target; if(!t||!t.id) return;
+  if(t.id==='jrn-ed-title'||t.id==='jrn-ed-body'){ jrnEdQueue(); return; }
+  if(t.id==='jrn-search'){ jrnQuery=t.value; jrnRefreshListsKeepFocus(); return; }
+});
+document.addEventListener('change',function(e){
+  const t=e.target; if(!t||!t.id) return;
+  if(t.id==='jrn-ed-about'){ jrnEdPatch({dateAbout:t.value||getLocalDate()}); return; }
+  if(t.id==='jrn-ed-due'){ jrnEdPatch({dueDate:t.value||''}); return; }
+});
+document.addEventListener('keydown',function(e){
+  if(e.target&&e.target.id==='jrn-ed-tag'&&e.key==='Enter'){
+    e.preventDefault();
+    const v=e.target.value.trim().replace(/^#/,'');
+    if(!v) return;
+    const r=jrnEdRec(); if(!r) return;
+    const tags=(Array.isArray(r.tags)?r.tags.slice():[]);
+    if(tags.indexOf(v)<0) tags.push(v);
+    e.target.value='';
+    jrnEdPatch({tags});
+  }
+});
+// Search re-renders the lists but must not steal the caret back from the field being typed in.
+function jrnRefreshListsKeepFocus(){
+  const wrap=document.getElementById('notes-content'); if(!wrap) return;
+  const s=document.getElementById('jrn-search');
+  const pos=s?s.selectionStart:null;
+  renderJournal();
+  const s2=document.getElementById('jrn-search');
+  if(s2){ s2.focus(); if(pos!=null){ try{ s2.setSelectionRange(pos,pos); }catch(e){} } }
+}
+document.addEventListener('click',function(e){
+  if(!e.target||!e.target.closest) return;
+  const el=e.target.closest('[data-jrn]'); if(!el) return;
+  const act=el.getAttribute('data-jrn');
+  const id=el.getAttribute('data-id');
+  if(act==='new-entry'){ jrnOpenEditor(null,'entry'); return; }
+  if(act==='new-note'){ jrnOpenEditor(null,'note'); return; }
+  if(act==='open'&&id){ jrnOpenEditor(id); return; }
+  if(act==='restore'&&id){ jrnRestore(id); jrnRefreshLists(); return; }
+  if(act==='tab'){ jrnTab=el.getAttribute('data-tab-id')||'timeline'; renderJournal(); return; }
+  if(act==='search-toggle'){ jrnSearchOpen=!jrnSearchOpen; if(!jrnSearchOpen) jrnQuery=''; renderJournal();
+    if(jrnSearchOpen){ const s=document.getElementById('jrn-search'); if(s) s.focus(); } return; }
+  if(act==='search-clear'){ jrnQuery=''; jrnRefreshListsKeepFocus(); return; }
+  if(act==='cal'){ jrnOpenCal(); return; }
+  if(act==='cal-prev'){ jrnCalShift(-1); return; }
+  if(act==='cal-next'){ jrnCalShift(1); return; }
+  if(act==='cal-pick'){ jrnJumpTo(el.getAttribute('data-date')); return; }
+  if(act==='ed-date'){ jrnEdPatch({dateAbout:el.getAttribute('data-date')}); return; }
+  if(act==='ed-mood'){ const v=parseInt(el.getAttribute('data-mood'),10); jrnEdPatch({mood:v>0?v:null}); return; }
+  if(act==='ed-tags-open'){ jrnEdTagsOpen=true; jrnEdRenderFoot();
+    const i=document.getElementById('jrn-ed-tag'); if(i) i.focus(); return; }
+  if(act==='ed-untag'){
+    const r=jrnEdRec(); if(!r) return;
+    const tag=el.getAttribute('data-tag');
+    jrnEdPatch({tags:(Array.isArray(r.tags)?r.tags:[]).filter(x=>x!==tag)});
+    return;
+  }
+  if(act==='ed-type'){
+    const r=jrnEdRec(); if(!r) return;
+    const want=el.getAttribute('data-type')==='work'?'work':'personal';
+    const keep=(Array.isArray(r.tags)?r.tags:[]).filter(t=>t!=='work'&&t!=='personal');
+    jrnEdPatch({tags:keep.concat([want])});
+    return;
+  }
+  if(act==='ed-dtype'){
+    const d=el.getAttribute('data-dtype');
+    jrnEdPatch(d==='none'?{dateType:'none'}:{dateType:d, dueDate:(jrnEdRec()||{}).dueDate||getLocalDate()});
+    return;
+  }
+});
+document.addEventListener('click',function(e){
+  if(!e.target||!e.target.closest) return;
+  if(e.target.closest('#jrn-ed-pin')){ const r=jrnEdRec(); if(r) jrnEdPatch({pinned:!r.pinned}); return; }
+  if(e.target.closest('#jrn-ed-del')){ jrnEdDelete(); return; }
+  if(e.target.closest('#jrn-ed-copy')){ jrnEdCopy(); return; }
+});
+
+// ── Home card ──
+// Its job is the one thing the Journal screen cannot do: get you into the write in one tap from
+// the screen you already have open. It deliberately does NOT list note titles — that duplicated
+// the destination it links to, which is what made Home feel busy without being informative.
+// No streak, no missed-day count, no guilt language.
 function buildHomeNotesCard(){
   const today=getLocalDate();
-  // Local calendar arithmetic: localMidnight() then setDate(+7) lands on the right calendar day
-  // in any timezone. `new Date(today)` parses as UTC midnight and then mixes in local getters,
-  // which happens to come out right at a positive UTC offset and off by one at a negative.
-  const in7=localMidnight(today); in7.setDate(in7.getDate()+7);
-  const in7Str=dateStr(in7);
-  const all=jrnLive();
-  const dated=n=>n.dueDate&&n.dateType!=='none';
-  // Each note lands in exactly ONE bucket. Pinned wins first (accent); the other three exclude
-  // pinned so nothing renders twice. `recent` = undated notes (the default for a new note),
-  // newest first, capped so the card can't grow unbounded.
-  const priority=all.filter(n=>n.pinned);
-  const urgent  =all.filter(n=>!n.pinned&&dated(n)&&n.dueDate>=today&&n.dueDate<=in7Str);
-  const upcoming=all.filter(n=>!n.pinned&&dated(n)&&n.dueDate>in7Str);
-  const recent  =all.filter(n=>!n.pinned&&!dated(n))
-    .sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))
-    .slice(0,3);
-  // Whole card taps through to the Notes tab (rows inherit the click via bubbling).
-  const row=(dotCol,titleWeight,title,rightHtml)=>
-    `<div style="display:flex;align-items:center;gap:10px;padding:6px 0"><span style="width:8px;height:8px;border-radius:50%;background:${dotCol};flex-shrink:0"></span><div style="flex:1;font-size:14px;font-weight:${titleWeight};color:var(--text)">${escText(title)}</div>${rightHtml}</div>`;
-  let html='<div class="card" onclick="setView(\'notes\')" style="cursor:pointer">';
-  html+='<div style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Notes</div>';
-  if(!priority.length&&!urgent.length&&!recent.length&&!upcoming.length){
-    html+='<div style="font-size:13px;color:var(--muted)">No notes yet</div>';
+  const mine=jrnEntries().filter(r=>jrnEntryDay(r)===today)
+    .sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0));
+  const latest=mine[0];
+  const L=jrnOpenLoops();
+  const rows=L.pinned.concat(L.due).slice(0,3);
+  let h='<div class="card">';
+  h+='<div style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Journal</div>';
+  if(latest){
+    const line=String(latest.title||'').trim()||String(latest.body||'').trim().split('\n')[0]||'Untitled';
+    h+='<button class="jrn-composer" data-jrn-home="open" data-id="'+escAttr(latest.id)+'" style="margin-bottom:'+(rows.length?'10px':'0')+'">'+
+      '<div class="jrn-comp-top"><span class="jrn-comp-eyebrow">Today\'s entry</span></div>'+
+      '<div class="jrn-comp-line">'+escText(line)+'</div>'+
+      (mine.length>1?'<div class="jrn-comp-meta">'+mine.length+' entries today</div>':'')+
+    '</button>';
   } else {
-    // 1) Priority — accent dot, pinned to the top.
-    priority.forEach(n=>{
-      html+=row('var(--accent)','600',n.title,'<div style="font-size:12px;color:var(--accent-text);font-weight:700">Priority</div>');
-    });
-    // 2) Urgent — danger dot, due within 7 days.
-    urgent.forEach(n=>{
-      const diff=notesDayDiff(String(n.dueDate||''), today);
-      const label=diff<=0?'Today':diff===1?'Tomorrow':'In '+diff+' days';
-      html+=row('var(--danger)','600',n.title,`<div style="font-size:12px;color:var(--danger);font-weight:600">${label}</div>`);
-    });
-    // 3) Recent — undated notes, muted dot, no date label.
-    recent.forEach(n=>{
-      html+=row('var(--muted)','500',n.title,'');
-    });
-    // 4) Upcoming — muted dot, due after 7 days.
-    upcoming.forEach(n=>{
-      html+=row('var(--muted)','500',n.title,`<div style="font-size:12px;color:var(--muted)">${escText(n.dueDate)}</div>`);
-    });
+    h+='<button class="jrn-composer" data-jrn-home="new" style="margin-bottom:'+(rows.length?'10px':'0')+'">'+
+      '<div class="jrn-comp-line empty">Write about today →</div>'+
+    '</button>';
   }
-  html+='</div>';
-  return html;
+  if(rows.length){
+    rows.forEach(n=>{
+      const diff=notesDayDiff(String(n.dueDate||''), today);
+      const dated=n.dueDate&&n.dateType!=='none';
+      const dot=n.pinned?'var(--accent)':(dated?jrnDueColour(diff):'var(--muted)');
+      const right=n.pinned
+        ? '<span style="font-size:12px;font-weight:700;color:var(--accent-text)">Pinned</span>'
+        : (dated?'<span style="font-size:12px;font-weight:600;color:'+jrnDueColour(diff)+'">'+escText(jrnDueText(diff,n.dueDate))+'</span>':'');
+      h+='<button class="jrn-loop" data-jrn-home="open" data-id="'+escAttr(n.id)+'">'+
+        '<span class="jrn-loop-dot" style="background:'+dot+'"></span>'+
+        '<span class="jrn-loop-ttl">'+escText(String(n.title||'').trim()||'Untitled note')+'</span>'+
+        right+
+      '</button>';
+    });
+  } else if(latest){
+    h+='<div style="font-size:13px;color:var(--muted);padding-top:2px">Nothing due.</div>';
+  } else {
+    h+='<div style="font-size:13px;color:var(--muted);padding-top:8px">Nothing due. Nothing written yet today.</div>';
+  }
+  return h+'</div>';
 }
 function renderHomeNotesBubble(){
   const el=document.querySelector('#home-content [data-card-id="notes"]');
   if(el) el.innerHTML=buildHomeNotesCard();
 }
+document.addEventListener('click',function(e){
+  if(!e.target||!e.target.closest) return;
+  const el=e.target.closest('[data-jrn-home]'); if(!el) return;
+  const act=el.getAttribute('data-jrn-home');
+  setView('notes');
+  if(act==='new') jrnOpenEditor(null,'entry');
+  else { const id=el.getAttribute('data-id'); if(id) jrnOpenEditor(id); }
+});
 
 // ── Plans ──────────────────────────────────────────────────────────
 function renderPlans(){

@@ -49,22 +49,35 @@
    Was .ldh-timer, a strip inside the day hero's footer. Now a card of its own directly under
    it, so the hero carries only the day and its progress. The body still opens the fullscreen
    timer; the start/stop control now lives here rather than only inside the expanded view. */
-.log-timer-card{display:flex;align-items:center;gap:10px;
+.log-timer-card{display:flex;align-items:stretch;gap:10px;
   background:var(--card);border:0.5px solid var(--card-border);box-shadow:var(--card-top);
-  border-radius:var(--radius-card);padding:12px 14px;margin-bottom:12px}
-.lt-body{display:flex;align-items:center;gap:10px;flex:1;min-width:0;padding:0;
+  border-radius:var(--radius-card);padding:10px 12px;margin-bottom:12px}
+.lt-body{display:flex;align-items:center;gap:11px;flex:1;min-width:0;padding:0 2px;
   background:none;border:none;color:var(--text);cursor:pointer;-webkit-tap-highlight-color:transparent}
-.lt-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);opacity:.55;flex-shrink:0}
+.lt-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);opacity:.5;flex-shrink:0}
 .lt-dot.running{background:var(--accent);opacity:1;animation:rt-pulse 1.4s ease-in-out infinite}
-.lt-time{font-family:var(--font-num);font-size:22px;font-weight:800;letter-spacing:-.02em;color:var(--text)}
-.lt-session{font-size:12px;font-weight:600;color:var(--muted);margin-left:auto;font-family:monospace;white-space:nowrap}
-.lt-expand{color:var(--muted);flex-shrink:0}
+.lt-metric{display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:2px;min-width:0}
+.lt-label{font-family:var(--font-ui);font-size:9px;font-weight:700;line-height:1;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.lt-time,.lt-session{font-family:var(--font-num);font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--text);line-height:1}
+.lt-time{font-size:24px;font-weight:700;letter-spacing:-.035em}
+.lt-session{font-size:15px;font-weight:600;letter-spacing:-.015em}
+.lt-divider{width:1px;height:30px;background:var(--border);flex-shrink:0}
+.lt-session-metric{margin-left:auto}
+.lt-expand{width:15px;height:15px;color:var(--muted);opacity:.75;flex-shrink:0}
 /* Rest control: flat, compact and explicit. The earlier glossy treatment looked like a hero CTA
    and competed with Start workout; this is a secondary instrument control inside the timer. */
-.lt-toggle{display:inline-flex;align-items:center;justify-content:center;gap:7px;flex-shrink:0;min-width:112px;height:44px;padding:0 14px;border-radius:13px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:13px;font-weight:800;letter-spacing:0;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .12s ease,background .15s ease,border-color .15s ease}
+.lt-toggle{display:inline-flex;align-items:center;justify-content:center;gap:7px;align-self:center;flex-shrink:0;min-width:112px;height:44px;padding:0 14px;border-radius:13px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:14px;font-weight:700;letter-spacing:-.01em;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .12s ease,background .15s ease,border-color .15s ease}
 .lt-toggle svg{width:15px;height:15px;fill:currentColor;flex-shrink:0}
 .lt-toggle:active{transform:scale(.97);filter:brightness(.92)}
 .lt-toggle.running{background:transparent;border-color:var(--border);color:var(--text)}
+@media(max-width:430px){
+  .log-timer-card{gap:8px;padding:9px 10px}
+  .lt-body{gap:8px}
+  .lt-time{font-size:22px}
+  .lt-session{font-size:14px}
+  .lt-divider{height:28px}
+  .lt-toggle{min-width:106px;padding:0 12px;font-size:13px}
+}
 .rt-fs-reset{width:100%;padding:12px;margin-bottom:6px;border:none;background:transparent;color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 /* Inline status chip in the card header controls — a real layout slot, not an absolute overlay
    floating over the buttons. */

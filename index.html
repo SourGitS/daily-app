@@ -28,6 +28,9 @@
 <link rel="stylesheet" href="css/nutrition-modals.css">
 <link rel="stylesheet" href="css/budget-home.css">
 <link rel="stylesheet" href="css/kitchen-extras.css">
+<!-- Journal loads last so it wins ties, the same way kitchen-extras.css wins against the five
+     before it. Do not reorder any of these. -->
+<link rel="stylesheet" href="css/journal.css">
 </head>
 <body>
 <div id="app">
@@ -45,7 +48,7 @@
     <button class="ds-item" data-tab="budget"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h2M10 15h4"/></svg><span>Budget</span></button>
     <button class="ds-item" id="ds-accounts" onclick="openAccounts()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/><path d="M16 12h.01"/><path d="M2 10h20"/></svg><span>Accounts</span></button>
     <button class="ds-item" data-tab="plans"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>Plans</span></button>
-    <button class="ds-item" data-tab="notes"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg><span>Notes</span></button>
+    <button class="ds-item" data-tab="notes"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg><span>Journal</span></button>
     <button class="ds-item" id="ds-aihub" onclick="openAIHub()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M18 15l.8 2L21 17.8l-2.2.8L18 21l-.8-2.4L15 17.8l2.2-.8z"/></svg><span>Daily + AI</span></button>
     <button class="ds-item" id="ds-exlib" onclick="openExerciseLibrary()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>Exercise Library</span></button>
     <div class="ds-settings-row">
@@ -660,10 +663,10 @@
       <div id="plans-content" style="padding:16px"></div>
     </section>
 
+    <!-- Journal. The view id, the nav data-tab and the Home widget id all stay "notes" on
+         purpose: they are persisted in the saved Home layout (order/wide/hidden), so renaming
+         them would silently reset every user's dashboard. Only the LABELS change. -->
     <section id="view-notes" class="hidden">
-      <div class="view-header" style="padding:20px 20px 0">
-        <div style="font-size:22px;font-weight:800;color:var(--text)">Notes</div>
-      </div>
       <div id="notes-content" style="padding:16px"></div>
     </section>
 
@@ -673,14 +676,28 @@
     <div id="calorie-overlay-inner"></div>
   </div>
 
-  <!-- Notes: edit a single note fullscreen (comfortable editing for long notes) -->
-  <div id="note-view-overlay" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:120;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
-    <div style="position:sticky;top:0;background:var(--bg);z-index:10;padding:12px 16px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
-      <button class="back-btn" data-back="closeNoteView" aria-label="Back to notes"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
-      <input id="note-view-title" oninput="noteViewSave()" placeholder="Title" style="font-size:18px;font-weight:700;color:var(--text);flex:1;min-width:0;background:none;border:none;padding:0;font-family:inherit">
-      <button id="note-view-copy" onclick="copyNoteView()" style="background:var(--accent);border:none;border-radius:12px;color:#fff;font-size:14px;font-weight:700;padding:8px 14px;cursor:pointer;-webkit-tap-highlight-color:transparent">Copy</button>
+  <!-- Journal editor — ONE surface for both journal entries and Open Loop notes.
+       This replaces the old compact-modal → fullscreen pair, whose two half-editors were the
+       source of three separate bugs (blank ghost records, a stale list after a rename, and a
+       save path that rebuilt the record from whatever fields the modal happened to show).
+       On desktop this same element is moved into the detail column and given .inline, so
+       ordinary writing never opens a modal there. -->
+  <div id="jrn-editor" class="app-overlay" role="dialog" aria-label="Journal editor">
+    <div class="jrn-ed-top">
+      <button class="back-btn" data-back="jrnCloseEditor" aria-label="Back to Journal"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <span class="jrn-ed-kind" id="jrn-ed-kind">Entry</span>
+      <span class="jrn-ed-status" id="jrn-ed-status" role="status" aria-live="polite"></span>
+      <button class="jrn-ed-icon" id="jrn-ed-pin" aria-pressed="false" aria-label="Pin to Open Loops" title="Pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 2h6l-1 6 3 3v2H7v-2l3-3z"/></svg></button>
+      <button class="jrn-ed-icon" id="jrn-ed-copy" aria-label="Copy text" title="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+      <button class="jrn-ed-icon danger" id="jrn-ed-del" aria-label="Move to Trash" title="Move to Trash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg></button>
     </div>
-    <textarea id="note-view-body" oninput="noteViewSave()" placeholder="Write here…" style="width:100%;display:block;box-sizing:border-box;border:none;background:none;outline:none;resize:none;padding:18px 16px calc(env(safe-area-inset-bottom,0px) + 40px);max-width:760px;margin:0 auto;min-height:calc(100vh - 80px);white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere;font-family:var(--font-ui),system-ui,sans-serif;font-size:15px;line-height:1.6;color:var(--text)"></textarea>
+    <div class="jrn-ed-scroll">
+      <div class="jrn-ed-inner">
+        <input id="jrn-ed-title" class="jrn-ed-title" placeholder="Title (optional)" autocomplete="off">
+        <textarea id="jrn-ed-body" class="jrn-ed-body" placeholder="How was today?"></textarea>
+      </div>
+    </div>
+    <div class="jrn-ed-foot" id="jrn-ed-foot"></div>
   </div>
 
   <!-- Kitchen: recipe detail (mobile full-screen overlay) -->

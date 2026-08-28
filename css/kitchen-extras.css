@@ -1018,7 +1018,7 @@
   /* ── Forms / long editors ──
      Anything with a textarea needs somewhere to scroll to once the keyboard takes half the
      screen. */
-  #kit-form-overlay,#kit-import-overlay,#paste-restore-overlay,#note-view-overlay{
+  #kit-form-overlay,#kit-import-overlay,#paste-restore-overlay{
     padding-bottom:50vh !important}
   textarea{max-height:34vh}
 
@@ -1079,6 +1079,16 @@
   color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:12px;
   padding:11px 12px;resize:vertical;min-height:96px}
 .aih-textarea:focus{outline:none;border-color:var(--accent)}
+
+/* On a single-column portrait screen the request still belongs before the generated output.
+   Desktop keeps real column wrappers so the same card can fill the space below AI Inbox. */
+@media (orientation:portrait) and (max-width:1023px){
+  .aih-grid{display:flex;flex-direction:column}
+  .aih-col{display:contents}
+  .aih-request-card{order:1}
+  .aih-export-card{order:2}
+  .aih-inbox-card{order:3}
+}
 
 /* ── Export summary ── */
 .aih-sum-line{display:flex;gap:10px;align-items:baseline;padding:5px 0;font-size:13px}

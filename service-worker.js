@@ -1,9 +1,10 @@
 // BUMP THIS ON EVERY RELEASE THAT CHANGES ANY FILE IN ASSETS.
 // The fetch handler is cache-first, so an installed PWA keeps serving the old bundle until the
 // cache NAME changes — a deploy with the same name reaches nobody who already has the app on
-// their home screen. v239: Journal records use deterministic legacy migration, per-record merge
-// sync, tombstones, and authoritative id-keyed restore without boot-time timestamp writes.
-const CACHE_NAME = 'daily-v239';
+// their home screen. v241: Notes becomes Journal — a day-grouped timeline with Open Loops
+// pinned above it, one full-screen editor replacing the modal/fullscreen pair, desktop
+// master/detail, search, jump-to-date and a 30-day Trash.
+const CACHE_NAME = 'daily-v241';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
@@ -17,6 +18,7 @@ const ASSETS = [
   './css/nutrition-modals.css',
   './css/budget-home.css',
   './css/kitchen-extras.css',
+  './css/journal.css',
   './js/app.js',
   './icon-192.png',
   './icon-512.png',
