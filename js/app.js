@@ -2171,13 +2171,18 @@ window.addEventListener('resize',function(){ if(typeof S!=='undefined'&&S.view) 
     // to redistribute them. Cheap and self-guarding — it no-ops unless the mode actually
     // changed — and it works whether or not Budget is the visible tab.
     if(typeof budApplyLayout==='function') budApplyLayout();
-    // The peer overlays are inset by the sidebar's width, but only at the moment they OPEN —
-    // so one opened on desktop and then narrowed past 1024px kept a 260px inset it no longer
-    // has room for, pushing its whole layout off the right edge. Re-apply the inset to
-    // whichever peer is currently showing; hidden ones are left alone.
-    if(typeof aiSyncOverlayInset==='function') aiSyncOverlayInset();
   }
   window.addEventListener('resize',onGeometryChange);
+  // The peer overlays are inset by the sidebar's width, but only at the moment they OPEN — so
+  // one opened on desktop and then narrowed past 1024px kept a 260px inset it no longer has
+  // room for, pushing its whole layout off the right edge.
+  // Deliberately its OWN listener rather than a line inside onGeometryChange: that one
+  // early-returns unless the viewport KIND changed, which makes the fix depend on when the
+  // resize event happens to arrive relative to the metrics updating. This is three idempotent
+  // style writes, cheap enough to just run every tick and correct regardless of ordering.
+  window.addEventListener('resize',function(){
+    if(typeof aiSyncOverlayInset==='function') aiSyncOverlayInset();
+  });
   // orientationchange can fire before the new viewport metrics settle on iOS, so the resize
   // that follows it is what actually does the work; this is a belt-and-braces second chance
   // for browsers that fire one without the other.
@@ -6462,6 +6467,484 @@ function aiHubRefreshPreview(){
   if(el) el.innerHTML=aiHubSummaryHtml();
 }
 
+
+// ── Daily + AI: the AI Inbox (write-back) ────────────────────────
+// The return leg of the bridge. An assistant emits a small, closed envelope of PROPOSED
+// actions; Daily parses it, validates every one, shows a plain-language preview with a
+// checkbox per action, and writes nothing at all until the user presses Apply.
+// Three rules shape the whole thing:
+//   1. Imported text is untrusted DATA. It is escaped everywhere it reaches the DOM, and it
+//      can never name a function, a storage key or a URL — only the four action types below.
+//   2. Every write goes through the SAME canonical path the equivalent manual action uses
+//      (txnCreateRecord, BUD_CAT_SAVE, kitParseImport + kitSaveRecipes, kitShopSaveManual),
+//      so nothing here is a second writer that could drift or skip sync.
+//   3. Validation is all-or-nothing per action and happens BEFORE any write, so a bad action
+//      at position 7 cannot leave actions 1–6 half-applied.
+// Deliberately out of scope for v1, and not merely unimplemented: deletes, account-balance
+// changes, workout logging, backup restore, arbitrary localStorage writes, arbitrary function
+// calls, executable code, HTML handlers and network requests.
+const AI_ACT_SCHEMA  = 'daily-actions';
+const AI_ACT_VERSION = 1;
+const AI_ACT_MAX     = 50;       // actions per paste
+const AI_ACT_MAXSTR  = 2000;     // any single supplied string
+const AI_ACT_MAXTEXT = 500000;   // the whole paste
+const AI_ACT_TYPES   = ['add_expense','add_subscription','add_recipe','add_shopping_item'];
+const AI_ACT_LABELS  = {add_expense:'Expense', add_subscription:'Subscription',
+                        add_recipe:'Recipe',  add_shopping_item:'Shopping item'};
+
+// ── Small shared validators ──
+// Returns the trimmed string, or null when absent. Throws nothing: length violations come back
+// as a sentinel the caller turns into a field-specific message.
+function aiActStr(v){ return v==null?'':String(v).trim(); }
+function aiActTooLong(v){ return String(v==null?'':v).length>AI_ACT_MAXSTR; }
+// A real calendar date, not just the right shape — "2026-02-31" matches the regex but is not
+// a day that exists, and silently rolling it into March would misfile the expense.
+function aiActValidDate(s){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y,m,d]=s.split('-').map(Number);
+  const dt=new Date(y,m-1,d);
+  return dt.getFullYear()===y && dt.getMonth()===m-1 && dt.getDate()===d;
+}
+function aiActMoney(v){
+  if(v===''||v==null) return NaN;
+  const n=parseFloat(String(v).replace(/[$,\s]/g,''));
+  return isNaN(n)?NaN:n;
+}
+function aiActFmtDate(s){
+  try{ return localMidnight(s).toLocaleDateString('en-AU',{day:'numeric',month:'short'}); }
+  catch(e){ return s; }
+}
+
+// Resolve a reference to a live record: stable id first, then an EXACT case-insensitive name
+// match — and only when that name matches exactly one record. An ambiguous name is an error,
+// never a guess, because guessing files someone's money against the wrong category.
+function aiResolveRef(list, id, name, nameOf){
+  const wantId=aiActStr(id), wantName=aiActStr(name);
+  if(wantId){
+    const byId=list.filter(x=>x&&String(x.id)===wantId);
+    if(byId.length===1) return {ok:true, rec:byId[0]};
+    return {ok:false, reason:'no record with id "'+wantId+'"'};
+  }
+  if(wantName){
+    const lc=wantName.toLowerCase();
+    const hits=list.filter(x=>x&&String(nameOf(x)||'').trim().toLowerCase()===lc);
+    if(hits.length===1) return {ok:true, rec:hits[0]};
+    if(hits.length===0) return {ok:false, reason:'nothing named "'+wantName+'"'};
+    return {ok:false, reason:'"'+wantName+'" matches '+hits.length+' records — use the id instead'};
+  }
+  return {ok:false, reason:'none given'};
+}
+// Payment accounts are optional everywhere. Supplied-but-unresolvable is still an error: a
+// silently dropped attribution is worse than a rejected action, because the record would look
+// complete while being wrong.
+function aiResolveAccount(data){
+  const id=aiActStr(data.paymentAccountId), name=aiActStr(data.paymentAccountName||data.paymentAccount);
+  if(!id&&!name) return {ok:true, rec:null};
+  const r=aiResolveRef(loadAccounts(), id, name, a=>a.name);
+  if(!r.ok) return {ok:false, reason:'payment account: '+r.reason};
+  return r;
+}
+
+// ── parse ────────────────────────────────────────────────────────
+// Rejects the WHOLE envelope on any structural problem. Returns {actions, source} or {error}.
+function parseDailyActions(text){
+  const raw=String(text||'').trim();
+  if(!raw) return {error:'Nothing pasted yet.'};
+  if(raw.length>AI_ACT_MAXTEXT) return {error:'That paste is too large ('+raw.length.toLocaleString()+' characters). The limit is '+AI_ACT_MAXTEXT.toLocaleString()+'.'};
+  // Tolerate a ```json fence, since that is how chat tools present a code block.
+  const unfenced=raw.replace(/^```(?:json)?\s*/i,'').replace(/```$/,'').trim();
+  let data;
+  try{ data=JSON.parse(unfenced); }
+  catch(e){ return {error:"That isn't valid JSON. Copy the whole code block, including the outer { and }."}; }
+  if(!data||typeof data!=='object'||Array.isArray(data)) return {error:'The top level must be a JSON object with "schema", "version" and "actions".'};
+  if(data.schema!==AI_ACT_SCHEMA) return {error:'Wrong "schema" — expected "'+AI_ACT_SCHEMA+'", got '+(data.schema==null?'nothing':'"'+String(data.schema).slice(0,40)+'"')+'.'};
+  if(data.version!==AI_ACT_VERSION) return {error:'Unsupported "version" — this build of Daily accepts version '+AI_ACT_VERSION+'.'};
+  if(!Array.isArray(data.actions)) return {error:'"actions" must be an array.'};
+  if(!data.actions.length) return {error:'"actions" is empty — nothing to import.'};
+  if(data.actions.length>AI_ACT_MAX) return {error:'Too many actions ('+data.actions.length+'). The limit is '+AI_ACT_MAX+' per paste.'};
+  // `source` is descriptive only and is never branched on. Any short string is fine.
+  let source=aiActStr(data.source).slice(0,40);
+  return {actions:data.actions, source};
+}
+
+// ── validate one action ──────────────────────────────────────────
+// Returns {ok:true, type, id, summary, apply} or {ok:false, error}. `apply` is a closure that
+// performs the write; it is built here but only ever CALLED from applyDailyActions.
+function validateDailyAction(action){
+  if(!action||typeof action!=='object'||Array.isArray(action)) return {ok:false, error:'Each action must be an object.'};
+  const id=aiActStr(action.id);
+  if(!id) return {ok:false, error:'Missing "id" — every action needs a stable, unique id.'};
+  if(id.length>200) return {ok:false, error:'"id" is too long.'};
+  const type=aiActStr(action.type);
+  if(!type) return {ok:false, error:'Missing "type".'};
+  if(AI_ACT_TYPES.indexOf(type)<0) return {ok:false, id, error:'Unknown action type "'+type.slice(0,60)+'". This version supports: '+AI_ACT_TYPES.join(', ')+'.'};
+  const data=action.data;
+  if(!data||typeof data!=='object'||Array.isArray(data)) return {ok:false, id, type, error:'"data" must be an object.'};
+  const fn={add_expense:aiValExpense, add_subscription:aiValSubscription,
+            add_recipe:aiValRecipe, add_shopping_item:aiValShoppingItem}[type];
+  const res=fn(data, id);
+  res.id=id; res.type=type;
+  return res;
+}
+
+function aiValExpense(d,id){
+  const amt=aiActMoney(d.amount);
+  if(isNaN(amt)) return {ok:false, error:'Expense needs a numeric "amount".'};
+  if(amt<=0) return {ok:false, error:'Expense "amount" must be greater than zero (got '+amt+').'};
+  const date=aiActStr(d.date);
+  if(!date) return {ok:false, error:'Expense needs a "date".'};
+  if(!aiActValidDate(date)) return {ok:false, error:'"'+date.slice(0,20)+'" is not a real date — use YYYY-MM-DD.'};
+  // Transactions are variable-category spending; archived categories are not live targets.
+  const cats=activeCats(loadVarCats());
+  const cat=aiResolveRef(cats, d.categoryId, d.categoryName||d.category, c=>catLabel(c));
+  if(!cat.ok) return {ok:false, error:'Category — '+cat.reason+'. Live categories: '+cats.map(c=>catLabel(c)).join(', ')+'.'};
+  const merchant=aiActStr(d.merchant), note=aiActStr(d.note);
+  if(aiActTooLong(merchant)) return {ok:false, error:'"merchant" is too long.'};
+  if(aiActTooLong(note)) return {ok:false, error:'"note" is too long.'};
+  const acct=aiResolveAccount(d);
+  if(!acct.ok) return {ok:false, error:acct.reason+'.'};
+  const summary='Add '+fmtMoneyExact(amt)+(merchant?' '+merchant:'')+' expense to '+catLabel(cat.rec)+
+    ' on '+aiActFmtDate(date)+(acct.rec?', paid with '+acct.rec.name:'')+'.';
+  return {ok:true, summary,
+    dupKey:txn=>txn&&txn.aiActionId===id,
+    collection:()=>txnData,
+    apply:(meta)=>{
+      txnCreateRecord({date, catId:cat.rec.id, amount:amt, merchant, note,
+        acctId:acct.rec?acct.rec.id:''}, meta);
+      saveTxns();
+      return {kind:'transaction'};
+    }};
+}
+
+function aiValSubscription(d,id){
+  const name=aiActStr(d.name);
+  if(!name) return {ok:false, error:'Subscription needs a "name".'};
+  if(aiActTooLong(name)) return {ok:false, error:'"name" is too long.'};
+  const amt=aiActMoney(d.amount);
+  if(isNaN(amt)) return {ok:false, error:'Subscription needs a numeric "amount" (what you are actually billed).'};
+  if(amt<=0) return {ok:false, error:'Subscription "amount" must be greater than zero (got '+amt+').'};
+  const cycle=aiActStr(d.cycle).toLowerCase();
+  if(!cycle) return {ok:false, error:'Subscription needs a "cycle".'};
+  if(!CAT_CYCLES.some(c=>c.id===cycle)) return {ok:false, error:'Unknown "cycle" — use '+CAT_CYCLES.map(c=>c.id).join(', ')+'.'};
+  // A weekly fixed cost is not a subscription: it would never appear in the subscription list
+  // or the upcoming-charges card, which is the whole reason to add one this way.
+  if(cycle==='weekly') return {ok:false, error:'A weekly cycle is an ordinary fixed cost, not a subscription — use monthly or yearly.'};
+  const status=aiActStr(d.status).toLowerCase()||'active';
+  if(!CAT_STATUSES.some(s=>s.id===status)) return {ok:false, error:'Unknown "status" — use '+CAT_STATUSES.map(s=>s.id).join(', ')+'.'};
+  const due=aiActStr(d.nextBillingDate||d.dueDate);
+  if(due&&!aiActValidDate(due)) return {ok:false, error:'"'+due.slice(0,20)+'" is not a real date — use YYYY-MM-DD.'};
+  const site=aiActStr(d.website||d.site);
+  if(aiActTooLong(site)) return {ok:false, error:'"website" is too long.'};
+  const acct=aiResolveAccount(d);
+  if(!acct.ok) return {ok:false, error:acct.reason+'.'};
+  const cyc=CAT_CYCLES.find(c=>c.id===cycle);
+  const summary='Add '+name+' at '+fmtMoneyExact(amt)+cyc.suffix+
+    (status!=='active'?' ('+status+')':'')+
+    (due?', next due '+aiActFmtDate(due):'')+
+    (acct.rec?', paid with '+acct.rec.name:'')+'.';
+  return {ok:true, summary,
+    dupKey:c=>c&&c.aiActionId===id,
+    collection:()=>loadFixCats(),
+    apply:(meta)=>{
+      // The Budget Setup path exactly: build the item catAddItem would, derive `budget` from
+      // amount+cycle the way catUpdateField does, then save through BUD_CAT_SAVE.
+      const cats=BUD_CAT_LOAD.fix();
+      const item={id:genCatId('fix'), name, amount:amt, cycle,
+        budget:catWeeklyFromAmount(amt,cycle), status};
+      if(due)  item.dueDate=due;
+      if(site) item.site=site;
+      if(acct.rec) item.paymentAccountId=acct.rec.id;
+      if(meta&&meta.aiActionId){ item.aiActionId=meta.aiActionId; item.aiSource=meta.aiSource||''; }
+      cats.push(item);
+      BUD_CAT_SAVE.fix(cats);
+      if(typeof refreshCatBudgetUI==='function') refreshCatBudgetUI();
+      return {kind:'subscription'};
+    }};
+}
+
+function aiValRecipe(d,id){
+  // Reuse the strict importer rather than restating its rules: it already preserves unit:""
+  // for countable ingredients and passes kg/L straight through, and a second copy of those
+  // rules is exactly how that bug came back last time.
+  const res=kitParseImport(JSON.stringify(d));
+  if(res.error) return {ok:false, error:res.error};
+  if(!res.recipes||res.recipes.length!==1) return {ok:false, error:'Each add_recipe action must carry exactly one recipe in "data".'};
+  const r=res.recipes[0];
+  const summary='Add recipe "'+r.name+'" ('+r.category+', '+r.servings+' serving'+(r.servings===1?'':'s')+', '+
+    r.ingredients.length+' ingredient'+(r.ingredients.length===1?'':'s')+', '+r.steps.length+' step'+(r.steps.length===1?'':'s')+').';
+  return {ok:true, summary,
+    dupKey:x=>x&&x.aiActionId===id,
+    collection:()=>kitRecipes,
+    apply:(meta)=>{
+      // Same shape kitDoImport builds, so an imported recipe is an ordinary recipe from here on.
+      const rec=Object.assign({id:kitUUID(),favourite:false,lastCooked:null,createdAt:Date.now()}, r);
+      if(meta&&meta.aiActionId){ rec.aiActionId=meta.aiActionId; rec.aiSource=meta.aiSource||''; }
+      kitRecipes.push(rec);
+      kitSaveRecipes();
+      return {kind:'recipe'};
+    }};
+}
+
+function aiValShoppingItem(d,id){
+  const name=aiActStr(d.name||d.item);
+  if(!name) return {ok:false, error:'Shopping item needs a "name".'};
+  if(aiActTooLong(name)) return {ok:false, error:'"name" is too long.'};
+  // The shopping model stores {id, name, category} and nothing else. Rather than accept a
+  // quantity and quietly bin it, say so — an import that claims more than it kept is worse
+  // than one that is honest about the gap.
+  const dropped=['amount','unit','note','quantity'].filter(k=>d[k]!=null&&String(d[k]).trim()!=='');
+  let category=aiActStr(d.category);
+  if(category&&KITSHOP_CAT_ORDER.indexOf(category)<0) category='';
+  category=category||'Other';
+  // The existing duplicate rule: manual items are keyed by normalised name, so a second entry
+  // of the same name collapses into the same row rather than appearing twice.
+  const key=kitShopItemKey(name,'');
+  const clash=(kitShopManual||[]).some(m=>m&&kitShopItemKey(m.name,'')===key);
+  const summary='Add "'+name+'" to the shopping list under '+category+'.'+
+    (dropped.length?' ('+dropped.join(' and ')+' will not be kept — the list stores name and category only.)':'');
+  if(clash) return {ok:true, summary, already:'"'+name+'" is already on your shopping list.',
+    dupKey:()=>false, collection:()=>[], apply:()=>({kind:'shopping item'})};
+  return {ok:true, summary,
+    dupKey:m=>m&&m.aiActionId===id,
+    collection:()=>kitShopManual,
+    apply:(meta)=>{
+      const item={id:kitUUID(), name, category};
+      if(meta&&meta.aiActionId){ item.aiActionId=meta.aiActionId; item.aiSource=meta.aiSource||''; }
+      kitShopManual.push(item);
+      kitShopSaveManual();
+      return {kind:'shopping item'};
+    }};
+}
+
+// ── preview ──────────────────────────────────────────────────────
+// Validates every action and works out which are new, which were already applied (by
+// aiActionId found in the destination collection — no separate idempotency store, so the
+// record travels through the existing sync) and which are broken. Writes nothing.
+function previewDailyActions(parsed){
+  if(!parsed||parsed.error) return {error:(parsed&&parsed.error)||'Nothing to preview.'};
+  const seen={}, rows=[];
+  parsed.actions.forEach((a,i)=>{
+    const res=validateDailyAction(a);
+    const row={index:i, id:res.id||'', type:res.type||'', label:AI_ACT_LABELS[res.type]||'Action'};
+    if(!res.ok){ row.state='error'; row.error=res.error; rows.push(row); return; }
+    // Duplicate ids WITHIN one paste are rejected: they would defeat the idempotency check,
+    // since the second would look "already applied" the moment the first landed.
+    if(seen[res.id]){ row.state='error'; row.error='Duplicate action id "'+res.id+'" (also used by action '+(seen[res.id])+').'; rows.push(row); return; }
+    seen[res.id]=i+1;
+    row.summary=res.summary;
+    row.apply=res.apply;
+    if(res.already){ row.state='already'; row.note=res.already; rows.push(row); return; }
+    const existing=(res.collection()||[]).some(res.dupKey);
+    row.state=existing?'already':'new';
+    if(existing) row.note='Already applied earlier — it will not be added twice.';
+    rows.push(row);
+  });
+  return {rows, source:parsed.source||'',
+    counts:{ new:rows.filter(r=>r.state==='new').length,
+             already:rows.filter(r=>r.state==='already').length,
+             error:rows.filter(r=>r.state==='error').length }};
+}
+
+// ── apply ────────────────────────────────────────────────────────
+// Re-validates immediately before writing (the store can have changed since the preview was
+// built) and only then writes. Returns {applied, skipped, undo}.
+function applyDailyActions(rows, source){
+  const applied=[], skipped=[];
+  (rows||[]).forEach(row=>{
+    if(row.state!=='new'||typeof row.apply!=='function'){ skipped.push(row); return; }
+    try{
+      const out=row.apply({aiActionId:row.id, aiSource:source||''});
+      applied.push({id:row.id, type:row.type, kind:out&&out.kind, summary:row.summary});
+    }catch(e){
+      row.state='error'; row.error='Could not apply: '+(e&&e.message||e);
+      skipped.push(row);
+    }
+  });
+  return {applied, skipped};
+}
+
+// Undo removes ONLY the records this apply created, matched by their exact aiActionId, so it
+// can never touch a record made any other way. It is in-session and one-shot: once the user
+// leaves or applies again the offer is gone, because by then "the most recent apply" is no
+// longer an unambiguous thing to reverse.
+function aiUndoLastApply(){
+  const last=aiInboxState.lastApply;
+  if(!last||!last.ids.length) return {removed:0};
+  const ids=last.ids;
+  let removed=0;
+  const before=txnData.length;
+  txnData=txnData.filter(t=>!(t&&t.aiActionId&&ids.indexOf(t.aiActionId)>=0));
+  if(txnData.length!==before){ removed+=before-txnData.length; saveTxns(); txnAfterChange(); }
+  const fixCats=BUD_CAT_LOAD.fix();
+  const keptCats=fixCats.filter(c=>!(c&&c.aiActionId&&ids.indexOf(c.aiActionId)>=0));
+  if(keptCats.length!==fixCats.length){ removed+=fixCats.length-keptCats.length; BUD_CAT_SAVE.fix(keptCats);
+    if(typeof refreshCatBudgetUI==='function') refreshCatBudgetUI(); }
+  const beforeR=kitRecipes.length;
+  kitRecipes=kitRecipes.filter(r=>!(r&&r.aiActionId&&ids.indexOf(r.aiActionId)>=0));
+  if(kitRecipes.length!==beforeR){ removed+=beforeR-kitRecipes.length; kitSaveRecipes(); }
+  const goneShop=(kitShopManual||[]).filter(m=>m&&m.aiActionId&&ids.indexOf(m.aiActionId)>=0);
+  if(goneShop.length){
+    // Mirror kitShopDeleteManual: the checked-state entry is keyed by name and would otherwise
+    // linger and re-tick a future item of the same name.
+    goneShop.forEach(m=>{ delete kitShopChecked[kitShopItemKey(m.name,'')]; });
+    kitShopManual=kitShopManual.filter(m=>!(m&&m.aiActionId&&ids.indexOf(m.aiActionId)>=0));
+    removed+=goneShop.length;
+    kitShopSaveManual(); kitShopSaveChecked();
+  }
+  aiInboxState.lastApply=null;
+  aiInboxRefreshViews();
+  return {removed};
+}
+
+function aiInboxRefreshViews(){
+  try{ if(typeof txnAfterChange==='function') txnAfterChange(); }catch(e){}
+  try{ if(typeof kitRender==='function' && S.view==='kitchen') kitRender(); }catch(e){}
+  try{ if(typeof kitShopRender==='function' && S.view==='kitchen') kitShopRender(); }catch(e){}
+  try{ if(typeof renderBudgetTab==='function' && S.view==='budget') renderBudgetTab(); }catch(e){}
+  try{ if(typeof renderHome==='function' && S.view==='home') renderHome(); }catch(e){}
+}
+
+// ── Inbox UI ─────────────────────────────────────────────────────
+// In-memory for the session, same reasoning as the export builder's state: nothing here is
+// worth a new synced store, and half-pasted JSON least of all.
+const aiInboxState={ text:'', preview:null, error:'', selected:{}, result:null, lastApply:null };
+
+function aiInboxSetText(v){ aiInboxState.text=v; }
+function aiInboxCheck(){
+  const parsed=parseDailyActions(aiInboxState.text);
+  if(parsed.error){ aiInboxState.error=parsed.error; aiInboxState.preview=null; aiInboxState.result=null; renderAIHub(); return; }
+  const pv=previewDailyActions(parsed);
+  aiInboxState.error=pv.error||'';
+  aiInboxState.preview=pv.error?null:pv;
+  aiInboxState.result=null;
+  aiInboxState.selected={};
+  if(aiInboxState.preview) aiInboxState.preview.rows.forEach(r=>{ if(r.state==='new') aiInboxState.selected[r.index]=true; });
+  renderAIHub();
+}
+function aiInboxToggle(i){
+  aiInboxState.selected[i]=!aiInboxState.selected[i];
+  renderAIHub();
+}
+function aiInboxApply(){
+  const pv=aiInboxState.preview; if(!pv) return;
+  const chosen=pv.rows.filter(r=>r.state==='new'&&aiInboxState.selected[r.index]);
+  if(!chosen.length) return;
+  const res=applyDailyActions(chosen, pv.source);
+  aiInboxState.result={applied:res.applied.length, skipped:res.skipped.length,
+    total:pv.rows.length, items:res.applied};
+  if(res.applied.length){
+    aiInboxState.lastApply={ids:res.applied.map(a=>a.id), at:Date.now()};
+    aiInboxState.text='';            // only cleared once something actually landed
+    aiInboxState.preview=null;
+    aiInboxState.selected={};
+    aiInboxRefreshViews();
+    if(typeof showToast==='function') showToast('Applied '+res.applied.length+' action'+(res.applied.length===1?'':'s'));
+  }
+  renderAIHub();
+}
+function aiInboxUndo(){
+  const r=aiUndoLastApply();
+  aiInboxState.result=null;
+  if(typeof showToast==='function') showToast(r.removed?('Removed '+r.removed+' record'+(r.removed===1?'':'s')):'Nothing to undo');
+  renderAIHub();
+}
+function aiInboxCopyErrors(){
+  const pv=aiInboxState.preview; if(!pv) return;
+  const bad=pv.rows.filter(r=>r.state==='error');
+  const text='Daily could not import these actions:\n\n'+
+    bad.map(r=>'- action '+(r.index+1)+(r.id?' (id '+r.id+')':'')+(r.type?' ['+r.type+']':'')+': '+r.error).join('\n')+
+    '\n\nPlease fix these and send the corrected daily-actions JSON.';
+  const done=()=>{ if(typeof showToast==='function') showToast('Error report copied'); };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done));
+  } else fallbackCopy(text,done);
+}
+
+const AI_INBOX_SCHEMA_HINT=
+  '{\n  "schema": "daily-actions",\n  "version": 1,\n  "source": "chatgpt",\n  "actions": [\n'+
+  '    { "id": "unique-1", "type": "add_expense",\n      "data": { "amount": 18.5, "date": "2026-08-27",\n'+
+  '                "categoryName": "Groceries", "merchant": "Woolworths" } }\n  ]\n}';
+
+function aiInboxCopySchema(){
+  const cats=activeCats(loadVarCats()).map(c=>catLabel(c)).join(', ');
+  const text='Reply with ONLY a JSON code block in this exact envelope, nothing else:\n\n'+
+    AI_INBOX_SCHEMA_HINT+'\n\n'+
+    'Supported "type" values: '+AI_ACT_TYPES.join(', ')+'. Every action needs a unique "id".\n'+
+    'Max '+AI_ACT_MAX+' actions per reply.\n'+
+    'add_expense data: amount (>0), date (YYYY-MM-DD), categoryName or categoryId, optional merchant, note, paymentAccountName.\n'+
+    'add_subscription data: name, amount (>0), cycle ("monthly" or "yearly"), optional status (active/trial/paused/cancelled), nextBillingDate, website, paymentAccountName.\n'+
+    'add_recipe data: one recipe object — name, category (breakfast/lunch/dinner/dessert), servings, ingredients [{name, amount, unit}], steps [].\n'+
+    '  Use unit "" for countable things like "4 salmon fillets".\n'+
+    'add_shopping_item data: name, optional category ('+KITSHOP_CAT_ORDER.join('/')+'). Quantities are not stored.\n\n'+
+    'My live expense categories are: '+(cats||'(none set up yet)')+'.';
+  const done=()=>{ if(typeof showToast==='function') showToast('Instructions copied — paste them to your AI'); };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done));
+  } else fallbackCopy(text,done);
+}
+
+// Every string below that came from the paste goes through esc(). The row identity travels as
+// a numeric index in the handler, never as interpolated text, so an id containing quotes or
+// markup cannot reach an attribute.
+function aiInboxHtml(){
+  const esc=_catEscHtml;
+  const st=aiInboxState;
+  let h='';
+  h+=cardHeader('receipt','AI Inbox');
+  h+='<div class="aih-hint">Paste what your AI sends back. Daily checks every action and shows you exactly what it would add — nothing is written until you press Apply.</div>';
+  h+='<button class="aih-link" onclick="aiInboxCopySchema()">Copy the format to give your AI →</button>';
+  h+='<textarea id="aihub-inbox-text" class="aih-textarea aih-mono" rows="5" placeholder=\'{"schema":"daily-actions","version":1,"actions":[…]}\' oninput="aiInboxSetText(this.value)">'+esc(st.text)+'</textarea>';
+  h+='<button class="aih-btn aih-btn-wide" onclick="aiInboxCheck()">Check actions</button>';
+
+  if(st.error) h+='<div class="aih-err">'+esc(st.error)+'</div>';
+
+  if(st.preview){
+    const pv=st.preview, c=pv.counts;
+    const bits=[];
+    if(c.new) bits.push(c.new+' ready');
+    if(c.already) bits.push(c.already+' already applied');
+    if(c.error) bits.push(c.error+' with errors');
+    h+='<div class="aih-inbox-sum">'+esc(bits.join(' · ')||'Nothing to import')+
+       (pv.source?' <span class="aih-src">from '+esc(pv.source)+'</span>':'')+'</div>';
+    h+='<div class="aih-rows">';
+    pv.rows.forEach(r=>{
+      const on=!!st.selected[r.index];
+      if(r.state==='new'){
+        h+='<button class="aih-row'+(on?' on':'')+'" role="checkbox" aria-checked="'+(on?'true':'false')+'" onclick="aiInboxToggle('+r.index+')">'+
+             '<span class="aih-box" aria-hidden="true">'+(on?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>':'')+'</span>'+
+             '<span class="aih-row-t"><span class="aih-row-k">'+esc(r.label)+'</span>'+
+             '<span class="aih-row-s">'+esc(r.summary)+'</span></span></button>';
+      } else if(r.state==='already'){
+        h+='<div class="aih-row aih-row-skip"><span class="aih-row-t">'+
+             '<span class="aih-row-k">'+esc(r.label)+' · already applied</span>'+
+             '<span class="aih-row-s">'+esc(r.summary||'')+'</span>'+
+             '<span class="aih-row-n">'+esc(r.note||'')+'</span></span></div>';
+      } else {
+        h+='<div class="aih-row aih-row-bad"><span class="aih-row-t">'+
+             '<span class="aih-row-k">Action '+(r.index+1)+(r.type?' · '+esc(r.label):'')+' — cannot import</span>'+
+             '<span class="aih-row-s">'+esc(r.error||'')+'</span></span></div>';
+      }
+    });
+    h+='</div>';
+    const sel=pv.rows.filter(r=>r.state==='new'&&st.selected[r.index]).length;
+    if(c.new){
+      h+='<div class="aih-note">Undo is offered straight after applying and removes only the records that apply created.</div>';
+      h+='<button class="aih-btn aih-btn-primary aih-btn-wide"'+(sel?'':' disabled')+' onclick="aiInboxApply()">'+
+         (sel?'Apply '+sel+' action'+(sel===1?'':'s'):'Nothing selected')+'</button>';
+    }
+    if(c.error) h+='<button class="aih-btn aih-btn-wide" onclick="aiInboxCopyErrors()">Copy error report</button>';
+  }
+
+  if(st.result){
+    const r=st.result;
+    h+='<div class="aih-result">Applied '+r.applied+' of '+r.total+' action'+(r.total===1?'':'s')+
+       (r.skipped?' · '+r.skipped+' skipped':'')+'.</div>';
+    if(st.lastApply&&st.lastApply.ids.length)
+      h+='<button class="aih-btn aih-btn-wide" onclick="aiInboxUndo()">Undo this import</button>';
+  }
+  return h;
+}
+
 function renderAIHub(){
   const wrap=document.getElementById('aihub-body'); if(!wrap) return;
   const esc=_catEscHtml;
@@ -6529,7 +7012,7 @@ function renderAIHub(){
         '</div>'+
       '</div>'+
       '<div class="aih-col aih-out">'+
-        '<div class="card aih-card aih-sticky">'+
+        '<div class="card aih-card">'+
           cardHeader('wallet','Export')+
           '<div id="aihub-summary">'+aiHubSummaryHtml()+'</div>'+
           '<div class="aih-actions">'+
@@ -6541,6 +7024,7 @@ function renderAIHub(){
           '</div>'+
           '<div class="aih-foot">Nothing here is sent anywhere. Daily has no AI connection — the export goes to your clipboard or your downloads, and you paste it wherever you want.</div>'+
         '</div>'+
+        '<div class="card aih-card">'+aiInboxHtml()+'</div>'+
       '</div>'+
     '</div>';
 }
@@ -8322,6 +8806,18 @@ function txnRenderAccounts(selectedId){
   sel.innerHTML='<option value="">Not recorded</option>'+
     list.map(a=>'<option value="'+_catEsc(a.id)+'"'+(a.id===want?' selected':'')+'>'+_catEscHtml(a.name||'Account')+'</option>').join('');
 }
+// The ONE place a transaction record is created. The modal below and the AI Inbox both go
+// through it, so there is a single writer and a single record shape — a second one would drift
+// from this the first time a field is added. Callers own saveTxns()/txnAfterChange().
+// `meta` carries the optional {aiActionId, aiSource} provenance stamp; ordinary manual entry
+// passes nothing and the record is byte-identical to what it always was.
+function txnCreateRecord(f, meta){
+  const rec={id:genTxnId(), date:f.date, catId:f.catId, amount:f.amount,
+    merchant:f.merchant||'', note:f.note||'', acctId:f.acctId||'', createdAt:Date.now()};
+  if(meta&&meta.aiActionId){ rec.aiActionId=meta.aiActionId; rec.aiSource=meta.aiSource||''; }
+  txnData.push(rec);
+  return rec;
+}
 function txnSave(){
   const amtRaw=(document.getElementById('txn-amount').value||'').replace(/[^0-9.\-]/g,'');
   const amt=parseFloat(amtRaw);
@@ -8336,7 +8832,7 @@ function txnSave(){
     const t=txnData.find(x=>x&&x.id===_txnEditId);
     if(t){ t.amount=amt; t.catId=_txnCatId; t.date=date; t.merchant=merchant; t.note=note; t.acctId=acctId; }
   } else {
-    txnData.push({id:genTxnId(), date, catId:_txnCatId, amount:amt, merchant, note, acctId, createdAt:Date.now()});
+    txnCreateRecord({date, catId:_txnCatId, amount:amt, merchant, note, acctId});
   }
   saveTxns();
   closeTxnModal();
