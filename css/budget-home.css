@@ -359,6 +359,7 @@
   .budget-setup-section{padding:20px}
   .budget-setup-primary-fields{grid-template-columns:minmax(180px,1fr) minmax(130px,.55fr)}
   .budget-setup-primary-fields.has-cycle{grid-template-columns:minmax(180px,1fr) minmax(130px,.55fr) minmax(130px,.55fr)}
+  .budget-setup-primary-fields.has-charge-type{grid-template-columns:minmax(180px,1fr) repeat(3,minmax(120px,.55fr))}
 }
 .summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
 .sum-card{border-radius:14px;padding:12px 8px;text-align:center;border:1px solid rgba(0,0,0,0.07);background:#f5f5f5}

@@ -5061,9 +5061,10 @@ function exportBudgetCSV(){
   // else in the app — but this export was still reading it, so the subscription columns were
   // reporting a frozen pre-migration snapshot that no longer matched anything the Budget tab
   // showed, and stayed wrong for anyone who has added or repriced a subscription since.
-  // Anything on a non-weekly cycle is by definition a recurring charge; weekly fixed costs
-  // (rent, etc.) are ordinary fixed expenses and are already counted in Total Fixed.
-  const recurCats=fixCats.filter(c=>catCycle(c)!=='weekly');
+  // Charge identity is independent of cadence: a gym can be a weekly subscription and a
+  // fine repayment can be a weekly payment plan. Other weekly commitments are already
+  // counted in Total Fixed and do not belong in the recurring-charge cross-reference.
+  const recurCats=fixCats.filter(catIsRecurring);
   const subsWeekly=r2(recurCats.reduce((s,c)=>s+(parseFloat(catWeeklyFromAmount(catAmount(c),catCycle(c)))||0),0));
   const subsMonthly=r2(subsWeekly*52/12);
 
@@ -5256,7 +5257,7 @@ function exportBudgetCSV(){
   // this no longer reads daily_subscriptions). "Charged" is what the user actually typed in
   // their own billing cycle; the monthly/annual columns are derived from it.
   rows.push(''); rows.push('RECURRING CHARGES');
-  rows.push(row(['Name','Billing Cycle','Charged per Cycle','Weekly Equivalent','Monthly Cost','Annual Cost','Website']));
+  rows.push(row(['Name','Type','Billing Cycle','Charged per Cycle','Weekly Equivalent','Monthly Cost','Annual Cost','Website']));
   let subsMoTotal=0,subsYrTotal=0;
   // Monthly and annual are derived from the CHARGED amount and its cycle, not from the rounded
   // weekly equivalent — going via the weekly figure compounds its 2dp rounding, which made a
@@ -5270,10 +5271,10 @@ function exportBudgetCSV(){
     const yr=r2(charged*perYear), mo=r2(yr/12);
     const wkEq=parseFloat(catWeeklyFromAmount(charged,cyc))||0;
     subsMoTotal+=mo; subsYrTotal+=yr;
-    rows.push(row([catLabel(c),cyc,charged,wkEq,mo,yr,c.site||'']));
+    rows.push(row([catLabel(c),catChargeTypeLabel(c),cyc,charged,wkEq,mo,yr,c.site||'']));
   });
-  if(!recurCats.length) rows.push(row(['No recurring charges set up','','','','','','']));
-  rows.push(row(['Totals','','','',r2(subsMoTotal),r2(subsYrTotal),'']));
+  if(!recurCats.length) rows.push(row(['No recurring charges set up','','','','','','','']));
+  rows.push(row(['Totals','','','','',r2(subsMoTotal),r2(subsYrTotal),'']));
 
   // ── SECTION 8 — OVERALL SUMMARY ──────────────────────────────────
   rows.push(''); rows.push('OVERALL SUMMARY');
@@ -5294,8 +5295,8 @@ function exportBudgetCSV(){
     ['Total Food Spent',totalFood],
     ['Total Pub Spent',totalPub],
     ['Total Personal Spent',totalPersonal],
-    ['Total Subscriptions Monthly',subsMonthly],
-    ['Total Subscriptions Annual',r2(subsMonthly*12)],
+    ['Total Recurring Charges Monthly',subsMonthly],
+    ['Total Recurring Charges Annual',r2(subsMonthly*12)],
     ['Current Savings Balance',savCurrent],
     ['Projected Annual Savings',projectedAnnualSavings],
     ['Average Weekly Leftover', leftoverWeeks.length?r2(totalLeftover/leftoverWeeks.length):''],
@@ -5541,7 +5542,7 @@ function aiResolveRange(kind, from, to){
 const AI_SCOPES=[
   {id:'budget',        label:'Budget',        hint:'Weekly income, spending, savings and targets'},
   {id:'transactions',  label:'Transactions',  hint:'Individual purchases with merchant and note'},
-  {id:'subscriptions', label:'Subscriptions', hint:'Recurring charges, status, due dates, prices'},
+  {id:'subscriptions', label:'Recurring charges', hint:'Subscriptions, bills and payment plans'},
   {id:'accounts',      label:'Accounts',      hint:'Balances, net worth and debt position', sensitive:true},
   {id:'workouts',      label:'Workouts',      hint:'Sessions, volume and per-exercise progression'},
   {id:'body',          label:'Body',          hint:'Weight log, goal and personal details', sensitive:true},
@@ -5728,11 +5729,11 @@ function aiTransactionsScope(range){
     });
 }
 
-// Live recurring Fixed categories ARE the subscription model. daily_subscriptions is retired
-// and is deliberately never read here.
+// Live scheduled Fixed categories are the subscription/bill/payment-plan model.
+// daily_subscriptions is retired and is deliberately never read here.
 function aiSubscriptionsScope(){
   const accts=loadAccounts();
-  const items=loadFixCats().filter(c=>catCycle(c)!=='weekly').map(c=>{
+  const items=loadFixCats().filter(catIsRecurring).map(c=>{
     const archived=catIsArchived(c), charging=catIsCharging(c);
     const due=catNextDue(c);
     const acct=c.paymentAccountId?accts.find(a=>a&&a.id===c.paymentAccountId):null;
@@ -5742,6 +5743,7 @@ function aiSubscriptionsScope(){
       archived:archived,
       amount:aiR2(catAmount(c)),                 // what is actually billed, in its own cycle
       cycle:catCycle(c),
+      chargeType:catChargeType(c),
       weeklyCommitment:aiR2(catBudget(c)),       // the prorated figure the budget reads
       countsTowardActiveCommitment: !archived && charging
     };
@@ -6131,9 +6133,9 @@ function renderDailyContextMarkdown(ctx){
       push('Active commitment: '+aiMoney(s.activeWeeklyCommitment)+'/week ('+aiMoney(s.activeMonthlyEquivalent)+
         '/month, '+aiMoney(s.activeAnnualEquivalent)+'/year) across '+s.activeCount+' charge'+(s.activeCount===1?'':'s')+'.');
       push('Paused, cancelled and archived entries are listed for history but excluded from that total.','');
-      push.apply(null,aiTable(['Name','Status','Billed','Cycle','Weekly','Counts?','Next due','In','Paid with','Site'],
+      push.apply(null,aiTable(['Name','Type','Status','Billed','Cycle','Weekly','Counts?','Next due','In','Paid with','Site'],
         s.items.map(x=>[
-          x.name+(x.archived?' (archived)':''), x.status, aiMoney(x.amount), x.cycle, aiMoney(x.weeklyCommitment),
+          x.name+(x.archived?' (archived)':''), catChargeTypeLabel(x.chargeType), x.status, aiMoney(x.amount), x.cycle, aiMoney(x.weeklyCommitment),
           x.countsTowardActiveCommitment?'yes':'no',
           x.nextBillingDate||'—',
           x.daysUntilDue==null?'—':(x.daysUntilDue<0?Math.abs(x.daysUntilDue)+'d overdue':x.daysUntilDue+'d'),
@@ -6455,7 +6457,7 @@ function aiHubCopy(){
   } else fallbackCopy(text,done);
 }
 
-const AI_COUNT_LABELS={weeks:'week',transactions:'transaction',subscriptions:'subscription',
+const AI_COUNT_LABELS={weeks:'week',transactions:'transaction',subscriptions:'scheduled charge',
   accounts:'account',sessions:'session',weighIns:'weigh-in',habits:'habit',recipes:'recipe',notes:'note'};
 function aiHubSummaryHtml(){
   const ctx=aiHubContext();
@@ -6667,9 +6669,6 @@ function aiValSubscription(d,id){
   const cycle=aiActStr(d.cycle).toLowerCase();
   if(!cycle) return {ok:false, error:'Subscription needs a "cycle".'};
   if(!CAT_CYCLES.some(c=>c.id===cycle)) return {ok:false, error:'Unknown "cycle" — use '+CAT_CYCLES.map(c=>c.id).join(', ')+'.'};
-  // A weekly fixed cost is not a subscription: it would never appear in the subscription list
-  // or the upcoming-charges card, which is the whole reason to add one this way.
-  if(cycle==='weekly') return {ok:false, error:'A weekly cycle is an ordinary fixed cost, not a subscription — use monthly or yearly.'};
   const status=aiActStr(d.status).toLowerCase()||'active';
   if(!CAT_STATUSES.some(s=>s.id===status)) return {ok:false, error:'Unknown "status" — use '+CAT_STATUSES.map(s=>s.id).join(', ')+'.'};
   const due=aiActStr(d.nextBillingDate||d.dueDate);
@@ -6690,7 +6689,7 @@ function aiValSubscription(d,id){
       // The Budget Setup path exactly: build the item catAddItem would, derive `budget` from
       // amount+cycle the way catUpdateField does, then save through BUD_CAT_SAVE.
       const cats=BUD_CAT_LOAD.fix();
-      const item={id:genCatId('fix'), name, amount:amt, cycle,
+      const item={id:genCatId('fix'), name, amount:amt, cycle, chargeType:'subscription',
         budget:catWeeklyFromAmount(amt,cycle), status};
       if(due)  item.dueDate=due;
       if(site) item.site=site;
@@ -7000,7 +6999,7 @@ function aiInboxCopySchema(){
     'Supported "type" values: '+AI_ACT_TYPES.join(', ')+'. Every action needs a unique "id".\n'+
     'Max '+AI_ACT_MAX+' actions per reply.\n'+
     'add_expense data: amount (>0), date (YYYY-MM-DD), categoryName or categoryId, optional merchant, note, paymentAccountName.\n'+
-    'add_subscription data: name, amount (>0), cycle ("monthly" or "yearly"), optional status (active/trial/paused/cancelled), nextBillingDate, website, paymentAccountName.\n'+
+    'add_subscription data: name, amount (>0), cycle ("weekly", "monthly" or "yearly"), optional status (active/trial/paused/cancelled), nextBillingDate, website, paymentAccountName.\n'+
     'add_recipe data: one recipe object — name, category (breakfast/lunch/dinner/dessert), servings, ingredients [{name, amount, unit}], steps [].\n'+
     '  Use unit "" for countable things like "4 salmon fillets".\n'+
     'add_shopping_item data: name, optional category ('+KITSHOP_CAT_ORDER.join('/')+'). Quantities are not stored.\n'+
@@ -7320,8 +7319,8 @@ function renderCatBudgetList(containerId, type, kind){
   const el=document.getElementById(containerId); if(!el) return;
   const all=BUD_CAT_LOAD[type]?BUD_CAT_LOAD[type]():[];
   let cats=activeCats(all);
-  if(type==='fix'&&kind==='weekly') cats=cats.filter(c=>catCycle(c)==='weekly');
-  if(type==='fix'&&kind==='recurring') cats=cats.filter(c=>catCycle(c)!=='weekly');
+  if(type==='fix'&&kind==='weekly') cats=cats.filter(c=>!catIsRecurring(c));
+  if(type==='fix'&&kind==='recurring') cats=cats.filter(catIsRecurring);
   // Only fixed expenses get a billing cycle: variable spend is per-week by definition, and
   // income is entered per pay against the week it lands in.
   const cycles=type==='fix';
@@ -7329,13 +7328,15 @@ function renderCatBudgetList(containerId, type, kind){
     const amt=cycles?catAmount(c):(c.budget??'');
     const cyc=catCycle(c);
     const weekly=catBudget(c);
-    const recurring=cycles&&cyc!=='weekly';
+    const chargeType=cycles?catChargeType(c):'';
+    const recurring=cycles&&catIsRecurring(c);
     const st=catStatus(c);
     const account=recurring?catPaymentAccount(c):null;
     const summaryValue=cycles
       ? (amt===''||amt==null?'No amount set':fmtMoneyExact(amt)+' '+cyc)
       : (amt===''||amt==null?'No weekly target':fmtMoneyExact(amt)+'/week');
     const summaryMeta=[];
+    if(cycles) summaryMeta.push(catChargeTypeLabel(chargeType));
     if(recurring&&weekly>0) summaryMeta.push('≈ '+fmtMoneyExact(weekly)+'/week');
     if(recurring&&account) summaryMeta.push(account.name||'Linked account');
     if(recurring&&st!=='active') summaryMeta.push(CAT_STATUSES.find(o=>o.id===st)?.label||st);
@@ -7367,10 +7368,11 @@ function renderCatBudgetList(containerId, type, kind){
         '<span class="budget-setup-summary-value">'+summaryValue+'</span><span class="budget-setup-chevron">›</span>'+
       '</summary>'+
       '<div class="budget-setup-item-body">'+
-        '<div class="budget-setup-primary-fields'+(cycles?' has-cycle':'')+'">'+
+        '<div class="budget-setup-primary-fields'+(cycles?' has-cycle has-charge-type':'')+'">'+
           '<label class="budget-setup-field"><span>Name</span><input class="bud-edit-name" value="'+_catEsc(c.name||'')+'" placeholder="Name" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'name\',this.value)"></label>'+
           '<label class="budget-setup-field"><span>'+(cycles?'Billed amount':'Weekly target')+'</span><input class="bud-edit-amt" type="number" inputmode="decimal" value="'+(amt===''?'':amt)+'" placeholder="0" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\''+(cycles?'amount':'budget')+'\',this.value)"></label>'+
           (cycles?'<label class="budget-setup-field"><span>Billing cycle</span><select class="bud-edit-cycle" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'cycle\',this.value)">'+CAT_CYCLES.map(o=>'<option value="'+o.id+'"'+(o.id===cyc?' selected':'')+'>'+o.label+'</option>').join('')+'</select></label>':'')+
+          (cycles?'<label class="budget-setup-field"><span>Type</span><select class="bud-edit-charge-type" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'chargeType\',this.value)">'+CAT_CHARGE_TYPES.map(o=>'<option value="'+o.id+'"'+(o.id===chargeType?' selected':'')+'>'+o.label+'</option>').join('')+'</select></label>':'')+
         '</div>'+recurFields+
         '<div class="budget-setup-actions">'+
           '<select class="bud-edit-move" onchange="catMoveTo(\''+type+'\',\''+c.id+'\',this.value)" aria-label="Move category"><option value="">Move to…</option>'+moveOpts+'</select>'+
@@ -7379,10 +7381,11 @@ function renderCatBudgetList(containerId, type, kind){
         '</div>'+
       '</div></details>';
   }).join('');
-  const addLabel=type==='fix'&&kind==='weekly'?'weekly commitment':type==='fix'&&kind==='recurring'?'bill or subscription':CAT_TYPE_LABEL[type];
+  const addLabel=type==='fix'&&kind==='weekly'?'weekly commitment':type==='fix'&&kind==='recurring'?'scheduled charge':CAT_TYPE_LABEL[type];
   const cycle=type==='fix'&&kind==='recurring'?'monthly':type==='fix'?'weekly':'';
+  const chargeType=type==='fix'&&kind==='recurring'?'subscription':type==='fix'?'commitment':'';
   el.innerHTML=(cards||'<div class="budget-setup-empty">None set up yet.</div>')+
-    '<button class="bud-add-item" onclick="catAddItem(\''+type+'\',\''+cycle+'\')">+ Add '+addLabel+'</button>';
+    '<button class="bud-add-item" onclick="catAddItem(\''+type+'\',\''+cycle+'\',\''+chargeType+'\')">+ Add '+addLabel+'</button>';
 }
 function renderArchivedBudgetItems(){
   const wrap=document.getElementById('be-archived');
@@ -7399,11 +7402,9 @@ function renderArchivedBudgetItems(){
   wrap.innerHTML=rows.join('');
 }
 // ── Recurring charge management ───────────────────────────────────
-// A recurring fixed category (anything not on a weekly cycle) is a subscription in all but
-// name. Budgeting only needed its prorated weekly cost, but MANAGING one needs three things
-// the model had no room for: when it next charges, whether it is still active, and what it
-// used to cost. All three are optional and absent on every existing category, so nothing
-// needs migrating and an untouched category behaves exactly as before.
+// Scheduled fixed charges can be subscriptions, bills or payment plans on any cadence.
+// Identity and billing cycle stay separate: Anytime Fitness remains weekly without becoming
+// a generic weekly bill, while a weekly fine repayment remains a payment plan.
 const CAT_STATUSES=[
   {id:'active',   label:'Active'},
   {id:'trial',    label:'Trial'},
@@ -7443,7 +7444,7 @@ function upcomingCharges(days){
   const win=days||30;
   const out=[];
   loadFixCats().forEach(c=>{
-    if(catCycle(c)==='weekly') return;        // rent-like, not a subscription
+    if(!catIsRecurring(c)) return;            // ordinary commitments have no charge schedule
     if(!catIsCharging(c)) return;             // paused/cancelled don't charge
     const n=catDaysUntilDue(c);
     if(n===null||n>win) return;
@@ -7456,9 +7457,13 @@ function catUpdateField(type,id,field,val){
   const details=document.querySelector('.budget-setup-item[data-cat-key="'+type+':'+CSS.escape(String(id))+'"]');
   if(details&&details.open) _budgetSetupOpen.add(type+':'+id);
   const prevAmount=(field==='amount')?parseFloat(catAmount(c)):null;
+  const inferredChargeType=type==='fix'?catChargeType(c):'';
   // Empty stays empty rather than becoming 0 — "no target set" and "target of zero" are
   // different things, and only the first should leave the field blank next time.
   c[field]= (field==='budget'||field==='amount') ? (String(val).trim()===''?'':(parseFloat(val)||0)) : val;
+  if(type==='fix'&&field!=='chargeType'&&!CAT_CHARGE_TYPES.some(x=>x.id===c.chargeType)){
+    c.chargeType=inferredChargeType;
+  }
   // `budget` is the weekly figure the rest of the app reads, so keep it derived from the
   // billed amount + cycle rather than asking anything downstream to understand cycles.
   if(type==='fix'&&(field==='amount'||field==='cycle')){
@@ -7468,7 +7473,7 @@ function catUpdateField(type,id,field,val){
   // Price history, recorded automatically. "Which subscription went up?" is unanswerable
   // without it, and asking the user to log a price rise by hand guarantees it never happens.
   // Only real changes on recurring charges are kept, so ordinary edits don't accumulate noise.
-  if(type==='fix'&&field==='amount'&&catCycle(c)!=='weekly'){
+  if(type==='fix'&&field==='amount'&&catIsRecurring(c)){
     const now=parseFloat(catAmount(c));
     if(!isNaN(now)&&!isNaN(prevAmount)&&prevAmount!==now){
       c.priceHistory=Array.isArray(c.priceHistory)?c.priceHistory:[];
@@ -7479,10 +7484,13 @@ function catUpdateField(type,id,field,val){
   BUD_CAT_SAVE[type](cats);
   refreshCatBudgetUI();
 }
-function catAddItem(type, cycle){
+function catAddItem(type, cycle, chargeType){
   const cats=BUD_CAT_LOAD[type]();
   const item={id:genCatId(type), name:'', budget:''};
-  if(type==='fix'){ item.amount=''; item.cycle=cycle||'weekly'; }
+  if(type==='fix'){
+    item.amount=''; item.cycle=cycle||'weekly';
+    item.chargeType=CAT_CHARGE_TYPES.some(x=>x.id===chargeType)?chargeType:'commitment';
+  }
   cats.push(item);
   _budgetSetupOpen.add(type+':'+item.id);
   BUD_CAT_SAVE[type](cats);
@@ -7532,6 +7540,7 @@ function catMoveTo(fromType,id,toType){
   if(toType==='fix'){
     moved.amount=(cat.amount!=null&&cat.amount!=='')?cat.amount:(cat.budget??'');
     moved.cycle=catCycle(cat);
+    if(!CAT_CHARGE_TYPES.some(x=>x.id===moved.chargeType)) moved.chargeType='commitment';
   }
   BUD_CAT_SAVE[fromType](fromCats.filter(c=>c.id!==id));
   toCats.push(moved);
@@ -8290,9 +8299,36 @@ function catWeeklyFromAmount(amount,cycle){
 function catAmount(c){
   if(!c) return '';
   if(c.amount!=null&&c.amount!=='') return c.amount;
-  return (c.budget!=null&&c.budget!=='')?c.budget:'';
+  if(c.budget!=null&&c.budget!=='') return c.budget;
+  return (c.default!=null&&c.default!=='')?c.default:'';
 }
 function catCycle(c){ return (c&&c.cycle)||'weekly'; }
+const CAT_CHARGE_TYPES=[
+  {id:'subscription', label:'Subscription'},
+  {id:'bill',         label:'Bill'},
+  {id:'payment_plan', label:'Payment plan'},
+  {id:'commitment',   label:'Other commitment'}
+];
+// Older records have no type. Infer it at read time instead of running a boot migration that
+// could stamp defaults as new data and outrank the cloud. Saving any edit makes the choice
+// explicit through the Settings selector.
+function catChargeType(c){
+  const explicit=c&&String(c.chargeType||'');
+  if(CAT_CHARGE_TYPES.some(x=>x.id===explicit)) return explicit;
+  const name=String(c&&c.name||'').toLowerCase();
+  const site=String(c&&c.site||'').toLowerCase();
+  const text=name+' '+site;
+  if(/rego|registration|ctp|green.?slip|insurance|budget direct|roadside/.test(name)) return 'bill';
+  if(/fine|repay|payment plan|revenue nsw|service nsw/.test(text)) return 'payment_plan';
+  if(/insurance|budget direct|roadside/.test(text)) return 'bill';
+  if(/fitness|gym|netflix|spotify|disney|binge|stan|kayo|youtube|amazon prime|paramount|claude|chatgpt|openai|icloud|apple music|apple tv|uber one|telstra|optus|vodafone|belong|canva/.test(text)) return 'subscription';
+  return catCycle(c)==='weekly'?'commitment':'subscription';
+}
+function catChargeTypeLabel(value){
+  const id=typeof value==='string'?value:catChargeType(value);
+  return (CAT_CHARGE_TYPES.find(x=>x.id===id)||CAT_CHARGE_TYPES[3]).label;
+}
+function catIsRecurring(c){ return catChargeType(c)!=='commitment'; }
 // ── Category logos ────────────────────────────────────────────────
 // A category can carry the website of the thing it pays for; its favicon becomes the row
 // icon. DuckDuckGo's icon service is used rather than Google's: no key either way, but this
@@ -8387,7 +8423,7 @@ function migrateSubscriptionsToFixedOnce(){
         const amount=isNaN(raw)?(parseFloat(s&&s.monthlyCost)||0):raw;
         const name=((s&&s.emoji?s.emoji+' ':'')+((s&&s.name)||'Subscription')).trim();
         if(existing.has(norm(name))){ skipped.push(name); return; }
-        cats.push({id:'sub'+Date.now()+'_'+i, name, amount, cycle,
+        cats.push({id:'sub'+Date.now()+'_'+i, name, amount, cycle, chargeType:'subscription',
           budget:catWeeklyFromAmount(amount,cycle), site:guessCatSite(name)});
       });
       if(skipped.length) try{ localStorage.setItem('daily_subs_merge_skipped', JSON.stringify(skipped)); }catch(e){}
@@ -8653,10 +8689,9 @@ function budCatNameHtml(type,c,isCur,editMode){
     '<div class="bud-row-name">'+_catEscHtml(type==='fix'?catDisplayName(c.name):c.name)+'</div></div>';
   return '<input class="bud-cat-name-input" id="catname-'+type+'-'+c.id+'" value="" placeholder="Name this category…" oninput="budRenameCat(\''+type+'\',\''+c.id+'\',this.value)" onchange="renderBudgetTab()"'+(isCur?'':' disabled')+'>';
 }
-// A category billed monthly/yearly accrues its prorated share automatically — typing into it
-// would double-count what's already been counted (see the note in the collapsed list). So it
-// gets no weekly input; only genuinely per-week categories do.
-function catIsRecurring(c){ const cy=catCycle(c); return cy==='monthly'||cy==='yearly'; }
+// A scheduled subscription, bill or payment plan accrues its prorated share automatically —
+// typing into it would double-count what's already been counted. Other weekly commitments
+// keep their editable weekly input.
 function renderFixedCard(data,isCur){
   const editing=budEditMode.fix && isCur;
   const cats=activeCats(loadFixCats()); // archived keep counting in totals, just no row
@@ -9024,7 +9059,7 @@ function txnToggleCat(catId){
 // asking to be configured, which is worse than not being there.
 function renderUpcomingCard(){
   const list=upcomingCharges(30);
-  const recur=loadFixCats().filter(c=>catCycle(c)!=='weekly'&&catIsCharging(c));
+  const recur=loadFixCats().filter(c=>catIsRecurring(c)&&catIsCharging(c));
   if(!recur.length) return '';
   const dated=recur.filter(c=>c.dueDate).length;
   if(!dated) return '';
@@ -10034,8 +10069,8 @@ function renderYear(){
       // Annual cost of every recurring charge still running. Individually a subscription reads
       // as a few dollars a week and never looks worth cancelling; the yearly figure is the one
       // that makes the case either way, and it is the number nobody ever works out by hand.
-      {val:'$'+Math.round(loadFixCats().filter(c=>catCycle(c)!=='weekly'&&catIsCharging(c))
-            .reduce((s,c)=>s+((parseFloat(catAmount(c))||0)*({monthly:12,yearly:1}[catCycle(c)]||0)),0)).toLocaleString(),
+      {val:'$'+Math.round(loadFixCats().filter(c=>catIsRecurring(c)&&catIsCharging(c))
+            .reduce((s,c)=>s+((parseFloat(catAmount(c))||0)*({weekly:52,monthly:12,yearly:1}[catCycle(c)]||0)),0)).toLocaleString(),
        lbl:'Recurring, per year',color:BUD_CHART_COLORS.fixed},
     ].map(s=>'<div class="sum-card"><div class="sum-card-val" style="color:'+s.color+'">'+s.val+'</div><div class="sum-card-lbl">'+s.lbl+'</div></div>').join('');
   }
