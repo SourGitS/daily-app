@@ -777,7 +777,9 @@ function loadPlans(){
 function savePlans(data){
   lsSaveTS('wt_plans', data, 'wt_plans_ts', 'plans');
 }
-function loadNotes(){ try{ return JSON.parse(localStorage.getItem('wt_notes')||'[]'); }catch(e){ return []; } }
+// Array-guarded: Firebase returns a plain object for a sparse array, and a single malformed
+// record must not be able to blank the whole screen.
+function loadNotes(){ const a=lsLoad('wt_notes', []); return Array.isArray(a)?a:[]; }
 // Save + push to Firebase, matching savePlans' pattern (localStorage is source of truth; the
 // cloud mirrors it when signed in).
 function saveNotes(n){
@@ -5454,8 +5456,15 @@ function restorePushToCloud(){
       put(path, Object.fromEntries(arr.filter(x=>x&&idOf(x)).map(x=>[idOf(x),x])));
     }catch(err){}
   };
+  // `notes` is in this list for the same reason the four cloud-wins stores are: its sign-in
+  // listener (fbReconcile) adopts the cloud snapshot unconditionally, so a restore that never
+  // reached the cloud was silently undone by the reload that follows it — the restored notes
+  // were replaced by the older cloud copy while the app reported success. It is written as a
+  // bare array here because that is the shape saveNotes() writes today; when notes move to a
+  // per-record keyed node this entry moves to putKeyed alongside sessions and weights.
   ['profile:daily_profile','budgetDefaults:daily_budget_defaults',
-   'personalInfo:wt_personalinfo','habits:daily_habits','budgetData:daily_budget']
+   'personalInfo:wt_personalinfo','habits:daily_habits','budgetData:daily_budget',
+   'notes:wt_notes']
     .forEach(pair=>{ const [p,k]=pair.split(':'); putJSON(p,k); });
   putKeyed('sessions','wt_sessions', s=>String(s.id||''));
   putKeyed('weights','wt_weight', w=>String(w.date||'').replace(/-/g,''));
@@ -6529,8 +6538,9 @@ const AI_ACT_VERSION = 1;
 const AI_ACT_MAX     = 50;       // actions per paste
 const AI_ACT_MAXSTR  = 2000;     // any single supplied string
 const AI_ACT_MAXTEXT = 500000;   // the whole paste
-const AI_ACT_TYPES   = ['add_expense','add_subscription','add_recipe','add_shopping_item','update_spending_goal'];
+const AI_ACT_TYPES   = ['add_expense','add_subscription','archive_subscription','add_recipe','add_shopping_item','update_spending_goal'];
 const AI_ACT_LABELS  = {add_expense:'Expense', add_subscription:'Subscription',
+                        archive_subscription:'Subscription archive · confirmation required',
                         add_recipe:'Recipe', add_shopping_item:'Shopping item',
                         update_spending_goal:'Spending goal correction'};
 
@@ -6623,6 +6633,7 @@ function validateDailyAction(action){
   const data=action.data;
   if(!data||typeof data!=='object'||Array.isArray(data)) return {ok:false, id, type, error:'"data" must be an object.'};
   const fn={add_expense:aiValExpense, add_subscription:aiValSubscription,
+            archive_subscription:aiValArchiveSubscription,
             add_recipe:aiValRecipe, add_shopping_item:aiValShoppingItem,
             update_spending_goal:aiValSpendingGoal}[type];
   const res=fn(data, id);
@@ -6699,6 +6710,69 @@ function aiValSubscription(d,id){
       BUD_CAT_SAVE.fix(cats);
       if(typeof refreshCatBudgetUI==='function') refreshCatBudgetUI();
       return {kind:'subscription'};
+    }};
+}
+
+function aiArchiveEntries(c){
+  return Array.isArray(c&&c.aiArchiveActions)
+    ? c.aiArchiveActions.filter(x=>x&&typeof x==='object'&&x.actionId).map(x=>({
+        actionId:String(x.actionId), subscriptionId:String(x.subscriptionId||c.id||''),
+        confirmedEndDate:String(x.confirmedEndDate||''), appliedAt:Number(x.appliedAt)||0,
+        source:String(x.source||'')
+      })) : [];
+}
+function aiFindArchiveAction(cats, actionId){
+  for(const c of cats||[]){
+    const entry=aiArchiveEntries(c).find(x=>x.actionId===actionId);
+    if(entry) return {cat:c, entry};
+  }
+  return null;
+}
+function aiValArchiveSubscription(d,id){
+  const subscriptionId=aiActStr(d.subscriptionId);
+  if(!subscriptionId) return {ok:false, error:'Subscription archive needs a stable "subscriptionId" from Daily\'s exported subscription data.'};
+  if(subscriptionId.length>200) return {ok:false, error:'"subscriptionId" is too long.'};
+  const confirmedEndDate=aiActStr(d.confirmedEndDate);
+  if(!confirmedEndDate) return {ok:false, error:'Subscription archive needs "confirmedEndDate" — the date you confirmed the subscription ended.'};
+  if(!aiActValidDate(confirmedEndDate)) return {ok:false, error:'"'+confirmedEndDate.slice(0,20)+'" is not a real confirmed end date — use YYYY-MM-DD.'};
+
+  const cats=loadFixCats();
+  const prior=aiFindArchiveAction(cats,id);
+  if(prior){
+    if(prior.entry.subscriptionId!==subscriptionId||prior.entry.confirmedEndDate!==confirmedEndDate)
+      return {ok:false, error:'Action id "'+id+'" was already used for a different subscription archive. Use a new stable action id.'};
+    return {ok:true,
+      summary:'Archive '+catLabel(prior.cat)+' because you confirmed it ended on '+aiActFmtDate(confirmedEndDate)+'. Its history stays in past budgets and reports.',
+      already:'This archive action was already applied earlier — it will not be applied twice.',
+      requiresConfirmation:true, dupKey:()=>false, collection:()=>[], apply:()=>({kind:'subscription archive'})};
+  }
+
+  const target=cats.find(c=>c&&String(c.id)===subscriptionId);
+  if(!target) return {ok:false, error:'No recurring Fixed item has stable id "'+subscriptionId+'". Use the exact subscriptionId from Daily\'s context export; names are not accepted.'};
+  if(!catIsRecurring(target)) return {ok:false, error:'"'+catLabel(target)+'" is not a subscription or recurring charge, so this action cannot archive it.'};
+  const summary='Archive '+catLabel(target)+' because you confirmed it ended on '+aiActFmtDate(confirmedEndDate)+'. Its history stays in past budgets and reports.';
+  if(catIsArchived(target)) return {ok:true, summary,
+    already:catLabel(target)+' is already archived. No change is needed.',
+    requiresConfirmation:true, dupKey:()=>false, collection:()=>[], apply:()=>({kind:'subscription archive'})};
+  const today=getLocalDate();
+  if(confirmedEndDate>today) return {ok:false, error:catLabel(target)+' cannot be archived yet: its confirmed end date is '+confirmedEndDate+', which is after today ('+today+'). Daily does not schedule future archive writes.'};
+  if(activeCats(cats).length<=1) return {ok:false, error:'Cannot archive the last active Fixed category.'};
+
+  return {ok:true, summary, requiresConfirmation:true,
+    dupKey:()=>false, collection:()=>[],
+    apply:(meta)=>{
+      const freshCats=BUD_CAT_LOAD.fix();
+      const c=freshCats.find(x=>x&&String(x.id)===subscriptionId);
+      if(!c) throw new Error('The subscription no longer exists. Check the actions again.');
+      const entry={actionId:id, subscriptionId, confirmedEndDate, appliedAt:Date.now(), source:meta&&meta.aiSource||''};
+      const ledger=aiArchiveEntries(c).filter(x=>x.actionId!==id);
+      ledger.push(entry);
+      c.aiArchiveActions=ledger.slice(-100);
+      c.aiArchiveActiveActionId=id;
+      c.archived=true;
+      BUD_CAT_SAVE.fix(freshCats);
+      if(typeof refreshCatBudgetUI==='function') refreshCatBudgetUI();
+      return {kind:'subscription archive', undo:{actionId:id, subscriptionId, confirmedEndDate, wasArchived:false}};
     }};
 }
 
@@ -6826,6 +6900,7 @@ function previewDailyActions(parsed){
     seen[res.id]=i+1;
     row.summary=res.summary;
     row.apply=res.apply;
+    row.requiresConfirmation=!!res.requiresConfirmation;
     if(res.already){ row.state='already'; row.note=res.already; rows.push(row); return; }
     const existing=(res.collection()||[]).some(res.dupKey);
     row.state=existing?'already':'new';
@@ -6918,6 +6993,24 @@ function aiUndoLastApply(){
     else delete budDefaults.aiAppliedGoalActions;
     budPersistDefaults(); restored++;
   });
+  // An archive undo is allowed only while the target still carries the exact active-action
+  // marker Apply wrote. Manual restore/re-archive clears that marker, so later user intent wins.
+  (last.items||[]).filter(x=>x&&x.type==='archive_subscription'&&x.undo).slice().reverse().forEach(x=>{
+    const u=x.undo;
+    const cats=BUD_CAT_LOAD.fix();
+    const c=cats.find(y=>y&&String(y.id)===String(u.subscriptionId));
+    if(!c||!c.archived||c.aiArchiveActiveActionId!==u.actionId) return;
+    const matched=aiArchiveEntries(c).some(e=>e.actionId===u.actionId&&
+      e.subscriptionId===String(u.subscriptionId)&&e.confirmedEndDate===u.confirmedEndDate);
+    if(!matched) return;
+    if(u.wasArchived) c.archived=true; else delete c.archived;
+    delete c.aiArchiveActiveActionId;
+    const kept=aiArchiveEntries(c).filter(e=>e.actionId!==u.actionId);
+    if(kept.length) c.aiArchiveActions=kept; else delete c.aiArchiveActions;
+    BUD_CAT_SAVE.fix(cats);
+    if(typeof refreshCatBudgetUI==='function') refreshCatBudgetUI();
+    restored++;
+  });
   aiInboxState.lastApply=null;
   aiInboxRefreshViews();
   return {removed, restored, changed:removed+restored};
@@ -6945,7 +7038,9 @@ function aiInboxCheck(){
   aiInboxState.preview=pv.error?null:pv;
   aiInboxState.result=null;
   aiInboxState.selected={};
-  if(aiInboxState.preview) aiInboxState.preview.rows.forEach(r=>{ if(r.state==='new') aiInboxState.selected[r.index]=true; });
+  if(aiInboxState.preview) aiInboxState.preview.rows.forEach(r=>{
+    if(r.state==='new'&&!r.requiresConfirmation) aiInboxState.selected[r.index]=true;
+  });
   renderAIHub();
 }
 function aiInboxToggle(i){
@@ -6990,7 +7085,9 @@ function aiInboxCopyErrors(){
 const AI_INBOX_SCHEMA_HINT=
   '{\n  "schema": "daily-actions",\n  "version": 1,\n  "source": "chatgpt",\n  "actions": [\n'+
   '    { "id": "unique-1", "type": "update_spending_goal",\n'+
-  '      "data": { "amount": 500, "applyToCurrentWeek": true } }\n  ]\n}';
+  '      "data": { "amount": 500, "applyToCurrentWeek": true } },\n'+
+  '    { "id": "archive-subscription-id-date", "type": "archive_subscription",\n'+
+  '      "data": { "subscriptionId": "exact-stable-id-from-daily", "confirmedEndDate": "2026-08-28" } }\n  ]\n}';
 
 function aiInboxCopySchema(){
   const cats=activeCats(loadVarCats()).map(c=>catLabel(c)).join(', ');
@@ -7000,6 +7097,7 @@ function aiInboxCopySchema(){
     'Max '+AI_ACT_MAX+' actions per reply.\n'+
     'add_expense data: amount (>0), date (YYYY-MM-DD), categoryName or categoryId, optional merchant, note, paymentAccountName.\n'+
     'add_subscription data: name, amount (>0), cycle ("weekly", "monthly" or "yearly"), optional status (active/trial/paused/cancelled), nextBillingDate, website, paymentAccountName.\n'+
+    'archive_subscription data: subscriptionId (the exact stable id from Daily\'s context export) and confirmedEndDate (YYYY-MM-DD, today or earlier). Names are never accepted as targets. Daily will show this action unchecked and requires you to select it before Apply.\n'+
     'add_recipe data: one recipe object — name, category (breakfast/lunch/dinner/dessert), servings, ingredients [{name, amount, unit}], steps [].\n'+
     '  Use unit "" for countable things like "4 salmon fillets".\n'+
     'add_shopping_item data: name, optional category ('+KITSHOP_CAT_ORDER.join('/')+'). Quantities are not stored.\n'+
@@ -7041,7 +7139,8 @@ function aiInboxHtml(){
         h+='<button class="aih-row'+(on?' on':'')+'" role="checkbox" aria-checked="'+(on?'true':'false')+'" onclick="aiInboxToggle('+r.index+')">'+
              '<span class="aih-box" aria-hidden="true">'+(on?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>':'')+'</span>'+
              '<span class="aih-row-t"><span class="aih-row-k">'+esc(r.label)+'</span>'+
-             '<span class="aih-row-s">'+esc(r.summary)+'</span></span></button>';
+             '<span class="aih-row-s">'+esc(r.summary)+'</span>'+
+             (r.requiresConfirmation?'<span class="aih-row-n">Select this row to confirm the archive.</span>':'')+'</span></button>';
       } else if(r.state==='already'){
         h+='<div class="aih-row aih-row-skip"><span class="aih-row-t">'+
              '<span class="aih-row-k">'+esc(r.label)+' · already applied</span>'+
@@ -7599,6 +7698,9 @@ function catArchive(type,id,on){
   const c=cats.find(x=>x.id===id); if(!c) return;
   // Never archive the last remaining active category — the section needs somewhere to type.
   if(on && activeCats(cats).length<=1) return;
+  // A manual archive or restore supersedes any still-available AI undo, while the durable
+  // action history remains so re-pasting the same action id is still idempotent.
+  delete c.aiArchiveActiveActionId;
   if(on) c.archived=true; else delete c.archived;
   save(cats);
   refreshCatBudgetUI();
@@ -8654,6 +8756,14 @@ function budChartGridColors(){
 }
 const _catEsc=s=>(s||'').replace(/"/g,'&quot;');
 const _catEscHtml=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+// Two escapers because the HTML contexts are NOT interchangeable, and using the text-node one
+// on an attribute is exactly how stored prose used to be destroyed: a note titled `5" pipe`
+// loaded into value="..." as `5`, because the raw quote closed the attribute early, and the
+// next Save wrote that truncation back permanently. escAttr additionally escapes both quote
+// characters. Better still, where an element can be built empty, assign .value/.textContent as
+// a property and escape nothing — see notesOpenEdit().
+const escText=s=>_catEscHtml(s==null?'':String(s));
+const escAttr=s=>escText(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 // Collapsible section header (shared markup) — collapse handled by the delegated
 // .bud-toggle listener + restoreBudgetCollapseState (index-based persistence).
 const BUD_CHEVRON='<svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>';
@@ -15830,170 +15940,208 @@ function nudgeLayout(){
   if(typeof syncNavPadding==='function') syncNavPadding();
 }
 // ── Notes ──────────────────────────────────────────────────────────
-function renderNotes(){
-  const wrap=document.getElementById('notes-content'); if(!wrap) return;
-  const notes=loadNotes();
-  const today=getLocalDate();
+// Everything stored here is DATA, never markup. Two rules keep it that way:
+//   1. Editor fields are rendered EMPTY and their .value assigned as a property afterwards.
+//      Interpolating a title into value="..." is how `Call the landlord re: 5" pipe` used to
+//      load as `Call the landlord re: 5` and get saved back truncated, and how a body holding
+//      a literal </textarea> lost everything after it.
+//   2. Everywhere an HTML string is unavoidable (the lists, the Home card), user text goes
+//      through escText/escAttr for the exact context it lands in. A body reading
+//      `He said <urgent> and to text back.` used to render with the word simply gone, eaten
+//      by the parser as an unknown tag.
+// The sort, the card template and the list builder each exist ONCE. renderNotes() and
+// notesFilter() previously held byte-identical copies, which is why the missing-createdAt
+// guard reached the Home card and neither list.
 
-  let html=`<button onclick="notesOpenEdit(null)" style="width:100%;padding:12px;border-radius:14px;border:none;background:var(--accent);color:#fff;font-size:15px;font-weight:700;margin-bottom:16px">+ New note</button>`;
-
-  html+=`<div style="display:flex;gap:8px;margin-bottom:16px">
-    <button onclick="notesFilter('all')" id="nf-all" style="flex:1;padding:8px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600">All</button>
-    <button onclick="notesFilter('work')" id="nf-work" style="flex:1;padding:8px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;font-weight:600">Work</button>
-    <button onclick="notesFilter('personal')" id="nf-personal" style="flex:1;padding:8px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;font-weight:600">Personal</button>
-  </div>`;
-
-  if(!notes.length){
-    html+=`<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">📝</div><div style="font-size:16px;font-weight:600;margin-bottom:6px">No notes yet</div><div style="font-size:14px">Tap + New note to get started</div></div>`;
-  } else {
-    const sorted=[...notes].sort((a,b)=>{
-      if(a.priority!==b.priority) return a.priority?-1:1;
-      if(a.date&&b.date) return a.date<b.date?-1:1;
-      if(a.date) return -1; if(b.date) return 1;
-      return b.createdAt.localeCompare(a.createdAt);
-    });
-    sorted.forEach(n=>{
-      const typeColor=n.type==='work'?'#3b82f6':'#52B788';
-      const typeLabel=n.type==='work'?'Work':'Personal';
-      let dateBadge='';
-      if(n.date&&n.dateType!=='none'){
-        const diff=Math.ceil((new Date(n.date)-new Date(today))/(1000*60*60*24));
-        const label=n.dateType==='expiry'?'Expires':'Reminder';
-        const urgentColor=diff<=7?'var(--danger)':diff<=30?'#f59e0b':'var(--success)';
-        dateBadge=`<span style="background:${urgentColor};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px">${label}: ${diff<=0?'Today':diff===1?'Tomorrow':n.date}</span>`;
-      }
-      html+=`<div style="background:var(--card);border-radius:16px;padding:14px 16px;margin-bottom:10px;position:relative" onclick="notesOpenEdit('${n.id}')">
+// Whole days between two YYYY-MM-DD strings. Both sides are parsed as UTC midnight on purpose:
+// the difference is then an exact multiple of 24h with no DST hour to round past. localMidnight()
+// looks like the right helper here and is subtly wrong — across a DST boundary two LOCAL
+// midnights are 23 or 25 hours apart, and the rounding would report a day too many.
+function notesDayDiff(dateA, dateB){
+  const a=Date.parse(dateA+'T00:00:00Z'), b=Date.parse(dateB+'T00:00:00Z');
+  if(isNaN(a)||isNaN(b)) return NaN;
+  return Math.round((a-b)/86400000);
+}
+// Priority first, then dated (soonest first), then newest. Every field is coerced before use:
+// a legacy record with no createdAt threw TypeError here, and WHETHER it threw depended on
+// where the sort happened to place it — an intermittent blank Notes screen. Equal keys now
+// return 0 rather than 1, so the order is deterministic instead of engine-dependent.
+function notesSortCmp(a,b){
+  const pa=!!(a&&a.priority), pb=!!(b&&b.priority);
+  if(pa!==pb) return pa?-1:1;
+  const da=String((a&&a.date)||''), db=String((b&&b.date)||'');
+  if(da&&db) return da<db?-1:(da>db?1:0);
+  if(da) return -1;
+  if(db) return 1;
+  return String((b&&b.createdAt)||'').localeCompare(String((a&&a.createdAt)||''));
+}
+function notesTypeOf(n){ return (n&&n.type==='work')?'work':'personal'; }
+function notesDueBadgeHtml(n, today){
+  const d=String((n&&n.date)||'');
+  if(!d || !n.dateType || n.dateType==='none') return '';
+  const diff=notesDayDiff(d, today);
+  const label=n.dateType==='expiry'?'Expires':'Reminder';
+  const urgentColor=diff<=7?'var(--danger)':diff<=30?'#f59e0b':'var(--success)';
+  const when=diff<=0?'Today':diff===1?'Tomorrow':escText(d);
+  return `<span style="background:${urgentColor};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px">${label}: ${when}</span>`;
+}
+function notesCardHtml(n, today){
+  const type=notesTypeOf(n);
+  const typeColor=type==='work'?'#3b82f6':'#52B788';
+  const typeLabel=type==='work'?'Work':'Personal';
+  const body=String((n&&n.body)||'');
+  return `<div data-note-open="${escAttr((n&&n.id)||'')}" style="background:var(--card);border-radius:16px;padding:14px 16px;margin-bottom:10px;position:relative;cursor:pointer">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
           <span style="background:${typeColor};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px">${typeLabel}</span>
-          ${n.priority?'<span style="font-size:13px">⭐</span>':''}
-          ${dateBadge}
+          ${n&&n.priority?'<span style="font-size:13px">⭐</span>':''}
+          ${notesDueBadgeHtml(n, today)}
         </div>
-        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">${n.title}</div>
-        ${n.body?`<div style="font-size:13px;color:var(--muted);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${n.body}</div>`:''}
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">${escText((n&&n.title)||'')}</div>
+        ${body?`<div style="font-size:13px;color:var(--muted);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escText(body)}</div>`:''}
       </div>`;
-    });
-  }
-
-  wrap.innerHTML=html;
-  wrap.dataset.filter='all';
 }
-
-function notesFilter(f){
-  ['all','work','personal'].forEach(t=>{
-    const btn=document.getElementById('nf-'+t);
-    if(btn){ btn.style.background=t===f?'var(--accent)':'var(--card)'; btn.style.color=t===f?'#fff':'var(--text)'; btn.style.border=t===f?'none':'1px solid var(--border)'; }
-  });
+function notesEmptyHtml(msg, sub){
+  return `<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">📝</div><div style="font-size:16px;font-weight:600;margin-bottom:6px">${escText(msg)}</div>${sub?`<div style="font-size:14px">${escText(sub)}</div>`:''}</div>`;
+}
+function notesListHtml(filter){
+  const all=loadNotes().filter(n=>n&&typeof n==='object');
+  if(!all.length) return notesEmptyHtml('No notes yet','Tap + New note to get started');
+  const shown=filter==='all'?all:all.filter(n=>notesTypeOf(n)===filter);
+  if(!shown.length) return notesEmptyHtml('No notes');
+  const today=getLocalDate();
+  return [...shown].sort(notesSortCmp).map(n=>notesCardHtml(n, today)).join('');
+}
+// One render for both the initial paint and a filter change — the old notesFilter() spliced the
+// list back in by removing "everything after the first 2 children", which quietly depended on
+// the header markup never gaining a node. The active filter is kept on the wrapper so a
+// re-render triggered by a save or a sync doesn't throw the user back to All.
+function renderNotes(filter){
   const wrap=document.getElementById('notes-content'); if(!wrap) return;
+  const f=['all','work','personal'].indexOf(filter)>=0 ? filter : (wrap.dataset.filter||'all');
+  const tab=(id,label)=>{
+    const on=f===id;
+    return `<button data-notes-filter="${id}" id="nf-${id}" style="flex:1;padding:8px;border-radius:10px;border:${on?'none':'1px solid var(--border)'};background:${on?'var(--accent)':'var(--card)'};color:${on?'#fff':'var(--text)'};font-size:13px;font-weight:600">${label}</button>`;
+  };
+  wrap.innerHTML=
+    `<button data-notes-new="1" style="width:100%;padding:12px;border-radius:14px;border:none;background:var(--accent);color:#fff;font-size:15px;font-weight:700;margin-bottom:16px">+ New note</button>`+
+    `<div style="display:flex;gap:8px;margin-bottom:16px">${tab('all','All')}${tab('work','Work')}${tab('personal','Personal')}</div>`+
+    notesListHtml(f);
   wrap.dataset.filter=f;
-  const notes=f==='all'?loadNotes():loadNotes().filter(n=>n.type===f);
-  const today=getLocalDate();
-  const sorted=[...notes].sort((a,b)=>{
-    if(a.priority!==b.priority) return a.priority?-1:1;
-    if(a.date&&b.date) return a.date<b.date?-1:1;
-    if(a.date) return -1; if(b.date) return 1;
-    return b.createdAt.localeCompare(a.createdAt);
-  });
-  // Replace only the card area (everything after the 2 fixed buttons)
-  let cardsHtml='';
-  if(!sorted.length){
-    cardsHtml=`<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">📝</div><div style="font-size:16px;font-weight:600;margin-bottom:6px">No notes</div></div>`;
-  } else {
-    sorted.forEach(n=>{
-      const typeColor=n.type==='work'?'#3b82f6':'#52B788';
-      const typeLabel=n.type==='work'?'Work':'Personal';
-      let dateBadge='';
-      if(n.date&&n.dateType!=='none'){
-        const diff=Math.ceil((new Date(n.date)-new Date(today))/(1000*60*60*24));
-        const label=n.dateType==='expiry'?'Expires':'Reminder';
-        const urgentColor=diff<=7?'var(--danger)':diff<=30?'#f59e0b':'var(--success)';
-        dateBadge=`<span style="background:${urgentColor};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px">${label}: ${diff<=0?'Today':diff===1?'Tomorrow':n.date}</span>`;
-      }
-      cardsHtml+=`<div style="background:var(--card);border-radius:16px;padding:14px 16px;margin-bottom:10px;position:relative" onclick="notesOpenEdit('${n.id}')">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <span style="background:${typeColor};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px">${typeLabel}</span>
-          ${n.priority?'<span style="font-size:13px">⭐</span>':''}
-          ${dateBadge}
-        </div>
-        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">${n.title}</div>
-        ${n.body?`<div style="font-size:13px;color:var(--muted);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${n.body}</div>`:''}
-      </div>`;
-    });
-  }
-  // Splice into wrap: keep first 2 children (new-btn + filter-row), replace rest
-  const kids=[...wrap.children];
-  kids.slice(2).forEach(k=>k.remove());
-  const tmp=document.createElement('div'); tmp.innerHTML=cardsHtml;
-  while(tmp.firstChild) wrap.appendChild(tmp.firstChild);
 }
+function notesFilter(f){ renderNotes(f); }
+// Delegated, so a card can be rebuilt between press and release without swallowing the tap, and
+// so no record id is ever interpolated into an onclick string.
+document.addEventListener('click',function(e){
+  if(!e.target||!e.target.closest) return;
+  const f=e.target.closest('[data-notes-filter]');
+  if(f){ renderNotes(f.getAttribute('data-notes-filter')); return; }
+  if(e.target.closest('[data-notes-new]')){ notesOpenEdit(null); return; }
+  const open=e.target.closest('[data-note-open]');
+  if(open){ notesOpenEdit(open.getAttribute('data-note-open')); }
+});
 
 function notesOpenEdit(id){
   const notes=loadNotes();
-  const note=id?notes.find(n=>n.id===id):null;
+  const note=id?notes.find(n=>n&&n.id===id):null;
   const n=note||{id:'note_'+Date.now(),title:'',body:'',type:'personal',dateType:'none',date:'',priority:false,createdAt:getLocalDate()};
 
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
   overlay.id='note-edit-overlay';
+  // No user text in this template at all — the fields are built empty and filled below.
   overlay.innerHTML=`<div class="modal-box" style="max-width:480px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div style="font-size:17px;font-weight:700">${id?'Edit note':'New note'}</div>
       <div style="display:flex;align-items:center;gap:4px">
-        <button onclick="notesViewFullscreen('${n.id}')" aria-label="Read fullscreen" title="Read fullscreen" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:4px;display:flex;-webkit-tap-highlight-color:transparent"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
-        <button onclick="this.closest('.modal-overlay').remove()" aria-label="Close" style="background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer;padding:0 4px">×</button>
+        <button id="ne-fullscreen" aria-label="Open fullscreen" title="Open fullscreen" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:4px;display:flex;-webkit-tap-highlight-color:transparent"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+        <button id="ne-close" aria-label="Close" style="background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer;padding:0 4px">×</button>
       </div>
     </div>
-    <input id="ne-title" placeholder="Title" value="${n.title}" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:15px;margin-bottom:10px;box-sizing:border-box">
-    <textarea id="ne-body" placeholder="Note body (optional)" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;min-height:80px;box-sizing:border-box;resize:vertical;margin-bottom:10px">${n.body}</textarea>
+    <input id="ne-title" placeholder="Title" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:15px;margin-bottom:10px;box-sizing:border-box">
+    <textarea id="ne-body" placeholder="Note body (optional)" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;min-height:80px;box-sizing:border-box;resize:vertical;margin-bottom:10px"></textarea>
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <select id="ne-type" style="flex:1;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px">
-        <option value="personal" ${n.type==='personal'?'selected':''}>Personal</option>
-        <option value="work" ${n.type==='work'?'selected':''}>Work</option>
+        <option value="personal">Personal</option>
+        <option value="work">Work</option>
       </select>
-      <select id="ne-datetype" style="flex:1;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px" onchange="document.getElementById('ne-date').style.display=this.value==='none'?'none':'block'">
-        <option value="none" ${n.dateType==='none'?'selected':''}>No date</option>
-        <option value="reminder" ${n.dateType==='reminder'?'selected':''}>Reminder</option>
-        <option value="expiry" ${n.dateType==='expiry'?'selected':''}>Expiry</option>
+      <select id="ne-datetype" style="flex:1;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px">
+        <option value="none">No date</option>
+        <option value="reminder">Reminder</option>
+        <option value="expiry">Expiry</option>
       </select>
     </div>
-    <input type="date" id="ne-date" value="${n.date}" style="width:100%;padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;margin-bottom:10px;box-sizing:border-box;display:${n.dateType==='none'?'none':'block'}">
+    <input type="date" id="ne-date" style="width:100%;padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;margin-bottom:10px;box-sizing:border-box">
     <label style="display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:14px;color:var(--text);cursor:pointer">
-      <input type="checkbox" id="ne-priority" ${n.priority?'checked':''} style="width:16px;height:16px;accent-color:var(--accent)"> Priority note
+      <input type="checkbox" id="ne-priority" style="width:16px;height:16px;accent-color:var(--accent)"> Priority note
     </label>
     <div style="display:flex;gap:8px">
-      ${id?`<button onclick="notesDelete('${id}');this.closest('.modal-overlay').remove()" style="flex:1;padding:11px;border-radius:12px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-weight:600;font-size:14px">Delete</button>`:''}
-      <button onclick="notesSave('${n.id}')" style="flex:1;padding:11px;border-radius:12px;border:none;background:var(--accent);color:#fff;font-weight:700;font-size:14px">Save</button>
+      ${id?`<button id="ne-delete" style="flex:1;padding:11px;border-radius:12px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-weight:600;font-size:14px">Delete</button>`:''}
+      <button id="ne-save" style="flex:1;padding:11px;border-radius:12px;border:none;background:var(--accent);color:#fff;font-weight:700;font-size:14px">Save</button>
     </div>
   </div>`;
   document.body.appendChild(overlay);
+
+  const q=sel=>overlay.querySelector(sel);
+  // Stored text assigned as a PROPERTY: quotes, angle brackets, ampersands and a literal
+  // </textarea> all arrive intact because nothing here is ever parsed as markup.
+  q('#ne-title').value=String(n.title||'');
+  q('#ne-body').value=String(n.body||'');
+  q('#ne-type').value=notesTypeOf(n);
+  q('#ne-datetype').value=(n.dateType==='reminder'||n.dateType==='expiry')?n.dateType:'none';
+  q('#ne-date').value=String(n.date||'');
+  q('#ne-priority').checked=!!n.priority;
+  const syncDateVis=()=>{ q('#ne-date').style.display=q('#ne-datetype').value==='none'?'none':'block'; };
+  syncDateVis();
+  q('#ne-datetype').addEventListener('change', syncDateVis);
+  q('#ne-fullscreen').addEventListener('click',()=>notesViewFullscreen(n.id));
+  q('#ne-close').addEventListener('click',()=>overlay.remove());
+  q('#ne-save').addEventListener('click',()=>notesSave(n.id));
+  const del=q('#ne-delete');
+  if(del) del.addEventListener('click',()=>{ if(notesDelete(id)) overlay.remove(); });
 }
 
-// Fullscreen note editor. Opened from the compact edit modal — persists whatever's typed so far
-// (via notesSaveDraft, no "title required" gate) before swapping to the fullscreen view, so
-// jumping to fullscreen mid-edit never drops text. The fullscreen fields are themselves editable
-// and save live (debounced) back to the same record.
+// Reads whatever the compact editor currently holds.
+function notesEditorFields(){
+  const g=s=>document.getElementById(s);
+  return {
+    title:(g('ne-title')?g('ne-title').value:'').trim(),
+    body: g('ne-body')?g('ne-body').value:'',
+    type: g('ne-type')?g('ne-type').value:'personal',
+    dateType: g('ne-datetype')?g('ne-datetype').value:'none',
+    date: g('ne-date')?g('ne-date').value:'',
+    priority: g('ne-priority')?!!g('ne-priority').checked:false
+  };
+}
+// Persists the in-progress edit before swapping surfaces. MERGES over the stored record rather
+// than rebuilding it from the DOM — a rebuild silently dropped any field this modal doesn't
+// show, which made adding a field to the model a data-loss bug waiting to happen.
+// Returns null when there is nothing worth persisting yet: a brand-new note the user has not
+// typed into used to be written out here as {title:'',body:''}, leaving a permanent blank
+// record that synced to the cloud and rendered as an empty card you could not explain.
 function notesSaveDraft(id){
   const notes=loadNotes();
-  const idx=notes.findIndex(n=>n.id===id);
-  const updated={
-    id,
-    title: document.getElementById('ne-title')?.value?.trim()||'',
-    body: document.getElementById('ne-body')?.value||'',
-    type: document.getElementById('ne-type')?.value||'personal',
-    dateType: document.getElementById('ne-datetype')?.value||'none',
-    date: document.getElementById('ne-date')?.value||'',
-    priority: document.getElementById('ne-priority')?.checked||false,
-    createdAt: idx>=0?notes[idx].createdAt:getLocalDate()
-  };
+  const idx=notes.findIndex(n=>n&&n.id===id);
+  const f=notesEditorFields();
+  if(idx<0 && !f.title && !f.body.trim()) return null;
+  const base=idx>=0?notes[idx]:{id, createdAt:getLocalDate()};
+  const updated={...base, ...f, id};
   if(idx>=0) notes[idx]=updated; else notes.push(updated);
   saveNotes(notes);
   return updated;
 }
 function notesViewFullscreen(id){
-  const saved = id ? notesSaveDraft(id) : null; // nothing typed so far is ever lost now
-  document.getElementById('note-edit-overlay')?.remove();
-  showNoteView(saved?saved.title:'', saved?saved.body:'', id);
+  const g=s=>document.getElementById(s);
+  const saved = id ? notesSaveDraft(id) : null;
+  // Nothing persisted yet. Carry the metadata forward in memory so the fullscreen editor can
+  // create the record the moment there IS content, instead of writing a blank one now.
+  _noteViewPending = saved ? null : Object.assign({id, createdAt:getLocalDate()}, notesEditorFields());
+  const title = saved ? saved.title : (g('ne-title')?g('ne-title').value:'');
+  const body  = saved ? saved.body  : (g('ne-body') ? g('ne-body').value : '');
+  const ov=g('note-edit-overlay'); if(ov) ov.remove();
+  showNoteView(title, body, id);
 }
 let _noteViewId=null;
+let _noteViewPending=null;
 let _noteViewSaveTimer=null;
 function showNoteView(title, body, id){
   _noteViewId=id;
@@ -16002,19 +16150,48 @@ function showNoteView(title, body, id){
   const v=document.getElementById('note-view-overlay');
   if(v){ v.style.display='block'; v.scrollTop=0; }
 }
+// Writes the fullscreen edit back. Mutates the stored record in place, so every field this
+// screen doesn't show survives untouched; creates the record only once there is real content.
+function noteViewWrite(){
+  clearTimeout(_noteViewSaveTimer); _noteViewSaveTimer=null;
+  if(!_noteViewId) return;
+  const t=document.getElementById('note-view-title');
+  const b=document.getElementById('note-view-body');
+  if(!t&&!b) return;
+  const title=(t?t.value:'').trim();
+  const body=b?b.value:'';
+  const notes=loadNotes();
+  const idx=notes.findIndex(n=>n&&n.id===_noteViewId);
+  if(idx>=0){
+    if(notes[idx].title===title && notes[idx].body===body) return; // no-op: don't churn the cloud
+    notes[idx].title=title; notes[idx].body=body;
+  } else {
+    if(!title && !body.trim()) return;
+    const base=_noteViewPending||{id:_noteViewId,type:'personal',dateType:'none',date:'',priority:false,createdAt:getLocalDate()};
+    notes.push(Object.assign({}, base, {id:_noteViewId, title, body}));
+    _noteViewPending=null;
+  }
+  saveNotes(notes);
+}
 function noteViewSave(){
   clearTimeout(_noteViewSaveTimer);
-  _noteViewSaveTimer=setTimeout(()=>{
-    if(!_noteViewId) return;
-    const notes=loadNotes();
-    const idx=notes.findIndex(n=>n.id===_noteViewId);
-    if(idx<0) return;
-    notes[idx].title=(document.getElementById('note-view-title')?.value||'').trim();
-    notes[idx].body=document.getElementById('note-view-body')?.value||'';
-    saveNotes(notes);
-  }, 500);
+  _noteViewSaveTimer=setTimeout(noteViewWrite, 500);
 }
-function closeNoteView(){ const v=document.getElementById('note-view-overlay'); if(v) v.style.display='none'; }
+// iOS suspends a backgrounded PWA without warning, so a 500ms debounce is not a promise — the
+// last sentence typed before the phone locks was simply gone. Flush synchronously whenever the
+// page is hidden or torn down. Only fires when a write is actually pending, so this adds no
+// extra Firebase traffic during ordinary typing.
+function noteViewFlush(){ if(_noteViewSaveTimer) noteViewWrite(); }
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden') noteViewFlush(); });
+window.addEventListener('pagehide', noteViewFlush);
+function closeNoteView(){
+  noteViewFlush();
+  const v=document.getElementById('note-view-overlay'); if(v) v.style.display='none';
+  _noteViewId=null; _noteViewPending=null;
+  // The list and the Home card used to keep showing the pre-edit title after a fullscreen
+  // rename — the save had worked, but the user was shown evidence that it hadn't.
+  renderNotes(); renderHomeNotesBubble();
+}
 function copyNoteView(){
   const title=document.getElementById('note-view-title')?.value||'';
   const body=document.getElementById('note-view-body')?.value||'';
@@ -16032,38 +16209,43 @@ function copyNoteView(){
 }
 
 function notesSave(id){
-  const title=document.getElementById('ne-title')?.value?.trim();
-  if(!title){ alert('Add a title'); return; }
+  const f=notesEditorFields();
+  if(!f.title){ alert('Add a title'); return; }
   const notes=loadNotes();
-  const idx=notes.findIndex(n=>n.id===id);
-  const updated={
-    id, title,
-    body: document.getElementById('ne-body')?.value?.trim()||'',
-    type: document.getElementById('ne-type')?.value||'personal',
-    dateType: document.getElementById('ne-datetype')?.value||'none',
-    date: document.getElementById('ne-date')?.value||'',
-    priority: document.getElementById('ne-priority')?.checked||false,
-    createdAt: idx>=0?notes[idx].createdAt:getLocalDate()
-  };
+  const idx=notes.findIndex(n=>n&&n.id===id);
+  const base=idx>=0?notes[idx]:{id, createdAt:getLocalDate()};
+  const updated={...base, ...f, id, body:f.body.trim()};
   if(idx>=0) notes[idx]=updated; else notes.push(updated);
   saveNotes(notes);
-  document.getElementById('note-edit-overlay')?.remove();
+  const ov=document.getElementById('note-edit-overlay'); if(ov) ov.remove();
   renderNotes();
   renderHomeNotesBubble();
 }
 
+// Returns true only when a note was actually removed, so the caller knows whether to close the
+// editor. Every other destructive action in Daily confirms first (sessions, accounts, recipes,
+// plans, savings history); Notes was the sole exception, and it is the only store whose contents
+// exist nowhere else in the app. Recoverable deletion arrives with the Trash in the next stage.
 function notesDelete(id){
-  const notes=loadNotes().filter(n=>n.id!==id);
-  saveNotes(notes);
+  const notes=loadNotes();
+  const n=notes.find(x=>x&&x.id===id);
+  if(!n) return false;
+  const label=String(n.title||'').trim();
+  if(!confirm('Delete '+(label?'“'+label+'”':'this note')+'?\n\nThis cannot be undone.')) return false;
+  saveNotes(notes.filter(x=>!(x&&x.id===id)));
   renderNotes();
   renderHomeNotesBubble();
+  return true;
 }
 
 function buildHomeNotesCard(){
   const today=getLocalDate();
-  const in7=new Date(today); in7.setDate(in7.getDate()+7);
+  // Local calendar arithmetic: localMidnight() then setDate(+7) lands on the right calendar day
+  // in any timezone. `new Date(today)` parses as UTC midnight and then mixes in local getters,
+  // which happens to come out right at a positive UTC offset and off by one at a negative.
+  const in7=localMidnight(today); in7.setDate(in7.getDate()+7);
   const in7Str=dateStr(in7);
-  const all=loadNotes();
+  const all=loadNotes().filter(n=>n&&typeof n==='object');
   const dated=n=>n.date&&n.dateType!=='none';
   // Each note lands in exactly ONE bucket. Priority wins first (accent, "pinned"); the other
   // three exclude priority so nothing renders twice. `recent` = undated notes (the default
@@ -16076,7 +16258,7 @@ function buildHomeNotesCard(){
     .slice(0,3);
   // Whole card taps through to the Notes tab (rows inherit the click via bubbling).
   const row=(dotCol,titleWeight,title,rightHtml)=>
-    `<div style="display:flex;align-items:center;gap:10px;padding:6px 0"><span style="width:8px;height:8px;border-radius:50%;background:${dotCol};flex-shrink:0"></span><div style="flex:1;font-size:14px;font-weight:${titleWeight};color:var(--text)">${title}</div>${rightHtml}</div>`;
+    `<div style="display:flex;align-items:center;gap:10px;padding:6px 0"><span style="width:8px;height:8px;border-radius:50%;background:${dotCol};flex-shrink:0"></span><div style="flex:1;font-size:14px;font-weight:${titleWeight};color:var(--text)">${escText(title)}</div>${rightHtml}</div>`;
   let html='<div class="card" onclick="setView(\'notes\')" style="cursor:pointer">';
   html+='<div style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Notes</div>';
   if(!priority.length&&!urgent.length&&!recent.length&&!upcoming.length){
@@ -16088,7 +16270,7 @@ function buildHomeNotesCard(){
     });
     // 2) Urgent — danger dot, due within 7 days.
     urgent.forEach(n=>{
-      const diff=Math.ceil((new Date(n.date)-new Date(today))/(1000*60*60*24));
+      const diff=notesDayDiff(String(n.date||''), today);
       const label=diff<=0?'Today':diff===1?'Tomorrow':'In '+diff+' days';
       html+=row('var(--danger)','600',n.title,`<div style="font-size:12px;color:var(--danger);font-weight:600">${label}</div>`);
     });
@@ -16098,7 +16280,7 @@ function buildHomeNotesCard(){
     });
     // 4) Upcoming — muted dot, due after 7 days.
     upcoming.forEach(n=>{
-      html+=row('var(--muted)','500',n.title,`<div style="font-size:12px;color:var(--muted)">${n.date}</div>`);
+      html+=row('var(--muted)','500',n.title,`<div style="font-size:12px;color:var(--muted)">${escText(n.date)}</div>`);
     });
   }
   html+='</div>';
