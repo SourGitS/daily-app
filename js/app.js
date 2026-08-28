@@ -9986,7 +9986,7 @@ function renderMonth(){
             const cat=activeCats(loadVarCats()).find(c=>c.id===t.catId);
             return '<div class="up-row">'+
               '<span class="up-name">'+(t.merchant?_catEscHtml(t.merchant):'Expense')+
-                (cat?'<span class="txn-count">'+_catEscHtml(catLabel(cat))+'</span>':'')+'</span>'+
+                (cat?'<span class="month-big-cat">'+_catEscHtml(catLabel(cat))+'</span>':'')+'</span>'+
               '<span class="up-when" style="flex:0 0 auto">'+fmtDate(t.date)+'</span>'+
               '<span class="up-amt">'+fmtMoneyExact(parseFloat(t.amount)||0)+'</span>'+
             '</div>';

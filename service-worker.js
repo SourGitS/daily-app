@@ -1,8 +1,8 @@
 // BUMP THIS ON EVERY RELEASE THAT CHANGES ANY FILE IN ASSETS.
 // The fetch handler is cache-first, so an installed PWA keeps serving the old bundle until the
 // cache NAME changes — a deploy with the same name reaches nobody who already has the app on
-// their home screen. v234: separate recurring-charge type from billing cycle.
-const CACHE_NAME = 'daily-v234';
+// their home screen. v235: simplify category labels in the biggest-purchases list.
+const CACHE_NAME = 'daily-v235';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
