@@ -4,11 +4,12 @@
 #calorie-overlay-back{background:none;border:none;color:var(--text);font-size:22px;cursor:pointer;padding:4px 8px}
 
 /* ── Modals ── */
-/* --kb-inset = height of viewport obscured by the on-screen keyboard (set via the
-   visualViewport tracker in app.js; 0 when closed). position:fixed resolves against the
-   LAYOUT viewport, which iOS does not shrink for the keyboard, so without this padding the
-   bottom-aligned sheet — and its sticky button row — sits behind the keyboard. The box also
-   caps at the overlay's remaining content height (100%) so it can't overflow off-screen top. */
+/* position:fixed resolves against the LAYOUT viewport, which iOS does not shrink for the
+   keyboard, so a bottom-aligned sheet and its button row would sit behind it. Short sheets
+   are lifted by adjustModalsForKeyboard(); the full-screen expense modal is sized to the
+   VISUAL viewport by vpSyncOverlay() instead — see the central viewport module in app.js.
+   (A --kb-inset custom property used to be written here for this and read by no rule at all;
+   it has been removed rather than left as a second, dead system.) */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;display:flex;align-items:flex-end}
 .modal-box{background:#ffffff;border-radius:20px 20px 0 0;padding:22px 20px max(30px, env(safe-area-inset-bottom, 30px));width:100%;max-height:min(78vh,100%);overflow-y:auto}
 [data-theme="dark"] .modal-box{background:#0f0f0f;border-top:1px solid rgba(255,255,255,0.1)}
@@ -31,15 +32,50 @@
 .modal-btn.danger{background:transparent;border:1.5px solid var(--danger);color:var(--danger)}
 
 /* Expense capture is used standing at a checkout. On a phone it must be a stable screen, not
-   a bottom sheet whose Save action can fall behind the persistent navigation or keyboard. */
-.txn-modal-topbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+   a bottom sheet whose Save action can fall behind the persistent navigation or keyboard.
+   Three bounded regions: a header that never scrolls, a body that is the ONLY scroller, and
+   a real footer. The Cancel/Save row used to be position:sticky inside the scrolling content,
+   which parked it wherever the scroll happened to be — across the Date and Note fields. */
+.txn-modal-topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0}
 .txn-modal-topbar .modal-title{margin-bottom:14px}
 .txn-modal-close{display:none}
+#txn-modal .modal-box{display:flex;flex-direction:column;overflow:hidden}
+.txn-modal-body{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.txn-modal-footer{flex:0 0 auto;position:static;margin-top:12px}
+/* Nothing inside may exceed the visible width, or focusing a field pans the form sideways
+   and takes Save off-screen with it. */
+#txn-modal .modal-input,#txn-modal .txn-cats,#txn-modal .txn-recent{max-width:100%;box-sizing:border-box}
+#txn-modal .txn-cats,#txn-modal .txn-recent{display:flex;flex-wrap:wrap;gap:8px}
+#txn-modal .txn-chip,#txn-modal .txn-cat{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+/* The manual-total decision, shown in place of the form body. */
+.txn-conflict{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;
+  padding-top:4px}
+.txn-conflict-title{font-size:16px;font-weight:800;color:var(--text)}
+.txn-conflict-body{font-size:13px;line-height:1.55;color:var(--muted);margin:0}
+.txn-conflict-btn{width:100%;padding:14px;border-radius:12px;border:1.5px solid var(--border);
+  background:transparent;color:var(--text);font-family:inherit;font-size:14px;font-weight:700;
+  text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.txn-conflict-btn.primary{border-color:transparent;background:var(--header);color:#fff}
+.txn-conflict-btn:active{opacity:.75}
+.txn-conflict-back{align-self:flex-start;margin-top:2px;padding:8px 2px;border:none;background:transparent;
+  color:var(--muted);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer}
 @media(max-width:1023px){
-  #txn-modal{z-index:300;align-items:stretch}
-  #txn-modal .modal-box{height:100%;max-height:none;flex:0 0 100%;box-sizing:border-box;border-radius:0;padding:calc(env(safe-area-inset-top,0px) + 18px) 20px calc(env(safe-area-inset-bottom,0px) + 20px + var(--txn-kb-inset,0px));overscroll-behavior:contain}
+  /* The overlay's top/left/width/height are set from visualViewport by vpSyncOverlay() while
+     it is open, so the box simply fills whatever is actually visible above the keyboard. */
+  #txn-modal{z-index:300;align-items:stretch;overflow:hidden}
+  #txn-modal .modal-box{height:100%;max-height:none;flex:0 0 100%;box-sizing:border-box;border-radius:0;
+    padding:calc(env(safe-area-inset-top,0px) + 18px) max(20px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 14px) max(20px,env(safe-area-inset-left,0px));
+    overscroll-behavior:contain}
   #txn-modal .txn-modal-close{display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;margin-top:-8px;border:1px solid var(--border);border-radius:12px;background:transparent;color:var(--text);cursor:pointer;-webkit-tap-highlight-color:transparent}
-  #txn-modal .modal-btn-row{bottom:var(--txn-kb-inset,0px);padding:10px 0 2px;margin-top:18px}
+  #txn-modal .modal-btn-row{padding:10px 0 2px;margin-top:12px}
+}
+/* Short landscape: the header shrinks so the footer and at least one field still fit. */
+@media (orientation:landscape) and (max-width:1023px) and (max-height:600px){
+  #txn-modal .modal-box{padding-top:calc(env(safe-area-inset-top,0px) + 10px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 8px)}
+  #txn-modal .txn-modal-topbar .modal-title{margin-bottom:8px}
+  #txn-modal .modal-btn-row{margin-top:8px}
+  #txn-modal .modal-btn{padding:10px}
 }
 
 /* PO modal items */

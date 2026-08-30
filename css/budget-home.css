@@ -97,6 +97,30 @@
 .bud-row-input{width:90px;height:38px;border:1.5px solid var(--border);border-radius:8px;font-size:16px;font-weight:500;text-align:center;background:var(--card);color:var(--text);-webkit-appearance:none;appearance:none}
 .bud-row-input:focus{outline:none;border-color:var(--blue)}
 .bud-row-calc{font-size:15px;font-weight:600;min-width:70px;text-align:right}
+/* A typed weekly total is money, so it says so. The $ lives outside the input because the
+   value inside is parsed straight back by budRecalc — a currency-formatted value with a
+   thousands separator would truncate at the comma. */
+.bud-money-field{position:relative;display:inline-flex;align-items:center;flex-shrink:0}
+.bud-money-prefix{position:absolute;left:10px;font-size:14px;font-weight:600;color:var(--muted);pointer-events:none}
+.bud-money-field .bud-row-input{padding-left:20px;text-align:right;padding-right:10px}
+/* Which of the two entry modes a category is in. Without this the mode change reads as the
+   input having gone missing and been replaced by an unrelated figure. */
+.bud-mode-tag{font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);background:var(--track);border-radius:999px;padding:3px 7px;flex-shrink:0;
+  margin-right:2px;white-space:nowrap}
+.bud-mode-tag.itemised{color:var(--accent-text);background:rgba(var(--accent-rgb),.13)}
+/* A manual total and itemised expenses coexisting for one category/week. Transactions win;
+   this explains the leftover figure and offers the two ways out rather than deleting it. */
+.bud-conflict{padding:10px 12px;margin:0 0 8px;border-radius:12px;
+  background:rgba(231,76,60,.09);border:1px solid rgba(231,76,60,.28)}
+.bud-conflict-text{font-size:11.5px;line-height:1.5;color:var(--text)}
+.bud-conflict-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.bud-conflict-btn{flex:1 1 auto;min-width:0;padding:7px 10px;border-radius:9px;
+  border:1px solid var(--border);background:transparent;color:var(--text);
+  font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.bud-conflict-btn.primary{border-color:transparent;background:var(--danger);color:#fff}
+.bud-conflict-btn:active{opacity:.7}
 /* Dynamic add/remove budget categories */
 .bud-cat-row{gap:8px}
 .bud-cat-name-input{flex:1;min-width:0;border:none;background:transparent;font-size:14px;font-weight:600;color:var(--text);padding:2px 0;font-family:inherit}
@@ -133,8 +157,53 @@
 .txn-item:active{background:var(--track)}
 .txn-item-l{display:flex;flex-direction:column;min-width:0}
 .txn-item-name{font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* A converted weekly total is not a purchase. It is labelled as such wherever it appears so
+   an old auto-generated one can be recognised and removed deliberately, never silently. */
+.txn-item-carry{background:rgba(127,127,127,.06)}
+.txn-badge{display:inline-block;margin-left:7px;padding:2px 6px;border-radius:999px;
+  background:var(--track);color:var(--muted);font-size:9px;font-weight:800;
+  letter-spacing:.04em;text-transform:uppercase;vertical-align:middle}
+.txn-item-carry-hint{white-space:normal;line-height:1.45;margin-top:3px;max-width:100%}
 .txn-item-meta{font-size:11px;font-weight:600;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .txn-item-amt{font-family:var(--font-num);font-size:14px;font-weight:800;color:var(--text);flex-shrink:0}
+/* ── Settings -> Weather ── */
+.wx-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 0;
+  border-bottom:1px solid var(--border)}
+.wx-row:last-of-type{border-bottom:none}
+.wx-k{font-size:13px;color:var(--muted);flex-shrink:0}
+.wx-v{font-size:13px;color:var(--text);text-align:right;min-width:0;overflow-wrap:anywhere}
+.wx-v code{font-family:var(--font-num);font-size:12px}
+.wx-note{font-size:11.5px;line-height:1.5;color:var(--muted);margin:6px 0 10px}
+.wx-status{font-size:12.5px;line-height:1.5;padding:9px 11px;border-radius:10px;margin-bottom:12px;
+  background:var(--track);color:var(--text)}
+.wx-status.ok{background:rgba(82,183,136,.14);color:var(--text)}
+.wx-status.err{background:rgba(231,76,60,.12);color:var(--text)}
+.wx-flag{font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+  padding:2px 6px;border-radius:999px;background:rgba(231,76,60,.16);color:var(--danger);margin-left:6px}
+.wx-details{margin:2px 0 10px}
+.wx-details summary{font-size:12.5px;font-weight:700;color:var(--accent-text);cursor:pointer;padding:4px 0}
+.wx-coords{font-family:var(--font-num);font-size:13px;color:var(--text);padding:6px 0 0}
+.wx-btn{width:100%;padding:12px;margin-bottom:8px;border-radius:10px;border:1.5px solid var(--border);
+  background:transparent;color:var(--text);font-family:inherit;font-size:14px;font-weight:700;
+  cursor:pointer;-webkit-tap-highlight-color:transparent}
+.wx-btn.primary{border-color:transparent;background:var(--header);color:#fff}
+.wx-btn.danger{border-color:var(--danger);color:var(--danger)}
+.wx-btn:disabled{opacity:.45;cursor:default}
+.wx-link{display:inline-block;margin-top:6px;padding:8px 0;border:none;background:transparent;
+  color:var(--accent-text);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;text-align:left}
+
+/* Compact week navigation for short landscape. display:none everywhere else — the weekly
+   hero carries these controls in every other layout. Opaque on purpose: it is pinned over
+   scrolling cards, and a translucent pinned surface is exactly the bug it replaces. */
+.bud-compact-nav{display:none;align-items:center;justify-content:space-between;gap:8px;
+  margin-bottom:8px;padding:5px 6px;border-radius:11px;background:var(--card);
+  border:1px solid var(--card-border);box-shadow:0 4px 14px rgba(0,0,0,.16)}
+[data-theme="dark"] .bud-compact-nav{background:#141414;border-color:rgba(255,255,255,.1)}
+.bud-compact-nav > button{width:28px;height:28px;flex-shrink:0;border:none;border-radius:8px;
+  background:var(--track);color:var(--text);font-size:16px;line-height:1;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.bud-compact-week{flex:1;min-width:0;text-align:center;font-size:11.5px;font-weight:700;
+  color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .txn-add-inline{width:100%;margin-top:4px;padding:8px;border:none;background:transparent;
   color:var(--accent-text);font-size:12px;font-weight:700;cursor:pointer;text-align:left;
   -webkit-tap-highlight-color:transparent}
@@ -970,7 +1039,24 @@
      otherwise changing week means scrolling back up every time. DOM order is untouched — the
      cards keep their data-bud-key collapse state and their source order; only the column count
      changes, so nothing is visually reordered away from the DOM. */
-  #view-budget .bud-view-switch,#budget-hero-card{position:sticky;top:0;z-index:6}
+  /* The hero is explicitly NOT sticky. It used to be — together with a .bud-view-switch
+     selector that matches no element in the app, so the rule pinned only the hero: a
+     translucent 200px card covering most of a 430px viewport, with Fixed expenses and
+     Upcoming charges ghosting through its background. The controls that actually need to
+     stay put are the Week/Month/Year toggle (a .sub-toggle) and the week navigation, and
+     both are small and opaque.
+     The two stack rather than overlap: the toggle is given an exact height so the strip
+     below it has a real number to offset against. */
+  :root{--bud-switch-h:34px}
+  /* !important because the toggle carries an inline background:var(--border) from index.html,
+     which is translucent — and a translucent PINNED surface is the ghosting bug this whole
+     block exists to fix. An inline style outranks any selector, so this is the only way to
+     reach it without editing the markup's own colour choice for every other layout. */
+  #view-budget .sub-toggle{position:sticky;top:0;z-index:7;height:var(--bud-switch-h);
+    box-sizing:border-box;margin-bottom:6px;padding:2px;background:var(--bg) !important;
+    box-shadow:0 6px 12px -8px rgba(0,0,0,.5)}
+  #view-budget .sub-toggle > button{padding:4px 8px;font-size:12.5px}
+  #view-budget .bud-compact-nav{display:flex;position:sticky;top:var(--bud-switch-h);z-index:7}
   #budget-hero-card{padding:12px 14px !important}
   #bud-hero-avail{font-size:30px !important}
   /* #bud-col-left carries every card in this layout (budApplyLayout only splits the two columns

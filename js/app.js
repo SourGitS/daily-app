@@ -1347,6 +1347,9 @@ function setAccentMode(mode){
   if(typeof renderAccentModeRow==='function') renderAccentModeRow(); // refresh its own selection
   renderDayColorPickers();
   applyDayColour();
+  // Selecting weather is itself a reason to have current weather — the accent must not wait
+  // for a Home render, which may never come if the weather card is switched off.
+  if(mode==='weather' && typeof weatherEnsureFresh==='function'){ _weatherLastCheck=0; weatherEnsureFresh(); }
 }
 // Scene → accent. Deliberately darker/more saturated than the scene gradient itself: the
 // gradient only needs to look like sky, whereas the accent carries white text, so every one
@@ -1370,13 +1373,23 @@ const WEATHER_ACCENTS={
 function currentWeatherScene(){
   try{
     const c=loadWeatherCache();
-    if(c && !c.placeholder) return weatherScene(c.code,c);
-    if(c) return weatherScene(c.code,c);          // sample reading — still a real sky
+    if(c) return weatherScene(c.code,c);   // display scene: what the CARD is showing
   }catch(e){}
   return (typeof weatherPlaceholderScene==='function') ? weatherPlaceholderScene() : 'clear-day';
 }
+// The scene the APPEARANCE may follow, which is a stricter question than what the card shows.
+// The built-in Sydney sample used to pass straight through here, so a user who had never
+// granted location had their whole app coloured by a city they have never been to — and a
+// cached night sky from hours ago kept the app dark at noon. Neither is this user's sky.
+function weatherAppearanceScene(){
+  const e=weatherAppearanceEntry();
+  return e ? weatherScene(e.code,e) : null;
+}
 function weatherAccentHex(){
-  return WEATHER_ACCENTS[currentWeatherScene()] || restColor();
+  const scene=weatherAppearanceScene();
+  // Stable neutral: the app's own resting colour, not a guess dressed up as a measurement.
+  if(!scene) return restColor();
+  return WEATHER_ACCENTS[scene] || restColor();
 }
 // One source of truth for "what colour is the app right now".
 function currentAccentHex(){
@@ -1412,8 +1425,13 @@ function renderAccentModeRow(){
   const d=document.getElementById('accent-mode-desc');
   if(d){
     let txt=ACCENT_MODE_LABELS[cur].desc;
-    // Name the sky it's actually following, so the choice isn't abstract.
-    if(cur==='weather') txt+=' Right now: '+currentWeatherScene().replace('-',' ')+'.';
+    // Name the sky it's actually following, so the choice isn't abstract — and say plainly
+    // when it is NOT following one, rather than showing a scene the accent is ignoring.
+    if(cur==='weather'){
+      const st=weatherAppearanceStatus();
+      txt += st.ok ? (' Right now: '+weatherAppearanceScene().replace('-',' ')+'.')
+                   : (' '+st.reason+' Open Settings \u2192 Weather to fix it.');
+    }
     d.textContent=txt;
   }
 }
@@ -5077,8 +5095,8 @@ function updateDesktopSidebar(){
 // moved out of its hidden store into #view-settings-detail (mirrors the split/budget editor
 // overlays), and moved back on close. Desktop and mobile behave identically (the overlay is
 // simply offset past the sidebar on desktop) — so there's no "stacked column" branch to break.
-const SETTINGS_SECTION_KEYS=['account','health','habits','appearance','homelayout','export'];
-const SETTINGS_TITLES={account:'Account',health:'Health',habits:'Habits',appearance:'Appearance',homelayout:'Home Layout',export:'Export'};
+const SETTINGS_SECTION_KEYS=['account','health','habits','appearance','weather','homelayout','export'];
+const SETTINGS_TITLES={account:'Account',health:'Health',habits:'Habits',appearance:'Appearance',weather:'Weather',homelayout:'Home Layout',export:'Export'};
 let _activeSettingsKey=null;
 function openSettingsSection(key){
   const overlay=document.getElementById('view-settings-detail');
@@ -5108,6 +5126,7 @@ function openSettingsSection(key){
   }
   if(key==='habits') renderHabitsEditModal();
   if(key==='appearance'){ const th=document.getElementById('theme-toggle'); if(th) th.checked=S.theme==='dark'; renderAccentModeRow(); renderDayColorPickers(); }
+  if(key==='weather'){ weatherPermissionState(function(s){ _weatherPerm=s; renderWeatherSection(); }); renderWeatherSection(); }
   if(key==='homelayout') renderHomeLayoutSection();
   overlay.style.display='block';
   overlay.style.left=window.innerWidth>=1024?'260px':'0';
@@ -5962,6 +5981,10 @@ function exportAllData(){
   const data={};
   for(let i=0;i<localStorage.length;i++){
     const key=localStorage.key(i);
+    // daily_weather_cache is a device cache holding precise coordinates, not a durable
+    // setting — restoring one device's location onto another is wrong, and a backup file is
+    // routinely pasted into a chat. It is excluded here for the same reason it is not synced.
+    if(key && /^daily_weather_cache/.test(key)) continue;
     if(key && /^(daily_|wt_|kitchen_)/.test(key)) data[key]=localStorage.getItem(key);
   }
   const backup={ app:'daily', version:1, exported:new Date().toISOString(), data };
@@ -9808,12 +9831,30 @@ function openTxnModal(opts){
   document.getElementById('txn-save-btn').textContent = existing?'Save changes':'Save expense';
   txnRenderCats();
   txnRenderMerchants();
+  // Always open from clean geometry: a previous session's visual-viewport inset must not
+  // survive a hidden modal, or the form opens already shifted up by a keyboard that is gone.
+  _txnPending=null;
+  txnHideConflict();
+  vpClearOverlayGeometry(modal);
+  const body=document.getElementById('txn-modal-body'); if(body) body.scrollTop=0;
   if(modal) modal.classList.remove('hidden');
+  vpSync();
   setTimeout(()=>{ const a=document.getElementById('txn-amount'); if(a){ a.focus(); a.select(); } },60);
 }
 function closeTxnModal(){
-  document.getElementById('txn-modal').classList.add('hidden');
+  const modal=document.getElementById('txn-modal');
+  // Blur first: on iOS the keyboard only retracts when focus actually leaves, and the shell
+  // cannot be resynchronised to the full viewport until it has.
+  const active=document.activeElement;
+  if(active && modal && modal.contains(active) && active.blur) active.blur();
+  if(modal) modal.classList.add('hidden');
   _txnEditId=null;
+  _txnPending=null;
+  txnHideConflict();
+  const body=document.getElementById('txn-modal-body'); if(body) body.scrollTop=0;
+  const err=document.getElementById('txn-err'); if(err) err.textContent='';
+  vpClearOverlayGeometry(modal);
+  vpSettle();
 }
 function txnRenderCats(){
   const wrap=document.getElementById('txn-cat-list'); if(!wrap) return;
@@ -9870,58 +9911,159 @@ function txnCreateRecord(f, meta){
   txnData.push(rec);
   return rec;
 }
-// The first itemised purchase must not make an existing weekly category total disappear.
-// Move that total into the ledger as a visible carry-forward transaction, then clear the old
-// field so the category has one source of truth from this point on. AI statement imports skip
-// this path deliberately: their transaction set is intended to replace rough manual totals.
-function txnCarryManualIntoLedger(date,catId,excludeTxnId){
+// A carry record is an old manual weekly total turned into a ledger line. New ones carry
+// explicit provenance; records written before that field existed can only be recognised by
+// the exact merchant/note pair the retired auto-conversion used, so that fallback stays
+// deliberately narrow - a user who types "Earlier spending" themselves is not one of ours.
+const TXN_CARRY_MERCHANT='Earlier spending';
+const TXN_CARRY_NOTE='Converted from the previous weekly total.';
+const TXN_CARRY_SOURCE='manual-weekly-total';
+function txnIsCarryRecord(t){
+  if(!t) return false;
+  if(t.carrySource) return t.carrySource===TXN_CARRY_SOURCE;
+  return t.merchant===TXN_CARRY_MERCHANT && t.note===TXN_CARRY_NOTE;
+}
+// The Monday key a transaction date falls in.
+function txnWeekOf(date){
   const day=localMidnight(date);
-  const diff=(day.getDay()+6)%7;
-  day.setDate(day.getDate()-diff);
-  const wk=weekKey(day);
-  const existing=txnsForWeekCat(wk,catId).filter(t=>t.id!==excludeTxnId);
-  if(existing.length) return false;
+  day.setDate(day.getDate()-((day.getDay()+6)%7));
+  return weekKey(day);
+}
+// The manual weekly figure still sitting on a category that is about to gain its FIRST
+// itemised expense. This used to be converted into an "Earlier spending" transaction
+// automatically, which silently double-counted whenever that figure was an estimate already
+// covering the purchase being logged (a $50 fuel estimate plus a $518 tyre bill read as
+// $568). Nothing is converted now without the user choosing it - see txnResolveConflict.
+function txnManualConflict(date,catId,excludeTxnId){
+  const wk=txnWeekOf(date);
+  if(txnsForWeekCat(wk,catId).filter(t=>t.id!==excludeTxnId).length) return null;
   const d=budgetData[wk];
+  const amount=parseFloat(d&&d['var_'+catId]);
+  if(!d||isNaN(amount)||amount===0) return null;
+  return {wk, catId, amount};
+}
+// Transactions own a category once itemisation starts, so a manual figure left over from
+// before must not become the total again the moment the last purchase is removed. Park it
+// under varDormant_<id> - preserved, not deleted, and offered back through the conflict
+// banner - so the category reads as a deliberate empty rather than silently reverting.
+// (varDormant_ deliberately does not start with "var_", so no total reader picks it up.)
+function txnParkDormantManual(wk,catId){
+  const d=budgetData[wk]; if(!d||!catId) return false;
+  if(txnsForWeekCat(wk,catId).length) return false;
   const field='var_'+catId;
-  const amount=parseFloat(d&&d[field]);
-  if(!d||isNaN(amount)||amount===0) return false;
-  const rec=txnCreateRecord({date,catId,amount,merchant:'Earlier spending',
-    note:'Converted from the previous weekly total.'});
-  rec.createdAt-=1;
+  const amount=parseFloat(d[field]);
+  if(isNaN(amount)||amount===0) return false;
+  d['varDormant_'+catId]=d[field];
   delete d[field];
   d.updatedAt=Date.now();
   budSaveData(wk);
   return true;
 }
-function txnSave(){
+// Form values captured while the manual-total conflict panel is on screen, so the decision
+// and the save are one user action rather than two independent writes.
+let _txnPending=null;
+function txnReadForm(){
   const amtRaw=(document.getElementById('txn-amount').value||'').replace(/[^0-9.\-]/g,'');
   const amt=parseFloat(amtRaw);
   const err=document.getElementById('txn-err');
-  if(isNaN(amt)||amt===0){ err.textContent='Enter an amount.'; document.getElementById('txn-amount').focus(); return; }
-  if(!_txnCatId){ err.textContent='Pick a category.'; return; }
-  const date=document.getElementById('txn-date').value||getLocalDate();
-  const merchant=(document.getElementById('txn-merchant').value||'').trim();
-  const note=(document.getElementById('txn-note').value||'').trim();
-  const acctId=(document.getElementById('txn-account')||{}).value||'';
-  if(_txnEditId){
+  if(isNaN(amt)||amt===0){ err.textContent='Enter an amount.'; document.getElementById('txn-amount').focus(); return null; }
+  if(!_txnCatId){ err.textContent='Pick a category.'; return null; }
+  err.textContent='';
+  return {date:document.getElementById('txn-date').value||getLocalDate(),
+    catId:_txnCatId, amount:amt,
+    merchant:(document.getElementById('txn-merchant').value||'').trim(),
+    note:(document.getElementById('txn-note').value||'').trim(),
+    acctId:(document.getElementById('txn-account')||{}).value||''};
+}
+function txnSave(){
+  const f=txnReadForm(); if(!f) return;
+  const conflict=txnManualConflict(f.date,f.catId,_txnEditId||null);
+  if(conflict){ _txnPending=f; txnShowConflict(conflict); return; }
+  txnCommitSave(f,null);
+}
+// The conflict choice replaces the form body rather than appearing beneath it: the decision
+// changes what Save means, so leaving the form (and its Save button) live alongside it would
+// offer two different saves at once.
+function txnShowConflict(c){
+  const box=document.getElementById('txn-conflict');
+  const body=document.getElementById('txn-modal-body');
+  const foot=document.getElementById('txn-modal-footer');
+  if(!box||!body){ txnCommitSave(_txnPending,'replace'); return; }
+  const cat=(loadVarCats().find(x=>x&&x.id===c.catId))||null;
+  const name=cat?catLabel(cat):'This category';
+  const money=fmtMoneyExact(c.amount);
+  document.getElementById('txn-conflict-title').textContent=name+' already has a weekly total';
+  document.getElementById('txn-conflict-body').textContent=
+    name+' has '+money+' typed in as this week\u2019s total. From here on its total is the sum '+
+    'of the expenses you log, so choose what should happen to that '+money+'.';
+  document.getElementById('txn-conflict-replace').textContent='Replace the '+money+' manual total with itemised expenses';
+  document.getElementById('txn-conflict-keep').textContent='Keep '+money+' as separate earlier spending';
+  box.classList.remove('hidden');
+  body.classList.add('hidden');
+  if(foot) foot.classList.add('hidden');
+  const first=document.getElementById('txn-conflict-replace');
+  if(first) setTimeout(function(){ first.focus(); },40);
+}
+function txnHideConflict(){
+  const box=document.getElementById('txn-conflict');
+  const body=document.getElementById('txn-modal-body');
+  const foot=document.getElementById('txn-modal-footer');
+  if(box) box.classList.add('hidden');
+  if(body) body.classList.remove('hidden');
+  if(foot) foot.classList.remove('hidden');
+}
+function txnCancelConflict(){ _txnPending=null; txnHideConflict(); }
+function txnResolveConflict(mode){
+  const f=_txnPending; _txnPending=null;
+  txnHideConflict();
+  if(f) txnCommitSave(f,mode);
+}
+// The ONE write path for the modal, whichever resolution was chosen. Replace/keep both clear
+// the manual field in the same pass as the transaction is written, so no dormant value can
+// survive the decision.
+function txnCommitSave(f,mode){
+  const wk=txnWeekOf(f.date);
+  const d=budgetData[wk];
+  const field='var_'+f.catId;
+  if(mode==='keep'){
+    const amount=parseFloat(d&&d[field])||0;
+    if(amount){
+      const rec=txnCreateRecord({date:f.date, catId:f.catId, amount,
+        merchant:TXN_CARRY_MERCHANT, note:TXN_CARRY_NOTE});
+      rec.carrySource=TXN_CARRY_SOURCE;
+      rec.carryWeek=wk;
+      rec.createdAt-=1;   // sorts above the purchase that triggered the conversion
+    }
+  }
+  if(mode==='keep'||mode==='replace'){
+    if(d){ delete d[field]; delete d['varDormant_'+f.catId]; d.updatedAt=Date.now(); budSaveData(wk); }
+  }
+  // An edit can move a transaction out of a category/week; the one it LEFT may now be empty
+  // with an old manual figure still sitting behind it.
+  let fromWk=null, fromCat=null;
+  const wasEdit=!!_txnEditId;
+  if(wasEdit){
     const t=txnData.find(x=>x&&x.id===_txnEditId);
     if(t){
-      txnCarryManualIntoLedger(date,_txnCatId,t.id);
-      t.amount=amt; t.catId=_txnCatId; t.date=date; t.merchant=merchant; t.note=note; t.acctId=acctId;
+      fromWk=txnWeekOf(t.date); fromCat=t.catId;
+      t.amount=f.amount; t.catId=f.catId; t.date=f.date; t.merchant=f.merchant; t.note=f.note; t.acctId=f.acctId;
     }
   } else {
-    txnCarryManualIntoLedger(date,_txnCatId,null);
-    txnCreateRecord({date, catId:_txnCatId, amount:amt, merchant, note, acctId});
+    txnCreateRecord(f);
   }
   saveTxns();
+  if(fromCat && (fromWk!==wk || fromCat!==f.catId)) txnParkDormantManual(fromWk,fromCat);
   closeTxnModal();
   txnAfterChange();
-  if(typeof showToast==='function') showToast(_txnEditId?'Expense updated':'Expense added');
+  if(typeof showToast==='function') showToast(wasEdit?'Expense updated':'Expense added');
 }
 function txnDeleteCurrent(){
   if(!_txnEditId) return;
-  txnData=txnData.filter(t=>t&&t.id!==_txnEditId);
+  const t=txnData.find(x=>x&&x.id===_txnEditId);
+  const wk=t?txnWeekOf(t.date):null, catId=t?t.catId:null;
+  txnData=txnData.filter(x=>x&&x.id!==_txnEditId);
   saveTxns();
+  if(wk&&catId) txnParkDormantManual(wk,catId);
   closeTxnModal();
   txnAfterChange();
   if(typeof showToast==='function') showToast('Expense deleted');
@@ -10042,6 +10184,76 @@ function budApplyLayout(force){
   });
   _budLayoutMode=mode;
 }
+// A manual weekly figure rendered for a text input: no thousands separator (budRecalc and
+// budWriteFields both parseFloat this value straight back, and a comma would truncate it),
+// but cents kept when there are any, so a saved 84.4 reads as 84.40 next to its $ prefix
+// instead of looking like an unfinished number.
+function budFmtInputVal(raw){
+  const n=parseFloat(raw);
+  if(isNaN(n)||n===0) return '';
+  return (Math.round(Math.abs(n)*100)%100!==0) ? n.toFixed(2) : String(n);
+}
+function budFormatMoneyInput(el){
+  if(!el) return;
+  const f=budFmtInputVal(el.value);
+  if(f!==el.value) el.value=f;
+}
+// Both sides of the single-source-of-truth rule, surfaced rather than silently applied:
+// a manual figure still sitting under live transactions ('live'), or one parked out of the
+// way when the last transaction was removed ('dormant'). Either way transactions win and the
+// figure is preserved until the user says what to do with it.
+function varConflictFor(d,wk,catId){
+  const n=txnsForWeekCat(wk,catId).length;
+  const live=parseFloat(d&&d['var_'+catId]);
+  if(n && !isNaN(live) && live!==0) return {kind:'live', amount:live};
+  const dormant=parseFloat(d&&d['varDormant_'+catId]);
+  if(!isNaN(dormant) && dormant!==0) return {kind:'dormant', amount:dormant};
+  return null;
+}
+function budResolveConflict(catId,action){
+  const wk=weekKey(getMondayOf(currentWeekIdx));
+  const d=budgetData[wk]; if(!d) return;
+  const field='var_'+catId, dfield='varDormant_'+catId;
+  const amount=parseFloat(d[field])||parseFloat(d[dfield])||0;
+  if(action==='convert'&&amount){
+    const rec=txnCreateRecord({date:wk, catId, amount,
+      merchant:TXN_CARRY_MERCHANT, note:TXN_CARRY_NOTE});
+    rec.carrySource=TXN_CARRY_SOURCE;
+    rec.carryWeek=wk;
+    saveTxns();
+  }
+  if(action==='restore'){
+    if(d[dfield]!==undefined){ d[field]=d[dfield]; delete d[dfield]; }
+  } else {
+    delete d[field]; delete d[dfield];
+  }
+  d.updatedAt=Date.now();
+  budSaveData(wk);
+  txnAfterChange();
+  if(typeof showToast==='function'){
+    showToast(action==='convert'?'Added as an expense':action==='restore'?'Weekly total restored':'Weekly total removed');
+  }
+}
+function renderVarConflict(c,conf,isCur){
+  if(!conf) return '';
+  const money=fmtMoneyExact(conf.amount);
+  const name=_catEscHtml(catLabel(c));
+  const id=_catEsc(c.id);
+  const text = conf.kind==='live'
+    ? money+' is also saved as this week\u2019s typed total for '+name+
+      '. The itemised expenses are what counts \u2014 this figure is not being added on top.'
+    : money+' was this category\u2019s typed weekly total before it was itemised. It is kept here '+
+      'rather than counted, so removing the last expense does not silently bring it back.';
+  const actions = isCur
+    ? (conf.kind==='live'
+        ? '<button type="button" class="bud-conflict-btn primary" onclick="budResolveConflict(\''+id+'\',\'drop\')">Remove the '+money+' total</button>'+
+          '<button type="button" class="bud-conflict-btn" onclick="budResolveConflict(\''+id+'\',\'convert\')">Add it as an expense</button>'
+        : '<button type="button" class="bud-conflict-btn primary" onclick="budResolveConflict(\''+id+'\',\'drop\')">Discard the '+money+'</button>'+
+          '<button type="button" class="bud-conflict-btn" onclick="budResolveConflict(\''+id+'\',\'restore\')">Restore it as the weekly total</button>')
+    : '';
+  return '<div class="bud-conflict" role="status"><div class="bud-conflict-text">'+text+'</div>'+
+    (actions?'<div class="bud-conflict-actions">'+actions+'</div>':'')+'</div>';
+}
 function renderVariableCard(data,isCur){
   const editing=budEditMode.var && isCur;
   const cats=activeCats(loadVarCats()); // archived keep counting in totals, just no row
@@ -10050,33 +10262,46 @@ function renderVariableCard(data,isCur){
     const txns=txnsForWeekCat(wk,c.id);
     const hasTxns=txns.length>0;
     // Show empty placeholder for no/zero spend — never a filled "0"
-    const num=parseFloat(data['var_'+c.id]);
-    const val=(!isNaN(num)&&num!==0)?data['var_'+c.id]:'';
+    const val=budFmtInputVal(data['var_'+c.id]);
     // With transactions logged, the weekly figure IS their sum — showing an editable field
     // beside it would imply the two combine, which they deliberately don't (see varCatAmount).
-    // Without any, the manual field behaves exactly as it always has.
+    // Without any, the manual field behaves exactly as it always has. The two modes are
+    // labelled rather than left to be inferred from "input vs button", which reads as the
+    // control having gone missing.
     const amountCell = hasTxns
       ? '<button type="button" class="bud-row-calc txn-total" onclick="txnToggleCat(\''+_catEsc(c.id)+'\')" '+
           'title="'+txns.length+' purchase'+(txns.length===1?'':'s')+' — tap to see them">'+
           fmtMoneyExact(txnCatTotal(wk,c.id))+
           '<span class="txn-count">'+txns.length+'</span></button>'
-      : '<input class="bud-row-input" type="number" inputmode="decimal" id="var-'+c.id+'" placeholder="$0" value="'+val+'" oninput="budRecalc();budSaveDraft()"'+(isCur?'':' disabled')+'>';
-    let row='<div class="bud-row bud-cat-row" data-cat-id="'+c.id+'">'+
+      : '<span class="bud-money-field"><span class="bud-money-prefix" aria-hidden="true">$</span>'+
+        '<input class="bud-row-input" type="text" inputmode="decimal" id="var-'+c.id+'" '+
+        'aria-label="'+escAttr(catLabel(c))+' weekly total in dollars" placeholder="0" value="'+escAttr(val)+'" '+
+        'oninput="budRecalc();budSaveDraft()" onblur="budFormatMoneyInput(this);budRecalc();budSaveDraft()"'+(isCur?'':' disabled')+'></span>';
+    const modeTag = hasTxns
+      ? '<span class="bud-mode-tag itemised">Itemised</span>'
+      : '<span class="bud-mode-tag">Weekly total</span>';
+    let row='<div class="bud-row bud-cat-row'+(hasTxns?' bud-row-itemised':'')+'" data-cat-id="'+c.id+'">'+
       budCatNameHtml('var',c,isCur,editing)+
+      modeTag+
       amountCell+
       (editing?'<button class="delete-cat-btn" data-type="var" data-id="'+c.id+'" aria-label="Remove category">×</button>':'')+
     '</div>';
+    row+=renderVarConflict(c,varConflictFor(data,wk,c.id),isCur);
     if(hasTxns && _txnOpenCats.has(c.id)){
-      row+='<div class="txn-list">'+txns.map(t=>
-        '<button type="button" class="txn-item" data-id="'+_catEsc(t.id)+'" onclick="openTxnModal({id:this.dataset.id})">'+
+      row+='<div class="txn-list">'+txns.map(t=>{
+        const carry=txnIsCarryRecord(t);
+        return '<button type="button" class="txn-item'+(carry?' txn-item-carry':'')+'" data-id="'+_catEsc(t.id)+'" onclick="openTxnModal({id:this.dataset.id})">'+
           '<span class="txn-item-l">'+
-            '<span class="txn-item-name">'+(t.merchant?_catEscHtml(t.merchant):'Expense')+'</span>'+
+            '<span class="txn-item-name">'+(t.merchant?_catEscHtml(t.merchant):'Expense')+
+              (carry?'<span class="txn-badge">Converted weekly total</span>':'')+'</span>'+
             '<span class="txn-item-meta">'+fmtDate(t.date)+
               (t.acctId?' · '+_catEscHtml(((accounts||[]).find(a=>a&&a.id===t.acctId)||{}).name||''):'')+
               (t.note?' · '+_catEscHtml(t.note):'')+'</span>'+
+            (carry?'<span class="txn-item-meta txn-item-carry-hint">Not a purchase \u2014 a typed weekly total that was moved into this list. Tap to edit or delete it.</span>':'')+
           '</span>'+
           '<span class="txn-item-amt">'+fmtMoneyExact(parseFloat(t.amount)||0)+'</span>'+
-        '</button>').join('')+
+        '</button>';
+      }).join('')+
         (budIsCurrentWeek()?'<button type="button" class="txn-add-inline" data-cat="'+_catEsc(c.id)+'" onclick="openTxnModal({catId:this.dataset.cat})">+ Add to '+_catEscHtml(catLabel(c))+'</button>':'')+
       '</div>';
     }
@@ -10228,6 +10453,11 @@ function renderBudgetTab(){
     isCur?'This week':currentWeekIdx===-1?'Last week':Math.abs(currentWeekIdx)+' weeks ago';
   document.getElementById('week-label-sub').textContent=fmtWeekLabel(monday);
   document.getElementById('week-next-btn').style.opacity=currentWeekIdx>=0?'0.3':'1';
+  // Same state, second surface: the landscape-only compact strip (see .bud-compact-nav).
+  const cw=document.getElementById('bud-compact-week');
+  if(cw) cw.textContent=(isCur?'This week':currentWeekIdx===-1?'Last week':Math.abs(currentWeekIdx)+' weeks ago')+' \u00b7 '+fmtWeekLabel(monday);
+  const cn=document.getElementById('bud-compact-next');
+  if(cn) cn.style.opacity=currentWeekIdx>=0?'0.3':'1';
 
   // Edit-week toggle: only on past weeks (current week is editable already).
   const weekEditBtn=document.getElementById('week-edit-btn');
@@ -10502,7 +10732,9 @@ function budRecalc(animate){
   $('calc-income',  totalIncome>0?'$'+totalIncome.toFixed(0):'—');
   $('calc-saved',   '$'+totalSaved.toFixed(0));
   $('calc-fixed',   '$'+totalFixed.toFixed(0));
-  $('calc-variable',totalVar>0?'$'+totalVar.toFixed(0):'—');
+  // Exact, not rounded: the rows above it are per-cent transaction figures, so a toFixed(0)
+  // total disagreed with its own visible arithmetic ($1,388.94 of rows summarised as $1,389).
+  $('calc-variable',totalVar>0?fmtMoneyExact(totalVar):'—');
   $('calc-leftover',leftover!==null?(leftover>=0?'+$':'-$')+Math.abs(leftover).toFixed(0):'—');
   updateVarGoalCard(totalVar);
 
@@ -10516,9 +10748,9 @@ function budRecalc(animate){
   // Collapsed-card totals, so minimising a card never hides its figure.
   $('sum-inc','$'+totalIncome.toFixed(0));
   $('sum-fix','$'+totalFixed.toFixed(0));
-  $('sum-var','$'+totalVar.toFixed(0));
+  $('sum-var',fmtMoneyExact(totalVar));
   const _vg=currentVarGoal&&currentVarGoal();
-  $('sum-vargoal',_vg?('$'+totalVar.toFixed(0)+' / $'+Math.round(_vg)):'—');
+  $('sum-vargoal',_vg?(fmtMoneyExact(totalVar)+' / '+fmtMoney(_vg)):'—');
   const savSum=document.getElementById('sav-head-sum');
   if(savSum) savSum.style.color = totalSaved>=getSavingsGoal() ? 'var(--blue)' : 'var(--muted)';
 
@@ -13046,15 +13278,76 @@ function weatherCityFromTz(tz){
   return part?part.replace(/_/g,' '):'';
 }
 function loadWeatherCache(){ return lsLoad('daily_weather_cache', null); }
-function saveWeatherCache(c){ lsSave('daily_weather_cache', c, 'weatherCache'); }
-const WEATHER_STALE_MS=30*60*1000; // refetch after 30 min
+// DEVICE-LOCAL, deliberately. This used to be written with a 'weatherCache' sync path, which
+// uploaded precise latitude/longitude to Firebase on every refresh — while no listener and no
+// restore entry ever read it back. It is a transient cache describing where this handset is
+// standing right now, not a durable cross-device setting, so it stays on the device. The
+// obsolete cloud node is removed only when the user explicitly clears their saved location
+// (weatherClearSaved) — never silently at boot, which would be an unrequested delete.
+function saveWeatherCache(c){ lsSave('daily_weather_cache', c); }
+// ONE freshness threshold, so "fresh" cannot come to mean two different things in two places.
+// Older than this and the reading is no longer the sky you are standing in: the Home card
+// still shows it (marked stale, better than blanking), but the app's APPEARANCE must stop
+// following it, and any refresh opportunity refetches.
+const WEATHER_FRESH_MS=60*60*1000; // 60 minutes
 // Shown before the user grants location, so the card reads as finished rather than an empty
-// grey box. It's a real live reading for this city, clearly labelled "sample", not fake data.
+// grey box. It's a real live reading for this city, clearly labelled "sample", not fake data —
+// and, because it is not this user's sky, it is never allowed to drive the app's appearance.
 const WEATHER_SAMPLE_LOC={lat:-33.8688, lon:151.2093, city:'Sydney'};
+function weatherIsFresh(c){ return !!(c && c.fetchedAt && (Date.now()-c.fetchedAt) < WEATHER_FRESH_MS); }
+function weatherIsReal(c){ return !!(c && !c.placeholder && c.lat!=null); }
+// The only reading the global accent is allowed to follow: a real location, still fresh.
+function weatherAppearanceEntry(){
+  const c=loadWeatherCache();
+  return (weatherIsReal(c) && weatherIsFresh(c)) ? c : null;
+}
+// Why the appearance is or isn't following the sky — shown in both Appearance and Weather
+// settings so a neutral accent is never an unexplained one.
+function weatherAppearanceStatus(){
+  const c=loadWeatherCache();
+  if(!c) return {ok:false, reason:'No weather reading yet, so the app colour is using its resting colour.'};
+  if(c.placeholder) return {ok:false, reason:'Showing the Sydney sample. A sample sky never drives the app colour \u2014 use your own location in Settings \u2192 Weather.'};
+  if(!weatherIsReal(c)) return {ok:false, reason:'No real location reading, so the app colour is using its resting colour.'};
+  if(!weatherIsFresh(c)) return {ok:false, reason:'The last reading is over an hour old, so the app colour is using its resting colour until it refreshes.'};
+  return {ok:true, reason:'Following your current sky.'};
+}
+// Transient per-session state for the Weather settings screen. The last FAILURE is persisted
+// onto the cache instead (lastError/lastErrorAt) so it survives a reload — a network error
+// that disappears when you navigate away is one the user can never act on.
+let _weatherStatus={state:'idle', message:''};
+function weatherSetStatus(state,message){
+  _weatherStatus={state:state, message:message||''};
+  if(typeof renderWeatherSection==='function') renderWeatherSection();
+}
+function weatherRecordFailure(msg){
+  const c=loadWeatherCache();
+  if(c){ c.lastError=msg; c.lastErrorAt=Date.now(); saveWeatherCache(c); }
+  weatherSetStatus('error',msg);
+}
+function weatherRecordSuccess(entry){
+  delete entry.lastError; delete entry.lastErrorAt;
+  saveWeatherCache(entry);
+  weatherSetStatus('ok','');
+}
+// Progressive enhancement only. Safari/iOS support for the Permissions API is inconsistent,
+// and an absent answer means we do not know — never that permission was refused.
+function weatherPermissionState(cb){
+  try{
+    if(!navigator.permissions||!navigator.permissions.query){ cb('unknown'); return; }
+    const p=navigator.permissions.query({name:'geolocation'});
+    if(!p||!p.then){ cb('unknown'); return; }
+    p.then(function(r){ cb((r&&r.state)||'unknown'); }).catch(function(){ cb('unknown'); });
+  }catch(e){ cb('unknown'); }
+}
 let _weatherLoading=false;
 function renderWeatherInto(entry){
+  // The accent is repainted FIRST and unconditionally: weather appearance must not depend on
+  // the Home weather card being enabled. It used to sit after the early return below, so
+  // hiding the card left the whole app following whatever sky was last cached.
+  if(accentMode()==='weather' && typeof applyDayColour==='function') applyDayColour();
+  if(typeof renderWeatherSection==='function') renderWeatherSection();
   const tempEl=document.getElementById('home-weather-temp');
-  if(!tempEl) return; // card isn't in the current layout — nothing to patch
+  if(!tempEl) return; // card isn't in the current layout — nothing else to patch
   tempEl.textContent=Math.round(entry.tempC)+'°';
   const look=weatherLook(entry);
   document.getElementById('home-weather-icon').textContent=look[0];
@@ -13079,8 +13372,6 @@ function renderWeatherInto(entry){
     card.dataset.scene=weatherScene(entry.code,entry);
     applyWeatherMotion(card,entry);
   }
-  // In weather mode the accent follows the sky, so a new reading has to repaint it.
-  if(accentMode()==='weather' && typeof applyDayColour==='function') applyDayColour();
 }
 // First-ever load (no cache yet): show an explicit "tap for weather" invite instead of
 // popping the OS location prompt unasked — Home is where most sessions land first, and an
@@ -13128,60 +13419,183 @@ function fetchWeatherAt(lat,lon){
         fetchedAt:Date.now()};
     });
 }
+// Routine refresh. Runs whether or not the Home weather card is in the layout, because
+// weather-driven appearance needs current data of its own accord. Reuses stored coordinates
+// while permission-compatible — getCurrentPosition() is never called here, and a browser can
+// only prompt when we actually ask where we are, which is what stops iOS asking every launch.
 function loadWeatherWidget(userInitiated){
   const cache=loadWeatherCache();
   if(cache) renderWeatherInto(cache);
   if(_weatherLoading) return;
-  const fresh=cache && (Date.now()-cache.fetchedAt<WEATHER_STALE_MS);
-  const haveRealLocation=cache && !cache.placeholder && cache.lat!=null;
+  const haveRealLocation=weatherIsReal(cache);
 
-  // Tapping the card while it's showing the sample means "use my location" — the only path
-  // that touches geolocation, so the OS dialog only ever appears in response to a tap.
-  if(userInitiated && !haveRealLocation){ requestRealLocationWeather(); return; }
-  if(fresh) return;
+  // Tapping the card while it's showing the sample means "use my location" — one of only two
+  // paths that touch geolocation, so the OS dialog only ever appears after a direct gesture.
+  if(userInitiated && !haveRealLocation){ weatherUseCurrentLocation(); return; }
+  if(weatherIsFresh(cache) && !userInitiated) return;
 
-  // We already know where they are, so refresh straight from the stored coordinates. This is
-  // what stops iOS asking on every launch: getCurrentPosition() is never called on a routine
-  // refresh, and a browser can only prompt when we actually ask it where we are.
-  if(haveRealLocation){
-    _weatherLoading=true;
-    fetchWeatherAt(cache.lat,cache.lon)
-      .then(e=>{ saveWeatherCache(e); renderWeatherInto(e); })
-      .catch(()=>{})   // keep the last good reading rather than blanking the card
-      .finally(()=>{ _weatherLoading=false; });
-    return;
-  }
+  if(haveRealLocation){ weatherRefreshStored(); return; }
 
   // No location yet: show a real reading for the sample city so the card looks finished
-  // instead of empty, with the label inviting them to switch to their own.
+  // instead of empty, with the label inviting them to switch to their own. Explicitly
+  // flagged placeholder:true, which is what keeps it out of the appearance system.
   _weatherLoading=true;
+  weatherSetStatus('loading','');
   fetchWeatherAt(WEATHER_SAMPLE_LOC.lat,WEATHER_SAMPLE_LOC.lon)
-    .then(e=>{ e.city=WEATHER_SAMPLE_LOC.city; e.placeholder=true; saveWeatherCache(e); renderWeatherInto(e); })
-    .catch(()=>renderWeatherError(false))
+    .then(e=>{ e.city=WEATHER_SAMPLE_LOC.city; e.placeholder=true; weatherRecordSuccess(e); renderWeatherInto(e); })
+    .catch(()=>{ weatherRecordFailure('Could not reach the weather service.'); renderWeatherError(false); })
     .finally(()=>{ _weatherLoading=false; });
 }
-function requestRealLocationWeather(){
-  if(!navigator.geolocation){ renderWeatherError(false); return; }
+// Refetch at the coordinates already stored. Keeps the last good reading on any failure —
+// but records the failure rather than swallowing it, so Weather settings can say so.
+function weatherRefreshStored(){
+  const cache=loadWeatherCache();
+  if(!cache || cache.lat==null){ weatherSetStatus('error','No saved location to refresh.'); return; }
+  if(_weatherLoading) return;
   _weatherLoading=true;
+  weatherSetStatus('loading','');
+  fetchWeatherAt(cache.lat,cache.lon)
+    .then(e=>{ if(cache.placeholder){ e.placeholder=true; e.city=cache.city; } weatherRecordSuccess(e); renderWeatherInto(e); })
+    .catch(()=>{ weatherRecordFailure('Could not reach the weather service \u2014 showing the last reading.'); })
+    .finally(()=>{ _weatherLoading=false; });
+}
+// A direct user gesture: ALWAYS reacquire coordinates. maximumAge:0 is the point of it —
+// "Update current location" that answers from a six-hour-old cached fix has not updated
+// anything, which is exactly what made a stale suburb impossible to correct.
+function weatherUseCurrentLocation(){
+  if(!navigator.geolocation){
+    weatherRecordFailure('This browser cannot provide a location.');
+    renderWeatherError(false); return;
+  }
+  _weatherLoading=true;
+  weatherSetStatus('loading','');
   navigator.geolocation.getCurrentPosition(
     pos=>{
-      const {latitude:lat,longitude:lon}=pos.coords;
+      const lat=pos.coords.latitude, lon=pos.coords.longitude;
       fetchWeatherAt(lat,lon)
-        .then(e=>{ saveWeatherCache(e); renderWeatherInto(e); })
-        .catch(()=>renderWeatherError(false))
+        .then(e=>{ weatherRecordSuccess(e); renderWeatherInto(e); if(typeof showToast==='function') showToast('Weather updated'); })
+        .catch(()=>{ weatherRecordFailure('Found your location, but the weather service did not answer.'); renderWeatherError(false); })
         .finally(()=>{ _weatherLoading=false; });
     },
     err=>{
       _weatherLoading=false;
-      // Denied or unavailable: fall back to the sample card rather than an empty one, so
-      // declining location still leaves something readable (and still re-offerable).
+      const denied=!!(err&&err.code===1);
+      weatherRecordFailure(denied
+        ? 'Location permission was refused. Your browser or iOS Settings controls this \u2014 Daily cannot grant it.'
+        : 'Could not get a location fix. Try again somewhere with a clearer signal.');
       const c=loadWeatherCache();
-      if(c) renderWeatherInto(c); else renderWeatherError(err&&err.code===1);
+      if(c) renderWeatherInto(c); else renderWeatherError(denied);
     },
-    // A long maximumAge lets the browser answer from a position it already has instead of
-    // starting a fresh GPS fix, which is both quicker and less likely to re-prompt.
-    {maximumAge:6*60*60*1000, timeout:10000}
+    {maximumAge:0, enableHighAccuracy:false, timeout:15000}
   );
+}
+// Clears the device cache, and — because the user asked for exactly that — also removes the
+// obsolete users/<uid>/weatherCache node that older builds uploaded coordinates to. Nothing
+// else reads that node; this is the only place it is ever deleted.
+function weatherClearSaved(){
+  try{
+    localStorage.removeItem('daily_weather_cache');
+    localStorage.removeItem('daily_weather_cache_ts');
+  }catch(e){}
+  let cloud=false;
+  try{
+    const ref=(typeof fbRef==='function')?fbRef('weatherCache'):null;
+    if(ref){ cloud=true; ref.remove().catch(function(){}); }
+  }catch(e){}
+  weatherSetStatus('idle','');
+  if(accentMode()==='weather' && typeof applyDayColour==='function') applyDayColour();
+  setWeatherPlaceholderScene();
+  renderWeatherPrompt();
+  if(typeof renderWeatherSection==='function') renderWeatherSection();
+  if(typeof showToast==='function') showToast(cloud?'Saved location cleared (device and cloud)':'Saved location cleared');
+}
+// ── Settings → Weather ────────────────────────────────────────────
+// Appearance could already be set to follow the sky, but nothing anywhere said WHICH sky —
+// which location, from what source, how old, or why the colour had gone neutral. This is that
+// screen: every input to the weather system, stated plainly, with the four actions that can
+// change it. Re-rendered from renderWeatherInto and weatherSetStatus, so it is always live.
+let _weatherPerm='unknown';
+const WEATHER_PERM_LABEL={granted:'Allowed',denied:'Blocked',prompt:'Will ask when you tap Update',unknown:'Unknown on this browser'};
+function weatherAgeLabel(ts){
+  if(!ts) return 'never';
+  const mins=Math.floor((Date.now()-ts)/60000);
+  if(mins<1) return 'just now';
+  if(mins<60) return mins+' minute'+(mins===1?'':'s')+' ago';
+  const hrs=Math.floor(mins/60);
+  if(hrs<24) return hrs+' hour'+(hrs===1?'':'s')+' ago';
+  const days=Math.floor(hrs/24);
+  return days+' day'+(days===1?'':'s')+' ago';
+}
+function weatherSourceLabel(c){
+  if(!c) return {t:'Unavailable', d:'No reading has been taken on this device yet.'};
+  if(c.placeholder) return {t:'Sydney sample', d:'A real live reading for a sample city, shown so the card is not empty. It never drives the app colour.'};
+  if(weatherIsFresh(c)) return {t:'Your current location', d:'A live reading for the coordinates saved on this device.'};
+  return {t:'Cached real location', d:'Your location, but the reading is older than an hour and is treated as stale.'};
+}
+function renderWeatherSection(){
+  const wrap=document.getElementById('settings-weather-section'); if(!wrap) return;
+  const c=loadWeatherCache();
+  const src=weatherSourceLabel(c);
+  const app=weatherAppearanceStatus();
+  const stale=c&&!weatherIsFresh(c);
+  const look=c?weatherLook(c):null;
+  const scene=c?weatherScene(c.code,c):weatherPlaceholderScene();
+  const busy=_weatherStatus.state==='loading';
+  const row=(k,v)=>'<div class="wx-row"><span class="wx-k">'+k+'</span><span class="wx-v">'+v+'</span></div>';
+  const err=(c&&c.lastError)?c.lastError:'';
+  const liveMsg=_weatherStatus.state==='error'?_weatherStatus.message:'';
+  wrap.innerHTML=
+    '<div class="settings-card">'+
+      '<div class="settings-card-title" style="cursor:default">Right now</div>'+
+      '<div class="wx-status'+(app.ok?' ok':'')+'">'+escText(app.reason)+'</div>'+
+      row('Source','<strong>'+escText(src.t)+'</strong>')+
+      '<p class="wx-note">'+escText(src.d)+'</p>'+
+      row('Condition', c?escText((look&&look[1])||'\u2014'):'\u2014')+
+      row('Scene Daily reads', '<code>'+escText(scene)+'</code>')+
+      row('Temperature', (c&&c.tempC!=null)?(Math.round(c.tempC)+'\u00b0C'):'\u2014')+
+      row('Last updated', (c?escText(weatherAgeLabel(c.fetchedAt)):'never')+(stale?' <span class="wx-flag">stale</span>':''))+
+      (navigator.onLine===false?'<div class="wx-status">You are offline \u2014 showing the last reading.</div>':'')+
+      ((err||liveMsg)?'<div class="wx-status err" role="alert">'+escText(liveMsg||err)+'</div>':'')+
+    '</div>'+
+    '<div class="settings-card">'+
+      '<div class="settings-card-title" style="cursor:default">Location</div>'+
+      // Deliberately not called a suburb: this is the city of the forecast TIMEZONE, which is
+      // all the forecast API returns. There is no reverse-geocode here, so claiming more
+      // precision than that would be inventing it.
+      row('Forecast region', c?escText(c.city||'\u2014'):'\u2014')+
+      '<p class="wx-note">Taken from the forecast timezone, not a street address \u2014 it names the region the forecast is for, not your suburb.</p>'+
+      (c&&c.lat!=null
+        ? '<details class="wx-details"><summary>Stored coordinates</summary>'+
+          '<div class="wx-coords">'+escText(Number(c.lat).toFixed(4))+', '+escText(Number(c.lon).toFixed(4))+
+          '<br><span class="wx-note">Kept on this device only. Never uploaded, never included in a backup file.</span></div></details>'
+        : '')+
+      row('Location permission', escText(WEATHER_PERM_LABEL[_weatherPerm]||WEATHER_PERM_LABEL.unknown))+
+      '<p class="wx-note">Your browser and your phone\u2019s settings control this, not Daily. If it is blocked, allow location for this site there and come back. Some browsers (including Safari) never report the status, which shows as Unknown \u2014 that does not mean blocked.</p>'+
+    '</div>'+
+    '<div class="settings-card">'+
+      '<div class="settings-card-title" style="cursor:default">Actions</div>'+
+      '<button type="button" class="wx-btn primary"'+(busy?' disabled':'')+' onclick="weatherUseCurrentLocation()">'+
+        (weatherIsReal(c)?'Update current location':'Use current location')+'</button>'+
+      '<p class="wx-note">Asks your device for a fresh position every time, even when coordinates are already saved.</p>'+
+      '<button type="button" class="wx-btn"'+((busy||!c||c.lat==null)?' disabled':'')+' onclick="weatherRefreshStored()">Refresh weather at the saved location</button>'+
+      '<button type="button" class="wx-btn danger"'+((busy||!c)?' disabled':'')+' onclick="weatherClearSaved()">Clear saved weather &amp; location</button>'+
+      '<p class="wx-note">Removes the cached reading and coordinates from this device, so old coordinates stop being reused. If you are signed in it also deletes the obsolete copy an earlier version of Daily uploaded.</p>'+
+      '<button type="button" class="wx-link" onclick="openSettingsSection(\'appearance\')">Choose or turn off weather-driven colour \u2192</button>'+
+    '</div>';
+}
+// Called from app launch, tab returns and appearance changes. Throttled so a burst of
+// visibility/pageshow events cannot turn into a burst of requests.
+let _weatherLastCheck=0;
+function weatherEnsureFresh(){
+  const now=Date.now();
+  if(now-_weatherLastCheck < 60*1000) return;
+  _weatherLastCheck=now;
+  const cache=loadWeatherCache();
+  // Nothing saved and no reason to need it yet: don't fetch a sample the user hasn't asked for.
+  if(!cache && accentMode()!=='weather' && !(typeof _homeIds!=='undefined' && _homeIds.includes && _homeIds.includes('weather'))) return;
+  if(weatherIsFresh(cache)) return;
+  if(weatherIsReal(cache)){ weatherRefreshStored(); return; }
+  loadWeatherWidget();
 }
 // Fixed set of decorative layers for every possible scene, shown/hidden per
 // .home-weather-card[data-scene] in CSS — cheaper and simpler than swapping markup per
@@ -13823,7 +14237,9 @@ function renderHome(){
   applyDayColour();
   // Only touch geolocation/network if the widget is actually visible — a hidden card has no
   // #home-weather-temp for the result to land in anyway.
-  if(_homeIds.includes('weather')) loadWeatherWidget();
+  // Not gated on the card being present: weather appearance needs fresh data whether or not
+  // the widget is on Home. weatherEnsureFresh throttles, so this stays cheap on every render.
+  if(_homeIds.includes('weather')) loadWeatherWidget(); else weatherEnsureFresh();
 }
 
 // ── Home widget system ────────────────────────────────────────────
@@ -14391,12 +14807,9 @@ function confirmSavingsBalance(){
 function adjustModalsForKeyboard(){
   if(!window.visualViewport) return;
   const kb = window.innerHeight - window.visualViewport.height;
-  const txnBox=document.querySelector('#txn-modal:not(.hidden) .modal-box');
   if(kb > 100){ // >100px ≈ a keyboard (ignore URL-bar / minor viewport jitter)
-    // Transaction capture is a full phone screen, not a bottom sheet. Keep it anchored and
-    // lift only its sticky action row; applying the generic margin lift would move the entire
-    // form around while the user types.
-    if(txnBox) txnBox.style.setProperty('--txn-kb-inset',kb+'px');
+    // #txn-modal is deliberately excluded: it is sized to the visual viewport by vpSync()
+    // instead, so its footer is already above the keyboard and a margin lift would fight it.
     document.querySelectorAll('.modal-overlay:not(.hidden):not(#txn-modal) .modal-box').forEach(box=>{
       box.style.transition = 'margin-bottom 0.2s ease';
       box.style.marginBottom = kb + 'px';
@@ -14404,17 +14817,15 @@ function adjustModalsForKeyboard(){
       box.style.maxHeight = (window.visualViewport.height - 12) + 'px';
     });
   } else {
-    if(txnBox) txnBox.style.removeProperty('--txn-kb-inset');
     document.querySelectorAll('.modal-box').forEach(box=>{ box.style.marginBottom = ''; box.style.maxHeight = ''; });
   }
 }
-if(window.visualViewport){
-  window.visualViewport.addEventListener('resize', adjustModalsForKeyboard);
-  window.visualViewport.addEventListener('scroll', adjustModalsForKeyboard);
-}
 
 // On mobile, handle keyboard appearing over inputs:
-// • Modal inputs: re-run the modal lift after 400 ms so the keyboard is fully up.
+// • Expense modal: the overlay is already viewport-sized, so only the focused field needs
+//   bringing into the scrolling body — and it must be moved by scrollTop, never
+//   scrollIntoView, which walks up the ancestors and pans the whole form sideways.
+// • Other modal inputs: re-run the modal lift after 400 ms so the keyboard is fully up.
 //   The visualViewport resize event alone isn't reliable — it can fire before the
 //   modal is visible, or the final height isn't settled yet.
 // • Non-modal inputs (budget rows, settings): scroll into view so they aren't hidden.
@@ -14422,6 +14833,11 @@ document.addEventListener('focusin', function(e){
   const el = e.target;
   if(!el || window.innerWidth >= 1024) return;
   if(el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT'){
+    if(el.closest('#txn-modal')){
+      vpSync();
+      setTimeout(function(){ vpSync(); txnScrollFieldIntoView(el); }, 320);
+      return;
+    }
     if(el.closest('.modal-overlay')){
       setTimeout(adjustModalsForKeyboard, 400);
     } else {
@@ -14431,6 +14847,28 @@ document.addEventListener('focusin', function(e){
     }
   }
 });
+// Bring a field fully inside the form body's own unobscured region. Purely vertical, and
+// scoped to one scroll container, so nothing above it (the shell, the document) moves.
+function txnScrollFieldIntoView(el){
+  const body=document.getElementById('txn-modal-body');
+  if(!body||!el||body.classList.contains('hidden')) return;
+  const br=body.getBoundingClientRect();
+  const er=el.getBoundingClientRect();
+  // The margin shrinks when the visible strip is barely taller than the field. At 360px
+  // landscape with the keyboard up the body is about 66px; a fixed 14px margin there makes
+  // an otherwise-fitting field impossible to place, and it stays under the footer.
+  const pad=Math.max(0, Math.min(14, (br.height-er.height)/2));
+  const lbl=el.previousElementSibling;
+  const lblTop=(lbl&&lbl.classList&&lbl.classList.contains('txn-lbl'))
+    ? lbl.getBoundingClientRect().top : er.top;
+  // The INPUT is what has to end up visible. Its label comes along only when both fit —
+  // preferring the label unconditionally is what pushed the field itself back off-screen.
+  const top=(er.bottom-lblTop <= br.height-2*pad) ? lblTop : er.top;
+  let delta=0;
+  if(top < br.top+pad) delta = top - br.top - pad;
+  else if(er.bottom > br.bottom-pad) delta = er.bottom - br.bottom + pad;
+  if(delta) body.scrollTop += delta;
+}
 
 // ── Onboarding ────────────────────────────────────────────────────
 // Data-driven multi-step flow: the step order lives in OB_STEPS, so the progress dots
@@ -17176,11 +17614,13 @@ setTimeout(syncNavPadding, 0);
 // resume so the safe-area insets + nav padding settle without needing a rotation.
 // (Scroll position is preserved; the display toggle is synchronous so it never paints.)
 function pinAppHeight(){
-  // #app now fills the viewport via CSS (position:fixed; inset:0), which iOS resolves
-  // correctly at launch — so never set an explicit JS height (it would override the
-  // insets). Only clear any stale inline height left by an earlier app version.
+  // #app fills the viewport via CSS (position:fixed; inset:0), which iOS resolves correctly
+  // at launch — so never set an explicit JS height here. Only clear a stale inline height
+  // left by an earlier app version, and never the deliberate correction vpSyncApp applies
+  // when WebKit hands back a keyboard-reduced box (checking _vpAppPinned, not the style,
+  // because clearing it here would undo the fix on the very next resize).
   var app=document.getElementById('app');
-  if(app && app.style.height) app.style.height='';
+  if(app && app.style.height && !_vpAppPinned) app.style.height='';
 }
 function nudgeLayout(){
   // Note: the old viewport-fit (cover→auto→cover) toggle was REMOVED — it raced with how
@@ -18403,21 +18843,85 @@ function plansExport(){
   }
 }
 
-// Keep bottom-sheet modals reachable while the on-screen keyboard is up. The keyboard
-// shrinks only the VISUAL viewport — position:fixed overlays still span the full layout
-// viewport — so the bottom-aligned modal box (and its sticky Cancel/Save row) ends up
-// behind the keyboard. Track the obscured height and expose it as --kb-inset;
-// .modal-overlay pads its bottom by it (see nutrition-modals.css).
-function syncKeyboardInset(){
+// ── Central viewport lifecycle ─────────────────────────────────────
+// ONE owner of "what size is the app, and what size is the keyboard-bound overlay". There
+// used to be three partial systems: a --kb-inset custom property that no stylesheet ever
+// read, a --txn-kb-inset lift on the expense modal, and pinAppHeight. The expense modal
+// could therefore end up sized against a stale inset, and — the reported bug — #app kept
+// WebKit's keyboard-reduced fixed-element box after the keyboard closed and the device
+// rotated, leaving every tab stopping half way down a landscape screen with black below.
+//
+// Two rules, and nothing else touches this geometry:
+//   1. A keyboard-bound overlay is anchored to the VISUAL viewport (offsetTop, offsetLeft,
+//      width and height — not height alone, or it pans sideways when WebKit offsets it).
+//   2. Whenever no such overlay is up, #app matches the LAYOUT viewport, with any inline
+//      correction from a previous cycle cleared first so nothing stale can survive.
+
+// The overlay that owns the viewport while the keyboard is up. Only the expense modal
+// qualifies: every other sheet is short enough for the margin lift above.
+function vpKeyboardOverlay(){
+  const m=document.getElementById('txn-modal');
+  return (m && !m.classList.contains('hidden')) ? m : null;
+}
+function vpClearOverlayGeometry(m){
+  m=m||document.getElementById('txn-modal'); if(!m) return;
+  ['top','left','right','bottom','width','height'].forEach(function(p){ m.style.removeProperty(p); });
+}
+function vpSyncOverlay(){
+  const m=vpKeyboardOverlay();
+  if(!m){ vpClearOverlayGeometry(); return; }
   const vv=window.visualViewport;
-  const inset=vv?Math.max(0, window.innerHeight - vv.height - vv.offsetTop):0;
-  document.documentElement.style.setProperty('--kb-inset', Math.round(inset)+'px');
+  // Desktop keeps the plain centred sheet; there is no keyboard stealing the viewport there.
+  if(!vv || window.innerWidth>=1024){ vpClearOverlayGeometry(m); return; }
+  m.style.top=Math.round(vv.offsetTop)+'px';
+  m.style.left=Math.round(vv.offsetLeft)+'px';
+  m.style.width=Math.round(vv.width)+'px';
+  m.style.height=Math.round(vv.height)+'px';
+  m.style.right='auto';
+  m.style.bottom='auto';
+}
+let _vpAppPinned=false;
+function vpSyncApp(){
+  const app=document.getElementById('app'); if(!app) return;
+  if(vpKeyboardOverlay()) return;             // the overlay owns geometry while it is up
+  // Always hand it back to CSS first: measuring against our own correction would keep a
+  // stale height alive forever once one was applied.
+  if(_vpAppPinned){ app.style.height=''; app.style.top=''; _vpAppPinned=false; }
+  const want=Math.round(window.innerHeight);
+  const r=app.getBoundingClientRect();
+  // Only correct the failure that actually happens — a shell SHORTER than the viewport, or
+  // one no longer anchored at the top. Never force a width (#app is centre-capped at 480px
+  // in portrait), and tolerate a few pixels so URL-bar jitter doesn't start a fight.
+  if(want-Math.round(r.height)>4 || Math.abs(Math.round(r.top))>1){
+    app.style.top='0px';
+    app.style.height=want+'px';
+    _vpAppPinned=true;
+  }
+}
+function vpSync(){ vpSyncOverlay(); vpSyncApp(); if(typeof syncNavPadding==='function') syncNavPadding(); }
+// WebKit settles keyboard dismissal and rotation over several frames, and reports the old
+// geometry for the first of them. A short bounded sequence re-checks instead of guessing a
+// single delay; each pass is idempotent, so a redundant one costs nothing.
+let _vpSettleTimers=[];
+function vpSettle(){
+  _vpSettleTimers.forEach(clearTimeout);
+  _vpSettleTimers=[];
+  vpSync();
+  requestAnimationFrame(function(){ vpSync(); });
+  [80,200,420].forEach(function(ms){ _vpSettleTimers.push(setTimeout(vpSync, ms)); });
 }
 if(window.visualViewport){
-  window.visualViewport.addEventListener('resize', syncKeyboardInset);
-  window.visualViewport.addEventListener('scroll', syncKeyboardInset);
-  syncKeyboardInset();
+  window.visualViewport.addEventListener('resize', vpSync);
+  window.visualViewport.addEventListener('scroll', vpSync);
 }
+window.addEventListener('resize', vpSettle);
+window.addEventListener('orientationchange', vpSettle);
+window.addEventListener('pageshow', vpSettle);
+// Keyboard dismissal fires focusout but no reliable resize on iOS; this is the transition
+// the half-height shell was reproduced from.
+document.addEventListener('focusout', function(){ vpSettle(); });
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) vpSettle(); });
+vpSync();
 
 // Pin as early as possible (deferred script runs before first paint) and on every
 // viewport change, so the dvh mis-measurement is corrected without waiting for a rotation.
@@ -18425,7 +18929,9 @@ pinAppHeight();
 requestAnimationFrame(function(){ pinAppHeight(); nudgeLayout(); });
 window.addEventListener('resize', pinAppHeight);
 window.addEventListener('orientationchange', function(){ setTimeout(pinAppHeight,150); });
-if(window.visualViewport){ window.visualViewport.addEventListener('resize', pinAppHeight); }
-window.addEventListener('load', function(){ nudgeLayout(); setTimeout(nudgeLayout,300); setTimeout(nudgeLayout,800); });
-document.addEventListener('visibilitychange', function(){ if(!document.hidden) setTimeout(nudgeLayout,80); });
-window.addEventListener('pageshow', function(){ setTimeout(nudgeLayout,80); if(typeof applyLogoDayColour==='function') applyLogoDayColour(); });
+window.addEventListener('load', function(){ nudgeLayout(); setTimeout(nudgeLayout,300); setTimeout(nudgeLayout,800);
+  if(typeof weatherEnsureFresh==='function') weatherEnsureFresh(); });
+document.addEventListener('visibilitychange', function(){ if(!document.hidden){ setTimeout(nudgeLayout,80);
+  if(typeof weatherEnsureFresh==='function') weatherEnsureFresh(); } });
+window.addEventListener('pageshow', function(){ setTimeout(nudgeLayout,80); if(typeof applyLogoDayColour==='function') applyLogoDayColour();
+  if(typeof weatherEnsureFresh==='function') weatherEnsureFresh(); });

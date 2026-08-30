@@ -1,9 +1,12 @@
 // BUMP THIS ON EVERY RELEASE THAT CHANGES ANY FILE IN ASSETS.
 // The fetch handler is cache-first, so an installed PWA keeps serving the old bundle until the
 // cache NAME changes — a deploy with the same name reaches nobody who already has the app on
-// their home screen. v246: finish Journal with date-scoped context and weekly reflection,
-// then calibrate Stats with separate Overview/Review surfaces and restored domain detail.
-const CACHE_NAME = 'daily-v246';
+// their home screen. v247: stop variable-expense double counting behind an explicit
+// Replace/Keep choice, show exact money in the variable totals, add a real Weather settings
+// section and stop sample/stale weather driving the app colour, rebuild the expense modal
+// around the visual viewport, and give the app shell one central viewport lifecycle so the
+// half-height landscape screen after a keyboard + rotation cannot come back.
+const CACHE_NAME = 'daily-v247';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
