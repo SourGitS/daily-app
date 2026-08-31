@@ -38,7 +38,11 @@
 // css/settings.css, added to ASSETS below), danger zones for destructive actions, and a
 // two-column desktop landing. Also retires the .set-row collision that had been overriding the
 // Log screen's set-row grid app-wide, so the Log tab changes appearance too.
-const CACHE_NAME = 'daily-v254';
+// v255: stop the Home weather card's sky gradient tiling under its 1px border. The image is
+// sized to the padding box but painted across the border box, and background-repeat defaults
+// to repeat, so the top edge was showing the gradient's LAST colour stop — a bright pink
+// hairline on clear-dusk, orange on the warm scenes.
+const CACHE_NAME = 'daily-v255';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

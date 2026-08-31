@@ -516,6 +516,20 @@
 .home-weather-card[data-scene="snow-day"]{background:linear-gradient(to bottom,#7895A9 0%,#A0BACA 54%,#C2D6E2 100%)}
 .home-weather-card[data-scene="snow-night"]{background:linear-gradient(to bottom,#18212B 0%,#2B3843 58%,#3E4D59 100%)}
 
+/* Stop the sky gradient TILING under the border.
+   A background image is sized to the padding box but painted across the BORDER box, and
+   background-repeat defaults to repeat -- so the 1px strip above the padding box was showing
+   the BOTTOM of the tile above it, i.e. the gradient's last colour stop. On clear-dusk that
+   last stop is #F2A0B8, which drew a bright pink hairline along the top edge of the card (the
+   warmer scenes read as orange); the bottom strip had the same fault in reverse, showing the
+   dark first stop. Every .card in dark mode has this shape, but their gradients run
+   rgba(255,255,255,.15) to .09, so the swap is invisible -- only the weather scenes are
+   high-contrast enough for it to show.
+   This has to sit AFTER every [data-scene] rule: those all use the `background:` shorthand,
+   which resets background-repeat back to `repeat`. Do not fold it into .card.home-weather-card
+   above -- the scene rules come later and would undo it. */
+.card.home-weather-card{background-repeat:no-repeat}
+
 /* ── Decorative layers: hidden by default, opted in per scene below ── */
 .wfx-sun,.wfx-moon,.wfx-stars,.wfx-cloud,.wfx-fog,.wfx-rain,.wfx-snow,.wfx-flash{display:none}
 
