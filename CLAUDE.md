@@ -12,10 +12,12 @@ older summary — re-grep before assuming a fact from here is still true if it l
 ## Stack
 
 - Vanilla HTML/CSS/JS — no framework, no bundler, no npm build step.
-- Entry point `index.html`. Styles split into six files, loaded in this order (cascade order
-  matters, don't reorder the `<link>` tags): `css/base.css`, `css/layout.css`, `css/workout.css`,
-  `css/nutrition-modals.css`, `css/budget-home.css`, `css/kitchen-extras.css`. Split from one
-  `style.css` partway through the project (commit `52f32d0`).
+- Entry point `index.html`. Styles split into **eight** files, loaded in this order (cascade
+  order matters, don't reorder the `<link>` tags): `css/base.css`, `css/layout.css`,
+  `css/workout.css`, `css/nutrition-modals.css`, `css/budget-home.css`,
+  `css/kitchen-extras.css`, `css/journal.css`, `css/settings.css`. The first six were split
+  from one `style.css` partway through the project (commit `52f32d0`); journal and settings
+  were added later and load last *so they win ties* — that is the point of their position.
 - All logic in one `js/app.js` (~10,000 lines).
 - PWA: `manifest.json` + `service-worker.js`, installable to iOS/Android home screen,
   `display: standalone`.
@@ -66,10 +68,15 @@ older summary — re-grep before assuming a fact from here is still true if it l
 - **Plans** — import/export, streak tracking, plus an "HTML plan" type (import any HTML file,
   view it in a sandboxed iframe).
 - **Notes** — date-tracked notes, fullscreen view, optional home-screen bubble.
-- **Settings** — dark/light theme (warm gray dark palette, deliberately not pure black), personal
-  info + Mifflin-St Jeor TDEE calculator (Bulk/Maintain/Cut), daily calorie log with midnight
-  reset, dynamic per-muscle-group day colours, full data backup export/import, Home Layout
-  widget toggles.
+- **Settings** — a searchable control centre, not a menu of unrelated forms. Landing page:
+  profile/sync card → search field → four LABELLED groups (Personal, Planning, App experience,
+  Data and support) whose rows carry a live one-line summary ("Sydney", "5 active",
+  "Maintain · 2775 kcal"). Ten destinations: Account & sync, Health & goals, Training setup,
+  Budget setup, Habits, Appearance, Weather, Home Layout, Data & backup, Run setup again.
+  Behind them: dark/light theme (warm gray dark palette, deliberately not pure black),
+  personal info + Mifflin-St Jeor TDEE calculator (Bulk/Maintain/Cut), dynamic per-muscle-group
+  day colours, full data backup export/import, Home Layout widget toggles. See the Settings
+  entry under "Known history" before changing anything here.
 
 ## Design tokens (`css/base.css`)
 
@@ -104,6 +111,57 @@ moved until it clears 5.0:1 against the current theme's background) and written 
 the accent or the theme must go through those, not set `--accent` directly.
 
 ## Known history worth knowing before touching these areas
+
+- **Settings is registry-driven — never hardcode a settings row, title or label again.**
+  `SETTINGS_SECTIONS` / `SETTINGS_GROUPS` / `SETTINGS_SEARCH` in `js/app.js` are the single
+  source for every label, icon, tint, `open()` target, row summary and search subtitle.
+  Before this, the SAME ten things lived in four hand-maintained lists (literal rows in
+  `index.html`, `SETTINGS_TITLES`, `MENU_SECTIONS`, `renderQuickSettingsMenu()`) — which is
+  how "Export" survived being renamed everywhere else. The landing page is rendered by
+  `renderSettingsList()` into `#stg-list-root`; the hamburger and desktop quick-settings read
+  labels via `menuSectionLabel()`.
+  **Section KEYS are persisted** (deep links, hamburger, quick settings) so they never change;
+  only labels do. That is why "Data & backup" is still keyed `export`, and why the Journal tab
+  is still keyed `notes`.
+  Search indexes individual SETTINGS, not the ten destination names — `weight`, `colour`,
+  `backup`, `location` all resolve. `stgNorm()` folds color→colour both ways. A result with an
+  `a:` anchor opens the section AND scrolls to that card, flashing it (`stgRevealCard`, which
+  uses a timer not rAF — rAF does not fire in a hidden tab). Adding a card to a settings
+  screen means giving it an `id` and a `SETTINGS_SEARCH` row, or it is unfindable.
+- **Settings has its own card vocabulary in `css/settings.css` — use it, don't invent another.**
+  `.stg-card` › `.stg-card-head` (`.stg-card-icon` + `.stg-card-title` + `.stg-card-desc`) ›
+  `.stg-row` (label left / control right) or `.stg-field` (label above control) › `.stg-help` ›
+  `.stg-actions` + `.stg-btn[.primary|.quiet|.danger]` + `.stg-save-state`. Build heads with
+  `stgCardHead(icon,title,desc,rightHtml)` and icons from `SETTINGS_ICONS` via `stgIcon()`.
+  This is the FORM counterpart to the dashboard's `.card-*` vocabulary in `kitchen-extras.css`
+  — that one is built around one primary figure per card, which is wrong for a form.
+  `.stg-card-head-act` is for a SHORT pill only; a long status goes in a `.stg-row` beneath.
+  Destructive actions go in a `.stg-card.stg-danger-zone`, never as the third button in a list.
+  Save behaviour is now a rule, not a per-screen decision: single toggles/selectors save on
+  change (and their card's `.stg-card-desc` says so), multi-field forms get an explicit
+  `.stg-btn.primary` plus `stgSaved(id)`, and collection editors (Training, Budget) keep their
+  overlay's own top-bar Save.
+- **`.settings-card` and its family are GONE** (`.settings-card`, `-title`, `-row`,
+  `-row-label`, `-chevron`, `-save-btn`, `settings-saved-flash`, the whole `.wx-*` set bar
+  `.wx-details`/`.wx-coords`, and `#habits-edit-sheet`'s leftover bottom-sheet background).
+  `.settings-field` / `.settings-2col` survive in `nutrition-modals.css` **despite the name**
+  — onboarding and the Kitchen recipe form use them, so don't delete them as dead.
+- **Form cards must not lift on press.** `.settings-card` was in the press-lift list in
+  `budget-home.css`, so tapping an input made the whole form card rear up. The lift means
+  "this opens something": it now covers `.card`/`.ex-card`/`.stat-card`/`.sum-card`/
+  `.session-card`/`.week-section` plus `.stg-group` (the settings NAV groups), and never
+  `.stg-card`.
+- **`.set-row` was a live class collision, now retired.** `budget-home.css` defined `.set-row`
+  for the Settings list AND `workout.css` defined it for the workout SET row — same
+  specificity, and budget-home loads later, so the settings `display:flex` was silently
+  overriding the Log screen's `display:grid` app-wide. The settings copy is now
+  `.stg-nav-row`, and the Log rows render on their intended
+  `28px 20px 1fr 10px 1fr 32px 22px` grid. Do not reintroduce a bare `.set-row` rule outside
+  `workout.css`.
+- **Settings' desktop landing is two columns; detail screens stay narrow.**
+  `#view-settings .settings-main` is 920px at ≥1024px with `#stg-list-root` as a `1fr 1fr`
+  grid (profile and search span full width). `#settings-detail-content` keeps its 640px
+  measure on purpose — a form stretched across a monitor is harder to read, not easier.
 
 - **iOS cold-launch layout glitch**: `100dvh` mis-computes at cold launch on iOS standalone
   PWAs (black gap / shifted content until a rotation). Fixed by giving `#app` a

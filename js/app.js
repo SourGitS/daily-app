@@ -2457,10 +2457,12 @@ function openProfile(){ setView('settings'); if(typeof openSettingsSection==='fu
 
 // ── Slide-out settings menu ───────────────────────────────────────
 // Just the two most-used settings shortcuts; everything else is reachable via "All settings".
-const MENU_SECTIONS=[
-  {id:'account',label:'Account'},
-  {id:'appearance',label:'Appearance'}
-];
+// Labels are LOOKED UP in SETTINGS_SECTIONS rather than repeated here — this list used to
+// carry its own copy, which is exactly how "Export" outlived being renamed elsewhere.
+const MENU_SECTIONS=['account','appearance'];
+function menuSectionLabel(id){
+  return (typeof SETTINGS_SECTIONS!=='undefined' && SETTINGS_SECTIONS[id]) ? SETTINGS_SECTIONS[id].label : id;
+}
 // Primary destinations, mirroring the desktop sidebar so the hamburger reaches everything
 // the sidebar does — including views not in the mobile bottom nav (Kitchen, Plans, Notes).
 const MENU_NAV=[
@@ -2494,7 +2496,7 @@ function buildSideMenu(){
     '<button class="side-menu-item" data-action="open-exercise-library"><span class="smi-label">Exercise Library</span>'+chev+'</button>'+
     groupLabel('Settings')+
     '<button class="side-menu-item" onclick="openMenuSection(\'\')"><span class="smi-label">All settings</span>'+chev+'</button>'+
-    MENU_SECTIONS.map(s=>'<button class="side-menu-item" onclick="openMenuSection(\''+s.id+'\')"><span class="smi-label">'+s.label+'</span>'+chev+'</button>').join('');
+    MENU_SECTIONS.map(id=>'<button class="side-menu-item" onclick="openMenuSection(\''+id+'\')"><span class="smi-label">'+menuSectionLabel(id)+'</span>'+chev+'</button>').join('');
 }
 // ── Exercise Library ──────────────────────────────────────────────
 // Master list of exercises the user maintains. Defaults are derived from the program
@@ -4222,20 +4224,17 @@ function renderWeightSection(){
   const lo     = sorted.length ? Math.min(...sorted.map(w=>w.weight)) : null;
   const hi     = sorted.length ? Math.max(...sorted.map(w=>w.weight)) : null;
 
+  // Was a .week-section with its own hand-rolled inputs — a third internal structure inside
+  // one Health screen. Now the same card, field and button vocabulary as everything else.
   wrap.innerHTML=`
-    <div class="week-section" style="margin-bottom:14px">
-      <div class="week-section-title">Body weight</div>
-      <div class="week-section-sub">Record measured check-ins; Stats analyses the trend against your current goal.</div>
-      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:stretch">
-        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
-          <input type="date" id="weight-date" value="${today}"
-            style="width:100%;height:40px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;padding:0 10px;background:var(--card);color:var(--text)">
-          <input type="number" id="weight-input" inputmode="decimal" min="30" max="250" step="0.1" placeholder="kg"
-            style="width:100%;height:40px;border:1.5px solid var(--border);border-radius:8px;font-size:18px;font-weight:500;text-align:center;background:var(--card);color:var(--text)">
-        </div>
-        <button onclick="logWeight()"
-          style="padding:0 18px;background:var(--header);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Log</button>
+    <div class="stg-card" id="stg-card-weight">
+      ${stgCardHead('scale','Body weight','Measured check-ins. Stats reads the trend from these against your current goal.')}
+      <div class="stg-2col">
+        <div class="stg-field"><label for="weight-date">Date</label><input type="date" id="weight-date" value="${today}"></div>
+        <div class="stg-field"><label for="weight-input">Weight (kg)</label><input type="number" id="weight-input" inputmode="decimal" min="30" max="250" step="0.1" placeholder="kg"></div>
       </div>
+      <div class="stg-actions"><button class="stg-btn primary" onclick="logWeight()">Log weight</button></div>
+      <div style="margin-top:14px"></div>
       ${sorted.length ? `
         <div class="stats-grid" style="margin-bottom:12px">
           <div class="stat-card"><div class="stat-val">${cur}kg</div><div class="stat-lbl">Current</div></div>
@@ -4251,7 +4250,9 @@ function renderWeightSection(){
               <button onclick="deleteWeight('${w.date}')" style="font-size:12px;color:var(--danger);background:none;border:none;cursor:pointer;padding:0 4px">✕</button>
             </div>`).join('')}
         </div>` :
-        emptyState('⚖️','No weight logged',"Tap 'Log weight' above to start tracking")}
+        // Not emptyState(): its 40px emoji is card chrome, which cannot follow the theme or
+        // the accent. Settings uses .stg-status for "nothing here yet".
+        '<div class="stg-status">No check-ins yet — log today\'s weight above and the chart, records and goal pace all start from it.</div>'}
     </div>`;
   animateStatVals(wrap);
 
@@ -4305,6 +4306,10 @@ function saveWeightGoal(){
   localStorage.setItem('daily_weight_goal', JSON.stringify(weightGoal));
   syncWeightGoalToFirebase();
   renderWeightGoal();
+  // After the re-render — renderWeightGoal() rebuilds the card, so a tick shown before it
+  // would be thrown away with the old markup.
+  stgSaved('wg-saved');
+  renderSettingsList(); // the Health row summarises the goal
   if(S.view==='stats'&&statsSubTab==='body') renderBody();
 }
 function renderWeightGoal(){
@@ -4341,23 +4346,14 @@ function renderWeightGoal(){
     progressHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:8px 0">Log weight entries to see progress</div>';
   }
   wrap.innerHTML = `
-    <div class="week-section" style="margin-bottom:14px">
-      <div class="week-section-title">Weight goal</div>
-      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:flex-end">
-        <div style="flex:1">
-          <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Target (kg)</div>
-          <input type="number" id="wg-target" inputmode="decimal" min="30" max="250" step="0.1" placeholder="kg"
-            value="${target||''}"
-            style="width:100%;height:40px;border:1.5px solid var(--border);border-radius:8px;font-size:16px;font-weight:500;text-align:center;background:var(--card);color:var(--text)">
-        </div>
-        <div style="flex:1">
-          <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Target date</div>
-          <input type="date" id="wg-date" value="${targetDate}"
-            style="width:100%;height:40px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;padding:0 10px;background:var(--card);color:var(--text)">
-        </div>
-        <button onclick="saveWeightGoal()"
-          style="padding:0 18px;height:40px;background:var(--header);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;flex-shrink:0">Save</button>
+    <div class="stg-card" id="stg-card-weightgoal">
+      ${stgCardHead('target','Weight goal','Saving a new target starts a fresh goal episode — earlier weigh-ins are never rewritten.')}
+      <div class="stg-2col">
+        <div class="stg-field"><label for="wg-target">Target (kg)</label><input type="number" id="wg-target" inputmode="decimal" min="30" max="250" step="0.1" placeholder="kg" value="${target||''}"></div>
+        <div class="stg-field"><label for="wg-date">Target date</label><input type="date" id="wg-date" value="${targetDate}"></div>
       </div>
+      <div class="stg-actions">${stgSaveState('wg-saved')}<button class="stg-btn primary" onclick="saveWeightGoal()">Save goal</button></div>
+      <div style="margin-top:14px"></div>
       ${progressHTML}
     </div>`;
   animateStatVals(wrap);
@@ -5059,6 +5055,303 @@ function applySettingsCollapsed(){
     if(hdr) hdr.style.marginBottom='0';
   });
 }
+// ══ SETTINGS: one registry ════════════════════════════════════════
+// The Settings surface used to keep the SAME ten things in four hand-maintained lists: the
+// landing rows as literal HTML in index.html, the detail titles in SETTINGS_TITLES, the
+// hamburger shortcuts in MENU_SECTIONS and the desktop dropdown in renderQuickSettingsMenu().
+// Renaming a section meant editing four places, and search had nothing to read at all.
+// Everything below — labels, icons, colours, what opens, the row summaries, the search
+// subtitles — now comes from SETTINGS_SECTIONS / SETTINGS_GROUPS / SETTINGS_SEARCH.
+//
+// Section KEYS are persisted (deep links, the hamburger, quick settings), so they never
+// change; only labels do. That is why "Data & backup" still lives under the key 'export'.
+const SETTINGS_ICONS={
+  user:'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  heart:'<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>',
+  dumbbell:'<path d="M6.5 6.5h11M6.5 17.5h11M4 9v6M20 9v6M2 10.5v3M22 10.5v3"/>',
+  card:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h2M11 15h5"/>',
+  check:'<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  moon:'<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
+  cloud:'<path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6 1.7A3.7 3.7 0 0 0 6.5 19z"/>',
+  grid:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  replay:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+  bell:'<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  phone:'<rect x="7" y="2" width="10" height="20" rx="2.4"/><path d="M11 18.4h2"/>',
+  palette:'<path d="M12 3a9 9 0 1 0 0 18 2 2 0 0 0 2-2 2 2 0 0 1 2-2h1.5a3.5 3.5 0 0 0 3.5-3.5C21 7.4 17 3 12 3z"/><circle cx="7.5" cy="12" r="1"/><circle cx="10" cy="8" r="1"/><circle cx="15" cy="8.5" r="1"/>',
+  pin:'<path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/>',
+  scale:'<path d="M12 4v16M7 20h10M4 7h16M7 7l-3 6a3 3 0 0 0 6 0zM17 7l-3 6a3 3 0 0 0 6 0z"/>',
+  target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  flame:'<path d="M12 3c3 4 6 5.5 6 9a6 6 0 0 1-12 0c0-2 1-3.5 2.5-5 .3 1.2 1 2 2 2.2C10 7 11 4.6 12 3z"/>',
+  sliders:'<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2.1"/><circle cx="15" cy="12" r="2.1"/><circle cx="8" cy="18" r="2.1"/>',
+  alert:'<path d="M12 3l7 3.2v5.6c0 4.4-3 8.3-7 9.2-4-.9-7-4.8-7-9.2V6.2z"/><path d="M12 8.6v4M12 15.9v.1"/>',
+  file:'<path d="M14 3v5h5M15 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z"/><path d="M8.5 13h7M8.5 17h4"/>',
+  spark:'<path d="M12 3.5 13.9 8.6 19 10.5 13.9 12.4 12 17.5 10.1 12.4 5 10.5 10.1 8.6z"/><path d="M18 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/>'
+};
+// Emoji are not used as card chrome anywhere in Settings: they ignore currentColor, so they
+// follow neither the theme nor the accent, and they render differently per OS.
+function stgIcon(name){
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(SETTINGS_ICONS[name]||'')+'</svg>';
+}
+// The head of every settings card: icon, title, one line saying what the card affects, and
+// an optional right-hand slot for a status. The dashboard's cardHeader() is the equivalent
+// for figure cards; a form card wants the sentence instead of a number.
+function stgCardHead(icon,title,desc,rightHtml){
+  return '<div class="stg-card-head"><span class="stg-card-icon">'+stgIcon(icon)+'</span>'+
+    '<div class="stg-card-head-txt"><div class="stg-card-title">'+title+'</div>'+
+    (desc?'<div class="stg-card-desc">'+desc+'</div>':'')+'</div>'+
+    (rightHtml?'<span class="stg-card-head-act">'+rightHtml+'</span>':'')+'</div>';
+}
+const STG_TICK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+function stgSaveState(id){ return '<span class="stg-save-state" id="'+id+'">'+STG_TICK+'Saved</span>'; }
+// One save confirmation for the whole surface. Replaces buttons that renamed themselves to
+// "Saved" and back, which was three different behaviours across three screens.
+function stgSaved(id,ms){
+  const el=document.getElementById(id); if(!el) return;
+  el.classList.add('on');
+  clearTimeout(el._stgT);
+  el._stgT=setTimeout(function(){ el.classList.remove('on'); }, ms||1800);
+}
+
+// The four groups are LABELLED now. They were four unlabelled cards, so the split read as
+// arbitrary. "Run setup again" sits with Data and support, not Appearance: replaying
+// onboarding is a maintenance action, not a look-and-feel preference.
+const SETTINGS_GROUPS=[
+  {label:'Personal',         keys:['account','health']},
+  {label:'Planning',         keys:['training','budget','habits']},
+  {label:'App experience',   keys:['appearance','weather','homelayout']},
+  {label:'Data and support', keys:['export','replay']}
+];
+
+// summary() is the optional value shown beside a row ("Sydney", "5 active"). Every one is
+// called inside a try/catch by settingsNavRow(), so a summary can never break the list.
+const SETTINGS_SECTIONS={
+  account:{
+    label:'Account & sync', icon:'user', tint:'#8E8E93',
+    open:function(a){ openSettingsSection('account',a); },
+    summary:function(){
+      const u=(firebaseReady&&auth)?auth.currentUser:null;
+      return u ? ('Connected · '+(u.email||u.displayName||'signed in')) : 'This device only';
+    }
+  },
+  health:{
+    label:'Health & goals', icon:'heart', tint:'#FF3B30',
+    open:function(a){ openSettingsSection('health',a); },
+    summary:function(){
+      const bits=[]; const c=calcGoalCals();
+      if(c) bits.push({cut:'Cut',bulk:'Bulk',maintain:'Maintain'}[c.goal]+' · '+(c.goal==='cut'?c.cut:c.goal==='bulk'?c.bulk:c.maintain)+' kcal');
+      const t=weightGoal&&parseFloat(weightGoal.target);
+      if(t>0) bits.push(t+' kg goal');
+      return bits.join(' · ');
+    }
+  },
+  training:{
+    label:'Training setup', icon:'dumbbell', tint:'#FF9500',
+    open:function(){ openSplitEditor(); },
+    summary:function(){
+      const n=splitTypes().length;
+      return n ? (n+' day'+(n===1?'':'s')+' · '+scheduleLen()+'-day rotation') : '';
+    }
+  },
+  budget:{
+    label:'Budget setup', icon:'card', tint:'#34C759',
+    open:function(){ openBudgetEditor(); },
+    summary:function(){
+      const n=['inc','fix','var'].reduce(function(a,t){ return a+activeCats(BUD_CAT_LOAD[t]()).length; },0);
+      return n ? (n+' categor'+(n===1?'y':'ies')) : '';
+    }
+  },
+  habits:{
+    label:'Habits', icon:'check', tint:'#30B0C7',
+    open:function(a){ openSettingsSection('habits',a); },
+    summary:function(){ const n=(habitsData||[]).length; return n ? (n+' active') : 'None yet'; }
+  },
+  appearance:{
+    label:'Appearance', icon:'moon', tint:'#AF52DE',
+    open:function(a){ openSettingsSection('appearance',a); },
+    summary:function(){
+      return (S.theme==='dark'?'Dark':'Light')+' · '+ACCENT_MODE_LABELS[accentMode()].label+' colour';
+    }
+  },
+  weather:{
+    label:'Weather', icon:'cloud', tint:'#0A84FF',
+    open:function(a){ openSettingsSection('weather',a); },
+    summary:function(){
+      const c=loadWeatherCache();
+      if(!c) return 'Not set up';
+      if(c.placeholder) return 'Sample city';
+      return c.city || 'Saved location';
+    }
+  },
+  homelayout:{
+    label:'Home Layout', icon:'grid', tint:'#FF9F0A',
+    open:function(a){ openSettingsSection('homelayout',a); },
+    summary:function(){
+      const h=new Set(homeLayout().hidden);
+      return HOME_WIDGETS.filter(function(w){ return w.fixed||!h.has(w.id); }).length+' of '+HOME_WIDGETS.length+' cards';
+    }
+  },
+  export:{
+    label:'Data & backup', icon:'download', tint:'#647588',
+    open:function(a){ openSettingsSection('export',a); },
+    summary:function(){ return 'Backup, restore, CSV'; }
+  },
+  replay:{
+    label:'Run setup again', icon:'replay', tint:'#5E5CE6',
+    open:function(){ replayOnboarding(); },
+    summary:function(){ return 'Walk through the welcome flow'; }
+  }
+};
+function settingsOpen(key,anchor){
+  const s=SETTINGS_SECTIONS[key];
+  if(s&&s.open) s.open(anchor);
+}
+
+// ── Settings search ───────────────────────────────────────────────
+// Indexes individual SETTINGS, not the ten destination names — searching only the visible
+// labels would answer none of the questions people actually have ("where is my weight
+// goal?", "how do I turn the day colours off?"). Each entry names the section it lives in
+// and, where that section is a stack of cards, the exact card to scroll to and flash.
+//   s    section key           a    anchor card id (optional)
+//   sub  card name shown in the path under the result
+//   keys extra words and synonyms, never displayed
+const SETTINGS_SEARCH=[
+  {s:'account', label:'Cloud sync',         sub:'Account',   a:'stg-card-signin',    keys:'google sign in out firebase devices across backup online offline connected'},
+  {s:'account', label:'Display name',       sub:'Profile',   a:'stg-card-profile',   keys:'your name greeting who am i profile'},
+  {s:'account', label:'Workout reminder',   sub:'Reminders', a:'stg-card-reminders', keys:'notification alert notify time train daily push'},
+  {s:'account', label:'Budget reminder',    sub:'Reminders', a:'stg-card-reminders', keys:'notification alert notify weekly money day time push'},
+  {s:'account', label:'Reset onboarding',   sub:'Danger zone', a:'stg-card-advanced', keys:'clear wipe start over welcome first run advanced'},
+  {s:'health',  label:'Name',               sub:'Health details', a:'stg-card-personal', keys:'your name'},
+  {s:'health',  label:'Age, sex and height',sub:'Health details', a:'stg-card-personal', keys:'birthday male female tall cm metrics body'},
+  {s:'health',  label:'Current weight',     sub:'Health details', a:'stg-card-personal', keys:'kg mass body'},
+  {s:'health',  label:'Activity level',     sub:'Health details', a:'stg-card-personal', keys:'sedentary active exercise multiplier tdee job'},
+  {s:'health',  label:'Calorie target',     sub:'Daily calorie targets', a:'stg-card-calories', keys:'kcal calories tdee cut bulk maintain deficit surplus goal energy macro'},
+  {s:'health',  label:'Body weight log',    sub:'Body weight', a:'stg-card-weight',    keys:'weigh in kg scale check chart history track'},
+  {s:'health',  label:'Weight goal',        sub:'Weight goal', a:'stg-card-weightgoal', keys:'target body weight target date lose gain drop pace kg'},
+  {s:'training',label:'Training days',      sub:'Split',     keys:'split rotation push pull legs day names schedule programme program'},
+  {s:'training',label:'Exercises per day',  sub:'Split',     keys:'add remove swap movement lift library order'},
+  {s:'budget',  label:'Income sources',     sub:'Categories', keys:'pay wage salary money in earnings'},
+  {s:'budget',  label:'Fixed expenses',     sub:'Categories', keys:'rent bills subscriptions recurring monthly direct debit'},
+  {s:'budget',  label:'Variable spending',  sub:'Categories', keys:'groceries fuel spending weekly categories'},
+  {s:'budget',  label:'Savings target',     sub:'Plan',      keys:'save goal weekly put away'},
+  {s:'habits',  label:'Daily habits',       sub:'Habits',    a:'stg-card-habits', keys:'checklist streak add remove reorder routine'},
+  {s:'appearance', label:'Dark mode',       sub:'Theme',     a:'stg-card-theme', keys:'light night theme black white appearance'},
+  {s:'appearance', label:'App colour',      sub:'Theme',     a:'stg-card-theme', keys:'accent tint fixed training weather colour brand hue'},
+  {s:'appearance', label:'Training day colours', sub:'Day colours', a:'stg-card-daycolours', keys:'per day colour push pull legs rest custom picker'},
+  {s:'weather',    label:'Use my location', sub:'Location',  a:'stg-card-wx-location', keys:'gps coordinates permission city suburb allow forecast region'},
+  {s:'weather',    label:'Weather source',  sub:'Right now', a:'stg-card-wx-now', keys:'temperature condition scene stale refresh live reading'},
+  {s:'weather',    label:'Clear saved weather', sub:'Danger zone', a:'stg-card-wx-danger', keys:'delete remove coordinates location privacy wipe'},
+  {s:'homelayout', label:'Home cards',      sub:'Dashboard', a:'stg-card-homelayout', keys:'widgets show hide order arrange dashboard layout wide column'},
+  {s:'export', label:'Export all data',     sub:'Backup',    a:'stg-card-backup',  keys:'json save file download copy everything'},
+  {s:'export', label:'Import backup',       sub:'Restore',   a:'stg-card-restore', keys:'json restore load paste recover file upload'},
+  {s:'export', label:'CSV export',          sub:'Spreadsheet export', a:'stg-card-csv', keys:'excel numbers sheets workout budget spreadsheet download'},
+  {s:'export', label:'Daily + AI',          sub:'Context export', a:'stg-card-ai', keys:'chatgpt claude llm prompt context copy'},
+  {s:'replay', label:'Run setup again',     sub:'Onboarding', keys:'replay welcome walkthrough tour first run setup wizard'}
+];
+function settingsGroupOf(key){
+  const g=SETTINGS_GROUPS.filter(function(x){ return x.keys.indexOf(key)>=0; })[0];
+  return g?g.label:'Settings';
+}
+// Every destination is findable by its own name too, without hand-writing ten more rows.
+// A destination's own row is subtitled with its GROUP, so it doesn't read "Data & backup /
+// Data & backup" — and the group is the useful context there anyway.
+function settingsSearchIndex(){
+  return Object.keys(SETTINGS_SECTIONS).map(function(k){
+    return {s:k, label:SETTINGS_SECTIONS[k].label, path:settingsGroupOf(k), keys:'section screen page'};
+  }).concat(SETTINGS_SEARCH);
+}
+// "color" and "colour" have to find each other — the app is written in one spelling and
+// searched in whichever one is under the thumb at the time.
+function stgNorm(s){ return String(s||'').toLowerCase().replace(/color/g,'colour').replace(/\s+/g,' ').trim(); }
+function stgRegEsc(s){ return String(s).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
+function stgHighlight(text,toks){
+  const out=escText(text);
+  const parts=toks.map(stgRegEsc).filter(Boolean);
+  if(!parts.length) return out;
+  try{ return out.replace(new RegExp('('+parts.join('|')+')','ig'),'<mark>$1</mark>'); }
+  catch(e){ return out; }
+}
+function settingsSearchResults(q){
+  const toks=stgNorm(q).split(' ').filter(Boolean);
+  const hits=[];
+  settingsSearchIndex().forEach(function(it){
+    const sec=SETTINGS_SECTIONS[it.s]; if(!sec) return;
+    const path=it.path || (sec.label+(it.sub?' › '+it.sub:''));
+    const lab=stgNorm(it.label);
+    const hay=stgNorm(it.label+' '+path+' '+(it.keys||''));
+    if(!toks.every(function(t){ return hay.indexOf(t)>=0; })) return;
+    // Label prefix beats label match beats a synonym-only match, so typing "weight" puts
+    // "Weight goal" above "Health & goals".
+    const score=toks.every(function(t){ return lab.indexOf(t)===0; }) ? 0
+              : toks.every(function(t){ return lab.indexOf(t)>=0; }) ? 1 : 2;
+    hits.push({it:it, sec:sec, path:path, score:score});
+  });
+  hits.sort(function(a,b){ return a.score-b.score || a.it.label.localeCompare(b.it.label); });
+  if(!hits.length){
+    return '<div class="stg-results"><div class="stg-no-results">Nothing in Settings matches “'+escText(q)+'”.<br>Try <strong>weight</strong>, <strong>colour</strong>, <strong>backup</strong>, <strong>calories</strong> or <strong>location</strong>.</div></div>';
+  }
+  return '<div class="stg-results">'+hits.slice(0,14).map(function(h){
+    const args="'"+h.it.s+"'"+(h.it.a?",'"+h.it.a+"'":'');
+    return '<button class="stg-result" type="button" onclick="settingsOpen('+args+')">'+
+      '<span class="stg-result-ico" style="background:'+h.sec.tint+';color:#fff">'+stgIcon(h.sec.icon)+'</span>'+
+      '<span class="stg-result-txt">'+
+        '<span class="stg-result-label">'+stgHighlight(h.it.label,toks)+'</span>'+
+        '<span class="stg-result-path">'+escText(h.path)+'</span>'+
+      '</span>'+
+    '</button>';
+  }).join('')+'</div>';
+}
+function settingsSearchInput(){
+  const inp=document.getElementById('stg-search-input');
+  const wrap=document.getElementById('stg-search');
+  if(wrap) wrap.classList.toggle('has-query', !!(inp&&inp.value.trim()));
+  renderSettingsList();
+}
+function settingsSearchClear(){
+  const inp=document.getElementById('stg-search-input');
+  if(inp){ inp.value=''; inp.focus(); }
+  settingsSearchInput();
+}
+
+// ── Settings landing list ─────────────────────────────────────────
+function settingsNavRow(key){
+  const s=SETTINGS_SECTIONS[key]; if(!s) return '';
+  let sum=''; try{ sum=s.summary?(s.summary()||''):''; }catch(e){ sum=''; }
+  return '<button class="stg-nav-row" type="button" onclick="settingsOpen(\''+key+'\')">'+
+    '<span class="stg-nav-icon" style="background:'+s.tint+';color:#fff">'+stgIcon(s.icon)+'</span>'+
+    '<span class="stg-nav-txt"><span class="stg-nav-label">'+s.label+'</span>'+
+      (sum?'<span class="stg-nav-sum">'+escText(sum)+'</span>':'')+'</span>'+
+    '<svg class="stg-nav-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'+
+  '</button>';
+}
+function renderSettingsList(){
+  const root=document.getElementById('stg-list-root'); if(!root) return;
+  const inp=document.getElementById('stg-search-input');
+  const q=inp?inp.value.trim():'';
+  if(q){ root.innerHTML=settingsSearchResults(q); return; }
+  root.innerHTML=SETTINGS_GROUPS.map(function(g){
+    return '<div class="stg-group-wrap">'+
+      '<h2 class="stg-group-label">'+g.label+'</h2>'+
+      '<div class="stg-group">'+g.keys.map(settingsNavRow).join('')+'</div>'+
+    '</div>';
+  }).join('');
+}
+// Scroll a search result's card into view inside the detail overlay and name it briefly, so
+// the answer to "where was that?" is the card itself rather than a screen to re-scan.
+// A timer, not requestAnimationFrame: rAF does not fire while the tab is hidden, and this
+// also has to survive the overlay's slide-in transition being in flight.
+function stgRevealCard(id){
+  setTimeout(function(){
+    const el=document.getElementById(id); if(!el) return;
+    const smooth=!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    try{ el.scrollIntoView({block:'center',behavior:smooth?'smooth':'auto'}); }catch(e){ el.scrollIntoView(); }
+    el.classList.remove('stg-flash');
+    void el.offsetWidth;
+    el.classList.add('stg-flash');
+    setTimeout(function(){ el.classList.remove('stg-flash'); },1700);
+  },60);
+}
+
 function settingsProfileCardTap(){
   const user=(firebaseReady&&auth)?auth.currentUser:null;
   if(user){ openSettingsSection('account'); } else { handleAuthUI(); }
@@ -5074,17 +5367,17 @@ function renderSettingsTopCard(){
     const photo=user.photoURL;
     const uname=user.displayName||profileData.name||'Google user';
     av.classList.toggle('stg-avatar-grad',!photo);
-    av.innerHTML=photo?'<img src="'+photo+'" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover">':'<span style="font-size:20px;font-weight:800;color:#fff">'+uname.charAt(0).toUpperCase()+'</span>';
+    av.innerHTML=photo?'<img src="'+photo+'" referrerpolicy="no-referrer" alt="">':'<span style="font-size:20px;font-weight:800;color:#fff">'+uname.charAt(0).toUpperCase()+'</span>';
     if(nm) nm.textContent=uname;
     if(em) em.textContent=user.email||'';
-    if(sy){ sy.textContent='● Synced to cloud'; sy.style.color='var(--success)'; }
+    if(sy){ sy.textContent='● Synced to cloud'; sy.classList.add('ok'); }
   } else {
     const name=profileData.name||S.personalInfo?.name||'';
     av.classList.toggle('stg-avatar-grad',!!name);
     av.innerHTML=name?'<span style="font-size:20px;font-weight:800;color:#fff">'+name.charAt(0).toUpperCase()+'</span>':'<span style="font-size:20px;color:var(--muted)">?</span>';
     if(nm) nm.textContent=name||'Not signed in';
     if(em) em.textContent='';
-    if(sy){ sy.textContent='Tap to sign in'; sy.style.color='var(--muted)'; }
+    if(sy){ sy.textContent='Tap to sign in'; sy.classList.remove('ok'); }
   }
   updateDesktopSidebar();
 }
@@ -5104,10 +5397,16 @@ function updateDesktopSidebar(){
 // moved out of its hidden store into #view-settings-detail (mirrors the split/budget editor
 // overlays), and moved back on close. Desktop and mobile behave identically (the overlay is
 // simply offset past the sidebar on desktop) — so there's no "stacked column" branch to break.
+// Only these keys mount a section from #settings-sections-store; Training, Budget and
+// "Run setup again" open their own screens (see SETTINGS_SECTIONS[*].open).
 const SETTINGS_SECTION_KEYS=['account','health','habits','appearance','weather','homelayout','export'];
-const SETTINGS_TITLES={account:'Account',health:'Health',habits:'Habits',appearance:'Appearance',weather:'Weather',homelayout:'Home Layout',export:'Export'};
+// Detail-view title = the registry label, so a rename lands on the landing row, the top bar
+// and the search subtitle at once. There is no second list to keep in step any more.
+function settingsTitle(key){ return (SETTINGS_SECTIONS[key]&&SETTINGS_SECTIONS[key].label)||key; }
 let _activeSettingsKey=null;
-function openSettingsSection(key){
+// `anchor` is a card id from a search result: after the section mounts, that card is
+// scrolled to and briefly outlined (stgRevealCard).
+function openSettingsSection(key,anchor){
   const overlay=document.getElementById('view-settings-detail');
   const content=document.getElementById('settings-detail-content');
   const store=document.getElementById('settings-sections-store');
@@ -5121,7 +5420,7 @@ function openSettingsSection(key){
   content.appendChild(sec);
   sec.classList.remove('hidden');
   _activeSettingsKey=key;
-  const t=document.getElementById('settings-detail-title'); if(t) t.textContent=SETTINGS_TITLES[key]||key;
+  const t=document.getElementById('settings-detail-title'); if(t) t.textContent=settingsTitle(key);
   // Populate each section's dynamic content (unchanged from before).
   if(key==='account') renderAccountSection();
   if(key==='health'){
@@ -5140,6 +5439,7 @@ function openSettingsSection(key){
   overlay.style.display='block';
   overlay.style.left=window.innerWidth>=1024?'260px':'0';
   overlay.scrollTop=0;
+  if(anchor) stgRevealCard(anchor);
 }
 // ── Desktop quick-settings mini list ──────────────────────────────
 // Tucked under the sidebar Settings item (desktop only — it lives inside
@@ -5156,7 +5456,7 @@ function renderQuickSettingsMenu(){
   // second copy of controls that already live in Settings.
   menu.innerHTML=
     '<button class="ds-item" onclick="openMenuSection(\'\')"><span>All settings</span></button>'+
-    MENU_SECTIONS.map(s=>'<button class="ds-item" onclick="openMenuSection(\''+s.id+'\')"><span>'+s.label+'</span></button>').join('');
+    MENU_SECTIONS.map(id=>'<button class="ds-item" onclick="openMenuSection(\''+id+'\')"><span>'+menuSectionLabel(id)+'</span></button>').join('');
 }
 function setQuickSettingsOpen(open){
   const menu=document.getElementById('quick-settings-menu');
@@ -5193,8 +5493,7 @@ function saveProfileSection(){
   syncProfileToFirebase();
   updateHeaderAvatar();
   renderSettingsTopCard();
-  const btn=document.getElementById('profile-save-btn');
-  if(btn){ btn.textContent='Saved ✓'; btn.style.background='var(--accent)'; setTimeout(()=>{ btn.textContent='Save'; btn.style.background=''; },2000); }
+  stgSaved('profile-saved');
 }
 // The separate subscriptions list was retired: it was never actually wired into the budget,
 // and each entry is now a real fixed category with its own billing cycle (see
@@ -5207,16 +5506,18 @@ function renderInstallCard(){
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   let content;
   if(isStandalone){
-    content = '<span style="font-size:13px;color:var(--muted)">✅ Already installed</span>';
+    content = '<div class="stg-status ok">Already installed on this device.</div>';
   } else if(isIOS){
-    content = '<p style="font-size:13px;color:var(--muted);margin:0">Tap the Share button <strong style="color:var(--text)">□↑</strong> in Safari, then tap <strong style="color:var(--text)">"Add to Home Screen"</strong></p>';
+    content = '<p class="stg-help" style="margin-top:0">Tap the Share button in Safari, then <strong style="color:var(--text)">Add to Home Screen</strong>.</p>';
   } else if(deferredInstallPrompt){
-    content = '<button onclick="triggerInstallPrompt()" style="width:100%;padding:10px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Install App</button>';
+    content = '<div class="stg-actions stack"><button class="stg-btn primary" onclick="triggerInstallPrompt()">Install app</button></div>';
   } else {
     wrap.style.display='none'; return;
   }
   wrap.style.display='';
-  wrap.innerHTML=`<div class="settings-card"><div style="font-size:14px;font-weight:700;margin-bottom:10px">📲 Add to Home Screen</div>${content}</div>`;
+  wrap.innerHTML='<div class="stg-card">'+
+    stgCardHead('phone','Add to Home Screen','Daily runs full-screen, offline, and without the browser chrome once it is installed.')+
+    content+'</div>';
 }
 function triggerInstallPrompt(){
   if(!deferredInstallPrompt) return;
@@ -5228,10 +5529,14 @@ function renderSettings(){
   closeSettingsSection();
   renderSettingsTopCard(); // profile card avatar/name/sync state
   renderInstallCard();
+  // Rebuilt every visit rather than once at boot: the row summaries ("5 active",
+  // "Connected · …", "Sydney") are live values, and several of them change on other screens.
+  renderSettingsList();
 }
 
-// Merged "Account" section — sign-in + Profile (name) + Reminders + Advanced (reset
-// onboarding), each under its own card/sub-heading so it reads as grouped rows, not a wall.
+// Merged "Account & sync" section — sign-in + Profile (name) + Reminders + a danger zone,
+// every card built from the same stgCardHead() anatomy. Destructive actions are no longer
+// filed under a vague "Advanced" heading at the bottom of a normal card.
 function renderAccountSection(){
   const wrap=document.getElementById('settings-account-section'); if(!wrap) return;
   const user=(firebaseReady&&auth)?auth.currentUser:null;
@@ -5241,52 +5546,55 @@ function renderAccountSection(){
     const uname=user.displayName||'Google user';
     const email=user.email||'';
     const avatar=photo
-      ?'<img src="'+photo+'" referrerpolicy="no-referrer" style="width:46px;height:46px;border-radius:50%;object-fit:cover;flex-shrink:0">'
-      :'<div style="width:46px;height:46px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0">'+uname.charAt(0).toUpperCase()+'</div>';
+      ?'<img src="'+photo+'" referrerpolicy="no-referrer" alt="" style="width:46px;height:46px;border-radius:50%;object-fit:cover;flex-shrink:0">'
+      :'<div style="width:46px;height:46px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0">'+escText(uname.charAt(0).toUpperCase())+'</div>';
     signIn=
-      '<div class="settings-card">'+
-        '<div class="settings-card-title" style="cursor:default">Account</div>'+
-        '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'+
+      '<div class="stg-card" id="stg-card-signin">'+
+        stgCardHead('cloud','Cloud sync','Your data is mirrored to your Google account, so it follows you to another device.')+
+        '<div class="stg-row">'+
           avatar+
-          '<div style="min-width:0">'+
-            '<div style="font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+uname+'</div>'+
-            '<div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+email+'</div>'+
-            '<div style="font-size:12px;color:var(--success);margin-top:2px">● Synced to cloud</div>'+
+          '<div class="stg-row-txt" style="flex:1;margin-left:12px">'+
+            '<div class="stg-row-label" style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escText(uname)+'</div>'+
+            '<div class="stg-row-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escText(email)+'</div>'+
           '</div>'+
         '</div>'+
-        '<button onclick="handleAuthUI()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer">Sign out</button>'+
+        '<div class="stg-status ok">Connected — changes on this device sync automatically.</div>'+
+        '<div class="stg-actions stack"><button class="stg-btn" onclick="handleAuthUI()">Sign out</button></div>'+
       '</div>';
   } else {
     signIn=
-      '<div class="settings-card">'+
-        '<div class="settings-card-title" style="cursor:default">Account</div>'+
-        '<div style="font-size:13px;color:var(--muted);margin-bottom:14px">Not signed in — sign in to sync your data across devices.</div>'+
-        '<button onclick="handleAuthUI()" style="width:100%;padding:10px;border-radius:10px;border:none;background:#4285f4;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">'+
-          '<svg viewBox="0 0 24 24" style="width:16px;height:16px;flex-shrink:0"><path fill="#fff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#fff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>'+
-          'Sign in with Google'+
-        '</button>'+
+      '<div class="stg-card" id="stg-card-signin">'+
+        stgCardHead('cloud','Cloud sync','Sign in to mirror your data to your Google account and pick it up on another device.')+
+        '<div class="stg-status">Not connected — everything is stored on this device only.</div>'+
+        '<div class="stg-actions stack">'+
+          '<button class="stg-btn primary" onclick="handleAuthUI()" style="display:flex;align-items:center;justify-content:center;gap:8px;background:#4285f4;border-color:#4285f4">'+
+            '<svg viewBox="0 0 24 24" style="width:16px;height:16px;flex-shrink:0"><path fill="#fff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#fff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>'+
+            'Sign in with Google'+
+          '</button>'+
+        '</div>'+
       '</div>';
   }
   const profileCard=
-    '<div class="settings-card">'+
-      '<div class="settings-card-title" style="cursor:default">Profile</div>'+
-      '<div class="settings-field">'+
-        '<label>Your name</label>'+
+    '<div class="stg-card" id="stg-card-profile">'+
+      stgCardHead('user','Profile','The name Daily greets you with on Home.')+
+      '<div class="stg-field">'+
+        '<label for="profile-name">Your name</label>'+
         '<input type="text" id="profile-name" placeholder="e.g. Francois" value="'+(profileData.name||'').replace(/"/g,'&quot;')+'" autocomplete="name">'+
       '</div>'+
-      '<button class="settings-save-btn" id="profile-save-btn" onclick="saveProfileSection()" style="margin-top:4px">Save</button>'+
+      '<div class="stg-actions">'+stgSaveState('profile-saved')+
+        '<button class="stg-btn primary" id="profile-save-btn" onclick="saveProfileSection()">Save changes</button></div>'+
     '</div>';
   const remindersCard=
-    '<div class="settings-card">'+
-      '<div class="settings-card-title" style="cursor:default">Reminders</div>'+
+    '<div class="stg-card" id="stg-card-reminders">'+
+      stgCardHead('bell','Reminders','Local notifications from this device. Each switch saves the moment you flip it.')+
       '<div id="reminders-inner"></div>'+
     '</div>';
-  const advancedCard=
-    '<div class="settings-card">'+
-      '<div class="settings-card-title" style="cursor:default;font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.4px">Advanced</div>'+
-      '<button onclick="resetOnboarding()" style="width:100%;padding:11px;border-radius:8px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer">Reset onboarding</button>'+
+  const dangerCard=
+    '<div class="stg-card stg-danger-zone" id="stg-card-advanced">'+
+      stgCardHead('alert','Danger zone','Reset clears your saved name and starts the welcome flow from scratch. Your workouts, budget and kitchen data are untouched.')+
+      '<div class="stg-actions stack"><button class="stg-btn danger" onclick="resetOnboarding()">Reset onboarding</button></div>'+
     '</div>';
-  wrap.innerHTML=signIn+profileCard+remindersCard+advancedCard;
+  wrap.innerHTML=signIn+profileCard+remindersCard+dangerCard;
   renderRemindersSection();
   renderSettingsTopCard();
 }
@@ -5305,11 +5613,10 @@ function savePersonalInfo(){
   renderTDEESection();
   renderCalorieLog();
 
-  const btn = document.getElementById('pi-save-btn');
-  if(btn){
-    btn.textContent='✓ Saved!'; btn.style.background='var(--accent)';
-    setTimeout(()=>{ btn.textContent='Save info'; btn.style.background=''; }, 1500);
-  }
+  // One confirmation pattern app-wide (.stg-save-state) instead of a button that renames
+  // itself — the button has to keep saying what it does while the tick says it happened.
+  stgSaved('pi-saved');
+  renderSettingsList();
 }
 
 function calcGoalCals(){
@@ -5329,6 +5636,7 @@ function selectGoal(goal){
   localStorage.setItem('wt_personalinfo', JSON.stringify(S.personalInfo));
   renderTDEESection();
   renderCalorieLog();
+  renderSettingsList(); // the Health row summarises the active goal
   if(document.getElementById('calorie-overlay')?.style.display==='flex') renderCalorieOverlay();
 }
 
@@ -5336,16 +5644,20 @@ function renderTDEESection(){
   const wrap = document.getElementById('tdee-section');
   if(!wrap) return;
   const c = calcGoalCals();
+  // Its own card now. This used to hang off the bottom of the Health details form behind a
+  // divider, which made three tappable goals look like part of that form's Save.
+  const head = (extra)=>'<div class="stg-card" id="stg-card-calories">'+
+    stgCardHead('flame','Daily calorie targets', extra)+'';
   if(!c){
-    wrap.innerHTML=`<div style="font-size:13px;color:var(--muted);text-align:center;padding:14px 0">Fill in your details above and tap Save to see calorie targets.</div>`;
+    wrap.innerHTML=head('Fill in your details above and save to see your targets.')+
+      '<div class="stg-status">Needs your age, sex, height and weight.</div></div>';
     return;
   }
   const g = c.goal;
-  wrap.innerHTML=`
-    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-      <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px">Daily calorie targets</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">TDEE: ${c.tdee} kcal · tap a goal to track it</div>
-      <div class="tdee-grid">
+  wrap.innerHTML=
+    head('Mifflin-St Jeor, using the details above. Tap a goal to track it — that choice saves immediately.')+
+    `<div class="stg-row"><span class="stg-row-label">Maintenance (TDEE)</span><span class="stg-row-val"><strong>${c.tdee}</strong> kcal</span></div>
+      <div class="tdee-grid" style="margin-top:12px">
         <div class="tdee-card" style="color:var(--danger);border-color:${g==='cut'?'var(--danger)':'var(--border)'}" onclick="selectGoal('cut')">
           <div class="tdee-card-val">${c.cut}</div>
           <div class="tdee-card-lbl">Cut</div>
@@ -13062,13 +13374,13 @@ function renderHabitsEditModal(){
     +'<span style="flex:1;font-size:14px;color:var(--text)">'+h.replace(/</g,'&lt;')+'</span>'
     +'<button onclick="deleteHabitItem('+i+')" style="background:none;border:none;color:var(--danger);font-size:16px;cursor:pointer;padding:0 4px;flex-shrink:0">✕</button>'
     +'</div>'
-  ).join('') || '<div style="font-size:13px;color:var(--muted);padding:8px 0">No habits yet</div>';
+  ).join('') || '<div class="stg-help" style="margin:0 0 4px">No habits yet — add your first below.</div>';
   sheet.innerHTML=
-    (habitsData.length>1?'<div style="font-size:12px;color:var(--muted);margin-bottom:12px">Drag the ⠿ handle to reorder · tap ✕ to remove</div>':'<div style="font-size:12px;color:var(--muted);margin-bottom:12px">Add, remove and reorder your daily habits.</div>')
+    (habitsData.length>1?'<p class="stg-help" style="margin:0 0 12px">Drag the ⠿ handle to reorder · tap ✕ to remove</p>':'')
     +rows
-    +'<div style="display:flex;gap:8px;margin-top:12px">'
-    +'<input id="habit-new-input" type="text" placeholder="New habit…" style="flex:1;height:40px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;padding:0 10px;background:transparent;color:var(--text)">'
-    +'<button onclick="addHabitItem()" style="padding:0 16px;height:40px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Add</button>'
+    +'<div style="display:flex;gap:8px;margin-top:14px">'
+    +'<input id="habit-new-input" type="text" placeholder="New habit…" style="flex:1;height:44px;border:1.5px solid var(--border);border-radius:10px;font-size:15px;padding:0 12px;background:transparent;color:var(--text)">'
+    +'<button class="stg-btn primary" style="flex:0 0 auto" onclick="addHabitItem()">Add</button>'
     +'</div>';
 }
 // habitsRef is scoped to the auth callback, so it's not visible here — write to the cloud
@@ -13599,46 +13911,51 @@ function renderWeatherSection(){
   const look=c?weatherLook(c):null;
   const scene=c?weatherScene(c.code,c):weatherPlaceholderScene();
   const busy=_weatherStatus.state==='loading';
-  const row=(k,v)=>'<div class="wx-row"><span class="wx-k">'+k+'</span><span class="wx-v">'+v+'</span></div>';
+  // .stg-row, not the weather-only .wx-row it used to have: a label-left/value-right row is
+  // the same thing here as it is on every other settings screen.
+  const row=(k,v)=>'<div class="stg-row"><span class="stg-row-label">'+k+'</span><span class="stg-row-val">'+v+'</span></div>';
   const err=(c&&c.lastError)?c.lastError:'';
   const liveMsg=_weatherStatus.state==='error'?_weatherStatus.message:'';
   wrap.innerHTML=
-    '<div class="settings-card">'+
-      '<div class="settings-card-title" style="cursor:default">Right now</div>'+
-      '<div class="wx-status'+(app.ok?' ok':'')+'">'+escText(app.reason)+'</div>'+
+    '<div class="stg-card" id="stg-card-wx-now">'+
+      stgCardHead('cloud','Right now', escText(src.d))+
+      '<div class="stg-status'+(app.ok?' ok':'')+'">'+escText(app.reason)+'</div>'+
       row('Source','<strong>'+escText(src.t)+'</strong>')+
-      '<p class="wx-note">'+escText(src.d)+'</p>'+
-      row('Condition', c?escText((look&&look[1])||'\u2014'):'\u2014')+
+      row('Condition', c?escText((look&&look[1])||'—'):'—')+
       row('Scene Daily reads', '<code>'+escText(scene)+'</code>')+
-      row('Temperature', (c&&c.tempC!=null)?(Math.round(c.tempC)+'\u00b0C'):'\u2014')+
-      row('Last updated', (c?escText(weatherAgeLabel(c.fetchedAt)):'never')+(stale?' <span class="wx-flag">stale</span>':''))+
-      (navigator.onLine===false?'<div class="wx-status">You are offline \u2014 showing the last reading.</div>':'')+
-      ((err||liveMsg)?'<div class="wx-status err" role="alert">'+escText(liveMsg||err)+'</div>':'')+
+      row('Temperature', (c&&c.tempC!=null)?(Math.round(c.tempC)+'°C'):'—')+
+      row('Last updated', (c?escText(weatherAgeLabel(c.fetchedAt)):'never')+(stale?' · stale':''))+
+      (navigator.onLine===false?'<div class="stg-status" style="margin:12px 0 0">You are offline — showing the last reading.</div>':'')+
+      ((err||liveMsg)?'<div class="stg-status err" style="margin:12px 0 0" role="alert">'+escText(liveMsg||err)+'</div>':'')+
     '</div>'+
-    '<div class="settings-card">'+
-      '<div class="settings-card-title" style="cursor:default">Location</div>'+
+    '<div class="stg-card" id="stg-card-wx-location">'+
       // Deliberately not called a suburb: this is the city of the forecast TIMEZONE, which is
       // all the forecast API returns. There is no reverse-geocode here, so claiming more
       // precision than that would be inventing it.
-      row('Forecast region', c?escText(c.city||'\u2014'):'\u2014')+
-      '<p class="wx-note">Taken from the forecast timezone, not a street address \u2014 it names the region the forecast is for, not your suburb.</p>'+
+      stgCardHead('pin','Location','Taken from the forecast timezone, not a street address — it names the region the forecast is for, not your suburb.')+
+      row('Forecast region', c?escText(c.city||'—'):'—')+
+      row('Location permission', escText(WEATHER_PERM_LABEL[_weatherPerm]||WEATHER_PERM_LABEL.unknown))+
       (c&&c.lat!=null
         ? '<details class="wx-details"><summary>Stored coordinates</summary>'+
           '<div class="wx-coords">'+escText(Number(c.lat).toFixed(4))+', '+escText(Number(c.lon).toFixed(4))+
-          '<br><span class="wx-note">Kept on this device only. Never uploaded, never included in a backup file.</span></div></details>'
+          '<br><span class="stg-help">Kept on this device only. Never uploaded, never included in a backup file.</span></div></details>'
         : '')+
-      row('Location permission', escText(WEATHER_PERM_LABEL[_weatherPerm]||WEATHER_PERM_LABEL.unknown))+
-      '<p class="wx-note">Your browser and your phone\u2019s settings control this, not Daily. If it is blocked, allow location for this site there and come back. Some browsers (including Safari) never report the status, which shows as Unknown \u2014 that does not mean blocked.</p>'+
+      '<div class="stg-actions stack">'+
+        '<button type="button" class="stg-btn primary"'+(busy?' disabled':'')+' onclick="weatherUseCurrentLocation()">'+
+          (weatherIsReal(c)?'Update current location':'Use current location')+'</button>'+
+        '<button type="button" class="stg-btn"'+((busy||!c||c.lat==null)?' disabled':'')+' onclick="weatherRefreshStored()">Refresh at the saved location</button>'+
+      '</div>'+
+      '<p class="stg-help">"Use current location" asks your device for a fresh position every time, even when coordinates are already saved.</p>'+
+      '<p class="stg-help">Your browser and your phone’s settings control the permission, not Daily. If it is blocked, allow location for this site there and come back. Some browsers (including Safari) never report the status, which shows as Unknown — that does not mean blocked.</p>'+
+      '<button type="button" class="stg-link" onclick="openSettingsSection(\'appearance\',\'stg-card-theme\')">Choose or turn off weather-driven colour →</button>'+
     '</div>'+
-    '<div class="settings-card">'+
-      '<div class="settings-card-title" style="cursor:default">Actions</div>'+
-      '<button type="button" class="wx-btn primary"'+(busy?' disabled':'')+' onclick="weatherUseCurrentLocation()">'+
-        (weatherIsReal(c)?'Update current location':'Use current location')+'</button>'+
-      '<p class="wx-note">Asks your device for a fresh position every time, even when coordinates are already saved.</p>'+
-      '<button type="button" class="wx-btn"'+((busy||!c||c.lat==null)?' disabled':'')+' onclick="weatherRefreshStored()">Refresh weather at the saved location</button>'+
-      '<button type="button" class="wx-btn danger"'+((busy||!c)?' disabled':'')+' onclick="weatherClearSaved()">Clear saved weather &amp; location</button>'+
-      '<p class="wx-note">Removes the cached reading and coordinates from this device, so old coordinates stop being reused. If you are signed in it also deletes the obsolete copy an earlier version of Daily uploaded.</p>'+
-      '<button type="button" class="wx-link" onclick="openSettingsSection(\'appearance\')">Choose or turn off weather-driven colour \u2192</button>'+
+    // Destructive action, so it gets its own labelled card rather than sitting third in a
+    // list of ordinary buttons.
+    '<div class="stg-card stg-danger-zone" id="stg-card-wx-danger">'+
+      stgCardHead('alert','Danger zone','Removes the cached reading and coordinates from this device, so old coordinates stop being reused. If you are signed in it also deletes the obsolete copy an earlier version of Daily uploaded.')+
+      '<div class="stg-actions stack">'+
+        '<button type="button" class="stg-btn danger"'+((busy||!c)?' disabled':'')+' onclick="weatherClearSaved()">Clear saved weather &amp; location</button>'+
+      '</div>'+
     '</div>';
 }
 // Called from app launch, tab returns and appearance changes. Throttled so a burst of
@@ -14569,12 +14886,16 @@ function renderHomeLayoutSection(){
   const order=homeLayoutOrderIds(layout);
   const visibleCount=HOME_WIDGETS.filter(w=>w.fixed||!hidden.has(w.id)).length;
   const wideCount=HOME_WIDGETS.filter(w=>wide.has(w.id)).length;
+  // The dashboard editor keeps its own specialised list, but its intro now uses the shared
+  // settings card head so the screen opens the same way every other section does. Every
+  // control below saves the moment you touch it — there is nothing to press at the end.
   wrap.innerHTML=
-    '<div class="hl-layout-intro">'+
-      '<div><strong>Your dashboard</strong><span>Arrange the cards in the exact order they should appear on Home.</span></div>'+
-      '<div class="hl-layout-count"><strong>'+visibleCount+'</strong><span>of '+HOME_WIDGETS.length+' shown</span></div>'+
+    '<div class="stg-card" id="stg-card-homelayout">'+
+      stgCardHead('grid','Your dashboard','Arrange the cards in the exact order they should appear on Home. Changes apply straight away.')+
+      '<div class="stg-row"><span class="stg-row-txt"><span class="stg-row-label">Cards shown</span></span>'+
+        '<span class="stg-row-val"><strong>'+visibleCount+'</strong> of '+HOME_WIDGETS.length+'</span></div>'+
+      '<p class="stg-help">Phone uses one column. Desktop uses two; '+wideCount+' card'+(wideCount===1?'':'s')+' currently span'+(wideCount===1?'s':'')+' both columns.</p>'+
     '</div>'+
-    '<div class="hl-layout-note">Phone uses one column. Desktop uses two; '+wideCount+' card'+(wideCount===1?'':'s')+' currently span'+(wideCount===1?'s':'')+' both columns.</div>'+
     '<div class="hl-layout-list">'+order.map((id,index)=>{
       const w=HOME_WIDGETS.find(x=>x.id===id);
       const off=!w.fixed&&hidden.has(id);
@@ -14970,10 +15291,11 @@ function txnScrollFieldIntoView(el){
 const OB_VERSION = 2;             // bump when onboarding gains steps worth re-showing existing users
 // Bump WHATS_NEW_VERSION and add an entry whenever existing users should see a "what's new"
 // popup next time they open the app. Independent of OB_VERSION (which is onboarding steps only).
-const WHATS_NEW_VERSION = 2;
+const WHATS_NEW_VERSION = 3;
 const WHATS_NEW_LOG = [
   { v:1, items:['New app icon and logo, everywhere in the app', 'Brighter, taller completed-exercise rows on Log', 'Exercise Library: delete moved into the edit screen'] },
-  { v:2, items:['Budget: a weekly Spending goal card — set a cap for your variable spending and watch it turn red if you go over', 'Accounts: flag an account as a Savers account to keep it out of the new debt payoff total'] }
+  { v:2, items:['Budget: a weekly Spending goal card — set a cap for your variable spending and watch it turn red if you go over', 'Accounts: flag an account as a Savers account to keep it out of the new debt payoff total'] },
+  { v:3, items:['Settings: search it — type “weight”, “colour” or “backup” and jump straight to the right card', 'Settings: the four groups are labelled, and each row shows its current value at a glance', 'Settings: every screen now uses one card layout, and saving behaves the same way everywhere'] }
 ];
 // The flow BRANCHES: the Focus screen asks which areas of Daily the user actually wants, and
 // only those setup screens are then shown. A budget-only user is no longer walked through a
@@ -16552,27 +16874,28 @@ function renderRemindersSection(){
   const wr=r.workout||{enabled:false,time:'07:00'};
   const br=r.budget||{enabled:false,day:0,time:'20:00'};
   const denied='Notification' in window && Notification.permission==='denied';
-  const deniedBanner=denied?'<div style="background:rgba(231,76,60,0.12);border:1px solid var(--danger);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--danger);margin-bottom:12px">⚠️ Notifications blocked — enable them in your browser settings</div>':'';
+  const deniedBanner=denied?'<div class="stg-status err">Notifications are blocked — enable them for this site in your browser settings.</div>':'';
   const days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const dayOpts=days.map((d,i)=>`<option value="${i}"${i===(br.day??0)?' selected':''}>${d}</option>`).join('');
+  // Renders INSIDE the Reminders card, so these are sub-headings (.stg-sub), not two more
+  // cards. The emoji headings are gone: they ignore currentColor, so they could follow
+  // neither the theme nor the accent (see the icon note in css/settings.css).
   wrap.innerHTML=`
     ${deniedBanner}
-    <div class="settings-card">
-      <div class="settings-card-title" style="cursor:default">🏋️ Daily workout reminder</div>
-      <div class="settings-row" style="margin-bottom:12px">
-        <span class="settings-row-label">Enable</span>
-        <label class="toggle-switch"><input type="checkbox" id="rem-workout-enabled"${wr.enabled?' checked':''} onchange="saveReminderField('workout','enabled',this.checked)"><span class="toggle-slider"></span></label>
-      </div>
-      <div class="settings-field"><label>Remind me at</label><input type="time" id="rem-workout-time" value="${wr.time||'07:00'}" onchange="saveReminderField('workout','time',this.value)" style="height:44px;border:1.5px solid var(--border);border-radius:8px;font-size:15px;padding:0 12px;background:var(--card);color:var(--text);width:100%"></div>
+    <div class="stg-sub">Workout</div>
+    <div class="stg-row">
+      <span class="stg-row-txt"><span class="stg-row-label">Daily reminder</span><span class="stg-row-sub">Nudges you on a day you have not logged yet.</span></span>
+      <label class="toggle-switch"><input type="checkbox" id="rem-workout-enabled"${wr.enabled?' checked':''} onchange="saveReminderField('workout','enabled',this.checked)"><span class="toggle-slider"></span></label>
     </div>
-    <div class="settings-card">
-      <div class="settings-card-title" style="cursor:default">💰 Weekly budget reminder</div>
-      <div class="settings-row" style="margin-bottom:12px">
-        <span class="settings-row-label">Enable</span>
-        <label class="toggle-switch"><input type="checkbox" id="rem-budget-enabled"${br.enabled?' checked':''} onchange="saveReminderField('budget','enabled',this.checked)"><span class="toggle-slider"></span></label>
-      </div>
-      <div class="settings-field"><label>Day</label><select id="rem-budget-day" onchange="saveReminderField('budget','day',parseInt(this.value))">${dayOpts}</select></div>
-      <div class="settings-field"><label>Time</label><input type="time" id="rem-budget-time" value="${br.time||'20:00'}" onchange="saveReminderField('budget','time',this.value)" style="height:44px;border:1.5px solid var(--border);border-radius:8px;font-size:15px;padding:0 12px;background:var(--card);color:var(--text);width:100%"></div>
+    <div class="stg-field" style="margin-top:10px"><label for="rem-workout-time">Remind me at</label><input type="time" id="rem-workout-time" value="${wr.time||'07:00'}" onchange="saveReminderField('workout','time',this.value)"></div>
+    <div class="stg-sub">Budget</div>
+    <div class="stg-row">
+      <span class="stg-row-txt"><span class="stg-row-label">Weekly reminder</span><span class="stg-row-sub">Prompts you to save the week before it resets.</span></span>
+      <label class="toggle-switch"><input type="checkbox" id="rem-budget-enabled"${br.enabled?' checked':''} onchange="saveReminderField('budget','enabled',this.checked)"><span class="toggle-slider"></span></label>
+    </div>
+    <div class="stg-2col" style="margin-top:10px">
+      <div class="stg-field"><label for="rem-budget-day">Day</label><select id="rem-budget-day" onchange="saveReminderField('budget','day',parseInt(this.value))">${dayOpts}</select></div>
+      <div class="stg-field"><label for="rem-budget-time">Time</label><input type="time" id="rem-budget-time" value="${br.time||'20:00'}" onchange="saveReminderField('budget','time',this.value)"></div>
     </div>`;
 }
 function saveReminderField(type,field,value){

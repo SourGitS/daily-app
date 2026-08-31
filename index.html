@@ -31,6 +31,9 @@
 <!-- Journal loads last so it wins ties, the same way kitchen-extras.css wins against the five
      before it. Do not reorder any of these. -->
 <link rel="stylesheet" href="css/journal.css">
+<!-- Settings last of all: it replaces older per-feature settings rules (.settings-card and
+     friends) with one .stg-* vocabulary, so it has to win the ties. Do not reorder. -->
+<link rel="stylesheet" href="css/settings.css">
 </head>
 <body>
 <div id="app">
@@ -479,79 +482,33 @@
     <section id="view-settings" class="hidden">
       <div class="settings-main">
 
-      <!-- Top profile card -->
-      <div id="stg-profile-card" onclick="settingsProfileCardTap()" style="cursor:pointer;background:linear-gradient(135deg,rgba(var(--accent-rgb),.12),rgba(var(--accent-rgb),.03));border-radius:var(--radius-hero);border:0.5px solid rgba(var(--accent-rgb),.2);padding:18px 20px;display:flex;align-items:center;gap:14px;margin-bottom:16px;-webkit-tap-highlight-color:transparent">
-        <div id="stg-avatar" style="width:48px;height:48px;border-radius:50%;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#2a2a2a"></div>
-        <div style="flex:1;min-width:0">
-          <div id="stg-name" style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Not signed in</div>
-          <div id="stg-email" style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px"></div>
-          <div id="stg-sync" style="font-size:12px;color:var(--muted);margin-top:2px">Tap to sign in</div>
-        </div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>
-      </div>
+      <!-- Top profile card. Styling lives in css/settings.css (.stg-profile*); JS only
+           writes the text and the avatar. -->
+      <button id="stg-profile-card" class="stg-profile" type="button" onclick="settingsProfileCardTap()">
+        <span id="stg-avatar" class="stg-profile-av"></span>
+        <span class="stg-profile-txt">
+          <span id="stg-name" class="stg-profile-name">Not signed in</span>
+          <span id="stg-email" class="stg-profile-sub"></span>
+          <span id="stg-sync" class="stg-profile-sync">Tap to sign in</span>
+        </span>
+        <svg class="stg-profile-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
 
       <!-- Install card -->
-      <div id="stg-install-card" style="margin-bottom:14px"></div>
+      <div id="stg-install-card"></div>
 
-      <!-- iOS-style grouped list -->
-      <div class="settings-card settings-list">
-        <button class="set-row" onclick="openSettingsSection('account')">
-          <span class="set-row-icon" style="background:#8E8E93"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
-          <span class="set-row-label">Account</span>
-          <svg class="set-row-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-        <button class="set-row" onclick="openSettingsSection('health')">
-          <span class="set-row-icon" style="background:#FF3B30"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span>
-          <span class="set-row-label">Health</span>
-          <svg class="set-row-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
+      <!-- Search. Indexes individual SETTINGS, not just the ten destination names — see
+           SETTINGS_SEARCH in js/app.js. -->
+      <div id="stg-search" class="stg-search">
+        <svg class="stg-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+        <input id="stg-search-input" class="stg-search-input" type="search" inputmode="search" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Search settings…" aria-label="Search settings" oninput="settingsSearchInput()">
+        <button class="stg-search-clear" type="button" aria-label="Clear search" onclick="settingsSearchClear()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
       </div>
-      <div class="settings-card settings-list">
-        <button class="set-row" onclick="openSplitEditor()">
-          <span class="set-row-icon" style="background:#FF9500"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5h11M6.5 17.5h11M4 9v6M20 9v6M2 10.5v3M22 10.5v3"/></svg></span>
-          <span class="set-row-label">Training</span>
-          <svg class="set-row-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-        <button class="set-row" onclick="openBudgetEditor()">
-          <span class="set-row-icon" style="background:#34C759"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h2M11 15h5"/></svg></span>
-          <span class="set-row-label">Budget</span>
-          <svg class="set-row-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-        <button class="set-row" onclick="openSettingsSection('habits')">
-          <span class="set-row-icon" style="background:#30B0C7"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
-          <span class="set-row-label">Habits</span>
-          <svg class="set-row-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-      </div>
-      <div class="settings-card settings-list">
-        <button class="set-row" onclick="openSettingsSection('appearance')">
-          <span class="set-row-icon" style="background:#AF52DE"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>
-          <span class="set-row-label">Appearance</span>
-          <svg class="set-row-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-        <button class="set-row" onclick="replayOnboarding()">
-          <span class="set-row-icon" style="background:#34C759"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></span>
-          <span class="set-row-label">Replay setup</span>
-          <svg class="set-row-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-        <button class="set-row" onclick="openSettingsSection('weather')">
-          <span class="set-row-icon" style="background:#0A84FF"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6 1.7A3.7 3.7 0 0 0 6.5 19z"/></svg></span>
-          <span class="set-row-label">Weather</span>
-          <svg class="set-row-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-        <button class="set-row" onclick="openSettingsSection('homelayout')">
-          <span class="set-row-icon" style="background:#FF9F0A"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
-          <span class="set-row-label">Home Layout</span>
-          <svg class="set-row-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-      </div>
-      <div class="settings-card settings-list">
-        <button class="set-row" onclick="openSettingsSection('export')">
-          <span class="set-row-icon" style="background:#647588"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
-          <span class="set-row-label">Export</span>
-          <svg class="set-row-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-      </div>
+
+      <!-- Grouped destination list + search results. Both rendered from the single registry
+           (SETTINGS_GROUPS / SETTINGS_SECTIONS) so the labels, icons, titles and search
+           subtitles can never drift apart the way four hardcoded copies did. -->
+      <div id="stg-list-root"></div>
 
       </div>
 
@@ -559,64 +516,95 @@
       <div id="settings-sections-store" style="display:none">
         <div id="settings-account-section" class="hidden"></div>
 
+        <!-- Health & goals. Every card here uses the same anatomy (icon + title + one-line
+             description, then fields, then one action row) — the three cards used to be a
+             .settings-card, a .week-section and another .week-section, each with its own
+             internal structure. -->
         <div id="settings-health-section" class="hidden">
-          <div class="settings-card">
-            <div class="settings-card-title" style="cursor:default">Personal info &amp; calories</div>
-            <div class="settings-field">
-              <label>Name</label>
+          <div class="stg-card" id="stg-card-personal">
+            <div class="stg-card-head">
+              <span class="stg-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+              <div class="stg-card-head-txt">
+                <div class="stg-card-title">Health details</div>
+                <div class="stg-card-desc">Used to work out your calorie target. Nothing here leaves your device unless you are signed in.</div>
+              </div>
+            </div>
+            <div class="stg-field">
+              <label for="pi-name">Name</label>
               <input type="text" id="pi-name" placeholder="Your name" autocomplete="name">
             </div>
-            <div class="settings-2col">
-              <div class="settings-field">
-                <label>Age</label>
+            <div class="stg-2col">
+              <div class="stg-field">
+                <label for="pi-age">Age</label>
                 <input type="number" id="pi-age" placeholder="Years" min="10" max="100">
               </div>
-              <div class="settings-field">
-                <label>Sex</label>
+              <div class="stg-field">
+                <label for="pi-sex">Sex</label>
                 <select id="pi-sex">
                   <option value="male">Male</option>
                   <option value="female">Female</option>
                 </select>
               </div>
             </div>
-            <div class="settings-2col">
-              <div class="settings-field">
-                <label>Height (cm)</label>
+            <div class="stg-2col">
+              <div class="stg-field">
+                <label for="pi-height">Height (cm)</label>
                 <input type="number" id="pi-height" placeholder="cm" min="100" max="250">
               </div>
-              <div class="settings-field">
-                <label>Weight (kg)</label>
+              <div class="stg-field">
+                <label for="pi-weight">Weight (kg)</label>
                 <input type="number" id="pi-weight" placeholder="kg" min="30" max="300" step="0.1">
               </div>
             </div>
-            <div class="settings-field">
-              <label>Activity level</label>
+            <div class="stg-field">
+              <label for="pi-activity">Activity level</label>
               <select id="pi-activity">
                 <option value="1.2">Sedentary (office job, no exercise)</option>
-                <option value="1.375">Lightly active (1–3×/week)</option>
-                <option value="1.55">Moderately active (3–5×/week)</option>
-                <option value="1.725">Very active (6–7×/week)</option>
+                <option value="1.375">Lightly active (1&#8211;3&#215;/week)</option>
+                <option value="1.55">Moderately active (3&#8211;5&#215;/week)</option>
+                <option value="1.725">Very active (6&#8211;7&#215;/week)</option>
                 <option value="1.9">Extra active (athlete + physical job)</option>
               </select>
             </div>
-            <button class="settings-save-btn" id="pi-save-btn" onclick="savePersonalInfo()">Save info</button>
-            <div id="tdee-section"></div>
+            <!-- Multi-field form, so an EXPLICIT save (see the save-behaviour rule at the top
+                 of css/settings.css). The confirmation is the shared .stg-save-state, not a
+                 button that renames itself. -->
+            <div class="stg-actions">
+              <span class="stg-save-state" id="pi-saved"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Saved</span>
+              <button class="stg-btn primary" id="pi-save-btn" onclick="savePersonalInfo()">Save changes</button>
+            </div>
           </div>
+          <!-- Own card now: the calorie targets were tucked under a divider inside the form
+               card above, which made them look like part of the same save. -->
+          <div id="tdee-section"></div>
           <div id="health-weight-section"></div>
           <div id="health-weight-goal-section"></div>
         </div>
 
         <div id="settings-habits-section" class="hidden">
-          <div class="settings-card">
+          <div class="stg-card" id="stg-card-habits">
+            <div class="stg-card-head">
+              <span class="stg-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+              <div class="stg-card-head-txt">
+                <div class="stg-card-title">Daily habits</div>
+                <div class="stg-card-desc">The checklist on Home. Changes save as you make them.</div>
+              </div>
+            </div>
             <div id="habits-edit-sheet"></div>
           </div>
         </div>
 
-
         <div id="settings-appearance-section" class="hidden">
-          <div class="settings-card">
-            <div class="settings-row">
-              <span class="settings-row-label">Dark mode</span>
+          <div class="stg-card" id="stg-card-theme">
+            <div class="stg-card-head">
+              <span class="stg-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>
+              <div class="stg-card-head-txt">
+                <div class="stg-card-title">Theme &amp; app colour</div>
+                <div class="stg-card-desc">Both apply the moment you pick them &#8212; there is nothing to save here.</div>
+              </div>
+            </div>
+            <div class="stg-row">
+              <span class="stg-row-txt"><span class="stg-row-label">Dark mode</span></span>
               <label class="toggle-switch">
                 <input type="checkbox" id="theme-toggle" onchange="setTheme(this.checked?'dark':'light')">
                 <span class="toggle-slider"></span>
@@ -624,16 +612,21 @@
             </div>
             <!-- Three-way now (was a Dynamic day colours on/off toggle); rendered by
                  renderAccentModeRow() so the descriptions can follow the selection. -->
-            <div class="settings-row" style="margin-top:16px;align-items:flex-start;flex-direction:column">
-              <span class="settings-row-label" style="margin-bottom:2px">App colour</span>
-              <p id="accent-mode-desc" style="font-size:12px;color:var(--muted);margin:4px 0 10px;line-height:1.4"></p>
+            <div class="stg-row stacked">
+              <span class="stg-row-label">App colour</span>
+              <p id="accent-mode-desc" class="stg-help" style="margin:0 0 10px"></p>
               <div id="accent-mode-row" class="accent-mode-row"></div>
-              <button type="button" class="wx-link" onclick="openSettingsSection('weather')">Weather source &amp; location →</button>
+              <button type="button" class="stg-link" onclick="openSettingsSection('weather')">Weather source &amp; location &#8594;</button>
             </div>
           </div>
-          <div class="settings-card">
-            <div class="settings-card-title" style="cursor:default">Day colours</div>
-            <p style="font-size:12px;color:var(--muted);margin:-4px 0 12px;line-height:1.4">Pick a colour for each training day (and rest days). Used for the accent and day cards.</p>
+          <div class="stg-card" id="stg-card-daycolours">
+            <div class="stg-card-head">
+              <span class="stg-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18 2 2 0 0 0 2-2 2 2 0 0 1 2-2h1.5a3.5 3.5 0 0 0 3.5-3.5C21 7.4 17 3 12 3z"/><circle cx="7.5" cy="12" r="1"/><circle cx="10" cy="8" r="1"/><circle cx="15" cy="8.5" r="1"/></svg></span>
+              <div class="stg-card-head-txt">
+                <div class="stg-card-title">Training day colours</div>
+                <div class="stg-card-desc">A colour per training day (and rest days), used for the accent and the day cards.</div>
+              </div>
+            </div>
             <div id="day-colors-list"></div>
           </div>
         </div>
@@ -642,25 +635,69 @@
 
         <div id="settings-homelayout-section" class="hidden"></div>
 
+        <!-- "Data & backup" on the landing page; the section key stays "export" because it
+             is persisted (deep links, MENU_SECTIONS, quick settings). Only the LABEL changed. -->
         <div id="settings-export-section" class="hidden">
-          <div class="settings-card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--muted)">Cloud sync</span><span id="sync-status" style="font-size:11px;color:var(--muted)">—</span></div>
-            <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Back up everything (budget, workouts, weight, kitchen, settings) to a JSON file — or restore from one. Keep a copy before big changes.</div>
-            <button onclick="exportAllData()" style="width:100%;padding:12px;background:var(--header);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:8px">Export all data (JSON)</button>
-            <button onclick="document.getElementById('import-file').click()" style="width:100%;padding:12px;background:transparent;color:var(--text);border:1.5px solid var(--border);border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:8px">Import backup</button>
-            <input type="file" id="import-file" accept="application/json,.json" style="display:none" onchange="importData(event)">
-            <button onclick="openPasteRestore()" style="width:100%;padding:12px;background:transparent;color:var(--text);border:1.5px solid var(--border);border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:8px">Paste backup text</button>
-            <button onclick="exportData()" style="width:100%;padding:11px;background:transparent;color:var(--muted);border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px">Export workout log (CSV)</button>
-            <button onclick="exportBudgetCSV()" style="width:100%;padding:11px;background:transparent;color:var(--muted);border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Export Budget CSV</button>
+          <div class="stg-card" id="stg-card-backup">
+            <div class="stg-card-head">
+              <span class="stg-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
+              <div class="stg-card-head-txt">
+                <div class="stg-card-title">Backup</div>
+                <div class="stg-card-desc">Everything &#8212; budget, workouts, weight, kitchen, settings &#8212; in one JSON file. Keep a copy before big changes.</div>
+              </div>
+            </div>
+            <!-- Sync state is a value, so it reads as a row rather than being crammed into the
+                 card head, where a long status squeezes the description into a narrow column. -->
+            <div class="stg-row"><span class="stg-row-txt"><span class="stg-row-label">Cloud sync</span></span><span class="stg-row-val" id="sync-status">&#8212;</span></div>
+            <div class="stg-actions stack">
+              <button class="stg-btn primary" onclick="exportAllData()">Export all data (JSON)</button>
+            </div>
           </div>
 
-          <!-- Shortcut only. The builder itself lives on its own screen (Daily + AI) — it
+          <div class="stg-card" id="stg-card-restore">
+            <div class="stg-card-head">
+              <span class="stg-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></span>
+              <div class="stg-card-head-txt">
+                <div class="stg-card-title">Restore</div>
+                <div class="stg-card-desc">Load a backup file, or paste the text of one if the file will not open.</div>
+              </div>
+            </div>
+            <div class="stg-actions stack">
+              <button class="stg-btn" onclick="document.getElementById('import-file').click()">Import backup</button>
+              <input type="file" id="import-file" accept="application/json,.json" style="display:none" onchange="importData(event)">
+              <button class="stg-btn" onclick="openPasteRestore()">Paste backup text</button>
+            </div>
+            <p class="stg-help">Restoring replaces what is on this device with the contents of the backup.</p>
+          </div>
+
+          <div class="stg-card" id="stg-card-csv">
+            <div class="stg-card-head">
+              <span class="stg-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v5h5M15 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z"/><path d="M8.5 13h7M8.5 17h4"/></svg></span>
+              <div class="stg-card-head-txt">
+                <div class="stg-card-title">Spreadsheet export</div>
+                <div class="stg-card-desc">CSV files for opening in Numbers, Excel or Sheets. Not a backup &#8212; they cannot be imported back.</div>
+              </div>
+            </div>
+            <div class="stg-actions stack">
+              <button class="stg-btn quiet" onclick="exportData()">Export workout log (CSV)</button>
+              <button class="stg-btn quiet" onclick="exportBudgetCSV()">Export budget (CSV)</button>
+            </div>
+          </div>
+
+          <!-- Shortcut only. The builder itself lives on its own screen (Daily + AI) &#8212; it
                outgrew a settings card, and duplicating it here would mean two things to keep
                in step. -->
-          <div class="settings-card">
-            <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--muted);margin-bottom:10px">Daily + AI</div>
-            <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Build a context export — budget, transactions, subscriptions, training, whatever you pick — preview it, then copy or download it to paste into ChatGPT or Claude.</div>
-            <button onclick="openAIHub()" style="width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer">Open Daily + AI →</button>
+          <div class="stg-card" id="stg-card-ai">
+            <div class="stg-card-head">
+              <span class="stg-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 13.9 8.6 19 10.5 13.9 12.4 12 17.5 10.1 12.4 5 10.5 10.1 8.6z"/><path d="M18 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg></span>
+              <div class="stg-card-head-txt">
+                <div class="stg-card-title">Daily + AI</div>
+                <div class="stg-card-desc">Build a context export &#8212; budget, transactions, subscriptions, training, whatever you pick &#8212; then copy it into ChatGPT or Claude.</div>
+              </div>
+            </div>
+            <div class="stg-actions stack">
+              <button class="stg-btn" onclick="openAIHub()">Open Daily + AI &#8594;</button>
+            </div>
           </div>
         </div>
 

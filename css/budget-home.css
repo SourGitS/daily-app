@@ -177,31 +177,14 @@
 .txn-item-carry-hint{white-space:normal;line-height:1.45;margin-top:3px;max-width:100%}
 .txn-item-meta{font-size:11px;font-weight:600;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .txn-item-amt{font-family:var(--font-num);font-size:14px;font-weight:800;color:var(--text);flex-shrink:0}
-/* ── Settings -> Weather ── */
-.wx-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 0;
-  border-bottom:1px solid var(--border)}
-.wx-row:last-of-type{border-bottom:none}
-.wx-k{font-size:13px;color:var(--muted);flex-shrink:0}
-.wx-v{font-size:13px;color:var(--text);text-align:right;min-width:0;overflow-wrap:anywhere}
-.wx-v code{font-family:var(--font-num);font-size:12px}
-.wx-note{font-size:11.5px;line-height:1.5;color:var(--muted);margin:6px 0 10px}
-.wx-status{font-size:12.5px;line-height:1.5;padding:9px 11px;border-radius:10px;margin-bottom:12px;
-  background:var(--track);color:var(--text)}
-.wx-status.ok{background:rgba(82,183,136,.14);color:var(--text)}
-.wx-status.err{background:rgba(231,76,60,.12);color:var(--text)}
-.wx-flag{font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
-  padding:2px 6px;border-radius:999px;background:rgba(231,76,60,.16);color:var(--danger);margin-left:6px}
+/* ── Settings → Weather ──
+   Everything else this block used to hold (.wx-row/-k/-v/-note/-status/-flag/-btn/-link) was a
+   second, weather-only copy of a row, a help line, a status pill and a button set. The Weather
+   screen now uses the shared .stg-* vocabulary in css/settings.css; only the coordinates
+   disclosure, which has no equivalent anywhere else, stayed. */
 .wx-details{margin:2px 0 10px}
 .wx-details summary{font-size:12.5px;font-weight:700;color:var(--accent-text);cursor:pointer;padding:4px 0}
 .wx-coords{font-family:var(--font-num);font-size:13px;color:var(--text);padding:6px 0 0}
-.wx-btn{width:100%;padding:12px;margin-bottom:8px;border-radius:10px;border:1.5px solid var(--border);
-  background:transparent;color:var(--text);font-family:inherit;font-size:14px;font-weight:700;
-  cursor:pointer;-webkit-tap-highlight-color:transparent}
-.wx-btn.primary{border-color:transparent;background:var(--header);color:#fff}
-.wx-btn.danger{border-color:var(--danger);color:var(--danger)}
-.wx-btn:disabled{opacity:.45;cursor:default}
-.wx-link{display:inline-block;margin-top:6px;padding:8px 0;border:none;background:transparent;
-  color:var(--accent-text);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;text-align:left}
 
 /* Compact week navigation for short landscape. display:none everywhere else — the weekly
    hero carries these controls in every other layout. Opaque on purpose: it is pinned over
@@ -492,15 +475,13 @@
 #desktop-sidebar{display:none}
 #desktop-exercise-nav{display:none}
 
-/* ── Settings: iOS-style grouped list ── */
+/* ── Settings ──
+   The grouped list moved to css/settings.css as .stg-group / .stg-nav-row. The old row class
+   was .set-row, which is ALSO the workout set row in css/workout.css -- and because this file
+   loads later, its display:flex was quietly winning over that rule's display:grid on the Log
+   screen. Renaming the settings copy retired the collision; do not reintroduce a bare
+   .set-row rule here. .settings-main keeps the measure for the whole Settings tab. */
 .settings-main{max-width:600px;margin:0 auto}
-.settings-list{padding:0;overflow:hidden}
-.set-row{display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;background:transparent;border:none;cursor:pointer;text-align:left;position:relative;-webkit-tap-highlight-color:transparent}
-.set-row:active{background:rgba(var(--accent-rgb),0.07)}
-.set-row:not(:last-child)::after{content:'';position:absolute;left:60px;right:0;bottom:0;height:1px;background:var(--border)}
-.set-row-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.set-row-label{flex:1;font-size:16px;font-weight:500;color:var(--text)}
-.set-row-chev{color:var(--muted);flex-shrink:0}
 /* Full-screen detail overlay top bar (settings-detail + split/budget editors) */
 /* Opaque status bar reserves its own height (see #app-header) — fixed top padding only, no
    env(safe-area-inset-top) which double-counts it and raced on cold launch. */
@@ -515,18 +496,21 @@
    NOT applied via a blanket `button:active` — that selector outranks single-class rules and
    would stomp elements whose transform does layout work (#lap-fab translateX centring,
    .set-sign-btn translateY centring), so this stays a curated list of the app's real buttons. */
-.sg-btn,.modal-btn,.settings-save-btn,#save-btn,.nav-btn,.day-pill,.week-nav-btn,.swap-btn,.ex-collapse-btn,.set-check,.set-warmup-btn,.set-delete-btn,.add-set-btn,.add-warmup-btn,.muscle-filter,.exlib-muscle-pick,.exlib-muscle-add,.stats-tab-btn,.kit-subnav-btn,.lib-edit-btn,.lib-del-btn,.home-edit-btn,.detail-action,.budget-hero-nav-btn,.ldh-arrow,.rt-fs-btn{
+.sg-btn,.modal-btn,#save-btn,.nav-btn,.day-pill,.week-nav-btn,.swap-btn,.ex-collapse-btn,.set-check,.set-warmup-btn,.set-delete-btn,.add-set-btn,.add-warmup-btn,.muscle-filter,.exlib-muscle-pick,.exlib-muscle-add,.stats-tab-btn,.kit-subnav-btn,.lib-edit-btn,.lib-del-btn,.home-edit-btn,.detail-action,.budget-hero-nav-btn,.ldh-arrow,.rt-fs-btn{
   transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.2s ease;
 }
-.sg-btn:active,.modal-btn:active,.settings-save-btn:active,#save-btn:active,.nav-btn:active,.day-pill:active,.week-nav-btn:active,.swap-btn:active,.ex-collapse-btn:active,.set-check:active,.set-warmup-btn:active,.set-delete-btn:active,.add-set-btn:active,.add-warmup-btn:active,.muscle-filter:active,.exlib-muscle-pick:active,.exlib-muscle-add:active,.stats-tab-btn:active,.kit-subnav-btn:active,.lib-edit-btn:active,.lib-del-btn:active,.home-edit-btn:active,.detail-action:active,.budget-hero-nav-btn:active,.ldh-arrow:active,.rt-fs-btn:active{
+.sg-btn:active,.modal-btn:active,#save-btn:active,.nav-btn:active,.day-pill:active,.week-nav-btn:active,.swap-btn:active,.ex-collapse-btn:active,.set-check:active,.set-warmup-btn:active,.set-delete-btn:active,.add-set-btn:active,.add-warmup-btn:active,.muscle-filter:active,.exlib-muscle-pick:active,.exlib-muscle-add:active,.stats-tab-btn:active,.kit-subnav-btn:active,.lib-edit-btn:active,.lib-del-btn:active,.home-edit-btn:active,.detail-action:active,.budget-hero-nav-btn:active,.ldh-arrow:active,.rt-fs-btn:active{
   transform:scale(0.93);
   transition:transform 0.08s ease;
 }
-/* Cards: press lift — rise 3px with a slight grow and deeper shadow, spring back on release. */
-.card,.ex-card,.stat-card,.sum-card,.session-card,.settings-card,.week-section{
+/* Cards: press lift — rise 3px with a slight grow and deeper shadow, spring back on release.
+   .stg-card is deliberately absent: the lift means "this opens
+   something", so a card that only HOLDS editable fields must not rear up when you tap an
+   input inside it. Settings' navigation rows still lift, via .stg-group in css/settings.css. */
+.card,.ex-card,.stat-card,.sum-card,.session-card,.week-section{
   transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.2s ease;
 }
-.card:active,.ex-card:active,.stat-card:active,.sum-card:active,.session-card:active,.settings-card:active,.week-section:active{
+.card:active,.ex-card:active,.stat-card:active,.sum-card:active,.session-card:active,.week-section:active{
   transform:translateY(-3px) scale(1.01);
   box-shadow:0 8px 24px rgba(0,0,0,0.18);
 }
@@ -541,8 +525,8 @@
    "a hero in light, neutral in dark" — measured, it is neutral in both. */
 
 /* ── Theme-aware card borders (glass feel) ── */
-[data-theme="dark"] .card,[data-theme="dark"] .ex-card:not(.done),[data-theme="dark"] .session-card,[data-theme="dark"] .settings-card,[data-theme="dark"] .week-section,[data-theme="dark"] .week-nav,[data-theme="dark"] .pr-row{border:0.5px solid var(--card-border)}
-[data-theme="light"] .card,[data-theme="light"] .ex-card:not(.done),[data-theme="light"] .session-card,[data-theme="light"] .settings-card,[data-theme="light"] .week-section,[data-theme="light"] .week-nav,[data-theme="light"] .pr-row{border:1px solid rgba(0,0,0,0.07)}
+[data-theme="dark"] .card,[data-theme="dark"] .ex-card:not(.done),[data-theme="dark"] .session-card,[data-theme="dark"] .week-section,[data-theme="dark"] .week-nav,[data-theme="dark"] .pr-row{border:0.5px solid var(--card-border)}
+[data-theme="light"] .card,[data-theme="light"] .ex-card:not(.done),[data-theme="light"] .session-card,[data-theme="light"] .week-section,[data-theme="light"] .week-nav,[data-theme="light"] .pr-row{border:1px solid rgba(0,0,0,0.07)}
 /* Tint scoped above the dark-glass .card rule; no border so it uses the neutral card edge */
 /* Calorie/overview hero now reads as a neutral grey card (no accent tint) */
 [data-theme="dark"] .card.hero-card{background:linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.09))}
@@ -785,9 +769,9 @@
   #view-budget .budget-desktop-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 20px;align-items:start}
   #view-budget #bud-col-left,#view-budget #bud-col-right{min-width:0}
 
-  /* Settings tab: the grouped list is centred; each item pushes a full-screen detail overlay
-     (offset past the sidebar by JS), so no special stacked-column desktop layout is needed. */
-  #view-settings .settings-main{max-width:600px}
+  /* Settings tab: each item pushes a full-screen detail overlay (offset past the sidebar by
+     JS). The landing page's own desktop layout -- wider measure, four groups in two columns --
+     lives with the rest of it in css/settings.css. */
   #view-settings-detail .detail-title{padding:0 120px}
 
   /* Accounts + Exercise Library are sidebar peers on desktop, not drill-downs: you leave by

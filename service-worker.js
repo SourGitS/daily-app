@@ -32,7 +32,13 @@
 // and flattens Home's Personal records rows into a divided list instead of nested grey boxes.
 // v253: centre the Daily + AI grid. It was capped at 1180px but left-aligned, so a 1900px
 // window showed 421px of dead space against the right edge, under a centred title bar.
-const CACHE_NAME = 'daily-v253';
+// v254: rebuild Settings as a searchable control centre — labelled groups, a search index over
+// individual settings rather than the ten menu names, live value summaries on every row, one
+// shared card/field/button/save vocabulary across every settings screen (the new
+// css/settings.css, added to ASSETS below), danger zones for destructive actions, and a
+// two-column desktop landing. Also retires the .set-row collision that had been overriding the
+// Log screen's set-row grid app-wide, so the Log tab changes appearance too.
+const CACHE_NAME = 'daily-v254';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
@@ -47,6 +53,7 @@ const ASSETS = [
   './css/budget-home.css',
   './css/kitchen-extras.css',
   './css/journal.css',
+  './css/settings.css',
   './js/app.js',
   './icon-192.png',
   './icon-512.png',

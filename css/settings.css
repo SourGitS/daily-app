@@ -1,0 +1,259 @@
+/* ══ SETTINGS ═════════════════════════════════════════════════════════════════
+   One vocabulary for every Settings screen. Loads last (after journal.css) so it wins
+   ties against the older per-feature rules it replaces — the same reason kitchen-extras
+   and journal load where they do. Do not reorder the <link> tags.
+
+   Anatomy, top to bottom, mirroring the dashboard's .card-* vocabulary in
+   kitchen-extras.css but tuned for FORMS rather than figures:
+
+     .stg-card                        the container
+       .stg-card-head                 icon + title + description
+         .stg-card-icon               accent-tinted rounded square, monochrome glyph
+         .stg-card-title
+         .stg-card-desc               what this card is for / what it affects
+       .stg-row                       label left, control right (toggles, status, pickers)
+       .stg-field                     label ABOVE the control (text/number/date/select)
+       .stg-help                      a sentence under a control
+       .stg-actions                   button row, primary last
+       .stg-save-state                "Saved" confirmation, one implementation
+     .stg-danger-zone                 a .stg-card variant for destructive actions
+
+   Save behaviour is expressed through these classes, not per-screen improvisation:
+     • single toggles/selectors/status controls  → save on change, .stg-row + .stg-save-state
+     • multi-field forms                         → explicit .stg-btn.primary in .stg-actions
+     • collection editors (Training, Budget)     → the overlay's own top-bar Save/Done
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Landing page ──────────────────────────────────────────────────────────── */
+
+/* Profile + sync. Was ~600 chars of inline style on the div in index.html; the only
+   thing it ever needed from JS is its text content. */
+.stg-profile{
+  display:flex;align-items:center;gap:14px;width:100%;text-align:left;
+  padding:18px 20px;margin-bottom:14px;
+  background:linear-gradient(135deg,rgba(var(--accent-rgb),.12),rgba(var(--accent-rgb),.03));
+  border:0.5px solid rgba(var(--accent-rgb),.2);border-radius:var(--radius-hero);
+  cursor:pointer;-webkit-tap-highlight-color:transparent;
+  transition:transform .2s cubic-bezier(0.34,1.56,0.64,1),box-shadow .2s ease;
+}
+.stg-profile:active{transform:translateY(-3px) scale(1.01);box-shadow:0 8px 24px rgba(0,0,0,0.18)}
+.stg-profile-av{width:48px;height:48px;border-radius:50%;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#2a2a2a}
+.stg-profile-av img{width:100%;height:100%;object-fit:cover}
+/* The three lines are <span>s (they live inside a <button>, which may not contain <div>),
+   so each needs display:block or they run together on one line. */
+.stg-profile-txt{display:block;flex:1;min-width:0}
+.stg-profile-name{display:block;font-size:15px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stg-profile-sub{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.stg-profile-sub:empty{display:none}
+.stg-profile-sync{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.stg-profile-sync.ok{color:var(--success)}
+.stg-profile-chev{color:var(--muted);flex-shrink:0}
+
+/* Search. Between the profile card and the groups, not sticky — the list is short. */
+.stg-search{position:relative;margin-bottom:16px}
+.stg-search-ico{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:17px;height:17px;color:var(--muted);pointer-events:none}
+.stg-search-input{
+  width:100%;height:44px;padding:0 40px 0 38px;font-family:inherit;font-size:15px;
+  color:var(--text);background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius-pill);-webkit-appearance:none;appearance:none;
+}
+.stg-search-input::placeholder{color:var(--muted)}
+.stg-search-input:focus{outline:none;border-color:var(--accent)}
+/* type="search" so phone keyboards show a Search key; WebKit's own clear button is hidden
+   because .stg-search-clear already occupies that corner. */
+.stg-search-input::-webkit-search-cancel-button,
+.stg-search-input::-webkit-search-decoration{-webkit-appearance:none;display:none}
+.stg-search-clear{
+  position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  width:32px;height:32px;display:none;align-items:center;justify-content:center;
+  border:none;background:transparent;color:var(--muted);cursor:pointer;border-radius:50%;
+}
+.stg-search.has-query .stg-search-clear{display:flex}
+
+/* Results replace the grouped list while a query is active. */
+.stg-results{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.stg-result{
+  display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;
+  background:transparent;border:none;text-align:left;cursor:pointer;position:relative;
+  -webkit-tap-highlight-color:transparent;
+}
+.stg-result:active{background:rgba(var(--accent-rgb),0.07)}
+.stg-result:not(:last-child)::after{content:'';position:absolute;left:48px;right:0;bottom:0;height:1px;background:var(--border)}
+.stg-result-ico{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.stg-result-ico svg{width:15px;height:15px}
+.stg-result-txt{display:block;flex:1;min-width:0}
+.stg-result-label{display:block;font-size:15px;font-weight:500;color:var(--text)}
+.stg-result-path{display:block;font-size:12px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Coloured AND bolded: the accent can be a near-neutral grey, so a tint alone would not
+   read as a highlight. */
+.stg-result mark{background:rgba(var(--accent-rgb),.18);color:var(--accent-text);font-weight:700;border-radius:3px;padding:0 1px}
+.stg-no-results{padding:22px 16px;text-align:center;font-size:13px;color:var(--muted);line-height:1.5}
+
+/* Groups. The four cards were unlabelled, which made the split look arbitrary. */
+.stg-group-label{
+  font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;
+  color:var(--muted);padding:0 6px;margin:0 0 7px;
+}
+.stg-group-wrap{min-width:0}
+.stg-group{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  overflow:hidden;margin-bottom:18px;
+  transition:transform .2s cubic-bezier(0.34,1.56,0.64,1),box-shadow .2s ease;
+}
+/* Navigation groups keep the press lift the form cards lost — these DO open something. */
+.stg-group:active{transform:translateY(-3px) scale(1.01);box-shadow:0 8px 24px rgba(0,0,0,0.18)}
+[data-theme="dark"] .stg-group{border:0.5px solid var(--card-border)}
+[data-theme="light"] .stg-group{border:1px solid rgba(0,0,0,0.07)}
+/* Navigation rows lift on press — they open something. Form cards do not (see below).
+   Renamed off .set-row: that class is the workout SET row in workout.css, and this file's
+   copy was silently overriding it app-wide because it loaded later. */
+.stg-nav-row{
+  display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;
+  background:transparent;border:none;cursor:pointer;text-align:left;position:relative;
+  -webkit-tap-highlight-color:transparent;
+}
+.stg-nav-row:active{background:rgba(var(--accent-rgb),0.07)}
+.stg-nav-row:not(:last-child)::after{content:'';position:absolute;left:60px;right:0;bottom:0;height:1px;background:var(--border)}
+.stg-nav-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.stg-nav-icon svg{width:19px;height:19px}
+.stg-nav-txt{flex:1;min-width:0}
+.stg-nav-label{font-size:16px;font-weight:500;color:var(--text);display:block}
+/* Optional value beside the row — "Sydney", "Dark · Weather colour", "5 active". Answers
+   the question without opening the screen. */
+.stg-nav-sum{font-size:12px;color:var(--muted);display:block;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stg-nav-chev{color:var(--muted);flex-shrink:0}
+
+/* ── Card anatomy (detail screens) ─────────────────────────────────────────── */
+
+.stg-card{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:16px;margin-bottom:12px;
+}
+[data-theme="dark"] .stg-card{border:0.5px solid var(--card-border)}
+[data-theme="light"] .stg-card{border:1px solid rgba(0,0,0,0.07)}
+/* NOT in the press-lift list. A card holding editable fields must not rear up when you tap
+   an input inside it — the lift means "this opens something", which a form does not. */
+.stg-card-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px}
+.stg-card-icon{
+  width:28px;height:28px;border-radius:8px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(var(--accent-rgb),.14);color:var(--accent-text);
+}
+.stg-card-icon svg{width:16px;height:16px}
+.stg-card-head-txt{flex:1;min-width:0}
+.stg-card-title{font-size:15px;font-weight:700;color:var(--text);line-height:1.25}
+.stg-card-desc{font-size:12.5px;color:var(--muted);line-height:1.45;margin-top:3px}
+/* Right-hand slot in a head, for a SHORT pill or count only — anything longer belongs in a
+   .stg-row underneath, or it squeezes the description into a narrow column. */
+.stg-card-head-act{margin-left:auto;flex-shrink:0;max-width:35%;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+
+/* A minor heading inside a card, for a card that genuinely has two parts. */
+.stg-sub{
+  font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;
+  color:var(--muted);margin:16px 0 8px;padding-top:14px;border-top:1px solid var(--border);
+}
+.stg-card-head + .stg-sub{margin-top:0;padding-top:0;border-top:none}
+
+/* Label left, control right. Toggles, three-way pickers, read-only status. */
+.stg-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:3px 0}
+.stg-row + .stg-row{border-top:1px solid var(--border)}
+/* Label and sub are <span>s so a .stg-row can live inside a <button>; both need
+   display:block or they run together on one line. */
+.stg-row-txt{display:block;flex:1 1 auto;min-width:0}
+.stg-row-label{display:block;font-size:15px;color:var(--text)}
+.stg-row-sub{display:block;font-size:12px;color:var(--muted);line-height:1.4;margin-top:2px}
+.stg-row-val{font-size:14px;color:var(--muted);text-align:right;flex-shrink:0;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.stg-row-val strong{color:var(--text);font-weight:600}
+.stg-row-val code{font-family:var(--font-num);font-size:12.5px}
+/* A row whose control needs the full width sits under its own label. */
+.stg-row.stacked{display:block;padding:6px 0}
+.stg-row.stacked .stg-row-label{display:block;margin-bottom:4px}
+
+/* Label ABOVE the control. One height, one radius, everywhere. */
+.stg-field{margin-bottom:12px}
+.stg-field:last-child{margin-bottom:0}
+.stg-field > label{display:block;font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px}
+.stg-field input,.stg-field select,.stg-field textarea{
+  width:100%;height:44px;padding:0 12px;font-family:inherit;font-size:15px;
+  color:var(--text);background:var(--card);border:1.5px solid var(--border);border-radius:10px;
+  -webkit-appearance:none;appearance:none;
+}
+.stg-field textarea{height:auto;min-height:80px;padding:10px 12px;line-height:1.45;resize:vertical}
+.stg-field input:focus,.stg-field select:focus,.stg-field textarea:focus{outline:none;border-color:var(--accent)}
+.stg-field input[type="date"],.stg-field input[type="time"]{font-size:14px}
+.stg-field input[type="color"]{height:44px;padding:3px;border-radius:10px;cursor:pointer}
+/* Two-up only while each half stays comfortably wide; below 340px they stack. */
+.stg-2col{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media (max-width:340px){ .stg-2col{grid-template-columns:1fr} }
+.stg-help{font-size:12px;color:var(--muted);line-height:1.45;margin-top:6px}
+.stg-help + .stg-help{margin-top:4px}
+
+/* Buttons. One primary, one secondary, one destructive — no more per-screen inline sets. */
+/* Inline actions sit at the trailing edge, the way the primary button does in a dialog.
+   .stack is for a card whose actions are a list of equals (Export / Import / Paste). */
+.stg-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;margin-top:14px}
+.stg-actions.stack{flex-direction:column;align-items:stretch}
+.stg-actions.stack .stg-btn{width:100%}
+.stg-btn{
+  flex:0 1 auto;min-width:0;min-height:44px;padding:11px 16px;
+  font-family:inherit;font-size:15px;font-weight:600;line-height:1.2;
+  color:var(--text);background:transparent;border:1.5px solid var(--border);border-radius:10px;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;
+  transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1),background .15s,border-color .15s,opacity .15s;
+}
+.stg-btn:active{transform:scale(0.96);transition:transform 0.08s ease}
+.stg-btn:disabled{opacity:.45;cursor:default}
+.stg-btn:disabled:active{transform:none}
+.stg-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.stg-btn.quiet{font-size:13px;color:var(--muted);min-height:40px;padding:9px 14px}
+.stg-btn.danger{color:var(--danger);border-color:rgba(var(--danger-rgb),.45)}
+.stg-btn.danger:active{background:rgba(var(--danger-rgb),.1)}
+/* A text link inside a card — "Weather source & location →". */
+.stg-link{
+  display:inline-block;padding:8px 0;background:none;border:none;
+  font-family:inherit;font-size:13px;font-weight:600;color:var(--accent-text);
+  text-align:left;cursor:pointer;
+}
+
+/* Save confirmation. Every explicit-save form ends the same way, so "did that take?" has one
+   answer app-wide instead of five (a button that renames itself, a flash, a toast, nothing). */
+/* Reserves its space at opacity 0 so the button does not jump when the tick appears. */
+.stg-save-state{
+  font-size:13px;font-weight:600;color:var(--success);
+  display:inline-flex;align-items:center;gap:5px;flex-shrink:0;margin-right:auto;
+  opacity:0;transition:opacity .18s ease;
+}
+.stg-save-state.on{opacity:1}
+.stg-save-state svg{width:15px;height:15px}
+
+/* Destructive actions live in their own labelled card, never mixed into a settings list. */
+.stg-danger-zone{border-color:rgba(var(--danger-rgb),.3)}
+[data-theme="dark"] .stg-danger-zone,[data-theme="light"] .stg-danger-zone{border:1px solid rgba(var(--danger-rgb),.3)}
+.stg-danger-zone .stg-card-icon{background:rgba(var(--danger-rgb),.14);color:var(--danger)}
+.stg-danger-zone .stg-card-title{color:var(--danger)}
+
+/* Status line inside a card: neutral, good, or a real problem. */
+.stg-status{font-size:12.5px;line-height:1.45;color:var(--muted);background:var(--track);border-radius:9px;padding:9px 11px;margin-bottom:12px}
+.stg-status.ok{color:var(--success);background:rgba(82,183,136,.12)}
+.stg-status.err{color:var(--danger);background:rgba(var(--danger-rgb),.12)}
+
+/* Scroll-to target from a search result: name the card for about a second, then let go. */
+@keyframes stg-flash{
+  0%{box-shadow:0 0 0 0 rgba(var(--accent-rgb),.55)}
+  15%{box-shadow:0 0 0 3px rgba(var(--accent-rgb),.55)}
+  100%{box-shadow:0 0 0 0 rgba(var(--accent-rgb),0)}
+}
+.stg-flash{animation:stg-flash 1.6s ease-out}
+@media (prefers-reduced-motion:reduce){ .stg-flash{animation:none;box-shadow:0 0 0 2px rgba(var(--accent-rgb),.5)} }
+
+/* ── Desktop ───────────────────────────────────────────────────────────────── */
+@media (min-width:1024px){
+  /* The landing page was a 600px phone-width column on a full desktop window. Profile and
+     search stay full width; the four groups pair up into two columns. Detail overlays keep
+     their own 640px measure — a form stretched across a monitor is harder to read, not
+     easier — so this only widens the menu. */
+  #view-settings .settings-main{max-width:920px}
+  #stg-list-root{display:grid;grid-template-columns:1fr 1fr;gap:0 22px;align-items:start}
+  #stg-list-root .stg-results{grid-column:1/-1}
+  #stg-list-root .stg-no-results{grid-column:1/-1}
+}
