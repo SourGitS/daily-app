@@ -27,7 +27,10 @@
 // permanent per-category inputs. Filter and collapsed state are device-local.
 // (v250 shipped separately as the onboarding visual pass, so this takes the next name — a
 // device that already fetched v250 would otherwise never see the Pantry rebuild.)
-const CACHE_NAME = 'daily-v251';
+// v252 collapses Kitchen's two always-visible recipe filter rows behind one mobile Filters
+// button while keeping a one-tap All recipes reset and the existing desktop filter layout,
+// and flattens Home's Personal records rows into a divided list instead of nested grey boxes.
+const CACHE_NAME = 'daily-v252';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

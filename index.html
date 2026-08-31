@@ -391,8 +391,19 @@
               <button class="kit-add-recipe-btn" onclick="kitOpenForm()">+ Add Recipe</button>
               <button class="kit-add-recipe-btn kit-import-btn" onclick="kitOpenImport()">⇩ Import</button>
             </div>
-            <div id="kit-filter-chips" class="kit-filter-chips"></div>
-            <div id="kit-cat-pills" class="kit-cat-pills"></div>
+            <div class="kit-mobile-filter-bar">
+              <button id="kit-filter-reset" class="kit-mobile-filter-btn active" onclick="kitResetFilters()">All recipes</button>
+              <button id="kit-filter-toggle" class="kit-mobile-filter-btn" onclick="kitToggleFilters()" aria-expanded="false" aria-controls="kit-filter-controls">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M14 5v4M4 17h2M10 17h10M8 15v4"/></svg>
+                <span>Filters</span><span id="kit-filter-count" class="kit-filter-count hidden"></span>
+              </button>
+            </div>
+            <div id="kit-filter-controls" class="kit-filter-controls">
+              <div class="kit-filter-group-label">Show</div>
+              <div id="kit-filter-chips" class="kit-filter-chips"></div>
+              <div class="kit-filter-group-label">Meal</div>
+              <div id="kit-cat-pills" class="kit-cat-pills"></div>
+            </div>
             <div id="kit-list"></div>
           </div>
           <div class="kit-detail-col" id="kit-detail-col"></div>

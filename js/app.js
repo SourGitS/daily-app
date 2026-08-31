@@ -12949,7 +12949,7 @@ function buildPRCard(){
   const ev=computePRHistory();
   const open='onclick="setView(\'stats\');setStatsTab(\'training\')"';
   if(!ev.length){
-    return '<div class="card" '+open+' style="cursor:pointer">'+
+    return '<div class="card pr-card" '+open+' style="cursor:pointer">'+
       cardHeader('trophy','Personal records')+
       '<div style="font-size:14px;color:var(--muted)">Your first logged session sets them all.</div>'+
     '</div>';
@@ -12969,7 +12969,7 @@ function buildPRCard(){
       '<span class="pr-val">'+val+'</span>'+
     '</div>');
   }
-  return '<div class="card" '+open+' style="cursor:pointer">'+
+  return '<div class="card pr-card" '+open+' style="cursor:pointer">'+
     cardHeader('trophy','Personal records','<span class="card-hd-act">All →</span>')+
     rows.join('')+
   '</div>';
@@ -16651,7 +16651,7 @@ function kitLoadRecipes(){
 }
 let kitRecipes=kitLoadRecipes();
 function kitSaveRecipes(){ lsSave('kitchen_recipes', kitRecipes, 'kitRecipes'); }
-const kitState={tab:'recipes',cat:'all',search:'',filter:'all',selectedId:null,scaleServings:null};
+const kitState={tab:'recipes',cat:'all',search:'',filter:'all',filtersOpen:false,selectedId:null,scaleServings:null};
 const KIT_CATS=[['all','All'],['breakfast','Breakfast'],['lunch','Lunch'],['dinner','Dinner'],['dessert','Dessert']];
 
 function kitEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -16685,6 +16685,32 @@ function updateKitFab(){
 }
 function kitOnSearch(v){ kitState.search=v||''; kitRenderList(); }
 function kitSetCat(c){ kitState.cat=c; kitRenderList(); }
+function kitToggleFilters(){
+  kitState.filtersOpen=!kitState.filtersOpen;
+  kitRenderFilterButton();
+}
+function kitResetFilters(){
+  kitState.cat='all';
+  kitState.filter='all';
+  kitRenderList();
+}
+function kitRenderFilterButton(){
+  const panel=document.getElementById('kit-filter-controls');
+  const toggle=document.getElementById('kit-filter-toggle');
+  const reset=document.getElementById('kit-filter-reset');
+  const count=document.getElementById('kit-filter-count');
+  const active=(kitState.cat!=='all'?1:0)+(kitState.filter!=='all'?1:0);
+  if(panel) panel.classList.toggle('open',kitState.filtersOpen);
+  if(toggle){
+    toggle.classList.toggle('active',active>0);
+    toggle.setAttribute('aria-expanded',kitState.filtersOpen?'true':'false');
+  }
+  if(reset) reset.classList.toggle('active',active===0);
+  if(count){
+    count.textContent=active||'';
+    count.classList.toggle('hidden',active===0);
+  }
+}
 
 function kitRenderCatPills(){
   const wrap=document.getElementById('kit-cat-pills'); if(!wrap) return;
@@ -16969,6 +16995,7 @@ function kitRenderList(){
   kitRenderFeatured();
   kitRenderFilterChips();
   kitRenderCatPills();
+  kitRenderFilterButton();
   const list=document.getElementById('kit-list'); if(!list) return;
   const items=kitFilteredRecipes();
   // Favourites first, then by name

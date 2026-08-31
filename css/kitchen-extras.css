@@ -335,8 +335,8 @@
 /* ── Personal record rows ──
    Name left, value hard right in font-num so the figures form a column regardless of how long
    the exercise names are. */
-.pr-row{display:flex;align-items:baseline;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)}
-.pr-row:last-child{border-bottom:none;padding-bottom:0}
+.pr-card .pr-row{display:flex;align-items:baseline;gap:8px;padding:9px 0;margin:0;background:transparent;border:0;border-bottom:1px solid var(--border);border-radius:0}
+.pr-card .pr-row:last-child{border-bottom:none;padding-bottom:0}
 .pr-name{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pr-val{font-family:var(--font-num);font-size:15px;font-weight:800;color:var(--text);flex-shrink:0}
 .pr-new{flex-shrink:0;font-size:9px;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:999px;background:rgba(82,183,136,.16);color:var(--positive)}
@@ -781,9 +781,25 @@
 /* Import is the secondary action beside "+ Add Recipe" — outlined so the primary one keeps
    the accent fill, and narrower since the header row is tight on a phone. */
 .kit-import-btn{background:transparent;color:var(--text);border:1px solid var(--border);padding:0 12px}
+.kit-mobile-filter-bar{display:none}
+.kit-filter-group-label{display:none}
 .kit-filter-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .kit-fchip{height:30px;padding:0 12px;border-radius:999px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;transition:border-color .15s,color .15s,background .15s}
 .kit-fchip.active{border-color:var(--accent);color:var(--accent-text);background:rgba(var(--accent-rgb),.12)}
+@media(max-width:1023px){
+  .kit-mobile-filter-bar{display:flex;gap:8px;margin-bottom:12px}
+  .kit-mobile-filter-btn{height:38px;padding:0 14px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--muted);font:600 13px var(--font-ui);display:flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .kit-mobile-filter-btn:first-child{flex:1}
+  .kit-mobile-filter-btn:last-child{min-width:112px}
+  .kit-mobile-filter-btn svg{width:17px;height:17px;flex-shrink:0}
+  .kit-mobile-filter-btn.active{border-color:var(--accent);color:var(--accent-text);background:rgba(var(--accent-rgb),.1)}
+  .kit-filter-count{min-width:19px;height:19px;padding:0 5px;border-radius:999px;background:var(--accent);color:#fff;font:700 11px/19px var(--font-num);text-align:center}
+  .kit-filter-controls{display:none;margin:-2px 0 14px;padding:14px;background:var(--card);border:.5px solid var(--card-border);border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.08)}
+  .kit-filter-controls.open{display:block}
+  .kit-filter-group-label{display:block;margin:0 0 7px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .kit-filter-chips{margin-bottom:13px}
+  .kit-cat-pills{margin-bottom:0}
+}
 .kit-card-actions{display:flex;gap:4px;align-items:center;flex-shrink:0}
 .kit-menu-btn{width:32px;height:32px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-size:18px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;justify-content:center;line-height:1}
 .kit-menu-btn:active{background:var(--border)}
