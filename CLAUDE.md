@@ -158,10 +158,35 @@ the accent or the theme must go through those, not set `--accent` directly.
   `.stg-nav-row`, and the Log rows render on their intended
   `28px 20px 1fr 10px 1fr 32px 22px` grid. Do not reintroduce a bare `.set-row` rule outside
   `workout.css`.
-- **Settings' desktop landing is two columns; detail screens stay narrow.**
-  `#view-settings .settings-main` is 920px at ≥1024px with `#stg-list-root` as a `1fr 1fr`
-  grid (profile and search span full width). `#settings-detail-content` keeps its 640px
-  measure on purpose — a form stretched across a monitor is harder to read, not easier.
+- **Settings' desktop landing is master–detail, and the split point is 1180px — not 1024.**
+  `.stg-workspace` is `340px minmax(0,1fr)` with a 22px gap inside a 1240px `.settings-main`;
+  the profile card spans both panes above it. Below 1180 (and on mobile) the workspace is a
+  plain block: one column at a 760px measure, and each item pushes the same full-screen
+  `#view-settings-detail` overlay it always did. 1180 is chosen, not inherited from the app's
+  1024px desktop line, because the 260px sidebar leaves the pane narrower than the phone
+  measure these forms were drawn at — a cramped pane is worse than a clean full-screen push.
+  **The same number lives in `STG_SPLIT_MIN` (js/app.js) and an `@media` in `css/settings.css`;
+  they must agree**, because `stgSplit()` picks the mount target and the CSS decides whether
+  the pane is visible at all. `openSettingsSection()` moves the SAME section element into
+  `#stg-detail-body` (split) or `#settings-detail-content` (overlay) — one code path, two
+  targets — and a `resize` listener re-mounts it when the window crosses the boundary,
+  or the section is stranded in a `display:none` container.
+  The left pane is ONE surface (`#stg-list-root:not(.is-search)` carries the card; the four
+  `.stg-group`s inside it drop their own background/border and are separated by dividers), so
+  every row is the same width. The selected row gets an accent tint plus a `::before` bar and
+  loses its chevron; mobile keeps the chevron. `.is-search` is toggled by `renderSettingsList()`
+  to drop that surface while results are showing, or the results card is framed inside a card.
+  The pane is never blank: `renderSettingsOverview()` fills it from `SETTINGS_OVERVIEW_KEYS`
+  using the same registry summaries the nav rows show. It bails out early when a section is
+  mounted — the sections are MOVED, not rebuilt, so an `innerHTML` wipe would not come back.
+  **Do not go back to the two-column group grid.** It was tried and is worse than the single
+  column it replaced: the groups hold 2/3/3/2 rows, so no two cards lined up, the same row was
+  a different width depending on its column, and the bottom half of the page sat empty. Equal
+  forced heights just move that space inside Personal and Data and support; four columns
+  cramps the rows; masonry keeps the uneven heights; and a row stretched past ~1000px puts its
+  label and chevron absurdly far apart. Training setup, Budget setup and Run setup again stay
+  full-screen overlays even in split mode — they are collection editors with their own top-bar
+  Save, and they are not in `SETTINGS_SECTION_KEYS`.
 
 - **iOS cold-launch layout glitch**: `100dvh` mis-computes at cold launch on iOS standalone
   PWAs (black gap / shifted content until a rotation). Fixed by giving `#app` a

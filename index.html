@@ -497,18 +497,40 @@
       <!-- Install card -->
       <div id="stg-install-card"></div>
 
-      <!-- Search. Indexes individual SETTINGS, not just the ten destination names — see
-           SETTINGS_SEARCH in js/app.js. -->
-      <div id="stg-search" class="stg-search">
-        <svg class="stg-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
-        <input id="stg-search-input" class="stg-search-input" type="search" inputmode="search" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Search settings…" aria-label="Search settings" oninput="settingsSearchInput()">
-        <button class="stg-search-clear" type="button" aria-label="Clear search" onclick="settingsSearchClear()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-      </div>
+      <!-- Master–detail workspace. One column on phones and narrow desktop windows, where
+           each item pushes the full-screen #view-settings-detail overlay. At ≥1180px the
+           nav pane keeps a fixed 340px measure and the section mounts into .stg-detail-pane
+           beside it instead — same section elements, different mount target (see
+           openSettingsSection). The profile card above spans both panes. -->
+      <div class="stg-workspace">
+        <div class="stg-nav-pane">
 
-      <!-- Grouped destination list + search results. Both rendered from the single registry
-           (SETTINGS_GROUPS / SETTINGS_SECTIONS) so the labels, icons, titles and search
-           subtitles can never drift apart the way four hardcoded copies did. -->
-      <div id="stg-list-root"></div>
+          <!-- Search. Indexes individual SETTINGS, not just the ten destination names — see
+               SETTINGS_SEARCH in js/app.js. -->
+          <div id="stg-search" class="stg-search">
+            <svg class="stg-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+            <input id="stg-search-input" class="stg-search-input" type="search" inputmode="search" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Search settings…" aria-label="Search settings" oninput="settingsSearchInput()">
+            <button class="stg-search-clear" type="button" aria-label="Clear search" onclick="settingsSearchClear()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          </div>
+
+          <!-- Grouped destination list + search results. Both rendered from the single registry
+               (SETTINGS_GROUPS / SETTINGS_SECTIONS) so the labels, icons, titles and search
+               subtitles can never drift apart the way four hardcoded copies did. -->
+          <div id="stg-list-root"></div>
+
+        </div>
+
+        <!-- Detail pane. display:none until the split point, so on mobile this is inert
+             markup and the overlay is the only detail surface. Never blank when visible:
+             with nothing selected it holds the overview (renderSettingsOverview). -->
+        <div class="stg-detail-pane" id="stg-detail-pane">
+          <div class="stg-detail-head">
+            <h2 class="stg-detail-title" id="stg-detail-title">Settings overview</h2>
+            <button class="stg-btn quiet" id="stg-detail-done" type="button" onclick="closeSettingsSection()" style="display:none">Done</button>
+          </div>
+          <div class="stg-detail-body" id="stg-detail-body"></div>
+        </div>
+      </div>
 
       </div>
 

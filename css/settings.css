@@ -246,14 +246,79 @@
 .stg-flash{animation:stg-flash 1.6s ease-out}
 @media (prefers-reduced-motion:reduce){ .stg-flash{animation:none;box-shadow:0 0 0 2px rgba(var(--accent-rgb),.5)} }
 
+/* ── Master–detail workspace ────────────────────────────────────────────────── */
+/* Off until the split point below: on a phone .stg-workspace is a plain block, the nav pane
+   IS the page, and the detail pane is inert markup that never renders. */
+.stg-nav-pane{min-width:0}
+.stg-detail-pane{display:none}
+
+/* Overview rows in the detail pane: a .stg-row that opens something. The row vocabulary is
+   built for a <div> holding a control, so the button form only needs its chrome removed. */
+.stg-row-btn{
+  width:100%;text-align:left;font-family:inherit;background:none;border:none;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.stg-row-btn:active{background:rgba(var(--accent-rgb),0.07)}
+/* Not .stg-nav-chev: that one is hidden on desktop, and these rows keep theirs. */
+.stg-row-chev{color:var(--muted);flex-shrink:0}
+
 /* ── Desktop ───────────────────────────────────────────────────────────────── */
+/* The landing page started as a 600px phone-width column on a full desktop window. Pairing
+   the four groups into a 1fr 1fr grid was worse, not better: the groups hold 2/3/3/2 rows,
+   so no two cards ever lined up, the same row was a different width depending on which
+   column it landed in, and the bottom half of the page stayed empty. Forcing the groups to
+   equal heights only moves that empty space inside Personal and Data and support.
+   Desktop is master–detail instead — ONE navigation column at a fixed measure, and a pane
+   beside it that renders the selected section inline rather than replacing the screen. */
 @media (min-width:1024px){
-  /* The landing page was a 600px phone-width column on a full desktop window. Profile and
-     search stay full width; the four groups pair up into two columns. Detail overlays keep
-     their own 640px measure — a form stretched across a monitor is harder to read, not
-     easier — so this only widens the menu. */
-  #view-settings .settings-main{max-width:920px}
-  #stg-list-root{display:grid;grid-template-columns:1fr 1fr;gap:0 22px;align-items:start}
-  #stg-list-root .stg-results{grid-column:1/-1}
-  #stg-list-root .stg-no-results{grid-column:1/-1}
+  /* Between 1024 and the split point there isn't room for two panes, so this band is the
+     plain single column, just given a slightly more generous measure than the phone. */
+  #view-settings .settings-main{max-width:760px}
+}
+@media (min-width:1180px){
+  /* 340 nav + 22 gap leaves the detail pane about 530px at this width, close to the 600px
+     measure the forms were drawn for. Below it the pane would be narrower than a phone,
+     which is why the split starts here and not at the app's 1024px desktop line. */
+  #view-settings .settings-main{max-width:1240px}
+  .stg-workspace{display:grid;grid-template-columns:340px minmax(0,1fr);gap:0 22px;align-items:start}
+
+  /* The nav is ONE surface with labelled groups and dividers, not four floating cards:
+     every row is the same width and the rhythm of the single-column list is preserved. */
+  #stg-list-root:not(.is-search){
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    overflow:hidden;padding-bottom:6px;
+  }
+  [data-theme="dark"] #stg-list-root:not(.is-search){border:0.5px solid var(--card-border)}
+  [data-theme="light"] #stg-list-root:not(.is-search){border:1px solid rgba(0,0,0,0.07)}
+  #stg-list-root:not(.is-search) .stg-group{background:none;border:none;border-radius:0;margin:0;overflow:visible}
+  /* The press lift is for a card that opens something. Inside one surface the whole nav
+     would rear up on every row tap, so it comes off here. */
+  #stg-list-root:not(.is-search) .stg-group:active{transform:none;box-shadow:none}
+  #stg-list-root:not(.is-search) .stg-group-label{padding:0 14px;margin:6px 0 4px}
+  #stg-list-root:not(.is-search) .stg-group-wrap+.stg-group-wrap{border-top:1px solid var(--border);padding-top:12px;margin-top:6px}
+  #stg-list-root:not(.is-search) .stg-group-wrap:first-child{padding-top:12px}
+
+  /* Selected row: accent tint, accent bar down the left edge, stronger label. The chevron
+     goes — it promised a screen change that no longer happens. Mobile keeps it. */
+  .stg-nav-chev{display:none}
+  .stg-nav-row.active{background:rgba(var(--accent-rgb),0.10)}
+  .stg-nav-row.active::before{
+    content:'';position:absolute;left:0;top:5px;bottom:5px;width:3px;
+    border-radius:0 3px 3px 0;background:var(--accent);
+  }
+  .stg-nav-row.active .stg-nav-label{font-weight:700}
+
+  /* Detail pane. Deliberately NOT a card: the cards inside carry their own surface, and a
+     surface behind them reads as card-on-card. The sticky head keeps the section name and
+     the way out in place while a long form scrolls. */
+  .stg-detail-pane{display:block;min-width:0}
+  .stg-detail-head{
+    position:sticky;top:0;z-index:6;display:flex;align-items:center;gap:12px;min-height:44px;
+    padding:6px 0 10px;margin-bottom:14px;background:var(--bg);border-bottom:1px solid var(--border);
+  }
+  .stg-detail-title{
+    flex:1;min-width:0;margin:0;font-size:19px;font-weight:800;color:var(--text);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .stg-detail-body{min-width:0}
 }

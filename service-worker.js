@@ -42,7 +42,10 @@
 // sized to the padding box but painted across the border box, and background-repeat defaults
 // to repeat, so the top edge was showing the gradient's LAST colour stop — a bright pink
 // hairline on clear-dusk, orange on the warm scenes.
-const CACHE_NAME = 'daily-v255';
+// v256: replace Settings' uneven two-column desktop landing with a master-detail workspace:
+// one continuous navigation surface, a live overview, and inline section content at >=1180px,
+// while preserving the pushed detail screens on phones and narrower desktop windows.
+const CACHE_NAME = 'daily-v256';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

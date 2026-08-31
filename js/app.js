@@ -100,7 +100,6 @@ function mergeBudgetWeeks(localData, cloudData){
   });
   return {data:merged, cloudNeedsUpdate};
 }
-function syncSettingsCollapsedToFirebase(){ const r=fbRef('settingsCollapsed'); if(r) r.set(settingsCollapsed); }
 // ── Generic blob sync (Realtime Database) for simple localStorage keys ──
 // Stores the raw localStorage string under users/<uid>/<path>. Used for data added
 // after the original sync was built (budget categories, credit card, weight log).
@@ -457,11 +456,6 @@ if(firebaseReady){
         db.ref('users/'+user.uid+'/budgetConfig').set(budgetConfig);
       }
     });
-
-    // Sync settings collapsed state
-    fbReconcile('settingsCollapsed','daily_settings_collapsed',
-      ()=>settingsCollapsed, v=>{ settingsCollapsed=v||{}; },
-      ()=>{ if(S.view==='settings') applySettingsCollapsed(); });
 
     // Sync weight goal
     fbReconcile('weightGoal','daily_weight_goal',
@@ -5030,31 +5024,14 @@ function renderExerciseDetail(name){
   }
 }
 
-// ── SETTINGS view ─────────────────────────────────────────────────
-function toggleSettingsSection(key){
-  if(settingsCollapsed[key]) delete settingsCollapsed[key];
-  else settingsCollapsed[key]=1;
-  localStorage.setItem('daily_settings_collapsed',JSON.stringify(settingsCollapsed));
-  syncSettingsCollapsedToFirebase();
-  const c=!!settingsCollapsed[key];
-  const body=document.getElementById('ssc-'+key);
-  const chev=document.getElementById('sc-'+key);
-  const hdr=document.getElementById('sh-'+key);
-  if(body) body.style.display=c?'none':'';
-  if(chev) chev.style.transform=c?'rotate(-90deg)':'rotate(0deg)';
-  if(hdr) hdr.style.marginBottom=c?'0':'14px';
-}
-function applySettingsCollapsed(){
-  ['income','savings-target','fixed','variable'].forEach(key=>{
-    if(!settingsCollapsed[key]) return;
-    const body=document.getElementById('ssc-'+key);
-    const chev=document.getElementById('sc-'+key);
-    const hdr=document.getElementById('sh-'+key);
-    if(body) body.style.display='none';
-    if(chev) chev.style.transform='rotate(-90deg)';
-    if(hdr) hdr.style.marginBottom='0';
-  });
-}
+// The Settings screen used to host collapsible income / savings-target / fixed / variable
+// sections, driven by toggleSettingsSection()/applySettingsCollapsed() over ssc-<key>,
+// sc-<key> and sh-<key> ids, with a settingsCollapsed state mirrored to Firebase. That
+// structure moved to the Budget editor (openBudgetEditor / renderBudgetEditor), the ids went
+// with it, and every getElementById here had been returning null since — so the state, its
+// sync and both functions are gone. daily_settings_collapsed is left in storage, unread.
+// The budget CARD collapse system is unrelated and still live: it is keyed by data-bud-key.
+
 // ══ SETTINGS: one registry ════════════════════════════════════════
 // The Settings surface used to keep the SAME ten things in four hand-maintained lists: the
 // landing rows as literal HTML in index.html, the detail titles in SETTINGS_TITLES, the
@@ -5314,10 +5291,30 @@ function settingsSearchClear(){
 }
 
 // ── Settings landing list ─────────────────────────────────────────
+// -- Desktop master-detail ----------------------------------------
+// At or above this width Settings is a navigation column beside a detail pane; below it the
+// list is one column and every item pushes the same full-screen overlay the phone uses.
+// The number has to match the @media in css/settings.css. It is deliberately NOT the app's
+// 1024px desktop line: at 1024 the pane comes out narrower than the phone measure these
+// forms were drawn at, and a cramped pane is worse than a clean full-screen push.
+const STG_SPLIT_MIN=1180;
+function stgSplit(){ return window.innerWidth>=STG_SPLIT_MIN; }
+// The list is NOT re-rendered when the selection changes - that would recompute ten live
+// summaries and throw away any search results on screen - so the active row moves in place.
+function stgSyncNavActive(){
+  const split=stgSplit();
+  document.querySelectorAll('#stg-list-root .stg-nav-row[data-stg-key]').forEach(function(b){
+    const on=split && b.getAttribute('data-stg-key')===_activeSettingsKey;
+    b.classList.toggle('active',on);
+    if(on) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
+  });
+}
 function settingsNavRow(key){
   const s=SETTINGS_SECTIONS[key]; if(!s) return '';
   let sum=''; try{ sum=s.summary?(s.summary()||''):''; }catch(e){ sum=''; }
-  return '<button class="stg-nav-row" type="button" onclick="settingsOpen(\''+key+'\')">'+
+  const on=stgSplit()&&_activeSettingsKey===key;
+  return '<button class="stg-nav-row'+(on?' active':'')+'" type="button" data-stg-key="'+key+'"'+
+    (on?' aria-current="page"':'')+' onclick="settingsOpen(\''+key+'\')">'+
     '<span class="stg-nav-icon" style="background:'+s.tint+';color:#fff">'+stgIcon(s.icon)+'</span>'+
     '<span class="stg-nav-txt"><span class="stg-nav-label">'+s.label+'</span>'+
       (sum?'<span class="stg-nav-sum">'+escText(sum)+'</span>':'')+'</span>'+
@@ -5328,6 +5325,10 @@ function renderSettingsList(){
   const root=document.getElementById('stg-list-root'); if(!root) return;
   const inp=document.getElementById('stg-search-input');
   const q=inp?inp.value.trim():'';
+  // Results replace the grouped menu rather than sitting under it. The class tells the
+  // desktop CSS to drop the single nav surface, which would otherwise frame the results
+  // card inside a second card.
+  root.classList.toggle('is-search', !!q);
   if(q){ root.innerHTML=settingsSearchResults(q); return; }
   root.innerHTML=SETTINGS_GROUPS.map(function(g){
     return '<div class="stg-group-wrap">'+
@@ -5335,6 +5336,49 @@ function renderSettingsList(){
       '<div class="stg-group">'+g.keys.map(settingsNavRow).join('')+'</div>'+
     '</div>';
   }).join('');
+}
+
+// -- Detail pane overview -----------------------------------------
+// The pane is never blank. With nothing selected it answers "what is this set to right now"
+// from the SAME registry summaries the nav rows use, so no value is written out twice.
+const SETTINGS_OVERVIEW_KEYS=['account','weather','appearance','training','homelayout','habits'];
+// Three errands worth a shortcut from a standing start. The label here is the ACTION, which
+// is why it is not the section's own name - "Data & backup" is a place, "Review backup" is
+// a job. Everything else on this screen still reads its label from SETTINGS_SECTIONS.
+const SETTINGS_OVERVIEW_ACTIONS=[
+  {s:'export',     label:'Review backup'},
+  {s:'homelayout', label:'Customise Home'},
+  {s:'health',     label:'Update health goals'}
+];
+const STG_ROW_CHEV='<svg class="stg-row-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+function settingsOverviewHtml(){
+  const rows=SETTINGS_OVERVIEW_KEYS.map(function(k){
+    const s=SETTINGS_SECTIONS[k]; if(!s) return '';
+    let sum=''; try{ sum=s.summary?(s.summary()||''):''; }catch(e){ sum=''; }
+    return '<button class="stg-row stg-row-btn" type="button" onclick="settingsOpen(\''+k+'\')">'+
+      '<span class="stg-row-txt"><span class="stg-row-label">'+escText(s.label)+'</span></span>'+
+      '<span class="stg-row-val">'+escText(sum||'Not set up')+'</span>'+STG_ROW_CHEV+
+    '</button>';
+  }).join('');
+  return '<div class="stg-card">'+
+      stgCardHead('sliders','Settings overview','Where Daily stands right now. Pick anything on the left to change it.')+
+      rows+
+      '<div class="stg-sub">Quick actions</div>'+
+      '<div class="stg-actions stack">'+
+        SETTINGS_OVERVIEW_ACTIONS.map(function(a){
+          return '<button class="stg-btn" type="button" onclick="settingsOpen(\''+a.s+'\')">'+escText(a.label)+'</button>';
+        }).join('')+
+      '</div>'+
+    '</div>';
+}
+function renderSettingsOverview(){
+  // A mounted section lives in this container; innerHTML would destroy it, and the section
+  // elements are moved rather than rebuilt, so it would not come back.
+  if(_activeSettingsKey) return;
+  const body=document.getElementById('stg-detail-body'); if(!body) return;
+  body.innerHTML=settingsOverviewHtml();
+  const t=document.getElementById('stg-detail-title'); if(t) t.textContent='Settings overview';
+  const done=document.getElementById('stg-detail-done'); if(done) done.style.display='none';
 }
 // Scroll a search result's card into view inside the detail overlay and name it briefly, so
 // the answer to "where was that?" is the card itself rather than a screen to re-scan.
@@ -5407,20 +5451,30 @@ let _activeSettingsKey=null;
 // `anchor` is a card id from a search result: after the section mounts, that card is
 // scrolled to and briefly outlined (stgRevealCard).
 function openSettingsSection(key,anchor){
+  const split=stgSplit();
+  // Split mode renders the section INSIDE the Settings screen, so a call from anywhere else
+  // (Home's habits card, the header profile menu, a deep link) has to land there first.
+  // setView runs renderSettings, which resets the pane - so it has to happen before the mount.
+  if(split && S.view!=='settings') setView('settings');
   const overlay=document.getElementById('view-settings-detail');
-  const content=document.getElementById('settings-detail-content');
   const store=document.getElementById('settings-sections-store');
   const sec=document.getElementById('settings-'+key+'-section');
+  // Same section elements either way - only the mount target changes.
+  const content=document.getElementById(split?'stg-detail-body':'settings-detail-content');
   if(!overlay||!content||!sec) return;
   // Return a previously-mounted section to the store, then mount the requested one.
   if(_activeSettingsKey && _activeSettingsKey!==key){
     const prev=document.getElementById('settings-'+_activeSettingsKey+'-section');
     if(prev){ prev.classList.add('hidden'); if(store) store.appendChild(prev); }
   }
+  // The pane holds the overview when nothing is selected. Clear that - but by removing the
+  // other children, never innerHTML='', which would destroy the section being mounted.
+  if(split) Array.prototype.slice.call(content.children).forEach(function(c){ if(c!==sec) content.removeChild(c); });
   content.appendChild(sec);
   sec.classList.remove('hidden');
   _activeSettingsKey=key;
   const t=document.getElementById('settings-detail-title'); if(t) t.textContent=settingsTitle(key);
+  const pt=document.getElementById('stg-detail-title'); if(pt) pt.textContent=settingsTitle(key);
   // Populate each section's dynamic content (unchanged from before).
   if(key==='account') renderAccountSection();
   if(key==='health'){
@@ -5436,9 +5490,17 @@ function openSettingsSection(key,anchor){
   if(key==='appearance'){ const th=document.getElementById('theme-toggle'); if(th) th.checked=S.theme==='dark'; renderAccentModeRow(); renderDayColorPickers(); }
   if(key==='weather'){ weatherPermissionState(function(s){ _weatherPerm=s; renderWeatherSection(); }); renderWeatherSection(); }
   if(key==='homelayout') renderHomeLayoutSection();
-  overlay.style.display='block';
-  overlay.style.left=window.innerWidth>=1024?'260px':'0';
-  overlay.scrollTop=0;
+  if(split){
+    // No overlay and no back button: the nav column never leaves, so moving between
+    // sections is one click instead of Back-then-forward. "Done" returns to the overview.
+    overlay.style.display='none';
+    const done=document.getElementById('stg-detail-done'); if(done) done.style.display='';
+    stgSyncNavActive();
+  } else {
+    overlay.style.display='block';
+    overlay.style.left=window.innerWidth>=1024?'260px':'0';
+    overlay.scrollTop=0;
+  }
   if(anchor) stgRevealCard(anchor);
 }
 // ── Desktop quick-settings mini list ──────────────────────────────
@@ -5479,14 +5541,31 @@ function restoreQuickSettings(){
 function closeSettingsSection(){
   const overlay=document.getElementById('view-settings-detail');
   if(overlay){ overlay.style.display='none'; overlay.style.left='0'; }
-  // Move the mounted section back to its hidden store so the overlay is left empty/clean.
+  // Move the mounted section back to its hidden store so the overlay/pane is left clean.
   if(_activeSettingsKey){
     const store=document.getElementById('settings-sections-store');
     const sec=document.getElementById('settings-'+_activeSettingsKey+'-section');
     if(sec){ sec.classList.add('hidden'); if(store) store.appendChild(sec); }
     _activeSettingsKey=null;
   }
+  // Nothing selected is a state with content, not an empty pane.
+  renderSettingsOverview();
+  stgSyncNavActive();
 }
+
+// Crossing the split point moves the mounted section between the inline pane and the
+// full-screen overlay. Without this it is left inside whichever container just became
+// display:none, and Settings looks like it lost the screen you were on.
+let _stgSplitWas=stgSplit();
+window.addEventListener('resize',function(){
+  const now=stgSplit();
+  if(now===_stgSplitWas) return;
+  _stgSplitWas=now;
+  const key=_activeSettingsKey;
+  closeSettingsSection();
+  if(key) openSettingsSection(key);
+  renderSettingsList();   // the chevron and the active row belong to one mode or the other
+});
 function saveProfileSection(){
   profileData.name=document.getElementById('profile-name')?.value.trim()||'';
   localStorage.setItem('daily_profile',JSON.stringify(profileData));
@@ -9133,7 +9212,6 @@ function mergeLegacyWeightEntries(){
   return added;
 }
 let profileData        = loadProfileData();
-let settingsCollapsed  = lsLoad('daily_settings_collapsed', {});
 function loadWeightGoal(){ return lsLoad('daily_weight_goal', {}); }
 let weightGoal = loadWeightGoal();
 function loadSubscriptions(){ return lsLoad('daily_subscriptions', []); }
