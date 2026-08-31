@@ -10142,6 +10142,47 @@ function budIsCurrentWeek(){ return currentWeekIdx===0; }
 // card rather than living as a dashed control inside Variable expenses, where it read as
 // configuration for that one category list. One button, one path — it opens the same
 // openTxnModal() the Home quick-capture and the per-category inline adds use.
+// Onboarding used to collect income and fixed expenses on one dense screen, before the user
+// had seen anything Daily does. That moved here, where the numbers can be set against a real
+// week — but the gap has to be covered, or a new account quietly shows the app's built-in
+// starter categories with nothing saying why. Shown until this week has a real income figure,
+// and dismissible for good.
+function budSetupDismissed(){
+  try{ return localStorage.getItem('daily_budget_setup_done')==='1'; }catch(e){ return false; }
+}
+function budSetupDismiss(){
+  try{ localStorage.setItem('daily_budget_setup_done','1'); }catch(e){}
+  if(typeof renderBudgetTab==='function') renderBudgetTab();
+}
+// Puts them where the numbers are actually typed, with both cards already unlocked, rather
+// than sending them to Settings to find it.
+function openBudgetSetup(){
+  budEditMode.inc=true;
+  budEditMode.fix=true;
+  if(typeof renderBudgetTab==='function') renderBudgetTab();
+  const el=document.getElementById('bud-income-card');
+  if(el && typeof safeScrollIntoView==='function') safeScrollIntoView(el,{behavior:'smooth',block:'start'});
+}
+function renderBudgetSetupCard(){
+  if(budSetupDismissed()) return '';
+  const d=budgetData[weekKey(getMondayOf(0))]||{};
+  // "Set up" means this week carries at least one real income figure. Until then the tab is
+  // showing starter categories rather than the user's own.
+  const hasIncome=loadIncCats().some(c=>{
+    const v=d['inc_'+c.id];
+    return v!==undefined && v!=='' && (parseFloat(v)||0)>0;
+  });
+  if(hasIncome) return '';
+  return '<div class="card bud-setup" data-bud-key="setup">'+
+    cardHeader('wallet','Finish setting up Budget',
+      '<button type="button" class="bud-setup-x" onclick="budSetupDismiss()" aria-label="Dismiss setup card">\u00d7</button>')+
+    '<p class="bud-setup-body">The categories below are starters. Add your income and your fixed weekly bills and every figure on this page becomes yours \u2014 the weekly hero, the spending goal and Stats all read from them.</p>'+
+    '<div class="bud-setup-actions">'+
+      '<button type="button" class="bud-setup-btn primary" onclick="openBudgetSetup()">Add income &amp; bills</button>'+
+      '<button type="button" class="bud-setup-btn" onclick="budSetupDismiss()">Not now</button>'+
+    '</div>'+
+  '</div>';
+}
 function renderRecordCard(){
   const cur=budIsCurrentWeek();
   return '<div class="card">'+
@@ -10161,7 +10202,7 @@ function renderRecordCard(){
 const BUD_LAYOUT={
   // Mobile: one linear stack, in the order the week is actually worked through.
   mobile:[['bud-col-left',['bud-income-card','bud-savings-card','bud-fixed-card','bud-upcoming-card',
-    'bud-vargoal-card','bud-record-card','bud-variable-card','bud-stranded-card','bud-result-card',
+    'bud-setup-card','bud-vargoal-card','bud-record-card','bud-variable-card','bud-stranded-card','bud-result-card',
     'prev-weeks-section','bud-calc-card']]],
   // Desktop: left is the plan and this week's entry, right is the action, the outcome and the
   // supporting tools. Upcoming and the calculator move right because the left stack (a long
@@ -10494,6 +10535,8 @@ function renderBudgetTab(){
   if(upWrap) upWrap.innerHTML=renderUpcomingCard();
   const goalWrap=document.getElementById('bud-vargoal-card');
   if(goalWrap) goalWrap.innerHTML=renderVarGoalCard(data,editable);
+  const setupWrap=document.getElementById('bud-setup-card');
+  if(setupWrap) setupWrap.innerHTML=renderBudgetSetupCard();
   const recWrap=document.getElementById('bud-record-card');
   if(recWrap) recWrap.innerHTML=renderRecordCard();
   const varWrap=document.getElementById('bud-variable-card');
@@ -14918,7 +14961,7 @@ function txnScrollFieldIntoView(el){
 }
 
 // ── Onboarding ────────────────────────────────────────────────────
-// Data-driven multi-step flow: the step order lives in OB_STEPS, so the progress dots
+// Data-driven multi-step flow: the step order lives in OB_CATALOGUE, so the progress bar
 // and the Back/Skip logic derive from that array — adding or removing a step needs no
 // dot markup and no renumbering. Every answer is staged in obData (not the DOM) so
 // Back/forward navigation preserves what was entered.
@@ -14930,8 +14973,59 @@ const WHATS_NEW_LOG = [
   { v:1, items:['New app icon and logo, everywhere in the app', 'Brighter, taller completed-exercise rows on Log', 'Exercise Library: delete moved into the edit screen'] },
   { v:2, items:['Budget: a weekly Spending goal card — set a cap for your variable spending and watch it turn red if you go over', 'Accounts: flag an account as a Savers account to keep it out of the new debt payoff total'] }
 ];
-const OB_STEPS = ['welcome','theme','profile','body','split','habits','sync','done'];
-const OB_FIX_CHIPS = ['Rent','Phone','Subscriptions','Transport','Gym'];
+// The flow BRANCHES: the Focus screen asks which areas of Daily the user actually wants, and
+// only those setup screens are then shown. A budget-only user is no longer walked through a
+// training split, and a training-only user never sees a savings goal. `when` names the focus
+// area a step depends on; steps without one are always shown. This replaced a flat
+// OB_STEPS array — obSteps() is now the single source of "which screens does THIS user get",
+// and every index (obStep, Back, progress) is against that, never against the catalogue.
+const OB_CATALOGUE = [
+  {id:'welcome',    phase:'start'},
+  {id:'focus',      phase:'yours'},
+  {id:'appearance', phase:'yours'},
+  {id:'split',      phase:'setup',   when:'training'},
+  {id:'body',       phase:'setup',   when:'health'},
+  {id:'budget',     phase:'setup',   when:'budget'},
+  {id:'habits',     phase:'setup',   when:'habits'},
+  {id:'weather',    phase:'protect'},
+  {id:'sync',       phase:'protect'},
+  {id:'done',       phase:'ready'}
+];
+// Named phases instead of eight anonymous dots — the old flow showed a count before the user
+// knew what any of it meant.
+const OB_PHASES = [
+  {key:'start',   label:'Welcome'},
+  {key:'yours',   label:'Make it yours'},
+  {key:'setup',   label:'Set up'},
+  {key:'protect', label:'Protect & enhance'},
+  {key:'ready',   label:'Ready'}
+];
+// What the Focus screen offers. Picking an area only decides which SETUP SCREENS appear —
+// nothing is hidden from the app afterwards, every tab and feature stays available.
+const OB_FOCUS = [
+  {id:'training', icon:'trophy', label:'Training',           desc:'Workouts, your split, personal records'},
+  {id:'budget',   icon:'wallet', label:'Budget & accounts',  desc:'Weekly spending, savings, net worth'},
+  {id:'health',   icon:'scale',  label:'Health & nutrition', desc:'Body stats and a calorie target'},
+  {id:'kitchen',  icon:'pot',    label:'Kitchen',            desc:'Recipes, shopping list, pantry'},
+  {id:'habits',   icon:'check',  label:'Habits & journal',   desc:'Daily habits and a written diary'}
+];
+// Before the Focus screen has been answered nothing is filtered out, so the catalogue order
+// still reads correctly if anything renders early. An explicit empty selection DOES filter
+// every optional step away — choosing nothing is a valid "I'll set up later".
+function obFocusOn(area){
+  const f=obData&&obData.focus;
+  if(!Array.isArray(f)) return true;
+  return f.indexOf(area)>=0;
+}
+function obSteps(){
+  return OB_CATALOGUE.filter(s=>!s.when||obFocusOn(s.when)).map(s=>s.id);
+}
+function obCurrentStep(){ return obSteps()[obStep]; }
+// Was this screen part of THIS user's branch at all? obData.habits is pre-seeded from the
+// existing habit store when onboarding opens, so "did they set habits" cannot be inferred
+// from the data alone — a budget-only user would otherwise be told they added five habits
+// they never saw a screen for.
+function obStepShown(id){ return obSteps().indexOf(id)>=0; }
 let obBudgetStarted = false;
 const OB_HABIT_SUGGESTIONS = ['Morning workout','Hit calorie goal','Log budget','8h sleep','Drink 2L water','10k steps','Stretch 10 min','Read 20 min','No junk food','Meditate'];
 let obStep = 0;
@@ -15024,13 +15118,6 @@ function obEnsureBudgetStarter(){
     });
   }
 }
-function obAddFixChip(name){
-  if(!Array.isArray(budgetConfig.fixedExpenses)) budgetConfig.fixedExpenses=[];
-  budgetConfig.fixedExpenses.push({id:'f'+Date.now(),name:name,weeklyAmount:0});
-  saveBudgetConfig(budgetConfig);
-  renderBudgetEditList('ob-fix-list','fixedExpenses');
-}
-
 // ── Training split editor (shared: onboarding 'split' step + Settings overlay) ──
 // Works on a flat, editable list of "days" (each = name + its own exercise list). On save
 // it becomes splitConfig.types with a 1:1 schedule. splitToDays expands an existing split's
@@ -15732,28 +15819,98 @@ function accountMarkPaid(id){
 // ── Navigation ──
 function obGo(step){
   obCaptureCurrent();
-  obStep = Math.max(0, Math.min(step, OB_STEPS.length-1));
+  // Clamp against the ACTIVE step list: changing the focus selection changes how many screens
+  // exist, and the catalogue length would let obStep run off the end of a branched flow.
+  obStep = Math.max(0, Math.min(step, obSteps().length-1));
   renderObStep();
 }
 function obNext(){ obGo(obStep+1); }
 function obBack(){ obGo(obStep-1); }
-function obProfileContinue(){
+function obFocusContinue(){
   const name=(document.getElementById('ob-name')?.value||'').trim();
   if(!name){ const e=document.getElementById('ob-error'); if(e) e.style.display='block'; return; }
   obNext();
+}
+// Selecting an area only changes which setup screens follow. The name field is captured first
+// so re-rendering the screen cannot lose what is half-typed in it.
+function obToggleFocus(id){
+  obCaptureCurrent();
+  if(!Array.isArray(obData.focus)) obData.focus=[];
+  const i=obData.focus.indexOf(id);
+  if(i>=0) obData.focus.splice(i,1); else obData.focus.push(id);
+  renderObStep();
+}
+// Applied live, like the theme, so the choice is visible rather than described. The real
+// store is only written in finishOnboarding — this stages it in obData.
+function obSetAccentMode(m){
+  obCaptureCurrent();
+  obData.accentMode=m;
+  if(typeof setAccentMode==='function') setAccentMode(m);
+  renderObStep();
+}
+// A goal typed in is worth showing back as a figure, not just accepted into a box.
+function obBudgetPreview(){
+  const wrap=document.getElementById('ob-budget-preview'); if(!wrap) return;
+  const sav=obNum((document.getElementById('ob-savings')||{}).value);
+  wrap.innerHTML=(sav!==undefined&&sav>0)
+    ? '<div class="ob-pv-card ob-pv-wide"><div class="ob-pv-k">Savings target</div>'+
+      '<div class="ob-pv-fig">'+fmtMoney(sav)+'</div><div class="ob-pv-cap">per week \u00b7 '+fmtMoney(sav*52)+' a year</div></div>'
+    : '';
+}
+function obSkipBudget(){ obCaptureCurrent(); obData.savings=undefined; obData.varGoal=undefined; obNext(); }
+// The ONLY place onboarding touches geolocation, and only from this tap. On success the
+// sample card is replaced by the user's real sky in place — that swap is the whole point of
+// the screen. On refusal the flow continues and says where to enable it later.
+function obWeatherUse(){
+  const btn=document.getElementById('ob-weather-btn');
+  const note=document.getElementById('ob-weather-note');
+  if(btn){ btn.disabled=true; btn.textContent='Getting your location…'; }
+  if(!navigator.geolocation){
+    if(note) note.textContent='This browser cannot provide a location. You can still enable weather later in Settings → Weather.';
+    if(btn){ btn.disabled=false; btn.textContent='Use my location'; }
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      fetchWeatherAt(pos.coords.latitude,pos.coords.longitude)
+        .then(e=>{
+          weatherRecordSuccess(e);
+          obData.weather=true;
+          if(accentMode()==='weather'&&typeof applyDayColour==='function') applyDayColour();
+          renderObStep();          // redraws with the real card + a Continue button
+        })
+        .catch(()=>{
+          if(note) note.textContent='Found your location, but the weather service did not answer. You can try again later in Settings → Weather.';
+          if(btn){ btn.disabled=false; btn.textContent='Use my location'; }
+        });
+    },
+    err=>{
+      const denied=!!(err&&err.code===1);
+      if(note) note.textContent=denied
+        ? 'Location is blocked for this site. Your browser or iOS Settings controls that — you can allow it there and enable weather in Settings → Weather.'
+        : 'Could not get a location fix. You can try again anytime in Settings → Weather.';
+      if(btn){ btn.disabled=false; btn.textContent='Use my location'; }
+    },
+    {maximumAge:0, enableHighAccuracy:false, timeout:15000}
+  );
+}
+// Keeps the preview honest if a reading arrived from elsewhere while the screen was open.
+function obWeatherRefreshPreview(){
+  const wrap=document.getElementById('ob-weather-preview');
+  if(wrap) wrap.innerHTML=obWeatherCardHTML();
 }
 
 // Read the current step's inputs into obData before the DOM is replaced. Theme, goal and
 // habits are captured live by their own tap handlers, so only the text/number/select
 // fields need reading here.
 function obCaptureCurrent(){
-  const step=OB_STEPS[obStep];
+  const step=obCurrentStep();
   const val=id=>{ const el=document.getElementById(id); return el?el.value:undefined; };
-  if(step==='profile'){
-    // Income + fixed expenses are edited live via the shared budgetConfig list editor
-    // (renderBudgetEditList), so only name + savings need reading from the DOM here.
+  if(step==='focus'){
     obData.name=(val('ob-name')||'').trim();
+  } else if(step==='budget'){
     obData.savings=obNum(val('ob-savings'));
+    obData.varGoal=obNum(val('ob-vargoal'));
   } else if(step==='body'){
     obData.age=obNum(val('ob-age'));
     if(val('ob-sex')!==undefined) obData.sex=val('ob-sex');
@@ -15794,7 +15951,7 @@ function obSignIn(){
 function obAttachAuthWatch(){
   if(!firebaseReady||!auth||obAuthUnsub) return;
   obAuthUnsub = auth.onAuthStateChanged(u=>{
-    if(u && OB_STEPS[obStep]==='sync'){ obData.synced=true; obGo(OB_STEPS.indexOf('done')); }
+    if(u && obCurrentStep()==='sync'){ obData.synced=true; obGo(obSteps().indexOf('done')); }
   });
 }
 function obDetachAuthWatch(){ if(obAuthUnsub){ try{ obAuthUnsub(); }catch(e){} obAuthUnsub=null; } }
@@ -15802,44 +15959,83 @@ function obDetachAuthWatch(){ if(obAuthUnsub){ try{ obAuthUnsub(); }catch(e){} o
 // ── Renderer ──
 function renderObStep(){
   const box=document.getElementById('onboarding-box'); if(!box) return;
-  const step=OB_STEPS[obStep];
-  const dots='<div class="ob-dots">'+OB_STEPS.map((_,i)=>'<div class="ob-dot'+(i===obStep?' active':'')+'"></div>').join('')+'</div>';
+  const step=obCurrentStep();
   const showBack = obStep>0 && step!=='done';
   const topbar='<div class="ob-topbar">'+(showBack?'<button class="ob-back" onclick="obBack()">‹ Back</button>':'')+'</div>';
-  if(step==='profile') obEnsureBudgetStarter(); // blank the budget for new users before we render its editors
   let inner='';
   if(step==='welcome') inner=obWelcomeHTML();
-  else if(step==='theme') inner=obThemeHTML();
-  else if(step==='profile') inner=obProfileHTML();
+  else if(step==='focus') inner=obFocusHTML();
+  else if(step==='appearance') inner=obAppearanceHTML();
+  else if(step==='budget') inner=obBudgetHTML();
   else if(step==='body') inner=obBodyHTML();
   else if(step==='split') inner=obSplitHTML();
   else if(step==='habits') inner=obHabitsHTML();
+  else if(step==='weather') inner=obWeatherHTML();
   else if(step==='sync') inner=obSyncHTML();
   else inner=obDoneHTML();
-  box.innerHTML=topbar+dots+inner;
+  box.innerHTML=topbar+obProgressHTML()+inner;
   box.scrollTop=0;
-  if(step==='profile'){
-    // Live income + fixed-expense list editors (shared budgetConfig system)
-    renderBudgetEditList('ob-inc-list','incomeStreams');
-    renderBudgetEditList('ob-fix-list','fixedExpenses');
-    setTimeout(()=>{ const el=document.getElementById('ob-name'); if(el&&!el.value) el.focus(); },50);
-  }
+  if(step==='focus') setTimeout(()=>{ const el=document.getElementById('ob-name'); if(el&&!el.value) el.focus(); },50);
   if(step==='split') renderSplitEditor('se-wrap');
+  if(step==='weather') obWeatherRefreshPreview();
   if(step==='sync' && !(auth&&auth.currentUser)) obAttachAuthWatch();
 }
+// Where the user is, in words. The landing and the summary are deliberately not counted as
+// "steps" — being told "Step 1 of 8" before you have agreed to anything is the same problem
+// the eight dots had. The denominator is this user's OWN branch length, so someone who picked
+// two areas sees "of 5", not "of 8".
+function obProgressHTML(){
+  const steps=obSteps(), cur=steps[obStep];
+  if(cur==='welcome'||cur==='done') return '';
+  const counted=steps.filter(id=>id!=='welcome'&&id!=='done');
+  const i=counted.indexOf(cur);
+  if(i<0||!counted.length) return '';
+  const phase=(OB_CATALOGUE.find(s=>s.id===cur)||{}).phase;
+  const label=(OB_PHASES.find(p=>p.key===phase)||{}).label||'';
+  const pct=Math.round((i+1)/counted.length*100);
+  return '<div class="ob-progress">'+
+    '<div class="ob-progress-row"><span class="ob-progress-phase">'+escText(label)+'</span>'+
+      '<span class="ob-progress-count">Step '+(i+1)+' of '+counted.length+'</span></div>'+
+    '<div class="ob-progress-track" role="progressbar" aria-valuemin="1" aria-valuemax="'+counted.length+
+      '" aria-valuenow="'+(i+1)+'" aria-label="'+escAttr(label)+', step '+(i+1)+' of '+counted.length+'">'+
+      '<div class="ob-progress-fill" style="width:'+pct+'%"></div></div>'+
+  '</div>';
+}
 
-function obFeature(icon,text){ return '<li><span class="ob-feat-ic">'+icon+'</span>'+text+'</li>'; }
+// A miniature of the real Home dashboard, in the app's own card vocabulary. The old welcome
+// screen listed four features in emoji bullets and described a narrower Daily than the one
+// that exists — no weather, accounts, journal, plans or AI. Showing a Home is both a truer
+// first impression and a shorter one.
+function obHomePreviewHTML(){
+  const scene=(typeof weatherPlaceholderScene==='function')?weatherPlaceholderScene():'clear-day';
+  return '<div class="ob-preview" aria-hidden="true">'+
+    '<div class="ob-pv-hero">'+
+      '<div class="ob-pv-hero-label">Today</div>'+
+      '<div class="ob-pv-hero-title">Push Day</div>'+
+      '<div class="ob-pv-hero-meta">6 exercises · 45 min</div>'+
+    '</div>'+
+    '<div class="ob-pv-row">'+
+      '<div class="ob-pv-card ob-pv-weather" data-scene="'+scene+'">'+
+        '<div class="ob-pv-temp">19°</div><div class="ob-pv-cap">Partly cloudy</div></div>'+
+      '<div class="ob-pv-card">'+
+        '<div class="ob-pv-k">Left this week</div><div class="ob-pv-fig">$378</div>'+
+        '<div class="ob-pv-bar"><i style="width:38%"></i></div></div>'+
+    '</div>'+
+    '<div class="ob-pv-row">'+
+      '<div class="ob-pv-card"><div class="ob-pv-k">Habits</div>'+
+        '<div class="ob-pv-dots"><i class="on"></i><i class="on"></i><i></i><i></i></div>'+
+        '<div class="ob-pv-cap">2 of 4 today</div></div>'+
+      '<div class="ob-pv-card"><div class="ob-pv-k">Net worth</div>'+
+        '<div class="ob-pv-fig">$12.4k</div><div class="ob-pv-cap up">▲ $310 this month</div></div>'+
+    '</div>'+
+  '</div>';
+}
 function obWelcomeHTML(){
   return '<div class="ob-center">'+
     '<img class="wordmark-img wordmark-light" src="daily-wordmark-light.png" alt="Daily">'+
     '<img class="wordmark-img wordmark-dark" src="daily-wordmark-dark.png" alt="Daily">'+
-    '<div class="ob-tagline">One place for your training, nutrition, budget, kitchen and notes — all in sync.</div>'+
-    '<ul class="ob-feature-list">'+
-      obFeature('🏋️','Log workouts &amp; track PRs')+
-      obFeature('🍎','Calories, TDEE &amp; weight goals')+
-      obFeature('💰','Weekly budget &amp; savings')+
-      obFeature('🍳','Recipes, shopping &amp; pantry')+
-    '</ul>'+
+    '<div class="ob-tagline">Training, budget, kitchen, habits and a journal — one app that keeps them in step.</div>'+
+    obHomePreviewHTML()+
     '<button class="ob-btn-primary" onclick="obNext()">Get started →</button>'+
     // Returning users could only sign in at the 'sync' step, second from last — six screens
     // of setup before they could pull down the account they already had. This restores it
@@ -15915,40 +16111,105 @@ function obSignInExisting(){
     say(authErrorMessage(err));
   });
 }
-function obThemeHTML(){
-  const opt=(val,label,icon)=>{
+// Name + what the user actually wants Daily for. The answer branches the rest of the flow,
+// so nobody is walked through a training split to reach a savings goal.
+function obFocusHTML(){
+  const v=k=>obData[k]!==undefined&&obData[k]!==null?obData[k]:'';
+  const picked=Array.isArray(obData.focus)?obData.focus:null;
+  const cards=OB_FOCUS.map(f=>{
+    const on=picked?picked.indexOf(f.id)>=0:false;
+    return '<button type="button" class="ob-focus'+(on?' on':'')+'" role="checkbox" aria-checked="'+(on?'true':'false')+'" '+
+      'onclick="obToggleFocus(\''+f.id+'\')">'+
+      '<span class="ob-focus-ic">'+cardIcon(f.icon)+'</span>'+
+      '<span class="ob-focus-txt"><span class="ob-focus-label">'+escText(f.label)+'</span>'+
+        '<span class="ob-focus-desc">'+escText(f.desc)+'</span></span>'+
+      '<span class="ob-focus-tick" aria-hidden="true">✓</span></button>';
+  }).join('');
+  const n=picked?picked.length:0;
+  return '<div class="ob-head"><div class="ob-title">First, the basics</div>'+
+      '<div class="ob-desc">Your name, and what you\u2019d like Daily to help with. This only decides which setup screens you see next \u2014 every part of the app stays available either way.</div></div>'+
+    '<div class="settings-field"><label for="ob-name">Your name <span style="color:var(--danger)">*</span></label>'+
+      '<input type="text" id="ob-name" value="'+obEsc(v('name'))+'" placeholder="e.g. Alex" autocomplete="name"></div>'+
+    '<div class="ob-section-label">What should Daily help with?</div>'+
+    '<div class="ob-focus-grid" role="group" aria-label="Areas to set up">'+cards+'</div>'+
+    '<div class="ob-focus-note">'+(n?('We\u2019ll set up '+n+' area'+(n===1?'':'s')+' next.'):'Pick any that apply \u2014 or none, and set things up later from inside the app.')+'</div>'+
+    '<div id="ob-error" style="display:none;color:var(--danger);font-size:13px;margin:6px 0 0">Please enter your name to continue.</div>'+
+    '<button class="ob-btn-primary" onclick="obFocusContinue()">Continue →</button>';
+}
+// Theme AND accent mode in one place. Accent modes (training-day colours, weather-driven)
+// existed but onboarding never mentioned them, so nobody discovered them.
+function obAppearanceHTML(){
+  const themeOpt=(val,label)=>{
     const sel=obData.theme===val;
-    return '<div class="ob-theme-opt'+(sel?' selected':'')+'" onclick="obSetTheme(\''+val+'\')">'+
-      '<div class="ob-theme-mini ob-theme-mini-'+val+'">'+
-        '<div class="budget-hero-card ob-mini-hero">'+
-          '<div class="ob-mini-cap">Income this week</div>'+
-          '<div class="ob-mini-big">$1,240</div>'+
-          '<div class="ob-mini-sub">Saved $300 · Left $180</div>'+
-        '</div>'+
-        '<div class="ob-mini-card"></div>'+
-        '<div class="ob-mini-card ob-mini-card-sm"></div>'+
-      '</div>'+
-      '<div class="ob-theme-name">'+icon+' '+label+(sel?' <span class="ob-theme-check">✓</span>':'')+'</div>'+
-    '</div>';
+    return '<button type="button" class="ob-theme-opt'+(sel?' selected':'')+'" aria-pressed="'+(sel?'true':'false')+'" onclick="obSetTheme(\''+val+'\')">'+
+      '<span class="ob-theme-mini ob-theme-mini-'+val+'">'+
+        '<span class="ob-tm-hero"></span><span class="ob-tm-row"><i></i><i></i></span><span class="ob-tm-row"><i></i><i></i></span>'+
+      '</span>'+
+      '<span class="ob-theme-name">'+label+(sel?' <span class="ob-theme-check">✓</span>':'')+'</span>'+
+    '</button>';
   };
-  return '<div class="ob-head"><div class="ob-title">Pick your look</div><div class="ob-desc">Tap to preview live — you can change it anytime in Settings.</div></div>'+
-    '<div class="ob-theme-grid">'+opt('light','Light','☀️')+opt('dark','Dark','🌙')+'</div>'+
+  const mode=obData.accentMode||accentMode();
+  const modeBtn=(m,label,desc)=>'<button type="button" class="ob-mode'+(mode===m?' on':'')+'" aria-pressed="'+(mode===m?'true':'false')+'" onclick="obSetAccentMode(\''+m+'\')">'+
+    '<span class="ob-mode-label">'+label+'</span><span class="ob-mode-desc">'+escText(desc)+'</span></button>';
+  return '<div class="ob-head"><div class="ob-title">Make it yours</div>'+
+      '<div class="ob-desc">Everything here previews live and can be changed anytime in Settings \u2192 Appearance.</div></div>'+
+    '<div class="ob-theme-grid">'+themeOpt('light','Light')+themeOpt('dark','Dark')+'</div>'+
+    '<div class="ob-section-label">App colour</div>'+
+    '<div class="ob-mode-grid">'+
+      modeBtn('static','Fixed','One colour you pick.')+
+      modeBtn('day','Training day','Follows the day you\u2019re training.')+
+      modeBtn('weather','Weather','Follows your local sky.')+
+    '</div>'+
+    obHomePreviewHTML()+
     '<button class="ob-btn-primary" onclick="obNext()">Continue →</button>';
 }
-function obProfileHTML(){
+// Only a goal. Income and fixed expenses moved into the Budget tab behind a setup card —
+// four list editors on one onboarding screen meant scrolling before you could continue,
+// and it asked for real work before the app had shown any value.
+function obBudgetHTML(){
   const v=k=>obData[k]!==undefined&&obData[k]!==null?obData[k]:'';
-  const chips=OB_FIX_CHIPS.map(c=>'<button type="button" class="ob-add-chip" onclick="obAddFixChip(\''+c+'\')">+ '+c+'</button>').join('');
-  return '<div class="ob-head"><div class="ob-title">Tell us about you</div><div class="ob-desc">Only your name is required. Add your income and any fixed weekly expenses — you can change these anytime.</div></div>'+
-    '<div class="settings-field"><label>Your name <span style="color:var(--danger)">*</span></label><input type="text" id="ob-name" value="'+obEsc(v('name'))+'" placeholder="e.g. Alex" autocomplete="name"></div>'+
-    '<div class="ob-section-label">Income sources</div>'+
-    '<div id="ob-inc-list"></div>'+
-    '<div class="ob-section-label">Weekly fixed expenses</div>'+
-    '<div class="ob-desc" style="margin:-4px 0 8px">Tap to add common ones, or use “+ Add item”.</div>'+
-    '<div class="ob-chip-row">'+chips+'</div>'+
-    '<div id="ob-fix-list"></div>'+
-    '<div class="settings-field" style="margin-top:10px"><label>Weekly savings target ($)</label><input type="number" id="ob-savings" value="'+obEsc(v('savings'))+'" placeholder="e.g. 200" inputmode="decimal"></div>'+
-    '<div id="ob-error" style="display:none;color:var(--danger);font-size:13px;margin:6px 0 0">Please enter your name to continue.</div>'+
-    '<button class="ob-btn-primary" onclick="obProfileContinue()">Continue →</button>';
+  const sav=obNum(obData.savings), varg=obNum(obData.varGoal);
+  const preview=(sav!==undefined&&sav>0)
+    ? '<div class="ob-pv-card ob-pv-wide"><div class="ob-pv-k">Savings target</div>'+
+      '<div class="ob-pv-fig">'+fmtMoney(sav)+'</div><div class="ob-pv-cap">per week \u00b7 '+fmtMoney(sav*52)+' a year</div></div>'
+    : '';
+  return '<div class="ob-head"><div class="ob-title">Money goals</div>'+
+      '<div class="ob-desc">Two numbers to start. Your income and fixed bills are set up inside Budget, where you can see them against a real week.</div></div>'+
+    '<div class="settings-field"><label for="ob-savings">Weekly savings target ($)</label>'+
+      '<input type="number" id="ob-savings" value="'+obEsc(v('savings'))+'" placeholder="e.g. 200" inputmode="decimal" oninput="obBudgetPreview()"></div>'+
+    '<div class="settings-field"><label for="ob-vargoal">Weekly spending cap ($) <span class="ob-opt">optional</span></label>'+
+      '<input type="number" id="ob-vargoal" value="'+obEsc(v('varGoal'))+'" placeholder="e.g. 450" inputmode="decimal" oninput="obBudgetPreview()"></div>'+
+    '<div id="ob-budget-preview">'+preview+'</div>'+
+    '<button class="ob-btn-primary" onclick="obNext()">Continue →</button>'+
+    '<button class="ob-btn-link" onclick="obSkipBudget()">Skip for now</button>';
+}
+// The one screen that asks for a system permission, and it earns it: the sample card becomes
+// the user's real sky the moment they allow it. getCurrentPosition is called ONLY from the
+// button below — never on entering the screen — so the OS prompt always follows a tap.
+function obWeatherHTML(){
+  const c=(typeof loadWeatherCache==='function')?loadWeatherCache():null;
+  const real=(typeof weatherIsReal==='function')&&weatherIsReal(c);
+  return '<div class="ob-head"><div class="ob-title">Bring Home to life</div>'+
+      '<div class="ob-desc">Daily can show your local weather and, if you like, colour the whole app to match the sky. Your location is used to fetch the forecast \u2014 it is kept on this device, never uploaded, and never kept as a history.</div></div>'+
+    '<div id="ob-weather-preview">'+obWeatherCardHTML()+'</div>'+
+    (real
+      ? '<div class="ob-weather-ok">That\u2019s your local sky. You can change or clear this anytime in Settings \u2192 Weather.</div>'+
+        '<button class="ob-btn-primary" onclick="obNext()">Continue →</button>'
+      : '<button class="ob-btn-primary" id="ob-weather-btn" onclick="obWeatherUse()">Use my location</button>'+
+        '<button class="ob-btn-link" onclick="obNext()">Not now</button>'+
+        '<div class="ob-weather-note" id="ob-weather-note">Sample shown above. Nothing is requested until you tap.</div>');
+}
+function obWeatherCardHTML(){
+  const c=(typeof loadWeatherCache==='function')?loadWeatherCache():null;
+  const scene=c?weatherScene(c.code,c):weatherPlaceholderScene();
+  const look=c?weatherLook(c):null;
+  const temp=(c&&c.tempC!=null)?Math.round(c.tempC)+'°':'—';
+  const sample=!c||c.placeholder;
+  return '<div class="ob-pv-weather ob-pv-weather-lg" data-scene="'+escAttr(scene)+'">'+
+    '<div class="ob-pv-temp-lg">'+temp+'</div>'+
+    '<div class="ob-pv-cap">'+escText(look?look[1]:'Weather')+'</div>'+
+    '<div class="ob-pv-place">'+escText(c?((c.city||'')+(sample?' · sample':'')):'Sample')+'</div>'+
+  '</div>';
 }
 function obBodyHTML(){
   const v=k=>obData[k]!==undefined&&obData[k]!==null?obData[k]:'';
@@ -15959,15 +16220,16 @@ function obBodyHTML(){
   const actSel=a=>curAct===a?' selected':'';
   const gopt=(g,label)=>'<button type="button" class="ob-seg-btn'+(goal===g&&obData.goal!==undefined?' on':'')+'" onclick="obSetGoal(\''+g+'\')">'+label+'</button>';
   return '<div class="ob-head"><div class="ob-title">Body &amp; goals</div><div class="ob-desc">Powers your calorie targets and weight tracker. Skip and add it later in Settings.</div></div>'+
+    '<div id="ob-tdee-preview">'+obTDEEPreviewHTML()+'</div>'+
     '<div class="settings-2col">'+
-      '<div class="settings-field"><label>Age</label><input type="number" id="ob-age" value="'+obEsc(v('age'))+'" placeholder="years" min="10" max="100" inputmode="numeric"></div>'+
-      '<div class="settings-field"><label>Sex</label><select id="ob-sex"><option value="male"'+sexSel('male')+'>Male</option><option value="female"'+sexSel('female')+'>Female</option></select></div>'+
+      '<div class="settings-field"><label>Age</label><input type="number" id="ob-age" value="'+obEsc(v('age'))+'" placeholder="years" min="10" max="100" inputmode="numeric" oninput="obTDEEPreview()"></div>'+
+      '<div class="settings-field"><label>Sex</label><select id="ob-sex" onchange="obTDEEPreview()"><option value="male"'+sexSel('male')+'>Male</option><option value="female"'+sexSel('female')+'>Female</option></select></div>'+
     '</div>'+
     '<div class="settings-2col">'+
-      '<div class="settings-field"><label>Height (cm)</label><input type="number" id="ob-height" value="'+obEsc(v('height'))+'" placeholder="cm" min="100" max="250" inputmode="decimal"></div>'+
-      '<div class="settings-field"><label>Weight (kg)</label><input type="number" id="ob-weight" value="'+obEsc(v('weight'))+'" placeholder="kg" min="30" max="300" step="0.1" inputmode="decimal"></div>'+
+      '<div class="settings-field"><label>Height (cm)</label><input type="number" id="ob-height" value="'+obEsc(v('height'))+'" placeholder="cm" min="100" max="250" inputmode="decimal" oninput="obTDEEPreview()"></div>'+
+      '<div class="settings-field"><label>Weight (kg)</label><input type="number" id="ob-weight" value="'+obEsc(v('weight'))+'" placeholder="kg" min="30" max="300" step="0.1" inputmode="decimal" oninput="obTDEEPreview()"></div>'+
     '</div>'+
-    '<div class="settings-field"><label>Activity level</label><select id="ob-activity">'+
+    '<div class="settings-field"><label>Activity level</label><select id="ob-activity" onchange="obTDEEPreview()">'+
       '<option value="1.2"'+actSel('1.2')+'>Sedentary (little/no exercise)</option>'+
       '<option value="1.375"'+actSel('1.375')+'>Lightly active (1–3×/week)</option>'+
       '<option value="1.55"'+actSel('1.55')+'>Moderately active (3–5×/week)</option>'+
@@ -15994,8 +16256,16 @@ function obHabitsHTML(){
     const on=chosen.some(x=>x.toLowerCase()===h.toLowerCase());
     return '<button type="button" class="ob-habit-chip'+(on?' on':'')+'" onclick="obToggleHabit('+i+')">'+(on?'✓ ':'')+h.replace(/</g,'&lt;')+'</button>';
   }).join('');
+  // The Home card they are actually building, updating as they tap. Selections used to be
+  // invisible beyond the chip turning green.
+  const preview=chosen.length
+    ? '<div class="ob-pv-card ob-pv-wide"><div class="ob-pv-k">Habits</div>'+
+      '<div class="ob-pv-dots">'+chosen.slice(0,6).map(()=>'<i></i>').join('')+'</div>'+
+      '<div class="ob-pv-cap">'+chosen.length+' habit'+(chosen.length===1?'':'s')+' \u00b7 0 done today</div></div>'
+    : '<div class="ob-pv-empty">Your Habits card will appear here.</div>';
   return '<div class="ob-head"><div class="ob-title">Daily habits</div><div class="ob-desc">Pick a few to check off each day. Tap to toggle — edit anytime later.</div></div>'+
     '<div class="ob-habit-wrap">'+chips+'</div>'+
+    preview+
     '<div class="ob-habit-add"><input type="text" id="ob-habit-custom" placeholder="Add your own…" onkeydown="if(event.key===\'Enter\'){event.preventDefault();obAddCustomHabit();}"><button type="button" onclick="obAddCustomHabit()">Add</button></div>'+
     '<div class="ob-btn-row">'+
       '<button class="ob-btn-skip" onclick="obNext()">Skip</button>'+
@@ -16021,25 +16291,56 @@ function obSyncHTML(){
     googleBtn+
     '<button class="ob-btn-skip ob-btn-block" onclick="obNext()">Skip for now</button>';
 }
+// The Mifflin-St Jeor figure, from the values staged in obData rather than the saved profile —
+// this runs before finishOnboarding has written anything. Returns '' until every input the
+// formula needs is present, so a half-filled form shows nothing rather than a wrong number.
+function obTDEEPreviewHTML(){
+  const a=obNum(obData.age), h=obNum(obData.height), w=obNum(obData.weight);
+  if(!a||!h||!w) return '<div class="ob-pv-empty">Fill in age, height and weight to see your daily calorie target.</div>';
+  const sex=obData.sex||'male';
+  const bmr = sex==='female' ? (10*w)+(6.25*h)-(5*a)-161 : (10*w)+(6.25*h)-(5*a)+5;
+  const tdee=Math.round(bmr*(parseFloat(obData.activity)||1.55));
+  const goal=obData.goal||'maintain';
+  const target = goal==='cut'?tdee-500 : goal==='bulk'?tdee+300 : tdee;
+  const label = goal==='cut'?'to cut' : goal==='bulk'?'to bulk' : 'to maintain';
+  return '<div class="ob-pv-card ob-pv-wide"><div class="ob-pv-k">Daily calorie target</div>'+
+    '<div class="ob-pv-fig">'+target.toLocaleString()+'<span class="ob-pv-unit">kcal</span></div>'+
+    '<div class="ob-pv-cap">'+escText(label)+' \u00b7 maintenance '+tdee.toLocaleString()+'</div></div>';
+}
+function obTDEEPreview(){
+  const el=document.getElementById('ob-tdee-preview'); if(!el) return;
+  obCaptureCurrent();
+  el.innerHTML=obTDEEPreviewHTML();
+}
+// A list of what actually exists now, rather than one generic sentence. Each line is a real
+// outcome the user can go and look at.
 function obDoneHTML(){
   const name=(obData.name||'').trim();
   const synced = obData.synced || (firebaseReady && auth && auth.currentUser);
-  const bits=[];
-  if(obData.age&&obData.height&&obData.weight) bits.push('calorie targets');
-  if(obData.wgTarget!==undefined&&isFinite(obData.wgTarget)) bits.push('a weight goal');
-  const habN=(obData.habits||[]).length;
-  if(habN) bits.push(habN+' habit'+(habN!==1?'s':''));
-  if(synced) bits.push('cloud sync');
-  let line='Your tracker is ready.';
-  if(bits.length){
-    const list = bits.length===1?bits[0]:bits.slice(0,-1).join(', ')+' and '+bits[bits.length-1];
-    line='We set up '+list+'.';
+  const rows=[];
+  const add=(icon,text)=>rows.push('<li class="ob-done-row"><span class="ob-done-ic">'+cardIcon(icon)+'</span>'+escText(text)+'</li>');
+  // Only report what this user was actually walked through — see obStepShown.
+  if(obStepShown('split') && !obData.splitSkipped && obSplitDraft && obSplitDraft.length){
+    const first=obSplitDraft.find(d=>d&&d.name);
+    add('trophy', first ? (first.name+' is ready as your next session') : 'Training split ready');
   }
+  const a=obNum(obData.age), h=obNum(obData.height), w=obNum(obData.weight);
+  if(obStepShown('body') && a&&h&&w) add('scale','Calorie target calculated');
+  if(obStepShown('body') && obData.wgTarget!==undefined&&isFinite(obData.wgTarget)) add('target','Weight goal set');
+  const sav=obNum(obData.savings);
+  if(obStepShown('budget') && sav!==undefined&&sav>0) add('wallet',fmtMoney(sav)+' weekly savings target');
+  const habN=(obData.habits||[]).length;
+  if(obStepShown('habits') && habN) add('check',habN+' habit'+(habN===1?'':'s')+' added');
+  if(obData.weather) add('calendar','Local weather enabled');
+  if(synced) add('bank','Cloud sync active');
+  const list = rows.length
+    ? '<ul class="ob-done-list">'+rows.join('')+'</ul>'
+    : '<div class="ob-desc" style="margin:10px 0 28px">Nothing set up yet — everything is available from inside the app whenever you want it.</div>';
   return '<div class="ob-center">'+
-    '<div class="ob-done-emoji">🎉</div>'+
-    '<div class="ob-title" style="font-size:26px">You\'re all set'+(name?', '+name.replace(/</g,'&lt;'):'')+'!</div>'+
-    '<div class="ob-desc" style="margin:10px 0 40px">'+line+'<br>Update anything anytime in Settings.</div>'+
-    '<button class="ob-btn-primary" onclick="finishOnboarding()">Go to app →</button>'+
+    '<div class="ob-title" style="font-size:26px">You\'re all set'+(name?', '+escText(name):'')+'</div>'+
+    '<div class="ob-desc" style="margin:8px 0 18px">Here\u2019s what\u2019s waiting for you.</div>'+
+    list+
+    '<button class="ob-btn-primary" onclick="finishOnboarding()">Open my Home →</button>'+
   '</div>';
 }
 
@@ -16084,6 +16385,10 @@ function finishOnboarding(){
 
   // Profile + version stamp
   profileData.name = name;
+  // Which areas they asked for. Recorded before the write below (it used to be assigned after
+  // it, so it never persisted) — the Budget setup card reads this to know whether budget was
+  // even offered, and a later release can tell what a user has never been shown.
+  if(Array.isArray(obData.focus)) profileData.focus = obData.focus.slice();
   profileData.onboardingVersion = OB_VERSION;
   profileData.lastSeenWhatsNew = WHATS_NEW_VERSION;   // brand-new users start "caught up"
   localStorage.setItem('daily_profile', JSON.stringify(profileData));
@@ -16093,6 +16398,8 @@ function finishOnboarding(){
   // were captured live into budgetConfig by the profile step's list editors — nothing to
   // rebuild here.
   if(obData.savings!==undefined){ budDefaults.weeklySavings=obData.savings; budDefaults.savingsGoal=obData.savings; }
+  // The weekly spending cap the Budget tab's goal card reads (budDefaults.varGoal).
+  if(obData.varGoal!==undefined) budDefaults.varGoal=obData.varGoal;
   localStorage.setItem('daily_budget_defaults', JSON.stringify(budDefaults));
   syncBudDefaultsToFirebase();
 
@@ -16151,8 +16458,10 @@ function finishOnboarding(){
     syncWeightGoalToFirebase();
   }
 
-  // Starter habits
-  if(Array.isArray(obData.habits) && obData.habits.length){
+  // Starter habits. Gated on the step having been shown: obData.habits is seeded from the
+  // existing store when onboarding opens, so writing it back for a user who never saw the
+  // screen is a pointless synced write of data they did not choose.
+  if(obStepShown('habits') && Array.isArray(obData.habits) && obData.habits.length){
     habitsData = obData.habits.slice();
     localStorage.setItem('daily_habits', JSON.stringify(habitsData));
     pushHabits();
@@ -16161,6 +16470,19 @@ function finishOnboarding(){
   obDetachAuthWatch();
   document.getElementById('onboarding-overlay').classList.add('hidden');
   renderHome();
+}
+// Walk the flow again without clearing anything. The staged answers start from what is
+// already saved, so finishing simply rewrites the same values; the seeding guards in
+// finishOnboarding (split, budget categories) are keyed on their store being unset, so an
+// account with real data cannot be overwritten by replaying this.
+function replayOnboarding(){
+  showOnboarding();
+  // Pre-fill from the saved profile so Back/Continue show what they already have rather than
+  // an empty form pretending to be a new account.
+  obData.name = profileData.name || '';
+  if(Array.isArray(profileData.focus)) obData.focus = profileData.focus.slice();
+  obData.accentMode = accentMode();
+  renderObStep();
 }
 function resetOnboarding(){
   profileData.name='';

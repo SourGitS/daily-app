@@ -11,7 +11,12 @@
 // swipe deck after a rotation reports the old orientation's width (the "stuck halfway"
 // screen), makes the pinned Budget controls opaque across the panel's own padding, and shrinks
 // the weather card's sun and moon so the glow reads as sky rather than as the card's subject.
-const CACHE_NAME = 'daily-v248';
+// v249: rebuild onboarding — a Home preview instead of an emoji feature list, a focus step
+// that branches the flow so nobody is walked through setup they did not ask for, appearance
+// folded in with accent modes, income/bills deferred to a Budget setup card, a weather
+// permission moment that turns the sample card into the user's real sky, live outcome
+// previews, named-phase progress, and a finish that lists what was actually created.
+const CACHE_NAME = 'daily-v249';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

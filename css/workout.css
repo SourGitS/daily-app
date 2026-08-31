@@ -242,9 +242,96 @@
 /* ── Onboarding ── */
 #onboarding-overlay{position:fixed;inset:0;background:var(--bg);z-index:300;overflow-y:auto;display:flex;align-items:flex-start;justify-content:center;padding:52px 20px 40px}
 #onboarding-box{width:100%;max-width:400px}
-.ob-dots{display:flex;justify-content:center;gap:7px;margin-bottom:36px}
-.ob-dot{width:8px;height:8px;border-radius:50%;background:var(--border);transition:all 0.25s}
-.ob-dot.active{background:var(--accent);width:22px;border-radius:4px}
+/* Named-phase progress replaced eight anonymous dots: the old indicator told you there were
+   eight screens before you knew what any of them were, and its count did not change when the
+   flow branched. The denominator here is THIS user's own branch length. */
+.ob-progress{margin-bottom:22px}
+.ob-progress-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:7px}
+.ob-progress-phase{font-size:12px;font-weight:800;letter-spacing:.04em;color:var(--text)}
+.ob-progress-count{font-size:11px;font-weight:600;color:var(--muted)}
+.ob-progress-track{height:4px;border-radius:999px;background:var(--border);overflow:hidden}
+.ob-progress-fill{height:100%;border-radius:999px;background:var(--accent);transition:width .3s cubic-bezier(.4,0,.2,1)}
+
+/* ── Home preview ──
+   A miniature of the real dashboard, used on Welcome and Appearance. Deliberately small type:
+   these are scaled-down replicas, the same convention as the Settings layout thumbnails (see
+   CLAUDE.md — sub-10px type inside a mock-up is intentional, not a legibility bug). */
+.ob-preview{display:flex;flex-direction:column;gap:7px;margin:4px 0 18px;text-align:left}
+.ob-pv-hero{border-radius:14px;padding:12px 14px;color:#fff;
+  background:linear-gradient(150deg,rgba(var(--accent-rgb),.95),rgba(var(--accent-rgb),.6))}
+.ob-pv-hero-label{font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;opacity:.75}
+.ob-pv-hero-title{font-family:var(--font-num);font-size:20px;font-weight:800;line-height:1.1;margin-top:2px}
+.ob-pv-hero-meta{font-size:10px;font-weight:600;opacity:.8;margin-top:3px}
+.ob-pv-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ob-pv-card{border-radius:12px;padding:10px 11px;background:var(--card);border:1px solid var(--card-border);min-width:0}
+.ob-pv-wide{margin:2px 0 20px;text-align:left}
+.ob-pv-k{font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.ob-pv-fig{font-family:var(--font-num);font-size:19px;font-weight:800;color:var(--text);line-height:1.15;margin-top:2px}
+.ob-pv-unit{font-size:11px;font-weight:700;color:var(--muted);margin-left:3px}
+.ob-pv-cap{font-size:10px;font-weight:600;color:var(--muted);margin-top:2px}
+.ob-pv-cap.up{color:var(--success)}
+.ob-pv-bar{height:4px;border-radius:999px;background:var(--track);margin-top:7px;overflow:hidden}
+.ob-pv-bar i{display:block;height:100%;border-radius:999px;background:var(--success)}
+.ob-pv-dots{display:flex;gap:4px;margin:7px 0 3px}
+.ob-pv-dots i{width:11px;height:11px;border-radius:4px;background:var(--track);border:1px solid var(--card-border)}
+.ob-pv-dots i.on{background:var(--accent);border-color:transparent}
+.ob-pv-empty{font-size:12px;color:var(--muted);text-align:center;padding:14px 10px;margin:2px 0 20px;
+  border:1px dashed var(--border);border-radius:12px}
+/* Reuses the real weather card's scene gradients via [data-scene]. */
+.ob-pv-weather{border-radius:12px;padding:10px 11px;color:#fff;min-width:0;
+  background:linear-gradient(160deg,#4a7fb5,#2c4a6b)}
+.ob-pv-weather .ob-pv-cap{color:rgba(255,255,255,.85)}
+.ob-pv-temp{font-family:var(--font-num);font-size:22px;font-weight:800;line-height:1}
+.ob-pv-weather-lg{padding:20px 18px;margin:4px 0 18px;text-align:left;border-radius:16px}
+.ob-pv-temp-lg{font-family:var(--font-num);font-size:38px;font-weight:800;line-height:1}
+.ob-pv-place{font-size:11px;font-weight:600;color:rgba(255,255,255,.75);margin-top:6px}
+
+/* ── Focus selection ── */
+.ob-focus-grid{display:flex;flex-direction:column;gap:7px;margin-bottom:10px}
+.ob-focus{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:11px 13px;
+  border-radius:14px;border:1.5px solid var(--border);background:var(--card);color:var(--text);
+  cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent}
+.ob-focus.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.08)}
+.ob-focus-ic{flex-shrink:0;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;
+  justify-content:center;background:var(--track);color:var(--accent-text)}
+.ob-focus.on .ob-focus-ic{background:var(--accent);color:#fff}
+.ob-focus-ic .card-hd-ico{width:18px;height:18px;stroke-width:2}
+.ob-focus-txt{display:flex;flex-direction:column;min-width:0;flex:1}
+.ob-focus-label{font-size:14.5px;font-weight:700}
+.ob-focus-desc{font-size:11.5px;color:var(--muted);margin-top:1px}
+.ob-focus-tick{flex-shrink:0;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:12px;font-weight:800;color:#fff;background:var(--accent);opacity:0;transition:opacity .15s}
+.ob-focus.on .ob-focus-tick{opacity:1}
+.ob-focus-note{font-size:12px;color:var(--muted);margin-bottom:6px}
+
+/* ── Accent mode ── */
+.ob-mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.ob-mode{display:flex;flex-direction:column;gap:3px;padding:11px 10px;border-radius:12px;
+  border:1.5px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;
+  font-family:inherit;text-align:left;-webkit-tap-highlight-color:transparent;min-width:0}
+.ob-mode.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.08)}
+.ob-mode-label{font-size:13px;font-weight:700}
+.ob-mode-desc{font-size:10.5px;line-height:1.35;color:var(--muted)}
+
+/* ── Weather step ── */
+.ob-weather-note{font-size:11.5px;line-height:1.5;color:var(--muted);text-align:center;margin-top:10px}
+.ob-weather-ok{font-size:12.5px;line-height:1.5;color:var(--text-2);text-align:center;margin:0 0 16px}
+
+/* ── Personalised finish ── */
+.ob-done-list{list-style:none;padding:0;margin:0 0 30px;display:flex;flex-direction:column;gap:8px;text-align:left}
+.ob-done-row{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:12px;
+  background:var(--card);border:1px solid var(--card-border);font-size:13.5px;font-weight:600;color:var(--text)}
+.ob-done-ic{flex-shrink:0;width:28px;height:28px;border-radius:9px;display:flex;align-items:center;
+  justify-content:center;background:rgba(var(--accent-rgb),.14);color:var(--accent-text)}
+.ob-done-ic .card-hd-ico{width:15px;height:15px;stroke-width:2.2}
+.ob-opt{font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0}
+
+/* Theme thumbnails, rebuilt: the old ones embedded a legacy Budget hero with hardcoded
+   figures, which showed a screen the app no longer has. Now abstract card shapes. */
+.ob-tm-hero{display:block;height:22px;border-radius:6px;margin-bottom:5px;
+  background:linear-gradient(150deg,rgba(var(--accent-rgb),.9),rgba(var(--accent-rgb),.55))}
+.ob-tm-row{display:flex;gap:5px;margin-bottom:5px}
+.ob-tm-row i{flex:1;height:15px;border-radius:5px;background:rgba(128,128,128,.28)}
 
 
 /* ── Stats tab bar (Overview + 5 sub-tabs, horizontally scrollable) ── */
@@ -426,9 +513,6 @@ button.ov-day{cursor:pointer}
 .ov-hs .ov-neg{color:#ffc4c4;font-weight:700}
 
 /* ── Onboarding: budget quick-add chips (fixed expenses) ── */
-.ob-chip-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
-.ob-add-chip{font-size:13px;font-weight:600;padding:7px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;-webkit-tap-highlight-color:transparent}
-.ob-add-chip:active{background:rgba(var(--accent-rgb),.1);border-color:var(--accent);color:var(--accent-text)}
 
 /* ── Training split editor (onboarding step + Settings overlay) ── */
 .se-day-card{background:var(--card);border:1px solid var(--card-border,var(--border));border-radius:16px;padding:14px;margin-bottom:12px;box-shadow:var(--card-top)}
