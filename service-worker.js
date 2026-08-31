@@ -20,7 +20,14 @@
 // assembled from atmospheric versions of Daily's real cards, every setup surface now shares
 // the app's glass/card language, cloud sync uses the shared line-icon family, and Ready closes
 // on a quieter single-focus confirmation without changing any onboarding behaviour.
-const CACHE_NAME = 'daily-v250';
+// v251: rebuild Pantry around what needs replacing — the summary counts become the filter, a
+// search field, collapsible categories carrying their own warning counts, one three-state
+// status pill in place of a checkbox plus an always-present Low button, compact rows grouped
+// onto one surface per category, category filter chips, and a single add form replacing five
+// permanent per-category inputs. Filter and collapsed state are device-local.
+// (v250 shipped separately as the onboarding visual pass, so this takes the next name — a
+// device that already fetched v250 would otherwise never see the Pantry rebuild.)
+const CACHE_NAME = 'daily-v251';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

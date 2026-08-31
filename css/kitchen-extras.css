@@ -148,29 +148,106 @@
 .kitshop-need-tag.low{background:rgba(245,158,11,0.16);color:#f59e0b}
 .kitshop-need-tag.out{background:rgba(231,76,60,0.16);color:var(--danger)}
 
-/* ── Kitchen Pantry ── */
-/* Deliberately NOT sticky. These three badges summarise the whole pantry; pinning them kept
-   them hovering over the items as you scrolled, which is the reported bug. The category
-   headings below are still sticky — those label what you are looking at right now. */
-.kitpantry-summary{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;padding:4px 0}
-.kitpantry-badge{font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px}
+/* ── Kitchen Pantry ──
+   Rebuilt around "what needs replacing?" rather than "here is everything you own". 41 seed
+   items at ~70px each was five phone screens of mostly-fine cards, with the two that needed
+   action buried among them. Rows are compact and grouped onto one surface per category
+   instead of 41 separately elevated cards. */
+/* Deliberately NOT sticky — pinning this row kept it hovering over the items while scrolling
+   (a reported bug). The category headings below are sticky; those label what you are looking
+   at right now. The search field is deliberately in flow for the same reason: every sticky
+   surface added to this app so far has cost a ghosting bug, and with filtering plus collapse
+   the lists are short enough that pinning it earns nothing. */
+.kitpantry-search{position:relative;display:flex;align-items:center;margin-bottom:9px}
+.kitpantry-search-ic{position:absolute;left:11px;width:16px;height:16px;color:var(--muted);pointer-events:none}
+.kitpantry-search input{width:100%;height:40px;border-radius:11px;border:1px solid var(--border);
+  background:var(--card);color:var(--text);font-size:15px;font-family:inherit;
+  padding:0 34px 0 34px;-webkit-appearance:none;appearance:none}
+.kitpantry-search input:focus{outline:none;border-color:var(--accent)}
+.kitpantry-search input::-webkit-search-cancel-button{display:none}
+.kitpantry-search-x{position:absolute;right:6px;width:28px;height:28px;border:none;background:transparent;
+  color:var(--muted);font-size:13px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+/* The summary counts ARE the filter now — they were read-only totals sitting above a list
+   that could not be narrowed. */
+.kitpantry-summary{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;padding:0}
+.kitpantry-badge{font-size:12px;font-weight:700;padding:6px 12px;border-radius:999px;
+  border:1px solid transparent;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kitpantry-badge.good{background:rgba(82,183,136,0.15);color:var(--success)}
 .kitpantry-badge.warn{background:rgba(245,158,11,0.16);color:#f59e0b}
 .kitpantry-badge.bad{background:rgba(231,76,60,0.16);color:var(--danger)}
-.kitpantry-cat-head{position:sticky;top:0;background:var(--bg);z-index:5;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);padding:12px 0 6px}
-.kitpantry-item{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;margin-bottom:8px;background:var(--card);border:1px solid var(--border)}
-[data-theme="dark"] .kitpantry-item{background:linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.09));border:0.5px solid var(--card-border);box-shadow:inset 0 1px 0 rgba(255,255,255,.20),0 6px 22px rgba(0,0,0,.3);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
-.kitpantry-item.out{background:rgba(231,76,60,0.07)}
-.kitpantry-cb{width:44px;height:44px;flex-shrink:0;accent-color:var(--success);cursor:pointer;margin:0}
-.kitpantry-name{flex:1;min-width:0;font-size:15px;color:var(--text)}
-.kitpantry-item.out .kitpantry-name{color:var(--muted)}
-.kitpantry-low{flex-shrink:0;font-size:12px;font-weight:600;padding:5px 11px;border-radius:999px;border:1.5px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent}
-.kitpantry-low.on{background:rgba(245,158,11,0.16);border-color:#f59e0b;color:#f59e0b}
-.kitpantry-del{width:30px;height:30px;flex-shrink:0;background:transparent;border:none;color:var(--danger);font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.kitpantry-add{display:flex;gap:8px;margin:8px 0 4px}
-.kitpantry-add input{flex:1;min-width:0;height:40px;border:1.5px dashed var(--border);border-radius:8px;background:transparent;color:var(--text);font-size:14px;padding:0 12px;-webkit-appearance:none}
-.kitpantry-add input:focus{outline:none;border-style:solid;border-color:var(--accent)}
-.kitpantry-add button{flex-shrink:0;padding:0 16px;height:40px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-size:13px;font-weight:700;cursor:pointer}
+.kitpantry-badge.neutral{background:var(--track);color:var(--text-2)}
+.kitpantry-badge.on{border-color:currentColor;box-shadow:0 0 0 1px currentColor inset}
+.kitpantry-chips{display:flex;gap:7px;overflow-x:auto;margin-bottom:6px;padding-bottom:2px;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none}
+.kitpantry-chips::-webkit-scrollbar{display:none}
+.kitpantry-chip{flex:0 0 auto;font-size:12px;font-weight:600;padding:6px 12px;border-radius:999px;
+  border:1px solid var(--border);background:transparent;color:var(--muted);font-family:inherit;
+  cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent}
+.kitpantry-chip.on{background:var(--accent);border-color:transparent;color:#fff}
+.kitpantry-bulk{display:flex;gap:8px;justify-content:flex-end;margin:2px 0 2px}
+.kitpantry-bulk button{border:none;background:transparent;color:var(--accent-text);font-family:inherit;
+  font-size:12px;font-weight:700;cursor:pointer;padding:4px 2px;-webkit-tap-highlight-color:transparent}
+/* Heading is a control: tap to collapse, with the counts that make collapsing safe. */
+.kitpantry-cat-head{position:sticky;top:0;background:var(--bg);z-index:5;display:flex;align-items:center;
+  gap:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);padding:12px 0 6px}
+.kitpantry-cat-btn{flex:1;min-width:0;display:flex;align-items:center;gap:8px;border:none;background:transparent;
+  color:inherit;font:inherit;text-transform:inherit;letter-spacing:inherit;cursor:pointer;padding:2px 0;
+  text-align:left;-webkit-tap-highlight-color:transparent}
+.kitpantry-cat-chev{flex-shrink:0;font-size:15px;line-height:1;transition:transform .18s ease;display:inline-block}
+.kitpantry-cat-btn.open .kitpantry-cat-chev{transform:rotate(90deg)}
+.kitpantry-cat-label{flex-shrink:0}
+.kitpantry-counts{display:flex;gap:7px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+.kitpantry-c{font-size:10px;font-weight:700;letter-spacing:.02em;text-transform:none;color:var(--muted)}
+.kitpantry-c.warn{color:#f59e0b}
+.kitpantry-c.bad{color:var(--danger)}
+.kitpantry-cat-add{flex-shrink:0;width:26px;height:26px;border-radius:8px;border:1px solid var(--border);
+  background:transparent;color:var(--accent-text);font-size:15px;line-height:1;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+/* One surface per category with dividers, not one elevated card per item. */
+.kitpantry-group{background:var(--card);border:1px solid var(--card-border);border-radius:14px;overflow:hidden;margin-bottom:4px}
+[data-theme="dark"] .kitpantry-group{background:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.07));
+  border:0.5px solid var(--card-border);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 6px 22px rgba(0,0,0,.28)}
+.kitpantry-item{display:flex;align-items:center;gap:10px;padding:9px 13px;background:transparent;
+  border:none;border-bottom:1px solid var(--border);margin:0;min-height:48px;box-sizing:border-box}
+.kitpantry-group .kitpantry-item:last-child{border-bottom:none}
+.kitpantry-item.s-out{background:rgba(231,76,60,0.07)}
+.kitpantry-item.s-low{background:rgba(245,158,11,0.07)}
+.kitpantry-name{flex:1;min-width:0;font-size:14.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kitpantry-item.s-out .kitpantry-name{color:var(--muted)}
+/* Status reads as an icon AND a word — never colour alone. */
+.kitpantry-status{flex-shrink:0;display:inline-flex;align-items:center;gap:5px;font-family:inherit;
+  font-size:12px;font-weight:700;padding:6px 11px;border-radius:999px;border:1px solid transparent;
+  cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kitpantry-status-ic{font-size:11px;line-height:1}
+.kitpantry-status.s-in{background:rgba(82,183,136,0.15);color:var(--success)}
+.kitpantry-status.s-low{background:rgba(245,158,11,0.18);color:#f59e0b}
+.kitpantry-status.s-out{background:rgba(231,76,60,0.18);color:var(--danger)}
+.kitpantry-status:active{opacity:.7}
+.kitpantry-del{width:28px;height:28px;flex-shrink:0;background:transparent;border:none;color:var(--danger);font-size:13px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kitpantry-empty{text-align:center;padding:30px 18px;border:1px dashed var(--border);border-radius:14px;margin:6px 0}
+.kitpantry-empty-t{font-size:15px;font-weight:700;color:var(--text)}
+.kitpantry-empty-d{font-size:12.5px;line-height:1.5;color:var(--muted);margin-top:5px}
+.kitpantry-empty-btn{margin-top:14px;padding:10px 18px;border-radius:11px;border:1px solid var(--border);
+  background:transparent;color:var(--text);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer}
+/* One add control instead of five permanent per-category forms. */
+.kitpantry-addbtn{width:100%;margin:12px 0 4px;padding:13px;border-radius:12px;border:1.5px dashed var(--border);
+  background:transparent;color:var(--accent-text);font-family:inherit;font-size:14px;font-weight:700;
+  cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kitpantry-newform{margin:12px 0 4px;padding:14px;border-radius:14px;border:1px solid var(--card-border);background:var(--card)}
+.kitpantry-newform-t{font-size:13px;font-weight:800;color:var(--text);margin-bottom:10px}
+.kitpantry-newform input,.kitpantry-newform select{width:100%;height:40px;border-radius:10px;
+  border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:15px;font-family:inherit;
+  padding:0 11px;-webkit-appearance:none;appearance:none}
+.kitpantry-newform input:focus,.kitpantry-newform select:focus{outline:none;border-color:var(--accent)}
+.kitpantry-newform-row{display:flex;gap:8px;margin-top:8px}
+.kitpantry-newform-row label{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;
+  font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.kitpantry-newform-err{font-size:12px;color:var(--danger);min-height:15px;margin-top:6px}
+.kitpantry-newform-btns{display:flex;gap:8px}
+.kitpantry-newform-btns button{flex:1;padding:11px;border-radius:11px;font-family:inherit;font-size:13.5px;
+  font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kitpantry-newform-done{border:1px solid var(--border);background:transparent;color:var(--text)}
+.kitpantry-newform-add{border:none;background:var(--accent);color:#fff}
 
 /* ── Collapsible cards ── */
 .card-collapse-header{display:flex;justify-content:space-between;align-items:center;cursor:pointer;margin-bottom:8px;-webkit-tap-highlight-color:transparent;user-select:none}
@@ -942,8 +1019,15 @@
      shrinking the checkbox or status pills into desktop-sized targets. */
   #kitshop-list,#kitpantry .kitpantry-cat-items{
     display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:0 14px;align-items:start}
-  .kitshop-item,.kitpantry-item{padding:9px 12px}
-  .kitshop-cb,.kitpantry-cb{width:38px;height:38px}
+  .kitshop-item,.kitpantry-item{padding:8px 12px}
+  .kitshop-cb{width:38px;height:38px}
+  #kitpantry .kitpantry-group{background:none;border:none;border-radius:0;box-shadow:none;overflow:visible}
+  #kitpantry .kitpantry-item{border:1px solid var(--card-border);border-bottom:1px solid var(--card-border);
+    border-radius:11px;background:var(--card);margin-bottom:7px}
+  [data-theme="dark"] #kitpantry .kitpantry-item{background:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.07));
+    border:0.5px solid var(--card-border);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 4px 14px rgba(0,0,0,.24)}
+  #kitpantry .kitpantry-item.s-out{background:rgba(231,76,60,0.09)}
+  #kitpantry .kitpantry-item.s-low{background:rgba(245,158,11,0.09)}
   .kitshop-cat-head,.kitshop-list-head,.kitpantry-cat-head{grid-column:1 / -1}
 
   /* ── Cooking mode ──

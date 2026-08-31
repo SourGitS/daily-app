@@ -5990,10 +5990,11 @@ function exportAllData(){
   const data={};
   for(let i=0;i<localStorage.length;i++){
     const key=localStorage.key(i);
-    // daily_weather_cache is a device cache holding precise coordinates, not a durable
-    // setting — restoring one device's location onto another is wrong, and a backup file is
-    // routinely pasted into a chat. It is excluded here for the same reason it is not synced.
-    if(key && /^daily_weather_cache/.test(key)) continue;
+    // Device-local keys, excluded for the same reason they are not synced: they describe
+    // THIS device, not the user's data. daily_weather_cache holds precise coordinates (and a
+    // backup file is routinely pasted into a chat); daily_pantry_ui is which pantry filter and
+    // collapsed categories this handset is showing, which has no meaning on another device.
+    if(key && /^(daily_weather_cache|daily_pantry_ui)/.test(key)) continue;
     if(key && /^(daily_|wt_|kitchen_)/.test(key)) data[key]=localStorage.getItem(key);
   }
   const backup={ app:'daily', version:1, exported:new Date().toISOString(), data };
@@ -17776,18 +17777,68 @@ function kitPantryNeeds(){
   out.sort((a,b)=>a.name.localeCompare(b.name));
   return out;
 }
-function kitPantryToggleStock(id){
-  const v=kitPantryData[id]||(kitPantryData[id]={inStock:true,runningLow:false});
-  v.inStock=v.inStock===false; // flip (running-low flag is left untouched)
+// ── Status: ONE three-state value over the two stored booleans ──
+// The store keeps {inStock, runningLow} and is synced, so the shape is deliberately
+// unchanged — no migration, and kitPantryNeeds() still reads it exactly as before. What
+// changes is that the two flags can no longer be set independently: a checkbox plus a
+// separate Low button let an item be "out of stock" AND "running low" at once, which is
+// meaningless and was reachable in one tap.
+const KITPANTRY_STATUS=[
+  {id:'in',  label:'In stock',   short:'In stock', icon:'\u2713'},
+  {id:'low', label:'Running low',short:'Low',      icon:'\u26a0'},
+  {id:'out', label:'Out',        short:'Out',      icon:'\u2715'}
+];
+function kitPantryStatusOf(it){
+  if(!it) return 'in';
+  if(it.inStock===false) return 'out';
+  return it.runningLow?'low':'in';
+}
+// The single writer. Every status change goes through here, so the two booleans can only
+// ever hold one of the three meaningful combinations.
+function kitPantrySetStatus(id,status){
+  const v=kitPantryData[id]||(kitPantryData[id]={});
+  if(status==='out'){ v.inStock=false; v.runningLow=false; }
+  else if(status==='low'){ v.inStock=true; v.runningLow=true; }
+  else { v.inStock=true; v.runningLow=false; }
   kitPantrySave();
   kitPantryRender();
 }
-function kitPantryToggleLow(id){
-  const v=kitPantryData[id]||(kitPantryData[id]={inStock:true,runningLow:false});
-  v.runningLow=!v.runningLow;
-  kitPantryData[id]=v;
-  kitPantrySave();
-  kitPantryRender();
+function kitPantryCycle(id){
+  const order=['in','low','out'];
+  const it=kitPantryData[id]||{};
+  const cur=kitPantryStatusOf({inStock:it.inStock,runningLow:it.runningLow});
+  kitPantrySetStatus(id, order[(order.indexOf(cur)+1)%order.length]);
+}
+
+// ── View state: DEVICE-LOCAL ──
+// Which filter is showing and which categories are collapsed are presentation preferences,
+// not pantry data. Saved without a sync path and never registered in SYNC_BLOB_REG, so this
+// cannot travel between devices or reach a backup — a phone collapsing Spices must not
+// collapse it on a laptop.
+function kitPantryUI(){
+  const o=lsLoad('daily_pantry_ui', null);
+  const ui=(o&&typeof o==='object')?o:{};
+  if(['attention','stocked','all'].indexOf(ui.filter)<0) ui.filter='attention';
+  if(!ui.collapsed||typeof ui.collapsed!=='object') ui.collapsed={};
+  if(typeof ui.cat!=='string') ui.cat='';
+  return ui;
+}
+function kitPantryUISave(ui){ lsSave('daily_pantry_ui', ui); }
+let kitPantryQuery='';    // transient: search is not a saved preference
+function kitPantrySetFilter(f){ const ui=kitPantryUI(); ui.filter=f; kitPantryUISave(ui); kitPantryRender(); }
+function kitPantrySetCat(c){ const ui=kitPantryUI(); ui.cat=c||''; kitPantryUISave(ui); kitPantryRender(); }
+function kitPantrySearch(v){ kitPantryQuery=String(v||''); kitPantryRender(); }
+function kitPantryClearSearch(){ kitPantryQuery=''; kitPantryRender(); }
+function kitPantryToggleCat(cat){
+  const ui=kitPantryUI();
+  if(ui.collapsed[cat]) delete ui.collapsed[cat]; else ui.collapsed[cat]=true;
+  kitPantryUISave(ui); kitPantryRender();
+}
+function kitPantryCollapseAll(collapse){
+  const ui=kitPantryUI();
+  ui.collapsed={};
+  if(collapse) KITPANTRY_CATS.forEach(([cat])=>{ ui.collapsed[cat]=true; });
+  kitPantryUISave(ui); kitPantryRender();
 }
 function kitPantryRestock(id){
   const v=kitPantryData[id]||{};
@@ -17799,46 +17850,183 @@ function kitPantryRestock(id){
   if(kitState.tab==='pantry') kitPantryRender();
   if(kitState.tab==='shopping') kitShopRenderList();
 }
-function kitPantryAddCustom(catKey){
-  const inp=document.getElementById('kitpantry-add-'+catKey);
-  if(!inp) return;
-  const name=inp.value.trim(); if(!name) return;
-  let id='custom_'+Date.now();
-  kitPantryData[id]={inStock:true,runningLow:false,custom:true,name,cat:catKey};
-  kitPantrySave();
-  inp.value='';
+// Five always-visible add forms — one per category — cost real height on every visit while
+// being used almost never. One form, opened on demand, with the category as a field.
+let kitPantryAddOpen=false, kitPantryAddCat='spices';
+function kitPantryOpenAdd(cat){
+  kitPantryAddOpen=true;
+  if(cat) kitPantryAddCat=cat;
   kitPantryRender();
+  setTimeout(()=>{ const el=document.getElementById('kitpantry-new-name'); if(el) el.focus(); },40);
+}
+function kitPantryCloseAdd(){ kitPantryAddOpen=false; kitPantryRender(); }
+function kitPantrySubmitAdd(){
+  const nameEl=document.getElementById('kitpantry-new-name');
+  const catEl=document.getElementById('kitpantry-new-cat');
+  const stEl=document.getElementById('kitpantry-new-status');
+  if(!nameEl) return;
+  const name=nameEl.value.trim();
+  const err=document.getElementById('kitpantry-new-err');
+  if(!name){ if(err) err.textContent='Give the item a name.'; nameEl.focus(); return; }
+  const cat=(catEl&&catEl.value)||kitPantryAddCat;
+  const st=(stEl&&stEl.value)||'in';
+  kitPantryAddCat=cat;
+  const id='custom_'+Date.now();
+  kitPantryData[id]={inStock:st!=='out', runningLow:st==='low', custom:true, name:name, cat:cat};
+  kitPantrySave();
+  // Stay open for the next one — adding pantry items is something people do in a burst.
+  kitPantryRender();
+  setTimeout(()=>{
+    const el=document.getElementById('kitpantry-new-name');
+    if(el){ el.value=''; el.focus(); }
+  },20);
+}
+// One row. Name on the left, one status control on the right — no checkbox, and no
+// permanently-inactive Low button reserving space on all 41 items.
+function kitPantryRowHTML(it){
+  const st=kitPantryStatusOf(it);
+  const meta=KITPANTRY_STATUS.find(s=>s.id===st)||KITPANTRY_STATUS[0];
+  const next=KITPANTRY_STATUS[(KITPANTRY_STATUS.indexOf(meta)+1)%KITPANTRY_STATUS.length];
+  return '<div class="kitpantry-item s-'+st+'">'+
+    '<span class="kitpantry-name">'+kitEsc(it.name)+'</span>'+
+    // Status is carried by an icon AND a word, never colour alone.
+    '<button type="button" class="kitpantry-status s-'+st+'" onclick="kitPantryCycle(\''+it.id+'\')" '+
+      'aria-label="'+escAttr(it.name+': '+meta.label+'. Change to '+next.label+'.')+'">'+
+      '<span class="kitpantry-status-ic" aria-hidden="true">'+meta.icon+'</span>'+meta.short+'</button>'+
+    (it.custom?'<button class="kitpantry-del" onclick="kitPantryDeleteCustom(\''+it.id+'\')" aria-label="Remove '+escAttr(it.name)+'">\u2715</button>':'')+
+  '</div>';
 }
 function kitPantryRender(){
   const wrap=document.getElementById('kitpantry'); if(!wrap) return;
+  // Keep the caret where it is: this re-renders on every keystroke.
+  const active=document.activeElement;
+  const searchFocused=!!(active&&active.id==='kitpantry-search');
+  const caret=searchFocused?active.selectionStart:null;
+
   const groups=kitPantryItemsByCat();
-  // Summary counts
+  const ui=kitPantryUI();
+  const q=kitPantryQuery.trim().toLowerCase();
+
   let inStock=0,low=0,out=0;
-  Object.keys(groups).forEach(cat=>groups[cat].forEach(it=>{
-    if(!it.inStock) out++; else { inStock++; if(it.runningLow) low++; }
+  const all=[];
+  KITPANTRY_CATS.forEach(([cat])=>(groups[cat]||[]).forEach(it=>{
+    const st=kitPantryStatusOf(it);
+    if(st==='out') out++; else { inStock++; if(st==='low') low++; }
+    all.push(Object.assign({},it,{status:st}));
   }));
-  let html='<div class="kitpantry-summary">'+
-    '<span class="kitpantry-badge good">'+inStock+' in stock</span>'+
-    '<span class="kitpantry-badge warn">'+low+' running low</span>'+
-    '<span class="kitpantry-badge bad">'+out+' out of stock</span>'+
+
+  const matches=it=>{
+    if(q && it.name.toLowerCase().indexOf(q)<0) return false;
+    if(ui.cat && it.cat!==ui.cat) return false;
+    if(ui.filter==='attention') return it.status!=='in';
+    if(ui.filter==='stocked')   return it.status==='in';
+    return true;
+  };
+  const visible=all.filter(matches);
+
+  // ── Search ──
+  let html='<div class="kitpantry-search">'+
+    '<svg class="kitpantry-search-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'+
+    '<input id="kitpantry-search" type="search" autocomplete="off" placeholder="Search pantry\u2026" '+
+      'value="'+escAttr(kitPantryQuery)+'" oninput="kitPantrySearch(this.value)" aria-label="Search pantry">'+
+    (kitPantryQuery?'<button type="button" class="kitpantry-search-x" onclick="kitPantryClearSearch()" aria-label="Clear search">\u2715</button>':'')+
   '</div>';
-  KITPANTRY_CATS.forEach(([cat,label])=>{
-    html+='<div class="kitpantry-cat-head">'+label+'</div>';
-    // Items wrapped per category so desktop can lay them out two-up without the sticky
-    // category headings being pulled into a column alongside them.
-    html+='<div class="kitpantry-cat-items">';
-    groups[cat].forEach(it=>{
-      html+='<div class="kitpantry-item'+(it.inStock?'':' out')+'">'+
-        '<input type="checkbox" class="kitpantry-cb"'+(it.inStock?' checked':'')+' onchange="kitPantryToggleStock(\''+it.id+'\')" aria-label="In stock">'+
-        '<span class="kitpantry-name">'+kitEsc(it.name)+'</span>'+
-        '<button class="kitpantry-low'+(it.runningLow?' on':'')+'" onclick="kitPantryToggleLow(\''+it.id+'\')">⚠ Low</button>'+
-        (it.custom?'<button class="kitpantry-del" onclick="kitPantryDeleteCustom(\''+it.id+'\')" aria-label="Remove">✕</button>':'')+
+
+  // ── The old summary badges, now the primary filter ──
+  const pill=(id,label,cls)=>'<button type="button" class="kitpantry-badge '+cls+(ui.filter===id?' on':'')+'" '+
+    'aria-pressed="'+(ui.filter===id?'true':'false')+'" onclick="kitPantrySetFilter(\''+id+'\')">'+label+'</button>';
+  html+='<div class="kitpantry-summary" role="group" aria-label="Filter pantry">'+
+    pill('attention',(low+out)+' need attention','bad')+
+    pill('stocked',inStock+' stocked','good')+
+    pill('all','All '+all.length,'neutral')+
+  '</div>';
+
+  // ── Category chips: filter, not jump — jumping leaves you deep in a long document ──
+  const chip=(c,label)=>'<button type="button" class="kitpantry-chip'+(ui.cat===c?' on':'')+'" '+
+    'aria-pressed="'+(ui.cat===c?'true':'false')+'" onclick="kitPantrySetCat(\''+c+'\')">'+escText(label)+'</button>';
+  html+='<div class="kitpantry-chips">'+chip('','All')+
+    KITPANTRY_CATS.map(([c,label])=>chip(c,label)).join('')+'</div>';
+
+  if(!all.length){
+    html+='<div class="kitpantry-empty"><div class="kitpantry-empty-t">Your pantry is empty</div>'+
+      '<div class="kitpantry-empty-d">Add the things you keep on hand and Daily will track what needs replacing.</div></div>';
+  } else if(ui.filter==='attention' && !(low+out) && !q){
+    // The good case gets a real answer instead of a blank list.
+    html+='<div class="kitpantry-empty"><div class="kitpantry-empty-t">\u2713 Everything is stocked</div>'+
+      '<div class="kitpantry-empty-d">Nothing is running low or out.</div>'+
+      '<button type="button" class="kitpantry-empty-btn" onclick="kitPantrySetFilter(\'all\')">View all '+all.length+' items</button></div>';
+  } else if(!visible.length){
+    html+='<div class="kitpantry-empty"><div class="kitpantry-empty-t">Nothing matches</div>'+
+      '<div class="kitpantry-empty-d">'+(q?('No pantry item matches \u201c'+escText(kitPantryQuery)+'\u201d.'):'No items in this view.')+'</div></div>';
+  } else if(ui.filter==='attention' || q){
+    // A short, flat list — grouping two rows under five headings would be the same problem
+    // in miniature. Searching behaves the same way: you want the hit, not its neighbourhood.
+    html+='<div class="kitpantry-cat-head">'+(q?'Results':'Needs attention')+'</div>'+
+      '<div class="kitpantry-cat-items kitpantry-group">'+visible.map(kitPantryRowHTML).join('')+'</div>';
+  } else {
+    // ── Grouped, collapsible ──
+    html+='<div class="kitpantry-bulk">'+
+      '<button type="button" onclick="kitPantryCollapseAll(true)">Collapse all</button>'+
+      '<button type="button" onclick="kitPantryCollapseAll(false)">Expand all</button>'+
+    '</div>';
+    KITPANTRY_CATS.forEach(([cat,label])=>{
+      const items=visible.filter(it=>it.cat===cat);
+      if(!items.length) return;
+      const cLow=items.filter(i=>i.status==='low').length;
+      const cOut=items.filter(i=>i.status==='out').length;
+      const cIn =items.filter(i=>i.status==='in').length;
+      // Collapse is always honoured — forcing a category open because it holds a warning
+      // meant "Collapse all" silently did not, which is worse than the problem it solved.
+      // Nothing is hidden by collapsing: the warning counts stay in the heading, and the
+      // Needs-attention filter above lists every one of them regardless of category state.
+      // Categories start expanded, so a new warning is visible by default either way.
+      // Choosing a category from the chips is itself an "open this" intent — otherwise
+      // filtering to a category you had previously collapsed shows an empty screen.
+      const open=!ui.collapsed[cat] || ui.cat===cat;
+      const counts=[];
+      if(cOut) counts.push('<span class="kitpantry-c bad">'+cOut+' out</span>');
+      if(cLow) counts.push('<span class="kitpantry-c warn">'+cLow+' low</span>');
+      counts.push('<span class="kitpantry-c">'+cIn+' stocked</span>');
+      html+='<div class="kitpantry-cat-head">'+
+        '<button type="button" class="kitpantry-cat-btn'+(open?' open':'')+'"'+
+          ' aria-expanded="'+(open?'true':'false')+'" onclick="kitPantryToggleCat(\''+cat+'\')">'+
+          '<span class="kitpantry-cat-chev" aria-hidden="true">\u203a</span>'+
+          '<span class="kitpantry-cat-label">'+escText(label)+'</span>'+
+          '<span class="kitpantry-counts">'+counts.join('')+'</span>'+
+        '</button>'+
+        '<button type="button" class="kitpantry-cat-add" onclick="kitPantryOpenAdd(\''+cat+'\')" aria-label="Add an item to '+escAttr(label)+'">+</button>'+
       '</div>';
+      if(open) html+='<div class="kitpantry-cat-items kitpantry-group">'+items.map(kitPantryRowHTML).join('')+'</div>';
     });
-    html+='</div>';
-    html+='<div class="kitpantry-add"><input id="kitpantry-add-'+cat+'" type="text" placeholder="+ Add item" onkeydown="if(event.key===\'Enter\')kitPantryAddCustom(\''+cat+'\')"><button onclick="kitPantryAddCustom(\''+cat+'\')">Add</button></div>';
-  });
+  }
+
+  // ── One add control for the whole pantry ──
+  if(kitPantryAddOpen){
+    const catOpts=KITPANTRY_CATS.map(([c,label])=>'<option value="'+escAttr(c)+'"'+(c===kitPantryAddCat?' selected':'')+'>'+escText(label)+'</option>').join('');
+    const stOpts=KITPANTRY_STATUS.map(s=>'<option value="'+s.id+'">'+escText(s.label)+'</option>').join('');
+    html+='<div class="kitpantry-newform">'+
+      '<div class="kitpantry-newform-t">Add a pantry item</div>'+
+      '<input id="kitpantry-new-name" type="text" placeholder="Item name" autocomplete="off" '+
+        'onkeydown="if(event.key===\'Enter\'){event.preventDefault();kitPantrySubmitAdd();}">'+
+      '<div class="kitpantry-newform-row">'+
+        '<label>Category<select id="kitpantry-new-cat">'+catOpts+'</select></label>'+
+        '<label>Status<select id="kitpantry-new-status">'+stOpts+'</select></label>'+
+      '</div>'+
+      '<div id="kitpantry-new-err" class="kitpantry-newform-err" role="alert"></div>'+
+      '<div class="kitpantry-newform-btns">'+
+        '<button type="button" class="kitpantry-newform-done" onclick="kitPantryCloseAdd()">Done</button>'+
+        '<button type="button" class="kitpantry-newform-add" onclick="kitPantrySubmitAdd()">Add item</button>'+
+      '</div>'+
+    '</div>';
+  } else {
+    html+='<button type="button" class="kitpantry-addbtn" onclick="kitPantryOpenAdd()">+ Add pantry item</button>';
+  }
+
   wrap.innerHTML=html;
+  if(searchFocused){
+    const el=document.getElementById('kitpantry-search');
+    if(el){ el.focus(); try{ el.setSelectionRange(caret,caret); }catch(e){} }
+  }
 }
 function kitPantryDeleteCustom(id){
   delete kitPantryData[id];
