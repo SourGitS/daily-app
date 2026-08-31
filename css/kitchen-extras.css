@@ -1230,7 +1230,11 @@
    read back, which is the same reason the app caps every view at 2200px. */
 @media (min-width:1024px){
   .aihub-wrap{padding:20px 24px 48px}
-  .aih-grid{grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:16px;align-items:start;max-width:1180px}
+  /* Centred, not just capped: left-aligning a 1180px grid inside a 1625px content area
+     left 421px of dead space against the right edge on a 1900px window, under a title
+     bar that is itself centred. Same margin:0 auto the other capped surfaces use. */
+  .aih-grid{grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:16px;align-items:start;
+    max-width:1180px;margin-left:auto;margin-right:auto}
   .aih-card{margin-bottom:14px}
   /* No longer sticky: the output column now carries Export AND the Inbox, and pinning the
      first of two stacked cards makes the second scroll awkwardly underneath it. */

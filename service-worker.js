@@ -30,7 +30,9 @@
 // v252 collapses Kitchen's two always-visible recipe filter rows behind one mobile Filters
 // button while keeping a one-tap All recipes reset and the existing desktop filter layout,
 // and flattens Home's Personal records rows into a divided list instead of nested grey boxes.
-const CACHE_NAME = 'daily-v252';
+// v253: centre the Daily + AI grid. It was capped at 1180px but left-aligned, so a 1900px
+// window showed 421px of dead space against the right edge, under a centred title bar.
+const CACHE_NAME = 'daily-v253';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
