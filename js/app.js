@@ -13834,6 +13834,7 @@ const CARD_ICONS={
   note:'<path d="M14 3v5h5M15 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z"/>',
   pot:'<path d="M5 10h14v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4zM3 10h18M8 10V7a4 4 0 0 1 8 0v3"/>',
   calendar:'<path d="M8 3v3M16 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>',
+  cloud:'<path d="M7 18h10a4 4 0 0 0 .7-7.94A6 6 0 0 0 6.3 8.7 4.6 4.6 0 0 0 7 18z"/><path d="M9 14l2 2 4-4"/>',
   flame:'<path d="M12 3c3 4 6 5.5 6 9a6 6 0 0 1-12 0c0-2 1-3.5 2.5-5 .3 1.2 1 2 2 2.2C10 7 11 4.6 12 3z"/>',
   receipt:'<path d="M6 3h12v18l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L6 21zM9.5 8h5M9.5 12h5"/>',
   trend:'<path d="M3 17l6-6 4 4 7-7"/><path d="M20 8v5h-5"/>',
@@ -15960,6 +15961,12 @@ function obDetachAuthWatch(){ if(obAuthUnsub){ try{ obAuthUnsub(); }catch(e){} o
 function renderObStep(){
   const box=document.getElementById('onboarding-box'); if(!box) return;
   const step=obCurrentStep();
+  // Presentation hooks only: the approved flow still comes entirely from OB_CATALOGUE.
+  // A step attribute lets the visual system give Welcome and Ready their own composition
+  // without branching markup or duplicating any navigation/save behaviour.
+  box.dataset.obStep=step;
+  const overlay=document.getElementById('onboarding-overlay');
+  if(overlay) overlay.dataset.obStep=step;
   const showBack = obStep>0 && step!=='done';
   const topbar='<div class="ob-topbar">'+(showBack?'<button class="ob-back" onclick="obBack()">‹ Back</button>':'')+'</div>';
   let inner='';
@@ -16031,12 +16038,16 @@ function obHomePreviewHTML(){
   '</div>';
 }
 function obWelcomeHTML(){
-  return '<div class="ob-center">'+
-    '<img class="wordmark-img wordmark-light" src="daily-wordmark-light.png" alt="Daily">'+
-    '<img class="wordmark-img wordmark-dark" src="daily-wordmark-dark.png" alt="Daily">'+
-    '<div class="ob-tagline">Training, budget, kitchen, habits and a journal — one app that keeps them in step.</div>'+
+  return '<div class="ob-center ob-welcome">'+
+    '<div class="ob-welcome-brand">'+
+      '<img class="wordmark-img wordmark-light" src="daily-wordmark-light.png" alt="Daily">'+
+      '<img class="wordmark-img wordmark-dark" src="daily-wordmark-dark.png" alt="Daily">'+
+    '</div>'+
+    '<div class="ob-welcome-kicker">Everything that shapes today</div>'+
+    '<div class="ob-welcome-title">Your whole day,<br>in one place.</div>'+
+    '<div class="ob-tagline">A Home that moves with your training, weather, money and routines.</div>'+
     obHomePreviewHTML()+
-    '<button class="ob-btn-primary" onclick="obNext()">Get started →</button>'+
+    '<button class="ob-btn-primary" onclick="obNext()">Set up my Daily →</button>'+
     // Returning users could only sign in at the 'sync' step, second from last — six screens
     // of setup before they could pull down the account they already had. This restores it
     // immediately, and skips the rest once the cloud profile lands.
@@ -16277,7 +16288,7 @@ function obSyncHTML(){
   if(signedIn){
     const email=(auth.currentUser.email||'').replace(/</g,'&lt;');
     return '<div class="ob-head"><div class="ob-title">Cloud sync</div></div>'+
-      '<div class="ob-sync-box"><div class="ob-sync-ic">☁️</div><div class="ob-sync-title">You\'re connected</div>'+
+      '<div class="ob-sync-box"><div class="ob-sync-ic">'+cardIcon('cloud')+'</div><div class="ob-sync-title">You\'re connected</div>'+
         '<div class="ob-sync-desc">Synced as '+(email||'your Google account')+'. Everything backs up across your devices automatically.</div></div>'+
       '<button class="ob-btn-primary" onclick="obNext()">Continue →</button>';
   }
@@ -16286,7 +16297,7 @@ function obSyncHTML(){
     ? '<button class="ob-btn-google" onclick="obSignIn()"><svg viewBox="0 0 24 24" width="18" height="18" style="flex-shrink:0"><path fill="#fff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#fff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Sign in with Google</button>'
     : '<div class="ob-desc" style="text-align:center;margin-top:14px">Sync isn\'t available in this build.</div>';
   return '<div class="ob-head"><div class="ob-title">Sync across devices</div><div class="ob-desc">Optional — sign in to back up your data and pick up right where you left off on any device.</div></div>'+
-    '<div class="ob-sync-box"><div class="ob-sync-ic">☁️</div><div class="ob-sync-title">Google sync</div>'+
+    '<div class="ob-sync-box"><div class="ob-sync-ic">'+cardIcon('cloud')+'</div><div class="ob-sync-title">Google sync</div>'+
       '<div class="ob-sync-desc">Free and private to your account. You can always sign in later from Settings.</div></div>'+
     googleBtn+
     '<button class="ob-btn-skip ob-btn-block" onclick="obNext()">Skip for now</button>';
@@ -16336,7 +16347,9 @@ function obDoneHTML(){
   const list = rows.length
     ? '<ul class="ob-done-list">'+rows.join('')+'</ul>'
     : '<div class="ob-desc" style="margin:10px 0 28px">Nothing set up yet — everything is available from inside the app whenever you want it.</div>';
-  return '<div class="ob-center">'+
+  return '<div class="ob-center ob-done">'+
+    '<div class="ob-done-mark">'+cardIcon('check')+'</div>'+
+    '<div class="ob-done-kicker">Your Daily is ready</div>'+
     '<div class="ob-title" style="font-size:26px">You\'re all set'+(name?', '+escText(name):'')+'</div>'+
     '<div class="ob-desc" style="margin:8px 0 18px">Here\u2019s what\u2019s waiting for you.</div>'+
     list+

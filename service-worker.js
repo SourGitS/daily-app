@@ -16,7 +16,11 @@
 // folded in with accent modes, income/bills deferred to a Budget setup card, a weather
 // permission moment that turns the sample card into the user's real sky, live outcome
 // previews, named-phase progress, and a finish that lists what was actually created.
-const CACHE_NAME = 'daily-v249';
+// v250 gives that approved journey its final Living Home visual direction: the opening is
+// assembled from atmospheric versions of Daily's real cards, every setup surface now shares
+// the app's glass/card language, cloud sync uses the shared line-icon family, and Ready closes
+// on a quieter single-focus confirmation without changing any onboarding behaviour.
+const CACHE_NAME = 'daily-v250';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

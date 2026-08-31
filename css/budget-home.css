@@ -918,6 +918,259 @@
 .ob-sync-desc{font-size:13px;color:var(--muted);line-height:1.5}
 .ob-btn-google{width:100%;margin-top:16px;padding:14px;border-radius:12px;border:none;background:#4285f4;color:#fff;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;-webkit-tap-highlight-color:transparent}
 
+/* ── Onboarding visual direction: Living Home ─────────────────────
+   The flow, branching and save behaviour live in OB_CATALOGUE; this layer only gives that
+   approved journey the same depth and card language as Home. Welcome is deliberately more
+   atmospheric, while the finish borrows the quieter, single-focus treatment of Quiet Signal. */
+#onboarding-overlay{
+  padding:28px 18px 36px;overflow-x:hidden;
+  background:
+    radial-gradient(ellipse 72% 42% at 92% -8%,rgba(var(--accent-rgb),.17),transparent 72%),
+    radial-gradient(ellipse 55% 34% at -8% 94%,rgba(var(--accent-rgb),.08),transparent 74%),
+    var(--bg)
+}
+#onboarding-box{position:relative;isolation:isolate}
+#onboarding-box[data-ob-step="welcome"]::before,
+#onboarding-box[data-ob-step="done"]::before{
+  content:"";position:absolute;z-index:-1;pointer-events:none;border-radius:50%;filter:blur(24px)
+}
+#onboarding-box[data-ob-step="welcome"]::before{
+  width:260px;height:260px;right:-120px;top:72px;background:rgba(var(--accent-rgb),.15)
+}
+#onboarding-box[data-ob-step="done"]::before{
+  width:230px;height:230px;left:50%;top:72px;transform:translateX(-50%);background:rgba(var(--accent-rgb),.13)
+}
+.ob-topbar{margin-bottom:12px}
+.ob-back{
+  min-height:38px;padding:7px 10px 7px 4px;border-radius:10px;color:var(--text-2);
+  transition:background .16s ease,color .16s ease
+}
+.ob-progress{margin:0 0 24px}
+.ob-progress-row{align-items:center;margin-bottom:9px}
+.ob-progress-phase{
+  font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2)
+}
+.ob-progress-count{font-family:var(--font-num);font-size:10.5px;letter-spacing:.02em}
+.ob-progress-track{height:3px;background:var(--track)}
+.ob-progress-fill{box-shadow:0 0 16px rgba(var(--accent-rgb),.35)}
+.ob-head{margin-bottom:18px}
+.ob-title{
+  font-family:var(--font-num);font-size:26px;line-height:1.08;letter-spacing:-.035em;font-weight:800
+}
+.ob-desc{max-width:560px;font-size:13.5px;line-height:1.58;color:var(--text-2)}
+.ob-section-label{letter-spacing:.1em;margin:17px 0 10px}
+#onboarding-box .settings-field label{font-size:11.5px;letter-spacing:.02em;color:var(--text-2)}
+#onboarding-box .settings-field input,
+#onboarding-box .settings-field select{
+  min-height:48px;border-radius:14px;border-color:var(--card-border);background:var(--card);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.03);transition:border-color .16s ease,box-shadow .16s ease
+}
+#onboarding-box .settings-field input:focus,
+#onboarding-box .settings-field select:focus{
+  border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.13)
+}
+.ob-btn-primary{
+  min-height:52px;padding:14px 18px;border-radius:16px;font-size:15px;font-weight:800;
+  box-shadow:0 12px 28px rgba(var(--accent-rgb),.2),inset 0 1px 0 rgba(255,255,255,.22);
+  transition:transform .16s ease,box-shadow .16s ease,filter .16s ease
+}
+.ob-btn-skip{min-height:50px;border-radius:15px;border-color:var(--card-border);color:var(--text-2)}
+.ob-btn-link{min-height:42px;color:var(--text-2);text-decoration:none;font-size:13px}
+.ob-btn-row{align-items:stretch}
+.ob-btn-row .ob-btn-primary{min-height:50px}
+
+/* Welcome: a compact piece of the real Home, not an illustration placed above a form. */
+.ob-welcome{text-align:left;padding-top:0}
+.ob-welcome-brand{height:30px;margin:0 0 14px;display:flex;align-items:center}
+.ob-welcome .wordmark-img{width:auto;max-width:112px;max-height:30px;margin:0}
+.ob-welcome-kicker{
+  font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;
+  color:var(--accent-text);margin-bottom:7px
+}
+.ob-welcome-title{
+  font-family:var(--font-num);font-size:34px;line-height:1.01;letter-spacing:-.055em;
+  font-weight:800;color:var(--text);margin-bottom:9px
+}
+.ob-tagline{font-size:13.5px;line-height:1.5;color:var(--text-2);margin:0;max-width:340px}
+.ob-welcome .ob-btn-primary{margin-top:12px}
+.ob-welcome .ob-btn-link{margin-top:5px}
+.ob-welcome .ob-restore-note{text-align:center}
+
+/* Home preview: the cards overlap like a dashboard assembling itself, but remain real UI
+   surfaces with the same arbitrary runtime accent and weather-scene support as the app. */
+.ob-preview{gap:8px;margin:8px 0 20px;perspective:800px}
+.ob-pv-hero{
+  position:relative;overflow:hidden;border-radius:20px;padding:15px 17px;
+  border:1px solid rgba(255,255,255,.13);
+  box-shadow:0 18px 38px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.18)
+}
+.ob-pv-hero::after{
+  content:"";position:absolute;width:150px;height:150px;border-radius:50%;right:-56px;top:-82px;
+  background:rgba(255,255,255,.18);filter:blur(8px);pointer-events:none
+}
+.ob-pv-hero-label{font-size:8.5px}
+.ob-pv-hero-title{font-size:22px;letter-spacing:-.035em;margin-top:5px}
+.ob-pv-hero-meta{font-size:10.5px;margin-top:5px}
+.ob-pv-row{gap:9px}
+.ob-pv-card{
+  position:relative;overflow:hidden;border-radius:17px;padding:12px 13px;
+  box-shadow:0 12px 28px rgba(0,0,0,.11),inset 0 1px 0 rgba(255,255,255,.04)
+}
+[data-theme="dark"] .ob-pv-card:not(.ob-pv-weather){
+  background:linear-gradient(145deg,rgba(255,255,255,.11),rgba(255,255,255,.045));
+  border-color:rgba(255,255,255,.11);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)
+}
+[data-theme="light"] .ob-pv-card:not(.ob-pv-weather){background:rgba(255,255,255,.88);border-color:rgba(0,0,0,.08)}
+.ob-pv-k{font-size:8.5px;letter-spacing:.11em}
+.ob-pv-fig{font-size:21px;margin-top:5px;letter-spacing:-.03em}
+.ob-pv-cap{font-size:10.5px;margin-top:4px}
+.ob-pv-bar{height:5px;margin-top:10px}
+.ob-pv-dots{gap:5px;margin-top:10px}
+.ob-pv-dots i{width:13px;height:13px;border-radius:5px}
+.ob-pv-weather{box-shadow:0 14px 30px rgba(20,95,135,.22),inset 0 1px 0 rgba(255,255,255,.2)}
+.ob-pv-temp{font-size:26px;letter-spacing:-.05em}
+#onboarding-box[data-ob-step="welcome"] .ob-preview{height:300px;position:relative;margin:12px 0 10px}
+#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-hero{
+  position:absolute;left:8px;right:8px;top:0;height:112px;transform:rotate(-1.2deg);z-index:3
+}
+#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row{
+  position:absolute;left:0;right:0;display:grid
+}
+#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(2){top:121px;z-index:2}
+#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(3){top:211px;left:9px;right:9px;z-index:1}
+#onboarding-box[data-ob-step="welcome"] .ob-pv-card{min-height:81px}
+#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(2)>.ob-pv-card:first-child{transform:rotate(1.2deg)}
+#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(2)>.ob-pv-card:last-child{transform:rotate(-1.4deg)}
+#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(3)>.ob-pv-card:first-child{transform:rotate(-.7deg)}
+#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(3)>.ob-pv-card:last-child{transform:rotate(.8deg)}
+#onboarding-box[data-ob-step="appearance"] .ob-preview{gap:6px;margin-top:5px;margin-bottom:14px}
+#onboarding-box[data-ob-step="appearance"] .ob-pv-hero{padding:10px 13px;border-radius:17px}
+#onboarding-box[data-ob-step="appearance"] .ob-pv-hero-title{font-size:19px;margin-top:2px}
+#onboarding-box[data-ob-step="appearance"] .ob-pv-hero-meta{margin-top:2px}
+#onboarding-box[data-ob-step="appearance"] .ob-pv-card{padding:8px 10px;border-radius:15px}
+#onboarding-box[data-ob-step="appearance"] .ob-pv-fig{font-size:19px;margin-top:2px}
+#onboarding-box[data-ob-step="appearance"] .ob-pv-bar{margin-top:6px}
+#onboarding-box[data-ob-step="appearance"] .ob-pv-dots{margin-top:6px}
+
+/* Selection and setup screens use quiet glass surfaces so the live outcomes remain the focus. */
+.ob-focus-grid{gap:9px}
+.ob-focus{
+  min-height:60px;padding:10px 14px;border-radius:17px;border-color:var(--card-border);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);transition:transform .16s ease,border-color .16s ease,background .16s ease
+}
+[data-theme="dark"] .ob-focus{background:linear-gradient(145deg,rgba(255,255,255,.075),rgba(255,255,255,.025))}
+.ob-focus.on{border-color:rgba(var(--accent-rgb),.7);background:rgba(var(--accent-rgb),.12)}
+.ob-focus-ic{width:38px;height:38px;border-radius:12px}
+.ob-focus-tick{width:24px;height:24px;box-shadow:0 6px 16px rgba(var(--accent-rgb),.24)}
+.ob-focus-note{font-size:11.5px;line-height:1.45;margin-top:4px}
+.ob-theme-grid{gap:10px}
+.ob-theme-opt{border-radius:18px;padding:5px;border-width:1px}
+.ob-theme-opt.selected{border-color:var(--accent);background:rgba(var(--accent-rgb),.07)}
+.ob-theme-mini{border-radius:14px;padding:10px;box-shadow:inset 0 0 0 1px rgba(128,128,128,.13)}
+.ob-theme-name{font-size:12.5px;margin:7px 0 4px}
+.ob-mode-grid{gap:9px}
+.ob-mode{min-height:76px;padding:12px;border-radius:15px;border-color:var(--card-border);justify-content:space-between}
+.ob-mode.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.12)}
+.ob-seg-btn{min-height:46px;border-radius:14px;border-color:var(--card-border)}
+.ob-habit-chip{min-height:39px;border-radius:14px;border-color:var(--card-border);background:var(--card)}
+.ob-habit-chip.on{background:rgba(var(--accent-rgb),.13)}
+.ob-habit-add input,.ob-habit-add button{height:48px;border-radius:14px}
+.ob-pv-wide{margin:10px 0 18px;padding:14px 15px}
+.ob-pv-empty{border-radius:16px;border-color:var(--card-border);padding:18px 12px}
+
+/* Weather is the flow's visual payoff: the scene is large enough to feel like atmosphere,
+   and the permission explanation remains directly attached to the action that triggers it. */
+.ob-pv-weather-lg{
+  min-height:248px;margin:4px 0 12px;padding:23px 21px;border-radius:24px;display:flex;
+  flex-direction:column;justify-content:flex-end;isolation:isolate
+}
+.ob-pv-weather-lg::before{
+  content:"";position:absolute;z-index:-1;width:170px;height:170px;border-radius:50%;right:-35px;top:-45px;
+  background:rgba(255,225,157,.25);filter:blur(6px)
+}
+.ob-pv-temp-lg{font-size:58px;letter-spacing:-.075em;text-shadow:0 3px 20px rgba(0,0,0,.14)}
+.ob-pv-weather-lg .ob-pv-cap{font-size:14px;font-weight:700;margin-top:6px}
+.ob-pv-place{font-size:11.5px;margin-top:7px}
+.ob-weather-note{margin-top:9px}
+
+/* Sync uses the shared line-icon family instead of an OS-specific emoji. */
+.ob-sync-box{
+  border-radius:22px;padding:28px 22px;border-color:var(--card-border);
+  box-shadow:0 16px 34px rgba(0,0,0,.08),inset 0 1px 0 rgba(255,255,255,.04)
+}
+[data-theme="dark"] .ob-sync-box{background:linear-gradient(145deg,rgba(255,255,255,.085),rgba(255,255,255,.025))}
+.ob-sync-ic{
+  width:58px;height:58px;margin:0 auto 14px;border-radius:18px;display:flex;align-items:center;justify-content:center;
+  background:rgba(var(--accent-rgb),.14);color:var(--accent-text);box-shadow:0 14px 30px rgba(var(--accent-rgb),.12)
+}
+.ob-sync-ic .card-hd-ico{width:28px;height:28px;stroke-width:1.8}
+.ob-btn-google{min-height:50px;border-radius:15px}
+
+/* Quiet Signal finish: one calm confirmation, then a factual list of what now exists. */
+.ob-done{padding-top:12px}
+.ob-done-mark{
+  width:72px;height:72px;margin:0 auto 19px;border-radius:24px;display:flex;align-items:center;justify-content:center;
+  color:#fff;background:linear-gradient(145deg,var(--accent),rgba(var(--accent-rgb),.68));
+  box-shadow:0 20px 46px rgba(var(--accent-rgb),.3),inset 0 1px 0 rgba(255,255,255,.24)
+}
+.ob-done-mark .card-hd-ico{width:32px;height:32px;stroke-width:1.8}
+.ob-done-kicker{font-size:10px;text-transform:uppercase;letter-spacing:.15em;font-weight:800;color:var(--accent-text);margin-bottom:7px}
+.ob-done .ob-title{font-size:29px!important}
+.ob-done-list{gap:0;margin:22px 0 26px;border-top:1px solid var(--card-border);border-bottom:1px solid var(--card-border)}
+.ob-done-row{
+  min-height:58px;padding:11px 3px;border:0;border-bottom:1px solid var(--card-border);border-radius:0;background:transparent;
+  font-size:13px;font-weight:700
+}
+.ob-done-row:last-child{border-bottom:0}
+.ob-done-ic{width:34px;height:34px;border-radius:12px}
+.ob-done .ob-btn-primary{margin-top:0}
+
+@media (hover:hover) and (pointer:fine){
+  .ob-back:hover{background:var(--track);color:var(--text)}
+  .ob-btn-primary:hover{transform:translateY(-1px);filter:brightness(1.04);box-shadow:0 15px 32px rgba(var(--accent-rgb),.25),inset 0 1px 0 rgba(255,255,255,.22)}
+  .ob-focus:hover{transform:translateY(-1px);border-color:rgba(var(--accent-rgb),.5)}
+}
+@media (min-width:1024px){
+  #onboarding-overlay{padding:32px 24px 48px}
+  #onboarding-overlay[data-ob-step="welcome"]{padding-top:20px;padding-bottom:20px}
+  #onboarding-box{
+    max-width:720px;padding:38px 46px;border-radius:28px;border-color:var(--card-border);
+    box-shadow:0 30px 80px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.05)
+  }
+  [data-theme="dark"] #onboarding-box{
+    background:linear-gradient(145deg,rgba(255,255,255,.075),rgba(255,255,255,.025));
+    -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px)
+  }
+  [data-theme="light"] #onboarding-box{background:rgba(255,255,255,.88);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px)}
+  #onboarding-box[data-ob-step="welcome"]{max-width:500px;padding:34px 42px 38px}
+  #onboarding-box[data-ob-step="done"]{max-width:560px}
+  #onboarding-box[data-ob-step="focus"] .ob-focus-grid{display:grid;grid-template-columns:1fr 1fr}
+  #onboarding-box .ob-preview{max-width:390px}
+  #onboarding-box[data-ob-step="welcome"] .ob-preview{max-width:none}
+  #onboarding-box .ob-theme-grid{max-width:540px}
+}
+@media (max-width:420px){
+  .ob-welcome-title{font-size:31px}
+  .ob-title{font-size:24px}
+  .ob-mode{padding:10px 8px}
+  .ob-mode-label{font-size:12px}
+  .ob-mode-desc{font-size:9.5px}
+}
+@media (max-height:740px) and (max-width:1023px){
+  #onboarding-overlay{padding-top:18px;padding-bottom:24px}
+  .ob-welcome-brand{margin-bottom:9px}
+  .ob-welcome-title{font-size:29px}
+  #onboarding-box[data-ob-step="welcome"] .ob-preview{height:252px;margin-top:8px}
+  #onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-hero{height:94px;padding:12px 14px}
+  #onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(2){top:102px}
+  #onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(3){top:178px}
+  #onboarding-box[data-ob-step="welcome"] .ob-pv-card{min-height:68px;padding:9px 11px}
+  .ob-welcome .ob-btn-primary{margin-top:8px}
+}
+@media (prefers-reduced-motion:reduce){
+  .ob-progress-fill,.ob-back,.ob-btn-primary,.ob-focus{transition:none}
+}
+
 /* ── Budget hero bar & home card enter animations ── */
 @keyframes count-up-flash{0%{opacity:0.4}100%{opacity:1}}
 @keyframes home-card-enter{0%{opacity:0;transform:translateY(16px)}100%{opacity:1;transform:translateY(0)}}
