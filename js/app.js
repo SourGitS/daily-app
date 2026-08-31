@@ -1922,6 +1922,9 @@ const NAV_ORDER=['home','budget','log','kitchen'];
 // .deck-active (see setView + layout.css). Order matches NAV_ORDER: home,budget,log,stats.
 let deckIdx = 0;
 let deckRaf = 0;      // handle of the pending touchmove frame (0 = none) — must be cancellable
+// Mirrors the gesture IIFE's own `dragging`, at module scope: vpSyncDeck must never re-page
+// the deck out from under a finger that is mid-swipe.
+let deckDragging = false;
 let deckSnapH = null; // active snap's transitionend handler, so we can pull it off early
 // Mobile WebKit can paint an input's caret in the wrong place when the field sits inside a
 // transformed, momentum-scrolling pager. Keep the normal GPU pager for navigation, but park
@@ -2099,7 +2102,7 @@ document.addEventListener('focusout',function(){
     deck.style.transform='translate3d('+cur+'px,0,0)';
     tsStartPx=-cur;                    // px scrolled from the first panel (positive)
     tsX=e.touches[0].clientX; tsY=e.touches[0].clientY;
-    tsDelta=0; tsLocked=null; tsStartIdx=deckIdx; tsTime=Date.now(); dragging=true;
+    tsDelta=0; tsLocked=null; tsStartIdx=deckIdx; tsTime=Date.now(); dragging=true; deckDragging=true;
     tsOnControl=!!(e.target && e.target.closest && e.target.closest(CONTROL_SEL));
   },{passive:true});
   deck.addEventListener('touchmove',e=>{
@@ -2132,6 +2135,7 @@ document.addEventListener('focusout',function(){
     }
   },{passive:false});
   function end(){
+    deckDragging=false;
     if(!dragging) return;
     dragging=false;
     if(tsLocked!=='h'){ return; }               // wasn't a horizontal page gesture
@@ -3972,6 +3976,7 @@ function openSwapModal(ei){
   document.getElementById('swap-backdrop').classList.remove('hidden');
   document.getElementById('swap-modal').classList.remove('hidden');
   renderSwapList();
+  swapSyncKeyboard();
   setTimeout(()=>document.getElementById('swap-input').focus(), 100);
 }
 function renderSwapList(){
@@ -4003,8 +4008,12 @@ function swapPickExercise(name){
   confirmSwap();
 }
 function closeSwapModal(){
+  const input=document.getElementById('swap-input');
+  if(input && document.activeElement===input) input.blur();
   document.getElementById('swap-backdrop').classList.add('hidden');
-  document.getElementById('swap-modal').classList.add('hidden');
+  const modal=document.getElementById('swap-modal');
+  modal.classList.add('hidden');
+  swapClearKeyboardGeometry(modal);
 }
 function confirmSwap(){
   const ex = type(S.dayIdx).exercises[S.swapTarget];
@@ -13228,7 +13237,12 @@ function applyWeatherMotion(card, entry){
   }
   p=Math.max(0,Math.min(1,isNaN(p)?0.5:p));
   const arc=Math.sin(Math.PI*p);                 // 0 at both horizons, 1 at the peak
-  const lowTop=H*0.55, peakTop=-38;
+  // How far above the card's top edge the disc rides at its peak. Expressed as a fraction of
+  // the disc itself, not a fixed pixel value: it controls how much of the disc is cropped, so
+  // hardcoding it would crop a smaller sun almost out of existence at midday.
+  const disc=card.querySelector(isNight?'.wfx-moon':'.wfx-sun');
+  const discSize=(disc&&disc.getBoundingClientRect().width)||62;
+  const lowTop=H*0.55, peakTop=-Math.round(discSize*0.42);
   const set=(k,v)=>card.style.setProperty(k,v);
   set(isNight?'--wfx-moon-x':'--wfx-sun-x',(p*100).toFixed(1)+'%');
   set(isNight?'--wfx-moon-y':'--wfx-sun-y',Math.round(lowTop+(peakTop-lowTop)*arc)+'px');
@@ -14821,6 +14835,34 @@ function adjustModalsForKeyboard(){
   }
 }
 
+// The exercise-swap picker is a standalone .se-picker rather than a .modal-overlay, so the
+// generic keyboard lift above cannot see it, and its Reset/Save row sat behind the iOS
+// keyboard. It stays a BOTTOM SHEET here rather than being re-sized to the visual viewport
+// the way #txn-modal is: that one is deliberately a full-screen capture flow, this one is not.
+// Lifting it by the keyboard's own height means left/transform/width are never touched, so
+// visualViewport.offsetLeft cannot pan it sideways, and there are only two inline properties
+// to tear down. The list is the one child that gives up space (see workout.css), so the
+// action row is what survives a short sheet.
+function swapClearKeyboardGeometry(modal){
+  modal=modal||document.getElementById('swap-modal'); if(!modal) return;
+  modal.style.removeProperty('bottom');      // portrait's --nav-height lift resumes
+  modal.style.removeProperty('max-height');  // back to the sheet's 72vh cap
+}
+function swapSyncKeyboard(){
+  const modal=document.getElementById('swap-modal');
+  if(!modal || modal.classList.contains('hidden')){ swapClearKeyboardGeometry(modal); return; }
+  const vv=window.visualViewport;
+  // Height the keyboard is covering, in LAYOUT-viewport terms — which is what position:fixed
+  // resolves against. offsetTop matters: when WebKit scrolls the visual viewport, the keyboard's
+  // top edge moves with it, and ignoring that leaves the sheet floating over the keys.
+  const kb = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+  // >100px ≈ a keyboard, the same threshold adjustModalsForKeyboard uses to ignore URL-bar jitter.
+  if(!vv || window.innerWidth>=1024 || kb<=100){ swapClearKeyboardGeometry(modal); return; }
+  const gap=8;
+  modal.style.bottom=Math.round(kb)+'px';
+  modal.style.maxHeight=Math.max(140, Math.round(vv.height-gap*2))+'px';
+}
+
 // On mobile, handle keyboard appearing over inputs:
 // • Expense modal: the overlay is already viewport-sized, so only the focused field needs
 //   bringing into the scrolling body — and it must be moved by scrollTop, never
@@ -14836,6 +14878,11 @@ document.addEventListener('focusin', function(e){
     if(el.closest('#txn-modal')){
       vpSync();
       setTimeout(function(){ vpSync(); txnScrollFieldIntoView(el); }, 320);
+      return;
+    }
+    if(el.closest('#swap-modal')){
+      swapSyncKeyboard();
+      setTimeout(swapSyncKeyboard, 320);
       return;
     }
     if(el.closest('.modal-overlay')){
@@ -18887,7 +18934,13 @@ function vpSyncApp(){
   // Always hand it back to CSS first: measuring against our own correction would keep a
   // stale height alive forever once one was applied.
   if(_vpAppPinned){ app.style.height=''; app.style.top=''; _vpAppPinned=false; }
-  const want=Math.round(window.innerHeight);
+  // Two independent reads of the layout viewport. Mid-rotation WebKit updates them at
+  // different moments, and pinning an explicit pixel height to whichever one is momentarily
+  // stale would freeze the shell at the WRONG size — the exact failure this exists to
+  // prevent. When they disagree, do nothing and let CSS's inset:0 hold until they settle.
+  const a=Math.round(window.innerHeight), b=Math.round(document.documentElement.clientHeight);
+  if(!a||!b||Math.abs(a-b)>2) return;
+  const want=Math.max(a,b);
   const r=app.getBoundingClientRect();
   // Only correct the failure that actually happens — a shell SHORTER than the viewport, or
   // one no longer anchored at the top. Never force a width (#app is centre-capped at 480px
@@ -18898,17 +18951,70 @@ function vpSyncApp(){
     _vpAppPinned=true;
   }
 }
-function vpSync(){ vpSyncOverlay(); vpSyncApp(); if(typeof syncNavPadding==='function') syncNavPadding(); }
-// WebKit settles keyboard dismissal and rotation over several frames, and reports the old
-// geometry for the first of them. A short bounded sequence re-checks instead of guessing a
-// single delay; each pass is idempotent, so a redundant one costs nothing.
-let _vpSettleTimers=[];
+// #swipe-deck is sized in PERCENT by CSS but positioned by a PIXEL transform
+// (-idx * panel width), so the two only agree while that measurement is current. iOS fires
+// `resize` after `orientationchange` BEFORE it reflows to the new orientation, so the single
+// resize handler recomputes the stride from the OLD width and never re-checks — parking the
+// deck between two panels, which is the "stuck halfway" screen. Re-assert it whenever the
+// measured width actually changes, driven from the settle loop that waits out the rotation.
+// Setting the position also writes transition:none, so this recovers a snap that was
+// interrupted mid-animation and stranded at a fractional offset.
+// How far the active panel is from where it should be — 0 when the deck is correctly paged.
+// Checking the OUTCOME rather than trying to detect the cause means the deck self-corrects
+// however it got stranded: a stale stride, a snap interrupted mid-animation, or a rotation
+// that reported the old orientation's width. Watching for a width *change* did not work,
+// because while WebKit is still reporting the old orientation that width is perfectly stable.
+function deckMisalignPx(){
+  const deck=document.getElementById('swipe-deck'); if(!deck) return 0;
+  const main=document.getElementById('app-main'); if(!main) return 0;
+  const panel=deck.querySelector('.swipe-panel.deck-active'); if(!panel) return 0;
+  return Math.round(panel.getBoundingClientRect().left - main.getBoundingClientRect().left);
+}
+function vpSyncDeck(){
+  if(typeof deckPanelW!=='function'||typeof setDeckPosition!=='function') return;
+  if(window.innerWidth>=1024) return;                 // desktop pages via .deck-active
+  if(deckDragging||deckRaf||deckSnapH) return;        // a finger or a running snap owns it
+  if(Math.abs(deckMisalignPx())<=1) return;           // already where it belongs
+  if(typeof deckTextInputMode!=='undefined'&&deckTextInputMode) deckApplyTextInputPosition();
+  else setDeckPosition(deckIdx,false);
+}
+function vpSync(){ vpSyncOverlay(); vpSyncApp(); vpSyncDeck(); swapSyncKeyboard(); if(typeof syncNavPadding==='function') syncNavPadding(); }
+// WebKit settles keyboard dismissal and rotation over several frames, and reports the OLD
+// orientation's metrics for the first of them. A fixed list of timeouts was guessing when
+// that ends and could stop while the numbers were still moving; this watches until the
+// measurement stops changing instead. Bounded two ways — three identical frames, or a hard
+// cap — so it can never spin. Every pass is idempotent, so a redundant one costs nothing.
+let _vpSettleRaf=0, _vpSettleTail=0, _vpSettleUntil=0, _vpSettleSig='', _vpSettleSame=0;
+function vpSettleSignature(){
+  const app=document.getElementById('app');
+  const r=app?app.getBoundingClientRect():{width:0,height:0};
+  return [window.innerWidth, window.innerHeight,
+    document.documentElement.clientWidth, document.documentElement.clientHeight,
+    Math.round(r.width), Math.round(r.height),
+    (typeof deckPanelW==='function'?Math.round(deckPanelW()):0)].join('|');
+}
 function vpSettle(){
-  _vpSettleTimers.forEach(clearTimeout);
-  _vpSettleTimers=[];
+  _vpSettleUntil=Date.now()+2000;
+  _vpSettleSig=''; _vpSettleSame=0;
+  // One late pass regardless of the frame loop: WebKit can deliver a final metric correction
+  // after the per-frame readings have already gone quiet.
+  clearTimeout(_vpSettleTail);
+  _vpSettleTail=setTimeout(vpSync, 350);
   vpSync();
-  requestAnimationFrame(function(){ vpSync(); });
-  [80,200,420].forEach(function(ms){ _vpSettleTimers.push(setTimeout(vpSync, ms)); });
+  if(!_vpSettleRaf) _vpSettleRaf=requestAnimationFrame(vpSettleStep);
+}
+function vpSettleStep(){
+  _vpSettleRaf=0;
+  vpSync();
+  const sig=vpSettleSignature();
+  _vpSettleSame = (sig===_vpSettleSig) ? _vpSettleSame+1 : 0;
+  _vpSettleSig=sig;
+  // "The numbers stopped changing" is NOT sufficient on its own — a stale reading is stable
+  // too, which is exactly how the old timer-based settle exited while the deck was still
+  // paged to the previous orientation. Require the deck to be genuinely aligned as well.
+  const settled = _vpSettleSame>=3 && Math.abs(deckMisalignPx())<=1;
+  if(settled || Date.now()>=_vpSettleUntil) return;
+  _vpSettleRaf=requestAnimationFrame(vpSettleStep);
 }
 if(window.visualViewport){
   window.visualViewport.addEventListener('resize', vpSync);

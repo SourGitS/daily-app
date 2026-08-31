@@ -733,10 +733,10 @@
   <div class="se-picker-backdrop hidden" id="swap-backdrop" onclick="closeSwapModal()"></div>
   <div class="se-picker hidden" id="swap-modal">
     <div class="se-picker-head">Swap exercise<button class="se-picker-x" onclick="closeSwapModal()" aria-label="Close">×</button></div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:10px" id="swap-original-label"></div>
+    <div class="se-picker-sub" id="swap-original-label"></div>
     <input class="se-picker-search" type="text" id="swap-input" placeholder="Search or type a new name…" oninput="renderSwapList()" autocomplete="off">
     <div class="se-picker-list" id="swap-lib-list" style="max-height:40vh"></div>
-    <div style="display:flex;gap:8px;margin-top:10px">
+    <div class="se-picker-actions">
       <button class="modal-btn secondary" onclick="resetSwapDefault()">Reset to default</button>
       <button class="modal-btn primary" onclick="confirmSwap()">Save</button>
     </div>

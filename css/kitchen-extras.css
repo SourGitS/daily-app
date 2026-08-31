@@ -149,12 +149,15 @@
 .kitshop-need-tag.out{background:rgba(231,76,60,0.16);color:var(--danger)}
 
 /* ── Kitchen Pantry ── */
-.kitpantry-summary{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;position:sticky;top:0;background:var(--bg);z-index:6;padding:4px 0}
+/* Deliberately NOT sticky. These three badges summarise the whole pantry; pinning them kept
+   them hovering over the items as you scrolled, which is the reported bug. The category
+   headings below are still sticky — those label what you are looking at right now. */
+.kitpantry-summary{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;padding:4px 0}
 .kitpantry-badge{font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px}
 .kitpantry-badge.good{background:rgba(82,183,136,0.15);color:var(--success)}
 .kitpantry-badge.warn{background:rgba(245,158,11,0.16);color:#f59e0b}
 .kitpantry-badge.bad{background:rgba(231,76,60,0.16);color:var(--danger)}
-.kitpantry-cat-head{position:sticky;top:34px;background:var(--bg);z-index:5;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);padding:12px 0 6px}
+.kitpantry-cat-head{position:sticky;top:0;background:var(--bg);z-index:5;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);padding:12px 0 6px}
 .kitpantry-item{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;margin-bottom:8px;background:var(--card);border:1px solid var(--border)}
 [data-theme="dark"] .kitpantry-item{background:linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.09));border:0.5px solid var(--card-border);box-shadow:inset 0 1px 0 rgba(255,255,255,.20),0 6px 22px rgba(0,0,0,.3);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
 .kitpantry-item.out{background:rgba(231,76,60,0.07)}
@@ -443,8 +446,9 @@
 /* Position comes from applyWeatherMotion(), which walks it along the real sunrise-to-sunset
    arc; the fallbacks are the old fixed corner for the states with no reading yet. The 45px
    offset is half the width, so the var addresses the centre of the glow rather than its edge. */
-.wfx-sun{width:90px;height:90px;border-radius:50%;position:absolute;
-  left:calc(var(--wfx-sun-x,88%) - 45px);top:var(--wfx-sun-y,-30px);right:auto;
+.wfx-sun{--wfx-sun-size:62px;width:var(--wfx-sun-size);height:var(--wfx-sun-size);
+  border-radius:50%;position:absolute;
+  left:calc(var(--wfx-sun-x,88%) - var(--wfx-sun-size) / 2);top:var(--wfx-sun-y,-22px);right:auto;
   background:radial-gradient(circle,rgba(255,244,214,.95) 0%,rgba(255,220,140,.55) 45%,transparent 72%);
   animation:wfx-sun-breathe 5s ease-in-out infinite;
   transition:left 1.2s linear,top 1.2s linear}
@@ -462,8 +466,9 @@
 
 /* Moon — dimmer, steadier glow */
 /* Same arc treatment as the sun, across the night from sunset to the next sunrise. */
-.wfx-moon{width:60px;height:60px;border-radius:50%;position:absolute;
-  left:calc(var(--wfx-moon-x,92%) - 30px);top:var(--wfx-moon-y,-14px);right:auto;
+.wfx-moon{--wfx-moon-size:46px;width:var(--wfx-moon-size);height:var(--wfx-moon-size);
+  border-radius:50%;position:absolute;
+  left:calc(var(--wfx-moon-x,92%) - var(--wfx-moon-size) / 2);top:var(--wfx-moon-y,-11px);right:auto;
   background:radial-gradient(circle,rgba(240,244,255,.9) 0%,rgba(200,212,240,.35) 55%,transparent 75%);
   animation:wfx-moon-glow 6s ease-in-out infinite;
   transition:left 1.2s linear,top 1.2s linear}
@@ -940,7 +945,6 @@
   .kitshop-item,.kitpantry-item{padding:9px 12px}
   .kitshop-cb,.kitpantry-cb{width:38px;height:38px}
   .kitshop-cat-head,.kitshop-list-head,.kitpantry-cat-head{grid-column:1 / -1}
-  .kitpantry-summary{position:static}
 
   /* ── Cooking mode ──
      Used at arm's length with messy hands, so nothing here shrinks below what you can read

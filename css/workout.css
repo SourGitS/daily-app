@@ -459,6 +459,32 @@ button.ov-day{cursor:pointer}
 /* Exercise picker sheet */
 .se-picker-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200}
 .se-picker{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:100%;max-width:520px;max-height:72vh;display:flex;flex-direction:column;background:var(--bg);border-radius:20px 20px 0 0;z-index:201;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 16px);box-shadow:0 -8px 40px rgba(0,0,0,.3)}
+/* The action row carried no class at all, so a rule written against .modal-btn-row matched
+   nothing — this is the class it actually needs. (Same inline flex values as before.) */
+.se-picker-actions{display:flex;gap:8px;margin-top:10px}
+/* When the keyboard shortens the sheet, the exercise list is the one child allowed to give up
+   space: min-height:0 lets it shrink below its content (a flex item defaults to min-height:auto
+   and refuses), and everything the user still has to reach keeps its full height. Without this
+   the Reset/Save row was squashed or pushed out of the sheet entirely. */
+#swap-modal .se-picker-head,
+#swap-modal .se-picker-search,#swap-modal .se-picker-actions{flex:0 0 auto}
+#swap-modal .se-picker-list{flex:1 1 auto;min-height:0}
+/* Which exercise is being swapped — useful, but the first thing worth losing when the sheet
+   is squeezed between a landscape keyboard and the top of the screen. Shrinkable, so it gives
+   way before anything overflows past the Save button. */
+.se-picker-sub{font-size:13px;color:var(--muted);margin-bottom:10px}
+#swap-modal .se-picker-sub{flex:0 1 auto;min-height:0;overflow:hidden}
+/* Short landscape with the keyboard up leaves roughly 200px of visible sheet, and the sheet's
+   own chrome alone was taller than that — Save overflowed the bottom edge and sat over the
+   keys. Tighten the chrome here so the fixed rows fit with room left for the list. */
+@media (orientation:landscape) and (max-width:1023px) and (max-height:600px){
+  #swap-modal{padding:10px 14px calc(env(safe-area-inset-bottom,0px) + 10px)}
+  #swap-modal .se-picker-head{font-size:15px;margin-bottom:6px}
+  #swap-modal .se-picker-sub{margin-bottom:6px}
+  #swap-modal .se-picker-search{height:38px;margin-bottom:6px}
+  #swap-modal .se-picker-actions{margin-top:6px}
+  #swap-modal .modal-btn{padding:9px}
+}
 /* The swap sheet lives inside #app's fixed stacking context while the phone nav is its sibling.
    On iOS the nav can therefore paint over the sheet despite the sheet's larger child z-index.
    Lift this one action sheet by the measured nav height so Save always remains tappable. */

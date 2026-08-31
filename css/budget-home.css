@@ -1053,8 +1053,19 @@
      block exists to fix. An inline style outranks any selector, so this is the only way to
      reach it without editing the markup's own colour choice for every other layout. */
   #view-budget .sub-toggle{position:sticky;top:0;z-index:7;height:var(--bud-switch-h);
-    box-sizing:border-box;margin-bottom:6px;padding:2px;background:var(--bg) !important;
+    box-sizing:border-box;margin-bottom:6px;padding:2px;
     box-shadow:0 6px 12px -8px rgba(0,0,0,.5)}
+  /* A pinned control has to be opaque across the FULL scrollport, and the panel's own
+     10px/14px padding is NOT part of either control's box — so cards scrolled visibly through
+     the strip above and beside them (measured: 150 hits of cards, rows and inputs in a 10px
+     band). A ::before backdrop covers that padding without touching either control's own box,
+     which is why the toggle keeps its pill instead of being flooded with --bg. Negative
+     z-index stays inside the sticky element's own stacking context, so it paints over the
+     cards but under the control. */
+  #view-budget .sub-toggle::before,#view-budget .bud-compact-nav::before{
+    content:'';position:absolute;z-index:-1;background:var(--bg);left:-14px;right:-14px}
+  #view-budget .sub-toggle::before{top:-10px;bottom:-6px}
+  #view-budget .bud-compact-nav::before{top:0;bottom:-8px}
   #view-budget .sub-toggle > button{padding:4px 8px;font-size:12.5px}
   #view-budget .bud-compact-nav{display:flex;position:sticky;top:var(--bud-switch-h);z-index:7}
   #budget-hero-card{padding:12px 14px !important}

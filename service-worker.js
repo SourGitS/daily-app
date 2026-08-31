@@ -5,8 +5,13 @@
 // Replace/Keep choice, show exact money in the variable totals, add a real Weather settings
 // section and stop sample/stale weather driving the app colour, rebuild the expense modal
 // around the visual viewport, and give the app shell one central viewport lifecycle so the
-// half-height landscape screen after a keyboard + rotation cannot come back.
-const CACHE_NAME = 'daily-v247';
+// half-height landscape screen after a keyboard + rotation cannot come back. v248 lifts the
+// exercise-swap sheet above the iOS keyboard so its Reset/Save row stays reachable, stops the
+// Pantry stock-indicator badges sticking to the top of the list while it scrolls, re-pages the
+// swipe deck after a rotation reports the old orientation's width (the "stuck halfway"
+// screen), makes the pinned Budget controls opaque across the panel's own padding, and shrinks
+// the weather card's sun and moon so the glow reads as sky rather than as the card's subject.
+const CACHE_NAME = 'daily-v248';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
