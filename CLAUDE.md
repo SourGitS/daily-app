@@ -155,23 +155,76 @@ the accent or the theme must go through those, not set `--accent` directly.
   namespaced by pantry ID so checked recipe rows do not leak between locations. Pantry filters,
   category collapse and stocked-section disclosure remain device-local in `daily_pantry_ui`.
 
-- **Budget's palette is neutral-first, and colour means a judgement.** `BUD_CHART_COLORS` was
-  six unrelated hues (emerald income, orange variable, grey fixed, blue saved, a second emerald
-  for the rate, a red spending) used at equal strength on the charts AND on the summary figures
-  beside them — so all the colour the interface had was spent saying which category a number
-  belonged to, and none was left to say whether anything was going well. Now:
-  `budPalette()` (js/app.js) maps **saved/rate → the live accent**, **income → a strong neutral**
-  (the reference bar), **fixed/committed → a quiet neutral**, **variable → ONE muted warm tone**
-  (`BUD_WARM`). `BUD_CHART_COLORS` survives as a `Proxy` over `budPalette()` so ~25 call sites
-  keep working and every chart picks up an accent or theme change on its next redraw.
-  Chart marks use `budAccentHex()`, which returns **`accentTextHex(currentAccentHex())`, not the
-  raw accent** — the "fills get `--accent`" rule assumes white text will sit on the fill, and a
+- **Budget's palette is semantic about DIRECTION, and yellow is reserved for warnings.**
+  Two superseded designs are worth knowing so neither is re-proposed. First it was six
+  unrelated hues (emerald income, orange variable, grey fixed, blue saved, a second emerald for
+  the rate, a red spending) used at equal strength — all the colour the interface had was spent
+  saying which CATEGORY a number belonged to. That was replaced by a neutral-first mapping
+  (grey income, one muted terracotta `BUD_WARM` for all spending), which fixed the rainbow but
+  spent no colour on the one distinction that actually matters and read washed out. **Neither
+  is the current design; do not restore either, and do not drift back toward sage, olive,
+  mustard, terracotta or rust for a data series.**
+  Current mapping, in `budPalette()` / `BUD_MONEY` (js/app.js):
+  - **income / earned → a rich green** (`#22C55E` dark, `#15803D` light)
+  - **expenses / spending / variable → a saturated red** (`#EF4444` dark, `#DC2626` light)
+  - **committed / fixed → the SAME red held back** — `budExpenseRgba(.40/.32)` fill plus a
+    solid `fixedEdge` outline, because the two halves of "out" add up to one total and must
+    read as one family split in two, not as two different kinds of thing
+  - **saved / savings rate → the live accent**
+  - **a reference series that is neither in nor out** (the account-balance line) → `neutral`,
+    a colourless tone, so it cannot be read as a direction
+  - **amber → warning states only.** It is not a graph indicator.
+  **Income and expenses must never follow the accent.** The accent is per-device and can be a
+  weather scene; the same money would then be a different colour on two devices.
+  `BUD_CHART_COLORS` survives as a `Proxy` over `budPalette()` so ~25 call sites keep working
+  and every chart picks up an accent or theme change on its next redraw. Accent-following chart
+  marks use `budAccentHex()`, which returns **`accentTextHex(currentAccentHex())`, not the raw
+  accent** — the "fills get `--accent`" rule assumes white text will sit on the fill, and a
   chart bar is read against the card, so a night-weather accent would draw an invisible series.
-  The savings-rate line shares the accent with the Saved bars deliberately and is separated by
-  being dashed with `rectRot` markers; `budChartLegend()` takes `{dash:true}` so the legend says
-  so by shape too. Ordinary totals — Month, Yearly, and the week view's Total income / saved /
-  fixed / variable — are `var(--text)`. The same mapping is used by the Stats → Finance charts
-  and the category breakdown (which was its own ten-colour rainbow).
+  Colour is never the only cue: `budChartLegend()` takes `{dash:true}` (dashed line),
+  `{line:true}` (solid line) and `{ring:hex}` (outlined swatch, for the held-back committed
+  fill), the savings-rate line is dashed with `rectRot` markers, and expenses are BARS while
+  income is a LINE on the Stats money-flow chart. Ordinary currency totals stay `var(--text)`.
+  The same mapping is used by the Stats → Finance charts and the category breakdown.
+  **Chart.js gotcha, learned here:** `scales.y.stacked:true` stacks LINE datasets too, not just
+  bars — the money-flow chart drew a $1,023 income week at $1,856 until each line was given its
+  own single-member `stack` group.
+- **Budget's Month and Year summaries are hero metric cards (`.hm-card`), not flat tiles.**
+  `budHeroMetric()` + `BUD_HERO_SCENES` (js/app.js) and the `.hero-metric-grid` block in
+  `css/budget-home.css`. One treatment, four variants carrying the direction: `hm-income`
+  (green), `hm-expense` (red), `hm-accent` (the live accent) and `hm-neutral` (a cool slate,
+  for a figure that is neither in nor out — Recurring per year — kept off plain graphite
+  because the DEFAULT accent is a neutral grey and the two collided).
+  The gradient stops are **solid hexes written inline by JS, not `rgba(var(--accent-rgb),…)`**.
+  An alpha ramp blends into `--bg`, so its pale end cannot carry a 10px white label in light
+  mode — the reason `.ov-hero` and `.budget-snapshot-card` each needed a `[data-theme="light"]`
+  floor. `budHeroStops()` keeps hue and saturation and walks the lightness down until white
+  clears 4.2:1, so a pale custom accent (Appearance offers a free colour picker) produces a
+  deep olive rather than an unreadable card. Because the gradient is inline, `applyDayColour()`
+  re-renders the Month/Year view and the Finance hero on a real accent change — a
+  CSS-variable hero restyles itself, these cannot.
+  `.hm-card` is deliberately absent from the press-lift list in `budget-home.css` and from the
+  `cursor:pointer` list in `base.css`: these cards do not open anything, and the old
+  `.sum-card` inherited both and reared up under a finger that had nowhere to go. `.tstat`
+  chips on a hero are re-tinted by `.hero-metric-grid .hm-card .tstat…` — four selectors deep
+  on purpose, because `kitchen-extras.css` loads last and its `[data-theme="dark"] .tstat.pos`
+  would otherwise outrank a three-deep rule.
+  **`.summary-grid` / `.sum-card` are GONE** — they were used by nothing else.
+- **Stats → Finance has ONE range for its budget-derived cards.** `bsFinRange`
+  (`12w` | `year` | `all`, default `year`) drives the Financial picture hero, the Money flow
+  chart and the category breakdown together; `bsFinRangeKeys()` returns completed weeks only
+  and `bsFinSummary()` is the single reduction all three read, so figures sitting beside each
+  other cannot describe different spans. Spending comes from `statsWeekParts()` everywhere, so
+  fixed + variable always reconciles to the headline expenses figure, and **saved is never
+  folded into expenses**. Net worth and Account growth keep their OWN range controls on
+  purpose: their timeline is account records, dated independently of when a budget week was
+  saved. `statsWeekIncomeKnown()` exists because `weekIncome()` returns 0 both for "recorded
+  nothing" and "recorded zero" — the chart plots `null` for the former so it draws a gap, while
+  the TOTALS still sum `weekIncome()` (which is the canonical figure either way).
+  The desktop columns are budget-derived left, account-derived right — that pairing is also
+  what makes the two columns come out within ~15px of each other, so neither ends in a strip of
+  dead background. They stack independently; a short card is never stretched to match a tall
+  neighbour.
 - **Judgements go in `.tstat` chips, not in the colour of the number.** Sage / ochre / coral,
   each carrying a tint, a hairline border, a monochrome stroke icon AND a word, built by
   `tstat(kind,label,icon,small)` with icons from `TSTAT_ICONS` (css/kitchen-extras.css). The

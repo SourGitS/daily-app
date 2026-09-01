@@ -95,7 +95,11 @@
 // v265 also keeps custom pantry-item deletion behind that same deliberate edit state.
 // v266 makes Recent Sessions collapse on complete rows with its disclosure inside the card.
 // v267 keeps recipe ingredient names visible and editable on phone-sized screens.
-const CACHE_NAME = 'daily-v267';
+// v268 rebuilds Stats > Finance around one shared range, gives Budget's Month and Year
+// summaries hero metric cards (including a new Spent in [year]), and moves every budget and
+// finance chart onto a semantic money palette: green in, red out, accent saved, amber for
+// warnings only.
+const CACHE_NAME = 'daily-v268';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

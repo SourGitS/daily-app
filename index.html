@@ -353,7 +353,7 @@
           <div class="week-label"><div class="week-label-main" id="month-label-main">&#8212;</div><div class="week-label-sub" id="month-label-sub">&#8212;</div></div>
           <button class="week-nav-btn" onclick="changeMonth(1)" id="month-next-btn">&#8250;</button>
         </div>
-        <div class="summary-grid" id="month-summary-grid"></div>
+        <div class="hero-metric-grid" id="month-summary-grid"></div>
         <div class="status-bar-wrap"><div class="status-bar-fill" id="month-bar" style="width:0%"></div></div>
         <div class="status-text"><span id="month-bar-label-l"></span><span id="month-bar-label-r"></span></div>
         <div class="card"><div class="sec-label" style="margin-bottom:10px">Weekly breakdown</div><div id="month-weeks-list"></div></div>
@@ -376,7 +376,7 @@
           <div class="week-label"><div class="week-label-main" id="year-label-main">&#8212;</div><div class="week-label-sub" id="year-label-sub">&#8212;</div></div>
           <button class="week-nav-btn" onclick="changeBudgetYear(1)" id="year-next-btn">&#8250;</button>
         </div>
-        <div class="summary-grid" id="year-summary-grid" style="grid-template-columns:repeat(2,1fr)"></div>
+        <div class="hero-metric-grid hm-two" id="year-summary-grid"></div>
         <div class="card">
           <div class="sec-label" style="margin-bottom:10px">Month by month</div>
           <div id="year-months-list"></div>
@@ -485,18 +485,23 @@
         <div id="nutrition-content"></div>
       </div>
       <div id="sub-finance" class="hidden">
+        <!-- The range control, the financial picture and the money-flow chart run full width
+             above the columns: one shared range governs all three budget-derived cards, so it
+             must not sit inside any single one of them. -->
+        <div id="bs-finrange-wrap"></div>
+        <div id="bs-finpic-wrap"></div>
+        <div id="bs-trend-wrap-card"></div>
         <!-- These stable cards are moved between one mobile stack and two independently
              stacking desktop columns by statsApplyFinanceLayout(). No card is duplicated. -->
         <div id="bs-finance-main" class="stats-fin-main">
           <div id="bs-finance-left" class="stats-fin-col">
             <div id="bs-week-wrap"></div>
+            <div id="bs-catbreak-wrap"></div>
             <div id="bs-balance-wrap"></div>
             <div id="bs-acctgrowth-wrap"></div>
-            <div id="bs-trend-wrap-card"></div>
           </div>
           <div id="bs-finance-right" class="stats-fin-col"></div>
         </div>
-        <div id="bs-catbreak-wrap"></div>
       </div>
     </section>
 

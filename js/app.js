@@ -1407,6 +1407,7 @@ function currentAccentHex(){
     default:        return restColor();
   }
 }
+let _lastHeroAccent=null;
 function applyDayColour(){
   if(typeof applyLogoDayColour==='function') applyLogoDayColour(); // keep the wordmark in sync
   const mode = accentMode();
@@ -1416,7 +1417,23 @@ function applyDayColour(){
   applyAccent(hex);
   if(hero){ hero.style.background=''; hero.style.boxShadow=''; }
   if(rtBar) rtBar.style.boxShadow = mode!=='static' ? ('0 8px 24px rgba('+hexToRgb(hex)+',.30)') : '';
+  // The Budget hero metric cards and the Finance picture hero bake their gradient into an
+  // INLINE style, because the accent is an arbitrary runtime hex and their stops are derived
+  // and contrast-checked in JS (budHeroStops) rather than read from a CSS variable. A
+  // var(--accent-rgb) hero restyles itself; these need the render. Only on a real change —
+  // the weather accent re-applies on every refresh, and rebuilding a Chart.js canvas for an
+  // identical colour is pure churn.
+  if(hex!==_lastHeroAccent){
+    _lastHeroAccent=hex;
+    try{
+      const vis=id=>{ const el=document.getElementById(id); return el&&!el.classList.contains('hidden'); };
+      if(typeof budgetView!=='undefined'&&budgetView==='month'&&vis('budget-month-view')) renderMonth();
+      else if(typeof budgetView!=='undefined'&&budgetView==='year'&&vis('budget-year-view')) renderYear();
+      if(typeof statsSubTab!=='undefined'&&statsSubTab==='finance'&&vis('sub-finance')) renderBSFinPicture();
+    }catch(e){}
+  }
 }
+
 // Kept for the old checkbox handler path; routes into the mode model.
 function onDynamicColoursToggle(enabled){ setAccentMode(enabled?'day':'static'); }
 const ACCENT_MODE_LABELS={
@@ -9468,7 +9485,6 @@ let yearStackChart     = null;   // Yearly view: stacked bars + savings-rate lin
 let yearCCChart        = null;   // Yearly view: monthly CC / variable spending line
 let budTrendRange      = 'monthly';
 let bsChart            = null;
-let bsTrendRange       = 'monthly';
 
 // ── Budget storage ────────────────────────────────────────────────
 function budLoadData(){ return lsLoad('daily_budget', {}); }
@@ -10209,48 +10225,61 @@ function weekVarTotal(d,mondayStr){
 }
 // Sum of all fixed-category amounts for a week (same pattern as weekSpending's fixed half).
 function weekFixed(d){ return weekFixedTotal(d); }
-// ── Budget palette ────────────────────────────────────────────────────────────
-// Was six unrelated hues — emerald income, orange variable, grey fixed, blue saved, a second
-// emerald for the rate and a red spending — used at equal strength on every chart AND on the
-// summary figures beside them. That spent all the colour the interface had on saying which
-// category a number belonged to, leaving none to say whether anything was going well.
-// Neutral-first instead:
-//   · saved / rate  → the live accent, because "what stuck" is the series worth following
-//   · income        → a strong neutral: the reference bar everything else is measured against
-//   · fixed         → a quiet neutral: committed money is not a choice, so it recedes
-//   · variable      → ONE muted warm tone, the only non-neutral hue on the chart
-// The savings-rate LINE shares the accent with the saved BAR on purpose and is separated by
-// line style (dashed) and markers rather than by inventing a fifth hue.
-// Read at render time, not frozen at load: currentAccentHex() changes with the training day,
-// the weather scene and the Appearance picker, and a canvas cannot inherit a CSS variable.
-const BUD_WARM='#B5814A';          // muted terracotta — variable/discretionary spending
-const BUD_WARM_DARK='#C08E56';
-// Chart marks use --accent-text, not --accent. The CSS rule of thumb ("fills get --accent")
-// assumes white text will sit on the fill; a chart bar is a graphic read AGAINST the card, and
-// --accent is only guaranteed to carry white — the night weather scenes measure 1.7:1 against
-// the dark background, which would draw the Saved series as a bar you cannot see. The
-// corrected variant keeps the hue and clears 5:1, which is what a mark on a card needs.
+// ── Money palette ───────────────────────────────────────────
+// Money direction is the one thing on a budget chart worth encoding in colour, so it is:
+//   · income / earned      → a rich green, fixed per theme, NEVER the runtime accent
+//   · expenses / spending  → a saturated red, fixed per theme, NEVER the runtime accent
+//   · committed / fixed    → the SAME red, quieter (translucent fill + a solid outline), so
+//                             the two halves of "out" read as one family split in two
+//   · saved / savings rate → the live accent, because "what stuck" is the user's own series
+//   · amber                → warnings only. It is not a data series.
+// This replaces a neutral-first mapping (grey income, one muted terracotta for all spending)
+// that spent no colour on direction and read as washed out. Income and expenses must NOT
+// change when the accent changes — an accent-following income series would mean the same
+// money was a different colour on two devices.
+const BUD_MONEY={
+  income:  {dark:'#22C55E', light:'#15803D'},
+  expense: {dark:'#EF4444', light:'#DC2626'}
+};
+function budIsDark(){ return (typeof S==='object') ? S.theme!=='light' : true; }
+function budIncomeHex(){ return budIsDark()?BUD_MONEY.income.dark:BUD_MONEY.income.light; }
+function budExpenseHex(){ return budIsDark()?BUD_MONEY.expense.dark:BUD_MONEY.expense.light; }
+function budIncomeRgba(a){ return 'rgba('+hexToRgb(budIncomeHex())+','+a+')'; }
+// A tint of the outgoing red — committed-spending fills, area fills under a spending line and
+// the per-category bars, which are all one family separated by opacity rather than by a
+// rainbow. Replaces budWarmRgba(); same role, semantically correct hue.
+function budExpenseRgba(a){ return 'rgba('+hexToRgb(budExpenseHex())+','+a+')'; }
+// Chart marks that follow the ACCENT use --accent-text, not --accent. The CSS rule of thumb
+// ("fills get --accent") assumes white text will sit on the fill; a chart bar is a graphic
+// read AGAINST the card, and --accent is only guaranteed to carry white — the night weather
+// scenes measure 1.7:1 against the dark background, which would draw the Saved series as a
+// bar you cannot see. The corrected variant keeps the hue and clears 5:1.
 function budAccentHex(){
   try{
     const raw=(typeof currentAccentHex==='function' && currentAccentHex()) || '#5C5C5C';
-    const dark=(typeof S==='object')?S.theme!=='light':true;
+    const dark=budIsDark();
     return (typeof accentTextHex==='function') ? accentTextHex(raw, dark) : raw;
   }catch(e){ return '#5C5C5C'; }
 }
 function budPalette(){
-  const dark = (typeof S==='object') ? S.theme!=='light' : true;
+  const dark=budIsDark();
   const accent=budAccentHex();
   return {
     saved:    accent,
     rate:     accent,
-    // Income is the reference bar in its own stack; Committed is the quietest thing on the
-    // chart. Both neutral, and far enough apart in value that they never trade places — the
-    // gap between them is also what leaves room for Saved to sit between them legibly when
-    // the accent is the app's default neutral grey.
-    income:   dark?'rgba(255,255,255,.34)':'rgba(28,28,30,.30)',
-    fixed:    dark?'rgba(255,255,255,.13)':'rgba(28,28,30,.17)',
-    variable: dark?BUD_WARM_DARK:BUD_WARM,
-    spending: dark?BUD_WARM_DARK:BUD_WARM
+    income:   budIncomeHex(),
+    // `variable` and `spending` are the names ~10 existing call sites already use; `expense`
+    // is the semantically correct one to reach for in new code. All three are one colour.
+    expense:  budExpenseHex(),
+    variable: budExpenseHex(),
+    spending: budExpenseHex(),
+    // Committed money is not a choice, so it recedes — but it is still money going out, so it
+    // stays in the red family rather than becoming a neutral of its own.
+    fixed:    budExpenseRgba(dark?0.40:0.32),
+    fixedEdge:budExpenseHex(),
+    // A reference series that is NOT income, spending or saved (the account-balance line on
+    // the Budget trend chart). Deliberately colourless so it cannot be read as a direction.
+    neutral:  dark?'rgba(255,255,255,.34)':'rgba(28,28,30,.34)'
   };
 }
 // Kept as a name because ~25 call sites read it, but it is now a live getter over budPalette()
@@ -10258,11 +10287,59 @@ function budPalette(){
 const BUD_CHART_COLORS=new Proxy({},{get:(t,k)=>budPalette()[k]});
 // rgba() form of the accent, for chart fills that sit under a line.
 function budAccentRgba(a){ return 'rgba('+hexToRgb(budAccentHex())+','+a+')'; }
-// A tint of the warm tone — variable-spending fills and the per-category bars, which are all
-// one family separated by opacity rather than by a rainbow.
-function budWarmRgba(a){
-  const dark=(typeof S==='object')?S.theme!=='light':true;
-  return 'rgba('+hexToRgb(dark?BUD_WARM_DARK:BUD_WARM)+','+a+')';
+// ── Hero gradient stops ────────────────────────────────────────
+// The Budget hero metric cards carry WHITE text, and the accent is an arbitrary runtime hex —
+// Appearance offers a free colour picker, so a pale yellow is reachable and would render the
+// labels invisible. The existing heroes get away with rgba(var(--accent-rgb),…) because their
+// content is large and their palette was hand-checked; a card whose smallest label is 10px
+// cannot rely on that. So the stops are SOLID and derived: hue and saturation are kept, the
+// lightness is walked down until white clears 4.2:1, and the second stop is a fixed step
+// darker. Achromatic accents (the default #5C5C5C) keep their zero saturation rather than
+// being invented into a colour.
+function budHeroStops(hex){
+  const fallback={from:'#4A4A52',to:'#26262C'};
+  if(!/^#[0-9a-fA-F]{6}$/.test(hex||'')) return fallback;
+  const [hu,s,l]=_hexToHsl(hex);
+  const sat = s<0.08 ? s : Math.min(0.90, Math.max(0.40, s));
+  let l1=Math.min(0.55, Math.max(0.28, l));
+  let from=_hslToHex(hu,sat,l1);
+  for(let i=0;i<40 && l1>0.12 && _contrastRatio(from,'#ffffff')<4.2; i++){
+    l1-=0.02; from=_hslToHex(hu,sat,l1);
+  }
+  return {from, to:_hslToHex(hu,sat,Math.max(0.08,l1-0.16))};
+}
+
+// ── Budget hero metric cards ────────────────────────────────────
+// ONE treatment for the headline metrics under the Month and Year navigators; the VARIANT
+// carries the meaning, not a different one-off illustration per tile:
+//   income  → the money green      expense → the money red
+//   accent  → the live accent      neutral → slate, for a figure that is neither in nor out
+// Solid stops, not rgba(var(--accent-rgb),…): see budHeroStops() above and the .hm-card block
+// in css/budget-home.css for why an alpha ramp cannot carry 10px white labels in light mode.
+const BUD_HERO_SCENES={
+  income: {from:'#1E9553', mid:'#116E3A', to:'#0A4C27'},
+  expense:{from:'#E03131', mid:'#B91C1C', to:'#8E1616'},
+  // Cool slate rather than plain graphite: the app's DEFAULT accent is a neutral grey, and a
+  // grey card beside it read as a fifth accent card rather than as a different kind of figure.
+  neutral:{from:'#3E4557', mid:'#2B303D', to:'#1E222C'}
+};
+function budHeroStyle(variant){
+  if(variant==='accent'){
+    const st=budHeroStops((typeof currentAccentHex==='function' && currentAccentHex())||'#5C5C5C');
+    return 'background:linear-gradient(152deg,'+st.from+' 0%,'+st.to+' 100%)';
+  }
+  const sc=BUD_HERO_SCENES[variant]||BUD_HERO_SCENES.neutral;
+  return 'background:linear-gradient(152deg,'+sc.from+' 0%,'+sc.mid+' 52%,'+sc.to+' 100%)';
+}
+// m = {variant, icon, label, val, unit, sub, chip}. val/sub/chip are raw HTML (they carry
+// already-escaped figures and tstat markup); label is plain text.
+function budHeroMetric(m){
+  return '<div class="hm-card hm-'+(m.variant||'neutral')+'" style="'+budHeroStyle(m.variant)+'">'+
+    '<div class="hm-label">'+(m.icon?cardIcon(m.icon):'')+'<span>'+escText(m.label)+'</span></div>'+
+    '<div class="hm-val">'+m.val+(m.unit?'<span class="hm-unit">'+escText(m.unit)+'</span>':'')+'</div>'+
+    (m.sub?'<div class="hm-sub">'+m.sub+'</div>':'')+
+    (m.chip?'<div class="hm-chip">'+m.chip+'</div>':'')+
+  '</div>';
 }
 
 // ── Tonal status chip ─────────────────────────────────────────────────────────
@@ -10291,7 +10368,14 @@ function budChartLegend(items){
   // it.dash marks a series drawn as a dashed LINE rather than a filled bar, so the legend
   // distinguishes them by shape too — the savings rate shares the accent with Saved, and a
   // legend that separated them by colour alone would be separating them by nothing.
-  return items.map(it=>'<span class="chart-legend-pill"><span class="chart-legend-dot'+(it.dash?' dash':'')+'" style="'+(it.dash?'border-color:':'background:')+it.c+'"></span>'+it.l+'</span>').join('');
+  // it.ring does the same job for the committed-spending bars, which are the SAME red as
+  // variable spending at a third of the strength plus an outline: the legend swatch is
+  // outlined too, so the pairing survives greyscale.
+  return items.map(it=>{
+    if(it.dash||it.line) return '<span class="chart-legend-pill"><span class="chart-legend-dot '+(it.dash?'dash':'line')+'" style="border-color:'+it.c+'"></span>'+it.l+'</span>';
+    const ring=it.ring?';border:1.5px solid '+it.ring:'';
+    return '<span class="chart-legend-pill"><span class="chart-legend-dot" style="background:'+it.c+ring+'"></span>'+it.l+'</span>';
+  }).join('');
 }
 // Grid + tick colours that adapt to the active theme (same values as renderBudTrend).
 function budChartGridColors(){
@@ -12043,21 +12127,27 @@ function renderMonth(){
     // the savings rate beside it. These three now describe the same month — what came in,
     // what went out (fixed + variable), and what proportion stuck.
     const savRate=totalIncome>0?(totalSaved/totalIncome*100).toFixed(0)+'%':'—';
-    // Neutral figures. These used to be painted in their chart-series colours — income green,
-    // expenses orange, rate green — which asserted that earning is good and spending is bad
-    // before anything had actually been compared. The only judgement available here is the
-    // savings rate against a target, and that now travels as a chip beside the number rather
-    // than as the number's own colour.
+    // The verdict travels as a chip, not as the figure's colour — a red "Expenses" number
+    // asserts that spending is bad before anything has been compared. The CARD is coloured by
+    // direction (in / out / what stuck), which is a fact about the money rather than a
+    // judgement of it; the one genuine comparison here, the rate against a 20% target, is the
+    // only thing carrying an amber or a tick.
     const rateChip = (weekCount>0 && totalIncome>0)
       ? (totalSaved/totalIncome>=0.2 ? tstat('pos','On track','check',true)
         : totalSaved>0 ? tstat('warn','Below 20%','flat',true)
         : tstat('neg','Nothing saved','down',true))
       : '';
+    sg.className='hero-metric-grid';
     sg.innerHTML=[
-      {val:savRate,lbl:'Savings rate',chip:rateChip},
-      {val:weekCount>0?'$'+Math.round(totalIncome).toLocaleString():'—',lbl:'Income'},
-      {val:weekCount>0?'$'+Math.round(totalSpending).toLocaleString():'—',lbl:'Expenses'},
-    ].map(s=>'<div class="sum-card"><div class="sum-card-val">'+s.val+'</div><div class="sum-card-lbl">'+s.lbl+'</div>'+(s.chip?'<div class="sum-card-chip">'+s.chip+'</div>':'')+'</div>').join('');
+      {variant:'accent', icon:'target', label:'Savings rate', val:savRate,
+       sub:weekCount>0?'$'+Math.round(totalSaved).toLocaleString()+' saved this month':'No weeks saved yet', chip:rateChip},
+      {variant:'income', icon:'wallet', label:'Income',
+       val:weekCount>0?'$'+Math.round(totalIncome).toLocaleString():'—',
+       sub:weekCount>0?'Across '+weekCount+' week'+(weekCount>1?'s':''):'Nothing recorded'},
+      {variant:'expense', icon:'receipt', label:'Expenses',
+       val:weekCount>0?'$'+Math.round(totalSpending).toLocaleString():'—',
+       sub:weekCount>0?'Committed + variable':'Nothing recorded'},
+    ].map(budHeroMetric).join('');
   }
 
   const barEl=document.getElementById('month-bar');
@@ -12079,9 +12169,10 @@ function renderMonth(){
   if(catEl){
     // varCatAmount, not a raw var_ read: a category backed by transactions has its total in
     // the ledger, and reading the manual field directly reported it as zero.
-    // Every one of these is variable spending, so they are ONE family (the warm tone) stepped
-    // down in opacity by rank — not eight unrelated hues. The bar LENGTH already says which is
-    // biggest; the old rainbow was re-encoding the category name in colour and nothing else.
+    // Every one of these is variable spending, so they are ONE family (the outgoing red)
+    // stepped down in opacity by rank — not eight unrelated hues. The bar LENGTH already says
+    // which is biggest; the old rainbow was re-encoding the category name in colour and
+    // nothing else.
     const catTotals=activeCats(loadVarCats()).map(c=>({
       label:catLabel(c),
       val:keys.reduce((s,k)=>s+varCatAmount(budgetData[k],k,c.id),0)
@@ -12089,7 +12180,7 @@ function renderMonth(){
     const catRank=catTotals.slice().sort((a,b)=>b.val-a.val);
     catTotals.forEach(c=>{
       const i=catRank.indexOf(c);
-      c.color=budWarmRgba(Math.max(0.30, 0.92 - i*0.13).toFixed(2));
+      c.color=budExpenseRgba(Math.max(0.32, 0.94 - i*0.12).toFixed(2));
     });
     const maxVal=Math.max(1,...catTotals.map(c=>c.val));
     catEl.innerHTML=catTotals.length?catTotals.map(c=>{
@@ -12119,8 +12210,8 @@ function renderMonth(){
       // and the comparison that matters (income vs everything it has to cover) is left-to-right.
       const legend=budChartLegend([
         {c:BUD_CHART_COLORS.income,l:'Income'},
-        {c:BUD_CHART_COLORS.variable,l:'Spent'},
-        {c:BUD_CHART_COLORS.fixed,l:'Committed'},
+        {c:BUD_CHART_COLORS.variable,l:'Spent (variable)'},
+        {c:BUD_CHART_COLORS.fixed,l:'Committed',ring:BUD_CHART_COLORS.fixedEdge},
         {c:BUD_CHART_COLORS.saved,l:'Saved'},
       ]);
       wl.innerHTML='<div class="chart-legend">'+legend+'</div><div id="month-weeks-chart-wrap" style="height:220px"><canvas id="month-weeks-chart"></canvas></div>';
@@ -12132,8 +12223,10 @@ function renderMonth(){
           labels,
           datasets:[
             {label:'Income',data:data.map(weekIncome),backgroundColor:BUD_CHART_COLORS.income,borderRadius:3,stack:'in',order:0},
-            {label:'Spent',data:keys.map((k,i)=>weekVarTotal(data[i],k)),backgroundColor:BUD_CHART_COLORS.variable,borderRadius:3,stack:'out',order:1},
-            {label:'Committed',data:data.map(weekFixed),backgroundColor:BUD_CHART_COLORS.fixed,borderRadius:3,stack:'out',order:2},
+            {label:'Spent (variable)',data:keys.map((k,i)=>weekVarTotal(data[i],k)),backgroundColor:BUD_CHART_COLORS.variable,borderRadius:3,stack:'out',order:1},
+            // Committed is the same red at a third of the strength, outlined — so the two
+            // halves of "out" separate by fill AND edge, not by hue alone.
+            {label:'Committed',data:data.map(weekFixed),backgroundColor:BUD_CHART_COLORS.fixed,borderColor:BUD_CHART_COLORS.fixedEdge,borderWidth:1,borderRadius:3,stack:'out',order:2},
             {label:'Saved',data:data.map(weekSavedAmt),backgroundColor:BUD_CHART_COLORS.saved,borderRadius:3,stack:'out',order:3},
           ]
         },
@@ -12222,7 +12315,11 @@ function renderYear(){
   const points=months.map(m=>({label:m.label, income:m.income, saved:m.saved}));
   const fixedArr=months.map(m=>m.fixed);
   const varArr=months.map(m=>m.variable);
-  const rateArr=months.map(m=>m.income>0?(m.saved/m.income*100):0);
+  // null, not 0. A month with nothing recorded has no savings rate and no spending figure —
+  // and the current month is ALWAYS present here and usually still empty, so a zero drew a
+  // cliff at the right-hand end of the year on both line charts every single time.
+  const rateArr=months.map(m=>(m.weeks>0&&m.income>0)?(m.saved/m.income*100):null);
+  const varLineArr=months.map(m=>m.weeks>0?m.variable:null);
 
   // ── Year label + nav ──
   const lm=document.getElementById('year-label-main');
@@ -12239,29 +12336,50 @@ function renderYear(){
   if(sg){
     const totIncome=months.reduce((s,m)=>s+m.income,0);
     const totSaved=months.reduce((s,m)=>s+m.saved,0);
+    // Exactly the sum of the Out column in the month-by-month table below — same arrays, same
+    // definition (committed + variable). Saved is NOT spent, so it is never folded in here.
+    // budYearMonths() stops at the last lived month, so a future month cannot be projected
+    // from today's defaults into this figure.
+    const totSpent=months.reduce((s,m)=>s+m.fixed+m.variable,0);
     const avgRate=totIncome>0?(totSaved/totIncome*100):0;
     // Best month by what was actually put away, which is the number worth chasing.
     const best=withData.slice().sort((a,b)=>b.saved-a.saved)[0];
-    // Neutral, for the same reason as the Month tiles: none of these is a verdict. The one
-    // genuine comparison on this screen — the year's average rate against a 20% target —
-    // is carried by a chip, not by recolouring the percentage itself.
+    // The one genuine comparison on this screen — the year's average rate against a 20%
+    // target — is carried by a chip, not by recolouring the percentage itself. The CARD's
+    // colour states direction (earned / spent / saved), which is a fact, not a verdict.
     const rateChip = withData.length
       ? (avgRate>=20 ? tstat('pos','On track','check',true)
         : avgRate>=10 ? tstat('warn','Below 20%','flat',true)
         : tstat('neg','Well below 20%','down',true))
       : '';
+    const monthsSub=withData.length?'Across '+withData.length+' recorded month'+(withData.length===1?'':'s'):'Nothing recorded yet';
+    const recurring=Math.round(loadFixCats().filter(c=>catIsRecurring(c)&&catIsCharging(c))
+      .reduce((s,c)=>s+((parseFloat(catAmount(c))||0)*({weekly:52,monthly:12,yearly:1}[catCycle(c)]||0)),0));
+    sg.className='hero-metric-grid hm-two';
     sg.innerHTML=[
-      {val:'$'+Math.round(totIncome).toLocaleString(),lbl:'Earned in '+year},
-      {val:'$'+Math.round(totSaved).toLocaleString(),lbl:'Saved in '+year},
-      {val:avgRate.toFixed(0)+'%',lbl:'Average savings rate',chip:rateChip},
-      {val:best?best.label:'—',lbl:best?'Best month · $'+Math.round(best.saved).toLocaleString():'Best month'},
+      {variant:'income', icon:'wallet', label:'Earned in '+year,
+       val:'$'+Math.round(totIncome).toLocaleString(), sub:monthsSub},
+      {variant:'expense', icon:'receipt', label:'Spent in '+year,
+       val:'$'+Math.round(totSpent).toLocaleString(),
+       sub:withData.length?'Committed + variable · savings excluded':'Nothing recorded yet'},
+      {variant:'accent', icon:'bank', label:'Saved in '+year,
+       val:'$'+Math.round(totSaved).toLocaleString(),
+       sub:withData.length?'Put away, not spent':'Nothing recorded yet'},
+      {variant:'accent', icon:'target', label:'Average savings rate',
+       val:avgRate.toFixed(0)+'%',
+       sub:withData.length?'Of $'+Math.round(totIncome).toLocaleString()+' earned':'No income recorded', chip:rateChip},
+      {variant:'accent', icon:'trophy', label:'Best month',
+       val:best?best.label:'—',
+       sub:best?'$'+Math.round(best.saved).toLocaleString()+' saved':'No month recorded yet'},
       // Annual cost of every recurring charge still running. Individually a subscription reads
       // as a few dollars a week and never looks worth cancelling; the yearly figure is the one
       // that makes the case either way, and it is the number nobody ever works out by hand.
-      {val:'$'+Math.round(loadFixCats().filter(c=>catIsRecurring(c)&&catIsCharging(c))
-            .reduce((s,c)=>s+((parseFloat(catAmount(c))||0)*({weekly:52,monthly:12,yearly:1}[catCycle(c)]||0)),0)).toLocaleString(),
-       lbl:'Recurring, per year'},
-    ].map(s=>'<div class="sum-card"><div class="sum-card-val">'+s.val+'</div><div class="sum-card-lbl">'+s.lbl+'</div>'+(s.chip?'<div class="sum-card-chip">'+s.chip+'</div>':'')+'</div>').join('');
+      // Slate, not red: this is a forward-looking commitment, not money already out of the
+      // account this year, and colouring it as spending would double-count it against Spent.
+      {variant:'neutral', icon:'repeat', label:'Recurring, per year',
+       val:'$'+recurring.toLocaleString(),
+       sub:recurring?'If every active charge keeps running':'No recurring charges active'},
+    ].map(budHeroMetric).join('');
   }
 
   // ── Month-by-month table ──
@@ -12333,7 +12451,7 @@ function renderYear(){
       if(stackLegend) stackLegend.innerHTML='';
     } else {
       if(stackLegend) stackLegend.innerHTML=budChartLegend([
-        {c:BUD_CHART_COLORS.fixed,l:'Fixed'},
+        {c:BUD_CHART_COLORS.fixed,l:'Fixed',ring:BUD_CHART_COLORS.fixedEdge},
         {c:BUD_CHART_COLORS.variable,l:'CC / variable'},
         {c:BUD_CHART_COLORS.saved,l:'Saved'},
         {c:BUD_CHART_COLORS.rate,l:'Savings rate %',dash:true},
@@ -12345,19 +12463,19 @@ function renderYear(){
         data:{
           labels:points.map(p=>p.label),
           datasets:[
-            {label:'Fixed',data:fixedArr,backgroundColor:BUD_CHART_COLORS.fixed,stack:'s'},
+            {label:'Fixed',data:fixedArr,backgroundColor:BUD_CHART_COLORS.fixed,borderColor:BUD_CHART_COLORS.fixedEdge,borderWidth:1,stack:'s'},
             {label:'CC / variable',data:varArr,backgroundColor:BUD_CHART_COLORS.variable,stack:'s'},
             {label:'Saved',data:points.map(p=>p.saved),backgroundColor:BUD_CHART_COLORS.saved,stack:'s',borderRadius:{topLeft:4,topRight:4}},
             // Same accent as the Saved bars — they are the same story — separated by being a
             // dashed line with markers on a second axis rather than by a fifth unrelated hue.
-            {label:'Savings rate',data:rateArr,type:'line',yAxisID:'y2',borderColor:BUD_CHART_COLORS.rate,backgroundColor:BUD_CHART_COLORS.rate,borderWidth:2,borderDash:[5,4],pointRadius:3,pointStyle:'rectRot',pointBackgroundColor:BUD_CHART_COLORS.rate,tension:0.3,fill:false}
+            {label:'Savings rate',data:rateArr,type:'line',yAxisID:'y2',borderColor:BUD_CHART_COLORS.rate,backgroundColor:BUD_CHART_COLORS.rate,borderWidth:2,borderDash:[5,4],pointRadius:3,pointStyle:'rectRot',pointBackgroundColor:BUD_CHART_COLORS.rate,tension:0.3,fill:false,spanGaps:false}
           ]
         },
         options:{
           responsive:true,maintainAspectRatio:false,
           plugins:{
             legend:{display:false},
-            tooltip:{callbacks:{label:c=>c.dataset.label==='Savings rate'?c.dataset.label+': '+c.parsed.y.toFixed(0)+'%':c.dataset.label+': $'+c.parsed.y.toFixed(0)}}
+            tooltip:{callbacks:{label:c=>c.parsed.y==null?c.dataset.label+': not recorded':c.dataset.label==='Savings rate'?c.dataset.label+': '+c.parsed.y.toFixed(0)+'%':c.dataset.label+': $'+c.parsed.y.toFixed(0)}}
           },
           scales:{
             x:{stacked:true,grid:{display:false},ticks:{color:tc,font:{size:11},maxTicksLimit:12}},
@@ -12386,14 +12504,14 @@ function renderYear(){
         data:{
           labels:points.map(p=>p.label),
           datasets:[
-            {label:'CC / variable spending',data:varArr,borderColor:BUD_CHART_COLORS.variable,backgroundColor:budWarmRgba(0.14),borderWidth:2.5,pointRadius:3,pointBackgroundColor:BUD_CHART_COLORS.variable,fill:true,tension:0.3}
+            {label:'CC / variable spending',data:varLineArr,borderColor:BUD_CHART_COLORS.variable,backgroundColor:budExpenseRgba(0.14),borderWidth:2.5,pointRadius:3,pointBackgroundColor:BUD_CHART_COLORS.variable,fill:true,tension:0.3,spanGaps:false}
           ]
         },
         options:{
           responsive:true,maintainAspectRatio:false,
           plugins:{
             legend:{display:false},
-            tooltip:{callbacks:{label:c=>'$'+c.parsed.y.toFixed(0)}}
+            tooltip:{callbacks:{label:c=>c.parsed.y==null?'Not recorded':'$'+c.parsed.y.toFixed(0)}}
           },
           scales:{
             x:{grid:{display:false},ticks:{color:tc,font:{size:11},maxTicksLimit:12}},
@@ -12465,12 +12583,13 @@ function renderBudTrend(){
     data:{
       labels:points.map(p=>p.label),
       datasets:[
-        // Same mapping as Budget Month / Yearly: neutral income, warm spending, accent saved,
-        // and the account balance as a dashed neutral reference.
-        {label:'Income',data:points.map(p=>p.income),borderColor:BUD_CHART_COLORS.income,backgroundColor:'transparent',borderWidth:2,pointRadius:3,pointBackgroundColor:BUD_CHART_COLORS.income,fill:false,tension:0.3},
-        {label:'Spending',data:points.map(p=>p.spending),borderColor:BUD_CHART_COLORS.spending,backgroundColor:budWarmRgba(0.10),borderWidth:2.5,pointRadius:4,pointBackgroundColor:BUD_CHART_COLORS.spending,fill:false,tension:0.3},
-        {label:'Saved',data:points.map(p=>p.saved),borderColor:BUD_CHART_COLORS.saved,backgroundColor:budAccentRgba(0.10),borderWidth:2.5,pointRadius:4,pointBackgroundColor:BUD_CHART_COLORS.saved,fill:false,tension:0.3},
-        {label:'Account',data:points.map(p=>p.balance),borderColor:BUD_CHART_COLORS.fixed,backgroundColor:'transparent',borderWidth:2,pointRadius:3,pointBackgroundColor:BUD_CHART_COLORS.fixed,fill:false,tension:0.3,spanGaps:false,borderDash:[5,4]}
+        // Same mapping as Budget Month / Yearly: green in, red out, accent saved. The account
+        // balance is a REFERENCE, not a direction, so it takes the colourless series and a
+        // dash — painting it red or green would claim it was money moving one way.
+        {label:'Income',data:points.map(p=>p.income),borderColor:BUD_CHART_COLORS.income,backgroundColor:'transparent',borderWidth:2.5,pointRadius:3,pointStyle:'circle',pointBackgroundColor:BUD_CHART_COLORS.income,fill:false,tension:0.3},
+        {label:'Spending',data:points.map(p=>p.spending),borderColor:BUD_CHART_COLORS.spending,backgroundColor:budExpenseRgba(0.10),borderWidth:2.5,pointRadius:4,pointStyle:'triangle',pointBackgroundColor:BUD_CHART_COLORS.spending,fill:false,tension:0.3},
+        {label:'Saved',data:points.map(p=>p.saved),borderColor:BUD_CHART_COLORS.saved,backgroundColor:budAccentRgba(0.10),borderWidth:2.5,pointRadius:4,pointStyle:'rectRot',pointBackgroundColor:BUD_CHART_COLORS.saved,fill:false,tension:0.3},
+        {label:'Account',data:points.map(p=>p.balance),borderColor:BUD_CHART_COLORS.neutral,backgroundColor:'transparent',borderWidth:2,pointRadius:3,pointStyle:'rect',pointBackgroundColor:BUD_CHART_COLORS.neutral,fill:false,tension:0.3,spanGaps:false,borderDash:[5,4]}
       ]
     },
     options:{
@@ -12604,16 +12723,20 @@ function deleteGoal(i){
 }
 
 // ── Budget Stats (Stats tab) ──────────────────────────────────────
-// Account-derived cards lead: the Finance tab was almost entirely budget data with the net
-// worth chart buried below four budget cards, so account history was effectively hidden.
+// The shared range bar, the Financial picture hero and the Money flow chart run full width
+// above these columns (see #sub-finance in index.html) — one range governs all three
+// budget-derived cards, so its control must not sit inside any single one of them.
+// Budget-derived cards on the left, account-derived on the right — which is also what makes
+// the two columns roughly the same height, so neither ends in a strip of dead background.
+// They stack independently; a short card is never stretched to match a tall neighbour.
 const STATS_FIN_LAYOUT={
   mobile:[
-    ['bs-finance-left',['bs-week-wrap','bs-balance-wrap','bs-acctgrowth-wrap','bs-trend-wrap-card']],
+    ['bs-finance-left',['bs-week-wrap','bs-catbreak-wrap','bs-balance-wrap','bs-acctgrowth-wrap']],
     ['bs-finance-right',[]]
   ],
   desktop:[
-    ['bs-finance-left',['bs-week-wrap','bs-acctgrowth-wrap']],
-    ['bs-finance-right',['bs-balance-wrap','bs-trend-wrap-card']]
+    ['bs-finance-left',['bs-week-wrap','bs-catbreak-wrap']],
+    ['bs-finance-right',['bs-balance-wrap','bs-acctgrowth-wrap']]
   ]
 };
 let _statsFinanceLayoutMode=null;
@@ -12633,11 +12756,146 @@ function statsApplyFinanceLayout(force){
 }
 function renderBudgetStats(){
   statsApplyFinanceLayout();
+  renderBSFinRange();
+  renderBSFinPicture();
+  renderBSTrend();
   renderBSWeek();
   renderBSBalance();
   renderBSAccountGrowth();
+  renderBSCatBreakdown();
+}
+
+// ── Stats → Finance: ONE range for the whole budget-derived analysis ─────────
+// The financial picture, the money-flow chart and the category breakdown all read the same
+// source — completed budget weeks — so they read the same completed budget weeks. Three
+// per-card range pickers on one screen is three chances for figures sitting beside each other
+// to describe different spans, and no way to tell from looking.
+// Net worth and Account growth deliberately keep their own controls: their timeline is
+// account RECORDS, dated independently of when a budget week was saved, so forcing them onto
+// a budget-week window would silently change what they mean.
+let bsFinRange='year';   // '12w' | 'year' | 'all'
+const BS_FIN_RANGES=[['12w','12W'],['year','This year'],['all','All']];
+function bsFinRangeLabel(){
+  return bsFinRange==='12w' ? 'Last 12 completed weeks'
+       : bsFinRange==='all' ? 'All completed weeks'
+       : String(localMidnight(getLocalDate()).getFullYear());
+}
+function setBSFinRange(r){
+  bsFinRange=r;
+  renderBSFinRange();
+  renderBSFinPicture();
   renderBSTrend();
   renderBSCatBreakdown();
+}
+// Completed weeks only — the live week is never scored as a result, here or anywhere in Stats.
+function bsFinRangeKeys(){
+  const weeks=statsCompletedWeeks();
+  if(bsFinRange==='all') return weeks;
+  if(bsFinRange==='12w') return weeks.slice(-12);
+  const y=String(localMidnight(getLocalDate()).getFullYear());
+  return weeks.filter(k=>k.substring(0,4)===y);
+}
+// weekIncome() returns 0 both for "recorded nothing" and "recorded zero". Those are not the
+// same fact: a week with no income fields at all is unknown, and a chart that draws it as a
+// zero bar has invented a week with no earnings. Totals still sum weekIncome() — that IS the
+// canonical figure, and an absent week contributes nothing to it either way — so this governs
+// only what the chart plots and what the coverage line claims.
+function statsWeekIncomeKnown(d){
+  if(!d) return false;
+  if(d.snapshot&&typeof d.snapshot==='object'&&d.snapshot.income!==undefined&&d.snapshot.income!=='') return true;
+  if(d.income&&typeof d.income==='object'&&Object.keys(d.income).length) return true;
+  return Object.keys(d).some(k=>k.startsWith('inc_')&&d[k]!==''&&d[k]!==null&&d[k]!==undefined);
+}
+// One reduction over the selected weeks, used by every card in the shared range so they cannot
+// disagree. Spending comes from statsWeekParts() — the same resolver the Latest completed week
+// card and the category breakdown use — so fixed + variable always adds up to the expenses
+// figure shown beside them. Saved is never folded into expenses.
+function bsFinSummary(keys){
+  let income=0,fixed=0,variable=0,saved=0,incomeWeeks=0,ambiguous=0,legacy=0,snapAgg=0;
+  keys.forEach(k=>{
+    const d=budgetData[k]; if(!d) return;
+    const parts=statsWeekParts(d,k);
+    income+=weekIncome(d);
+    fixed+=parts.fixed; variable+=parts.variable;
+    saved+=weekSavedAmt(d);
+    if(statsWeekIncomeKnown(d)) incomeWeeks++;
+    if(statsWeekSpendQuality(d,k).ambiguousLegacyVariable) ambiguous++;
+    if(!d.statsSnapshot) legacy++;
+    if(parts.fixedFromSnapshot||parts.variableFromSnapshot) snapAgg++;
+  });
+  const expenses=fixed+variable;
+  return {weeks:keys.length,from:keys[0]||null,to:keys[keys.length-1]||null,
+    income,fixed,variable,expenses,saved,net:income-expenses-saved,
+    avgExpenses:keys.length?expenses/keys.length:0,
+    rate:income>0?(saved/income*100):null,
+    incomeWeeks,ambiguous,legacy,snapAgg};
+}
+function bsFinCoverageText(sum){
+  if(!sum.weeks) return 'No completed weeks in this range';
+  // fmtDate() drops the year, which is unreadable on a range that crosses one — "24 Nov – 24
+  // Aug" reads backwards. Name both years when they differ.
+  const span=sum.from.substring(0,4)!==sum.to.substring(0,4);
+  const d=k=>fmtDate(k)+(span?' '+k.substring(0,4):'');
+  return sum.weeks+' completed week'+(sum.weeks===1?'':'s')+' · '+
+    (sum.from===sum.to ? 'week of '+d(sum.from) : d(sum.from)+' – '+d(sum.to));
+}
+// The one control that governs the three budget-derived cards. It sits above them rather than
+// inside any one of them so it cannot be mistaken for that card's own filter.
+function renderBSFinRange(){
+  const wrap=document.getElementById('bs-finrange-wrap'); if(!wrap) return;
+  const sum=bsFinSummary(bsFinRangeKeys());
+  wrap.innerHTML='<div class="bs-finrange">'+
+    '<div class="bs-finrange-l">'+
+      '<span class="stats-kicker">Financial analysis</span>'+
+      '<span class="bs-finrange-cov">One range for the picture, the money-flow chart and the category breakdown</span>'+
+    '</div>'+
+    statsSeg('bsfin',BS_FIN_RANGES,bsFinRange,'setBSFinRange')+
+  '</div>';
+}
+// ── Financial picture ───────────────────────────────
+// Four primary facts for the selected range — earned, out, put away, and what is left after
+// both — with the breakdown that explains them underneath. Accent hero, because it summarises
+// the user's own period rather than one direction of money; the per-figure green/red dots
+// carry the direction, so the card itself does not have to be painted one way or the other.
+function renderBSFinPicture(){
+  const wrap=document.getElementById('bs-finpic-wrap'); if(!wrap) return;
+  const keys=bsFinRangeKeys();
+  if(!keys.length){
+    wrap.innerHTML='<div class="card">'+cardHeader('wallet','Financial picture',statsChip('neutral',bsFinRangeLabel()))+
+      '<div class="stats-note-panel">No completed budget week falls in this range. The current week is still in progress and is never scored as a result, and a period with no saved weeks is left blank rather than reported as $0.</div></div>';
+    return;
+  }
+  const sum=bsFinSummary(keys);
+  const money=v=>'$'+Math.round(v).toLocaleString();
+  const cell=(cue,label,val,sub)=>'<div class="fh-cell">'+
+    '<div class="fh-l"><i class="fh-dot fh-'+cue+'"></i>'+label+'</div>'+
+    '<div class="fh-v">'+val+'</div>'+
+    (sub?'<div class="fh-s">'+sub+'</div>':'')+'</div>';
+  const sub=(label,val)=>'<div class="fh-sc"><span class="fh-sl">'+label+'</span><span class="fh-sv">'+val+'</span></div>';
+  const notes=[];
+  if(sum.incomeWeeks<sum.weeks) notes.push('Income recorded in '+sum.incomeWeeks+' of '+sum.weeks+' weeks; the rest are unknown, not zero.');
+  if(sum.ambiguous) notes.push(sum.ambiguous+' snapshot-only legacy week'+(sum.ambiguous===1?'':'s')+' cannot be reconciled with later transaction detail, so only known spend is counted.');
+  else if(sum.snapAgg) notes.push(sum.snapAgg+(sum.snapAgg===1?' week contributes':' weeks contribute')+' a stored aggregate with no per-category detail.');
+  wrap.innerHTML='<div class="fin-hero" style="'+budHeroStyle('accent')+'">'+
+    '<div class="fh-head">'+
+      '<span class="fh-kicker">Financial picture</span>'+
+      '<span class="fh-range">'+escText(bsFinRangeLabel())+'<span class="fh-cov">'+bsFinCoverageText(sum)+'</span></span>'+
+    '</div>'+
+    '<div class="fh-grid">'+
+      cell('in','Earned',money(sum.income),money(sum.weeks?sum.income/sum.weeks:0)+' / week')+
+      cell('out','Expenses',money(sum.expenses),money(sum.avgExpenses)+' / week')+
+      cell('save','Saved',money(sum.saved),sum.rate===null?'No income recorded':sum.rate.toFixed(0)+'% of income')+
+      cell('net','Net after expenses &amp; savings',money(sum.net),'Income − expenses − saved')+
+    '</div>'+
+    '<div class="fh-sub">'+
+      sub('Committed / fixed',money(sum.fixed))+
+      sub('Variable',money(sum.variable))+
+      sub('Avg expenses / week',money(sum.avgExpenses))+
+      sub('Savings rate',sum.rate===null?'—':sum.rate.toFixed(0)+'%')+
+    '</div>'+
+    '<div class="fh-foot">Completed weeks only, from saved budget data. This range also drives the money-flow chart and the category breakdown below.'+
+      (notes.length?' '+notes.join(' '):'')+'</div>'+
+  '</div>';
 }
 // The latest CLOSED week, read against the plan that was saved for that week. This used to
 // exist only as a Review card, which left the Finance tab opening on a net-worth chart with
@@ -12805,18 +13063,20 @@ function statsWeekSpendQuality(d,key){
 }
 function renderBSCatBreakdown(){
   const wrap=document.getElementById('bs-catbreak-wrap'); if(!wrap) return;
-  const keys=Object.keys(budgetData)
-    .filter(k=>{const d=budgetData[k]; return d&&(d.saved||d.draft||d.snapshot);})
-    .sort().slice(-12);
+  const keys=bsFinRangeKeys();
   if(!keys.length){ wrap.innerHTML=''; return; }
-  // Same mapping as Budget Month/Yearly rather than a tenth of a rainbow: committed money is
-  // neutral, discretionary money is the one warm tone, and rank inside each family is carried
-  // by opacity. The bar LENGTH is what says which category is biggest.
+  // Both halves are money going OUT, so both are the outgoing red — committed spending is the
+  // same hue held back (lower opacity, plus an outline), variable spending is the strong
+  // treatment. Rank inside each family steps the opacity down; the bar LENGTH is what says
+  // which category is biggest, and the Fixed / Variable tag beside each label says which
+  // family a row belongs to without relying on the tint at all.
+  // Not a yellow or a neutral for committed: that made "the money you cannot choose" look
+  // like a different kind of thing from "the money you can", when the point of the card is
+  // that they add up to one total.
   const catBarColor=(kind,rank)=>{
-    const a=Math.max(0.28, 0.92 - rank*0.11).toFixed(2);
-    if(kind==='Variable') return budWarmRgba(a);
-    const dark=(typeof S==='object')?S.theme!=='light':true;
-    return (dark?'rgba(255,255,255,':'rgba(28,28,30,')+(a*0.42).toFixed(3)+')';
+    if(kind==='Variable') return budExpenseRgba(Math.max(0.34,0.95-rank*0.11).toFixed(2));
+    if(kind==='Fixed')    return budExpenseRgba(Math.max(0.16,0.42-rank*0.05).toFixed(2));
+    return budExpenseRgba(Math.max(0.14,0.30-rank*0.04).toFixed(2));   // legacy aggregates
   };
   const catMap={}; let legacyWeeks=0, ambiguousWeeks=0;
   const add=(kind,def,val,key)=>{
@@ -12844,25 +13104,35 @@ function renderBSCatBreakdown(){
   const max=Math.max(1,...cats.map(c=>c.val));
   const shownCats=cats.filter(c=>c.val>0);
   // Rank restarts per family, so the biggest variable category and the biggest fixed one are
-  // each the strongest tone of their own tone rather than competing on one ramp.
+  // each the strongest tone of their own family rather than competing on one ramp.
   const seen={};
   shownCats.forEach(c=>{ c.barColor=catBarColor(c.kind, seen[c.kind]=(seen[c.kind]===undefined?0:seen[c.kind]+1)); });
   const rows=shownCats.map(c=>{
     const evidenceKey=statsRegisterFinanceEvidence(c);
     const pctOfTotal=Math.round(c.val/total*100);
     return '<button type="button" class="stats-muscle-row" onclick="openFinanceCategoryEvidence(\''+evidenceKey+'\')" aria-label="Open '+_catEsc(c.label)+' source records"><div class="muscle-bar-row">'+
-      '<div class="muscle-bar-label" style="width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+_catEsc(c.label)+'">'+_catEscHtml(c.label)+'</div>'+
-      '<div class="muscle-bar-track"><div class="muscle-bar-fill" style="width:'+Math.round(c.val/max*100)+'%;background:'+c.barColor+'"></div></div>'+
+      '<div class="muscle-bar-label bs-cat-label" title="'+_catEsc(c.label)+'">'+
+        '<span class="bs-cat-name">'+_catEscHtml(c.label)+'</span>'+
+        '<span class="bs-cat-kind">'+c.kind+'</span></div>'+
+      '<div class="muscle-bar-track"><div class="muscle-bar-fill" style="width:'+Math.round(c.val/max*100)+'%;background:'+c.barColor+(c.kind==='Variable'?'':';box-shadow:inset 0 0 0 1px '+BUD_CHART_COLORS.fixedEdge)+'"></div></div>'+
       '<div class="muscle-bar-count" style="width:78px">$'+Math.round(c.val).toLocaleString()+' · '+pctOfTotal+'%</div>'+
     '</div></button>';
   }).join('');
+  // Reconciliation line: the same statsWeekParts() sum the Financial picture leads with, so a
+  // reader can check the rows against the headline rather than taking either on trust.
+  const sum=bsFinSummary(keys);
+  const reconciled=Math.abs(total-sum.expenses)<1;
   wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden">'+
-    cardHeader('receipt','Where the money goes · last '+keys.length+' week'+(keys.length>1?'s':''))+
-    '<div style="padding:14px 16px">'+
+    '<div style="padding:16px 16px 0">'+cardHeader('receipt','Where the money goes',statsChip('neutral',bsFinRangeLabel()))+'</div>'+
+    '<div style="padding:2px 16px 14px">'+
+      '<div class="stats-data-note" style="margin-top:0">'+bsFinCoverageText(sum)+'. Committed and variable spending are both shown; savings are not spending and are excluded.</div>'+
       (legacyWeeks?'<div class="stats-data-note">'+legacyWeeks+' legacy week'+(legacyWeeks===1?' has':'s have')+' no saved category labels. Archived IDs are retained, but current labels are not presented as historical fact.</div>':'')+
       (ambiguousWeeks?'<div class="stats-data-note">'+ambiguousWeeks+' snapshot-only legacy week'+(ambiguousWeeks===1?' has':'s have')+' later transaction detail that cannot be safely reconciled with the old aggregate. Only known transaction detail is shown; no total is invented.</div>':'')+
-      rows+
+      '<div style="margin-top:10px">'+rows+'</div>'+
       '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px;margin-top:4px"><span>'+(ambiguousWeeks?'Known categorised spend':'Total spent')+'</span><b style="color:var(--text)">$'+Math.round(total).toLocaleString()+'</b></div>'+
+      (reconciled
+        ? '<div class="stats-data-note">Matches the '+fmtMoney(Math.round(sum.expenses))+' of expenses in the Financial picture for the same weeks.</div>'
+        : '<div class="stats-data-note">Financial picture expenses for the same weeks: '+fmtMoney(Math.round(sum.expenses))+'. The difference is spending held in a week with no category detail.</div>')+
     '</div></div>';
 }
 
@@ -13400,69 +13670,89 @@ function renderStatsReview(){
       '</div></div>').join('')+'</div>'+
     '<div class="stats-data-note rev-foot">Completed periods only. Missing data is unknown, never zero, and nothing here is reconstructed from today’s settings.</div>';
 }
-function setBSTrendRange(range){
-  bsTrendRange=range;
-  renderBSTrend();
-}
+// ── Money flow ──────────────────────────────────────────────────
+// Was a spending-only bar chart with its own 12W/52W/All control, which answered "how much
+// went out" and nothing about whether it was covered. Income is the whole point of the
+// comparison, so it is plotted too — and the expense bar is split into its committed and
+// variable halves, which is the same breakdown the Financial picture states in words.
+// Form carries the distinction as well as colour: expenses are BARS, income is a LINE with
+// round points, the saved plan is a DASHED line with no points. Reading this in greyscale
+// still works.
 function renderBSTrend(){
   const wrap=document.getElementById('bs-trend-wrap-card'); if(!wrap) return;
   // Always destroy a prior chart first so re-rendering can't conflict on the canvas
   if(bsChart){bsChart.destroy();bsChart=null;}
-  const seg=statsSeg('bst',[['monthly','12W'],['yearly','52W'],['alltime','All']],bsTrendRange,'setBSTrendRange');
-  const card=body=>'<div class="card">'+cardHeader('trend','Spending trend',seg)+body+'</div>';
-  // Per-week spending: each saved week (daily_budget) is one bar. Grouping by month
-  // previously hid everything until 2+ months existed; weeks within one month now show.
-  const keys=Object.keys(budgetData)
-    .filter(k=>{const d=budgetData[k]; return d && (d.saved || d.draft || d.snapshot);})
-    .sort();
-  // Range toggle controls how many recent weeks are shown
-  const windowWeeks = bsTrendRange==='monthly' ? 12 : bsTrendRange==='yearly' ? 52 : keys.length;
-  const shown = keys.slice(-windowWeeks);
-  if(shown.length<1){
-    wrap.innerHTML=card('<div class="stats-note-panel">No budget history yet. Save a week in Budget to begin this trend.</div>');
+  const card=body=>'<div class="card">'+cardHeader('trend','Money flow',statsChip('neutral',bsFinRangeLabel()))+body+'</div>';
+  const shown=bsFinRangeKeys();
+  if(!shown.length){
+    wrap.innerHTML=card('<div class="stats-note-panel">No completed budget week falls in this range. Save a week in Budget — the live week is never plotted as a result.</div>');
     return;
   }
-  const spent  = shown.map(k=>statsWeekSpending(budgetData[k],k));
-  const currentMonday=weekKey(getMondayOf(0));
-  const labels = shown.map(k=>new Date(k+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'})+(k===currentMonday?' · in progress':''));
+  const parts=shown.map(k=>statsWeekParts(budgetData[k],k));
+  const fixedArr=parts.map(p=>p.fixed);
+  const varArr=parts.map(p=>p.variable);
+  const totalArr=parts.map(p=>p.total);
+  // null, not 0, where a week recorded no income at all — spanGaps:false then draws a gap,
+  // which is what "unknown" looks like. A zero point would assert a week with no earnings.
+  const incomeArr=shown.map(k=>statsWeekIncomeKnown(budgetData[k])?weekIncome(budgetData[k]):null);
+  const labels=shown.map(k=>new Date(k+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'}));
   const goals=shown.map(k=>{
-    const n=parseFloat(budgetData[k]?.statsSnapshot?.totalTarget);
+    const n=parseFloat(budgetData[k]&&budgetData[k].statsSnapshot&&budgetData[k].statsSnapshot.totalTarget);
     return !isNaN(n)&&n>0?n:null;
   });
   const goalCoverage=goals.filter(v=>v!==null).length;
   const ambiguousCoverage=shown.filter(k=>statsWeekSpendQuality(budgetData[k],k).ambiguousLegacyVariable).length;
-  const completed=shown.filter(k=>k<currentMonday);
-  const latestDone=completed.length?completed[completed.length-1]:null;
-  const latestAmbiguous=latestDone&&statsWeekSpendQuality(budgetData[latestDone],latestDone).ambiguousLegacyVariable;
-  const conclusion=latestDone
-    ? 'Latest completed week: '+fmtMoney(Math.round(statsWeekSpending(budgetData[latestDone],latestDone)))+(latestAmbiguous?' known spend; full legacy total unavailable.':' spent.')
-    : 'The current week is still in progress; no completed week is available in this range.';
-  wrap.innerHTML=card('<div class="stats-chart-summary">'+conclusion+(latestDone?' <button class="stats-inline-link" onclick="openBudgetWeekFromStats(\''+latestDone+'\')">Open source week →</button>':'')+'</div>'+
-    '<div class="stats-data-note">Saved plan available for '+goalCoverage+' of '+shown.length+' week'+(shown.length===1?'':'s')+'. Missing plans are not reconstructed from today’s defaults.'+(ambiguousCoverage?' '+ambiguousCoverage+' snapshot-only legacy week'+(ambiguousCoverage===1?' shows':'s show')+' known detail only.':'')+'</div>'+
-    '<div class="stats-chart-box"><canvas id="bs-trend-chart" aria-label="Weekly spending and saved plans"></canvas></div>');
+  const sum=bsFinSummary(shown);
+  const latestDone=shown[shown.length-1];
+  const latestAmbiguous=statsWeekSpendQuality(budgetData[latestDone],latestDone).ambiguousLegacyVariable;
+  const conclusion='Latest completed week: '+fmtMoney(Math.round(totalArr[totalArr.length-1]))+
+    (latestAmbiguous?' known spend; full legacy total unavailable.':' out')+
+    (incomeArr[incomeArr.length-1]===null?', income not recorded.':' against '+fmtMoney(Math.round(incomeArr[incomeArr.length-1]))+' in.');
+  const legend=budChartLegend([
+    {c:BUD_CHART_COLORS.income,l:'Income',line:true},
+    {c:BUD_CHART_COLORS.variable,l:'Variable spend'},
+    {c:BUD_CHART_COLORS.fixed,l:'Committed spend',ring:BUD_CHART_COLORS.fixedEdge}
+  ].concat(goalCoverage?[{c:BUD_CHART_COLORS.rate,l:'Saved plan',dash:true}]:[]));
+  wrap.innerHTML=card('<div class="stats-chart-summary">'+conclusion+' <button class="stats-inline-link" onclick="openBudgetWeekFromStats(\''+latestDone+'\')">Open source week →</button></div>'+
+    '<div class="stats-data-note">Income recorded in '+sum.incomeWeeks+' of '+shown.length+' week'+(shown.length===1?'':'s')+'; unrecorded weeks are drawn as gaps, not zeros. Saved plan available for '+goalCoverage+' of '+shown.length+'. Missing plans are not reconstructed from today’s defaults.'+(ambiguousCoverage?' '+ambiguousCoverage+' snapshot-only legacy week'+(ambiguousCoverage===1?' shows':'s show')+' known detail only.':'')+'</div>'+
+    '<div class="chart-legend" style="margin-top:12px">'+legend+'</div>'+
+    '<div class="stats-chart-box" style="margin-top:2px"><canvas id="bs-trend-chart" aria-label="Weekly income and expenses"></canvas></div>');
   const ctx=document.getElementById('bs-trend-chart'); if(!ctx) return;
   const {gc,tc}=budChartGridColors();
-  const accent=budAccentHex();
   const datasets=[
-    // Warm tone for spending, matching Budget Month/Yearly, so the same money is the same
-    // colour wherever it is drawn.
-    {type:'bar',label:'Spent',data:spent,backgroundColor:budWarmRgba(0.62),borderColor:BUD_CHART_COLORS.spending,borderWidth:1,borderRadius:6,maxBarThickness:48}
+    {type:'bar',label:'Committed spend',data:fixedArr,backgroundColor:BUD_CHART_COLORS.fixed,borderColor:BUD_CHART_COLORS.fixedEdge,borderWidth:1,borderRadius:2,stack:'out',maxBarThickness:44,order:3},
+    {type:'bar',label:'Variable spend',data:varArr,backgroundColor:BUD_CHART_COLORS.variable,borderWidth:0,borderRadius:{topLeft:4,topRight:4},stack:'out',maxBarThickness:44,order:3},
+    // Each line gets its OWN stack id. y.stacked:true is what makes the two expense bars sum
+    // into one column, but Chart.js applies it to line datasets too — left alone, income and
+    // the saved plan were drawn stacked on top of the bars and on each other, so a $1,023
+    // income week plotted at $1,856. A stack group of one stacks against nothing.
+    {type:'line',label:'Income',data:incomeArr,stack:'inc',borderColor:BUD_CHART_COLORS.income,backgroundColor:budIncomeRgba(0.10),borderWidth:2.5,pointRadius:3,pointStyle:'circle',pointBackgroundColor:BUD_CHART_COLORS.income,fill:false,tension:0.25,spanGaps:false,order:1}
   ];
   if(goalCoverage){
-    datasets.push({type:'line',label:'Saved plan',data:goals,borderColor:accent,borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,tension:0,spanGaps:false});
+    datasets.push({type:'line',label:'Saved plan',data:goals,stack:'plan',borderColor:BUD_CHART_COLORS.rate,borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,tension:0,spanGaps:false,order:2});
   }
   bsChart=new Chart(ctx,{
     data:{labels,datasets},
     options:{
       responsive:true,maintainAspectRatio:false,
       onClick:(event,elements)=>{ if(elements.length){ closeStatsEvidence(); openBudgetWeekFromStats(shown[elements[0].index]); } },
+      interaction:{mode:'index',intersect:false},
       plugins:{
-        legend:{display:true,labels:{color:tc,font:{size:12},usePointStyle:true,pointStyleWidth:10}},
-        tooltip:{callbacks:{label:c=>c.parsed.y==null?c.dataset.label+': unavailable':c.dataset.label+': $'+c.parsed.y.toFixed(0)}}
+        legend:{display:false},
+        tooltip:{callbacks:{
+          title:items=>items.length?'Week of '+fmtDate(shown[items[0].dataIndex]):'',
+          label:c=>c.parsed.y==null?c.dataset.label+': not recorded':c.dataset.label+': '+fmtMoney(Math.round(c.parsed.y)),
+          footer:items=>{
+            if(!items.length) return '';
+            const i=items[0].dataIndex;
+            const out='Total expenses: '+fmtMoney(Math.round(totalArr[i]));
+            return incomeArr[i]===null?out:out+'\nLeft after expenses: '+fmtMoney(Math.round(incomeArr[i]-totalArr[i]));
+          }
+        }}
       },
       scales:{
-        x:{grid:{color:gc},ticks:{color:tc,font:{size:11},maxTicksLimit:12,maxRotation:0,minRotation:0}},
-        y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>'$'+v},beginAtZero:true}
+        x:{stacked:true,grid:{color:gc},ticks:{color:tc,font:{size:11},maxTicksLimit:12,maxRotation:0,minRotation:0}},
+        y:{stacked:true,grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>'$'+v},beginAtZero:true}
       }
     }
   });

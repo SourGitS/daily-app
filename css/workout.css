@@ -388,6 +388,55 @@
 .stats-goal-row{display:flex;align-items:center;gap:9px;margin-top:13px;font-size:12px;line-height:1.45;color:var(--text-2)}
 .stats-chart-sm{height:210px}
 
+/* ── Stats > Finance: shared range bar + financial picture hero ──────────────────
+   The range bar sits ABOVE the three cards it governs rather than inside any one of them —
+   a segmented control in a card header reads as that card's own filter, and this one moves
+   three cards at once. Net worth and Account growth keep their own controls, because their
+   timeline is account records rather than saved budget weeks. */
+.bs-finrange{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 2px 12px}
+.bs-finrange-l{display:flex;flex-direction:column;gap:3px;min-width:0}
+.bs-finrange-cov{font-size:12px;font-weight:600;line-height:1.4;color:var(--muted)}
+/* Accent hero. Solid derived stops via budHeroStyle('accent') in js/app.js rather than
+   rgba(var(--accent-rgb),.9 -> .4): an alpha ramp blends into --bg, so its pale end cannot
+   carry the 10px labels this card uses in light mode. */
+.fin-hero{border-radius:var(--radius-hero);padding:16px 16px 14px;margin-bottom:16px;position:relative;overflow:hidden;color:#fff;box-shadow:0 14px 36px rgba(0,0,0,.24);text-shadow:0 1px 2px rgba(0,0,0,.16)}
+.fin-hero::before{content:'';position:absolute;width:190px;height:190px;right:-92px;top:-112px;border-radius:50%;background:rgba(255,255,255,.075);pointer-events:none}
+.fin-hero>*{position:relative;z-index:1}
+.fh-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:0 2px 10px;border-bottom:1px solid rgba(255,255,255,.18)}
+.fh-kicker{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.8);white-space:nowrap}
+.fh-range{font-size:11.5px;font-weight:750;line-height:1.35;color:#fff;text-align:right;display:flex;flex-direction:column;gap:2px;margin-left:auto}
+.fh-cov{font-size:11px;font-weight:600;color:rgba(255,255,255,.78)}
+.fh-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px}
+.fh-cell{min-width:0;padding:12px 10px;border-right:1px solid rgba(255,255,255,.16);border-bottom:1px solid rgba(255,255,255,.16)}
+.fh-cell:nth-child(2n){border-right:0}
+.fh-cell:nth-last-child(-n+2){border-bottom:0}
+.fh-l{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:750;letter-spacing:.05em;text-transform:uppercase;line-height:1.3;color:rgba(255,255,255,.76);margin-bottom:6px}
+/* Direction cue. The card is accent-coloured because it summarises a period rather than one
+   direction of money, so in/out is said by a small mark instead of by the whole surface.
+   Lightened forms of the money green and red, so they stay legible on a saturated hero. */
+.fh-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.fh-in{background:#8FE7B4}
+.fh-out{background:#FFB3AC}
+.fh-save{background:rgba(255,255,255,.85)}
+.fh-net{background:transparent;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.8)}
+.fh-v{font-family:var(--font-num);font-size:22px;font-weight:800;line-height:1.05;letter-spacing:-.02em;color:#fff;overflow-wrap:anywhere}
+.fh-s{font-size:11px;font-weight:600;line-height:1.35;color:rgba(255,255,255,.82);margin-top:5px}
+.fh-sub{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:13px;padding-top:12px;border-top:1px solid rgba(255,255,255,.18)}
+.fh-sc{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0}
+.fh-sl{font-size:11.5px;font-weight:650;color:rgba(255,255,255,.8);min-width:0}
+.fh-sv{font-family:var(--font-num);font-size:13.5px;font-weight:800;color:#fff;white-space:nowrap}
+.fh-foot{font-size:11px;font-weight:550;line-height:1.5;color:rgba(255,255,255,.76);margin-top:12px}
+/* Category rows: the Fixed / Variable tag is what separates the two families for a reader who
+   cannot see the tint difference at all. */
+.muscle-bar-label.bs-cat-label{width:124px;display:flex;flex-direction:column;gap:1px;overflow:hidden}
+.bs-cat-name{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bs-cat-kind{display:block;font-size:9px;font-weight:750;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3)}
+/* Phone: the head stacks, so the period reads under its own kicker rather than being pushed
+   to the right edge of a line it no longer shares. */
+@media (max-width:560px){
+  .fh-range{text-align:left;margin-left:0;width:100%}
+}
+
 .ov-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:0}
 .ov-block{min-width:0}
 .ov-empty{font-size:13px;line-height:1.55;color:var(--muted);padding:7px 0}
@@ -457,9 +506,19 @@ button.ov-day{cursor:pointer}
   .stats-fin-col>div{min-width:0}
   .stats-fin-col>div:empty{display:none}
   .stats-fin-col>div>.card{margin-bottom:0}
-  #bs-catbreak-wrap{min-width:0;margin-top:18px}
-  #bs-catbreak-wrap:empty{margin-top:0}
+  #bs-catbreak-wrap{min-width:0}
   .stats-chart-box{height:300px}
+  /* The hero and the money-flow chart lead the tab full width; only the four independently
+     sized cards below them are columned, and each column stacks to its own height so a short
+     card never stretches to match a tall neighbour. */
+  .fin-hero{padding:22px 24px 20px;margin-bottom:18px}
+  .fh-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .fh-cell{padding:14px 14px;border-bottom:0}
+  .fh-cell:nth-child(2n){border-right:1px solid rgba(255,255,255,.16)}
+  .fh-cell:last-child{border-right:0}
+  .fh-v{font-size:27px}
+  .fh-sub{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 20px}
+  #bs-trend-wrap-card>.card{margin-bottom:18px}
 }
 
 /* ── Post-save weight prompt (Log tab) ── */
