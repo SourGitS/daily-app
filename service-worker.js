@@ -84,7 +84,16 @@
 // truth for Shopping: stocked recipe ingredients move into an informational section, Low/Out
 // matches merge into Pantry needs, checked rows are isolated per location, and legacy pantry
 // data migrates losslessly through the timestamp-safe sync path.
-const CACHE_NAME = 'daily-v261';
+// v262 refines Stats, Budget and Journal: Overview becomes one compact accent hero without
+// decorative sparklines, Finance stacks independently on desktop, the Journal workspace line
+// respects its rounded shoulders, and Until next pay moves beneath Variable expenses with a
+// persisted collapsed state.
+// v263 makes Home's Recent Sessions disclosure reveal the full saved-session list instead of
+// expanding a renderer that had already discarded every row after the newest four.
+// v264 keeps Pantry location management behind the app's standard Edit / Done disclosure so
+// its New, Rename and Delete controls no longer occupy the everyday inventory view.
+// v265 also keeps custom pantry-item deletion behind that same deliberate edit state.
+const CACHE_NAME = 'daily-v265';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

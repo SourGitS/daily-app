@@ -219,12 +219,6 @@
           <button onclick="openAccounts()" style="width:100%;margin-top:12px;padding:7px;border-radius:20px;border:1px solid rgba(255,255,255,.28);background:transparent;color:rgba(255,255,255,.85);font-size:11px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent">Accounts &amp; net worth →</button>
         </div>
 
-        <!-- Pay-cycle forecast. Filled by renderForecastCard() from budRecalc's own
-             `available` figure so it can never disagree with the hero above it; empty
-             string when there is no named income source or the viewed week is not the
-             current one. -->
-        <div id="bud-forecast-card"></div>
-
         <div id="bud-due-banner"></div>
 
         <!-- Desktop ≥1024px: two-column grid (see #view-budget .budget-desktop-grid in
@@ -280,6 +274,11 @@
         <div id="bud-record-card"></div>
 
         <div id="bud-variable-card"></div>
+
+        <!-- Pay-cycle forecast. Filled by renderForecastCard() from budRecalc's own
+             `available` figure so it can never disagree with the hero. It follows Variable
+             expenses in both BUD_LAYOUT modes and stays empty when no honest forecast exists. -->
+        <div id="bud-forecast-card"></div>
 
         <!-- Only rendered when a deleted category still has saved amounts in past weeks. -->
         <div id="bud-stranded-card"></div>
@@ -486,12 +485,17 @@
         <div id="nutrition-content"></div>
       </div>
       <div id="sub-finance" class="hidden">
-        <!-- Ordered as one financial picture: what the latest closed week did, what the
-             balance sheet is doing, which accounts drove it, then the spending detail. -->
-        <div id="bs-week-wrap"></div>
-        <div id="bs-balance-wrap"></div>
-        <div id="bs-acctgrowth-wrap"></div>
-        <div id="bs-trend-wrap-card"></div>
+        <!-- These stable cards are moved between one mobile stack and two independently
+             stacking desktop columns by statsApplyFinanceLayout(). No card is duplicated. -->
+        <div id="bs-finance-main" class="stats-fin-main">
+          <div id="bs-finance-left" class="stats-fin-col">
+            <div id="bs-week-wrap"></div>
+            <div id="bs-balance-wrap"></div>
+            <div id="bs-acctgrowth-wrap"></div>
+            <div id="bs-trend-wrap-card"></div>
+          </div>
+          <div id="bs-finance-right" class="stats-fin-col"></div>
+        </div>
         <div id="bs-catbreak-wrap"></div>
       </div>
     </section>

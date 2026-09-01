@@ -2393,6 +2393,7 @@ window.addEventListener('resize',function(){ if(typeof S!=='undefined'&&S.view) 
     // to redistribute them. Cheap and self-guarding — it no-ops unless the mode actually
     // changed — and it works whether or not Budget is the visible tab.
     if(typeof budApplyLayout==='function') budApplyLayout();
+    if(typeof statsApplyFinanceLayout==='function') statsApplyFinanceLayout();
   }
   window.addEventListener('resize',onGeometryChange);
   // The peer overlays are inset by the sidebar's width, but only at the moment they OPEN — so
@@ -10308,7 +10309,7 @@ const _catEscHtml=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(
 const escText=s=>_catEscHtml(s==null?'':String(s));
 const escAttr=s=>escText(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 // Collapsible section header (shared markup) — collapse handled by the delegated
-// .bud-toggle listener + restoreBudgetCollapseState (index-based persistence).
+// .bud-toggle listener + restoreBudgetCollapseState (data-bud-key persistence).
 const BUD_CHEVRON='<svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>';
 // Per-card edit mode (current week only). When off, add/delete/rename controls are not
 // rendered at all — so a stray tap can't delete a category; amounts stay editable always.
@@ -11013,18 +11014,24 @@ function renderForecastCard(available, week){
       '</div>'
     : '';
 
-  el.innerHTML='<div class="card fc-card'+tone+'">'+
-    '<div class="fc-eyebrow">Until next pay</div>'+
-    '<div class="fc-fig">'+figure+'</div>'+
-    '<div class="fc-unit">'+unit+'</div>'+
-    '<div class="fc-line">'+payTxt+'</div>'+
-    (f.bills.length
-      // Exact, not rounded: this list is short and usually holds one or two per-cent
-      // amounts, so a rounded total disagrees with its own visible arithmetic ($13.99
-      // summarised as $14 directly above the row that says $13.99).
-      ? '<div class="fc-line fc-line-2">'+fmtMoneyExact(f.scheduled)+' in scheduled bills before then</div>'+billLines
-      : '<div class="fc-line fc-ok">No scheduled bills before your next pay.</div>')+
+  el.innerHTML='<div class="card fc-card'+tone+'" data-bud-key="forecast">'+
+    '<div class="sec-label bud-toggle"><span class="bud-head-label">'+cardIcon('calendar')+'<span>Until next pay</span></span>'+
+      '<span class="bud-head-right"><span class="bud-head-sum">'+figure+'</span>'+BUD_CHEVRON+'</span></div>'+
+    '<div class="bud-collapse-body">'+
+      '<div class="fc-fig">'+figure+'</div>'+
+      '<div class="fc-unit">'+unit+'</div>'+
+      '<div class="fc-line">'+payTxt+'</div>'+
+      (f.bills.length
+        // Exact, not rounded: this list is short and usually holds one or two per-cent
+        // amounts, so a rounded total disagrees with its own visible arithmetic ($13.99
+        // summarised as $14 directly above the row that says $13.99).
+        ? '<div class="fc-line fc-line-2">'+fmtMoneyExact(f.scheduled)+' in scheduled bills before then</div>'+billLines
+        : '<div class="fc-line fc-ok">No scheduled bills before your next pay.</div>')+
+    '</div>'+
   '</div>';
+  // budRecalc replaces this markup after every edited amount. Reapply the keyed saved state so
+  // recalculating the projection cannot silently reopen a forecast the user minimised.
+  restoreBudgetCollapseState();
 }
 
 // ── Home: Finance check-in ────────────────────────────────────────
@@ -11150,14 +11157,14 @@ function renderRecordCard(){
 const BUD_LAYOUT={
   // Mobile: one linear stack, in the order the week is actually worked through.
   mobile:[['bud-col-left',['bud-income-card','bud-savings-card','bud-fixed-card','bud-upcoming-card',
-    'bud-setup-card','bud-vargoal-card','bud-record-card','bud-variable-card','bud-stranded-card','bud-result-card',
+    'bud-setup-card','bud-vargoal-card','bud-record-card','bud-variable-card','bud-forecast-card','bud-stranded-card','bud-result-card',
     'prev-weeks-section','bud-calc-card']]],
   // Desktop: left is the plan and this week's entry, right is the action, the outcome and the
   // supporting tools. Upcoming and the calculator move right because the left stack (a long
   // Variable card especially) is what makes the page tall.
   desktop:[
     ['bud-col-left',['bud-income-card','bud-savings-card','bud-fixed-card','bud-vargoal-card',
-      'bud-variable-card','bud-stranded-card']],
+      'bud-variable-card','bud-forecast-card','bud-stranded-card']],
     ['bud-col-right',['bud-record-card','bud-result-card','bud-upcoming-card','prev-weeks-section',
       'bud-calc-card']]
   ]
@@ -12599,7 +12606,33 @@ function deleteGoal(i){
 // ── Budget Stats (Stats tab) ──────────────────────────────────────
 // Account-derived cards lead: the Finance tab was almost entirely budget data with the net
 // worth chart buried below four budget cards, so account history was effectively hidden.
+const STATS_FIN_LAYOUT={
+  mobile:[
+    ['bs-finance-left',['bs-week-wrap','bs-balance-wrap','bs-acctgrowth-wrap','bs-trend-wrap-card']],
+    ['bs-finance-right',[]]
+  ],
+  desktop:[
+    ['bs-finance-left',['bs-week-wrap','bs-acctgrowth-wrap']],
+    ['bs-finance-right',['bs-balance-wrap','bs-trend-wrap-card']]
+  ]
+};
+let _statsFinanceLayoutMode=null;
+function statsApplyFinanceLayout(force){
+  const mode=window.innerWidth>=1024?'desktop':'mobile';
+  if(mode===_statsFinanceLayoutMode&&!force) return;
+  const plan=STATS_FIN_LAYOUT[mode];
+  if(!plan.every(([colId])=>document.getElementById(colId))) return;
+  plan.forEach(([colId,ids])=>{
+    const col=document.getElementById(colId);
+    const want=ids.map(id=>document.getElementById(id)).filter(Boolean);
+    const have=Array.from(col.children);
+    if(have.length===want.length&&want.every((el,i)=>have[i]===el)) return;
+    want.forEach(el=>col.appendChild(el));
+  });
+  _statsFinanceLayoutMode=mode;
+}
 function renderBudgetStats(){
+  statsApplyFinanceLayout();
   renderBSWeek();
   renderBSBalance();
   renderBSAccountGrowth();
@@ -13084,8 +13117,8 @@ function renderStatsOverview(){
   const planComparable=!!lastWeek&&!lastQuality.ambiguousLegacyVariable&&!isNaN(lastTarget)&&lastTarget>0;
   const nw=statsNetWorth();
 
-  // ── Summary rail: the four highest-order facts, each naming its own window ──
-  const rail=[
+  // ── Hero summary: the four highest-order facts, each naming its own window ──
+  const heroCells=[
     {tab:'training',l:'Trained days',v:S.sessions.length?trained:'—',u:S.sessions.length?'/ 4 wks':'',
      s:!S.sessions.length?'No saved sessions':(trainedPrev||trained?(trainDelta?(trainDelta>0?'+':'−')+Math.abs(trainDelta)+' vs prior 4 wks':'Same as prior 4 wks'):'No prior period'),
      cls:''},
@@ -13097,22 +13130,16 @@ function renderStatsOverview(){
     {tab:'finance',l:'Last week spend',v:lastSpend===null?'—':fmtMoney(Math.round(lastSpend)),u:'',
      s:lastWeek?(planComparable?(lastSpend<=lastTarget?'Under':'Over')+' plan by '+fmtMoney(Math.abs(lastSpend-lastTarget)):'No saved plan for that week'):'No completed week',
      cls:planComparable?(lastSpend<=lastTarget?'up':'down'):''}
-  ].map(c=>'<button type="button" class="ov-cell" onclick="setStatsTab(\''+c.tab+'\')">'+
-      '<span class="ov-cell-l">'+c.l+'</span>'+
-      '<span class="ov-cell-v">'+c.v+(c.u?'<span class="ov-cell-u">'+c.u+'</span>':'')+'</span>'+
-      '<span class="ov-cell-s'+(c.cls?' '+c.cls:'')+'">'+c.s+'</span></button>').join('');
+  ].map(c=>'<button type="button" class="ov-hs" onclick="setStatsTab(\''+c.tab+'\')">'+
+      '<span class="ov-hs-label">'+c.l+'</span>'+
+      '<span class="ov-hs-val">'+c.v+(c.u?'<span class="ov-hs-unit">'+c.u+'</span>':'')+'</span>'+
+      '<span class="ov-hs-sub'+(c.cls?' '+(c.cls==='up'?'ov-pos':'ov-neg'):'')+'">'+c.s+'</span></button>').join('');
 
   // ── Training block ──
   let trainBody;
   if(!S.sessions.length){
     trainBody='<div class="ov-empty">No saved sessions yet. Finish a workout in Log and this fills in.</div>';
   }else{
-    const perWeek=[];
-    for(let i=P.weeks*2-1;i>=0;i--){
-      const a=new Date(P.currentMonday); a.setDate(a.getDate()-(i+1)*7);
-      const b=new Date(a); b.setDate(b.getDate()+6);
-      perWeek.push(trainedDaysIn(dateStr(a),dateStr(b)));
-    }
     const durs=(S.sessions||[]).filter(s=>s.date>=P.from&&s.date<=P.to&&s.duration>0).map(s=>s.duration);
     const avgDur=durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length):null;
     const top=statsTopExercise(P.from,P.to);
@@ -13138,7 +13165,6 @@ function renderStatsOverview(){
     }
     trainBody=statsFigure(trained,'days','Distinct trained days · 4 completed weeks · '+P.label)+
       statsSplit([['Sessions saved',sessions],['Avg session',avgDur?avgDur+' min':'—'],['Prior 4 wks',trainedPrev+' days']])+
-      '<div class="card-shape">'+(sparkline(perWeek,{height:34})||'')+'<div class="ov-spark-cap">Trained days per week · last 8 completed weeks</div></div>'+
       signal;
   }
 
@@ -13169,8 +13195,6 @@ function renderStatsOverview(){
     }
     bodyBody=statsFigure(parseFloat(wa.cur.weight),'kg','Latest check-in · '+fmtDate(wa.cur.date)+' · '+(wa.staleDays===0?'today':wa.staleDays+' day'+(wa.staleDays===1?'':'s')+' ago'))+
       statsSplit(goalCells)+
-      (wa.sorted.length>=2?'<div class="card-shape">'+sparkline(wa.sorted.slice(-14).map(w=>parseFloat(w.weight)),{height:34,target:wa.hasGoal?wa.target:null})+
-        '<div class="ov-spark-cap">Last '+Math.min(14,wa.sorted.length)+' check-ins'+(wa.hasGoal?' · dashed line is the target':'')+'</div></div>':'')+
       goalLine;
   }
 
@@ -13224,9 +13248,11 @@ function renderStatsOverview(){
   }
 
   wrap.innerHTML=
-    '<div class="ov-head"><span class="stats-kicker">Look-back</span>'+
-      '<span class="ov-head-range">'+P.label+' · completed periods only</span></div>'+
-    '<div class="ov-rail">'+rail+'</div>'+
+    '<div class="ov-hero">'+
+      '<div class="ov-hero-head"><span class="ov-hero-kicker">Look-back</span>'+
+        '<span class="ov-hero-range">'+P.label+' · completed periods only</span></div>'+
+      '<div class="ov-hero-grid">'+heroCells+'</div>'+
+    '</div>'+
     '<div class="ov-grid">'+
       ovBlock('calendar','Training','training',trainBody)+
       ovBlock('scale','Body','body',bodyBody,bodyChip)+
@@ -15877,14 +15903,14 @@ function applyHomeEditMode(){
 // tab's job — Home is a glance, and the expanded state made a card that was already the
 // tallest on the page taller still while answering a question ("what did I lift on set 3?")
 // nobody asks from the dashboard.
-// It's a short history instead: the last few sessions with date, split, and how each one FELT.
+// It's a compact history instead: sessions are date, split, and how each one FELT. The Home
+// card cap keeps the glance short until Show all is pressed; the rows themselves must not be
+// truncated here or that disclosure has nothing additional to reveal.
 // The effort rating was recorded on every session and shown nowhere outside the session card,
-// so the one genuinely subjective thing tracked here was invisible. Four sessions rather than
-// one also gives the card enough rows to fill its height on desktop, where it is stretched to
-// match its row partner.
+// so the one genuinely subjective thing tracked here was invisible.
 function buildHomeRecentCard(){
   if(!S.sessions.length) return '';
-  const recent=[...S.sessions].sort((a,b)=>a.date<b.date?-1:1).slice(-4).reverse();
+  const recent=[...S.sessions].sort((a,b)=>a.date<b.date?-1:1).reverse();
   const rows=recent.map(s=>{
     const m=effortMeta(s.effort);
     const exCount=(s.exercises||[]).length;
@@ -19197,7 +19223,8 @@ function kitPantrySubmitAdd(){
   },20);
 }
 // One row. Name on the left, one status control on the right — no checkbox, and no
-// permanently-inactive Low button reserving space on all 41 items.
+// permanently-inactive Low button reserving space on all 41 items. Custom-item deletion is
+// configuration, so its destructive control only exists while Pantry Edit mode is deliberate.
 function kitPantryRowHTML(it){
   const st=kitPantryStatusOf(it);
   const meta=KITPANTRY_STATUS.find(s=>s.id===st)||KITPANTRY_STATUS[0];
@@ -19209,11 +19236,18 @@ function kitPantryRowHTML(it){
     '<button type="button" class="kitpantry-status s-'+st+'" onclick="kitPantryCycle(decodeURIComponent(\''+arg+'\'))" '+
       'aria-label="'+escAttr(it.name+': '+meta.label+'. Change to '+next.label+'.')+'">'+
       '<span class="kitpantry-status-ic" aria-hidden="true">'+meta.icon+'</span>'+meta.short+'</button>'+
-    (it.custom?'<button class="kitpantry-del" onclick="kitPantryDeleteCustom(decodeURIComponent(\''+arg+'\'))" aria-label="Remove '+escAttr(it.name)+'">\u2715</button>':'')+
+    (it.custom&&kitPantryEditMode?'<button class="kitpantry-del" onclick="kitPantryDeleteCustom(decodeURIComponent(\''+arg+'\'))" aria-label="Remove '+escAttr(it.name)+'">\u2715</button>':'')+
   '</div>';
 }
 
-let kitPantryManageMode='',kitPantryManageError='';
+let kitPantryEditMode=false,kitPantryManageMode='',kitPantryManageError='';
+function kitPantryToggleEdit(){
+  kitPantryEditMode=!kitPantryEditMode;
+  // New/rename forms belong to edit mode. Closing it must also clear a half-finished form so
+  // reopening Edit always starts from the compact management choices, not stale input.
+  if(!kitPantryEditMode){ kitPantryManageMode=''; kitPantryManageError=''; }
+  kitPantryRender();
+}
 function kitPantryNameTaken(name,exceptId){
   const key=String(name||'').trim().toLocaleLowerCase();
   return kitPantryData.order.some(id=>id!==exceptId&&kitPantryData.pantries[id].name.toLocaleLowerCase()===key);
@@ -19277,12 +19311,14 @@ function kitPantryLocationControlHTML(context,manage){
     return '<option value="'+escAttr(id)+'"'+(id===pantry.id?' selected':'')+'>'+escText(p.name)+'</option>';
   }).join('');
   const title=context==='shopping'?'Shopping for':'Pantry location';
+  const editing=manage&&kitPantryEditMode;
   let html='<section class="kitpantry-location" aria-label="'+escAttr(title)+'">'+
     '<div class="kitpantry-location-main"><div class="kitpantry-location-copy"><span class="kitpantry-location-kicker">'+title+'</span><strong>'+escText(pantry.name)+'</strong></div>'+
-      '<label class="kitpantry-location-select"><span>Switch</span><select aria-label="Switch pantry" onchange="kitPantrySwitch(this.value)">'+opts+'</select></label></div>';
-  if(manage){
+      '<div class="kitpantry-location-controls"><label class="kitpantry-location-select"><span>Switch</span><select aria-label="Switch pantry" onchange="kitPantrySwitch(this.value)">'+opts+'</select></label>'+
+      (manage?'<button type="button" class="bud-edit-btn kitpantry-location-edit'+(editing?' active':'')+'" onclick="kitPantryToggleEdit()" aria-expanded="'+(editing?'true':'false')+'">'+(editing?'Done':'Edit')+'</button>':'')+'</div></div>';
+  if(editing){
     const only=kitPantryData.order.length<=1;
-    html+='<div class="kitpantry-location-actions">'+
+    html+='<div class="kitpantry-location-management"><div class="kitpantry-location-actions">'+
       '<button type="button" onclick="kitPantryOpenManage(\'new\')">+ New</button>'+
       '<button type="button" onclick="kitPantryOpenManage(\'rename\')">Rename</button>'+
       '<button type="button" class="danger" onclick="kitPantryDeleteActive()"'+(only?' disabled':'')+'>Delete</button></div>'+
@@ -19297,6 +19333,7 @@ function kitPantryLocationControlHTML(context,manage){
     } else if(kitPantryManageError){
       html+='<div class="kitpantry-manage-error" role="alert">'+escText(kitPantryManageError)+'</div>';
     }
+    html+='</div>';
   }
   return html+'</section>';
 }

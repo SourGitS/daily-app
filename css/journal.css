@@ -343,8 +343,8 @@
     border-radius:var(--radius-card);
     box-shadow:var(--surface-raised-top);
     padding:20px 24px 14px}
-  #jrn-editor.inline::before{content:'';position:absolute;left:0;right:0;top:0;height:2px;
-    border-radius:var(--radius-card) var(--radius-card) 0 0;
+  #jrn-editor.inline::before{content:'';position:absolute;left:var(--radius-card);right:var(--radius-card);top:0;height:2px;
+    border-radius:999px;
     background:rgba(var(--accent-rgb),.75);pointer-events:none}
   #jrn-editor.inline .jrn-ed-top{border-bottom:1px solid var(--border);background:none;padding:0 0 10px}
   /* The date is the pane's heading, so it is set as one — not as an 11px uppercase kicker. */

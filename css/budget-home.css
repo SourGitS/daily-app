@@ -570,7 +570,6 @@
 [data-theme="dark"] .stat-card,
 [data-theme="dark"] .psw-card,
 [data-theme="dark"] .budget-setup-section,
-[data-theme="dark"] .ov-rail,
 [data-theme="dark"] .se-day-card,
 [data-theme="dark"] .log-timer-card,
 [data-theme="dark"] #chart-wrap{
@@ -1478,18 +1477,20 @@
 .up-cal-link:hover{background:rgba(var(--accent-rgb),.08)}
 
 /* ── Until next pay ────────────────────────────────────────────────
-   Compact enough to sit at the top of the Week view under the hero. Neutral by default;
-   amber when the projection is thin, red when the bills exceed what is available. Semantic,
-   not accent — the accent can be any hue at runtime, so it cannot carry good/bad. */
+   Lives directly beneath Variable expenses in the planning/spending stack. Neutral by
+   default; amber when the projection is thin, red when the bills exceed what is available.
+   Semantic, not accent — the accent can be any hue at runtime, so it cannot carry good/bad. */
+#bud-forecast-card:empty{display:none}
 .fc-card{border-left:3px solid var(--positive);padding-top:14px}
 .fc-card.is-tight{border-left-color:var(--warn)}
 .fc-card.is-over{border-left-color:var(--danger)}
-.fc-eyebrow{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
-  color:var(--muted)}
 .fc-fig{font-family:var(--font-num);font-size:30px;font-weight:800;letter-spacing:-.02em;
   line-height:1.05;margin-top:4px;color:var(--positive)}
+.fc-card .bud-head-sum{color:var(--positive)}
 .fc-card.is-tight .fc-fig{color:var(--warn)}
+.fc-card.is-tight .bud-head-sum{color:var(--warn)}
 .fc-card.is-over .fc-fig{color:var(--danger)}
+.fc-card.is-over .bud-head-sum{color:var(--danger)}
 .fc-unit{font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--text-2);margin-top:2px}
 .fc-line{font-size:12px;font-weight:600;color:var(--muted);margin-top:8px}
 .fc-line-2{margin-top:2px}

@@ -382,29 +382,16 @@
 .stats-seg{display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:9px;background:var(--track);flex-shrink:0}
 .stats-seg button{min-width:44px;height:34px;padding:0 8px;border:0;border-radius:7px;background:transparent;color:var(--muted);font:inherit;font-size:10px;font-weight:800;cursor:pointer}
 .stats-seg button.on{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.16)}
-.stats-seg button:focus-visible,.ov-cell:focus-visible,.ov-signal:focus-visible,.ov-day:focus-visible,.rev-act:focus-visible,.ex-recent-row:focus-visible,.day-cell:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.stats-seg button:focus-visible,.ov-signal:focus-visible,.ov-day:focus-visible,.rev-act:focus-visible,.ex-recent-row:focus-visible,.day-cell:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #view-stats .card-hd-act{display:inline-flex;align-items:center;min-height:36px}
 .stats-note-panel{padding:12px 13px;border-radius:11px;background:var(--track);color:var(--muted);font-size:12px;line-height:1.5}
 .stats-goal-row{display:flex;align-items:center;gap:9px;margin-top:13px;font-size:12px;line-height:1.45;color:var(--text-2)}
 .stats-chart-sm{height:210px}
 
-.ov-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:1px 2px 10px}
-.ov-head-range{font-size:11px;color:var(--muted);text-align:right}
-.ov-rail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));background:var(--card);border:.5px solid var(--card-border);box-shadow:var(--card-top);border-radius:var(--radius-card);overflow:hidden;margin-bottom:12px}
-.ov-cell{min-width:0;min-height:100px;padding:13px;border:0;background:none;color:var(--text);font:inherit;text-align:left;cursor:pointer;border-right:1px solid var(--border);border-bottom:1px solid var(--border)}
-.ov-cell:nth-child(2n){border-right:0}
-.ov-cell:nth-last-child(-n+2){border-bottom:0}
-.ov-cell-l,.ov-cell-v,.ov-cell-s{display:block}
-.ov-cell-l{font-size:10px;font-weight:800;letter-spacing:.055em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
-.ov-cell-v{font-family:var(--font-num);font-size:22px;font-weight:800;line-height:1;color:var(--text);white-space:nowrap}
-.ov-cell-u{font-family:var(--font-ui);font-size:10px;font-weight:700;color:var(--muted);margin-left:4px}
-.ov-cell-s{font-size:10.5px;line-height:1.35;color:var(--muted);margin-top:6px}
-.ov-cell-s.up{color:var(--positive)}
-.ov-cell-s.down,.ov-cell-s.stale{color:var(--danger)}
 .ov-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:0}
 .ov-block{min-width:0}
 .ov-empty{font-size:13px;line-height:1.55;color:var(--muted);padding:7px 0}
-.ov-note,.ov-spark-cap{font-size:11px;line-height:1.45;color:var(--muted);margin-top:8px}
+.ov-note{font-size:11px;line-height:1.45;color:var(--muted);margin-top:8px}
 .ov-goal{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:13px}
 .ov-goal-mode{font-size:12px;font-weight:700;color:var(--text-2)}
 .ov-signal{display:block;width:100%;border:0;border-top:1px solid var(--border);background:none;color:var(--text);font:inherit;text-align:left;padding:12px 0 0;margin-top:12px;cursor:pointer}
@@ -450,9 +437,6 @@ button.ov-day{cursor:pointer}
   .stats-chart-box{height:190px}
   .workout-history-content{padding:10px 14px 24px}
   .stats-evidence-content{padding:10px 14px 24px}
-  .ov-rail{grid-template-columns:repeat(4,minmax(0,1fr))}
-  .ov-cell{min-height:86px;border-bottom:0}
-  .ov-cell:nth-child(2){border-right:1px solid var(--border)}
   .ov-grid,.rev-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
   .ov-block,.rev-card{margin-bottom:0}
 }
@@ -461,19 +445,20 @@ button.ov-day{cursor:pointer}
   .stats-tab-row{position:sticky;top:0;z-index:8;max-width:760px;margin:0 auto 20px}
   .stats-tab-btn{flex:1;text-align:center}
   .stats-review-grid{grid-template-columns:1fr 1fr;gap:16px}
-  .ov-rail{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:18px}
-  .ov-cell{min-height:104px;padding:16px;border-bottom:0}
-  .ov-cell:nth-child(2){border-right:1px solid var(--border)}
-  .ov-cell-v{font-size:25px}
   .ov-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:stretch}
   .ov-block{margin-bottom:0}
   .rev-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
   #sub-body{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
   #sub-body.hidden{display:none}
-  #sub-finance{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+  #sub-finance{display:block}
   #sub-finance.hidden{display:none}
-  #sub-finance>*{min-width:0}
-  #bs-catbreak-wrap{grid-column:1/-1}
+  .stats-fin-main{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start;min-width:0}
+  .stats-fin-col{display:flex;flex-direction:column;gap:18px;min-width:0}
+  .stats-fin-col>div{min-width:0}
+  .stats-fin-col>div:empty{display:none}
+  .stats-fin-col>div>.card{margin-bottom:0}
+  #bs-catbreak-wrap{min-width:0;margin-top:18px}
+  #bs-catbreak-wrap:empty{margin-top:0}
   .stats-chart-box{height:300px}
 }
 
@@ -501,16 +486,45 @@ button.ov-day{cursor:pointer}
    doesn't wash out into the page background (same fix as .budget-snapshot-card). */
 .ov-hero{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.6) 55%, rgba(var(--accent-rgb),.4));border-radius:var(--radius-hero);box-shadow:0 16px 40px rgba(var(--accent-rgb),.3);padding:14px 14px 12px;margin-bottom:16px;position:relative;overflow:hidden;text-shadow:0 1px 2px rgba(0,0,0,.16)}
 [data-theme="light"] .ov-hero{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.7) 55%, rgba(var(--accent-rgb),.65))}
+.ov-hero::before{content:'';position:absolute;width:190px;height:190px;right:-84px;top:-118px;border-radius:50%;background:rgba(255,255,255,.1);pointer-events:none}
+.ov-hero>*{position:relative;z-index:1}
+.ov-hero-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:0 10px 10px;margin-bottom:3px;border-bottom:1px solid rgba(255,255,255,.18)}
+.ov-hero-kicker{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.78)}
+.ov-hero-range{font-size:11px;font-weight:650;line-height:1.35;color:rgba(255,255,255,.8);text-align:right}
 .ov-hero-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
-.ov-hs{padding:11px 10px;border-radius:12px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s ease}
+.ov-hs{display:block;min-width:0;min-height:92px;padding:11px 10px;border:0;border-right:1px solid rgba(255,255,255,.16);border-bottom:1px solid rgba(255,255,255,.16);border-radius:0;background:transparent;color:#fff;font:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s ease}
+.ov-hs:nth-child(2n){border-right:0}
+.ov-hs:nth-last-child(-n+2){border-bottom:0}
 .ov-hs:active{background:rgba(255,255,255,.1)}
+.ov-hs:focus-visible{outline:2px solid #fff;outline-offset:-3px;background:rgba(255,255,255,.1)}
+.ov-hs-label,.ov-hs-val,.ov-hs-sub{display:block}
 .ov-hs-label{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.72);margin-bottom:6px}
-.ov-hs-val{font-family:var(--font-num,inherit);font-size:23px;font-weight:800;line-height:1.05;color:#fff}
+.ov-hs-val{font-family:var(--font-num,inherit);font-size:23px;font-weight:800;line-height:1.05;color:#fff;white-space:nowrap}
 .ov-hs-unit{font-size:12px;font-weight:600;color:rgba(255,255,255,.7)}
-.ov-hs-sub{font-size:11px;color:rgba(255,255,255,.85);margin-top:4px}
+.ov-hs-sub{font-size:11px;line-height:1.35;color:rgba(255,255,255,.85);margin-top:5px}
 /* Status tints legible on the accent gradient (light greens/reds), theme-independent */
 .ov-hs .ov-pos{color:#a7f3c9;font-weight:700}
 .ov-hs .ov-neg{color:#ffc4c4;font-weight:700}
+
+@media (orientation:landscape) and (max-width:1023px) and (max-height:600px){
+  .ov-hero{padding:10px 12px;margin-bottom:12px}
+  .ov-hero-head{padding:0 8px 7px}
+  .ov-hero-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .ov-hs{min-height:76px;padding:8px;border-bottom:0}
+  .ov-hs:nth-child(2){border-right:1px solid rgba(255,255,255,.16)}
+  .ov-hs-label{margin-bottom:4px}
+  .ov-hs-val{font-size:21px}
+  .ov-hs-sub{font-size:10px;margin-top:3px}
+}
+
+@media (min-width:1024px){
+  .ov-hero{padding:16px;margin-bottom:18px}
+  .ov-hero-head{padding:0 12px 11px}
+  .ov-hero-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .ov-hs{min-height:100px;padding:14px 12px;border-bottom:0}
+  .ov-hs:nth-child(2){border-right:1px solid rgba(255,255,255,.16)}
+  .ov-hs-val{font-size:25px}
+}
 
 /* ── Onboarding: budget quick-add chips (fixed expenses) ── */
 
