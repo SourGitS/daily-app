@@ -93,7 +93,8 @@
 // v264 keeps Pantry location management behind the app's standard Edit / Done disclosure so
 // its New, Rename and Delete controls no longer occupy the everyday inventory view.
 // v265 also keeps custom pantry-item deletion behind that same deliberate edit state.
-const CACHE_NAME = 'daily-v265';
+// v266 makes Recent Sessions collapse on complete rows with its disclosure inside the card.
+const CACHE_NAME = 'daily-v266';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

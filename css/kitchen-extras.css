@@ -392,6 +392,12 @@
    because the left side is two stacked lines and the chip should centre against the pair. */
 .rw-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
 .rw-row:last-child{border-bottom:none;padding-bottom:0}
+.home-recent-sessions-card:not(.expanded)>.rw-row-extra{display:none}
+/* Recent Sessions collapses on complete rows, so its disclosure lives in the card flow. The
+   generic Home disclosure is absolutely positioned for pixel-capped cards and visibly detached
+   from this list when reused unchanged. */
+.home-recent-sessions-card>.home-card-more-inline{position:static;left:auto;right:auto;bottom:auto;
+  width:100%;height:30px;margin-top:12px;flex:0 0 auto}
 .rw-l{flex:1;min-width:0}
 .rw-date{font-size:14px;font-weight:700;color:var(--text)}
 .rw-sub{font-size:12px;font-weight:600;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -15744,14 +15744,16 @@ function homeWidgetMove(id,direction){
 // packing (rejected twice already — see CLAUDE.md — because it desyncs DOM order from visual
 // order and breaks drag-to-reorder) or hand-tuning every card's own content to a shared target
 // height, which is a design change to each card, not a layout fix.
-// Only genuinely UNBOUNDED cards are still capped — a real list that can grow without limit
-// (habits, notes, recent sessions) is the one case a fixed content height can't fix on its own:
+// Only genuinely UNBOUNDED cards are still capped — a real notes list that can grow without limit
+// is the one case a fixed content height can't fix on its own:
 // 25 notes made this card 837px tall and dragged its row down with it. HOME_CARD_CAP is a flat
 // pixel ceiling, not tied to any row grid, since there is no row grid to tie it to any more.
 // Habits keeps its weekly progress visible: capping the whole card hid that context behind
 // an oversized disclosure even when every habit row was already on screen.
-const HOME_CAPPABLE=['notes','recent'];
+// Recent Sessions owns a row-aware disclosure instead: a pixel crop can cut a session in half.
+const HOME_CAPPABLE=['notes'];
 const HOME_CARD_CAP=280;   // ≈ the tallest naturally-occurring standard card, so unaffected in the common case
+const HOME_RECENT_ROWS=4;
 const _homeExpanded=new Set();   // survives re-render; renderHome rebuilds innerHTML and would lose a class
 function applyHomeCardCaps(){
   document.querySelectorAll('#home-content .home-card').forEach(w=>{
@@ -15783,6 +15785,16 @@ function applyHomeCardCaps(){
 }
 function toggleHomeCardExpand(id){
   if(_homeExpanded.has(id)) _homeExpanded.delete(id); else _homeExpanded.add(id);
+  if(id==='recent'){
+    const expanded=_homeExpanded.has(id);
+    const card=document.querySelector('#home-content [data-card-id="recent"] .home-recent-sessions-card');
+    if(card){
+      card.classList.toggle('expanded',expanded);
+      const btn=card.querySelector('.home-card-more-inline');
+      if(btn){ btn.textContent=expanded?'Show less':'Show all'; btn.setAttribute('aria-expanded',String(expanded)); }
+    }
+    return;
+  }
   applyHomeCardCaps();
 }
 let homeEditMode=false;
@@ -15903,18 +15915,19 @@ function applyHomeEditMode(){
 // tab's job — Home is a glance, and the expanded state made a card that was already the
 // tallest on the page taller still while answering a question ("what did I lift on set 3?")
 // nobody asks from the dashboard.
-// It's a compact history instead: sessions are date, split, and how each one FELT. The Home
-// card cap keeps the glance short until Show all is pressed; the rows themselves must not be
-// truncated here or that disclosure has nothing additional to reveal.
+// It's a compact history instead: sessions are date, split, and how each one FELT. Wide layouts
+// show four complete rows until Show all is pressed; portrait keeps the natural full list.
 // The effort rating was recorded on every session and shown nowhere outside the session card,
 // so the one genuinely subjective thing tracked here was invisible.
 function buildHomeRecentCard(){
   if(!S.sessions.length) return '';
   const recent=[...S.sessions].sort((a,b)=>a.date<b.date?-1:1).reverse();
-  const rows=recent.map(s=>{
+  const collapsible=recent.length>HOME_RECENT_ROWS&&(window.innerWidth>=1024||isLandscapePhone());
+  const expanded=collapsible&&_homeExpanded.has('recent');
+  const rows=recent.map((s,i)=>{
     const m=effortMeta(s.effort);
     const exCount=(s.exercises||[]).length;
-    return '<div class="rw-row">'+
+    return '<div class="rw-row'+(collapsible&&i>=HOME_RECENT_ROWS?' rw-row-extra':'')+'">'+
       '<div class="rw-l">'+
         '<div class="rw-date">'+fmtDate(s.date)+'</div>'+
         '<div class="rw-sub">'+_catEscHtml(s.sessionType||('Day '+(s.dayNum||'')))+
@@ -15931,9 +15944,13 @@ function buildHomeRecentCard(){
         : '<span class="rw-effort rw-effort-none">Not rated</span>')+
     '</div>';
   }).join('');
-  return '<div class="card" style="cursor:pointer" onclick="setView(\'log\');openWorkoutHistory()">'+
+  const more=collapsible
+    ? '<button type="button" class="home-card-more home-card-more-inline" aria-expanded="'+(expanded?'true':'false')+'" onclick="event.stopPropagation();toggleHomeCardExpand(\'recent\')">'+(expanded?'Show less':'Show all')+'</button>'
+    : '';
+  return '<div class="card home-recent-sessions-card'+(expanded?' expanded':'')+'" style="cursor:pointer" onclick="setView(\'log\');openWorkoutHistory()">'+
     cardHeader('flame','Recent sessions','<span class="card-hd-act">History →</span>')+
     rows+
+    more+
   '</div>';
 }
 
