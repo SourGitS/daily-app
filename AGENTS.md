@@ -1,7 +1,7 @@
 # Daily — Agent Handoff
 
 Technical reference for a coding agent (Codex/ChatGPT or otherwise) picking up this repo.
-Factual as of 2026-08-27. This doc replaces an earlier copy that duplicated `CLAUDE.md`
+Factual as of 2026-09-01. This doc replaces an earlier copy that duplicated `CLAUDE.md`
 almost verbatim — if you find `CLAUDE.md` still present, treat it as the longer-form design
 history/rationale doc and this file as the safety-critical operating reference. Where they
 disagree, re-grep the code; both files have gone stale before.
@@ -227,6 +227,34 @@ list — auth work so far has all been client-side error handling and sync-timin
   countable ingredient (or a `kg`/`L` ingredient), save without changing any unit dropdown,
   and confirm the stored unit is unchanged.
 
+## Multiple pantries and pantry-aware shopping
+
+- `kitchen_pantry` / Firebase path `kitPantry` remains one timestamped synced blob. Its current
+  shape is versioned (`schemaVersion: 2`) and contains `activePantryId`, pantry `order`, and a
+  `pantries` object. Pantry IDs are stable and independent of editable names; every pantry owns
+  its own explicit item map. Never make missing catalogue entries appear implicitly — a new
+  pantry created with “Start empty” must remain genuinely empty.
+- `kitPantryLoad()` normalises current data and losslessly migrates the legacy single item map
+  into the stable `pantry_home` location named Home. Built-in and custom item metadata/statuses
+  are made explicit. Boot seeding and migration go through `lsSave` while respecting
+  `_bootPhase`; do not restore the old raw `localStorage.setItem('kitchen_pantry', ...)` write.
+  The same normalisation runs when legacy data arrives later through the Firebase listener.
+- `kitShopComputePlan()` is the single classification path for Shopping, Home and AI context.
+  It combines recipe quantities first, then matches against the active pantry. In-stock matches
+  are informational “Already in [name]” rows and do not count as shopping. Low/Out matches are
+  one Pantry-needs row carrying any recipe quantity requirements. Untracked ingredients and
+  manual rows remain things to buy; manual rows are never suppressed by a pantry match.
+- Ingredient matching is exact-first and conservative. `kitPantryCanonicalName()` removes only
+  known display parentheticals and applies the explicit `KITPANTRY_ALIASES` map. Do not replace
+  this with substring/fuzzy matching: onion vs spring onion and ground coriander vs coriander
+  leaves are deliberate non-matches.
+- `kitchen_shopping_checked` is a versioned map partitioned by pantry ID. Existing flat checked
+  keys migrate into Home. Generated/manual checked rows must always be read and written through
+  the pantry-aware helpers so state cannot leak when switching locations; deleting a pantry
+  removes only its checked namespace.
+- `daily_pantry_ui` remains device-local and excluded from sync/backup. It stores presentation
+  preferences only, including filters, collapsed categories and the stocked-section disclosure.
+
 ## Testing / release checklist
 
 **There is no automated test suite, no linter config, and no CI pipeline in this repo.**
@@ -258,21 +286,11 @@ No staging environment exists — a push to `main` is live immediately at
 
 ## Current unfinished work
 
-Uncommitted changes on `main` as of this handoff (not yet committed, so not yet deployed):
-- `js/app.js` + `css/kitchen-extras.css`: converting the cooking-mode ingredient panels (full
-  list / per-step list, added in commit `e7cd901`) to use the shared card vocabulary
-  (`cardHeader()`, `.card`) instead of a hand-rolled hairline-bordered strip. In progress —
-  the panel markup and CSS have been updated but this has not been visually re-verified or
-  committed.
-- `service-worker.js`: `CACHE_NAME` bumped `v214` → `v215` locally for the above, not yet
-  committed/deployed.
-- `.claude/settings.local.json`: local Claude Code permission settings, not app-relevant.
-
-**Recommended next task**: finish and verify the cooking-mode ingredient card conversion above
-(check both the mobile stacked layout and the desktop side-by-side layout at ≥1024px, and
-confirm the header stays pinned while only the ingredient rows scroll inside the capped
-`max-height`), then commit and bump the service worker cache version as part of that commit
-per the release checklist above.
+Uncommitted changes on `main` as of 2026-09-01 implement Prompt 42: multiple named pantries,
+lossless schema-v2 migration, pantry-aware ingredient matching and shopping-list context.
+They require the migration, phone/desktop, light/dark and fresh-profile checks in that prompt
+before any production push. `.claude/settings.local.json` and untracked files under `Prompts/`
+are local working files and are unrelated to the app implementation.
 
 ## Uncertain / not verified — flagging rather than guessing
 

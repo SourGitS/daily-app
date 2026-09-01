@@ -552,9 +552,15 @@ if(firebaseReady){
     // ── Kitchen sync ──
     syncBlobListen(user.uid,'kitRecipes','kitchen_recipes',()=>{ try{ kitRecipes=kitLoadRecipes(); }catch(e){} if(S.view==='kitchen'&&typeof kitRender==='function') kitRender(); });
     syncBlobListen(user.uid,'kitShopSelected','kitchen_shopping_selected',()=>{ try{ kitShopSelected=kitShopLoadSelected(); kitShopView=kitShopSelected.length?'list':'selector'; }catch(e){} if(S.view==='kitchen'&&typeof kitShopRender==='function') kitShopRender(); });
-    syncBlobListen(user.uid,'kitShopChecked','kitchen_shopping_checked',()=>{ try{ kitShopChecked=kitShopLoadChecked(); }catch(e){} if(S.view==='kitchen'&&typeof kitShopRenderList==='function') kitShopRenderList(); });
+    syncBlobListen(user.uid,'kitShopChecked','kitchen_shopping_checked',()=>{ try{ kitShopChecked=kitShopNormaliseChecked(kitShopLoadChecked()); }catch(e){} if(S.view==='kitchen'&&typeof kitShopRenderList==='function') kitShopRenderList(); });
     syncBlobListen(user.uid,'kitShopManual','kitchen_shopping_manual',()=>{ try{ kitShopManual=kitShopLoadManual(); }catch(e){} if(S.view==='kitchen'&&typeof kitShopRenderList==='function') kitShopRenderList(); });
-    syncBlobListen(user.uid,'kitPantry','kitchen_pantry',()=>{ try{ kitPantryData=kitPantryLoad(); }catch(e){} if(S.view==='kitchen'&&typeof kitPantryRender==='function') kitPantryRender(); });
+    syncBlobListen(user.uid,'kitPantry','kitchen_pantry',()=>{
+      try{
+        kitPantryData=kitPantryLoad();
+        kitShopChecked=kitShopNormaliseChecked(kitShopChecked);
+      }catch(e){}
+      if(typeof kitPantryRefreshViews==='function') kitPantryRefreshViews();
+    });
     // ── Calorie tracking + check-in streak (previously local-only, same pattern as Kitchen) ──
     // syncBlobListen's seed guard keeps an empty local value from wiping a populated cloud one
     // (and vice-versa); re-render whatever calorie/streak surface is currently on screen.
@@ -6977,15 +6983,27 @@ function aiKitchenScope(fullRecipes){
     }
     return row;
   });
-  let shopping=[];
+  let shopping=[],activePantry=null;
   try{
-    const map=(typeof kitShopComputeItems==='function')?kitShopComputeItems():{};
+    const plan=(typeof kitShopComputePlan==='function')?kitShopComputePlan():null;
+    const map=plan?plan.buy:{};
+    if(plan) activePantry={id:String(plan.pantryId),name:String(plan.pantryName)};
     shopping=Object.keys(map).map(k=>{
       const it=map[k]||{};
       const row={name:String(it.name||''), category:String(it.category||'Other')};
       if(it.hasNumeric&&it.amount!=null) row.amount=aiR2(it.amount);
       if(it.unit) row.unit=String(it.unit);
-      row.checked=!!(kitShopChecked&&kitShopChecked[k]);
+      if(it.requirements&&it.requirements.length===1){
+        const req=it.requirements[0];
+        if(req.hasNumeric&&req.amount!=null) row.amount=aiR2(req.amount);
+        if(req.unit) row.unit=String(req.unit);
+      }
+      if(it.requirements&&it.requirements.length>1){
+        row.requirements=it.requirements.map(r=>({amount:r.hasNumeric&&r.amount!=null?aiR2(r.amount):null,unit:String(r.unit||'')}));
+      }
+      row.checked=it.source==='pantry'?false:kitShopRowChecked(it,plan.pantryId);
+      row.source=String(it.source||'recipe');
+      if(it.status) row.pantryStatus=String(it.status);
       return row;
     });
   }catch(e){ shopping=[]; }
@@ -6996,7 +7014,7 @@ function aiKitchenScope(fullRecipes){
       pantry.push({name:String(it.name||''), category:String(cat), inStock:it.inStock!==false, runningLow:!!it.runningLow});
     }));
   }catch(e){ pantry=[]; }
-  return {fullRecipeContents:!!fullRecipes, recipes, shopping, pantry};
+  return {fullRecipeContents:!!fullRecipes, recipes, shopping, activePantry, pantry};
 }
 
 // Deleted records are excluded outright: a tombstone is not context, and exporting text the
@@ -7361,15 +7379,16 @@ function renderDailyContextMarkdown(ctx){
         k.recipes.map(r=>[r.name,r.category||'—',r.servings==null?'—':r.servings,(r.tags||[]).join(', ')||'—'])));
       blank();
     }
+    const pantryName=k.activePantry&&k.activePantry.name?k.activePantry.name:'active pantry';
     if(k.shopping.length){
-      push('### Shopping list','');
+      push('### Shopping list for '+aiCell(pantryName),'');
       k.shopping.forEach(i=>push('- '+[i.amount,i.unit,i.name].filter(x=>x!==''&&x!=null).map(aiCell).join(' ')+
-        ' ('+aiCell(i.category)+(i.checked?', got it':'')+')'));
+        ' ('+aiCell(i.category)+(i.pantryStatus?', '+aiCell(i.pantryStatus):'')+(i.checked?', got it':'')+')'));
       blank();
     }
     const low=k.pantry.filter(p=>!p.inStock||p.runningLow);
     if(low.length){
-      push('### Pantry — out or running low','');
+      push('### '+aiCell(pantryName)+' pantry — out or running low','');
       push(low.map(p=>aiCell(p.name)+(p.inStock?' (low)':' (out)')).join(' · '),'');
     }
   }
@@ -8081,9 +8100,10 @@ function aiUndoLastApply(){
   if(kitRecipes.length!==beforeR){ removed+=beforeR-kitRecipes.length; kitSaveRecipes(); }
   const goneShop=(kitShopManual||[]).filter(m=>m&&m.aiActionId&&ids.indexOf(m.aiActionId)>=0);
   if(goneShop.length){
-    // Mirror kitShopDeleteManual: the checked-state entry is keyed by name and would otherwise
-    // linger and re-tick a future item of the same name.
-    goneShop.forEach(m=>{ delete kitShopChecked[kitShopItemKey(m.name,'')]; });
+    goneShop.forEach(m=>{
+      kitShopRemoveCheckedKeyEverywhere('manual:'+m.id);
+      kitShopRemoveCheckedKeyEverywhere(kitShopItemKey(m.name,''));
+    });
     kitShopManual=kitShopManual.filter(m=>!(m&&m.aiActionId&&ids.indexOf(m.aiActionId)>=0));
     removed+=goneShop.length;
     kitShopSaveManual(); kitShopSaveChecked();
@@ -14018,17 +14038,20 @@ function buildKitchenCard(){
   // clear list doesn't render a "0 left" that looks like a failure.
   const cells=[];
   try{
-    if(typeof kitShopComputeItems==='function'){
-      const map=kitShopComputeItems();
-      const left=Object.keys(map).filter(k=>!kitShopChecked[k]).length;
-      if(Object.keys(map).length) cells.push({l:'Shopping',v:left?left+' left':'All done',
+    if(typeof kitShopComputePlan==='function'){
+      const plan=kitShopComputePlan();
+      const left=kitShopCountLeft(plan);
+      if(Object.keys(plan.buy).length) cells.push({l:'Shopping',v:left?left+' left':'All done',
         c:left?'':'var(--positive)'});
     }
   }catch(e){}
   try{
-    if(typeof kitPantryNeeds==='function'){
+    if(typeof kitPantryNeeds==='function'&&typeof kitPantryActive==='function'){
+      const pantry=kitPantryActive();
       const n=kitPantryNeeds().length;
-      if(n) cells.push({l:'Pantry',v:n+(n===1?' item low':' items low'),c:'#f59e0b'});
+      const itemCount=pantry&&pantry.items?Object.keys(pantry.items).length:0;
+      if(pantry) cells.push({l:pantry.name,v:n?(n+(n===1?' needs restocking':' need restocking')):(itemCount?'All stocked':'Empty pantry'),
+        c:n?'#f59e0b':'var(--positive)'});
     }
   }catch(e){}
   const splitHtml=cells.map((c,i)=>
@@ -18564,27 +18587,6 @@ function kitSaveForm(){
 }
 
 // ══ KITCHEN: Shopping List ════════════════════════════════════════
-const PANTRY_STAPLES = new Set([
-  'extra virgin olive oil','olive oil','salted butter','butter','canola oil',
-  'soy sauce','worcestershire sauce','balsamic vinegar','white vinegar',
-  'bbq sauce','teriyaki sauce','mayonnaise','chipotle in adobo',
-  'eggs','salt','black pepper','curry powder','sugar','brown sugar',
-  'plain flour','cinnamon','vanilla extract','garlic','onion','brown onion',
-  'smoked paprika','paprika','coriander','cumin','chilli','chilli flakes',
-  'garam masala','garlic powder','garlic salt','onion powder','parsley',
-  'rosemary','oregano','italian herbs','allspice','roast chicken seasoning',
-  'bay leaves','cloves','cayenne pepper','ginger','ginger powder','sesame oil',
-  // Short forms. Matching is exact (kitShopNorm + Set.has), and recipes write the everyday
-  // name while this list held only the full one — so "Pepper" never matched 'black pepper'
-  // and landed on every shopping list, with no quantity, even though the Pantry tracker was
-  // already tracking Black pepper. Same near-miss for vanilla/worcestershire/balsamic/mayo.
-  // Deliberately explicit aliases rather than substring matching: 'onion' is a staple, and a
-  // substring rule would swallow "spring onion", which is produce you genuinely have to buy.
-  'pepper','vanilla','worcestershire','balsamic','mayo',
-  // Tracked in the Pantry tab (KITPANTRY_CATS 'sauces') but missing here, so they were
-  // treated as shopping items despite being staples.
-  'tomato ketchup','ketchup','dijon mustard','dijon'
-]);
 function kitGetIngredientCategory(name){
   const n=name.toLowerCase();
   if(/prawn|beef|chicken|lamb|steak|mince|patty|patties|pork|fish|tuna|salmon|egg/.test(n)) return 'Protein';
@@ -18637,12 +18639,13 @@ function kitShopAdjustServings(id,delta){
 }
 function kitShopRenderSelector(){
   const wrap=document.getElementById('kitshop-selector'); if(!wrap) return;
+  const location=(typeof kitPantryLocationControlHTML==='function')?kitPantryLocationControlHTML('shopping',false):'';
   if(!kitRecipes.length){
-    wrap.innerHTML='<div class="empty" style="padding-top:64px"><div style="font-size:48px">🛒</div><div style="font-size:16px;font-weight:600;margin-top:12px">No recipes yet</div><div style="font-size:13px;color:var(--muted);margin-top:6px">Add recipes first, then build a list.</div></div>';
+    wrap.innerHTML=location+'<div class="empty" style="padding-top:64px"><div style="font-size:48px">🛒</div><div style="font-size:16px;font-weight:600;margin-top:12px">No recipes yet</div><div style="font-size:13px;color:var(--muted);margin-top:6px">Add recipes first, then build a list.</div></div>';
     return;
   }
   const recs=[...kitRecipes].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  let html='<div class="kitshop-heading">What are you cooking this week?</div>';
+  let html=location+'<div class="kitshop-heading">What are you cooking this week?</div>';
   html+='<div class="kitshop-sel-list">';
   recs.forEach(r=>{
     const e=kitShopSelEntry(r.id);
@@ -18677,8 +18680,46 @@ function kitShopBuild(){
 // ── Quantity combining ──
 function kitShopNorm(name){ return (name||'').toLowerCase().trim(); }
 function kitShopItemKey(name,unit){ return kitShopNorm(name)+'-'+(unit||'').toLowerCase().trim(); }
-function kitShopComputeItems(){
-  // map: key -> {name, unit, amount(number|null), hasNumeric, category}
+const KITSHOP_CHECKED_SCHEMA=2;
+function kitShopNormaliseChecked(raw){
+  const activeId=(typeof kitPantryActiveId==='function')?kitPantryActiveId():'pantry_home';
+  const legacyId=(typeof kitPantryGet==='function'&&kitPantryGet('pantry_home'))?'pantry_home':activeId;
+  let out;
+  if(raw&&raw.schemaVersion===KITSHOP_CHECKED_SCHEMA&&raw.pantries&&typeof raw.pantries==='object'){
+    out={schemaVersion:KITSHOP_CHECKED_SCHEMA,pantries:{}};
+    Object.keys(raw.pantries).forEach(pid=>{
+      const src=raw.pantries[pid]; if(!src||typeof src!=='object') return;
+      const rows={}; Object.keys(src).forEach(k=>{ if(src[k]) rows[k]=true; });
+      out.pantries[pid]=rows;
+    });
+  } else {
+    const rows={};
+    if(raw&&typeof raw==='object') Object.keys(raw).forEach(k=>{ if(raw[k]) rows[k]=true; });
+    out={schemaVersion:KITSHOP_CHECKED_SCHEMA,pantries:{}};
+    out.pantries[legacyId]=rows;
+  }
+  if(!out.pantries[activeId]) out.pantries[activeId]={};
+  if(JSON.stringify(raw||{})!==JSON.stringify(out)){
+    lsSave('kitchen_shopping_checked',out,_bootPhase?null:'kitShopChecked');
+  }
+  return out;
+}
+function kitShopCheckedMap(pantryId){
+  const pid=pantryId||((typeof kitPantryActiveId==='function')?kitPantryActiveId():'pantry_home');
+  if(!kitShopChecked||kitShopChecked.schemaVersion!==KITSHOP_CHECKED_SCHEMA){
+    kitShopChecked=kitShopNormaliseChecked(kitShopChecked);
+  }
+  return (kitShopChecked.pantries&&kitShopChecked.pantries[pid])||{};
+}
+function kitShopRowChecked(it,pantryId){
+  const rows=kitShopCheckedMap(pantryId);
+  return !!(rows[it.key]||(it.legacyKey&&rows[it.legacyKey]));
+}
+function kitShopRemoveCheckedKeyEverywhere(key){
+  if(!kitShopChecked||!kitShopChecked.pantries) return;
+  Object.keys(kitShopChecked.pantries).forEach(pid=>{ delete kitShopChecked.pantries[pid][key]; });
+}
+function kitShopComputeRecipeItems(){
   const map={};
   kitShopSelected.forEach(sel=>{
     const r=kitRecipes.find(x=>x.id===sel.recipeId); if(!r) return;
@@ -18686,7 +18727,6 @@ function kitShopComputeItems(){
     (r.ingredients||[]).forEach(ing=>{
       const nm=ing.name||'';
       if(!nm) return;
-      if(PANTRY_STAPLES.has(kitShopNorm(nm))) return; // exclude staples
       const unit=(ing.unit||'').trim();
       const key=kitShopItemKey(nm,unit);
       const n=parseFloat(ing.amount);
@@ -18699,39 +18739,97 @@ function kitShopComputeItems(){
       }
     });
   });
-  // manual items (always 'Other' or their stored category)
-  kitShopManual.forEach(m=>{
-    const key=kitShopItemKey(m.name,'');
-    if(!map[key]) map[key]={name:m.name,unit:'',amount:null,hasNumeric:false,category:m.category||'Other',manual:true,manualId:m.id};
-  });
   return map;
+}
+function kitShopAddRequirement(target,it){
+  if(!target.requirements) target.requirements=[];
+  target.requirements.push({name:it.name,unit:it.unit,amount:it.amount,hasNumeric:it.hasNumeric});
+}
+function kitShopComputePlan(pantryId){
+  const pantry=(typeof kitPantryGet==='function')?kitPantryGet(pantryId):null;
+  const pid=pantry?pantry.id:(pantryId||'pantry_home');
+  const pantryName=pantry?pantry.name:'Home';
+  const index=(typeof kitPantryIngredientIndex==='function')?kitPantryIngredientIndex(pid):null;
+  const recipe=kitShopComputeRecipeItems();
+  const normal={}, needMap={}, stockedMap={};
+  Object.keys(recipe).forEach(key=>{
+    const it=Object.assign({key,source:'recipe'},recipe[key]);
+    const match=(typeof kitPantryMatchIngredient==='function')?kitPantryMatchIngredient(it.name,index):null;
+    if(!match){ normal[key]=it; return; }
+    const status=kitPantryStatusOf(match);
+    const targetMap=status==='in'?stockedMap:needMap;
+    let target=targetMap[match.id];
+    if(!target){
+      target=targetMap[match.id]={key:'pantry:'+pid+':'+match.id,source:status==='in'?'stocked':'pantry',
+        pantryId:pid,pantryName,itemId:match.id,name:match.name,category:'Pantry needs',status,
+        inStock:match.inStock!==false,runningLow:!!match.runningLow,requirements:[]};
+    }
+    kitShopAddRequirement(target,it);
+  });
+  if(typeof kitPantryNeeds==='function') kitPantryNeeds(pid).forEach(it=>{
+    if(needMap[it.id]) return;
+    needMap[it.id]={key:'pantry:'+pid+':'+it.id,source:'pantry',pantryId:pid,pantryName,
+      itemId:it.id,name:it.name,category:'Pantry needs',status:it.status,
+      inStock:it.inStock!==false,runningLow:!!it.runningLow,requirements:[]};
+  });
+  // Manual rows are deliberate user entries. Their source-specific key keeps them visible
+  // even when a recipe or pantry item has the same name.
+  kitShopManual.forEach(m=>{
+    const key='manual:'+m.id;
+    normal[key]={key,name:m.name,unit:'',amount:null,hasNumeric:false,category:m.category||'Other',
+      source:'manual',manual:true,manualId:m.id,legacyKey:kitShopItemKey(m.name,'')};
+  });
+  const pantryNeeds=Object.keys(needMap).map(k=>needMap[k]).sort((a,b)=>a.name.localeCompare(b.name));
+  const stocked=Object.keys(stockedMap).map(k=>stockedMap[k]).sort((a,b)=>a.name.localeCompare(b.name));
+  const buy={};
+  Object.keys(normal).forEach(k=>{ buy[k]=normal[k]; });
+  pantryNeeds.forEach(it=>{ buy[it.key]=it; });
+  return {pantryId:pid,pantryName,normal,pantryNeeds,stocked,buy};
+}
+function kitShopComputeItems(pantryId){ return kitShopComputePlan(pantryId).buy; }
+function kitShopCountLeft(plan,pantryId){
+  const p=plan||kitShopComputePlan(pantryId);
+  let n=p.pantryNeeds.length;
+  Object.keys(p.normal).forEach(k=>{ if(!kitShopRowChecked(p.normal[k],p.pantryId)) n++; });
+  return n;
+}
+function kitShopRequirementText(reqs){
+  return (reqs||[]).map(r=>{
+    if(r.hasNumeric&&r.amount!=null) return kitTrim(r.amount)+(r.unit?' '+r.unit:'');
+    return r.unit||'';
+  }).filter(Boolean).join(' · ');
 }
 function kitShopRenderList(){
   const wrap=document.getElementById('kitshop-list'); if(!wrap) return;
-  const map=kitShopComputeItems();
-  const keys=Object.keys(map);
+  const plan=kitShopComputePlan();
+  const keys=Object.keys(plan.normal);
   // group by category
   const groups={};
-  keys.forEach(k=>{ const it=map[k]; (groups[it.category]=groups[it.category]||[]).push(Object.assign({key:k},it)); });
-  const needs=(typeof kitPantryNeeds==='function')?kitPantryNeeds():[];
-  const totalItems=keys.length+needs.length;
-  let html='';
+  keys.forEach(k=>{ const it=plan.normal[k]; (groups[it.category]=groups[it.category]||[]).push(it); });
+  const totalItems=keys.length+plan.pantryNeeds.length;
+  const left=kitShopCountLeft(plan);
+  let html=(typeof kitPantryLocationControlHTML==='function')?kitPantryLocationControlHTML('shopping',false):'';
   html+='<div class="kitshop-list-head">'+
     '<button class="back-btn" data-back="kitShopBackToSelector" aria-label="Back">'+BACK_CHEVRON+'</button>'+
-    '<div class="kitshop-list-title">Shopping list<span class="kitshop-count">'+totalItems+'</span></div>'+
-    '<button class="kitshop-clear-checked" onclick="kitShopClearChecked()">Clear checked</button>'+
+    '<div class="kitshop-list-title">Shopping list<span class="kitshop-count">'+left+'</span></div>'+
+    '<button class="kitshop-clear-checked" onclick="kitShopClearChecked(decodeURIComponent(\''+kitPantryArg(plan.pantryId)+'\'))">Clear checked</button>'+
   '</div>';
   if(!totalItems){
-    html+='<div class="empty" style="padding:48px 16px"><div style="font-size:40px">✅</div><div style="font-size:15px;font-weight:600;margin-top:10px">Nothing to buy</div><div style="font-size:13px;color:var(--muted);margin-top:4px">Everything\'s a pantry staple — or add an item below.</div></div>';
+    if(plan.stocked.length){
+      html+='<div class="kitshop-empty"><div style="font-size:40px">✅</div><div class="kitshop-empty-t">Everything needed is already in '+kitEsc(plan.pantryName)+'</div><div class="kitshop-empty-d">Expand the stocked section below to review what Daily set aside.</div></div>';
+    } else {
+      html+='<div class="kitshop-empty"><div style="font-size:40px">✅</div><div class="kitshop-empty-t">Nothing to buy</div><div class="kitshop-empty-d">Choose recipes or add an item below when you are ready.</div></div>';
+    }
   }
-  // Pantry needs (out of stock / running low) — separate from recipe ingredients
-  if(needs.length){
+  if(plan.pantryNeeds.length){
     html+='<div class="kitshop-cat-head kitshop-pantry-head">🥫 Pantry needs</div>';
-    needs.forEach(it=>{
+    plan.pantryNeeds.forEach(it=>{
+      const qty=kitShopRequirementText(it.requirements);
       html+='<label class="kitshop-item">'+
-        '<input type="checkbox" class="kitshop-cb" onchange="kitPantryRestock(\''+it.id+'\')">'+
+        '<input type="checkbox" class="kitshop-cb" onchange="kitPantryRestock(decodeURIComponent(\''+kitPantryArg(it.pantryId)+'\'),decodeURIComponent(\''+kitPantryArg(it.itemId)+'\'))">'+
         '<span class="kitshop-item-name">'+kitEsc(it.name)+'</span>'+
-        '<span class="kitshop-item-qty kitshop-need-tag '+(it.inStock?'low':'out')+'">'+(it.inStock?'⚠ Low':'Out')+'</span>'+
+        (qty?'<span class="kitshop-item-qty">'+kitEsc(qty)+'</span>':'')+
+        '<span class="kitshop-need-tag '+(it.status==='low'?'low':'out')+'">'+(it.status==='low'?'⚠ Low':'Out')+'</span>'+
       '</label>';
     });
   }
@@ -18740,18 +18838,35 @@ function kitShopRenderList(){
     items.sort((a,b)=>a.name.localeCompare(b.name));
     html+='<div class="kitshop-cat-head">'+cat+'</div>';
     items.forEach(it=>{
-      const checked=!!kitShopChecked[it.key];
+      const checked=kitShopRowChecked(it,plan.pantryId);
       let qty='';
       if(it.hasNumeric&&it.amount!=null){ qty=kitTrim(it.amount)+(it.unit?' '+it.unit:''); }
       else if(it.unit){ qty=it.unit; }
       html+='<label class="kitshop-item'+(checked?' checked':'')+'">'+
-        '<input type="checkbox" class="kitshop-cb"'+(checked?' checked':'')+' onchange="kitShopToggleCheck(\''+it.key.replace(/'/g,"\\'")+'\',this.checked)">'+
+        '<input type="checkbox" class="kitshop-cb"'+(checked?' checked':'')+' onchange="kitShopToggleCheck(decodeURIComponent(\''+kitPantryArg(it.key)+'\'),this.checked,decodeURIComponent(\''+kitPantryArg(plan.pantryId)+'\'))">'+
         '<span class="kitshop-item-name">'+kitEsc(it.name)+'</span>'+
         (qty?'<span class="kitshop-item-qty">'+kitEsc(qty)+'</span>':'')+
         (it.manual?'<button class="kitshop-item-del" onclick="event.preventDefault();kitShopDeleteManual(\''+it.manualId+'\')" aria-label="Remove">✕</button>':'')+
       '</label>';
     });
   });
+  if(plan.stocked.length){
+    const ui=(typeof kitPantryUI==='function')?kitPantryUI():{};
+    const open=!!(ui.stockedOpen&&ui.stockedOpen[plan.pantryId]);
+    html+='<section class="kitshop-stocked'+(open?' open':'')+'">'+
+      '<button type="button" class="kitshop-stocked-toggle" aria-expanded="'+(open?'true':'false')+'" onclick="kitPantryToggleStockedSection(decodeURIComponent(\''+kitPantryArg(plan.pantryId)+'\'))">'+
+        '<span class="kitshop-stocked-chev" aria-hidden="true">›</span>'+
+        '<span>Already in '+kitEsc(plan.pantryName)+'</span><span class="kitshop-stocked-count">'+plan.stocked.length+'</span>'+
+      '</button>'+
+      (open?'<div class="kitshop-stocked-rows">'+plan.stocked.map(it=>{
+        const qty=kitShopRequirementText(it.requirements);
+        return '<div class="kitshop-item kitshop-stocked-item"><span class="kitshop-stocked-mark" aria-hidden="true">✓</span>'+
+          '<span class="kitshop-item-name">'+kitEsc(it.name)+'</span>'+
+          (qty?'<span class="kitshop-item-qty">'+kitEsc(qty)+'</span>':'')+
+          '<span class="kitshop-stocked-tag">In stock</span></div>';
+      }).join('')+'</div>':'')+
+    '</section>';
+  }
   html+='<button class="kitshop-clear-all" onclick="kitShopClearAll()">Clear all & start over</button>';
   wrap.innerHTML=html;
   // Manual-add bar (fixed) lives outside the scroll list
@@ -18774,14 +18889,16 @@ function kitShopBackToSelector(){
   kitShopRenderAddBar(false);
   kitShopRender();
 }
-function kitShopToggleCheck(key,checked){
-  if(checked) kitShopChecked[key]=true; else delete kitShopChecked[key];
+function kitShopToggleCheck(key,checked,pantryId){
+  const pid=pantryId||kitPantryActiveId();
+  if(!kitShopChecked.pantries[pid]) kitShopChecked.pantries[pid]={};
+  if(checked) kitShopChecked.pantries[pid][key]=true; else delete kitShopChecked.pantries[pid][key];
   kitShopSaveChecked();
-  // update row styling without full re-render
   kitShopRenderList();
 }
-function kitShopClearChecked(){
-  kitShopChecked={};
+function kitShopClearChecked(pantryId){
+  const pid=pantryId||kitPantryActiveId();
+  kitShopChecked.pantries[pid]={};
   kitShopSaveChecked();
   kitShopRenderList();
 }
@@ -18796,13 +18913,17 @@ function kitShopAddManual(){
 function kitShopDeleteManual(id){
   const m=kitShopManual.find(x=>x.id===id);
   kitShopManual=kitShopManual.filter(x=>x.id!==id);
-  if(m) delete kitShopChecked[kitShopItemKey(m.name,'')];
+  if(m){
+    kitShopRemoveCheckedKeyEverywhere('manual:'+m.id);
+    kitShopRemoveCheckedKeyEverywhere(kitShopItemKey(m.name,''));
+  }
   kitShopSaveManual(); kitShopSaveChecked();
   kitShopRenderList();
 }
 function kitShopClearAll(){
   if(!confirm('Clear the whole list and start over?')) return;
-  kitShopSelected=[]; kitShopChecked={}; kitShopManual=[];
+  kitShopSelected=[]; kitShopChecked={schemaVersion:KITSHOP_CHECKED_SCHEMA,pantries:{}}; kitShopManual=[];
+  kitShopChecked.pantries[kitPantryActiveId()]={};
   kitShopSaveSelected(); kitShopSaveChecked(); kitShopSaveManual();
   kitShopView='selector';
   kitShopRenderAddBar(false);
@@ -18818,61 +18939,114 @@ const KITPANTRY_CATS=[
   ['sauces','Sauces & Condiments',['Soy sauce','Worcestershire sauce','Balsamic vinegar','White vinegar','BBQ sauce','Teriyaki sauce','Mayonnaise','Chipotle in adobo','Tomato ketchup','Dijon mustard']],
 ];
 function kitPantryId(name){ return name.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,''); }
-// Seed item metadata (id -> {name, cat}); custom items carry their own metadata in the store
+function kitPantryArg(value){ return encodeURIComponent(String(value)).replace(/'/g,'%27'); }
 const KITPANTRY_SEED_META={};
 KITPANTRY_CATS.forEach(([cat,,items])=>items.forEach(nm=>{ KITPANTRY_SEED_META[kitPantryId(nm)]={name:nm,cat}; }));
+const KITPANTRY_SCHEMA_VERSION=2;
+const KITPANTRY_HOME_ID='pantry_home';
+const KITPANTRY_CAT_KEYS=new Set(KITPANTRY_CATS.map(c=>c[0]));
+function kitPantryHumanName(id){
+  const s=String(id||'item').replace(/^custom[_-]?/,'').replace(/[_-]+/g,' ').trim()||'Pantry item';
+  return s.charAt(0).toUpperCase()+s.slice(1);
+}
+function kitPantryNormaliseItem(id,value){
+  const v=(value&&typeof value==='object')?value:{};
+  const meta=KITPANTRY_SEED_META[id];
+  const name=String(v.name||(meta&&meta.name)||kitPantryHumanName(id)).trim()||kitPantryHumanName(id);
+  const cat=KITPANTRY_CAT_KEYS.has(v.cat)?v.cat:((meta&&meta.cat)||'dry');
+  return {name,cat,inStock:v.inStock!==false,runningLow:!!v.runningLow,
+    custom:typeof v.custom==='boolean'?v.custom:!meta};
+}
+function kitPantrySeedItems(){
+  const items={};
+  KITPANTRY_CATS.forEach(([cat,,names])=>names.forEach(name=>{
+    items[kitPantryId(name)]={name,cat,inStock:true,runningLow:false,custom:false};
+  }));
+  return items;
+}
+function kitPantryUniqueName(name,used){
+  const base=String(name||'Pantry').trim()||'Pantry';
+  let out=base,n=2;
+  while(used.has(out.toLocaleLowerCase())) out=base+' '+n++;
+  used.add(out.toLocaleLowerCase());
+  return out;
+}
+function kitPantryNormaliseData(raw,fresh){
+  if(!(raw&&raw.schemaVersion===KITPANTRY_SCHEMA_VERSION&&raw.pantries&&typeof raw.pantries==='object')){
+    const items={};
+    if(raw&&typeof raw==='object') Object.keys(raw).forEach(id=>{ items[id]=kitPantryNormaliseItem(id,raw[id]); });
+    else if(fresh) Object.assign(items,kitPantrySeedItems());
+    return {schemaVersion:KITPANTRY_SCHEMA_VERSION,activePantryId:KITPANTRY_HOME_ID,
+      order:[KITPANTRY_HOME_ID],pantries:{[KITPANTRY_HOME_ID]:{id:KITPANTRY_HOME_ID,name:'Home',items}}};
+  }
+  const pantries={}, usedNames=new Set();
+  Object.keys(raw.pantries).forEach((key,i)=>{
+    const src=raw.pantries[key]; if(!src||typeof src!=='object') return;
+    let id=String(key||src.id||'').trim();
+    if(!id||pantries[id]) id='pantry_'+kitUUID();
+    const items={};
+    const srcItems=src.items&&typeof src.items==='object'?src.items:{};
+    Object.keys(srcItems).forEach(itemId=>{ items[itemId]=kitPantryNormaliseItem(itemId,srcItems[itemId]); });
+    pantries[id]={id,name:kitPantryUniqueName(src.name||('Pantry '+(i+1)),usedNames),items};
+  });
+  let order=Array.isArray(raw.order)?raw.order.map(String).filter((id,i,a)=>pantries[id]&&a.indexOf(id)===i):[];
+  Object.keys(pantries).forEach(id=>{ if(order.indexOf(id)<0) order.push(id); });
+  if(!order.length){
+    pantries[KITPANTRY_HOME_ID]={id:KITPANTRY_HOME_ID,name:'Home',items:{}};
+    order=[KITPANTRY_HOME_ID];
+  }
+  const activePantryId=pantries[raw.activePantryId]?raw.activePantryId:order[0];
+  return {schemaVersion:KITPANTRY_SCHEMA_VERSION,activePantryId,order,pantries};
+}
 function kitPantryLoad(){
-  try{
-    const raw=localStorage.getItem('kitchen_pantry');
-    if(raw){ const o=JSON.parse(raw); if(o&&typeof o==='object') return o; }
-  }catch(e){}
-  const seed={};
-  KITPANTRY_CATS.forEach(([cat,,items])=>items.forEach(nm=>{ seed[kitPantryId(nm)]={inStock:true,runningLow:false}; }));
-  localStorage.setItem('kitchen_pantry',JSON.stringify(seed));
-  return seed;
+  let parsed=null,rawText=null;
+  try{ rawText=localStorage.getItem('kitchen_pantry'); if(rawText) parsed=JSON.parse(rawText); }catch(e){ parsed=null; }
+  const data=kitPantryNormaliseData(parsed,!parsed);
+  // Boot seeding and legacy migration use the timestamp-aware writer. A fresh device keeps
+  // timestamp 0, while legacy data arriving later from Firebase is migrated and written back
+  // with a real edit timestamp without creating a second sync path.
+  if(!rawText||JSON.stringify(parsed)!==JSON.stringify(data)) lsSave('kitchen_pantry',data,_bootPhase?null:'kitPantry');
+  return data;
 }
 let kitPantryData=kitPantryLoad();
+kitShopChecked=kitShopNormaliseChecked(kitShopChecked);
 function kitPantrySave(){ lsSave('kitchen_pantry', kitPantryData, 'kitPantry'); }
-// All items (seed + custom) grouped by category key
-function kitPantryItemsByCat(){
+function kitPantryActiveId(){
+  if(kitPantryData&&kitPantryData.pantries&&kitPantryData.pantries[kitPantryData.activePantryId]) return kitPantryData.activePantryId;
+  return kitPantryData&&kitPantryData.order&&kitPantryData.order[0]||KITPANTRY_HOME_ID;
+}
+function kitPantryGet(id){
+  const pid=id||kitPantryActiveId();
+  return kitPantryData&&kitPantryData.pantries?kitPantryData.pantries[pid]||null:null;
+}
+function kitPantryActive(){ return kitPantryGet(kitPantryActiveId()); }
+function kitPantryItemsByCat(pantryId){
   const groups={}; KITPANTRY_CATS.forEach(([cat])=>groups[cat]=[]);
-  // seed items in their defined order
-  KITPANTRY_CATS.forEach(([cat,,items])=>items.forEach(nm=>{
-    const id=kitPantryId(nm);
-    const st=kitPantryData[id]||{inStock:true,runningLow:false};
-    groups[cat].push({id,name:nm,cat,inStock:st.inStock!==false,runningLow:!!st.runningLow});
-  }));
-  // custom items (have name+cat stored in the value)
-  Object.keys(kitPantryData).forEach(id=>{
-    const v=kitPantryData[id];
-    if(v&&v.custom&&v.name){
-      const cat=v.cat&&groups[v.cat]?v.cat:'sauces';
-      groups[cat].push({id,name:v.name,cat,inStock:v.inStock!==false,runningLow:!!v.runningLow,custom:true});
-    }
+  const pantry=kitPantryGet(pantryId); if(!pantry) return groups;
+  const rank={}; let n=0;
+  KITPANTRY_CATS.forEach(([, ,names])=>names.forEach(name=>{ rank[kitPantryId(name)]=n++; }));
+  Object.keys(pantry.items||{}).forEach(id=>{
+    const v=kitPantryNormaliseItem(id,pantry.items[id]);
+    groups[v.cat].push(Object.assign({id,pantryId:pantry.id},v));
   });
+  Object.keys(groups).forEach(cat=>groups[cat].sort((a,b)=>{
+    const ar=rank[a.id],br=rank[b.id];
+    if(ar!=null||br!=null) return (ar==null?9999:ar)-(br==null?9999:br);
+    return a.name.localeCompare(b.name);
+  }));
   return groups;
 }
-function kitPantryNeeds(){
-  // Items out of stock OR running low — for the shopping list
+function kitPantryNeeds(pantryId){
+  const pantry=kitPantryGet(pantryId); if(!pantry) return [];
   const out=[];
-  const seen={};
-  const push=(id,name,inStock)=>{ if(seen[id])return; seen[id]=1; out.push({id,name,inStock}); };
-  Object.keys(kitPantryData).forEach(id=>{
-    const v=kitPantryData[id]||{};
-    const meta=KITPANTRY_SEED_META[id];
-    const name=(v.custom&&v.name)?v.name:(meta?meta.name:null);
-    if(!name) return;
-    if(v.inStock===false || v.runningLow===true) push(id,name,v.inStock!==false);
+  Object.keys(pantry.items||{}).forEach(id=>{
+    const v=kitPantryNormaliseItem(id,pantry.items[id]);
+    const status=kitPantryStatusOf(v);
+    if(status!=='in') out.push(Object.assign({id,pantryId:pantry.id,status},v));
   });
   out.sort((a,b)=>a.name.localeCompare(b.name));
   return out;
 }
-// ── Status: ONE three-state value over the two stored booleans ──
-// The store keeps {inStock, runningLow} and is synced, so the shape is deliberately
-// unchanged — no migration, and kitPantryNeeds() still reads it exactly as before. What
-// changes is that the two flags can no longer be set independently: a checkbox plus a
-// separate Low button let an item be "out of stock" AND "running low" at once, which is
-// meaningless and was reachable in one tap.
 const KITPANTRY_STATUS=[
   {id:'in',  label:'In stock',   short:'In stock', icon:'\u2713'},
   {id:'low', label:'Running low',short:'Low',      icon:'\u26a0'},
@@ -18883,21 +19057,64 @@ function kitPantryStatusOf(it){
   if(it.inStock===false) return 'out';
   return it.runningLow?'low':'in';
 }
-// The single writer. Every status change goes through here, so the two booleans can only
-// ever hold one of the three meaningful combinations.
-function kitPantrySetStatus(id,status){
-  const v=kitPantryData[id]||(kitPantryData[id]={});
+function kitPantrySetStatus(id,status,pantryId){
+  const pantry=kitPantryGet(pantryId); if(!pantry||!pantry.items[id]) return;
+  const v=pantry.items[id];
   if(status==='out'){ v.inStock=false; v.runningLow=false; }
   else if(status==='low'){ v.inStock=true; v.runningLow=true; }
   else { v.inStock=true; v.runningLow=false; }
   kitPantrySave();
-  kitPantryRender();
+  kitPantryRefreshViews();
 }
 function kitPantryCycle(id){
   const order=['in','low','out'];
-  const it=kitPantryData[id]||{};
+  const pantry=kitPantryActive(); if(!pantry) return;
+  const it=pantry.items[id]||{};
   const cur=kitPantryStatusOf({inStock:it.inStock,runningLow:it.runningLow});
-  kitPantrySetStatus(id, order[(order.indexOf(cur)+1)%order.length]);
+  kitPantrySetStatus(id, order[(order.indexOf(cur)+1)%order.length],pantry.id);
+}
+
+function kitPantryExactName(name){
+  let s=String(name||'');
+  try{ s=s.normalize('NFKD'); }catch(e){}
+  return s.replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/&/g,' and ')
+    .replace(/[’']/g,'').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
+}
+const KITPANTRY_ALIASES={
+  'pepper':'black pepper','black pepper':'black pepper',
+  'vanilla':'vanilla extract','vanilla extract':'vanilla extract',
+  'worcestershire':'worcestershire sauce','worcestershire sauce':'worcestershire sauce',
+  'balsamic':'balsamic vinegar','balsamic vinegar':'balsamic vinegar',
+  'mayo':'mayonnaise','mayonnaise':'mayonnaise',
+  'ketchup':'tomato ketchup','tomato ketchup':'tomato ketchup',
+  'dijon':'dijon mustard','dijon mustard':'dijon mustard',
+  'olive oil':'extra virgin olive oil','extra virgin olive oil':'extra virgin olive oil',
+  'butter':'salted butter','salted butter':'salted butter',
+  'rosemary':'rosemary leaves','rosemary leaves':'rosemary leaves',
+  'oregano':'oregano leaves','oregano leaves':'oregano leaves'
+};
+function kitPantryCanonicalName(name){
+  const stripped=String(name||'').replace(/\s*\((?:ground|dried|whole)\)\s*/gi,' ');
+  const exact=kitPantryExactName(stripped);
+  return KITPANTRY_ALIASES[exact]||exact;
+}
+function kitPantryIngredientIndex(pantryId){
+  const groups=kitPantryItemsByCat(pantryId), exact={}, canonical={};
+  KITPANTRY_CATS.forEach(([cat])=>(groups[cat]||[]).forEach(it=>{
+    const e=kitPantryExactName(it.name),c=kitPantryCanonicalName(it.name);
+    if(e&&!exact[e]) exact[e]=it;
+    if(c&&!canonical[c]) canonical[c]=it;
+  }));
+  return {exact,canonical};
+}
+function kitPantryMatchIngredient(name,index){
+  const idx=index||kitPantryIngredientIndex();
+  return idx.exact[kitPantryExactName(name)]||idx.canonical[kitPantryCanonicalName(name)]||null;
+}
+function kitPantryHasDuplicateItem(name,pantryId){
+  const key=kitPantryCanonicalName(name); if(!key) return false;
+  const pantry=kitPantryGet(pantryId); if(!pantry) return false;
+  return Object.keys(pantry.items||{}).some(id=>kitPantryCanonicalName(pantry.items[id].name)===key);
 }
 
 // ── View state: DEVICE-LOCAL ──
@@ -18910,6 +19127,7 @@ function kitPantryUI(){
   const ui=(o&&typeof o==='object')?o:{};
   if(['attention','stocked','all'].indexOf(ui.filter)<0) ui.filter='attention';
   if(!ui.collapsed||typeof ui.collapsed!=='object') ui.collapsed={};
+  if(!ui.stockedOpen||typeof ui.stockedOpen!=='object') ui.stockedOpen={};
   if(typeof ui.cat!=='string') ui.cat='';
   return ui;
 }
@@ -18930,18 +19148,20 @@ function kitPantryCollapseAll(collapse){
   if(collapse) KITPANTRY_CATS.forEach(([cat])=>{ ui.collapsed[cat]=true; });
   kitPantryUISave(ui); kitPantryRender();
 }
-function kitPantryRestock(id){
-  const v=kitPantryData[id]||{};
-  v.inStock=true; v.runningLow=false;
-  // preserve custom metadata
-  kitPantryData[id]=Object.assign(kitPantryData[id]||{},v);
-  kitPantrySave();
-  // refresh whichever kitchen view is active
-  if(kitState.tab==='pantry') kitPantryRender();
+function kitPantryToggleStockedSection(pantryId){
+  const ui=kitPantryUI();
+  if(ui.stockedOpen[pantryId]) delete ui.stockedOpen[pantryId]; else ui.stockedOpen[pantryId]=true;
+  kitPantryUISave(ui);
   if(kitState.tab==='shopping') kitShopRenderList();
 }
-// Five always-visible add forms — one per category — cost real height on every visit while
-// being used almost never. One form, opened on demand, with the category as a field.
+function kitPantryRestock(pantryId,id){
+  if(id==null){ id=pantryId; pantryId=kitPantryActiveId(); }
+  const pantry=kitPantryGet(pantryId); if(!pantry||!pantry.items[id]) return;
+  const v=pantry.items[id];
+  v.inStock=true; v.runningLow=false;
+  kitPantrySave();
+  kitPantryRefreshViews();
+}
 let kitPantryAddOpen=false, kitPantryAddCat='spices';
 function kitPantryOpenAdd(cat){
   kitPantryAddOpen=true;
@@ -18961,8 +19181,13 @@ function kitPantrySubmitAdd(){
   const cat=(catEl&&catEl.value)||kitPantryAddCat;
   const st=(stEl&&stEl.value)||'in';
   kitPantryAddCat=cat;
+  const pantry=kitPantryActive(); if(!pantry) return;
+  if(kitPantryHasDuplicateItem(name,pantry.id)){
+    if(err) err.textContent='That item, or a matching pantry alias, is already in '+pantry.name+'.';
+    nameEl.focus(); return;
+  }
   const id='custom_'+Date.now();
-  kitPantryData[id]={inStock:st!=='out', runningLow:st==='low', custom:true, name:name, cat:cat};
+  pantry.items[id]={inStock:st!=='out', runningLow:st==='low', custom:true, name:name, cat:cat};
   kitPantrySave();
   // Stay open for the next one — adding pantry items is something people do in a burst.
   kitPantryRender();
@@ -18977,14 +19202,110 @@ function kitPantryRowHTML(it){
   const st=kitPantryStatusOf(it);
   const meta=KITPANTRY_STATUS.find(s=>s.id===st)||KITPANTRY_STATUS[0];
   const next=KITPANTRY_STATUS[(KITPANTRY_STATUS.indexOf(meta)+1)%KITPANTRY_STATUS.length];
+  const arg=kitPantryArg(it.id);
   return '<div class="kitpantry-item s-'+st+'">'+
     '<span class="kitpantry-name">'+kitEsc(it.name)+'</span>'+
     // Status is carried by an icon AND a word, never colour alone.
-    '<button type="button" class="kitpantry-status s-'+st+'" onclick="kitPantryCycle(\''+it.id+'\')" '+
+    '<button type="button" class="kitpantry-status s-'+st+'" onclick="kitPantryCycle(decodeURIComponent(\''+arg+'\'))" '+
       'aria-label="'+escAttr(it.name+': '+meta.label+'. Change to '+next.label+'.')+'">'+
       '<span class="kitpantry-status-ic" aria-hidden="true">'+meta.icon+'</span>'+meta.short+'</button>'+
-    (it.custom?'<button class="kitpantry-del" onclick="kitPantryDeleteCustom(\''+it.id+'\')" aria-label="Remove '+escAttr(it.name)+'">\u2715</button>':'')+
+    (it.custom?'<button class="kitpantry-del" onclick="kitPantryDeleteCustom(decodeURIComponent(\''+arg+'\'))" aria-label="Remove '+escAttr(it.name)+'">\u2715</button>':'')+
   '</div>';
+}
+
+let kitPantryManageMode='',kitPantryManageError='';
+function kitPantryNameTaken(name,exceptId){
+  const key=String(name||'').trim().toLocaleLowerCase();
+  return kitPantryData.order.some(id=>id!==exceptId&&kitPantryData.pantries[id].name.toLocaleLowerCase()===key);
+}
+function kitPantryOpenManage(mode){
+  kitPantryManageMode=mode; kitPantryManageError=''; kitPantryRender();
+  setTimeout(()=>{
+    const id=mode==='rename'?'kitpantry-rename-name':'kitpantry-location-name';
+    const el=document.getElementById(id); if(el){ el.focus(); if(mode==='rename') el.select(); }
+  },30);
+}
+function kitPantryCloseManage(){ kitPantryManageMode=''; kitPantryManageError=''; kitPantryRender(); }
+function kitPantryNewId(){
+  let id; do{ id='pantry_'+kitUUID(); }while(kitPantryData.pantries[id]); return id;
+}
+function kitPantrySubmitNew(){
+  const input=document.getElementById('kitpantry-location-name'); if(!input) return;
+  const name=input.value.trim();
+  if(!name){ kitPantryManageError='Give the pantry a name.'; kitPantryRender(); return; }
+  if(kitPantryNameTaken(name,'')){ kitPantryManageError='A pantry with that name already exists.'; kitPantryRender(); return; }
+  const copy=(document.querySelector('input[name="kitpantry-start"]:checked')||{}).value==='copy';
+  const current=kitPantryActive(),id=kitPantryNewId();
+  const items=copy&&current?JSON.parse(JSON.stringify(current.items||{})):{};
+  kitPantryData.pantries[id]={id,name,items};
+  kitPantryData.order.push(id); kitPantryData.activePantryId=id;
+  kitPantryManageMode=''; kitPantryManageError=''; kitPantryAddOpen=false; kitPantryQuery='';
+  kitPantrySave(); kitPantryRefreshViews();
+}
+function kitPantrySubmitRename(){
+  const pantry=kitPantryActive(),input=document.getElementById('kitpantry-rename-name'); if(!pantry||!input) return;
+  const name=input.value.trim();
+  if(!name){ kitPantryManageError='Give the pantry a name.'; kitPantryRender(); return; }
+  if(kitPantryNameTaken(name,pantry.id)){ kitPantryManageError='A pantry with that name already exists.'; kitPantryRender(); return; }
+  pantry.name=name; kitPantryManageMode=''; kitPantryManageError='';
+  kitPantrySave(); kitPantryRefreshViews();
+}
+function kitPantryDeleteActive(){
+  const pantry=kitPantryActive(); if(!pantry) return;
+  if(kitPantryData.order.length<=1){
+    kitPantryManageError='Daily needs at least one pantry, so '+pantry.name+' cannot be deleted.';
+    kitPantryRender(); return;
+  }
+  if(!confirm('Delete "'+pantry.name+'" and all items tracked there? Other pantries, recipes and shopping items will stay unchanged.')) return;
+  const oldIndex=kitPantryData.order.indexOf(pantry.id);
+  kitPantryData.order=kitPantryData.order.filter(id=>id!==pantry.id);
+  delete kitPantryData.pantries[pantry.id];
+  kitPantryData.activePantryId=kitPantryData.order[Math.min(Math.max(oldIndex,0),kitPantryData.order.length-1)];
+  if(kitShopChecked.pantries) delete kitShopChecked.pantries[pantry.id];
+  kitPantryManageMode=''; kitPantryManageError=''; kitPantryAddOpen=false; kitPantryQuery='';
+  kitPantrySave(); kitShopSaveChecked(); kitPantryRefreshViews();
+}
+function kitPantrySwitch(id){
+  if(!kitPantryData.pantries[id]||id===kitPantryData.activePantryId) return;
+  kitPantryData.activePantryId=id; kitPantryManageMode=''; kitPantryManageError='';
+  kitPantryAddOpen=false; kitPantryQuery=''; kitPantrySave(); kitPantryRefreshViews();
+}
+function kitPantryLocationControlHTML(context,manage){
+  const pantry=kitPantryActive(); if(!pantry) return '';
+  const opts=kitPantryData.order.map(id=>{
+    const p=kitPantryData.pantries[id];
+    return '<option value="'+escAttr(id)+'"'+(id===pantry.id?' selected':'')+'>'+escText(p.name)+'</option>';
+  }).join('');
+  const title=context==='shopping'?'Shopping for':'Pantry location';
+  let html='<section class="kitpantry-location" aria-label="'+escAttr(title)+'">'+
+    '<div class="kitpantry-location-main"><div class="kitpantry-location-copy"><span class="kitpantry-location-kicker">'+title+'</span><strong>'+escText(pantry.name)+'</strong></div>'+
+      '<label class="kitpantry-location-select"><span>Switch</span><select aria-label="Switch pantry" onchange="kitPantrySwitch(this.value)">'+opts+'</select></label></div>';
+  if(manage){
+    const only=kitPantryData.order.length<=1;
+    html+='<div class="kitpantry-location-actions">'+
+      '<button type="button" onclick="kitPantryOpenManage(\'new\')">+ New</button>'+
+      '<button type="button" onclick="kitPantryOpenManage(\'rename\')">Rename</button>'+
+      '<button type="button" class="danger" onclick="kitPantryDeleteActive()"'+(only?' disabled':'')+'>Delete</button></div>'+
+      (only?'<div class="kitpantry-location-note">Create another pantry before deleting '+escText(pantry.name)+'.</div>':'');
+    if(kitPantryManageMode==='new'){
+      html+='<div class="kitpantry-manage-form"><label>Pantry name<input id="kitpantry-location-name" type="text" autocomplete="off" placeholder="e.g. Mum\'s house" onkeydown="if(event.key===\'Enter\'){event.preventDefault();kitPantrySubmitNew();}"></label>'+
+        '<fieldset><legend>Starting inventory</legend><label><input type="radio" name="kitpantry-start" value="empty" checked> Start empty</label><label><input type="radio" name="kitpantry-start" value="copy"> Copy '+escText(pantry.name)+'</label></fieldset>'+
+        '<div class="kitpantry-manage-error" role="alert">'+escText(kitPantryManageError)+'</div><div class="kitpantry-manage-buttons"><button type="button" onclick="kitPantryCloseManage()">Cancel</button><button type="button" class="primary" onclick="kitPantrySubmitNew()">Create pantry</button></div></div>';
+    } else if(kitPantryManageMode==='rename'){
+      html+='<div class="kitpantry-manage-form"><label>Pantry name<input id="kitpantry-rename-name" type="text" autocomplete="off" value="'+escAttr(pantry.name)+'" onkeydown="if(event.key===\'Enter\'){event.preventDefault();kitPantrySubmitRename();}"></label>'+
+        '<div class="kitpantry-manage-error" role="alert">'+escText(kitPantryManageError)+'</div><div class="kitpantry-manage-buttons"><button type="button" onclick="kitPantryCloseManage()">Cancel</button><button type="button" class="primary" onclick="kitPantrySubmitRename()">Save name</button></div></div>';
+    } else if(kitPantryManageError){
+      html+='<div class="kitpantry-manage-error" role="alert">'+escText(kitPantryManageError)+'</div>';
+    }
+  }
+  return html+'</section>';
+}
+function kitPantryRefreshViews(){
+  if(typeof S!=='undefined'&&S.view==='kitchen'){
+    if(kitState.tab==='pantry') kitPantryRender();
+    else if(kitState.tab==='shopping') kitShopRender();
+  }
+  if(typeof S!=='undefined'&&S.view==='home'&&typeof renderHome==='function') renderHome();
 }
 function kitPantryRender(){
   const wrap=document.getElementById('kitpantry'); if(!wrap) return;
@@ -18993,15 +19314,16 @@ function kitPantryRender(){
   const searchFocused=!!(active&&active.id==='kitpantry-search');
   const caret=searchFocused?active.selectionStart:null;
 
-  const groups=kitPantryItemsByCat();
+  const pantry=kitPantryActive(); if(!pantry) return;
+  const groups=kitPantryItemsByCat(pantry.id);
   const ui=kitPantryUI();
   const q=kitPantryQuery.trim().toLowerCase();
 
-  let inStock=0,low=0,out=0;
+  let stocked=0,low=0,out=0;
   const all=[];
   KITPANTRY_CATS.forEach(([cat])=>(groups[cat]||[]).forEach(it=>{
     const st=kitPantryStatusOf(it);
-    if(st==='out') out++; else { inStock++; if(st==='low') low++; }
+    if(st==='out') out++; else if(st==='low') low++; else stocked++;
     all.push(Object.assign({},it,{status:st}));
   }));
 
@@ -19014,8 +19336,7 @@ function kitPantryRender(){
   };
   const visible=all.filter(matches);
 
-  // ── Search ──
-  let html='<div class="kitpantry-search">'+
+  let html=kitPantryLocationControlHTML('pantry',true)+'<div class="kitpantry-search">'+
     '<svg class="kitpantry-search-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'+
     '<input id="kitpantry-search" type="search" autocomplete="off" placeholder="Search pantry\u2026" '+
       'value="'+escAttr(kitPantryQuery)+'" oninput="kitPantrySearch(this.value)" aria-label="Search pantry">'+
@@ -19027,7 +19348,7 @@ function kitPantryRender(){
     'aria-pressed="'+(ui.filter===id?'true':'false')+'" onclick="kitPantrySetFilter(\''+id+'\')">'+label+'</button>';
   html+='<div class="kitpantry-summary" role="group" aria-label="Filter pantry">'+
     pill('attention',(low+out)+' need attention','bad')+
-    pill('stocked',inStock+' stocked','good')+
+    pill('stocked',stocked+' stocked','good')+
     pill('all','All '+all.length,'neutral')+
   '</div>';
 
@@ -19038,8 +19359,8 @@ function kitPantryRender(){
     KITPANTRY_CATS.map(([c,label])=>chip(c,label)).join('')+'</div>';
 
   if(!all.length){
-    html+='<div class="kitpantry-empty"><div class="kitpantry-empty-t">Your pantry is empty</div>'+
-      '<div class="kitpantry-empty-d">Add the things you keep on hand and Daily will track what needs replacing.</div></div>';
+    html+='<div class="kitpantry-empty"><div class="kitpantry-empty-t">'+escText(pantry.name)+' is empty</div>'+
+      '<div class="kitpantry-empty-d">Untracked recipe ingredients stay on the shopping list. Add the things kept here and Daily will set stocked items aside.</div></div>';
   } else if(ui.filter==='attention' && !(low+out) && !q){
     // The good case gets a real answer instead of a blank list.
     html+='<div class="kitpantry-empty"><div class="kitpantry-empty-t">\u2713 Everything is stocked</div>'+
@@ -19119,9 +19440,10 @@ function kitPantryRender(){
   }
 }
 function kitPantryDeleteCustom(id){
-  delete kitPantryData[id];
+  const pantry=kitPantryActive(); if(!pantry) return;
+  delete pantry.items[id];
   kitPantrySave();
-  kitPantryRender();
+  kitPantryRefreshViews();
 }
 
 // ── Portrait lock ─────────────────────────────────────────────────

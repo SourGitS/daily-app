@@ -128,14 +128,14 @@
 .kitshop-list-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;position:sticky;top:0;background:var(--bg);z-index:6;padding:4px 0}
 .kitshop-list-title{flex:1;font-size:18px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
 .kitshop-count{font-size:12px;font-weight:700;color:#fff;background:var(--accent);border-radius:999px;padding:1px 9px}
-.kitshop-clear-checked{background:transparent;border:none;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kitshop-clear-checked{min-height:44px;background:transparent;border:none;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kitshop-cat-head{position:sticky;top:40px;background:var(--bg);z-index:5;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);padding:10px 0 6px}
 .kitshop-item{display:flex;align-items:center;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kitshop-cb{width:44px;height:44px;flex-shrink:0;accent-color:var(--accent);cursor:pointer;margin:0}
 .kitshop-item-name{flex:1;min-width:0;font-size:15px;color:var(--text)}
 .kitshop-item-qty{font-size:14px;font-weight:600;color:var(--muted);flex-shrink:0}
 .kitshop-item.checked .kitshop-item-name,.kitshop-item.checked .kitshop-item-qty{text-decoration:line-through;opacity:0.45}
-.kitshop-item-del{width:30px;height:30px;flex-shrink:0;background:transparent;border:none;color:var(--danger);font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kitshop-item-del{width:44px;height:44px;flex-shrink:0;background:transparent;border:none;color:var(--danger);font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kitshop-clear-all{width:100%;padding:12px;margin:20px 0 8px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--danger);font-size:14px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 #kitshop-list{padding-bottom:72px}
 
@@ -151,6 +151,19 @@
 .kitshop-need-tag{font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px}
 .kitshop-need-tag.low{background:rgba(245,158,11,0.16);color:#f59e0b}
 .kitshop-need-tag.out{background:rgba(231,76,60,0.16);color:var(--danger)}
+.kitshop-empty{text-align:center;padding:42px 16px;color:var(--text);grid-column:1/-1}
+.kitshop-empty-t{font-size:15px;font-weight:700;margin-top:10px}
+.kitshop-empty-d{font-size:13px;line-height:1.45;color:var(--muted);margin-top:5px}
+.kitshop-stocked{grid-column:1/-1;margin-top:14px;border:1px solid var(--card-border);border-radius:14px;background:var(--surface-card);overflow:hidden}
+[data-theme="dark"] .kitshop-stocked{border:0.5px solid var(--surface-card-border);box-shadow:var(--surface-card-top)}
+.kitshop-stocked-toggle{width:100%;min-height:48px;display:flex;align-items:center;gap:9px;padding:10px 13px;border:none;background:transparent;color:var(--text);font-family:inherit;font-size:13px;font-weight:750;text-align:left;cursor:pointer}
+.kitshop-stocked-chev{font-size:19px;color:var(--muted);transition:transform .18s ease}
+.kitshop-stocked.open .kitshop-stocked-chev{transform:rotate(90deg)}
+.kitshop-stocked-count{margin-left:auto;min-width:24px;padding:2px 8px;border-radius:999px;background:rgba(82,183,136,.15);color:var(--success);font-size:11px;text-align:center}
+.kitshop-stocked-rows{border-top:1px solid var(--border);padding:0 13px}
+.kitshop-stocked-item{cursor:default;padding-left:0;padding-right:0}
+.kitshop-stocked-mark{width:36px;height:36px;display:grid;place-items:center;flex-shrink:0;border-radius:50%;background:rgba(82,183,136,.15);color:var(--success);font-size:14px;font-weight:800}
+.kitshop-stocked-tag{flex-shrink:0;padding:3px 8px;border-radius:999px;background:rgba(82,183,136,.15);color:var(--success);font-size:10.5px;font-weight:750}
 
 /* ── Kitchen Pantry ──
    Rebuilt around "what needs replacing?" rather than "here is everything you own". 41 seed
@@ -162,9 +175,33 @@
    at right now. The search field is deliberately in flow for the same reason: every sticky
    surface added to this app so far has cost a ghosting bug, and with filtering plus collapse
    the lists are short enough that pinning it earns nothing. */
+.kitpantry-location{margin-bottom:12px;padding:13px;border-radius:16px;background:var(--surface-card);border:1px solid var(--card-border)}
+[data-theme="dark"] .kitpantry-location{border:0.5px solid var(--surface-card-border);box-shadow:var(--surface-card-top)}
+.kitpantry-location-main{display:flex;align-items:center;gap:12px}
+.kitpantry-location-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.kitpantry-location-copy strong{font-size:16px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kitpantry-location-kicker{font-size:10.5px;font-weight:750;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.kitpantry-location-select{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;font-weight:700}
+.kitpantry-location-select select{height:44px;max-width:152px;padding:0 32px 0 11px;border:1px solid var(--border);border-radius:11px;background:var(--card);color:var(--text);font-family:inherit;font-size:13px;font-weight:650}
+.kitpantry-location-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)}
+.kitpantry-location-actions button,.kitpantry-manage-buttons button{min-height:44px;border:1px solid var(--border);border-radius:11px;background:transparent;color:var(--text);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+.kitpantry-location-actions button.danger{color:var(--danger)}
+.kitpantry-location-actions button:disabled{opacity:.42;cursor:not-allowed}
+.kitpantry-location-note{margin-top:7px;color:var(--muted);font-size:11.5px;line-height:1.4}
+.kitpantry-manage-form{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.kitpantry-manage-form>label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:10.5px;font-weight:750;text-transform:uppercase;letter-spacing:.06em}
+.kitpantry-manage-form input[type="text"]{width:100%;height:44px;padding:0 12px;border:1px solid var(--border);border-radius:11px;background:var(--card);color:var(--text);font:500 14px var(--font-ui);text-transform:none;letter-spacing:0}
+.kitpantry-manage-form fieldset{display:flex;gap:8px;flex-wrap:wrap;margin:11px 0 0;padding:0;border:0}
+.kitpantry-manage-form legend{width:100%;margin-bottom:3px;color:var(--muted);font-size:10.5px;font-weight:750;text-transform:uppercase;letter-spacing:.06em}
+.kitpantry-manage-form fieldset label{min-height:44px;display:flex;align-items:center;gap:8px;flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:11px;color:var(--text);font-size:12.5px;font-weight:650;cursor:pointer}
+.kitpantry-manage-form input[type="radio"]{width:20px;height:20px;accent-color:var(--accent)}
+.kitpantry-manage-error{min-height:17px;margin-top:7px;color:var(--danger);font-size:12px;line-height:1.4}
+.kitpantry-manage-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+.kitpantry-manage-buttons button.primary{border-color:var(--accent);background:var(--accent);color:#fff}
+.kitpantry-location select:focus,.kitpantry-location button:focus-visible,.kitpantry-manage-form input:focus{outline:2px solid var(--accent);outline-offset:2px}
 .kitpantry-search{position:relative;display:flex;align-items:center;margin-bottom:9px}
 .kitpantry-search-ic{position:absolute;left:11px;width:16px;height:16px;color:var(--muted);pointer-events:none}
-.kitpantry-search input{width:100%;height:40px;border-radius:11px;border:1px solid var(--border);
+.kitpantry-search input{width:100%;height:44px;border-radius:11px;border:1px solid var(--border);
   background:var(--card);color:var(--text);font-size:15px;font-family:inherit;
   padding:0 34px 0 34px;-webkit-appearance:none;appearance:none}
 .kitpantry-search input:focus{outline:none;border-color:var(--accent)}
@@ -174,7 +211,7 @@
 /* The summary counts ARE the filter now — they were read-only totals sitting above a list
    that could not be narrowed. */
 .kitpantry-summary{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;padding:0}
-.kitpantry-badge{font-size:12px;font-weight:700;padding:6px 12px;border-radius:999px;
+.kitpantry-badge{min-height:44px;font-size:12px;font-weight:700;padding:6px 12px;border-radius:999px;
   border:1px solid transparent;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kitpantry-badge.good{background:rgba(82,183,136,0.15);color:var(--success)}
 .kitpantry-badge.warn{background:rgba(245,158,11,0.16);color:#f59e0b}
@@ -184,12 +221,12 @@
 .kitpantry-chips{display:flex;gap:7px;overflow-x:auto;margin-bottom:6px;padding-bottom:2px;
   -webkit-overflow-scrolling:touch;scrollbar-width:none}
 .kitpantry-chips::-webkit-scrollbar{display:none}
-.kitpantry-chip{flex:0 0 auto;font-size:12px;font-weight:600;padding:6px 12px;border-radius:999px;
+.kitpantry-chip{min-height:44px;flex:0 0 auto;font-size:12px;font-weight:600;padding:6px 12px;border-radius:999px;
   border:1px solid var(--border);background:transparent;color:var(--muted);font-family:inherit;
   cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent}
 .kitpantry-chip.on{background:var(--accent);border-color:transparent;color:#fff}
 .kitpantry-bulk{display:flex;gap:8px;justify-content:flex-end;margin:2px 0 2px}
-.kitpantry-bulk button{border:none;background:transparent;color:var(--accent-text);font-family:inherit;
+.kitpantry-bulk button{min-height:44px;border:none;background:transparent;color:var(--accent-text);font-family:inherit;
   font-size:12px;font-weight:700;cursor:pointer;padding:4px 2px;-webkit-tap-highlight-color:transparent}
 /* Heading is a control: tap to collapse, with the counts that make collapsing safe. */
 .kitpantry-cat-head{position:sticky;top:0;background:var(--bg);z-index:5;display:flex;align-items:center;
@@ -204,7 +241,7 @@
 .kitpantry-c{font-size:10px;font-weight:700;letter-spacing:.02em;text-transform:none;color:var(--muted)}
 .kitpantry-c.warn{color:#f59e0b}
 .kitpantry-c.bad{color:var(--danger)}
-.kitpantry-cat-add{flex-shrink:0;width:26px;height:26px;border-radius:8px;border:1px solid var(--border);
+.kitpantry-cat-add{flex-shrink:0;width:44px;height:44px;border-radius:10px;border:1px solid var(--border);
   background:transparent;color:var(--accent-text);font-size:15px;line-height:1;cursor:pointer;
   -webkit-tap-highlight-color:transparent}
 /* One surface per category with dividers, not one elevated card per item. */
@@ -219,7 +256,7 @@
 .kitpantry-name{flex:1;min-width:0;font-size:14.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kitpantry-item.s-out .kitpantry-name{color:var(--muted)}
 /* Status reads as an icon AND a word — never colour alone. */
-.kitpantry-status{flex-shrink:0;display:inline-flex;align-items:center;gap:5px;font-family:inherit;
+.kitpantry-status{min-height:44px;flex-shrink:0;display:inline-flex;align-items:center;gap:5px;font-family:inherit;
   font-size:12px;font-weight:700;padding:6px 11px;border-radius:999px;border:1px solid transparent;
   cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kitpantry-status-ic{font-size:11px;line-height:1}
@@ -227,7 +264,7 @@
 .kitpantry-status.s-low{background:rgba(245,158,11,0.18);color:#f59e0b}
 .kitpantry-status.s-out{background:rgba(231,76,60,0.18);color:var(--danger)}
 .kitpantry-status:active{opacity:.7}
-.kitpantry-del{width:28px;height:28px;flex-shrink:0;background:transparent;border:none;color:var(--danger);font-size:13px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kitpantry-del{width:44px;height:44px;flex-shrink:0;background:transparent;border:none;color:var(--danger);font-size:13px;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kitpantry-empty{text-align:center;padding:30px 18px;border:1px dashed var(--border);border-radius:14px;margin:6px 0}
 .kitpantry-empty-t{font-size:15px;font-weight:700;color:var(--text)}
 .kitpantry-empty-d{font-size:12.5px;line-height:1.5;color:var(--muted);margin-top:5px}
@@ -1093,7 +1130,7 @@
     border:0.5px solid var(--surface-card-border);box-shadow:none}
   #kitpantry .kitpantry-item.s-out{background:rgba(231,76,60,0.09)}
   #kitpantry .kitpantry-item.s-low{background:rgba(245,158,11,0.09)}
-  .kitshop-cat-head,.kitshop-list-head,.kitpantry-cat-head{grid-column:1 / -1}
+  .kitshop-cat-head,.kitshop-list-head,.kitshop-stocked,.kitshop-empty,.kitpantry-location,.kitpantry-cat-head{grid-column:1 / -1}
 
   /* ── Cooking mode ──
      Used at arm's length with messy hands, so nothing here shrinks below what you can read

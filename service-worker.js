@@ -80,7 +80,11 @@
 // emoji in Budget card chrome are replaced with the monochrome CARD_ICONS set.
 // v260 keeps the Daily habits weekly-progress strip visible on wide screens instead of
 // hiding it behind the generic Home-card disclosure.
-const CACHE_NAME = 'daily-v260';
+// v261 adds multiple named pantry locations and makes the active pantry the single source of
+// truth for Shopping: stocked recipe ingredients move into an informational section, Low/Out
+// matches merge into Pantry needs, checked rows are isolated per location, and legacy pantry
+// data migrates losslessly through the timestamp-safe sync path.
+const CACHE_NAME = 'daily-v261';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

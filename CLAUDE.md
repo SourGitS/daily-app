@@ -49,9 +49,9 @@ older summary — re-grep before assuming a fact from here is still true if it l
 - **Stats** — Overview + History / Training / Body / Nutrition / Finance sub-tabs. Per-exercise
   history view, swap-aware personal records, progress charts, 8-week consistency grid,
   body-weight log/chart, budget charts.
-- **Kitchen** — Recipe Book (9 preloaded + custom), Shopping List (from recipes + pantry
-  staples), Spice & Pantry Tracker, cooking mode with per-step timers, favourites/recently
-  cooked. Firebase-synced.
+- **Kitchen** — Recipe Book (9 preloaded + custom), pantry-aware Shopping List, multiple named
+  Pantry inventories, cooking mode with per-step timers, favourites/recently cooked.
+  Firebase-synced.
 - **Budget** — weekly tracker. Income sources, savings target, and fixed/variable categories are
   all user-configurable now — see "Known history" below, these used to be hardcoded to
   Francois's specific numbers and were deliberately made dynamic. Credit-card balance tracking,
@@ -141,6 +141,19 @@ moved until it clears 5.0:1 against the current theme's background) and written 
 the accent or the theme must go through those, not set `--accent` directly.
 
 ## Known history worth knowing before touching these areas
+
+- **Kitchen pantry inventory is the shopping source of truth.** `kitchen_pantry` is one
+  timestamped Firebase blob with `schemaVersion:2`, a stable `activePantryId`, explicit pantry
+  order and separate item maps for every named location. Legacy single-item maps migrate into
+  `pantry_home` without a raw timestamp; a fresh account seeds that Home pantry, while a newly
+  created empty pantry stays empty. `kitShopComputePlan()` classifies combined recipe
+  ingredients against the active inventory: In-stock matches go to the collapsed “Already in
+  …” section, Low/Out matches merge once into Pantry needs, and untracked ingredients remain
+  ordinary buy rows. Matching is exact-first, then a small explicit canonical alias map; never
+  add substring matching (`onion` must not consume `spring onion`). The former
+  `PANTRY_STAPLES` filter is retired. `kitchen_shopping_checked` is also versioned and
+  namespaced by pantry ID so checked recipe rows do not leak between locations. Pantry filters,
+  category collapse and stocked-section disclosure remain device-local in `daily_pantry_ui`.
 
 - **Budget's palette is neutral-first, and colour means a judgement.** `BUD_CHART_COLORS` was
   six unrelated hues (emerald income, orange variable, grey fixed, blue saved, a second emerald
