@@ -10346,7 +10346,7 @@ function budAccentRgba(a){ return 'rgba('+hexToRgb(budAccentHex())+','+a+')'; }
 // m = {variant, icon, label, val, unit, sub, chip}. val/sub/chip are raw HTML (they carry
 // already-escaped figures and tstat markup); label is plain text.
 function budHeroMetric(m){
-  return '<div class="hm-card hm-'+(m.variant||'neutral')+'">'+
+  return '<div class="hm-card hero-surface hm-'+(m.variant||'neutral')+'">'+
     '<div class="hm-label">'+(m.icon?cardIcon(m.icon):'')+'<span>'+escText(m.label)+'</span></div>'+
     '<div class="hm-val">'+m.val+(m.unit?'<span class="hm-unit">'+escText(m.unit)+'</span>':'')+'</div>'+
     (m.sub?'<div class="hm-sub">'+m.sub+'</div>':'')+
@@ -16876,7 +16876,6 @@ function renderPayoffCard(){
   const saverTot=accountsSaverTotal();
   const pos=accountsPayoffPosition();
   const clear=pos>=0;
-  const col=clear?'var(--success)':'var(--danger)';
   const headline=debts<=0
     ? 'No debts — everything here is yours'
     : (clear?'spare after clearing every debt':'still needed to clear every debt');
@@ -16895,14 +16894,14 @@ function renderPayoffCard(){
     // shared desktop rule spreads them with space-between, which is what puts the figure in
     // the middle — a two-group version left it hard against the left edge while net worth's
     // sat centred, and the two cards read as unrelated.
-    '<div class="card acct-payoff-card">'+
-      // Icon takes the same semantic colour as the figure rather than the label's muted grey —
-      // an emoji could never follow either, and this card's whole job is signalling covered vs
-      // short. Colour is semantic (success/danger), never the accent, which can be any hue.
-      '<div class="acct-payoff-label"><span style="color:'+col+';display:inline-flex;margin-right:5px">'+
+    // The hero SURFACE carries covered-vs-short now. It was an inline colour on the figure and
+    // the icon; a whole green or red card says it from further away, and it leaves the figure
+    // white and legible either way. Semantic, never the accent, which can be any hue.
+    '<div class="acct-payoff-card hero-surface hero-wide '+(clear?'hm-good':'hm-short')+'">'+
+      '<div class="acct-payoff-label"><span style="display:inline-flex;margin-right:5px">'+
         acctIcon(clear?'check':'alert')+'</span>Debt payoff position</div>'+
       '<div class="acct-payoff-fig">'+
-        '<div class="acct-payoff-amt" style="color:'+col+'">'+fmtMoney(Math.abs(pos))+'</div>'+
+        '<div class="acct-payoff-amt">'+fmtMoney(Math.abs(pos))+'</div>'+
         '<div class="acct-payoff-sub">'+headline+'</div>'+
       '</div>'+
       '<div class="acct-payoff-aside">'+
@@ -16918,17 +16917,18 @@ function renderAccountsPage(){
   if(nwEl){
     const nw=accountsNetWorth();
     const assets=accountsAssetsTotal(), debts=accountsDebtsTotal();
-    const col=nw>=0?'var(--success)':'var(--danger)';
+    // A hero surface, not a .card: this is the first thing the screen says. The SURFACE now
+    // carries the verdict that used to be an inline colour on the figure — a green card reads
+    // as covered and a red one as under water from further away than a coloured number does,
+    // and the figure itself goes white so it is legible on either.
+    // Sizing lives in .acct-nw-amt so this figure and the payoff card's are kept equal from
+    // one place. Inline font-size beats a stylesheet without !important, which is how the two
+    // silently diverged in BOTH directions — 40 vs 34 on mobile, 40 vs 52 on desktop.
     nwEl.innerHTML=
-      '<div class="card" style="text-align:center;padding:20px 16px">'+
+      '<div class="acct-nw-card hero-surface hero-wide '+(nw>=0?'hm-good':'hm-short')+'">'+
         '<div class="acct-nw-label">Net worth</div>'+
-        // Sizing moved to .acct-nw-amt so this figure and the payoff card's can be kept equal
-        // from one place. Inline font-size beats a stylesheet without !important, so the two
-        // had silently diverged in BOTH directions — 40 vs 34 on mobile, and 40 vs 52 on
-        // desktop, where the payoff rule carries !important. Only the colour stays inline,
-        // because it's semantic and computed per render.
-        '<div class="acct-nw-amt" style="color:'+col+'">'+fmtMoney(nw)+'</div>'+
-        '<div style="font-size:12px;color:var(--muted);margin-top:8px">'+fmtMoney(assets)+' assets · '+fmtMoney(debts)+' debts</div>'+
+        '<div class="acct-nw-amt">'+fmtMoney(nw)+'</div>'+
+        '<div class="acct-nw-detail">'+fmtMoney(assets)+' assets · '+fmtMoney(debts)+' debts</div>'+
       '</div>';
   }
   renderPayoffCard();

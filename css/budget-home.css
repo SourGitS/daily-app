@@ -455,21 +455,27 @@
      a figure and never reads as an unexplained data line. */
 .hero-metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:16px;align-items:stretch}
 .hero-metric-grid.hm-two{grid-template-columns:repeat(2,minmax(0,1fr))}
-.hm-card{--hm-from:#4A4A52;--hm-mid:#33333A;--hm-to:#232329;
-  position:relative;overflow:hidden;border-radius:var(--radius-hero);
-  padding:11px 13px 10px;display:flex;flex-direction:column;gap:4px;min-height:84px;color:#fff;
+/* The hero SURFACE, separated from any one card's geometry: the gradient, the white text, the
+   clipped circle and the top glare. .hm-card wears it at summary size; the Accounts net-worth
+   and debt-payoff cards wear it at their own full width, keeping their three-column spread.
+   Deliberately NOT bundled with .card — these cards open nothing, and .card would drag in the
+   press-lift and cursor:pointer that made the old .sum-card rear up under a finger. */
+.hero-surface{--hm-from:#4A4A52;--hm-mid:#33333A;--hm-to:#232329;
+  position:relative;overflow:hidden;border-radius:var(--radius-hero);color:#fff;
   background:linear-gradient(152deg,var(--hm-from) 0%,var(--hm-mid) 52%,var(--hm-to) 100%);
   box-shadow:0 6px 16px rgba(0,0,0,.18);text-shadow:0 1px 2px rgba(0,0,0,.18)}
-/* Scaled to the compact card — the old 148px circle was drawn for a 136px-tall hero and would
-   swamp this one. */
-.hm-card::before{content:'';position:absolute;width:96px;height:96px;right:-40px;top:-54px;border-radius:50%;background:rgba(255,255,255,.10);pointer-events:none}
-.hm-card::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% -25%,rgba(255,255,255,.12),transparent 62%);pointer-events:none}
-.hm-card>*{position:relative;z-index:1}
+/* Sized to the compact card — the old 148px circle was drawn for a 136px-tall hero and would
+   swamp this one. .hero-wide re-scales it for the full-width cards. */
+.hero-surface::before{content:'';position:absolute;width:96px;height:96px;right:-40px;top:-54px;border-radius:50%;background:rgba(255,255,255,.10);pointer-events:none}
+.hero-surface::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% -25%,rgba(255,255,255,.12),transparent 62%);pointer-events:none}
+.hero-surface>*{position:relative;z-index:1}
+.hero-wide::before{width:200px;height:200px;right:-70px;top:-108px}
+.hm-card{padding:11px 13px 10px;display:flex;flex-direction:column;gap:4px;min-height:84px}
 /* Direction, not judgement: green in, red out, the live accent for what stuck, and a cool
    slate for a figure that is neither — kept off plain graphite because the DEFAULT accent is
    a neutral grey and the two collided. */
-.hm-income {--hm-from:#1E9553;--hm-mid:#116E3A;--hm-to:#0A4C27}
-.hm-expense{--hm-from:#E03131;--hm-mid:#B91C1C;--hm-to:#8E1616}
+.hm-income,.hm-good {--hm-from:#1E9553;--hm-mid:#116E3A;--hm-to:#0A4C27}
+.hm-expense,.hm-short{--hm-from:#E03131;--hm-mid:#B91C1C;--hm-to:#8E1616}
 .hm-accent {--hm-from:var(--accent-hero,#4A4A52);--hm-mid:var(--accent-hero,#4A4A52);--hm-to:var(--accent-hero-2,#26262C)}
 .hm-neutral{--hm-from:#3E4557;--hm-mid:#2B303D;--hm-to:#1E222C}
 .hm-label{display:flex;align-items:center;gap:5px;font-size:9px;font-weight:800;letter-spacing:.075em;text-transform:uppercase;line-height:1.25;color:rgba(255,255,255,.82)}
@@ -911,10 +917,13 @@
      accidental — it lands wherever the two side columns happen to leave it, so the same
      layout gave net worth 46% and the payoff card 28%. Equal flex on the outer columns puts
      the middle one dead centre on both, whatever the label or note lengths are. */
-  #accounts-networth .card>div:nth-child(1), #accounts-networth .card>div:nth-child(3),
+  .acct-nw-card{display:flex;align-items:center;justify-content:space-between;gap:32px;
+    text-align:left !important;padding:22px 28px !important}
+  .acct-nw-card>div:nth-child(1), .acct-nw-card>div:nth-child(3),
   .acct-payoff-label, .acct-payoff-aside{flex:1 1 0}
-  #accounts-networth .card>div:nth-child(2), .acct-payoff-fig{flex:0 0 auto}
-  #accounts-networth .card>div:nth-child(3){text-align:right}
+  .acct-nw-card>div:nth-child(2), .acct-payoff-fig{flex:0 0 auto}
+  .acct-nw-card>div:nth-child(3){text-align:right}
+  .acct-nw-card .acct-nw-label{margin-bottom:0}
   .acct-nw-amt,.acct-payoff-amt{font-size:52px !important}
   .acct-payoff-sub{margin-top:4px !important}
   /* The note's divider is a top border in the stacked layout; side by side it needs no rule. */
@@ -1316,8 +1325,21 @@
 .nw-chart-foot{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:10px 16px 14px;border-top:1px solid var(--border);font-size:10px;font-weight:600;color:var(--muted);line-height:1.4}
 .nw-chart-stale{color:var(--warn-dark)}
 
-/* ── Debt payoff position card (Accounts) ── */
+/* ── Net worth + debt payoff (Accounts) ── */
+/* Both wear .hero-surface .hero-wide. They are the two halves of one answer — "what am I
+   worth" and "am I covered" — and they are the first thing the screen says, so they get the
+   hero treatment rather than a flat card. The VARIANT flips (.hm-good / .hm-short) because,
+   unlike income and expenses, these two genuinely change meaning with their sign. */
+.acct-nw-card{text-align:center;padding:20px 16px;margin-bottom:12px}
 .acct-payoff-card{text-align:center;padding:18px 16px;margin-bottom:12px}
+/* Muted greys are drawn for a card background and disappear on a saturated surface, so every
+   supporting line on these two is re-stated in white-alpha. */
+.hero-surface .acct-nw-label,.hero-surface .acct-payoff-label{color:rgba(255,255,255,.82)}
+.hero-surface .acct-nw-amt,.hero-surface .acct-payoff-amt{color:#fff}
+.hero-surface .acct-payoff-sub,.hero-surface .acct-nw-detail{color:rgba(255,255,255,.86)}
+.hero-surface .acct-payoff-math,.hero-surface .acct-payoff-kinds{color:rgba(255,255,255,.8);opacity:1}
+.hero-surface .acct-payoff-note{color:rgba(255,255,255,.78);border-top-color:rgba(255,255,255,.22)}
+.acct-nw-detail{font-size:12px;margin-top:8px}
 /* Net worth and payoff are two halves of one answer, so their labels and figures are sized
    together here rather than one inline and one in CSS — which is how they drifted to 40 vs 34
    on mobile and 40 vs 52 on desktop while a comment claimed they matched. Semantic colour, not
