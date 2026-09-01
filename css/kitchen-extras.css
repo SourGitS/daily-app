@@ -904,6 +904,148 @@
 .kit-card-actions{display:flex;gap:4px;align-items:center;flex-shrink:0}
 .kit-menu-btn{width:32px;height:32px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-size:18px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;justify-content:center;line-height:1}
 .kit-menu-btn:active{background:var(--border)}
+/* ══════════════════════════════════════════════════════════════════
+   PROTEIN OPTIONS
+   One dish, more than one protein. Three surfaces share this vocabulary: the recipe detail's
+   chooser, the action sheets that confirm a protein before shopping / cooking / logging, and
+   the editor's option cards.
+   The chosen option is NEVER carried by colour alone — every chip has a tick glyph and
+   aria-pressed, and the default carries the word "Default" so an alternative does not read as
+   unavailable.
+   ══════════════════════════════════════════════════════════════════ */
+.kit-psel{margin:0 0 14px}
+.kit-psel-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 7px}
+.kit-psel-row{display:flex;flex-wrap:wrap;gap:8px}
+.kit-pchip{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:8px 13px;border-radius:12px;
+  border:1.5px solid var(--border);background:var(--card);color:var(--text);font:inherit;font-size:13.5px;font-weight:650;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;max-width:100%;text-align:left}
+.kit-pchip.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.12);color:var(--text)}
+.kit-pchip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.kit-pchip-tick{width:14px;flex-shrink:0;font-size:12px;font-weight:800;color:var(--accent-text);text-align:center}
+.kit-pchip-txt{min-width:0;overflow-wrap:anywhere}
+.kit-pchip-def{flex-shrink:0;font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  border:1px solid var(--border);border-radius:6px;padding:1px 5px}
+.kit-opt-badge{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:8px;
+  background:var(--track);color:var(--text-2);white-space:nowrap}
+.kit-opt-badge.kit-opt-warn{background:var(--warn-bg);color:var(--warn-dark);border:1px solid var(--warn-border)}
+/* Safe internal temperature. Deliberately NOT styled like the ⏱ timer badge — a target
+   temperature and a duration are different instructions and must not be read as one. */
+.kit-temp-badge{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:8px;
+  background:var(--warn-bg);color:var(--warn-dark);border:1px solid var(--warn-border);white-space:nowrap}
+.kit-ing-row.kit-ing-opt{background:rgba(var(--accent-rgb),.05);border-radius:8px;padding-left:8px;padding-right:8px}
+.kit-ing-tag{display:inline-block;margin-left:7px;font-size:9.5px;font-weight:750;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--accent-text);vertical-align:middle}
+.kit-step-row.kit-step-protein{background:rgba(var(--accent-rgb),.06);border-radius:10px;padding:8px 10px;margin:2px 0}
+.kit-step-who{display:block;font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-text);margin-bottom:2px}
+.kit-sec-note{font-size:10px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--text-3)}
+.kit-macro-cap{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:2px 0 7px}
+.kit-batch-line{font-size:12px;color:var(--muted);margin:-10px 0 16px}
+.kit-note-panel{padding:11px 13px;border-radius:11px;background:var(--track);color:var(--text-2);font-size:12.5px;line-height:1.5;margin:12px 0}
+.kit-note-panel.kit-note-warn{background:var(--warn-bg);color:var(--warn-dark);border:1px solid var(--warn-border)}
+.kit-note-panel small{display:block;margin-top:4px;color:var(--text-3)}
+
+/* ── Action sheet (protein / servings / share) ── */
+.kit-sheet-head{margin-bottom:6px}
+.kit-sheet-title{font-size:17px;font-weight:800;letter-spacing:-.01em;color:var(--text)}
+.kit-sheet-sub{font-size:13px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
+/* The sheet lives inside #app, and Chrome treats #app's position:fixed as a stacking context,
+   so its z-index:200 cannot actually paint over the body-level #bottom-nav (z-index 10) — the
+   sheet's own actions were landing underneath it. Clearing the nav's height is the same fix
+   #swap-modal uses, and --nav-height is already published at runtime for exactly this. */
+#kit-sheet-overlay .modal-box{padding-bottom:calc(var(--nav-height, calc(60px + env(safe-area-inset-bottom,0px))) + 18px)}
+@media (min-width:1024px){
+  /* The nav is display:none at this width, so the reservation would just be dead space. */
+  #kit-sheet-overlay .modal-box{padding-bottom:max(30px, env(safe-area-inset-bottom, 30px))}
+}
+.kit-sheet-actions{display:flex;gap:10px;margin-top:16px}
+.kit-sheet-actions .modal-btn{flex:1}
+.kit-scaler.kit-sheet-scaler{margin:0 0 4px}
+.kit-share-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.kit-share-opt{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:11px 13px;border-radius:12px;
+  border:1px solid var(--border);background:var(--card);color:var(--text);font:inherit;text-align:left;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.kit-share-opt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.kit-share-ico{font-size:20px;flex-shrink:0}
+.kit-share-opt b{display:block;font-size:14px;font-weight:700}
+.kit-share-opt small{display:block;font-size:12px;color:var(--muted);line-height:1.4;margin-top:1px}
+
+/* ── Shopping: one line per planned version of a recipe ── */
+/* Each control stops propagation, so changing a protein or a serving count can never toggle
+   the whole recipe off — the card tap is the coarse "am I cooking this at all" control. */
+.kitshop-sel-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px 8px 46px;
+  border-left:2px solid rgba(var(--accent-rgb),.35);margin:0 0 6px 14px}
+.kitshop-sel-line.broken{border-left-color:var(--warn)}
+.kitshop-sel-prot{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px;padding:6px 11px;border-radius:10px;
+  border:1px solid var(--border);background:var(--card);color:var(--text);font:inherit;font-size:13px;font-weight:650;text-align:left;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;flex:1 1 100%;min-width:0;overflow-wrap:anywhere}
+.kitshop-sel-prot.broken{border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-dark)}
+.kitshop-sel-change{flex-shrink:0;white-space:nowrap;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--accent-text)}
+.kitshop-sel-prot-static{font-size:12px;color:var(--muted);flex:1 1 auto}
+.kitshop-sel-x{width:40px;height:40px;flex-shrink:0;border:1px solid var(--border);border-radius:10px;background:transparent;
+  color:var(--danger);font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kitshop-sel-add{padding-top:0}
+.kitshop-sel-more{min-height:40px;padding:6px 11px;border:1.5px dashed var(--border);border-radius:10px;background:transparent;
+  color:var(--muted);font:inherit;font-size:12.5px;font-weight:650;cursor:pointer;-webkit-tap-highlight-color:transparent}
+
+/* ── Editor: protein option cards ── */
+.kit-f-note{font-size:10.5px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--text-3);margin-left:6px}
+.kit-po-blurb{font-size:12.5px;line-height:1.5;color:var(--muted);margin:0 0 10px}
+.kit-po-card{border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:10px;background:var(--card);
+  display:flex;flex-direction:column;gap:8px}
+.kit-po-card.is-default{border-color:rgba(var(--accent-rgb),.45)}
+.kit-po-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.kit-po-title{flex:1 1 120px;min-width:0;font-size:14px;font-weight:750;overflow-wrap:anywhere}
+.kit-po-def{font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-text);
+  border:1px solid rgba(var(--accent-rgb),.4);border-radius:6px;padding:2px 6px}
+.kit-po-mini{min-width:36px;height:34px;padding:0 8px;border:1px solid var(--border);border-radius:8px;background:transparent;
+  color:var(--text-2);font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kit-po-mini:disabled{opacity:.35;cursor:default}
+.kit-po-del{height:34px;width:36px}
+.kit-po-input{width:100%;box-sizing:border-box;height:42px;border:1px solid var(--border);border-radius:8px;
+  background:var(--card);color:var(--text);font:inherit;font-size:14px;padding:0 10px}
+.kit-po-area{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);
+  color:var(--text);font:inherit;font-size:14px;padding:8px 10px;resize:vertical;line-height:1.45}
+.kit-po-2col{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kit-po-lbl{display:block;font-size:11px;font-weight:700;color:var(--muted);line-height:1.4}
+.kit-po-lbl .kit-po-input{margin-top:4px}
+.kit-po-extras{border-top:1px dashed var(--border);padding-top:9px}
+.kit-po-extras-lbl small{display:block;font-weight:500;color:var(--text-3);margin-top:2px}
+.kit-po-add-extra{margin-top:6px;font-size:12px}
+.kit-po-off-btn{color:var(--danger);border-color:rgba(var(--danger-rgb),.35)}
+/* The option's own ingredient row reuses .kit-f-ing-row's look, but the grid-area assignments
+   that go with it are scoped to #kit-f-ings — outside it the fields would fall into raw grid
+   cells and the NAME would land in the 40px delete column. Its own areas, stated here. */
+.kit-po-ing{margin-top:2px;grid-template-areas:"name name delete" "amount unit delete"}
+.kit-po-ing .kit-fi-name{grid-area:name;width:100%;min-width:0;height:40px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:14px;padding:0 10px}
+.kit-po-ing .kit-fi-amt{grid-area:amount;width:100%;min-width:0;height:40px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:14px;text-align:center}
+.kit-po-ing .kit-fi-unit-sel{grid-area:unit;width:100%;min-width:0;height:40px}
+.kit-po-ing .kit-f-del{grid-area:delete;height:auto;min-height:40px}
+/* No delete button on the MAIN protein ingredient — it is the option, not a row you remove. */
+.kit-po-ing:not(:has(.kit-f-del)){grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"name name" "amount unit"}
+[data-theme="dark"] .kit-po-ing .kit-fi-name,[data-theme="dark"] .kit-po-ing .kit-fi-amt,[data-theme="dark"] .kit-po-ing .kit-fi-unit-sel{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.1)}
+@media(min-width:600px){
+  .kit-po-ing{grid-template-areas:"amount unit name delete"}
+  .kit-po-ing:not(:has(.kit-f-del)){grid-template-columns:70px 96px minmax(0,1fr);grid-template-areas:"amount unit name"}
+  .kit-po-ing .kit-f-del{height:40px}
+}
+/* The title takes its own line so the control cluster below it never breaks up mid-row. */
+.kit-po-head .kit-po-title{flex:1 1 100%}
+.kit-f-step-adds{display:flex;gap:8px;flex-wrap:wrap}
+.kit-f-step-adds .kit-add-row{flex:1 1 140px;margin-top:8px}
+.kit-f-step-slot{align-items:center;background:rgba(var(--accent-rgb),.07);border:1px dashed rgba(var(--accent-rgb),.4);
+  border-radius:10px;padding:9px 10px}
+.kit-f-slot-body{flex:1;min-width:0;font-size:13px;color:var(--text)}
+.kit-f-slot-body small{display:block;font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.4}
+
+/* ── Cook mode ── */
+.kit-cook-protein{display:block;font-size:11px;font-weight:700;color:var(--accent-text);margin-top:2px;overflow-wrap:anywhere}
+.kit-cook-step-who{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--accent-text);margin-bottom:6px}
+.kit-cook-temp{margin-top:12px;padding:10px 13px;border-radius:11px;background:var(--warn-bg);border:1px solid var(--warn-border);
+  color:var(--warn-dark);font-size:14px;font-weight:650}
+
+@media (min-width:700px){
+  .kit-po-2col{grid-template-columns:1fr 1fr}
+}
 .kit-menu-dropdown{margin-top:8px;background:var(--card);border:1px solid var(--card-border);border-radius:12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.25)}
 .kit-menu-dropdown button{display:block;width:100%;text-align:left;padding:12px 16px;background:transparent;border:none;color:var(--text);font-size:14px;font-weight:500;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kit-menu-dropdown button:hover{background:rgba(255,255,255,.06)}

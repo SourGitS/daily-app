@@ -396,10 +396,16 @@
 .bs-finrange{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 2px 12px}
 .bs-finrange-l{display:flex;flex-direction:column;gap:3px;min-width:0}
 .bs-finrange-cov{font-size:12px;font-weight:600;line-height:1.4;color:var(--muted)}
-/* Accent hero. Solid derived stops via budHeroStyle('accent') in js/app.js rather than
-   rgba(var(--accent-rgb),.9 -> .4): an alpha ramp blends into --bg, so its pale end cannot
-   carry the 10px labels this card uses in light mode. */
-.fin-hero{border-radius:var(--radius-hero);padding:16px 16px 14px;margin-bottom:16px;position:relative;overflow:hidden;color:#fff;box-shadow:0 14px 36px rgba(0,0,0,.24);text-shadow:0 1px 2px rgba(0,0,0,.16)}
+/* Accent hero, on the .ov-hero formula that already leads the Stats Overview tab — same
+   screen, same card type, so the two do not diverge. The [data-theme="light"] floor is the
+   point of copying it: an alpha ramp blends into --bg, and without lifting the pale end this
+   card's 10px white labels wash out in light mode (the same fix .budget-snapshot-card needed).
+   CSS, not an inline style: reading var(--accent-rgb) means the card restyles itself when the
+   accent changes instead of waiting for a re-render. */
+.fin-hero{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.6) 55%, rgba(var(--accent-rgb),.4));
+  border-radius:var(--radius-hero);padding:16px 16px 14px;margin-bottom:16px;position:relative;overflow:hidden;color:#fff;
+  box-shadow:0 14px 36px rgba(var(--accent-rgb),.28);text-shadow:0 1px 2px rgba(0,0,0,.16)}
+[data-theme="light"] .fin-hero{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.7) 55%, rgba(var(--accent-rgb),.65))}
 .fin-hero::before{content:'';position:absolute;width:190px;height:190px;right:-92px;top:-112px;border-radius:50%;background:rgba(255,255,255,.075);pointer-events:none}
 .fin-hero>*{position:relative;z-index:1}
 .fh-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:0 2px 10px;border-bottom:1px solid rgba(255,255,255,.18)}

@@ -75,7 +75,9 @@
       "Bash(sed -i \"s/const CACHE_NAME = 'daily-v211'/const CACHE_NAME = 'daily-v212'/\" service-worker.js)",
       "Bash(sed -i \"s/const CACHE_NAME = 'daily-v212'/const CACHE_NAME = 'daily-v213'/\" service-worker.js)",
       "Bash(sed -i \"s/const CACHE_NAME = 'daily-v213'/const CACHE_NAME = 'daily-v214'/\" service-worker.js)",
-      "Bash(sed -i \"s/const CACHE_NAME = 'daily-v214'/const CACHE_NAME = 'daily-v215'/\" service-worker.js)"
+      "Bash(sed -i \"s/const CACHE_NAME = 'daily-v214'/const CACHE_NAME = 'daily-v215'/\" service-worker.js)",
+      "Bash(sed -i \"s/const CACHE_NAME = 'daily-v216'/const CACHE_NAME = 'daily-v217'/\" service-worker.js)",
+      "Bash(sed -i \"s/const CACHE_NAME = 'daily-v217'/const CACHE_NAME = 'daily-v218'/\" service-worker.js)"
     ]
   }
 }

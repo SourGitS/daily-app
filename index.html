@@ -831,6 +831,13 @@
     <div class="modal-box" id="kit-form-box"></div>
   </div>
 
+  <!-- Kitchen: one bottom sheet for every action that has to confirm something ON TOP of the
+       recipe detail (protein choice, servings eaten, share menu). .modal-overlay's z-index 200
+       clears #kit-detail-overlay's 150, so nothing lands behind the recipe on a phone. -->
+  <div id="kit-sheet-overlay" class="modal-overlay hidden" onclick="if(event.target===this)kitSheetClose()">
+    <div class="modal-box" id="kit-sheet-box"></div>
+  </div>
+
 
   <!-- SWAP MODAL — reuses the Training Split editor's bottom-sheet picker (.se-picker*) -->
   <div class="se-picker-backdrop hidden" id="swap-backdrop" onclick="closeSwapModal()"></div>

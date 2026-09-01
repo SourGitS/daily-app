@@ -1407,7 +1407,6 @@ function currentAccentHex(){
     default:        return restColor();
   }
 }
-let _lastHeroAccent=null;
 function applyDayColour(){
   if(typeof applyLogoDayColour==='function') applyLogoDayColour(); // keep the wordmark in sync
   const mode = accentMode();
@@ -1417,21 +1416,9 @@ function applyDayColour(){
   applyAccent(hex);
   if(hero){ hero.style.background=''; hero.style.boxShadow=''; }
   if(rtBar) rtBar.style.boxShadow = mode!=='static' ? ('0 8px 24px rgba('+hexToRgb(hex)+',.30)') : '';
-  // The Budget hero metric cards and the Finance picture hero bake their gradient into an
-  // INLINE style, because the accent is an arbitrary runtime hex and their stops are derived
-  // and contrast-checked in JS (budHeroStops) rather than read from a CSS variable. A
-  // var(--accent-rgb) hero restyles itself; these need the render. Only on a real change —
-  // the weather accent re-applies on every refresh, and rebuilding a Chart.js canvas for an
-  // identical colour is pure churn.
-  if(hex!==_lastHeroAccent){
-    _lastHeroAccent=hex;
-    try{
-      const vis=id=>{ const el=document.getElementById(id); return el&&!el.classList.contains('hidden'); };
-      if(typeof budgetView!=='undefined'&&budgetView==='month'&&vis('budget-month-view')) renderMonth();
-      else if(typeof budgetView!=='undefined'&&budgetView==='year'&&vis('budget-year-view')) renderYear();
-      if(typeof statsSubTab!=='undefined'&&statsSubTab==='finance'&&vis('sub-finance')) renderBSFinPicture();
-    }catch(e){}
-  }
+  // The Budget period tiles and the Finance picture hero take their accent from
+  // var(--accent-rgb) in CSS, so they restyle themselves the moment applyAccent() writes the
+  // token. Nothing here has to force a re-render for them.
 }
 
 // Kept for the old checkbox handler path; routes into the mode model.
@@ -6987,17 +6974,54 @@ function aiKitchenScope(fullRecipes){
     const row={id:String(r.id||''), name:String(r.name||''), category:String(r.category||''),
                servings:r.servings==null?null:r.servings};
     if(Array.isArray(r.tags)&&r.tags.length) row.tags=r.tags.map(String);
-    if(r.cookTime) row.cookTimeMin=r.cookTime;
     if(r.favourite) row.favourite=true;
-    if(r.calories!=null&&r.calories!=='') row.calories=r.calories;
+    const opts=(typeof kitOptionsOf==='function')?kitOptionsOf(r):[];
+    const def=opts.length?kitDefaultOption(r):null;
+    // Cards, the featured hero and this context all read the DEFAULT option, because none of
+    // them has an action-specific choice to honour.
+    if(def){
+      if(def.cookTime!=null) row.cookTimeMin=def.cookTime;
+      if(def.calories!=null) row.calories=def.calories;
+    } else {
+      if(r.cookTime) row.cookTimeMin=r.cookTime;
+      if(r.calories!=null&&r.calories!=='') row.calories=r.calories;
+    }
+    if(opts.length){
+      // Compact context still names the alternatives — otherwise the assistant cannot know a
+      // roll it is looking at can also be made with chicken.
+      row.proteinOptions=opts.map(o=>String(o.label||''));
+      if(def) row.defaultProtein=String(def.label||'');
+    }
     if(fullRecipes){
       if(r.description) row.description=String(r.description);
       row.ingredients=(Array.isArray(r.ingredients)?r.ingredients:[])
         .filter(i=>i&&typeof i==='object')
         // unit:"" is a deliberate, valid value (a countable ingredient) — never normalised away.
         .map(i=>({name:String(i.name||''), amount:i.amount==null?'':i.amount, unit:i.unit==null?'':String(i.unit)}));
-      row.steps=(Array.isArray(r.steps)?r.steps:[]).map(String);
+      // map(String) turned every timed step into "[object Object]" — the step's own text was
+      // simply not in the context the assistant was reading.
+      row.steps=(Array.isArray(r.steps)?r.steps:[]).map(st=>{
+        if(st&&typeof st==='object'&&st.type==='protein') return {type:'protein'};
+        if(st&&typeof st==='object'&&st.text) return st.timerMinutes?{text:String(st.text),timerMinutes:st.timerMinutes}:{text:String(st.text)};
+        return String(st==null?'':st);
+      });
       ['protein','carbs','fat'].forEach(k=>{ if(r[k]!=null&&r[k]!=='') row[k]=r[k]; });
+      if(opts.length){
+        row.defaultProteinOptionId=def?String(def.id):'';
+        row.proteinOptionDetails=opts.map(o=>({
+          id:String(o.id||''), label:String(o.label||''),
+          ingredient:{name:String((o.ingredient&&o.ingredient.name)||''),
+            amount:(o.ingredient&&o.ingredient.amount!=null)?o.ingredient.amount:'',
+            unit:String((o.ingredient&&o.ingredient.unit)||'')},
+          extras:(Array.isArray(o.extras)?o.extras:[]).map(x=>({name:String(x.name||''),amount:x.amount==null?'':x.amount,unit:String(x.unit||'')})),
+          prep:String(o.prep||''), cook:String(o.cook||''),
+          cookTimeMin:o.cookTime==null?null:o.cookTime,
+          internalTempC:o.internalTempC==null?null:o.internalTempC,
+          perServing:{calories:o.calories==null?null:o.calories, protein:o.protein==null?null:o.protein,
+                      carbs:o.carbs==null?null:o.carbs, fat:o.fat==null?null:o.fat}
+        }));
+        delete row.proteinOptions;   // superseded by the full detail above
+      }
     }
     return row;
   });
@@ -7942,8 +7966,10 @@ function aiValRecipe(d,id){
   if(res.error) return {ok:false, error:res.error};
   if(!res.recipes||res.recipes.length!==1) return {ok:false, error:'Each add_recipe action must carry exactly one recipe in "data".'};
   const r=res.recipes[0];
+  const nOpts=Array.isArray(r.proteinOptions)?r.proteinOptions.length:0;
   const summary='Add recipe "'+r.name+'" ('+r.category+', '+r.servings+' serving'+(r.servings===1?'':'s')+', '+
-    r.ingredients.length+' ingredient'+(r.ingredients.length===1?'':'s')+', '+r.steps.length+' step'+(r.steps.length===1?'':'s')+').';
+    r.ingredients.length+' ingredient'+(r.ingredients.length===1?'':'s')+', '+r.steps.length+' step'+(r.steps.length===1?'':'s')+
+    (nOpts?', '+nOpts+' protein option'+(nOpts===1?'':'s'):'')+').';
   return {ok:true, summary,
     dupKey:x=>x&&x.aiActionId===id,
     collection:()=>kitRecipes,
@@ -8260,6 +8286,8 @@ function aiInboxCopySchema(){
     'add_subscription data: name, amount (>0), cycle ("weekly", "monthly" or "yearly"), optional status (active/trial/paused/cancelled), nextBillingDate, website, paymentAccountName.\n'+
     'archive_subscription data: subscriptionId (the exact stable id from Daily\'s context export) and a user-confirmed confirmedEndDate (YYYY-MM-DD, today or earlier). Use it only after the user explicitly confirms that end date. Names are descriptive only and never accepted as targets. Daily shows this action unchecked; it preserves history and never permanently deletes the item.\n'+
     'add_recipe data: one recipe object — name, category (breakfast/lunch/dinner/dessert), servings, ingredients [{name, amount, unit}], steps [].\n'+
+    '  calories/protein/carbs/fat are PER SERVING. steps are strings, {text, timerMinutes}, or one {"type":"protein"} slot.\n'+
+    '  For one dish cookable with different proteins, add proteinOptions [{id, label, ingredient{name,amount,unit}, extras[], prep, cook, cookTime, internalTempC, calories, protein, carbs, fat}] plus defaultProteinOptionId. Each option carries the COMPLETE per-serving nutrition; the protein is NOT repeated in the shared ingredients; internalTempC is null when there is no safe temperature to state.\n'+
     '  Use unit "" for countable things like "4 salmon fillets".\n'+
     'add_shopping_item data: name, optional category ('+KITSHOP_CAT_ORDER.join('/')+'). Quantities are not stored.\n'+
     'update_spending_goal data: amount (>0) and applyToCurrentWeek (true or false). This changes the usual goal and can explicitly set the current week too; false leaves any current-week override alone. It never rewrites past weeks.\n\n'+
@@ -10287,54 +10315,10 @@ function budPalette(){
 const BUD_CHART_COLORS=new Proxy({},{get:(t,k)=>budPalette()[k]});
 // rgba() form of the accent, for chart fills that sit under a line.
 function budAccentRgba(a){ return 'rgba('+hexToRgb(budAccentHex())+','+a+')'; }
-// ── Hero gradient stops ────────────────────────────────────────
-// The Budget hero metric cards carry WHITE text, and the accent is an arbitrary runtime hex —
-// Appearance offers a free colour picker, so a pale yellow is reachable and would render the
-// labels invisible. The existing heroes get away with rgba(var(--accent-rgb),…) because their
-// content is large and their palette was hand-checked; a card whose smallest label is 10px
-// cannot rely on that. So the stops are SOLID and derived: hue and saturation are kept, the
-// lightness is walked down until white clears 4.2:1, and the second stop is a fixed step
-// darker. Achromatic accents (the default #5C5C5C) keep their zero saturation rather than
-// being invented into a colour.
-function budHeroStops(hex){
-  const fallback={from:'#4A4A52',to:'#26262C'};
-  if(!/^#[0-9a-fA-F]{6}$/.test(hex||'')) return fallback;
-  const [hu,s,l]=_hexToHsl(hex);
-  const sat = s<0.08 ? s : Math.min(0.90, Math.max(0.40, s));
-  let l1=Math.min(0.55, Math.max(0.28, l));
-  let from=_hslToHex(hu,sat,l1);
-  for(let i=0;i<40 && l1>0.12 && _contrastRatio(from,'#ffffff')<4.2; i++){
-    l1-=0.02; from=_hslToHex(hu,sat,l1);
-  }
-  return {from, to:_hslToHex(hu,sat,Math.max(0.08,l1-0.16))};
-}
-
-// ── Budget hero metric cards ────────────────────────────────────
-// ONE treatment for the headline metrics under the Month and Year navigators; the VARIANT
-// carries the meaning, not a different one-off illustration per tile:
-//   income  → the money green      expense → the money red
-//   accent  → the live accent      neutral → slate, for a figure that is neither in nor out
-// Solid stops, not rgba(var(--accent-rgb),…): see budHeroStops() above and the .hm-card block
-// in css/budget-home.css for why an alpha ramp cannot carry 10px white labels in light mode.
-const BUD_HERO_SCENES={
-  income: {from:'#1E9553', mid:'#116E3A', to:'#0A4C27'},
-  expense:{from:'#E03131', mid:'#B91C1C', to:'#8E1616'},
-  // Cool slate rather than plain graphite: the app's DEFAULT accent is a neutral grey, and a
-  // grey card beside it read as a fifth accent card rather than as a different kind of figure.
-  neutral:{from:'#3E4557', mid:'#2B303D', to:'#1E222C'}
-};
-function budHeroStyle(variant){
-  if(variant==='accent'){
-    const st=budHeroStops((typeof currentAccentHex==='function' && currentAccentHex())||'#5C5C5C');
-    return 'background:linear-gradient(152deg,'+st.from+' 0%,'+st.to+' 100%)';
-  }
-  const sc=BUD_HERO_SCENES[variant]||BUD_HERO_SCENES.neutral;
-  return 'background:linear-gradient(152deg,'+sc.from+' 0%,'+sc.mid+' 52%,'+sc.to+' 100%)';
-}
 // m = {variant, icon, label, val, unit, sub, chip}. val/sub/chip are raw HTML (they carry
 // already-escaped figures and tstat markup); label is plain text.
 function budHeroMetric(m){
-  return '<div class="hm-card hm-'+(m.variant||'neutral')+'" style="'+budHeroStyle(m.variant)+'">'+
+  return '<div class="hm-card hm-'+(m.variant||'neutral')+'">'+
     '<div class="hm-label">'+(m.icon?cardIcon(m.icon):'')+'<span>'+escText(m.label)+'</span></div>'+
     '<div class="hm-val">'+m.val+(m.unit?'<span class="hm-unit">'+escText(m.unit)+'</span>':'')+'</div>'+
     (m.sub?'<div class="hm-sub">'+m.sub+'</div>':'')+
@@ -12876,7 +12860,7 @@ function renderBSFinPicture(){
   if(sum.incomeWeeks<sum.weeks) notes.push('Income recorded in '+sum.incomeWeeks+' of '+sum.weeks+' weeks; the rest are unknown, not zero.');
   if(sum.ambiguous) notes.push(sum.ambiguous+' snapshot-only legacy week'+(sum.ambiguous===1?'':'s')+' cannot be reconciled with later transaction detail, so only known spend is counted.');
   else if(sum.snapAgg) notes.push(sum.snapAgg+(sum.snapAgg===1?' week contributes':' weeks contribute')+' a stored aggregate with no per-category detail.');
-  wrap.innerHTML='<div class="fin-hero" style="'+budHeroStyle('accent')+'">'+
+  wrap.innerHTML='<div class="fin-hero">'+
     '<div class="fh-head">'+
       '<span class="fh-kicker">Financial picture</span>'+
       '<span class="fh-range">'+escText(bsFinRangeLabel())+'<span class="fh-cov">'+bsFinCoverageText(sum)+'</span></span>'+
@@ -18070,7 +18054,10 @@ function kitLoadRecipes(){
 }
 let kitRecipes=kitLoadRecipes();
 function kitSaveRecipes(){ lsSave('kitchen_recipes', kitRecipes, 'kitRecipes'); }
-const kitState={tab:'recipes',cat:'all',search:'',filter:'all',filtersOpen:false,selectedId:null,scaleServings:null};
+// proteinOptionId is the DETAIL VIEW's current selection only. Cooking, shopping and meal
+// logging each own their own choice — a browsing selection must never silently become what
+// gets bought or what lands in the food log.
+const kitState={tab:'recipes',cat:'all',search:'',filter:'all',filtersOpen:false,selectedId:null,scaleServings:null,proteinOptionId:null};
 const KIT_CATS=[['all','All'],['breakfast','Breakfast'],['lunch','Lunch'],['dinner','Dinner'],['dessert','Dessert']];
 
 function kitEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -18099,7 +18086,19 @@ function kitSetTab(tab){
 // swipe deck (see index.html) its visibility is explicit.
 function updateKitFab(){
   const fab=document.getElementById('kit-fab'); if(!fab) return;
-  const show = S.view==='kitchen' && (kitState&&kitState.tab==='recipes');
+  // The FAB is a BODY-level element at z-index 80, and Chrome makes #app's position:fixed a
+  // stacking context — so it paints above anything inside #app however high that z-index is,
+  // including an open action sheet. It has to stand down while one is up.
+  const covered=['kit-sheet-overlay','kit-form-overlay','kit-import-overlay'].some(id=>{
+    const el=document.getElementById(id);
+    return el&&!el.classList.contains('hidden');
+  }) || (function(){
+    // The phone's recipe detail is a display-toggled overlay rather than a .hidden one, and
+    // the FAB sat on top of its content — the macro caption and the bottom actions.
+    const d=document.getElementById('kit-detail-overlay');
+    return !!(d&&d.style.display&&d.style.display!=='none');
+  })();
+  const show = S.view==='kitchen' && (kitState&&kitState.tab==='recipes') && !covered;
   fab.style.display = show ? 'flex' : 'none';
 }
 function kitOnSearch(v){ kitState.search=v||''; kitRenderList(); }
@@ -18141,6 +18140,155 @@ function kitRenderCatPills(){
 function kitStepText(s){ return (s&&typeof s==='object') ? (s.text||'') : (s||''); }
 function kitStepTimer(s){ return (s&&typeof s==='object'&&s.timerMinutes>0) ? s.timerMinutes : null; }
 
+// ══ Protein options ═══════════════════════════════════════════════
+// One recipe, one dish, more than one protein. Chimichurri Roll is the same roll whether it
+// holds rump or chicken thigh — the chimichurri, the bread and the assembly do not change —
+// so it is ONE recipe with two options rather than two near-identical recipes that drift
+// apart the first time the sauce is edited.
+//
+// Shape (all additive; a recipe without proteinOptions is untouched and stays legacy):
+//   defaultProteinOptionId : id of the option used when nothing is chosen
+//   proteinOptions : [{
+//     id, label,
+//     ingredient : {name, amount, unit}          the thing you buy
+//     extras     : [{name, amount, unit}]        ONLY genuine option-specific extras
+//     prep, cook : instructions for this protein
+//     cookTime   : minutes for the cook step's timer, nullable
+//     internalTempC : safe internal temperature, nullable — NEVER invented
+//     calories/protein/carbs/fat : the COMPLETE dish, PER SERVING, with this option
+//   }]
+//   steps may contain one {type:'protein'} slot marking where the option's instructions go.
+//
+// Nutrition is stored complete per option rather than as "the protein's own contribution"
+// added to a base: four small numbers repeated is cheaper and far more honest than deriving
+// a dish total from ingredient data the app does not have.
+function kitOptId(){
+  return 'po_'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+}
+function kitOptionsOf(r){ return (r&&Array.isArray(r.proteinOptions))?r.proteinOptions.filter(o=>o&&typeof o==='object'):[]; }
+function kitHasOptions(r){ return kitOptionsOf(r).length>0; }
+function kitIsProteinStep(s){ return !!(s&&typeof s==='object'&&s.type==='protein'); }
+function kitFindOption(r,id){ return kitOptionsOf(r).find(o=>o.id===id)||null; }
+function kitDefaultOption(r){
+  const opts=kitOptionsOf(r); if(!opts.length) return null;
+  return kitFindOption(r,r&&r.defaultProteinOptionId)||opts[0];
+}
+// A recipe arriving from an older or newer device can carry nested option data this build
+// cannot use. Say so and fail the ACTION — never repair the record by deleting fields, and
+// never crash the Kitchen tab over it.
+function kitOptionsProblem(r){
+  const opts=kitOptionsOf(r);
+  if(!r||!Array.isArray(r.proteinOptions)) return null;
+  if(!r.proteinOptions.length) return null;
+  if(opts.length!==r.proteinOptions.length) return 'One of this recipe’s protein options is not readable.';
+  const ids=new Set();
+  for(const o of opts){
+    if(!o.id) return 'A protein option is missing its ID.';
+    if(ids.has(o.id)) return 'Two protein options share the same ID.';
+    ids.add(o.id);
+    if(!String(o.label||'').trim()) return 'A protein option is missing its name.';
+    if(!o.ingredient||typeof o.ingredient!=='object'||!String(o.ingredient.name||'').trim())
+      return '“'+String(o.label||'A protein option')+'” has no main ingredient.';
+  }
+  if(r.defaultProteinOptionId && !ids.has(r.defaultProteinOptionId))
+    return 'The default protein option no longer exists in this recipe.';
+  return null;
+}
+function kitNum(v){ const n=parseFloat(v); return isNaN(n)?null:n; }
+function kitIngCopy(i,source){
+  return {name:String((i&&i.name)||''), amount:(i&&i.amount!=null)?i.amount:'', unit:String((i&&i.unit)||''), source:source||'shared'};
+}
+// ── The one resolver ──────────────────────────────────────────────
+// Every consumer — detail, cards, search, shopping, pantry classification, cook mode, meal
+// logging, export, AI context and both sharing paths — reads the effective recipe through
+// this. Scattered `if (r.proteinOptions)` branches are how the same dish ends up shopping for
+// one protein and cooking another.
+// Strictly read-only: it never writes to the recipe and never saves.
+function kitResolve(recipe,optionId,servings){
+  const r=recipe||{};
+  const base=Math.max(1,parseInt(r.servings)||1);
+  const cur=Math.max(1,parseInt(servings)||base);
+  const factor=cur/base;
+  const problem=kitOptionsProblem(r);
+  const opts=problem?[]:kitOptionsOf(r);
+  const variant=opts.length>0;
+  let option=null, optionMissing=false;
+  if(variant){
+    if(optionId){
+      option=kitFindOption(r,optionId);
+      // An explicitly chosen option that has since been deleted is NOT quietly swapped for the
+      // default — that would buy or cook the wrong thing on the user's behalf.
+      if(!option) optionMissing=true;
+    }
+    if(!option&&!optionMissing) option=kitDefaultOption(r);
+  }
+  const ingredients=[];
+  (Array.isArray(r.ingredients)?r.ingredients:[]).forEach(i=>{ if(i&&i.name) ingredients.push(kitIngCopy(i,'shared')); });
+  if(option){
+    if(option.ingredient&&option.ingredient.name) ingredients.push(kitIngCopy(option.ingredient,'protein'));
+    (Array.isArray(option.extras)?option.extras:[]).forEach(i=>{ if(i&&i.name) ingredients.push(kitIngCopy(i,'extra')); });
+  }
+  ingredients.forEach(i=>{
+    const n=parseFloat(i.amount);
+    i.scaledNum=isNaN(n)?null:n*factor;
+    i.display=isNaN(n)?String(i.amount==null?'':i.amount):kitTrim(i.scaledNum);
+  });
+  const proteinNames=ingredients.filter(i=>i.source!=='shared').map(i=>i.name);
+  // Resolved method. The protein SLOT expands into the chosen option's prep and cook
+  // instructions at exactly the position the author put it, so shared steps are stored once
+  // and no option carries a duplicate copy of the whole method.
+  const steps=[];
+  const pushSlot=()=>{
+    if(!option) return;
+    const prep=String(option.prep||'').trim();
+    const cook=String(option.cook||'').trim();
+    if(prep) steps.push({text:prep,timerMinutes:null,kind:'protein-prep',ingredientNames:proteinNames.slice(),optionLabel:option.label||''});
+    if(cook) steps.push({text:cook,timerMinutes:kitNum(option.cookTime)||null,kind:'protein-cook',
+      ingredientNames:proteinNames.slice(),optionLabel:option.label||'',internalTempC:kitNum(option.internalTempC)});
+  };
+  let sawSlot=false;
+  (Array.isArray(r.steps)?r.steps:[]).forEach(st=>{
+    if(kitIsProteinStep(st)){ sawSlot=true; pushSlot(); return; }
+    const text=kitStepText(st);
+    if(!text) return;
+    steps.push({text,timerMinutes:kitStepTimer(st),kind:'shared',ingredientNames:null});
+  });
+  // A variant recipe whose author never placed a slot still has to cook its protein: append
+  // the instructions rather than silently dropping them.
+  if(option&&!sawSlot) pushSlot();
+  const nutri=option
+    ? {calories:kitNum(option.calories),protein:kitNum(option.protein),carbs:kitNum(option.carbs),fat:kitNum(option.fat)}
+    : {calories:kitNum(r.calories),protein:kitNum(r.protein),carbs:kitNum(r.carbs),fat:kitNum(r.fat)};
+  const batch={};
+  ['calories','protein','carbs','fat'].forEach(k=>{ batch[k]=nutri[k]==null?null:nutri[k]*cur; });
+  return {
+    ok:!problem&&!optionMissing, problem, optionMissing,
+    recipe:r, variant, options:opts, option,
+    optionId:option?option.id:null,
+    optionLabel:option?String(option.label||''):'',
+    baseServings:base, servings:cur, factor,
+    ingredients, steps, proteinNames,
+    cookTime: option?(kitNum(option.cookTime)):kitNum(r.cookTime),
+    internalTempC: option?kitNum(option.internalTempC):null,
+    nutrition:nutri, batch
+  };
+}
+// Shorthand for the many read-only "what does the default look like" call sites (cards, the
+// featured hero, AI context) that have no action-specific selection to honour.
+function kitResolveDefault(r,servings){ return kitResolve(r,null,servings); }
+// Every string a search should match, including option labels and option ingredients — the
+// reason searching "chicken" has to find a roll whose default is rump.
+function kitSearchHaystack(r){
+  const parts=[String(r&&r.name||''),String(r&&r.description||'')];
+  (Array.isArray(r&&r.ingredients)?r.ingredients:[]).forEach(i=>{ if(i&&i.name) parts.push(String(i.name)); });
+  kitOptionsOf(r).forEach(o=>{
+    parts.push(String(o.label||''));
+    if(o.ingredient&&o.ingredient.name) parts.push(String(o.ingredient.name));
+    (Array.isArray(o.extras)?o.extras:[]).forEach(x=>{ if(x&&x.name) parts.push(String(x.name)); });
+  });
+  return parts.join(' \n ').toLowerCase();
+}
+
 function kitFilteredRecipes(){
   const q=kitState.search.trim().toLowerCase();
   const f=kitState.filter;
@@ -18149,8 +18297,9 @@ function kitFilteredRecipes(){
     if(f==='favourites' && !r.favourite) return false;
     if(f==='recent' && !r.lastCooked) return false;
     if(!q) return true;
-    if((r.name||'').toLowerCase().includes(q)) return true;
-    return (r.ingredients||[]).some(i=>(i.name||'').toLowerCase().includes(q));
+    // Option labels and option ingredients are in the haystack: a roll whose DEFAULT is rump
+    // still has to be findable by searching "chicken".
+    return kitSearchHaystack(r).includes(q);
   });
 }
 function kitSetFilter(f){
@@ -18187,9 +18336,27 @@ function kitStepIngredients(text, ingredients){
     return last.length>=4 && hasWord(last);
   });
 }
-const kitCookState={recipeId:null,step:0,timerTotal:0,timerRemaining:0,timerStart:null,timerRunning:false,wakeLock:null,tickId:null};
-function kitStartCooking(id){
+// proteinOptionId is LOCKED for the session. The detail view's selector keeps browsing; a
+// cook already underway must not change protein under the user's hands halfway through.
+const kitCookState={recipeId:null,proteinOptionId:null,step:0,timerTotal:0,timerRemaining:0,timerStart:null,timerRunning:false,wakeLock:null,tickId:null};
+// The resolved view the whole session reads: ingredients, steps, timers, temperature.
+function kitCookResolve(){
+  const r=kitRecipes.find(x=>x.id===kitCookState.recipeId); if(!r) return null;
+  const cur=kitCookState.servings||kitState.scaleServings||r.servings;
+  return kitResolve(r,kitCookState.proteinOptionId,cur);
+}
+// A multi-protein recipe confirms the choice before the session starts. The detail selection
+// prefills the chooser; the cook action then owns its answer.
+function kitStartCooking(id,optionId){
   const r=kitRecipes.find(x=>x.id===id); if(!r) return;
+  const probe=kitResolve(r,optionId||kitState.proteinOptionId,r.servings);
+  if(probe.problem){ showToast(probe.problem); return; }
+  if(probe.variant && !optionId){
+    kitCookChooseProtein(id,probe.optionId);
+    return;
+  }
+  kitCookState.proteinOptionId=probe.variant?(optionId||probe.optionId):null;
+  kitCookState.servings=kitState.selectedId===id?(kitState.scaleServings||r.servings):r.servings;
   kitCookState.recipeId=id;
   kitCookState.step=0;
   kitCookState.timerRunning=false;
@@ -18205,12 +18372,41 @@ function kitStartCooking(id){
   // wake lock
   if(navigator.wakeLock) navigator.wakeLock.request('screen').then(wl=>{ kitCookState.wakeLock=wl; }).catch(()=>{});
 }
+let kitCookPick={recipeId:null,optionId:null};
+function kitCookChooseProtein(id,optionId){
+  const r=kitRecipes.find(x=>x.id===id); if(!r) return;
+  kitCookPick={recipeId:id,optionId:optionId||(kitDefaultOption(r)||{}).id||null};
+  kitCookChooseRender();
+}
+function kitCookSetPick(optId){ kitCookPick.optionId=optId; kitCookChooseRender(); }
+function kitCookChooseRender(){
+  const r=kitRecipes.find(x=>x.id===kitCookPick.recipeId); if(!r) return;
+  const rv=kitResolve(r,kitCookPick.optionId,r.servings);
+  const t=kitTempBadge(rv.internalTempC);
+  kitSheetOpen(
+    kitSheetHead('Which protein?',r.name)+
+    kitProteinChooserHTML(r,rv.optionId,"kitCookSetPick('%ID%')",{label:false})+
+    '<div class="kit-note-panel">'+
+      (rv.option&&rv.option.cook?kitEsc(rv.option.cook):'This option has no cooking instruction saved.')+
+      (rv.cookTime?' <b>⏱ '+rv.cookTime+' min</b>':'')+(t?' '+t:'')+
+      '<br><small>Locked in for this cooking session.</small></div>'+
+    '<div class="kit-sheet-actions">'+
+      '<button class="modal-btn secondary" onclick="kitSheetClose()">Cancel</button>'+
+      '<button class="modal-btn primary" onclick="kitCookStartPicked()">▶ Start cooking</button>'+
+    '</div>');
+}
+function kitCookStartPicked(){
+  const id=kitCookPick.recipeId, opt=kitCookPick.optionId;
+  kitSheetClose();
+  if(id&&opt) kitStartCooking(id,opt);
+}
 function kitExitCooking(){
   if(kitCookState.tickId){ clearInterval(kitCookState.tickId); kitCookState.tickId=null; }
   if(kitCookState.wakeLock){ kitCookState.wakeLock.release().catch(()=>{}); kitCookState.wakeLock=null; }
   const ov=document.getElementById('kit-cook-overlay');
   if(ov) ov.style.display='none';
   kitCookState.recipeId=null;
+  kitCookState.proteinOptionId=null;
 }
 function kitCookFinish(){
   const r=kitRecipes.find(x=>x.id===kitCookState.recipeId);
@@ -18221,8 +18417,8 @@ function kitCookFinish(){
   if(kitCookState.recipeId && window.innerWidth>=1024) kitRefreshOpenDetail();
 }
 function kitCookGo(dir){
-  const r=kitRecipes.find(x=>x.id===kitCookState.recipeId); if(!r) return;
-  const steps=r.steps||[];
+  const rv=kitCookResolve(); if(!rv) return;
+  const steps=rv.steps;
   const next=kitCookState.step+dir;
   if(next<0||next>=steps.length) return;
   kitCookState.step=next;
@@ -18232,9 +18428,8 @@ function kitCookGo(dir){
   kitCookRender();
 }
 function kitCookTimerToggle(){
-  const r=kitRecipes.find(x=>x.id===kitCookState.recipeId); if(!r) return;
-  const s=r.steps[kitCookState.step];
-  const mins=kitStepTimer(s)||0; if(!mins) return;
+  const rv=kitCookResolve(); if(!rv) return;
+  const mins=(rv.steps[kitCookState.step]||{}).timerMinutes||0; if(!mins) return;
   if(kitCookState.timerRunning){
     // pause: store remaining
     kitCookState.timerRemaining=Math.max(0,kitCookState.timerRemaining-Math.floor((Date.now()-kitCookState.timerStart)/1000));
@@ -18255,9 +18450,8 @@ function kitCookTimerToggle(){
   }
 }
 function kitCookTimerReset(){
-  const r=kitRecipes.find(x=>x.id===kitCookState.recipeId); if(!r) return;
-  const s=r.steps[kitCookState.step];
-  const mins=kitStepTimer(s)||0;
+  const rv=kitCookResolve(); if(!rv) return;
+  const mins=(rv.steps[kitCookState.step]||{}).timerMinutes||0;
   if(kitCookState.tickId){ clearInterval(kitCookState.tickId); kitCookState.tickId=null; }
   kitCookState.timerRunning=false;
   kitCookState.timerStart=null;
@@ -18285,9 +18479,8 @@ function kitCookTimerSec(){
   return Math.max(0,kitCookState.timerRemaining-Math.floor((Date.now()-kitCookState.timerStart)/1000));
 }
 function kitCookRenderTimer(){
-  const r=kitRecipes.find(x=>x.id===kitCookState.recipeId); if(!r) return;
-  const s=r.steps[kitCookState.step];
-  const mins=kitStepTimer(s)||0;
+  const rv=kitCookResolve(); if(!rv) return;
+  const mins=(rv.steps[kitCookState.step]||{}).timerMinutes||0;
   const tWrap=document.getElementById('kit-cook-timer'); if(!tWrap) return;
   if(!mins){ tWrap.innerHTML=''; return; }
   const sec=kitCookTimerSec();
@@ -18307,18 +18500,20 @@ function kitCookRenderTimer(){
     '</div>';
 }
 function kitCookRender(){
-  const r=kitRecipes.find(x=>x.id===kitCookState.recipeId); if(!r) return;
+  const rv=kitCookResolve(); if(!rv) return;
+  const r=rv.recipe;
   const ov=document.getElementById('kit-cook-overlay'); if(!ov) return;
-  const steps=r.steps||[];
-  const idx=kitCookState.step;
+  const steps=rv.steps;
+  const idx=Math.min(kitCookState.step,Math.max(0,steps.length-1));
+  kitCookState.step=idx;
   const total=steps.length;
-  const s=steps[idx];
-  const text=kitStepText(s);
+  const st=steps[idx]||{text:'',timerMinutes:null,kind:'shared'};
+  const text=st.text;
   const hasPrev=idx>0;
   const hasNext=idx<total-1;
   const pct=total>1?Math.round(((idx+1)/total)*100):100;
   // reset timer state when step changes
-  const mins=kitStepTimer(s)||0;
+  const mins=st.timerMinutes||0;
   if(kitCookState.timerTotal!==mins*60){
     kitCookState.timerTotal=mins*60;
     kitCookState.timerRemaining=mins*60;
@@ -18326,17 +18521,20 @@ function kitCookRender(){
     kitCookState.timerStart=null;
     if(kitCookState.tickId){ clearInterval(kitCookState.tickId); kitCookState.tickId=null; }
   }
-  // Honour whatever serving scale is set on the detail view (kitState.scaleServings) — same
-  // convention kitRenderDetail uses, so a batch cook scaled up before hitting "Start cooking"
-  // shows the same scaled amounts here rather than reverting to the recipe's base servings.
-  const cur=kitState.scaleServings||r.servings;
+  const cur=rv.servings;
   const ingRowHTML=i=>{
-    const amt=kitScaledAmount(i.amount,r.servings,cur);
-    const right=[amt,i.unit].filter(x=>x!=='' && x!=null).join(' ');
-    return '<div class="kit-cook-ing-row"><span>'+kitEsc(i.name)+'</span><span class="kit-cook-ing-amt">'+kitEsc(right)+'</span></div>';
+    const right=[i.display,i.unit].filter(x=>x!=='' && x!=null).join(' ');
+    const tag=i.source==='protein'?'<span class="kit-ing-tag">Chosen protein</span>'
+            :i.source==='extra'?'<span class="kit-ing-tag">Option extra</span>':'';
+    return '<div class="kit-cook-ing-row"><span>'+kitEsc(i.name)+tag+'</span><span class="kit-cook-ing-amt">'+kitEsc(right)+'</span></div>';
   };
-  const allIngs=(r.ingredients||[]).filter(i=>i&&i.name);
-  const stepIngs=kitStepIngredients(text, allIngs);
+  const allIngs=rv.ingredients;
+  // The protein slot carries EXPLICIT ingredient references rather than hoping the step text
+  // happens to name the protein — the whole point of the slot is that its wording is the
+  // option's, not the recipe author's.
+  const stepIngs=st.ingredientNames
+    ? allIngs.filter(i=>st.ingredientNames.indexOf(i.name)>=0)
+    : kitStepIngredients(text, allIngs);
   const allIngHTML=allIngs.map(ingRowHTML).join('');
   const stepIngHTML=stepIngs.length ? stepIngs.map(ingRowHTML).join('')
     : '<div class="kit-cook-ing-empty">No ingredients from the list are named in this step.</div>';
@@ -18346,10 +18544,17 @@ function kitCookRender(){
   // .kit-cook-ing-rows — that's what keeps a capped-height card from clipping its own title
   // when the ingredient list is long.
   const servingsNote=cur!==r.servings?'<span class="kit-cook-ing-servings">'+cur+' serving'+(cur===1?'':'s')+'</span>':'';
+  // Safe internal temperature belongs AT the protein step it applies to, not as a decoration
+  // floating over every step of the method.
+  const tempCallout=st.internalTempC
+    ? '<div class="kit-cook-temp">🌡 Cook to <b>'+kitTrim(kitNum(st.internalTempC))+'°C</b> internal</div>' : '';
+  const proteinBanner=rv.optionLabel
+    ? '<div class="kit-cook-protein" title="Locked for this cooking session">🥩 '+kitEsc(rv.optionLabel)+'</div>' : '';
+  const stepWho=st.kind!=='shared'&&rv.optionLabel?'<div class="kit-cook-step-who">'+kitEsc(rv.optionLabel)+'</div>':'';
   ov.innerHTML=
     '<div class="kit-cook-topbar">'+
       '<button class="kit-cook-exit" onclick="kitExitCooking()">✕ Exit</button>'+
-      '<div class="kit-cook-recipe-name">'+kitEsc(r.emoji||'🍽️')+' '+kitEsc(r.name)+'</div>'+
+      '<div class="kit-cook-recipe-name">'+kitEsc(r.emoji||'🍽️')+' '+kitEsc(r.name)+proteinBanner+'</div>'+
       '<div></div>'+
     '</div>'+
     '<div class="kit-cook-progress-bar"><div class="kit-cook-progress-fill" style="width:'+pct+'%"></div></div>'+
@@ -18360,13 +18565,15 @@ function kitCookRender(){
       // loses your place in the method. Split in two: the full list is a fixed reference,
       // "For this step" re-filters on every kitCookRender() call so it tracks whichever step
       // you're on. Each panel scopes its own scroll so a long list can't push Prev/Next off
-      // screen — see kitStepIngredients for how the step text is matched to ingredient names.
+      // screen — see kitStepIngredients for how a SHARED step's text is matched to names.
       (allIngHTML?'<div class="kit-cook-ing-panel kit-cook-ing-all card">'+
         cardHeader('pot','Ingredients',servingsNote)+
         '<div class="kit-cook-ing-rows">'+allIngHTML+'</div>'+
       '</div>':'')+
       '<div class="kit-cook-body">'+
+        stepWho+
         '<div class="kit-cook-step-text">'+kitEsc(text)+'</div>'+
+        tempCallout+
         '<div id="kit-cook-timer"></div>'+
       '</div>'+
       (allIngHTML?'<div class="kit-cook-ing-panel kit-cook-ing-step card">'+
@@ -18400,8 +18607,9 @@ function kitRenderFeatured(){
   const byRecent=[...kitRecipes].sort((a,b)=>(b.lastCooked||0)-(a.lastCooked||0)||(b.createdAt||0)-(a.createdAt||0));
   const r=byRecent[0]; if(!r){ wrap.innerHTML=''; return; }
   const label=r.lastCooked?'Last cooked':'Latest recipe';
-  const cal=r.calories!=null?'<span class="kitchen-hero-cal">'+r.calories+' cal</span>':'';
-  const time=r.cookTime?'<span class="kitchen-hero-time">'+(cal?'· ':'')+r.cookTime+' min</span>':'';
+  const rv=kitResolveDefault(r);
+  const cal=rv.nutrition.calories!=null?'<span class="kitchen-hero-cal">'+Math.round(rv.nutrition.calories)+' cal</span>':'';
+  const time=rv.cookTime?'<span class="kitchen-hero-time">'+(cal?'· ':'')+rv.cookTime+' min</span>':'';
   wrap.innerHTML=
     '<div class="kitchen-hero-card">'+
       '<p class="card-label">'+label+'</p>'+
@@ -18424,9 +18632,14 @@ function kitRenderList(){
   } else {
     list.innerHTML=items.map(r=>{
       const sel=r.id===kitState.selectedId?' kit-card-active':'';
-      const cal=r.calories!=null?'<span class="kit-cal-badge">'+r.calories+' cal</span>':'';
+      // The card has no action-specific choice to honour, so it states the DEFAULT option's
+      // figures — and says how many alternatives exist rather than listing them all.
+      const rv=kitResolveDefault(r);
+      const cal=rv.nutrition.calories!=null?'<span class="kit-cal-badge">'+Math.round(rv.nutrition.calories)+' cal</span>':'';
       const batch=r.batchPrep?'<span class="kit-batch-badge">🍱 Batch</span>':'';
-      const cookTime=r.cookTime?'<span class="kit-cal-badge">⏱ '+r.cookTime+'m</span>':'';
+      const cookTime=rv.cookTime?'<span class="kit-cal-badge">⏱ '+rv.cookTime+'m</span>':'';
+      const optBadge=rv.options.length>1?'<span class="kit-opt-badge">'+rv.options.length+' protein options</span>':'';
+      const brokeBadge=rv.problem?'<span class="kit-opt-badge kit-opt-warn">Protein options need attention</span>':'';
       let cookedLabel='';
       if(r.lastCooked){
         const days=Math.floor((Date.now()-r.lastCooked)/86400000);
@@ -18441,13 +18654,15 @@ function kitRenderList(){
             '<button class="kit-menu-btn" onclick="kitToggleMenu(\''+r.id+'\',event)">⋯</button>'+
           '</div>'+
         '</div>'+
-        '<div class="kit-card-meta"><span class="kit-cat-tag kit-cat-'+r.category+'">'+r.category+'</span>'+cal+cookTime+batch+'</div>'+
+        '<div class="kit-card-meta"><span class="kit-cat-tag kit-cat-'+r.category+'">'+r.category+'</span>'+cal+cookTime+batch+optBadge+brokeBadge+'</div>'+
         (r.description?'<div class="kit-card-desc">'+kitEsc(r.description)+'</div>':'')+
         '<div class="kit-card-serv">🍽️ '+r.servings+' serving'+(r.servings!=1?'s':'')+'</div>'+
         cookedLabel+
         (kitMenuOpenId===r.id?
           '<div class="kit-menu-dropdown" onclick="event.stopPropagation()">'+
             '<button onclick="kitMenuOpenId=null;kitOpenForm(\''+r.id+'\')">✏️ Edit</button>'+
+            '<button onclick="kitMenuOpenId=null;kitShareRecipe(\''+r.id+'\')">📤 Share recipe</button>'+
+            '<button onclick="kitMenuOpenId=null;kitCopyForDaily(\''+r.id+'\')">📋 Copy for Daily</button>'+
             '<button onclick="kitMenuOpenId=null;kitCopyRecipe(\''+r.id+'\')">🤖 Copy for AI</button>'+
             '<button class="danger" onclick="kitMenuOpenId=null;kitDeleteRecipe(\''+r.id+'\')">🗑️ Delete</button>'+
           '</div>':'')+
@@ -18480,20 +18695,30 @@ function kitToggleFav(id){
 }
 
 function kitOpenDetail(id){
+  const changing=kitState.selectedId!==id;
   kitState.selectedId=id;
   const r=kitRecipes.find(x=>x.id===id); if(!r) return;
   kitState.scaleServings=r.servings;
+  // Only on a genuine recipe change. Desktop re-renders the list (and therefore the detail
+  // column) for all sorts of incidental reasons; resetting the selector on every one of them
+  // would throw away a choice the user just made.
+  if(changing||!kitFindOption(r,kitState.proteinOptionId)){
+    const d=kitDefaultOption(r);
+    kitState.proteinOptionId=d?d.id:null;
+  }
   if(kitUsesSplitPane()){
     kitRenderList(); // re-render list (highlight) + detail column
   } else {
     const ov=document.getElementById('kit-detail-overlay');
     kitRenderDetail(id,document.getElementById('kit-detail-overlay-inner'));
     if(ov) ov.style.display='flex';
+    updateKitFab();
   }
 }
 function kitCloseDetail(){
   const ov=document.getElementById('kit-detail-overlay');
   if(ov) ov.style.display='none';
+  updateKitFab();
   kitState.selectedId=null;
   if(kitUsesSplitPane()) kitRenderList();
 }
@@ -18513,34 +18738,87 @@ function kitScale(delta){
   kitState.scaleServings=next;
   kitRefreshOpenDetail();
 }
+// A compact segmented chooser, reused by the detail view and by every action sheet that has
+// to confirm a protein. Real <button>s with aria-pressed, a tick on the selected one and the
+// word "Default" on the default: the choice must not be carried by colour alone, and the
+// default must read as a starting point rather than as the only working answer.
+function kitProteinChooserHTML(r,selectedId,onPick,opts){
+  const o=opts||{};
+  const options=kitOptionsOf(r); if(!options.length) return '';
+  const def=kitDefaultOption(r);
+  return '<div class="kit-psel"'+(o.label===false?'':' role="group" aria-label="Protein"')+'>'+
+    (o.label===false?'':'<div class="kit-psel-label">Protein</div>')+
+    '<div class="kit-psel-row">'+options.map(op=>{
+      const on=op.id===selectedId;
+      const isDef=def&&op.id===def.id;
+      return '<button type="button" class="kit-pchip'+(on?' on':'')+'" aria-pressed="'+(on?'true':'false')+'" '+
+        'onclick="'+onPick.replace('%ID%',kitEsc(op.id))+'">'+
+        '<span class="kit-pchip-tick" aria-hidden="true">'+(on?'✓':'')+'</span>'+
+        '<span class="kit-pchip-txt">'+kitEsc(op.label||'Option')+'</span>'+
+        (isDef?'<span class="kit-pchip-def">Default</span>':'')+
+      '</button>';
+    }).join('')+'</div></div>';
+}
+function kitSetDetailProtein(optId){
+  kitState.proteinOptionId=optId||null;
+  kitRefreshOpenDetail();
+}
+function kitMacroBlock(nutri,caption){
+  if(nutri.calories==null&&nutri.protein==null&&nutri.carbs==null&&nutri.fat==null) return '';
+  const v=x=>x==null?'—':Math.round(x);
+  return '<div class="kit-macro-cap">'+caption+'</div><div class="kit-macros">'+
+    '<div class="kit-macro"><div class="kit-macro-v">'+v(nutri.calories)+'</div><div class="kit-macro-l">cal</div></div>'+
+    '<div class="kit-macro"><div class="kit-macro-v">'+v(nutri.protein)+'</div><div class="kit-macro-l">protein</div></div>'+
+    '<div class="kit-macro"><div class="kit-macro-v">'+v(nutri.carbs)+'</div><div class="kit-macro-l">carbs</div></div>'+
+    '<div class="kit-macro"><div class="kit-macro-v">'+v(nutri.fat)+'</div><div class="kit-macro-l">fat</div></div>'+
+  '</div>';
+}
+function kitTempBadge(c){
+  // Never 0°C, never null, never a guess: a food-safety number the recipe does not carry is
+  // not shown at all.
+  const n=kitNum(c);
+  return (n==null||n<=0)?'':'<span class="kit-temp-badge" title="Safe internal temperature">🌡 '+kitTrim(n)+'°C internal</span>';
+}
 function kitRenderDetail(id,target){
   if(!target) return;
   const r=kitRecipes.find(x=>x.id===id);
   if(!r){ target.innerHTML=''; return; }
   const cur=kitState.scaleServings||r.servings;
-  const ingRows=(r.ingredients||[]).map(i=>{
-    const amt=kitScaledAmount(i.amount,r.servings,cur);
-    const right=[amt,i.unit].filter(x=>x!=='' && x!=null).join(' ');
-    return '<div class="kit-ing-row"><span>'+kitEsc(i.name)+'</span><span class="kit-ing-amt">'+kitEsc(right)+'</span></div>';
+  const rv=kitResolve(r,kitState.proteinOptionId,cur);
+  const backBtn=kitUsesSplitPane()?'':'<button class="back-btn" data-back="kitCloseDetail" aria-label="Back">'+BACK_CHEVRON+'</button>';
+  // Unreadable nested option data is preserved and reported. Deleting the fields to make the
+  // screen render would destroy a recipe that a newer build understands perfectly well.
+  if(rv.problem){
+    target.innerHTML='<div class="kit-detail-head">'+backBtn+'</div>'+
+      '<div class="kit-detail-name">'+kitEsc(r.name)+'</div>'+
+      '<div class="kit-note-panel kit-note-warn">'+kitEsc(rv.problem)+
+        ' This recipe’s other details are untouched — edit it to fix the protein options, or open it on the device that created them.</div>'+
+      '<div class="kit-detail-actions"><button class="kit-act" onclick="kitOpenForm(\''+r.id+'\')">✏️ Edit</button></div>';
+    return;
+  }
+  const ingRows=rv.ingredients.map(i=>{
+    const right=[i.display,i.unit].filter(x=>x!=='' && x!=null).join(' ');
+    const tag=i.source==='protein'?'<span class="kit-ing-tag">Chosen protein</span>'
+            :i.source==='extra'?'<span class="kit-ing-tag">For '+kitEsc(rv.optionLabel)+'</span>':'';
+    return '<div class="kit-ing-row'+(i.source==='shared'?'':' kit-ing-opt')+'"><span>'+kitEsc(i.name)+tag+'</span><span class="kit-ing-amt">'+kitEsc(right)+'</span></div>';
   }).join('');
-  const stepRows=(r.steps||[]).map((s,i)=>{
-    const text=kitStepText(s);
-    const timer=kitStepTimer(s);
-    return '<div class="kit-step-row"><span class="kit-step-n">'+(i+1)+'</span><div class="kit-step-body"><span>'+kitEsc(text)+'</span>'+(timer?'<span class="kit-step-timer-badge">⏱ '+timer+' min</span>':'')+'</div></div>';
+  const stepRows=rv.steps.map((st,i)=>{
+    const isProt=st.kind!=='shared';
+    const timer=st.timerMinutes?'<span class="kit-step-timer-badge">⏱ '+st.timerMinutes+' min</span>':'';
+    const temp=st.internalTempC?kitTempBadge(st.internalTempC):'';
+    const who=isProt&&rv.optionLabel?'<span class="kit-step-who">'+kitEsc(rv.optionLabel)+'</span>':'';
+    return '<div class="kit-step-row'+(isProt?' kit-step-protein':'')+'"><span class="kit-step-n">'+(i+1)+'</span>'+
+      '<div class="kit-step-body">'+who+'<span>'+kitEsc(st.text)+'</span>'+timer+temp+'</div></div>';
   }).join('');
   const tags=(r.tags||[]).map(t=>'<span class="kit-tag">'+kitEsc(t)+'</span>').join('');
-  let macros='';
-  if(r.calories!=null||r.protein!=null||r.carbs!=null||r.fat!=null){
-    const scl=v=>v==null?'—':Math.round(v*cur/r.servings);
-    macros='<div class="kit-macros">'+
-      '<div class="kit-macro"><div class="kit-macro-v">'+scl(r.calories)+'</div><div class="kit-macro-l">cal</div></div>'+
-      '<div class="kit-macro"><div class="kit-macro-v">'+scl(r.protein)+'</div><div class="kit-macro-l">protein</div></div>'+
-      '<div class="kit-macro"><div class="kit-macro-v">'+scl(r.carbs)+'</div><div class="kit-macro-l">carbs</div></div>'+
-      '<div class="kit-macro"><div class="kit-macro-v">'+scl(r.fat)+'</div><div class="kit-macro-l">fat</div></div>'+
-    '</div>';
-  }
-  const cookInfo=(r.cookTime?'<span class="kit-cal-badge">⏱ '+r.cookTime+' min</span>':'');
-  const backBtn=kitUsesSplitPane()?'':'<button class="back-btn" data-back="kitCloseDetail" aria-label="Back">'+BACK_CHEVRON+'</button>';
+  // Per serving, always — the stored numbers ARE per-serving values (which is what the
+  // importer, the exporter and the AI instructions have always said), so the serving scaler
+  // moves ingredient quantities and the batch total, never the per-serving figure itself.
+  const macros=kitMacroBlock(rv.nutrition,'Per serving'+(rv.optionLabel?' · '+kitEsc(rv.optionLabel):''))+
+    ((cur>1&&rv.batch.calories!=null)?'<div class="kit-batch-line">Batch total for '+cur+' servings: <b>'+Math.round(rv.batch.calories)+' cal</b>'+
+      (rv.batch.protein!=null?' · '+Math.round(rv.batch.protein)+'g protein':'')+'</div>':'');
+  const cookInfo=(rv.cookTime?'<span class="kit-cal-badge">⏱ '+rv.cookTime+' min</span>':'')+kitTempBadge(rv.internalTempC);
+  const chooser=rv.variant?kitProteinChooserHTML(r,rv.optionId,"kitSetDetailProtein('%ID%')"):'';
   target.innerHTML=
     '<div class="kit-detail-head">'+backBtn+
       '<button class="kit-fav'+(r.favourite?' on':'')+'" onclick="kitToggleFav(\''+r.id+'\')" style="margin-left:auto" aria-label="Favourite">'+(r.favourite?'⭐':'☆')+'</button>'+
@@ -18549,6 +18827,7 @@ function kitRenderDetail(id,target){
     '<div class="kit-detail-name">'+kitEsc(r.name)+'</div>'+
     '<div class="kit-card-meta" style="margin-bottom:14px"><span class="kit-cat-tag kit-cat-'+r.category+'">'+r.category+'</span>'+(r.batchPrep?'<span class="kit-batch-badge">🍱 Batch</span>':'')+cookInfo+tags+'</div>'+
     (r.description?'<div class="kit-card-desc" style="margin-bottom:16px">'+kitEsc(r.description)+'</div>':'')+
+    chooser+
     '<button class="kit-start-cooking-btn" onclick="kitStartCooking(\''+r.id+'\')">▶ Start Cooking</button>'+
     '<div class="kit-scaler">'+
       '<button class="kit-scale-btn" onclick="kitScale(-1)" aria-label="Fewer servings">−</button>'+
@@ -18556,27 +18835,239 @@ function kitRenderDetail(id,target){
       '<button class="kit-scale-btn" onclick="kitScale(1)" aria-label="More servings">+</button>'+
     '</div>'+
     macros+
-    '<div class="kit-sec-label">Ingredients</div><div class="kit-ing-list">'+ingRows+'</div>'+
+    '<div class="kit-sec-label">Ingredients'+(rv.variant?' <span class="kit-sec-note">shared + your protein</span>':'')+'</div><div class="kit-ing-list">'+ingRows+'</div>'+
     '<div class="kit-sec-label">Method</div><div class="kit-step-list">'+stepRows+'</div>'+
     '<div class="kit-detail-actions">'+
       '<button class="kit-act kit-act-primary" onclick="kitLogMeal(\''+r.id+'\')">🍴 Log this meal</button>'+
       '<button class="kit-act" onclick="kitOpenForm(\''+r.id+'\')">✏️ Edit</button>'+
+      '<button class="kit-act" onclick="kitOpenShareSheet(\''+r.id+'\')">📤 Share…</button>'+
       '<button class="kit-act kit-act-danger" onclick="kitDeleteRecipe(\''+r.id+'\')">🗑️ Delete</button>'+
     '</div>';
 }
+// ── Shared action sheet ───────────────────────────────────────────
+// One bottom sheet for every Kitchen confirmation that has to happen ON TOP of the recipe
+// detail: the protein/servings log confirmation, the cook-mode protein chooser, the shopping
+// protein chooser and the share menu. It is a .modal-overlay, which sits above
+// #kit-detail-overlay's z-index 150 — the reason the old Log flow had to hide the detail
+// overlay by hand before opening the calorie screen.
+function kitSheetOpen(html){
+  const ov=document.getElementById('kit-sheet-overlay'), box=document.getElementById('kit-sheet-box');
+  if(!ov||!box) return;
+  box.innerHTML=html;
+  ov.classList.remove('hidden');
+  box.scrollTop=0;
+  if(typeof updateKitFab==='function') updateKitFab();
+}
+function kitSheetClose(){
+  const ov=document.getElementById('kit-sheet-overlay');
+  if(ov) ov.classList.add('hidden');
+  if(typeof updateKitFab==='function') updateKitFab();
+}
+function kitSheetHead(title,sub){
+  return '<div class="kit-sheet-head"><div class="kit-sheet-title">'+kitEsc(title)+'</div>'+
+    (sub?'<div class="kit-sheet-sub">'+kitEsc(sub)+'</div>':'')+'</div>';
+}
+
+// ── Meal logging ──────────────────────────────────────────────────
+// Servings COOKED and servings EATEN are different numbers. Scaling a recipe to four to cook
+// a batch must not log four servings of dinner, so the confirmation asks — starting at one.
+const kitLogState={recipeId:null,optionId:null,servings:1,category:'dinner'};
+// The calorie overlay groups entries by MEAL_CATS — breakfast / lunch / dinner / snacks — and
+// has no group for 'other', so an entry logged there is counted in the day's total but never
+// listed. The chooser therefore offers only real meals, seeded from the recipe's own category.
+const KIT_LOG_CATS=[['breakfast','Breakfast'],['lunch','Lunch'],['dinner','Dinner'],['snacks','Snacks']];
+function kitLogCatFor(r){
+  const c=String((r&&r.category)||'').toLowerCase();
+  if(c==='breakfast'||c==='lunch'||c==='dinner') return c;
+  if(c==='dessert') return 'snacks';
+  return 'dinner';
+}
 function kitLogMeal(id){
   const r=kitRecipes.find(x=>x.id===id); if(!r) return;
-  const cur=kitState.scaleServings||r.servings;
-  const kcal=r.calories!=null?Math.round(r.calories*cur/r.servings):0;
+  const rv=kitResolve(r,kitState.proteinOptionId,r.servings);
+  if(rv.problem){ showToast(rv.problem); return; }
+  kitLogState.recipeId=id;
+  // Prefilled from what you are looking at, but owned by this action — it is never taken from
+  // a shopping selection or an in-progress cook session.
+  kitLogState.optionId=rv.optionId;
+  kitLogState.servings=1;
+  kitLogState.category=kitLogCatFor(r);
+  kitLogRender();
+}
+function kitLogSetProtein(optId){ kitLogState.optionId=optId; kitLogRender(); }
+function kitLogSetServings(delta){
+  const n=Math.round((kitLogState.servings+delta)*2)/2;
+  if(n<0.5||n>20) return;
+  kitLogState.servings=n;
+  kitLogRender();
+}
+function kitLogSetCat(c){ kitLogState.category=c; kitLogRender(); }
+function kitLogRender(){
+  const r=kitRecipes.find(x=>x.id===kitLogState.recipeId); if(!r) return;
+  const rv=kitResolve(r,kitLogState.optionId,r.servings);
+  const n=kitLogState.servings;
+  const v=x=>x==null?'—':Math.round(x*n);
+  const chooser=rv.variant?kitProteinChooserHTML(r,rv.optionId,"kitLogSetProtein('%ID%')"):'';
+  const cats=KIT_LOG_CATS;
+  kitSheetOpen(
+    kitSheetHead('Log this meal',r.name)+
+    chooser+
+    '<div class="kit-psel-label">Servings eaten</div>'+
+    '<div class="kit-scaler kit-sheet-scaler">'+
+      '<button class="kit-scale-btn" onclick="kitLogSetServings(-0.5)" aria-label="Fewer servings">−</button>'+
+      '<div class="kit-scale-val"><div class="kit-scale-num">'+kitTrim(n)+'</div><div class="kit-scale-lbl">serving'+(n===1?'':'s')+' eaten</div></div>'+
+      '<button class="kit-scale-btn" onclick="kitLogSetServings(0.5)" aria-label="More servings">+</button>'+
+    '</div>'+
+    '<div class="kit-psel-label">Meal</div>'+
+    '<div class="kit-psel-row">'+cats.map(([id,l])=>
+      '<button type="button" class="kit-pchip'+(kitLogState.category===id?' on':'')+'" aria-pressed="'+(kitLogState.category===id?'true':'false')+'" onclick="kitLogSetCat(\''+id+'\')">'+
+        '<span class="kit-pchip-tick" aria-hidden="true">'+(kitLogState.category===id?'✓':'')+'</span><span class="kit-pchip-txt">'+l+'</span></button>').join('')+'</div>'+
+    kitMacroBlock({calories:rv.nutrition.calories==null?null:rv.nutrition.calories*n,
+                   protein:rv.nutrition.protein==null?null:rv.nutrition.protein*n,
+                   carbs:rv.nutrition.carbs==null?null:rv.nutrition.carbs*n,
+                   fat:rv.nutrition.fat==null?null:rv.nutrition.fat*n},
+                  'Logging '+kitTrim(n)+' serving'+(n===1?'':'s'))+
+    (rv.nutrition.calories==null?'<div class="kit-note-panel">This recipe has no calories saved, so it will be logged at 0 kcal. Add macros in the recipe editor to change that.</div>':'')+
+    '<div class="kit-sheet-actions">'+
+      '<button class="modal-btn secondary" onclick="kitSheetClose()">Cancel</button>'+
+      '<button class="modal-btn primary" onclick="kitLogConfirm()">Log it</button>'+
+    '</div>');
+}
+function kitLogConfirm(){
+  const r=kitRecipes.find(x=>x.id===kitLogState.recipeId); if(!r) return;
+  const rv=kitResolve(r,kitLogState.optionId,r.servings);
+  const n=kitLogState.servings;
+  const kcal=rv.nutrition.calories==null?0:Math.round(rv.nutrition.calories*n);
   const today=getLocalDate();
   if(S.dailyLog.date!==today){ S.dailyLog={date:today,entries:[]}; }
-  S.dailyLog.entries.push({name:r.name,kcal,category:'other'});
+  // The NAME is a snapshot: renaming or deleting the recipe later must not rewrite what the
+  // food log says was eaten. The stable ids travel beside it for anything that wants to link
+  // back, and every added field is optional so old entries keep rendering untouched.
+  const entry={name:r.name+(rv.optionLabel?' · '+rv.optionLabel:''), kcal, category:kitLogState.category,
+    recipeId:r.id, servings:n};
+  if(rv.optionId){ entry.proteinOptionId=rv.optionId; entry.proteinLabel=rv.optionLabel; }
+  const m=k=>rv.nutrition[k]==null?null:Math.round(rv.nutrition[k]*n*10)/10;
+  ['protein','carbs','fat'].forEach(k=>{ const val=m(k); if(val!=null) entry[k]=val; });
+  S.dailyLog.entries.push(entry);
   persistDailyLog();
   if(typeof renderCalorieLog==='function') renderCalorieLog();
-  // Dismiss the mobile recipe overlay so the calorie overlay isn't hidden behind it
+  kitSheetClose();
+  showToast('Logged '+kitTrim(n)+' serving'+(n===1?'':'s')+' · '+kcal+' kcal');
   const dov=document.getElementById('kit-detail-overlay');
   if(dov) dov.style.display='none';
+  updateKitFab();
   openCalorieOverlay();
+}
+
+// ── Sharing ───────────────────────────────────────────────────────
+// Three deliberately different jobs, so all three are named for what they produce:
+//   Share recipe   → readable prose through the system share sheet, for people
+//   Copy for Daily → raw importable JSON, for another Daily user
+//   Copy for AI    → the same JSON wrapped in instructions, for an assistant
+function kitOpenShareSheet(id){
+  const r=kitRecipes.find(x=>x.id===id); if(!r) return;
+  kitSheetOpen(
+    kitSheetHead('Share',r.name)+
+    '<div class="kit-share-list">'+
+      '<button class="kit-share-opt" onclick="kitSheetClose();kitShareRecipe(\''+r.id+'\')">'+
+        '<span class="kit-share-ico">📤</span><span><b>Share recipe</b><small>Readable text for Messages, email or notes</small></span></button>'+
+      '<button class="kit-share-opt" onclick="kitSheetClose();kitCopyForDaily(\''+r.id+'\')">'+
+        '<span class="kit-share-ico">📋</span><span><b>Copy for Daily</b><small>Exact copy for another Daily user to import</small></span></button>'+
+      '<button class="kit-share-opt" onclick="kitSheetClose();kitCopyRecipe(\''+r.id+'\')">'+
+        '<span class="kit-share-ico">🤖</span><span><b>Copy for AI</b><small>The same recipe plus instructions for an assistant</small></span></button>'+
+    '</div>'+
+    '<div class="kit-sheet-actions"><button class="modal-btn secondary" onclick="kitSheetClose()">Cancel</button></div>');
+}
+// Readable prose. Deliberately NOT re-importable and deliberately free of ids, timestamps and
+// anything else internal — this is what a person who has never heard of Daily receives.
+function kitShareText(r){
+  const L=[];
+  const amt=i=>{ const parts=[(i.amount===''||i.amount==null)?'':String(i.amount), i.unit||''].filter(Boolean); return parts.join(' '); };
+  const line=i=>{ const a=amt(i); return '• '+(a?a+' ':'')+i.name; };
+  L.push((r.emoji?r.emoji+' ':'')+(r.name||'Recipe'));
+  if(r.description) L.push(r.description);
+  const meta=[];
+  if(r.category) meta.push(r.category.charAt(0).toUpperCase()+r.category.slice(1));
+  if(r.servings) meta.push('Serves '+r.servings);
+  if(meta.length) L.push(meta.join(' · '));
+  const opts=kitOptionsOf(r);
+  const def=kitDefaultOption(r);
+  L.push('');
+  L.push(opts.length?'INGREDIENTS (shared)':'INGREDIENTS');
+  (r.ingredients||[]).filter(i=>i&&i.name).forEach(i=>L.push(line(i)));
+  if(opts.length){
+    L.push('');
+    L.push('PROTEIN OPTIONS — pick one');
+    opts.forEach(o=>{
+      L.push('');
+      L.push((def&&o.id===def.id?'★ ':'  ')+(o.label||'Option')+(def&&o.id===def.id?'  (default)':''));
+      if(o.ingredient&&o.ingredient.name) L.push('   '+line(o.ingredient).slice(2));
+      (Array.isArray(o.extras)?o.extras:[]).forEach(x=>{ if(x&&x.name) L.push('   '+line(x).slice(2)+'  (only for this option)'); });
+      if(o.prep) L.push('   Prep: '+o.prep);
+      if(o.cook) L.push('   Cook: '+o.cook);
+      const bits=[];
+      if(kitNum(o.cookTime)) bits.push(kitTrim(kitNum(o.cookTime))+' min');
+      if(kitNum(o.internalTempC)) bits.push(kitTrim(kitNum(o.internalTempC))+'°C internal');
+      if(bits.length) L.push('   '+bits.join(' · '));
+      const mac=[];
+      if(kitNum(o.calories)!=null) mac.push(Math.round(o.calories)+' cal');
+      if(kitNum(o.protein)!=null) mac.push(Math.round(o.protein)+'g protein');
+      if(kitNum(o.carbs)!=null) mac.push(Math.round(o.carbs)+'g carbs');
+      if(kitNum(o.fat)!=null) mac.push(Math.round(o.fat)+'g fat');
+      if(mac.length) L.push('   Per serving: '+mac.join(' · '));
+    });
+  }
+  L.push('');
+  L.push('METHOD');
+  let n=0;
+  (Array.isArray(r.steps)?r.steps:[]).forEach(st=>{
+    if(kitIsProteinStep(st)){
+      if(opts.length){ n++; L.push(n+'. Prepare and cook your chosen protein here (see PROTEIN OPTIONS above).'); }
+      return;
+    }
+    const t=kitStepText(st); if(!t) return;
+    n++;
+    const tm=kitStepTimer(st);
+    L.push(n+'. '+t+(tm?'  ⏱ '+tm+' min':''));
+  });
+  if(!opts.length){
+    const mac=[];
+    if(kitNum(r.calories)!=null) mac.push(Math.round(r.calories)+' cal');
+    if(kitNum(r.protein)!=null) mac.push(Math.round(r.protein)+'g protein');
+    if(kitNum(r.carbs)!=null) mac.push(Math.round(r.carbs)+'g carbs');
+    if(kitNum(r.fat)!=null) mac.push(Math.round(r.fat)+'g fat');
+    if(mac.length){ L.push(''); L.push('PER SERVING'); L.push(mac.join(' · ')); }
+    if(kitNum(r.cookTime)) L.push('Cook time: '+kitTrim(kitNum(r.cookTime))+' min');
+  }
+  const tags=(Array.isArray(r.tags)?r.tags:[]).filter(Boolean);
+  if(tags.length){ L.push(''); L.push('Tags: '+tags.join(', ')); }
+  L.push('');
+  L.push('Shared from Daily');
+  return L.join('\n');
+}
+function kitShareRecipe(id){
+  const r=kitRecipes.find(x=>x.id===id); if(!r) return;
+  const text=kitShareText(r);
+  const fallback=()=>kitCopyText(text,'Sharing isn’t available here — recipe copied to your clipboard instead');
+  if(navigator.share){
+    // Called straight from the tap so the gesture is still "user-activated". A user who backs
+    // out of the sheet has cancelled, not failed: AbortError does nothing at all, and in
+    // particular does not surprise them by overwriting their clipboard.
+    navigator.share({title:r.name||'Recipe', text}).catch(err=>{
+      const name=err&&err.name;
+      if(name==='AbortError'||name==='NotAllowedError') return;
+      fallback();
+    });
+    return;
+  }
+  fallback();
+}
+function kitCopyForDaily(id){
+  const r=kitRecipes.find(x=>x.id===id); if(!r) return;
+  // Raw importable JSON and nothing else. A friendly sentence in front of it would make the
+  // paste fail in Daily's strict importer, which is the whole point of a separate action.
+  kitCopyText(JSON.stringify({recipes:[kitRecipeToExport(r)]},null,2),
+    'Recipe copied — paste it into Daily’s Import screen');
 }
 function kitDeleteRecipe(id){
   const r=kitRecipes.find(x=>x.id===id); if(!r) return;
@@ -18639,16 +19130,88 @@ function kitParseImport(text){
       const amt=ing.amount===''||ing.amount==null?'':(isNaN(parseFloat(ing.amount))?String(ing.amount):parseFloat(ing.amount));
       ingredients.push({name:iname, amount:amt, unit:String(ing.unit||'').trim()});
     }
-    // Steps may be plain strings or {text,timerMinutes}; the cook mode reads both.
-    const steps=(Array.isArray(r.steps)?r.steps:[]).map(s=>{
-      if(typeof s==='string') return s;
-      if(s&&typeof s==='object'&&s.text) return {text:String(s.text), timerMinutes:(s.timerMinutes==null?null:parseInt(s.timerMinutes)||null)};
-      return null;
-    }).filter(Boolean);
+    // Steps may be plain strings, {text,timerMinutes}, or the single {type:'protein'} slot
+    // that marks where a variant recipe's chosen protein instructions belong. A step that is
+    // none of those is a malformed recipe, not something to quietly drop — silently losing a
+    // protein slot would move the protein to the end of someone's method.
+    const steps=[];
+    let slotCount=0;
+    for(const st of (Array.isArray(r.steps)?r.steps:[])){
+      if(typeof st==='string'){ if(st.trim()) steps.push(st); continue; }
+      if(st&&typeof st==='object'&&st.type==='protein'){ slotCount++; steps.push({type:'protein'}); continue; }
+      if(st&&typeof st==='object'&&st.text){ steps.push({text:String(st.text), timerMinutes:(st.timerMinutes==null?null:parseInt(st.timerMinutes)||null)}); continue; }
+      if(st==null||st==='') continue;
+      return {error:'"'+name+'": a step must be text, {"text":…}, or {"type":"protein"}.'};
+    }
+    if(slotCount>1) return {error:'"'+name+'" has more than one {"type":"protein"} step. Use exactly one.'};
     const cat=String(r.category||'').toLowerCase();
     const num=v=>{ const n=parseFloat(v); return isNaN(n)?null:n; };
+    const numOrNull=(v,label,what)=>{
+      if(v==null||v==='') return {v:null};
+      const n=parseFloat(v);
+      if(isNaN(n)) return {error:'"'+name+'": '+label+' '+what+' must be a number or null.'};
+      return {v:n};
+    };
     const tags=Array.isArray(r.tags)?r.tags.map(t=>String(t).trim()).filter(Boolean):[];
-    out.push({
+    // ── Protein options ──
+    let proteinOptions=null, defaultProteinOptionId=null;
+    if(r.proteinOptions!=null){
+      if(!Array.isArray(r.proteinOptions)) return {error:'"'+name+'": "proteinOptions" must be an array.'};
+      if(r.proteinOptions.length){
+        const seen=new Set(), idMap={}, built=[];
+        for(const o of r.proteinOptions){
+          if(!o||typeof o!=='object') return {error:'"'+name+'": each protein option must be an object.'};
+          const label=String(o.label||o.name||'').trim();
+          if(!label) return {error:'"'+name+'": a protein option is missing "label".'};
+          const srcId=String(o.id||'').trim();
+          if(srcId){
+            if(seen.has(srcId)) return {error:'"'+name+'": two protein options share the id "'+srcId+'".'};
+            seen.add(srcId);
+          }
+          const mi=o.ingredient;
+          if(!mi||typeof mi!=='object') return {error:'"'+name+'": protein option "'+label+'" needs an "ingredient" object.'};
+          const miName=String(mi.name||'').trim();
+          if(!miName) return {error:'"'+name+'": protein option "'+label+'" has an ingredient with no "name".'};
+          const miAmt=mi.amount===''||mi.amount==null?'':(isNaN(parseFloat(mi.amount))?String(mi.amount):parseFloat(mi.amount));
+          const extras=[];
+          if(o.extras!=null){
+            if(!Array.isArray(o.extras)) return {error:'"'+name+'": protein option "'+label+'" has a non-array "extras".'};
+            for(const x of o.extras){
+              if(!x||typeof x!=='object') return {error:'"'+name+'": an extra ingredient in "'+label+'" must be an object.'};
+              const xn=String(x.name||'').trim();
+              if(!xn) return {error:'"'+name+'": an extra ingredient in "'+label+'" is missing "name".'};
+              const xa=x.amount===''||x.amount==null?'':(isNaN(parseFloat(x.amount))?String(x.amount):parseFloat(x.amount));
+              extras.push({name:xn, amount:xa, unit:String(x.unit||'').trim()});
+            }
+          }
+          const ct=numOrNull(o.cookTime,'"'+label+'"','cookTime'); if(ct.error) return {error:ct.error};
+          const tp=numOrNull(o.internalTempC,'"'+label+'"','internalTempC'); if(tp.error) return {error:tp.error};
+          const macro={};
+          for(const k of ['calories','protein','carbs','fat']){
+            const m=numOrNull(o[k],'"'+label+'"',k); if(m.error) return {error:m.error};
+            macro[k]=m.v;
+          }
+          // Local IDs are regenerated on the way in. Nothing outside this recipe references
+          // them, and a pasted recipe must not be able to collide with an id already used here.
+          const newId=kitOptId();
+          if(srcId) idMap[srcId]=newId;
+          built.push(Object.assign({id:newId, label,
+            ingredient:{name:miName, amount:miAmt, unit:String(mi.unit||'').trim()},
+            extras,
+            prep:String(o.prep||'').trim(), cook:String(o.cook||'').trim(),
+            cookTime:ct.v, internalTempC:tp.v}, macro));
+        }
+        const wantDefault=String(r.defaultProteinOptionId||'').trim();
+        if(wantDefault){
+          if(!idMap[wantDefault]) return {error:'"'+name+'": "defaultProteinOptionId" does not match any protein option.'};
+          defaultProteinOptionId=idMap[wantDefault];
+        } else {
+          defaultProteinOptionId=built[0].id;
+        }
+        proteinOptions=built;
+      }
+    }
+    const rec={
       name, emoji:String(r.emoji||'🍽️').trim()||'🍽️',
       category:KIT_IMPORT_CATS.indexOf(cat)>=0?cat:'dinner',
       description:String(r.description||'').trim(),
@@ -18656,7 +19219,9 @@ function kitParseImport(text){
       cookTime:num(r.cookTime), ingredients, steps, tags,
       calories:num(r.calories), protein:num(r.protein), carbs:num(r.carbs), fat:num(r.fat),
       batchPrep:tags.includes('batch-prep')||tags.includes('bulk-cook')
-    });
+    };
+    if(proteinOptions){ rec.proteinOptions=proteinOptions; rec.defaultProteinOptionId=defaultProteinOptionId; }
+    out.push(rec);
   }
   return {recipes:out};
 }
@@ -18666,7 +19231,7 @@ function kitParseImport(text){
 // only produced prose would have to be retyped by hand.
 function kitRecipeToExport(r){
   const num=v=>{ const n=parseFloat(v); return isNaN(n)?null:n; };
-  return {
+  const out={
     name:r.name||'',
     emoji:r.emoji||'🍽️',
     category:KIT_IMPORT_CATS.indexOf(r.category)>=0?r.category:'dinner',
@@ -18678,13 +19243,38 @@ function kitRecipeToExport(r){
       amount:(i.amount===''||i.amount==null)?'':(num(i.amount)!=null?num(i.amount):i.amount),
       unit:i.unit||''
     })),
-    // Steps keep whichever shape they were stored in; both import cleanly.
-    steps:(r.steps||[]).map(s=>(s&&typeof s==='object'&&s.text)
-      ? {text:s.text, timerMinutes:(s.timerMinutes==null?null:parseInt(s.timerMinutes)||null)}
-      : String(s)),
+    // Steps keep whichever shape they were stored in; all three import cleanly.
+    steps:(r.steps||[]).map(s=>{
+      if(kitIsProteinStep(s)) return {type:'protein'};
+      if(s&&typeof s==='object'&&s.text) return {text:s.text, timerMinutes:(s.timerMinutes==null?null:parseInt(s.timerMinutes)||null)};
+      return String(s);
+    }),
     tags:Array.isArray(r.tags)?r.tags.slice():[],
     calories:num(r.calories), protein:num(r.protein), carbs:num(r.carbs), fat:num(r.fat)
   };
+  const opts=kitOptionsOf(r);
+  if(opts.length){
+    out.proteinOptions=opts.map(o=>({
+      id:String(o.id||''),
+      label:String(o.label||''),
+      ingredient:{
+        name:String((o.ingredient&&o.ingredient.name)||''),
+        amount:(()=>{ const a=o.ingredient&&o.ingredient.amount; return (a===''||a==null)?'':(num(a)!=null?num(a):a); })(),
+        unit:String((o.ingredient&&o.ingredient.unit)||'')
+      },
+      extras:(Array.isArray(o.extras)?o.extras:[]).map(x=>({
+        name:String(x.name||''),
+        amount:(x.amount===''||x.amount==null)?'':(num(x.amount)!=null?num(x.amount):x.amount),
+        unit:String(x.unit||'')
+      })),
+      prep:String(o.prep||''), cook:String(o.cook||''),
+      cookTime:num(o.cookTime), internalTempC:num(o.internalTempC),
+      calories:num(o.calories), protein:num(o.protein), carbs:num(o.carbs), fat:num(o.fat)
+    }));
+    const def=kitDefaultOption(r);
+    out.defaultProteinOptionId=def?String(def.id):String(opts[0].id||'');
+  }
+  return out;
 }
 // The wrapper explains the format to an assistant that has never seen this app, so the pasted
 // block is useful on its own rather than needing the separate briefing prompt every time.
@@ -18701,6 +19291,22 @@ function kitBuildExportText(recipes,intro){
     '- Name ingredients as they would be BOUGHT ("Onion", not "finely diced onion") — my shopping list merges identical names.',
     '- calories/protein/carbs/fat are PER SERVING, numbers only. Use null rather than guessing.',
     '- steps are plain strings, or {"text": "...", "timerMinutes": N} for a timed step.',
+    '',
+    'Protein options (only when ONE dish can be made with different proteins — same sauce,',
+    'same sides, same assembly; otherwise keep them as separate recipes):',
+    '- Add "proteinOptions": [ ... ] and "defaultProteinOptionId" pointing at one of their ids.',
+    '- Each option: {"id","label","ingredient":{name,amount,unit},"extras":[{name,amount,unit}],',
+    '  "prep","cook","cookTime":N|null,"internalTempC":N|null,"calories","protein","carbs","fat"}.',
+    '- The option ingredient is the protein itself. Do NOT also list it in the shared',
+    '  "ingredients" array — that would buy it twice.',
+    '- "extras" is for genuine option-only additions (cornflour for the chicken), never for',
+    '  copies of shared sauces or sides.',
+    '- Each option carries the COMPLETE per-serving nutrition for the whole dish made that way,',
+    '  not just the protein\'s own contribution.',
+    '- "internalTempC" is a safe internal temperature in °C. Use null when there genuinely',
+    '  is not one — never invent a food-safety number.',
+    '- Put {"type": "protein"} in "steps" exactly once, at the point in the shared method where',
+    '  the chosen protein is prepared and cooked. The shared steps are written once.',
     '',
     '```json',
     JSON.stringify(payload,null,2),
@@ -18756,8 +19362,9 @@ _catEscHtml(KIT_IMPORT_EXAMPLE)+'</pre></details>'+
       '</div>'+
     '</div>';
   document.getElementById('kit-import-overlay').classList.remove('hidden');
+  if(typeof updateKitFab==='function') updateKitFab();
 }
-function kitCloseImport(){ const o=document.getElementById('kit-import-overlay'); if(o) o.classList.add('hidden'); }
+function kitCloseImport(){ const o=document.getElementById('kit-import-overlay'); if(o) o.classList.add('hidden'); if(typeof updateKitFab==='function') updateKitFab(); }
 const KIT_IMPORT_EXAMPLE=
 '{\n  "recipes": [\n    {\n      "name": "Lemon Garlic Chicken",\n      "emoji": "🍗",\n      "category": "dinner",\n      "servings": 2,\n      "description": "One-pan roast chicken thighs.",\n      "cookTime": 35,\n      "ingredients": [\n        { "name": "Chicken thighs", "amount": 4, "unit": "" },\n        { "name": "Lemon", "amount": 1, "unit": "" },\n        { "name": "Olive oil", "amount": 2, "unit": "tbsp" }\n      ],\n      "steps": [\n        "Heat oven to 200C.",\n        { "text": "Roast until cooked through.", "timerMinutes": 30 }\n      ],\n      "tags": ["quick"],\n      "calories": 520, "protein": 42, "carbs": 6, "fat": 34\n    }\n  ]\n}';
 function kitDoImport(){
@@ -18799,26 +19406,52 @@ function kitOpenForm(id){
     '</div>'+
     '<div class="settings-field"><label>Cook time (min)</label><input id="kit-f-time" type="number" min="0" inputmode="numeric" value="'+(r.cookTime||'')+'" placeholder="e.g. 25"></div>'+
     '<div class="settings-field"><label>Description</label><input id="kit-f-desc" type="text" value="'+kitEsc(r.description||'')+'" placeholder="Short description"></div>'+
-    '<div class="settings-field"><label>Macros (per recipe)</label><div class="kit-macro-grid">'+
+    // "Per serving", not "per recipe". The editor was the only place in the app claiming
+    // these were per-recipe totals — import, export and the AI instructions have always said
+    // per serving, and detail/logging now agree with them.
+    '<div class="settings-field" id="kit-f-base-macros"><label>Macros (per serving)</label><div class="kit-macro-grid">'+
       '<input id="kit-f-cal" type="number" inputmode="numeric" placeholder="cal" value="'+(r.calories??'')+'">'+
       '<input id="kit-f-pro" type="number" inputmode="numeric" placeholder="protein" value="'+(r.protein??'')+'">'+
       '<input id="kit-f-carb" type="number" inputmode="numeric" placeholder="carbs" value="'+(r.carbs??'')+'">'+
       '<input id="kit-f-fat" type="number" inputmode="numeric" placeholder="fat" value="'+(r.fat??'')+'">'+
     '</div></div>'+
-    '<div class="settings-field"><label>Ingredients</label><div id="kit-f-ings"></div>'+
+    '<div class="settings-field"><label>Ingredients'+
+      '<span id="kit-f-ing-note" class="kit-f-note"></span></label><div id="kit-f-ings"></div>'+
       '<button class="kit-add-row" onclick="kitFormAddIng()">+ Add ingredient</button></div>'+
+    '<div id="kit-f-protein"></div>'+
     '<div class="settings-field"><label>Steps <span style="font-size:11px;font-weight:400;color:var(--muted)">(add a timer if the step needs one)</span></label>'+
       '<div id="kit-f-steps"></div>'+
-      '<button class="kit-add-row" onclick="kitFormAddStep()">+ Add step</button></div>'+
+      '<div class="kit-f-step-adds"><button class="kit-add-row" onclick="kitFormAddStep()">+ Add step</button>'+
+      '<button class="kit-add-row" id="kit-f-add-slot" onclick="kitFormAddStep({type:\'protein\'})">+ Add protein step</button></div></div>'+
     '<div class="settings-field"><label>Tags</label><div class="kit-tag-chips-wrap" id="kit-f-tag-chips">'+tagChips+'</div></div>'+
     '<button class="kit-f-save-btn" onclick="kitSaveForm()">Save Recipe</button>'+
     '<div style="height:24px"></div>';
+  // A deep copy, so abandoning the editor cannot leave half-edited options on the real
+  // recipe. Ids are carried through untouched: renaming and reordering must not detach a
+  // saved shopping or cooking selection from the option it points at.
+  kitFormProtein={
+    enabled:kitHasOptions(editing||r),
+    defaultId:(editing||r).defaultProteinOptionId||null,
+    options:kitOptionsOf(editing||r).map(o=>({
+      id:o.id, label:o.label||'',
+      ingredient:Object.assign({name:'',amount:'',unit:'g'},o.ingredient||{}),
+      extras:(Array.isArray(o.extras)?o.extras:[]).map(x=>Object.assign({name:'',amount:'',unit:'g'},x)),
+      prep:o.prep||'', cook:o.cook||'',
+      cookTime:o.cookTime==null?'':o.cookTime, internalTempC:o.internalTempC==null?'':o.internalTempC,
+      calories:o.calories==null?'':o.calories, protein:o.protein==null?'':o.protein,
+      carbs:o.carbs==null?'':o.carbs, fat:o.fat==null?'':o.fat
+    }))
+  };
+  if(kitFormProtein.enabled&&!kitFindOptionIn(kitFormProtein.options,kitFormProtein.defaultId))
+    kitFormProtein.defaultId=(kitFormProtein.options[0]||{}).id||null;
   document.getElementById('kit-f-ings').innerHTML='';
   (r.ingredients&&r.ingredients.length?r.ingredients:[{name:'',amount:'',unit:'g'}]).forEach(i=>kitFormAddIng(i));
   document.getElementById('kit-f-steps').innerHTML='';
   (r.steps&&r.steps.length?r.steps:[{text:'',timerMinutes:null}]).forEach(s=>kitFormAddStep(s));
+  kitFormRenderProtein();
   const ov=document.getElementById('kit-form-overlay');
   ov.classList.remove('hidden');
+  if(typeof updateKitFab==='function') updateKitFab();
   // full-screen on mobile
   if(window.innerWidth<1024){
     // Fixed top padding — opaque status bar reserves its height; no env(safe-area-inset-top)
@@ -18858,9 +19491,21 @@ function kitFormAddIng(data){
 }
 function kitFormAddStep(data){
   const wrap=document.getElementById('kit-f-steps'); if(!wrap) return;
+  const row=document.createElement('div');
+  // The protein SLOT is a step, not an option field: it is the one place in the shared method
+  // where the chosen protein's own prep and cook instructions get inserted. Storing it here
+  // means the shared method is written once and no option carries a copy of the whole thing.
+  if(kitIsProteinStep(data)){
+    if(wrap.querySelector('.kit-f-step-slot')){ if(typeof showToast==='function') showToast('This recipe already has a protein step'); return; }
+    row.className='kit-f-step-row kit-f-step-slot';
+    row.innerHTML='<div class="kit-f-slot-body">🥩 <b>Protein step</b>'+
+      '<small>The selected protein’s prep and cooking instructions appear here.</small></div>'+
+      '<button class="kit-f-del" onclick="this.parentElement.remove()" aria-label="Remove">✕</button>';
+    wrap.appendChild(row);
+    return;
+  }
   const text=kitStepText(data);
   const timer=kitStepTimer(data);
-  const row=document.createElement('div');
   row.className='kit-f-step-row';
   row.innerHTML=
     '<textarea class="kit-fs-text" rows="2" placeholder="Describe this step">'+kitEsc(text)+'</textarea>'+
@@ -18868,11 +19513,250 @@ function kitFormAddStep(data){
     '<button class="kit-f-del" onclick="this.parentElement.remove()" aria-label="Remove">✕</button>';
   wrap.appendChild(row);
 }
+// ══ Recipe editor: protein options ════════════════════════════════
+// Edited through an in-memory draft rather than by reading the DOM at save time. The section
+// re-renders on every add / delete / reorder, and reading nested inputs back out of a DOM
+// that has just been rebuilt is how half-typed fields go missing.
+let kitFormProtein={enabled:false,defaultId:null,options:[]};
+function kitFindOptionIn(list,id){ return (list||[]).find(o=>o&&o.id===id)||null; }
+function kitFormOpt(id){ return kitFindOptionIn(kitFormProtein.options,id); }
+// Field writes come straight off oninput, so nothing is lost when the section re-renders.
+function kitFormOptSet(id,field,value){
+  const o=kitFormOpt(id); if(!o) return;
+  o[field]=value;
+  if(field==='label'){
+    const el=document.getElementById('kit-po-title-'+id);
+    if(el) el.textContent=value||'Untitled option';
+  }
+}
+function kitFormOptIngSet(id,field,value){ const o=kitFormOpt(id); if(o) o.ingredient[field]=value; }
+function kitFormOptExtraSet(id,idx,field,value){ const o=kitFormOpt(id); if(o&&o.extras[idx]) o.extras[idx][field]=value; }
+function kitFormOptExtraAdd(id){ const o=kitFormOpt(id); if(!o) return; o.extras.push({name:'',amount:'',unit:'g'}); kitFormRenderProtein(); }
+function kitFormOptExtraDel(id,idx){ const o=kitFormOpt(id); if(!o) return; o.extras.splice(idx,1); kitFormRenderProtein(); }
+function kitFormOptSetDefault(id){ if(kitFormOpt(id)) kitFormProtein.defaultId=id; kitFormRenderProtein(); }
+function kitFormOptMove(id,dir){
+  const i=kitFormProtein.options.findIndex(o=>o.id===id);
+  const j=i+dir;
+  if(i<0||j<0||j>=kitFormProtein.options.length) return;
+  const arr=kitFormProtein.options;
+  const tmp=arr[i]; arr[i]=arr[j]; arr[j]=tmp;
+  kitFormRenderProtein();
+}
+function kitFormOptDel(id){
+  // The default is never deletable while it IS the default: dropping it would leave
+  // defaultProteinOptionId pointing at nothing, which is the exact state kitOptionsProblem()
+  // reports as broken.
+  if(id===kitFormProtein.defaultId){
+    alert('Make another option the default first — a recipe with protein options always needs one.');
+    return;
+  }
+  const o=kitFormOpt(id);
+  if(o&&(o.label||o.ingredient.name)&&!confirm('Remove the "'+(o.label||o.ingredient.name)+'" option?')) return;
+  kitFormProtein.options=kitFormProtein.options.filter(x=>x.id!==id);
+  if(!kitFormProtein.options.length){ kitFormProtein.enabled=false; kitFormProtein.defaultId=null; }
+  kitFormRenderProtein();
+}
+function kitFormOptBlank(label){
+  return {id:kitOptId(),label:label||'',ingredient:{name:'',amount:'',unit:'g'},extras:[],
+    prep:'',cook:'',cookTime:'',internalTempC:'',calories:'',protein:'',carbs:'',fat:''};
+}
+function kitFormOptAdd(){
+  const o=kitFormOptBlank('');
+  kitFormProtein.options.push(o);
+  if(!kitFormProtein.defaultId) kitFormProtein.defaultId=o.id;
+  kitFormRenderProtein();
+}
+// Duplicating the default and editing only what differs is the fast path — the alternative
+// protein usually shares its macros' order of magnitude and half its wording.
+function kitFormOptDuplicate(id){
+  const src=kitFormOpt(id); if(!src) return;
+  const copy=JSON.parse(JSON.stringify(src));
+  copy.id=kitOptId();
+  copy.label=(src.label||'Option')+' copy';
+  copy.extras=(src.extras||[]).map(x=>Object.assign({},x));
+  const i=kitFormProtein.options.findIndex(o=>o.id===id);
+  kitFormProtein.options.splice(i+1,0,copy);
+  kitFormRenderProtein();
+}
+// ── Turning options ON ──
+// Never guessed from an ingredient name. Eggs, patties and mixed dishes make name matching
+// actively wrong, so the user says which ingredient is the protein — or types one.
+function kitFormEnableProtein(){
+  const rows=[...document.querySelectorAll('#kit-f-ings .kit-f-ing-row')].map((row,i)=>({
+    i,
+    name:(row.querySelector('.kit-fi-name')?.value||'').trim(),
+    amount:(row.querySelector('.kit-fi-amt')?.value||'').trim(),
+    unit:(row.querySelector('.kit-fi-unit-sel')?.value||'')
+  })).filter(x=>x.name);
+  kitSheetOpen(
+    kitSheetHead('Add protein options','Which ingredient is the protein?')+
+    '<div class="kit-note-panel">The ingredient you pick <b>moves out of the shared list</b> and becomes the first option. Everything else stays shared. Nothing is saved until you save the recipe.</div>'+
+    (rows.length?'<div class="kit-share-list">'+rows.map(x=>
+      '<button class="kit-share-opt" onclick="kitFormEnablePick('+x.i+')"><span class="kit-share-ico">🥩</span>'+
+      '<span><b>'+kitEsc(x.name)+'</b><small>'+kitEsc([x.amount,x.unit].filter(Boolean).join(' ')||'no quantity')+'</small></span></button>').join('')+'</div>'
+      :'<div class="kit-note-panel">This recipe has no ingredients yet.</div>')+
+    '<div class="kit-share-list"><button class="kit-share-opt" onclick="kitFormEnablePick(-1)">'+
+      '<span class="kit-share-ico">✏️</span><span><b>Enter one manually</b><small>Start an empty option and type it yourself</small></span></button></div>'+
+    '<div class="kit-sheet-actions"><button class="modal-btn secondary" onclick="kitSheetClose()">Cancel</button></div>');
+}
+function kitFormEnablePick(index){
+  const rows=[...document.querySelectorAll('#kit-f-ings .kit-f-ing-row')];
+  const o=kitFormOptBlank('');
+  if(index>=0){
+    const row=rows.filter(rw=>(rw.querySelector('.kit-fi-name')?.value||'').trim())[index]||rows[index];
+    // Take the ingredient BY VALUE, then remove its shared row — moved, not copied, so the
+    // protein can never be bought twice.
+    if(row){
+      const nm=(row.querySelector('.kit-fi-name')?.value||'').trim();
+      o.label=nm;
+      o.ingredient={name:nm,
+        amount:(row.querySelector('.kit-fi-amt')?.value||'').trim(),
+        unit:(row.querySelector('.kit-fi-unit-sel')?.value||'')};
+      row.remove();
+    }
+  }
+  // The base macros become this option's, since they described the dish made this way.
+  ['calories:kit-f-cal','protein:kit-f-pro','carbs:kit-f-carb','fat:kit-f-fat'].forEach(pair=>{
+    const [k,elId]=pair.split(':');
+    const v=(document.getElementById(elId)?.value||'').trim();
+    if(v!=='') o[k]=v;
+  });
+  const ct=(document.getElementById('kit-f-time')?.value||'').trim();
+  if(ct!=='') o.cookTime=ct;
+  kitFormProtein.enabled=true;
+  kitFormProtein.options=[o];
+  kitFormProtein.defaultId=o.id;
+  kitSheetClose();
+  kitFormRenderProtein();
+  if(typeof showToast==='function') showToast('Protein options on — nothing is saved until you save the recipe');
+}
+function kitFormDisableProtein(){
+  if(kitFormProtein.options.length && !confirm('Remove all protein options from this recipe? The shared ingredients and steps stay as they are.')) return;
+  kitFormProtein.enabled=false;
+  kitFormProtein.options=[];
+  kitFormProtein.defaultId=null;
+  kitFormRenderProtein();
+}
+function kitFormUnitSelect(cls,val,onchange){
+  const unitVal=(val===undefined||val===null)?'g':val;
+  // Same rule as kitFormAddIng: the row's OWN unit is always an option, even one KIT_UNITS
+  // has never heard of, so opening the editor cannot silently rewrite a saved kg/L/"" unit.
+  const known=unitVal!==''&&KIT_UNITS.indexOf(unitVal)<0 ? [unitVal,...KIT_UNITS] : KIT_UNITS;
+  return '<select class="'+cls+'" onchange="'+onchange+'">'+
+    '<option value=""'+(unitVal===''?' selected':'')+'>Count / pieces</option>'+
+    known.map(u=>'<option value="'+u+'"'+(unitVal===u?' selected':'')+'>'+u+'</option>').join('')+'</select>';
+}
+function kitFormRenderProtein(){
+  const wrap=document.getElementById('kit-f-protein'); if(!wrap) return;
+  const note=document.getElementById('kit-f-ing-note');
+  const baseMacros=document.getElementById('kit-f-base-macros');
+  const on=kitFormProtein.enabled&&kitFormProtein.options.length>0;
+  if(note) note.textContent=on?'shared only — the protein lives in its option':'';
+  // A variant recipe's nutrition and cook time live in the OPTIONS. Keeping a second
+  // authoritative copy at the top level is how the two drift apart.
+  if(baseMacros) baseMacros.style.display=on?'none':'';
+  const timeField=document.getElementById('kit-f-time');
+  if(timeField&&timeField.closest('.settings-field')) timeField.closest('.settings-field').style.display=on?'none':'';
+  if(!on){
+    wrap.innerHTML='<div class="settings-field kit-po-off">'+
+      '<label>Protein options</label>'+
+      '<div class="kit-po-blurb">One dish, more than one protein — a roll you make with rump <i>or</i> chicken. The sauce, sides and assembly stay shared; only the protein and its own handling change.</div>'+
+      '<button type="button" class="kit-add-row" onclick="kitFormEnableProtein()">+ Add protein options</button></div>';
+    return;
+  }
+  const def=kitFormProtein.defaultId;
+  wrap.innerHTML='<div class="settings-field">'+
+    '<label>Protein options <span class="kit-f-note">'+kitFormProtein.options.length+' option'+(kitFormProtein.options.length===1?'':'s')+'</span></label>'+
+    '<div class="kit-po-blurb">Cook time and macros come from the selected option. Shared ingredients and steps above are written once.</div>'+
+    kitFormProtein.options.map((o,idx)=>{
+      const isDef=o.id===def;
+      const q=(v)=>kitEsc(String(v==null?'':v));
+      return '<div class="kit-po-card'+(isDef?' is-default':'')+'">'+
+        '<div class="kit-po-head">'+
+          '<span class="kit-po-title" id="kit-po-title-'+o.id+'">'+kitEsc(o.label||'Untitled option')+'</span>'+
+          (isDef?'<span class="kit-po-def">Default</span>':'<button type="button" class="kit-po-mini" onclick="kitFormOptSetDefault(\''+o.id+'\')">Make default</button>')+
+          '<button type="button" class="kit-po-mini" onclick="kitFormOptMove(\''+o.id+'\',-1)"'+(idx===0?' disabled':'')+' aria-label="Move up">↑</button>'+
+          '<button type="button" class="kit-po-mini" onclick="kitFormOptMove(\''+o.id+'\',1)"'+(idx===kitFormProtein.options.length-1?' disabled':'')+' aria-label="Move down">↓</button>'+
+          '<button type="button" class="kit-po-mini" onclick="kitFormOptDuplicate(\''+o.id+'\')" aria-label="Duplicate">⧉</button>'+
+          '<button type="button" class="kit-f-del kit-po-del" onclick="kitFormOptDel(\''+o.id+'\')" aria-label="Remove option">✕</button>'+
+        '</div>'+
+        '<input class="kit-po-input" type="text" placeholder="Option name, e.g. Rump steak" value="'+q(o.label)+'" oninput="kitFormOptSet(\''+o.id+'\',\'label\',this.value)">'+
+        '<div class="kit-f-ing-row kit-po-ing">'+
+          '<input class="kit-fi-amt" type="text" inputmode="decimal" placeholder="Qty" value="'+q(o.ingredient.amount)+'" oninput="kitFormOptIngSet(\''+o.id+'\',\'amount\',this.value)">'+
+          kitFormUnitSelect('kit-fi-unit-sel',o.ingredient.unit,'kitFormOptIngSet(\''+o.id+'\',\'unit\',this.value)')+
+          '<input class="kit-fi-name" type="text" placeholder="Protein ingredient" value="'+q(o.ingredient.name)+'" oninput="kitFormOptIngSet(\''+o.id+'\',\'name\',this.value)">'+
+        '</div>'+
+        '<textarea class="kit-po-area" rows="2" placeholder="Preparation, e.g. Salt and rest 20 min" oninput="kitFormOptSet(\''+o.id+'\',\'prep\',this.value)">'+q(o.prep)+'</textarea>'+
+        '<textarea class="kit-po-area" rows="2" placeholder="Cooking, e.g. Sear 2–3 min each side" oninput="kitFormOptSet(\''+o.id+'\',\'cook\',this.value)">'+q(o.cook)+'</textarea>'+
+        '<div class="kit-po-2col">'+
+          '<label class="kit-po-lbl">Cook time (min)<input class="kit-po-input" type="number" inputmode="numeric" min="0" placeholder="e.g. 12" value="'+q(o.cookTime)+'" oninput="kitFormOptSet(\''+o.id+'\',\'cookTime\',this.value)"></label>'+
+          '<label class="kit-po-lbl">Safe internal °C<input class="kit-po-input" type="number" inputmode="numeric" min="0" placeholder="leave blank if N/A" value="'+q(o.internalTempC)+'" oninput="kitFormOptSet(\''+o.id+'\',\'internalTempC\',this.value)"></label>'+
+        '</div>'+
+        '<div class="kit-po-lbl">Macros for the whole dish made this way — <b>per serving</b></div>'+
+        '<div class="kit-macro-grid">'+
+          ['calories:cal','protein:protein','carbs:carbs','fat:fat'].map(pair=>{
+            const [k,ph]=pair.split(':');
+            return '<input type="number" inputmode="numeric" placeholder="'+ph+'" value="'+q(o[k])+'" oninput="kitFormOptSet(\''+o.id+'\',\''+k+'\',this.value)">';
+          }).join('')+
+        '</div>'+
+        '<div class="kit-po-extras">'+
+          '<div class="kit-po-lbl kit-po-extras-lbl">Extra ingredients only this option needs'+
+            '<small>Cornflour for the chicken — not a copy of the shared sauce.</small></div>'+
+          (o.extras.length?o.extras.map((x,xi)=>
+            '<div class="kit-f-ing-row kit-po-ing">'+
+              '<input class="kit-fi-amt" type="text" inputmode="decimal" placeholder="Qty" value="'+q(x.amount)+'" oninput="kitFormOptExtraSet(\''+o.id+'\','+xi+',\'amount\',this.value)">'+
+              kitFormUnitSelect('kit-fi-unit-sel',x.unit,'kitFormOptExtraSet(\''+o.id+'\','+xi+',\'unit\',this.value)')+
+              '<input class="kit-fi-name" type="text" placeholder="Extra ingredient" value="'+q(x.name)+'" oninput="kitFormOptExtraSet(\''+o.id+'\','+xi+',\'name\',this.value)">'+
+              '<button class="kit-f-del" onclick="kitFormOptExtraDel(\''+o.id+'\','+xi+')" aria-label="Remove">✕</button>'+
+            '</div>').join(''):'')+
+          '<button type="button" class="kit-add-row kit-po-add-extra" onclick="kitFormOptExtraAdd(\''+o.id+'\')">+ Add option-only ingredient</button>'+
+        '</div>'+
+      '</div>';
+    }).join('')+
+    '<button type="button" class="kit-add-row" onclick="kitFormOptAdd()">+ Add another protein</button>'+
+    '<button type="button" class="kit-add-row kit-po-off-btn" onclick="kitFormDisableProtein()">Remove protein options</button>'+
+    (document.querySelector('#kit-f-steps .kit-f-step-slot')?'':
+      '<div class="kit-note-panel">No protein step in the method yet — add one under Steps so the chosen protein’s instructions land in the right place. Without it they are appended at the end.</div>')+
+  '</div>';
+}
+// Validate and freeze the draft. Returns {options,defaultId} or {error}. Nothing else in the
+// editor writes protein data, so this is the single gate.
+function kitFormBuildProtein(){
+  if(!kitFormProtein.enabled||!kitFormProtein.options.length) return {options:null,defaultId:null};
+  const num=v=>{ const t=String(v==null?'':v).trim(); if(t==='') return null; const n=parseFloat(t); return isNaN(n)?null:n; };
+  const out=[];
+  for(const o of kitFormProtein.options){
+    const label=String(o.label||'').trim();
+    if(!label) return {error:'Give every protein option a name.'};
+    const ing=o.ingredient||{};
+    const iname=String(ing.name||'').trim();
+    if(!iname) return {error:'"'+label+'" needs a protein ingredient.'};
+    const amtRaw=String(ing.amount==null?'':ing.amount).trim();
+    const amtNum=parseFloat(amtRaw);
+    out.push({
+      id:o.id||kitOptId(), label,
+      ingredient:{name:iname, amount:(amtRaw!==''&&!isNaN(amtNum))?amtNum:amtRaw, unit:String(ing.unit||'')},
+      extras:(o.extras||[]).map(x=>{
+        const n=String(x.name||'').trim(); if(!n) return null;
+        const a=String(x.amount==null?'':x.amount).trim(); const an=parseFloat(a);
+        return {name:n, amount:(a!==''&&!isNaN(an))?an:a, unit:String(x.unit||'')};
+      }).filter(Boolean),
+      prep:String(o.prep||'').trim(), cook:String(o.cook||'').trim(),
+      cookTime:num(o.cookTime), internalTempC:num(o.internalTempC),
+      calories:num(o.calories), protein:num(o.protein), carbs:num(o.carbs), fat:num(o.fat)
+    });
+  }
+  const ids=new Set(); for(const o of out){ if(ids.has(o.id)) return {error:'Two protein options ended up with the same ID. Remove one and add it again.'}; ids.add(o.id); }
+  let defaultId=kitFormProtein.defaultId;
+  if(!ids.has(defaultId)) defaultId=out[0].id;
+  return {options:out, defaultId};
+}
 function kitCloseForm(){
   const ov=document.getElementById('kit-form-overlay');
   if(ov){ ov.classList.add('hidden'); ov.style.cssText=''; }
   const mb=document.getElementById('kit-form-box');
   if(mb) mb.style.cssText='';
+  if(typeof updateKitFab==='function') updateKitFab();
 }
 function kitSaveForm(){
   const num=v=>{ const n=parseFloat(v); return isNaN(n)?null:n; };
@@ -18884,10 +19768,11 @@ function kitSaveForm(){
     unit:(row.querySelector('.kit-fi-unit-sel')?.value||row.querySelector('.kit-fi-unit')?.value||'').trim(),
   })).filter(i=>i.name);
   const steps=[...document.querySelectorAll('#kit-f-steps .kit-f-step-row')].map(row=>{
+    if(row.classList.contains('kit-f-step-slot')) return {type:'protein'};
     const t=(row.querySelector('.kit-fs-text')?.value||'').trim();
     const m=parseInt(row.querySelector('.kit-fs-timer')?.value||'');
     return {text:t,timerMinutes:(!isNaN(m)&&m>0)?m:null};
-  }).filter(s=>s.text);
+  }).filter(s=>kitIsProteinStep(s)||s.text);
   const tags=[...document.querySelectorAll('#kit-f-tag-chips .kit-tag-chip.active')].map(b=>b.dataset.tag);
   const id=document.getElementById('kit-f-id')?.value||'';
   const data={
@@ -18906,10 +19791,29 @@ function kitSaveForm(){
     fat:num(document.getElementById('kit-f-fat')?.value),
     batchPrep:tags.includes('batch-prep')||tags.includes('bulk-cook'),
   };
+  const pr=kitFormBuildProtein();
+  if(pr.error){ alert(pr.error); return; }
+  if(pr.options){
+    data.proteinOptions=pr.options;
+    data.defaultProteinOptionId=pr.defaultId;
+    // ONE authoritative copy. For a variant recipe the nutrition and cook time live in the
+    // selected option, and a leftover top-level figure is a duplicate that silently drifts —
+    // the editor hides those fields, so nothing would ever correct it.
+    data.cookTime=null; data.calories=null; data.protein=null; data.carbs=null; data.fat=null;
+  } else {
+    // Turning options off has to clear both fields, or a stale defaultProteinOptionId keeps
+    // pointing into an option list that no longer exists.
+    data.proteinOptions=undefined;
+    data.defaultProteinOptionId=undefined;
+  }
   if(id){
     const r=kitRecipes.find(x=>x.id===id);
-    if(r) Object.assign(r,data);
+    if(r){
+      Object.assign(r,data);
+      if(data.proteinOptions===undefined){ delete r.proteinOptions; delete r.defaultProteinOptionId; }
+    }
   } else {
+    if(data.proteinOptions===undefined){ delete data.proteinOptions; delete data.defaultProteinOptionId; }
     kitRecipes.push(Object.assign({id:kitUUID(),favourite:false,lastCooked:null,createdAt:Date.now()},data));
     kitState.selectedId=null;
   }
@@ -18953,22 +19857,129 @@ function kitShopRender(){
 }
 
 // ── State 1: recipe selector ──
-function kitShopSelEntry(id){ return kitShopSelected.find(s=>s.recipeId===id); }
+// A selection's identity is the recipe PLUS the protein option, not the recipe alone — one
+// week can legitimately hold a Chimichurri Roll with rump and another with chicken, and they
+// have to shop for different meat. Legacy entries carry no proteinOptionId and keep working;
+// for a variant recipe they resolve to the default, because no explicit older choice exists.
+function kitShopSelKey(sel){ return String(sel&&sel.recipeId||'')+'::'+String((sel&&sel.proteinOptionId)||''); }
+function kitShopKeyOf(recipeId,optionId){ return String(recipeId)+'::'+String(optionId||''); }
+function kitShopSelByKey(key){ return kitShopSelected.find(s=>kitShopSelKey(s)===key)||null; }
+// Every entry for one recipe, in list order.
+function kitShopSelsFor(recipeId){ return kitShopSelected.filter(s=>s&&s.recipeId===recipeId); }
+// Does this entry point at an option that no longer exists? Never quietly substituted for the
+// default — buying the wrong protein on someone's behalf is worse than asking again.
+function kitShopSelBroken(sel){
+  const r=kitRecipes.find(x=>x.id===(sel&&sel.recipeId));
+  if(!r) return false;
+  if(!sel.proteinOptionId) return false;
+  return !kitFindOption(r,sel.proteinOptionId);
+}
+// The item keys a plan currently contains, so a protein swap can drop checked state belonging
+// to rows that have gone. Without this, a checked "Rump steak" key could survive and a later
+// row with the same name/unit would come back already ticked.
+function kitShopPlanKeys(){
+  try{
+    const plan=kitShopComputePlan();
+    return Object.keys(plan.normal).concat(plan.pantryNeeds.map(x=>x.key),plan.stocked.map(x=>x.key));
+  }catch(e){ return []; }
+}
+function kitShopPruneChecked(before){
+  const after=new Set(kitShopPlanKeys());
+  let changed=false;
+  (before||[]).forEach(k=>{
+    if(after.has(k)) return;
+    if(String(k).indexOf('manual:')===0) return;   // manual rows are the user's own, never pruned
+    if(kitShopChecked&&kitShopChecked.pantries){
+      Object.keys(kitShopChecked.pantries).forEach(pid=>{
+        if(kitShopChecked.pantries[pid][k]){ delete kitShopChecked.pantries[pid][k]; changed=true; }
+      });
+    }
+  });
+  if(changed) kitShopSaveChecked();
+}
+// Tapping the card is the coarse "am I cooking this at all" control: it clears EVERY version
+// of the recipe, whichever proteins they use. Removing one specific version is the ✕ on that
+// version's own row, so a two-protein plan is never half-cleared by a stray tap on the card.
 function kitShopToggleRecipe(id){
   const r=kitRecipes.find(x=>x.id===id); if(!r) return;
-  const i=kitShopSelected.findIndex(s=>s.recipeId===id);
-  if(i>=0) kitShopSelected.splice(i,1);
-  else kitShopSelected.push({recipeId:id,servings:r.servings});
+  const rv=kitResolveDefault(r);
+  if(rv.problem){ showToast(rv.problem); return; }
+  const before=kitShopPlanKeys();
+  if(kitShopSelsFor(id).length){
+    kitShopSelected=kitShopSelected.filter(sd=>!sd||sd.recipeId!==id);
+  } else if(rv.variant){
+    // A variant recipe always asks. The default is preselected, so it is one extra tap and
+    // the list can never end up shopping for a protein nobody chose.
+    kitShopChooseProtein(id,rv.optionId);
+    return;
+  } else {
+    kitShopSelected.push({recipeId:id,servings:r.servings});
+  }
   kitShopSaveSelected();
+  kitShopPruneChecked(before);
   kitShopRenderSelector();
 }
-function kitShopAdjustServings(id,delta){
-  const e=kitShopSelEntry(id); if(!e) return;
-  const next=e.servings+delta;
+function kitShopAdjustServings(key,delta){
+  const e=kitShopSelByKey(key); if(!e) return;
+  const next=(e.servings||1)+delta;
   if(next<1) return;
   e.servings=next;
   kitShopSaveSelected();
   kitShopRenderSelector();
+}
+// ── Choosing / changing a selection's protein ──
+let kitShopPick={recipeId:null,optionId:null,replaceKey:null};
+function kitShopChooseProtein(id,optionId,replaceKey){
+  const r=kitRecipes.find(x=>x.id===id); if(!r) return;
+  kitShopPick={recipeId:id,optionId:optionId||(kitDefaultOption(r)||{}).id||null,replaceKey:replaceKey||null};
+  kitShopPickRender();
+}
+function kitShopSetPick(optId){ kitShopPick.optionId=optId; kitShopPickRender(); }
+function kitShopPickRender(){
+  const r=kitRecipes.find(x=>x.id===kitShopPick.recipeId); if(!r) return;
+  const rv=kitResolve(r,kitShopPick.optionId,r.servings);
+  const ing=rv.ingredients.filter(i=>i.source!=='shared')
+    .map(i=>'<div class="kit-ing-row"><span>'+kitEsc(i.name)+'</span><span class="kit-ing-amt">'+kitEsc([i.display,i.unit].filter(Boolean).join(' '))+'</span></div>').join('');
+  const already=kitShopSelsFor(r.id).filter(sd=>kitShopSelKey(sd)!==kitShopPick.replaceKey)
+    .map(sd=>kitFindOption(r,sd.proteinOptionId)).filter(Boolean);
+  const dupe=already.some(o=>o.id===rv.optionId);
+  kitSheetOpen(
+    kitSheetHead(kitShopPick.replaceKey?'Change protein':'Which protein?',r.name)+
+    kitProteinChooserHTML(r,rv.optionId,"kitShopSetPick('%ID%')",{label:false})+
+    '<div class="kit-sec-label">Shopping for</div><div class="kit-ing-list">'+(ing||'<div class="kit-ing-row"><span>No protein ingredient saved</span></div>')+'</div>'+
+    (already.length?'<div class="kit-note-panel">Already on this list with: '+kitEsc(already.map(o=>o.label).join(', '))+
+      '. Adding a second protein plans the same dish twice.</div>':'')+
+    (dupe?'<div class="kit-note-panel kit-note-warn">That protein is already on the list for this recipe. Adjust its servings instead.</div>':'')+
+    '<div class="kit-sheet-actions">'+
+      '<button class="modal-btn secondary" onclick="kitSheetClose()">Cancel</button>'+
+      '<button class="modal-btn primary"'+(dupe?' disabled':'')+' onclick="kitShopConfirmPick()">'+(kitShopPick.replaceKey?'Update':'Add to list')+'</button>'+
+    '</div>');
+}
+function kitShopConfirmPick(){
+  const id=kitShopPick.recipeId, opt=kitShopPick.optionId, replaceKey=kitShopPick.replaceKey;
+  const r=kitRecipes.find(x=>x.id===id); if(!r||!opt) return;
+  const before=kitShopPlanKeys();
+  if(replaceKey){
+    const e=kitShopSelByKey(replaceKey);
+    // Writing the chosen id onto a legacy entry is an explicit user action, so saving it here
+    // is exactly the kind of write that should be persisted.
+    if(e) e.proteinOptionId=opt;
+  } else {
+    kitShopSelected.push({recipeId:id,servings:r.servings,proteinOptionId:opt});
+  }
+  kitShopSaveSelected();
+  kitShopPruneChecked(before);
+  kitSheetClose();
+  kitShopRender();
+}
+function kitShopRemoveSel(key){
+  const before=kitShopPlanKeys();
+  const i=kitShopSelected.findIndex(s=>kitShopSelKey(s)===key);
+  if(i<0) return;
+  kitShopSelected.splice(i,1);
+  kitShopSaveSelected();
+  kitShopPruneChecked(before);
+  kitShopRender();
 }
 function kitShopRenderSelector(){
   const wrap=document.getElementById('kitshop-selector'); if(!wrap) return;
@@ -18981,26 +19992,49 @@ function kitShopRenderSelector(){
   let html=location+'<div class="kitshop-heading">What are you cooking this week?</div>';
   html+='<div class="kitshop-sel-list">';
   recs.forEach(r=>{
-    const e=kitShopSelEntry(r.id);
-    const on=!!e;
-    const servings=e?e.servings:r.servings;
+    const sels=kitShopSelsFor(r.id);
+    const rvDef=kitResolveDefault(r);
+    const on=sels.length>0;
+    // The row itself is the add/remove target; every control inside it stops propagation, so
+    // changing a protein or a serving count can never toggle the whole recipe off by accident.
     html+='<div class="kitshop-sel-card'+(on?' selected':'')+'" onclick="kitShopToggleRecipe(\''+r.id+'\')">'+
       '<div class="kitshop-sel-check">'+(on?'✓':'')+'</div>'+
       '<div class="kitshop-sel-body">'+
         '<div class="kitshop-sel-name">'+kitEsc(r.name)+'</div>'+
-        '<div class="kit-card-meta"><span class="kit-cat-tag kit-cat-'+r.category+'">'+r.category+'</span></div>'+
+        '<div class="kit-card-meta"><span class="kit-cat-tag kit-cat-'+r.category+'">'+r.category+'</span>'+
+          (rvDef.options.length>1?'<span class="kit-opt-badge">'+rvDef.options.length+' protein options</span>':'')+'</div>'+
       '</div>'+
-      (on?
-        '<div class="kitshop-serv" onclick="event.stopPropagation()">'+
-          '<button class="kitshop-serv-btn" onclick="kitShopAdjustServings(\''+r.id+'\',-1)" aria-label="Fewer">−</button>'+
-          '<div class="kitshop-serv-num">'+servings+'</div>'+
-          '<button class="kitshop-serv-btn" onclick="kitShopAdjustServings(\''+r.id+'\',1)" aria-label="More">+</button>'+
-        '</div>'
-        :'<div class="kitshop-serv-hint">'+r.servings+' serv</div>')+
+      (on?'':'<div class="kitshop-serv-hint">'+r.servings+' serv</div>')+
     '</div>';
+    if(!on) return;
+    sels.forEach(sd=>{
+      const key=kitShopSelKey(sd);
+      const broken=kitShopSelBroken(sd);
+      const rv=kitResolve(r,sd.proteinOptionId,sd.servings||r.servings);
+      const label=broken?'Protein no longer exists':(rv.optionLabel||'');
+      html+='<div class="kitshop-sel-line'+(broken?' broken':'')+'" onclick="event.stopPropagation()">'+
+        (rvDef.variant
+          ? '<button type="button" class="kitshop-sel-prot'+(broken?' broken':'')+'" onclick="kitShopChooseProtein(\''+r.id+'\',\''+kitEsc(sd.proteinOptionId||'')+'\',\''+kitEsc(key)+'\')">'+
+              (broken?'⚠️ ':'🥩 ')+kitEsc(label||'Choose protein')+' <span class="kitshop-sel-change">Change</span></button>'
+          : '<span class="kitshop-sel-prot-static">'+r.servings+' serving base</span>')+
+        '<div class="kitshop-serv">'+
+          '<button class="kitshop-serv-btn" onclick="kitShopAdjustServings(\''+kitEsc(key)+'\',-1)" aria-label="Fewer">−</button>'+
+          '<div class="kitshop-serv-num">'+(sd.servings||r.servings)+'</div>'+
+          '<button class="kitshop-serv-btn" onclick="kitShopAdjustServings(\''+kitEsc(key)+'\',1)" aria-label="More">+</button>'+
+        '</div>'+
+        '<button class="kitshop-sel-x" onclick="kitShopRemoveSel(\''+kitEsc(key)+'\')" aria-label="Remove">✕</button>'+
+      '</div>';
+    });
+    if(rvDef.variant){
+      html+='<div class="kitshop-sel-line kitshop-sel-add" onclick="event.stopPropagation()">'+
+        '<button type="button" class="kitshop-sel-more" onclick="kitShopChooseProtein(\''+r.id+'\')">+ Add another protein version</button></div>';
+    }
   });
   html+='</div>';
   const n=kitShopSelected.length;
+  const brokenCount=kitShopSelected.filter(kitShopSelBroken).length;
+  if(brokenCount) html+='<div class="kit-note-panel kit-note-warn">'+brokenCount+' selection'+(brokenCount===1?'':'s')+
+    ' point at a protein option that no longer exists. Choose again — nothing has been swapped for the default.</div>';
   html+='<button class="kitshop-build-btn" onclick="kitShopBuild()"'+(n?'':' disabled')+'>Build shopping list →</button>';
   wrap.innerHTML=html;
 }
@@ -19056,18 +20090,24 @@ function kitShopComputeRecipeItems(){
   const map={};
   kitShopSelected.forEach(sel=>{
     const r=kitRecipes.find(x=>x.id===sel.recipeId); if(!r) return;
-    const factor=(sel.servings||r.servings)/(r.servings||1);
-    (r.ingredients||[]).forEach(ing=>{
+    // One resolver, one answer: shared ingredients, the CHOSEN protein and only that option's
+    // extras, already scaled. An unselected option can never reach the list because it is
+    // never in what comes back.
+    const rv=kitResolve(r,sel.proteinOptionId,sel.servings||r.servings);
+    // A selection pointing at a deleted option contributes nothing at all — the selector asks
+    // the user to choose again rather than shopping for a guess.
+    if(rv.problem||rv.optionMissing) return;
+    rv.ingredients.forEach(ing=>{
       const nm=ing.name||'';
       if(!nm) return;
       const unit=(ing.unit||'').trim();
       const key=kitShopItemKey(nm,unit);
-      const n=parseFloat(ing.amount);
+      const n=ing.scaledNum;
       if(!map[key]){
-        map[key]={name:nm,unit,amount:isNaN(n)?null:0,hasNumeric:!isNaN(n),category:kitGetIngredientCategory(nm)};
+        map[key]={name:nm,unit,amount:n==null?null:0,hasNumeric:n!=null,category:kitGetIngredientCategory(nm)};
       }
-      if(!isNaN(n)){
-        map[key].amount=(map[key].amount||0)+n*factor;
+      if(n!=null){
+        map[key].amount=(map[key].amount||0)+n;
         map[key].hasNumeric=true;
       }
     });
@@ -19147,6 +20187,15 @@ function kitShopRenderList(){
     '<div class="kitshop-list-title">Shopping list<span class="kitshop-count">'+left+'</span></div>'+
     '<button class="kitshop-clear-checked" onclick="kitShopClearChecked(decodeURIComponent(\''+kitPantryArg(plan.pantryId)+'\'))">Clear checked</button>'+
   '</div>';
+  // A selection whose protein option was deleted contributes NOTHING to the plan above
+  // rather than falling back to the default, so the list has to say so — silently shopping
+  // for the wrong meat is the failure this is guarding against.
+  const brokenSels=kitShopSelected.filter(kitShopSelBroken);
+  if(brokenSels.length){
+    html+='<div class="kit-note-panel kit-note-warn">'+brokenSels.length+' recipe'+(brokenSels.length===1?'':'s')+
+      ' on this list point at a protein option that no longer exists, so nothing was added for '+(brokenSels.length===1?'it':'them')+'. '+
+      '<button class="stats-inline-link" onclick="kitShopBackToSelector()">Choose again &rarr;</button></div>';
+  }
   if(!totalItems){
     if(plan.stocked.length){
       html+='<div class="kitshop-empty"><div style="font-size:40px">✅</div><div class="kitshop-empty-t">Everything needed is already in '+kitEsc(plan.pantryName)+'</div><div class="kitshop-empty-d">Expand the stocked section below to review what Daily set aside.</div></div>';

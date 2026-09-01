@@ -436,60 +436,35 @@
   .budget-setup-primary-fields.has-cycle{grid-template-columns:minmax(180px,1fr) minmax(130px,.55fr) minmax(130px,.55fr)}
   .budget-setup-primary-fields.has-charge-type{grid-template-columns:minmax(180px,1fr) repeat(3,minmax(120px,.55fr))}
 }
-/* ── Budget hero metric cards (Month + Year period summaries) ────────────────────
-   Replaces .summary-grid / .sum-card, which were flat matte tiles — a 12px pad, a grey fill
-   and a 19px number — for the two figures that lead each period view. They are heroes now:
-   one reusable treatment, with the VARIANT carrying the meaning (green in, red out, accent
-   saved, a cool slate for a figure that is neither).
-
-   Three things this pattern does deliberately:
-   · The gradient stops are SOLID hexes, not rgba(var(--accent-rgb),…). An alpha ramp blends
-     into --bg, so the pale end of the ramp fails white text in light mode — the reason
-     .ov-hero and .budget-snapshot-card each needed a [data-theme="light"] floor. The accent
-     variant's stops are derived at render time by budHeroStops() in js/app.js, which walks the
-     lightness down until white clears 4.2:1, so a pale custom accent cannot produce an
-     unreadable card.
-   · It is NOT in the press-lift list and carries no cursor:pointer. These cards do not open
-     anything; the old .sum-card inherited both from the shared card rules and rose 3px under
-     a finger that had nowhere to go.
-   · The decorative circle is a ::before behind a z-indexed content layer, so it never crosses
-     a figure and never reads as an unexplained data line. */
+/* ── Compact Budget period metrics (Month + Year) ───────────────────────────────
+   These are summaries, not six competing hero banners. Keep the card surface neutral and let
+   a narrow semantic edge plus a faint wash carry income/expense/accent meaning. */
 .hero-metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:16px;align-items:stretch}
 .hero-metric-grid.hm-two{grid-template-columns:repeat(2,minmax(0,1fr))}
-.hm-card{position:relative;overflow:hidden;border-radius:var(--radius-hero);padding:14px 14px 13px;
-  display:flex;flex-direction:column;gap:6px;min-height:112px;color:#fff;
-  box-shadow:0 10px 26px rgba(0,0,0,.20);text-shadow:0 1px 2px rgba(0,0,0,.18)}
-.hm-card::before{content:'';position:absolute;width:148px;height:148px;right:-60px;top:-82px;border-radius:50%;background:rgba(255,255,255,.10);pointer-events:none}
-.hm-card::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% -20%,rgba(255,255,255,.13),transparent 62%);pointer-events:none}
-.hm-card>*{position:relative;z-index:1}
-.hm-label{display:flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;letter-spacing:.085em;text-transform:uppercase;line-height:1.3;color:rgba(255,255,255,.84)}
-.hm-label .card-hd-ico{width:13px;height:13px;flex-shrink:0;color:inherit;opacity:.92}
-.hm-val{font-family:var(--font-num);font-size:23px;font-weight:800;line-height:1.02;letter-spacing:-.02em;color:#fff;margin-top:auto;overflow-wrap:anywhere}
-.hm-unit{font-family:var(--font-ui);font-size:12px;font-weight:700;color:rgba(255,255,255,.78);margin-left:5px}
-.hm-sub{font-size:11px;font-weight:600;line-height:1.35;color:rgba(255,255,255,.84)}
+.hm-card{--hm-tone:var(--muted);--hm-wash:rgba(128,128,128,.06);position:relative;overflow:hidden;
+  border-radius:var(--radius);padding:11px 13px 10px 15px;display:flex;flex-direction:column;
+  gap:4px;min-height:82px;color:var(--text);background:linear-gradient(90deg,var(--hm-wash),transparent 48%),var(--card);
+  border:1px solid var(--border);border-left:3px solid var(--hm-tone);box-shadow:0 3px 10px rgba(0,0,0,.08)}
+.hm-income{--hm-tone:#22C55E;--hm-wash:rgba(34,197,94,.09)}
+.hm-expense{--hm-tone:#EF4444;--hm-wash:rgba(239,68,68,.09)}
+.hm-accent{--hm-tone:rgb(var(--accent-rgb));--hm-wash:rgba(var(--accent-rgb),.09)}
+.hm-neutral{--hm-tone:var(--muted);--hm-wash:rgba(128,128,128,.06)}
+.hm-label{display:flex;align-items:center;gap:5px;font-size:9px;font-weight:800;letter-spacing:.075em;text-transform:uppercase;line-height:1.25;color:var(--muted)}
+.hm-label .card-hd-ico{width:12px;height:12px;flex-shrink:0;color:var(--hm-tone);opacity:1}
+.hm-val{font-family:var(--font-num);font-size:22px;font-weight:800;line-height:1;letter-spacing:-.02em;color:var(--text);overflow-wrap:anywhere}
+.hm-unit{font-family:var(--font-ui);font-size:11px;font-weight:700;color:var(--muted);margin-left:5px}
+.hm-sub{font-size:10.5px;font-weight:600;line-height:1.3;color:var(--muted)}
 .hm-chip{display:flex}
-/* .tstat's tints are drawn for a card background and disappear on a saturated hero. Four
-   selectors deep on purpose: kitchen-extras.css loads LAST, so its [data-theme="dark"]
-   .tstat.pos (0,3,0) would otherwise outrank a .hm-card .tstat.pos of the same weight. */
-.hero-metric-grid .hm-card .tstat{background:rgba(255,255,255,.17);border-color:rgba(255,255,255,.32);color:#fff;text-shadow:none}
-.hero-metric-grid .hm-card .tstat.pos{color:#BCF3D2}
-.hero-metric-grid .hm-card .tstat.warn{color:#FFE3A4}
-.hero-metric-grid .hm-card .tstat.neg{color:#FFC9C0}
-.hero-metric-grid .hm-card .tstat svg{opacity:.95}
-/* Phone: the Month row keeps three heroes' worth of information but not three columns — at
-   ~110px a card the figure would have to shrink below the point where it reads as the focal
-   element. The rate leads full-width, income and expenses pair beneath it. */
 @media (max-width:560px){
   .hero-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
   #month-summary-grid.hero-metric-grid>.hm-card:first-child{grid-column:1/-1}
-  .hm-card{min-height:100px;padding:13px 13px 12px}
+  .hm-card{min-height:76px;padding:10px 11px 9px 13px}
+  .hm-val{font-size:20px}
 }
 @media (min-width:1024px){
-  .hero-metric-grid{gap:14px;margin-bottom:20px}
-  .hm-card{min-height:136px;padding:20px 20px 18px;gap:8px}
-  .hm-val{font-size:30px}
-  .hm-label{font-size:10px}
-  .hm-sub{font-size:12px}
+  .hero-metric-grid{gap:10px;margin-bottom:16px}
+  .hm-card{min-height:86px;padding:12px 14px 11px 16px;gap:4px}
+  .hm-val{font-size:24px}
 }
 .status-bar-wrap{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:6px}
 .status-bar-fill{height:100%;border-radius:4px;transition:width 0.4s ease}

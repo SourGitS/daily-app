@@ -95,11 +95,14 @@
 // v265 also keeps custom pantry-item deletion behind that same deliberate edit state.
 // v266 makes Recent Sessions collapse on complete rows with its disclosure inside the card.
 // v267 keeps recipe ingredient names visible and editable on phone-sized screens.
-// v268 rebuilds Stats > Finance around one shared range, gives Budget's Month and Year
-// summaries hero metric cards (including a new Spent in [year]), and moves every budget and
-// finance chart onto a semantic money palette: green in, red out, accent saved, amber for
-// warnings only.
-const CACHE_NAME = 'daily-v268';
+// v268 rebuilds Stats > Finance around one shared range, adds Spent in [year], and moves every
+// budget and finance chart onto a semantic money palette. v269 reins in the Month and Year
+// summaries: compact neutral tiles replace the oversized saturated hero banners while a slim
+// semantic edge keeps green-in, red-out and accent-saved easy to scan. v269 also gives recipes
+// protein options — one dish, one default protein and any number of alternatives, resolved
+// through a single reader for shopping, cooking, logging, export and AI — plus Share recipe
+// (readable text) and Copy for Daily (lossless JSON) beside the existing Copy for AI.
+const CACHE_NAME = 'daily-v269';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
