@@ -211,7 +211,7 @@
 /* Anything not actively charging is dimmed, so a paused or cancelled row reads as inactive
    at a glance rather than looking identical to a live one. */
 .bud-edit-status.off{color:var(--muted);border-style:dashed}
-.bud-edit-hint.soon{color:#f59e0b;font-weight:700}
+.bud-edit-hint.soon{color:var(--warn);font-weight:700}
 .bud-edit-pricehist{font-size:11px;font-weight:600;color:var(--muted);padding:2px 2px 8px}
 .ph-up{color:var(--danger);font-weight:800}
 .ph-down{color:var(--positive);font-weight:800}
@@ -221,7 +221,7 @@
 .up-row:last-of-type{border-bottom:none}
 /* Amber, not accent: "this is about to happen" has to read the same whatever hue the app is
    wearing that day. */
-.up-row.soon .up-when{color:#f59e0b}
+.up-row.soon .up-when{color:var(--warn)}
 .up-when{flex:0 0 82px;font-size:12px;font-weight:700;color:var(--muted)}
 .up-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;color:var(--text);overflow:hidden}
 .up-title{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -233,7 +233,7 @@
 .up-total{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;
   border-top:1px solid var(--border);font-size:13px;font-weight:700;color:var(--text)}
 .up-total span:last-child{font-family:var(--font-num);font-weight:800}
-.up-warn{font-size:12px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.12);
+.up-warn{font-size:12px;font-weight:700;color:var(--warn);background:rgba(var(--warn-rgb),.12);
   border-radius:9px;padding:8px 10px;margin-bottom:8px}
 .up-none{font-size:13px;color:var(--muted);padding:6px 0}
 .up-hint{font-size:11px;color:var(--muted);line-height:1.45;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)}
@@ -399,7 +399,7 @@
 .budget-setup-field>span{font-size:11px;font-weight:750;color:var(--text-2)}
 .budget-setup-field>span>strong{display:block;font-size:13px;color:var(--text)}
 .budget-setup-field small{display:block;font-size:10px;font-weight:500;line-height:1.35;color:var(--muted);margin-top:2px}
-.budget-setup-field .soon{color:#f59e0b;font-weight:750}
+.budget-setup-field .soon{color:var(--warn);font-weight:750}
 .budget-setup-field input,.budget-setup-field select{width:100%;height:40px;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);padding:0 10px;font:inherit;font-size:13px}
 .budget-setup-field .bud-edit-amt{text-align:left}
 .budget-setup-field input:focus,.budget-setup-field select:focus{outline:none;border-color:var(--accent)}
@@ -436,7 +436,7 @@
 .status-text{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:14px}
 .status-pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px}
 .status-pill.good{background:rgba(82,183,136,0.15);color:#52B788}
-.status-pill.warn{background:rgba(255,193,7,0.15);color:#FFC107}
+.status-pill.warn{background:rgba(var(--warn-rgb),0.15);color:var(--warn)}
 .status-pill.over{background:rgba(var(--danger-rgb),0.15);color:var(--danger)}
 .week-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px}
 .week-nav-btn{width:34px;height:34px;border:1.5px solid var(--border);border-radius:10px;background:transparent;color:var(--text);font-size:18px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}
@@ -1207,7 +1207,7 @@
 .nw-chart-series button:first-of-type i{background:var(--success)}
 .nw-chart-series button:last-of-type:not(:first-of-type) i{background:var(--danger)}
 .nw-chart-foot{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:10px 16px 14px;border-top:1px solid var(--border);font-size:10px;font-weight:600;color:var(--muted);line-height:1.4}
-.nw-chart-stale{color:var(--amber-dark)}
+.nw-chart-stale{color:var(--warn-dark)}
 
 /* ── Debt payoff position card (Accounts) ── */
 .acct-payoff-card{text-align:center;padding:18px 16px;margin-bottom:12px}
@@ -1327,4 +1327,162 @@
      than being squeezed into half. */
   #view-budget #bud-col-left > .bud-span-2{grid-column:1 / -1}
   #view-budget .card{padding:13px;margin-bottom:0}
+}
+
+/* ── Bills calendar ────────────────────────────────────────────────
+   Forward planning for scheduled charges. Uses the shared card vocabulary (.card-hd via
+   cardHeader(), .card-fig / .card-fig-u) rather than a competing card style. */
+.bills-summary .card-fig-u{margin-top:2px}
+.bills-empty-lead{font-size:15px;font-weight:700;color:var(--text);margin-top:6px}
+.bills-hint{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);
+  font-size:12px;font-weight:600;color:var(--muted);line-height:1.45}
+
+/* Three-month chart. Bars carry the accent as a FILL (never as text — see the
+   --accent vs --accent-text note in CLAUDE.md); the heaviest month gets the solid accent
+   while the other two sit at a low-alpha tint of the same hue, so the comparison holds for
+   any accent the user has chosen. Colour is never the only signal: the heaviest month is
+   named in the summary sentence and carries the "Most bills" tag below its label. */
+.bills-chart-card{padding-top:18px}
+.bills-chart{display:flex;align-items:flex-end;gap:10px}
+.bills-col{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:6px}
+/* The amounts ARE the data, so they take full text contrast rather than the --text-2 used
+   for secondary chrome — at 13px bold that token measures ~4.4:1 in dark, just under the
+   4.5:1 small-text floor. */
+.bills-col-amt{font-family:var(--font-num);font-size:13px;font-weight:800;color:var(--text);
+  white-space:nowrap;letter-spacing:-.02em}
+.bills-col.is-top .bills-col-amt{color:var(--accent-text);font-size:14px}
+/* Fixed track height so three bars share one scale and a $0 month still holds its column.
+   The baseline lives HERE rather than on .bills-chart: on the chart it was drawn at the foot
+   of the tallest column, which put it underneath the month labels instead of under the bars. */
+.bills-col-track{width:100%;height:112px;display:flex;align-items:flex-end;
+  background:var(--track);border-radius:8px 8px 0 0;overflow:hidden;
+  border-bottom:1.5px solid var(--border)}
+/* --accent can be ANY hue at runtime, and every value it can hold is tuned to carry white
+   text — which means it is on the dark side, and a low-alpha tint of it measures barely 2:1
+   against the near-black dark background. So the fill is not asked to carry the reading on
+   its own: every bar gets a 2px top edge in --accent-text, which is derived at runtime to
+   clear 5:1 against whichever background is live. That edge is also the precise value line,
+   so the bar stays readable at a glance whatever accent is set. */
+.bills-col-bar{width:100%;background:rgba(var(--accent-rgb),.32);border-radius:8px 8px 0 0;
+  position:relative;transition:height .45s cubic-bezier(.22,.61,.36,1);min-height:3px;
+  box-shadow:inset 0 2px 0 var(--accent-text)}
+/* The heaviest month carries the solid accent, and its cap replaces the edge line. */
+.bills-col.is-top .bills-col-bar{background:var(--accent);box-shadow:none}
+/* The set-aside cap: a lighter band at the top of the heaviest bar marking the amount worth
+   putting away. Inside the fill so it reads as part of the bar, not as a separate mark. */
+.bills-col-cap{position:absolute;left:0;right:0;top:0;height:7px;
+  background:rgba(255,255,255,.55);border-radius:8px 8px 0 0}
+/* Axis labels at full text contrast for the same reason as the amounts — --text-2 is ~4.4:1
+   in dark, under the small-text floor. Hierarchy is carried by the bar and the tag, not by
+   dimming the month names. */
+.bills-col-lbl{font-size:12px;font-weight:700;color:var(--text);padding-top:8px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+/* Rendered in EVERY column (empty for the others) so all three share one internal
+   structure — otherwise the tagged column is taller and its month label sits on a
+   different line from the other two. */
+.bills-col-tag{font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--accent-text);white-space:nowrap;margin-top:-4px;height:12px;line-height:12px}
+/* Dark mode: the low-alpha bars need more presence against #080808, and a white cap at .55
+   over a dark accent is harsher than it is over a light one. */
+[data-theme="dark"] .bills-col-bar{background:rgba(var(--accent-rgb),.55)}
+[data-theme="dark"] .bills-col-cap{background:rgba(255,255,255,.42)}
+/* The baseline has to stay visible as a line, not fade into the card. */
+[data-theme="dark"] .bills-col-track{border-bottom-color:rgba(255,255,255,.22)}
+/* Track kept fainter than the bar so the two never read as one block. */
+[data-theme="dark"] .bills-col-track{background:rgba(255,255,255,.035);
+  border-bottom-color:rgba(255,255,255,.22)}
+
+/* Month-by-month list */
+.bills-month{padding-top:14px}
+.bills-month-hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--border)}
+.bills-month-name{font-size:14px;font-weight:800;color:var(--text)}
+.bills-month-name small{font-size:11px;font-weight:600;color:var(--muted);margin-left:5px}
+.bills-month-total{font-family:var(--font-num);font-size:15px;font-weight:800;color:var(--text);
+  white-space:nowrap}
+.bills-month-empty{font-size:13px;color:var(--muted);padding:8px 0}
+
+.bill-row{display:flex;align-items:center;gap:10px;padding:9px 0;
+  border-bottom:1px solid var(--border)}
+.bill-row:last-child{border-bottom:none}
+.bill-row-when{flex:0 0 52px;display:flex;flex-direction:column;line-height:1.2}
+.bill-row-when b{font-size:12px;font-weight:800;color:var(--text);white-space:nowrap}
+.bill-row-when small{font-size:10px;font-weight:600;color:var(--muted)}
+.bill-row-ic{display:flex;align-items:center;justify-content:center;width:18px;height:18px;
+  flex-shrink:0;color:var(--muted)}
+.bill-row-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.bill-row-title{font-size:13px;font-weight:700;color:var(--text);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bill-row-meta{font-size:11px;font-weight:600;color:var(--muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bill-row-amt{font-family:var(--font-num);font-size:13px;font-weight:800;color:var(--text);
+  white-space:nowrap}
+/* A statement is a balance that moves, not a fixed scheduled amount — said in words, not
+   by colour alone (.bill-row-meta reads "Statement balance"). */
+.bill-row.is-stmt .bill-row-amt{color:var(--warn-dark)}
+
+/* "View bills calendar →" at the foot of the Upcoming card. */
+.up-cal-link{display:block;width:100%;margin-top:10px;padding:9px;border-radius:20px;
+  border:1px solid var(--border);background:transparent;color:var(--accent-text);
+  font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.up-cal-link:hover{background:rgba(var(--accent-rgb),.08)}
+
+/* ── Until next pay ────────────────────────────────────────────────
+   Compact enough to sit at the top of the Week view under the hero. Neutral by default;
+   amber when the projection is thin, red when the bills exceed what is available. Semantic,
+   not accent — the accent can be any hue at runtime, so it cannot carry good/bad. */
+.fc-card{border-left:3px solid var(--positive);padding-top:14px}
+.fc-card.is-tight{border-left-color:var(--warn)}
+.fc-card.is-over{border-left-color:var(--danger)}
+.fc-eyebrow{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted)}
+.fc-fig{font-family:var(--font-num);font-size:30px;font-weight:800;letter-spacing:-.02em;
+  line-height:1.05;margin-top:4px;color:var(--positive)}
+.fc-card.is-tight .fc-fig{color:var(--warn)}
+.fc-card.is-over .fc-fig{color:var(--danger)}
+.fc-unit{font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--text-2);margin-top:2px}
+.fc-line{font-size:12px;font-weight:600;color:var(--muted);margin-top:8px}
+.fc-line-2{margin-top:2px}
+.fc-ok{color:var(--positive);font-weight:700}
+.fc-bills{margin-top:10px;padding-top:8px;border-top:1px solid var(--border)}
+.fc-bill{display:flex;align-items:center;gap:10px;padding:4px 0}
+.fc-bill-when{flex:0 0 46px;font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap}
+.fc-bill-name{flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--text);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fc-bill-name em{font-style:normal;font-size:10px;font-weight:700;color:var(--warn-dark);
+  margin-left:5px}
+.fc-bill-amt{font-family:var(--font-num);font-size:12px;font-weight:800;color:var(--text);
+  white-space:nowrap}
+.fc-more{font-size:11px;font-weight:600;color:var(--muted);padding-top:4px}
+
+/* ── Home: Finance check-in ────────────────────────────────────────
+   Three information lines and one action, no more — it links into Budget rather than
+   restating it. */
+.fin-line{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:6px 0;border-bottom:1px solid var(--border)}
+.fin-line:last-of-type{border-bottom:none}
+.fin-line-l{font-size:13px;font-weight:600;color:var(--text);min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fin-line-l small{display:block;font-size:11px;font-weight:600;color:var(--muted)}
+.fin-line-l em{font-style:normal;font-size:10px;font-weight:700;color:var(--warn-dark)}
+.fin-line-r{font-family:var(--font-num);font-size:14px;font-weight:800;color:var(--text);
+  white-space:nowrap}
+.fin-line-r.is-over{color:var(--danger)}
+.fin-act{display:block;width:100%;margin-top:10px;padding:9px;border-radius:20px;
+  border:1px solid var(--border);background:transparent;color:var(--accent-text);
+  font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.fin-act:hover{background:rgba(var(--accent-rgb),.08)}
+
+/* Desktop: the calendar has width to spend, so the three month lists sit side by side under
+   a full-width chart instead of stacking into a very long column. Mobile-first — this is the
+   only place the layout changes. */
+@media (min-width:1024px){
+  .bills-chart{gap:22px}
+  .bills-col-track{height:150px}
+  #budget-bills-view{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;
+    align-items:start}
+  #budget-bills-view .bills-summary,
+  #budget-bills-view .bills-chart-card{grid-column:1/-1}
 }

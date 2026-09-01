@@ -40,6 +40,7 @@
   --amber:#ef4444;--amber-bg:#fef2f2;--amber-dark:#b91c1c;--amber-border:#fecaca;
   --green:#10b981;--green-bg:#ecfdf5;--green-dark:#065f46;--green-border:#a7f3d0;
   --warn:#f59e0b;--warn-bg:#fffbeb;--warn-dark:#92400e;--warn-border:#fde68a;
+  --warn-rgb:245,158,11;
 }
 
 /* ── Dark mode (momentum) — overrides colour tokens only; layout/type stay shared ── */

@@ -47,7 +47,21 @@
 // while preserving the pushed detail screens on phones and narrower desktop windows.
 // v257: equalise paired Stats Overview cards on desktop and use the signed-in Google profile
 // photo in the desktop sidebar as well as the existing header and Settings profile surfaces.
-const CACHE_NAME = 'daily-v257';
+// v258: add a Bills calendar view to Budget (current month + next two, generated read-only
+// from each recurring charge's saved dueDate + cycle, plus credit-card statement due dates),
+// an "Until next pay" forecast above the due banner, and an optional Finance check-in card on
+// Home. Also unifies Budget's four competing warning colours on the --warn amber set — the
+// credit-card due banner was rendering red via --amber, which is #ef4444.
+// Two long-standing arithmetic bugs surfaced by that work are fixed in the same release:
+//   · budRecalc merged the live inputs over the week, and only non-recurring categories have
+//     inputs — so weekFixedTotal took that as the week's whole category list and dropped every
+//     recurring charge from Committed. A new week showed "Recurring $69.08" above "Total fixed
+//     $67" until its first save froze fixRates, at which point the figure jumped.
+//   · catNextDue stepped month by month with setMonth(), which overflows (31 Jan + 1 month =
+//     3 Mar) and compounded because each step started from the previous overflowed result. A
+//     bill anchored on 31 Jan 2026 reported its next charge as 3 Sept rather than 30 Sept.
+//     Anything dated on the 29th, 30th or 31st was affected.
+const CACHE_NAME = 'daily-v258';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

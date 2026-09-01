@@ -8647,20 +8647,47 @@ function catIsCharging(c){ const s=catStatus(c); return s==='active'||s==='trial
 // The next date this charge lands, rolled forward from the anchor date the user set.
 // Returns null when no date is known, which every caller treats as "not scheduled" rather
 // than guessing — a wrong date is worse than no date on a bill reminder.
+// Each occurrence is computed from the ANCHOR by index, with the day-of-month clamped to the
+// target month's length. It used to step month by month with setMonth(), which overflows —
+// 31 Jan + 1 month is 3 Mar, not 28 Feb — and because each step started from the previous
+// (already overflowed) result the error compounded: a bill anchored on 31 Jan 2026 reported
+// its next charge as 3 Sept instead of 30 Sept, having walked three days off the calendar.
+// Anything dated on the 29th, 30th or 31st was affected.
+function _billMonthlyOn(anchor, monthsAhead){
+  const y=anchor.getFullYear(), m=anchor.getMonth()+monthsAhead;
+  const lastDay=new Date(y, m+1, 0).getDate();   // day 0 of the next month = last of this one
+  return new Date(y, m, Math.min(anchor.getDate(), lastDay));
+}
+function _billYearlyOn(anchor, yearsAhead){
+  const y=anchor.getFullYear()+yearsAhead, m=anchor.getMonth();
+  const lastDay=new Date(y, m+1, 0).getDate();   // 29 Feb anchor in a common year → 28 Feb
+  return new Date(y, m, Math.min(anchor.getDate(), lastDay));
+}
 function catNextDue(c, fromDate){
   if(!c||!c.dueDate) return null;
   const cyc=catCycle(c);
-  const start=localMidnight(String(c.dueDate).slice(0,10));
-  if(isNaN(start.getTime())) return null;
+  const anchor=localMidnight(String(c.dueDate).slice(0,10));
+  if(isNaN(anchor.getTime())) return null;
   const today=localMidnight(fromDate||getLocalDate());
-  const d=new Date(start.getTime());
-  let guard=0;
-  while(d<today && guard++<600){
-    if(cyc==='yearly') d.setFullYear(d.getFullYear()+1);
-    else if(cyc==='monthly') d.setMonth(d.getMonth()+1);
-    else d.setDate(d.getDate()+7);
+  if(anchor>=today) return anchor;               // dated in the future: it starts then
+  if(cyc==='weekly'){
+    // (y, m, d + 7k) rather than millisecond arithmetic, so a DST boundary in between can't
+    // walk the result off local midnight.
+    const k=Math.ceil(Math.round((today-anchor)/864e5)/7);
+    return new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate()+7*k);
   }
-  return d;
+  const on = cyc==='yearly' ? _billYearlyOn : _billMonthlyOn;
+  let k = cyc==='yearly'
+    ? (today.getFullYear()-anchor.getFullYear())
+    : ((today.getFullYear()-anchor.getFullYear())*12 + (today.getMonth()-anchor.getMonth()));
+  // Start one period early: clamping can pull an occurrence back a day or two, so the period
+  // before the naive index can still land on or after today.
+  if(k>0) k--; else k=0;
+  for(let guard=0; guard<600; guard++, k++){
+    const d=on(anchor,k);
+    if(d>=today) return d;
+  }
+  return null;
 }
 function catDaysUntilDue(c, fromDate){
   const due=catNextDue(c, fromDate);
@@ -8680,6 +8707,190 @@ function upcomingCharges(days){
     out.push({cat:c, days:n, date:catNextDue(c), amount:parseFloat(catAmount(c))||0});
   });
   return out.sort((a,b)=>a.days-b.days);
+}
+// ── Bills calendar: occurrence generation ─────────────────────────
+// upcomingCharges() answers "what is about to be charged?" by rolling each charge's anchor
+// forward to its NEXT date. A calendar asks a different question — EVERY occurrence inside a
+// window — because a weekly charge lands four or five times in a month and all of them belong
+// in that month's total.
+// Read-only by construction: the saved dueDate is an immutable anchor here and is never
+// written back. Nothing below mutates a category.
+// Month arithmetic uses the clamped _billMonthlyOn/_billYearlyOn helpers defined above
+// catNextDue, and every occurrence is computed FROM THE ANCHOR rather than from the previous
+// one, so a clamped short month can't drag the rest of the series earlier.
+// Every occurrence of one recurring charge between two local-midnight dates, inclusive.
+// Occurrences before the anchor are never generated: a charge dated in the future starts then,
+// exactly as catNextDue() only ever rolls forward and never back.
+function catOccurrencesBetween(c, from, to){
+  const out=[];
+  if(!c||!c.dueDate||!from||!to) return out;
+  const anchor=localMidnight(String(c.dueDate).slice(0,10));
+  if(isNaN(anchor.getTime())||anchor>to) return out;
+  const cyc=catCycle(c);
+  const push=d=>{ if(d>=from&&d>=anchor&&d<=to) out.push(d); };
+  if(cyc==='weekly'){
+    // Built with (y, m, d + 7k) rather than millisecond arithmetic so a DST boundary inside
+    // the window can't walk the series off local midnight.
+    const gap=Math.round((from-anchor)/864e5);
+    let k=gap>0?Math.ceil(gap/7):0;
+    for(let guard=0; guard<80; guard++, k++){
+      const d=new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate()+7*k);
+      if(d>to) break;
+      push(d);
+    }
+  } else if(cyc==='monthly'){
+    // Start a month early: clamping can pull an occurrence back a day or two, so the month
+    // before `from` can still land inside the window.
+    let k=(from.getFullYear()-anchor.getFullYear())*12+(from.getMonth()-anchor.getMonth())-1;
+    if(k<0) k=0;
+    for(let guard=0; guard<24; guard++, k++){
+      const d=_billMonthlyOn(anchor,k);
+      if(d>to) break;
+      push(d);
+    }
+  } else {
+    let k=from.getFullYear()-anchor.getFullYear()-1;
+    if(k<0) k=0;
+    for(let guard=0; guard<6; guard++, k++){
+      const d=_billYearlyOn(anchor,k);
+      if(d>to) break;
+      push(d);
+    }
+  }
+  return out;
+}
+// A recurring charge is SCHEDULED when it is dated, still charging, and not archived. Archived
+// is checked here and not in upcomingCharges() — that card's filter predates archiving and is
+// left exactly as it is, per the brief to preserve its behaviour.
+function billIsScheduled(c){
+  return !!c && !catIsArchived(c) && catIsRecurring(c) && catIsCharging(c);
+}
+// Every dated bill occurrence in a window: recurring charges, plus credit-card statement due
+// dates from Accounts. A statement is a BALANCE that happens to carry a due date, not a fixed
+// recurring charge — it is tagged kind:'statement' so it can be labelled and treated as its
+// own thing rather than blended into the charge rows.
+function billOccurrences(from, to){
+  const out=[];
+  loadFixCats().forEach(c=>{
+    if(!billIsScheduled(c)||!c.dueDate) return;
+    const amount=parseFloat(catAmount(c))||0;
+    catOccurrencesBetween(c, from, to).forEach(d=>{
+      out.push({kind:'charge', cat:c, date:d, key:dateStr(d), amount:amount,
+                name:catLabel(c), acctName:(catPaymentAccount(c)||{}).name||''});
+    });
+  });
+  (Array.isArray(accounts)?accounts:[]).forEach(a=>{
+    if(!a||a.type!=='debt'||!a.tracksStatement||!a.dueDate) return;
+    const d=localMidnight(String(a.dueDate).slice(0,10));
+    if(isNaN(d.getTime())||d<from||d>to) return;
+    out.push({kind:'statement', acct:a, date:d, key:dateStr(d),
+              amount:parseFloat(a.statementBalance)||0, name:a.name||'Credit card', acctName:''});
+  });
+  // Date first, then amount descending, so a day's biggest hit reads first.
+  return out.sort((x,y)=> x.key<y.key?-1 : x.key>y.key?1 : (y.amount-x.amount));
+}
+// Recurring charges that are live but have no billing date. Counted, never guessed at — a
+// wrong date on a bill reminder is worse than an admitted gap.
+function billsUndatedCount(){
+  return loadFixCats().filter(c=>billIsScheduled(c)&&!c.dueDate).length;
+}
+// The current month plus the next two, as a fixed three-month planning window.
+function billsMonths(){
+  const today=localMidnight(getLocalDate());
+  const y=today.getFullYear(), m=today.getMonth();
+  const occ=billOccurrences(new Date(y,m,1), new Date(y,m+3,0));
+  const months=[];
+  for(let i=0;i<3;i++){
+    const start=new Date(y,m+i,1), end=new Date(y,m+i+1,0);
+    const items=occ.filter(o=>o.date>=start&&o.date<=end);
+    months.push({start, end, items,
+      label:start.toLocaleDateString('en-AU',{month:'long'}),
+      short:start.toLocaleDateString('en-AU',{month:'short'}),
+      year:start.getFullYear(),
+      total:items.reduce((s,o)=>s+o.amount,0)});
+  }
+  return months;
+}
+// ── Pay cycle ─────────────────────────────────────────────────────
+// Pay day is stored as a DAY OF WEEK per income source (budDefaults.payDays), not a date, so
+// "next pay" is the soonest upcoming occurrence across every named source. With two weekly
+// sources that is rarely more than three days out, which is why the forecast so often reads
+// "no scheduled bills before your next pay" — that is the truth about a short window, not a
+// failure to find the bills.
+// Returns null when no income source is named at all, which is the only honest reading of
+// "no pay day configured": getPayDay() falls back to Friday for any source that exists, so
+// the presence of a day never means the user actually chose one.
+function nextPayInfo(){
+  const today=localMidnight(getLocalDate());
+  const dow=today.getDay();
+  let best=null;
+  activeCats(loadIncCats()).forEach(c=>{
+    if(!String(c.name||'').trim()) return;         // unnamed source = nothing configured
+    const day=getPayDay(c.id);
+    if(day==null||isNaN(day)) return;
+    // Paid today means the NEXT one is a week out, not zero days away.
+    const inDays=((day-dow+7)%7)||7;
+    if(!best||inDays<best.inDays) best={inDays, name:String(c.name).trim()};
+  });
+  if(!best) return null;
+  return {inDays:best.inDays, name:best.name,
+          date:new Date(today.getFullYear(), today.getMonth(), today.getDate()+best.inDays)};
+}
+// The object budRecalc() derives the hero's "Available to spend" from, for callers that have
+// no budget inputs on screen to read (Home's Finance check-in).
+// The saved week IS that basis: budRecalc starts from this same object and merges the live
+// input values over a copy, and it no longer lets that merge change which categories count
+// (see the note there). So Home and the Budget tab agree by construction rather than by one
+// reproducing the other's quirks.
+function budCurrentWeekBasis(){
+  return budgetData[weekKey(getMondayOf(0))]||{};
+}
+// What is left after the bills that land before the next pay day.
+// `available` is passed in rather than recomputed: budRecalc() already derives it from the
+// live inputs, and a second implementation of that arithmetic is exactly how an on-screen
+// total ends up disagreeing with the hero directly above it.
+// `week` is the object `available` was derived FROM, and must be: budRecalc computes the
+// hero figure against a copy of the week with the live inputs merged over it, and that merge
+// changes which categories weekFixedTotal counts at all. Reading the accrual back off the
+// saved week instead would add back a share the on-screen figure never deducted.
+function payCycleForecast(available, week){
+  const pay=nextPayInfo();
+  if(!pay) return null;
+  const today=localMidnight(getLocalDate());
+  // Through the day BEFORE pay day — money arriving on pay day is not what this has to survive.
+  const until=new Date(pay.date.getFullYear(), pay.date.getMonth(), pay.date.getDate()-1);
+  const monday=getMondayOf(0);
+  const sunday=new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+6);
+  const wk=week||budgetData[weekKey(monday)]||{};
+  const inThisWeek=d=>d>=monday&&d<=sunday;
+  // "Already recorded as paid this week." A recurring charge normally has no weekly input at
+  // all (renderFixedCard says so: counted automatically from its cycle), but an explicit
+  // fix_<id> entry on the current week means a real figure was recorded against it, and
+  // weekFixedTotal already treats that entry as the week's actual cost. Subtracting the bill
+  // on top of it would charge for it twice.
+  const recorded=id=>{ const v=wk['fix_'+id]; return v!==undefined&&v!==''; };
+  const bills=(until<today?[]:billOccurrences(today, until))
+    .filter(b=>!(b.kind==='charge'&&inThisWeek(b.date)&&recorded(b.cat.id)));
+  const scheduled=bills.reduce((s,b)=>s+b.amount,0);
+  // "Available to spend" already has a weekly accrued share of every recurring charge taken
+  // out of it (committed = weekFixedTotal, which prorates each billed amount across its
+  // cycle). Subtracting the full billed amount on top would count that share twice, so the
+  // week's accrual is added back for exactly the charges being subtracted and nothing else.
+  // Once per CATEGORY, not per occurrence — available only ever holds one week of accrual —
+  // and only for occurrences inside the CURRENT budget week, which is the week it describes.
+  // Statement balances are not in committed at all, so they are never added back.
+  const seen={};
+  let addBack=0;
+  bills.forEach(b=>{
+    if(b.kind!=='charge'||!inThisWeek(b.date)||seen[b.cat.id]) return;
+    seen[b.cat.id]=1;
+    // Give back exactly what the weekly accrual took for this charge — which is zero for a
+    // charge that is not part of this week's fixed total at all. See weekFixedContribution.
+    addBack += weekFixedContribution(wk, b.cat.id);
+  });
+  const projected=(available==null)?null:(available+addBack-scheduled);
+  return {pay, until, bills, scheduled, addBack,
+          available:(available==null?null:available), projected};
 }
 function catUpdateField(type,id,field,val){
   const cats=BUD_CAT_LOAD[type](); const c=cats.find(x=>x.id===id); if(!c) return;
@@ -9359,12 +9570,16 @@ function setBudgetView(v){
     b.style.color=active?'var(--text)':'var(--muted)'; b.style.boxShadow=active?'0 1px 3px rgba(0,0,0,0.1)':'none'; };
   setBtn('bv-week-btn',v==='week');
   setBtn('bv-month-btn',v==='month');
+  setBtn('bv-bills-btn',v==='bills');
   setBtn('bv-year-btn',v==='year');
   document.getElementById('budget-week-view').classList.toggle('hidden',v!=='week');
   document.getElementById('budget-month-view').classList.toggle('hidden',v!=='month');
+  const billsEl=document.getElementById('budget-bills-view');
+  if(billsEl) billsEl.classList.toggle('hidden',v!=='bills');
   document.getElementById('budget-year-view').classList.toggle('hidden',v!=='year');
   if(v==='week') renderBudgetTab();
   if(v==='month') renderMonth();
+  if(v==='bills') renderBillsView();
   if(v==='year') renderYear();
 }
 
@@ -9884,6 +10099,25 @@ function weekFixedTotal(d){
     if(byId[id]) t += catChargeableBudget(byId[id]);   // legacy week with no frozen rates — original behaviour
   });
   return t;
+}
+// What weekFixedTotal() above actually contributed for ONE category in a given week.
+// The pay-cycle forecast needs this to give back exactly what the weekly accrual took, and
+// "its weekly budget" is NOT the same answer: a frozen week counts only the categories that
+// existed when its rates were frozen, and a week carrying explicit fix_ fields counts only
+// those ids — so a charge added later contributes nothing at all and must not be credited.
+// This mirrors the three precedence rules above deliberately; keep the two in step.
+function weekFixedContribution(d, id){
+  const rates=d&&d.fixRates;
+  const rawIds=new Set(Object.keys(d||{}).filter(k=>k.startsWith('fix_')).map(k=>k.slice(4)));
+  const current=loadFixCats();
+  const ids=new Set((rates||rawIds.size)?[...rawIds]:current.map(c=>c.id));
+  if(rates) Object.keys(rates).forEach(k=>ids.add(k));
+  if(!ids.has(id)) return 0;                       // not part of this week's fixed total
+  const v=d&&d['fix_'+id];
+  if(v!==undefined&&v!=='') return parseFloat(v)||0;   // explicit entry always wins
+  if(rates) return Object.prototype.hasOwnProperty.call(rates,id)?(parseFloat(rates[id])||0):0;
+  const c=current.find(x=>x.id===id);
+  return c?catChargeableBudget(c):0;
 }
 // ── Transaction ledger ────────────────────────────────────────────
 // Variable spending used to be one number per category per week: spend $18 then $42 and you
@@ -10531,7 +10765,207 @@ function renderUpcomingCard(){
     cluster+rows+
     (list.length?'<div class="up-total"><span>Next 30 days</span><span>'+fmtMoney(total)+'</span></div>':'')+
     (undated?'<div class="up-hint">'+undated+' recurring charge'+(undated===1?'':'s')+' without a billing date — add one in Settings → Budget setup to see '+(undated===1?'it':'them')+' here.</div>':'')+
+    // 30 days is the horizon this card is for; anything further out belongs to the calendar.
+    '<button type="button" class="up-cal-link" onclick="openBillsCalendar()">View bills calendar →</button>'+
   '</div>';
+}
+// ── Bills calendar view ───────────────────────────────────────────
+// Forward planning for scheduled charges, not a history of what was spent. Three months is
+// the window that answers "what is coming" without becoming a second Yearly view.
+function _billDayLabel(d){ return d.toLocaleDateString('en-AU',{day:'numeric',month:'short'}); }
+function _billWeekday(d){ return d.toLocaleDateString('en-AU',{weekday:'short'}); }
+// One bill row, shared by the calendar and the forecast. A statement is visibly a balance
+// rather than a fixed charge — it moves week to week, so presenting it as a scheduled amount
+// without saying what it is would be misleading.
+function billRowHtml(o){
+  const isStmt=o.kind==='statement';
+  const icon=isStmt
+    ? '<span class="bill-row-ic">'+acctIcon('card',18)+'</span>'
+    : catIconHtml(o.cat,18);
+  const meta=isStmt ? 'Statement balance' : o.acctName;
+  return '<div class="bill-row'+(isStmt?' is-stmt':'')+'">'+
+    '<span class="bill-row-when"><b>'+_billDayLabel(o.date)+'</b><small>'+_billWeekday(o.date)+'</small></span>'+
+    icon+
+    '<span class="bill-row-name"><span class="bill-row-title">'+_catEscHtml(o.name)+'</span>'+
+      (meta?'<span class="bill-row-meta">'+_catEscHtml(meta)+'</span>':'')+'</span>'+
+    '<span class="bill-row-amt">'+fmtMoneyExact(o.amount)+'</span>'+
+  '</div>';
+}
+// The three-month chart. Deliberately CSS bars rather than Chart.js: three values need a
+// shape, not a chart, and a canvas here would need its own theme-change redraw.
+// Colour never carries the message on its own — the heaviest month is also named in the
+// summary sentence above and carries a "Most bills" badge under its label.
+function billsChartHtml(months, heaviest){
+  const max=Math.max.apply(null, months.map(m=>m.total).concat([1]));
+  return '<div class="bills-chart" role="img" aria-label="Scheduled bills by month: '+
+      months.map(m=>m.label+' '+fmtMoney(m.total)).join(', ')+
+      (heaviest?'. Heaviest month: '+heaviest.label+'.':'')+'">'+
+    months.map(m=>{
+      const on=!!heaviest&&m.label===heaviest.label&&m.total>0;
+      const pct=m.total>0?Math.max(4,Math.round(m.total/max*100)):0;
+      return '<div class="bills-col'+(on?' is-top':'')+'">'+
+        '<div class="bills-col-amt">'+(m.total>0?fmtMoney(m.total):'—')+'</div>'+
+        '<div class="bills-col-track">'+
+          '<div class="bills-col-bar" style="height:'+pct+'%">'+
+            // The cap marks the amount worth setting aside — the top of the heaviest bar.
+            // A lighter band inside the fill, so it reads on the bar rather than floating.
+            (on?'<span class="bills-col-cap"></span>':'')+
+          '</div>'+
+        '</div>'+
+        '<div class="bills-col-lbl">'+m.short+'</div>'+
+        // Always emitted, empty when not the heaviest, so every column is the same height
+        // and the three month labels sit on one line.
+        '<div class="bills-col-tag">'+(on?'Most bills':'')+'</div>'+
+      '</div>';
+    }).join('')+
+  '</div>';
+}
+function renderBillsView(){
+  const wrap=document.getElementById('budget-bills-view'); if(!wrap) return;
+  const months=billsMonths();
+  const undated=billsUndatedCount();
+  const anyDated=months.some(m=>m.items.length>0);
+  // Heaviest of the three, only meaningful once something is actually scheduled.
+  const heaviest=anyDated
+    ? months.reduce((a,b)=>b.total>a.total?b:a)
+    : null;
+  const undatedHint=undated
+    ? '<div class="bills-hint">'+undated+' recurring charge'+(undated===1?'':'s')+
+      ' do'+(undated===1?'es':'')+' not have a billing date yet — add one in Settings → Budget setup'+
+      ' to include '+(undated===1?'it':'them')+' here.</div>'
+    : '';
+
+  const summary=
+    '<div class="card bills-summary">'+
+      cardHeader('calendar','Bills calendar')+
+      (anyDated
+        ? '<div class="card-fig">'+fmtMoney(heaviest.total)+'</div>'+
+          '<div class="card-fig-u">'+_catEscHtml(heaviest.label)+' has the most scheduled bills — set aside '+
+            fmtMoney(heaviest.total)+'.</div>'
+        : '<div class="bills-empty-lead">Nothing scheduled in the next three months.</div>'+
+          '<div class="card-fig-u">Add a billing date to a recurring charge in Settings → Budget setup and it will appear here.</div>')+
+      undatedHint+
+    '</div>';
+
+  const chart=anyDated ? '<div class="card bills-chart-card">'+billsChartHtml(months,heaviest)+'</div>' : '';
+
+  const lists=months.map(m=>
+    '<div class="card bills-month">'+
+      '<div class="bills-month-hd">'+
+        '<span class="bills-month-name">'+_catEscHtml(m.label)+'<small>'+m.year+'</small></span>'+
+        '<span class="bills-month-total">'+(m.items.length?fmtMoney(m.total):'—')+'</span>'+
+      '</div>'+
+      (m.items.length
+        ? m.items.map(billRowHtml).join('')
+        : '<div class="bills-month-empty">No scheduled bills this month.</div>')+
+    '</div>').join('');
+
+  wrap.innerHTML=summary+chart+lists;
+}
+
+// ── Until next pay ────────────────────────────────────────────────
+// One question: after the bills due before my next pay, what will I have available?
+// A projection, never a balance — the wording says "projected" everywhere, and it creates
+// nothing: no transactions, no changes to the week, no date is rolled forward.
+// Hidden entirely when no income source is named, rather than inventing a pay day.
+function renderForecastCard(available, week){
+  const el=document.getElementById('bud-forecast-card'); if(!el) return;
+  // Forecasting only makes sense from the current week — a past week has no future to project.
+  if(!budIsCurrentWeek()){ el.innerHTML=''; return; }
+  const f=payCycleForecast(available, week);
+  if(!f){ el.innerHTML=''; return; }
+  const payTxt='Payday '+f.pay.date.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+
+    ' · '+(f.pay.inDays===1?'tomorrow':f.pay.inDays+' days away');
+  const tone=(f.projected==null) ? '' : (f.projected<0 ? ' is-over' : (f.projected<50 ? ' is-tight' : ''));
+
+  let figure, unit;
+  if(f.projected==null){
+    // No income entered yet — state the bills, don't invent a projection.
+    figure=fmtMoneyExact(f.scheduled);
+    unit='in scheduled bills before then · enter this week’s income to project what’s left';
+  } else {
+    figure=(f.projected<0?'-':'')+fmtMoney(Math.abs(f.projected)).replace('-','');
+    unit=f.projected<0
+      ? 'projected shortfall after planned bills'
+      : 'projected after planned bills';
+  }
+
+  const billLines=f.bills.length
+    ? '<div class="fc-bills">'+f.bills.slice(0,4).map(b=>
+        '<div class="fc-bill"><span class="fc-bill-when">'+_billDayLabel(b.date)+'</span>'+
+        '<span class="fc-bill-name">'+_catEscHtml(b.name)+
+          (b.kind==='statement'?'<em>statement</em>':'')+'</span>'+
+        '<span class="fc-bill-amt">'+fmtMoneyExact(b.amount)+'</span></div>').join('')+
+      (f.bills.length>4?'<div class="fc-more">+'+(f.bills.length-4)+' more before payday</div>':'')+
+      '</div>'
+    : '';
+
+  el.innerHTML='<div class="card fc-card'+tone+'">'+
+    '<div class="fc-eyebrow">Until next pay</div>'+
+    '<div class="fc-fig">'+figure+'</div>'+
+    '<div class="fc-unit">'+unit+'</div>'+
+    '<div class="fc-line">'+payTxt+'</div>'+
+    (f.bills.length
+      // Exact, not rounded: this list is short and usually holds one or two per-cent
+      // amounts, so a rounded total disagrees with its own visible arithmetic ($13.99
+      // summarised as $14 directly above the row that says $13.99).
+      ? '<div class="fc-line fc-line-2">'+fmtMoneyExact(f.scheduled)+' in scheduled bills before then</div>'+billLines
+      : '<div class="fc-line fc-ok">No scheduled bills before your next pay.</div>')+
+  '</div>';
+}
+
+// ── Home: Finance check-in ────────────────────────────────────────
+// A one-glance summary that links into Budget, not a second finance dashboard: at most three
+// information lines and one action. Renders empty — and so disappears from Home entirely —
+// when there is neither a scheduled bill nor a named income source, rather than showing
+// placeholder figures for a setup that does not exist.
+function buildFinanceCheckinCard(){
+  const today=localMidnight(getLocalDate());
+  const horizon=new Date(today.getFullYear(), today.getMonth()+3, 0);
+  const next=billOccurrences(today, horizon)[0]||null;
+  const pay=nextPayInfo();
+  if(!next&&!pay) return '';
+  // The same projection the Budget tab shows, from the saved week rather than live inputs —
+  // Home has no budget fields on screen to read.
+  const monday=getMondayOf(0), mk=weekKey(monday);
+  const wk=budCurrentWeekBasis();
+  const inc=weekIncome(wk);
+  const avail=inc>0 ? (inc - weekVarTotal(wk,mk) - weekFixedTotal(wk) - (parseFloat(wk.sav_amount)||0)) : null;
+  const f=pay?payCycleForecast(avail, wk):null;
+
+  const lines=[];
+  if(next){
+    const days=Math.round((next.date-today)/864e5);
+    const when=days===0?'today':days===1?'tomorrow':'in '+days+' days';
+    lines.push('<div class="fin-line"><span class="fin-line-l">'+_catEscHtml(next.name)+
+      (next.kind==='statement'?' <em>statement</em>':'')+
+      '<small>'+when+'</small></span><span class="fin-line-r">'+fmtMoneyExact(next.amount)+'</span></div>');
+  }
+  if(f&&f.projected!=null){
+    lines.push('<div class="fin-line"><span class="fin-line-l">Projected after bills</span>'+
+      '<span class="fin-line-r'+(f.projected<0?' is-over':'')+'">'+
+      (f.projected<0?'-':'')+fmtMoney(Math.abs(f.projected))+'</span></div>');
+  }
+  if(pay){
+    lines.push('<div class="fin-line"><span class="fin-line-l">Next pay · '+_catEscHtml(pay.name)+'</span>'+
+      '<span class="fin-line-r">'+pay.date.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+'</span></div>');
+  }
+  if(!lines.length) return '';
+  return '<div class="card fin-card" onclick="openBudgetWeek()" style="cursor:pointer">'+
+    cardHeader('calendar','Finance check-in')+
+    lines.slice(0,3).join('')+
+    '<button type="button" class="fin-act" onclick="event.stopPropagation();openBudgetWeek()">Open Budget →</button>'+
+  '</div>';
+}
+// Home's Finance check-in and the Upcoming card both need "take me to Budget's Week view",
+// which is not the same as setView('budget') — the tab remembers whichever view was last open.
+function openBudgetWeek(){
+  setView('budget');
+  setBudgetView('week');
+}
+function openBillsCalendar(){
+  setView('budget');
+  setBudgetView('bills');
 }
 // A new transaction is always dated today (openTxnModal defaults to getLocalDate()), so every
 // "log a purchase" affordance has to be gated on the CURRENT week being on screen — not on the
@@ -10990,11 +11424,11 @@ function renderDueBanner(monday){
     // helper always returns the countdown form, which is the whole point of the banner.
     const dueTxt=acctDueText(a)||'';
     const amt=parseFloat(a.statementBalance)||0;
-    return '<div class="card" style="background:var(--amber-bg);border:1px solid var(--amber-border);padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:8px">'+
+    return '<div class="card" style="background:var(--warn-bg);border:1px solid var(--warn-border);padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:8px">'+
       // Icon, not 💳: the stroke inherits the row's amber via currentColor. Same reasoning
       // (and the same glyph) as the Home statement row, which got this right first.
-      '<span style="color:var(--amber-dark);display:flex">'+acctIcon('card',16)+'</span>'+
-      '<span style="font-size:13px;font-weight:600;color:var(--amber-dark)">'+_catEscHtml(a.name)+': '+fmtMoney(amt)+(dueTxt?' · '+dueTxt:'')+'</span>'+
+      '<span style="color:var(--warn-dark);display:flex">'+acctIcon('card',16)+'</span>'+
+      '<span style="font-size:13px;font-weight:600;color:var(--warn-dark)">'+_catEscHtml(a.name)+': '+fmtMoney(amt)+(dueTxt?' · '+dueTxt:'')+'</span>'+
     '</div>';
   }).join('');
 }
@@ -11171,6 +11605,21 @@ function budRecalc(animate){
   // them is how the on-screen total ends up disagreeing with the saved week.
   const _wkKey=weekKey(getMondayOf(currentWeekIdx));
   const _live=Object.assign({}, _wk);
+  // Only ACTIVE NON-RECURRING categories have inputs (renderFixedCard gives recurring charges
+  // a read-only block instead), so merging the live values below stamps fix_ keys for just
+  // those — and weekFixedTotal treats any week carrying fix_ fields as defining its own
+  // category list. Recurring charges therefore dropped straight out of the total: a brand-new
+  // week displayed "Recurring $69.08" directly above "Total fixed $67" until its fixRates were
+  // frozen by the first save, at which point the figure jumped.
+  // Seeding the full current set first makes the merge unable to shrink it, and matches
+  // exactly what budEnsureFixRates writes on that first save — so the number no longer
+  // changes between a new week's first paint and its first keystroke.
+  // Guarded on the week having NEITHER frozen rates NOR explicit fix_ fields, which is
+  // precisely the state where weekFixedTotal would have used the current category list
+  // anyway. A frozen week and a pre-fixRates legacy week both keep their own set untouched.
+  if(!_wk.fixRates && !Object.keys(_wk).some(k=>k.startsWith('fix_'))){
+    loadFixCats().forEach(c=>{ _live['fix_'+c.id]=''; });
+  }
   loadFixCats().forEach(c=>{ const el=document.getElementById('fix-'+c.id); if(el) _live['fix_'+c.id]=el.value||''; });
   loadVarCats().forEach(c=>{ const el=document.getElementById('var-'+c.id); if(el) _live['var_'+c.id]=el.value||''; });
   const totalFixed=weekFixedTotal(_live);
@@ -11250,6 +11699,9 @@ function budRecalc(animate){
   }
   const availLbl=document.getElementById('bud-hero-avail-lbl');
   if(availLbl) availLbl.textContent = (available!==null&&available<0) ? 'Over budget' : 'Available to spend';
+  // The forecast starts from this exact figure AND the exact object it was derived from, so
+  // it can never disagree with the hero directly above it.
+  if(typeof renderForecastCard==='function') renderForecastCard(available, _live);
   if(animate){
     const _el=id=>document.getElementById(id);
     if(available!==null&&available>0) countUp(_el('bud-hero-avail'), available);
@@ -14657,6 +15109,7 @@ function renderHome(){
     review: buildWeekSummaryCard(),
     habits: buildTodayHabitsCard(),
     budget: budgetSnapshot,
+    finance: buildFinanceCheckinCard(),
     balance: balanceRow,
     tiles: quickTiles,
     weight: buildWeightGoalCard(),
@@ -14813,6 +15266,20 @@ function hlPrevBalance(){
     '<div style="display:flex;gap:6px;margin-top:5px">'+cell('Assets','$9,370')+cell('Debts','$1,340')+'</div>'+
   '</div>';
 }
+function hlPrevFinance(){
+  const row=(l,r,s)=>'<div class="hl-row-between" style="padding:2px 0">'+
+    '<span style="font-size:8.5px;font-weight:600;color:var(--text)">'+l+
+      (s?'<span style="color:var(--muted);font-weight:500"> · '+s+'</span>':'')+'</span>'+
+    '<span style="font-size:8.5px;font-weight:800;color:var(--text)">'+r+'</span></div>';
+  return '<div class="hl-prev hl-prev-plain">'+
+    '<div class="hl-lbl">Finance check-in</div>'+
+    '<div style="margin-top:4px">'+
+      row('Spotify','$13.99','in 3 days')+
+      row('Projected after bills','$248','')+
+      row('Next pay','Thu 4 Sep','')+
+    '</div>'+
+  '</div>';
+}
 function hlPrevPRs(){
   const r=(n,v,isNew)=>'<div class="hl-row-between" style="padding:2px 0">'+
     '<span style="font-size:8.5px;font-weight:600;color:var(--text)">'+n+
@@ -14881,8 +15348,12 @@ const HOME_WIDGETS=[
   // id stays 'notes' — it is persisted in the saved Home layout (order/wide/hidden), so
   // renaming it would silently reset the user's dashboard. Only the label changed.
   {id:'notes',    label:'Journal',              tab:'Journal', preview:hlPrevNotes},
+  // Renders empty (and so vanishes from Home) until there is a scheduled bill or a named
+  // income source — see buildFinanceCheckinCard. No parallel preference system: it is hidden
+  // and reordered through Settings → Home Layout like every other card.
+  {id:'finance',  label:'Finance check-in',     tab:'Budget', preview:hlPrevFinance},
 ];
-const HOME_DEFAULT_ORDER=['session','weather','streak','prs','calories','weight','review','habits','budget','balance','tiles','kitchen','notes','recent'];
+const HOME_DEFAULT_ORDER=['session','weather','streak','prs','calories','weight','review','habits','budget','finance','balance','tiles','kitchen','notes','recent'];
 // Which cards span the full desktop grid row by default. User-editable per card
 // (Settings → Home Layout); this is only the starting point. Only the session hero: it is the
 // one card with enough internal content to earn the width (label, play button, 40px title, meta,

@@ -146,9 +146,10 @@
       <button id="source-return-bar" class="source-return-bar hidden" type="button" onclick="returnFromSourceView()"></button>
       <!-- Toggle pill -->
       <div class="sub-toggle" style="display:flex;background:var(--border);border-radius:10px;padding:3px;margin-bottom:16px">
-        <button id="bv-week-btn" onclick="setBudgetView('week')" style="flex:1;padding:8px;border:none;background:var(--card);border-radius:8px;font-size:14px;font-weight:700;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,0.1)">Week</button>
-        <button id="bv-month-btn" onclick="setBudgetView('month')" style="flex:1;padding:8px;border:none;background:transparent;border-radius:8px;font-size:14px;font-weight:500;color:var(--muted)">Month</button>
-        <button id="bv-year-btn" onclick="setBudgetView('year')" style="flex:1;padding:8px;border:none;background:transparent;border-radius:8px;font-size:14px;font-weight:500;color:var(--muted)">Yearly</button>
+        <button id="bv-week-btn" onclick="setBudgetView('week')" style="flex:1;padding:8px;border:none;background:var(--card);border-radius:8px;font-size:13px;font-weight:700;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,0.1)">Week</button>
+        <button id="bv-month-btn" onclick="setBudgetView('month')" style="flex:1;padding:8px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:500;color:var(--muted)">Month</button>
+        <button id="bv-bills-btn" onclick="setBudgetView('bills')" style="flex:1;padding:8px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:500;color:var(--muted)">Bills</button>
+        <button id="bv-year-btn" onclick="setBudgetView('year')" style="flex:1;padding:8px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:500;color:var(--muted)">Yearly</button>
       </div>
 
       <!-- WEEK VIEW -->
@@ -217,6 +218,12 @@
           <!-- Accounts is one small link now rather than half the hero. -->
           <button onclick="openAccounts()" style="width:100%;margin-top:12px;padding:7px;border-radius:20px;border:1px solid rgba(255,255,255,.28);background:transparent;color:rgba(255,255,255,.85);font-size:11px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent">Accounts &amp; net worth →</button>
         </div>
+
+        <!-- Pay-cycle forecast. Filled by renderForecastCard() from budRecalc's own
+             `available` figure so it can never disagree with the hero above it; empty
+             string when there is no named income source or the viewed week is not the
+             current one. -->
+        <div id="bud-forecast-card"></div>
 
         <div id="bud-due-banner"></div>
 
@@ -349,6 +356,12 @@
         <div class="card"><div class="sec-label" style="margin-bottom:12px">Variable spending</div><div id="month-categories"></div></div>
         <div id="month-biggest"></div>
       </div>
+
+      <!-- BILLS CALENDAR VIEW -->
+      <!-- Forward planning only: every row is generated from a recurring charge's saved
+           dueDate + cycle at render time. Nothing here writes back — see the note above
+           catOccurrencesBetween() in js/app.js. -->
+      <div id="budget-bills-view" class="hidden"></div>
 
       <!-- YEARLY VIEW -->
       <div id="budget-year-view" class="hidden">
