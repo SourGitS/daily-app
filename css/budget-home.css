@@ -436,35 +436,68 @@
   .budget-setup-primary-fields.has-cycle{grid-template-columns:minmax(180px,1fr) minmax(130px,.55fr) minmax(130px,.55fr)}
   .budget-setup-primary-fields.has-charge-type{grid-template-columns:minmax(180px,1fr) repeat(3,minmax(120px,.55fr))}
 }
-/* ── Compact Budget period metrics (Month + Year) ───────────────────────────────
-   These are summaries, not six competing hero banners. Keep the card surface neutral and let
-   a narrow semantic edge plus a faint wash carry income/expense/accent meaning. */
+/* ── Budget period hero metrics (Month + Year) ──────────────────────────────────
+   Hero cards, at summary SIZE. Two earlier attempts bracket this one and neither should come
+   back: full-height hero banners (136px tall with a 30px figure) turned six summaries into six
+   competing posters, and flat neutral tiles with a 3px coloured edge fixed the size by giving
+   up the treatment entirely. The gradient, white text and clipped decorative shape stay; the
+   geometry is the compact one.
+
+   Three things this pattern does deliberately:
+   · The stops are SOLID. An rgba() ramp blends into --bg, so its pale end cannot carry a 9px
+     white label in light mode — the reason .ov-hero and .budget-snapshot-card each needed a
+     [data-theme="light"] floor. The accent variant reads --accent-hero / --accent-hero-2,
+     which heroStopsFor() in js/app.js walks down until white clears 4.2:1, so a pale custom
+     accent from the colour picker produces a deep surface rather than an unreadable one.
+   · It is NOT in the press-lift list and carries no cursor:pointer. These cards open nothing;
+     the old .sum-card inherited both and reared up under a finger that had nowhere to go.
+   · The decorative circle is a ::before behind a z-indexed content layer, so it never crosses
+     a figure and never reads as an unexplained data line. */
 .hero-metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:16px;align-items:stretch}
 .hero-metric-grid.hm-two{grid-template-columns:repeat(2,minmax(0,1fr))}
-.hm-card{--hm-tone:var(--muted);--hm-wash:rgba(128,128,128,.06);position:relative;overflow:hidden;
-  border-radius:var(--radius);padding:11px 13px 10px 15px;display:flex;flex-direction:column;
-  gap:4px;min-height:82px;color:var(--text);background:linear-gradient(90deg,var(--hm-wash),transparent 48%),var(--card);
-  border:1px solid var(--border);border-left:3px solid var(--hm-tone);box-shadow:0 3px 10px rgba(0,0,0,.08)}
-.hm-income{--hm-tone:#22C55E;--hm-wash:rgba(34,197,94,.09)}
-.hm-expense{--hm-tone:#EF4444;--hm-wash:rgba(239,68,68,.09)}
-.hm-accent{--hm-tone:rgb(var(--accent-rgb));--hm-wash:rgba(var(--accent-rgb),.09)}
-.hm-neutral{--hm-tone:var(--muted);--hm-wash:rgba(128,128,128,.06)}
-.hm-label{display:flex;align-items:center;gap:5px;font-size:9px;font-weight:800;letter-spacing:.075em;text-transform:uppercase;line-height:1.25;color:var(--muted)}
-.hm-label .card-hd-ico{width:12px;height:12px;flex-shrink:0;color:var(--hm-tone);opacity:1}
-.hm-val{font-family:var(--font-num);font-size:22px;font-weight:800;line-height:1;letter-spacing:-.02em;color:var(--text);overflow-wrap:anywhere}
-.hm-unit{font-family:var(--font-ui);font-size:11px;font-weight:700;color:var(--muted);margin-left:5px}
-.hm-sub{font-size:10.5px;font-weight:600;line-height:1.3;color:var(--muted)}
+.hm-card{--hm-from:#4A4A52;--hm-mid:#33333A;--hm-to:#232329;
+  position:relative;overflow:hidden;border-radius:var(--radius-hero);
+  padding:11px 13px 10px;display:flex;flex-direction:column;gap:4px;min-height:84px;color:#fff;
+  background:linear-gradient(152deg,var(--hm-from) 0%,var(--hm-mid) 52%,var(--hm-to) 100%);
+  box-shadow:0 6px 16px rgba(0,0,0,.18);text-shadow:0 1px 2px rgba(0,0,0,.18)}
+/* Scaled to the compact card — the old 148px circle was drawn for a 136px-tall hero and would
+   swamp this one. */
+.hm-card::before{content:'';position:absolute;width:96px;height:96px;right:-40px;top:-54px;border-radius:50%;background:rgba(255,255,255,.10);pointer-events:none}
+.hm-card::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% -25%,rgba(255,255,255,.12),transparent 62%);pointer-events:none}
+.hm-card>*{position:relative;z-index:1}
+/* Direction, not judgement: green in, red out, the live accent for what stuck, and a cool
+   slate for a figure that is neither — kept off plain graphite because the DEFAULT accent is
+   a neutral grey and the two collided. */
+.hm-income {--hm-from:#1E9553;--hm-mid:#116E3A;--hm-to:#0A4C27}
+.hm-expense{--hm-from:#E03131;--hm-mid:#B91C1C;--hm-to:#8E1616}
+.hm-accent {--hm-from:var(--accent-hero,#4A4A52);--hm-mid:var(--accent-hero,#4A4A52);--hm-to:var(--accent-hero-2,#26262C)}
+.hm-neutral{--hm-from:#3E4557;--hm-mid:#2B303D;--hm-to:#1E222C}
+.hm-label{display:flex;align-items:center;gap:5px;font-size:9px;font-weight:800;letter-spacing:.075em;text-transform:uppercase;line-height:1.25;color:rgba(255,255,255,.82)}
+.hm-label .card-hd-ico{width:12px;height:12px;flex-shrink:0;color:inherit;opacity:.92}
+.hm-val{font-family:var(--font-num);font-size:22px;font-weight:800;line-height:1;letter-spacing:-.02em;color:#fff;margin-top:auto;overflow-wrap:anywhere}
+.hm-unit{font-family:var(--font-ui);font-size:11px;font-weight:700;color:rgba(255,255,255,.78);margin-left:5px}
+.hm-sub{font-size:10.5px;font-weight:600;line-height:1.3;color:rgba(255,255,255,.82)}
 .hm-chip{display:flex}
+/* .tstat's tints are drawn for a card background and disappear on a saturated hero. Four
+   selectors deep on purpose: kitchen-extras.css loads LAST, so its [data-theme="dark"]
+   .tstat.pos (0,3,0) would otherwise outrank a .hm-card .tstat.pos of the same weight. */
+.hero-metric-grid .hm-card .tstat{background:rgba(255,255,255,.17);border-color:rgba(255,255,255,.32);color:#fff;text-shadow:none}
+.hero-metric-grid .hm-card .tstat.pos{color:#BCF3D2}
+.hero-metric-grid .hm-card .tstat.warn{color:#FFE3A4}
+.hero-metric-grid .hm-card .tstat.neg{color:#FFC9C0}
+.hero-metric-grid .hm-card .tstat svg{opacity:.95}
 @media (max-width:560px){
+  /* At ~110px a card the figure would shrink below the point where it reads as the focal
+     element, so the rate leads full-width and income/expenses pair beneath it. */
   .hero-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
   #month-summary-grid.hero-metric-grid>.hm-card:first-child{grid-column:1/-1}
-  .hm-card{min-height:76px;padding:10px 11px 9px 13px}
+  .hm-card{min-height:78px;padding:10px 11px 9px}
   .hm-val{font-size:20px}
 }
 @media (min-width:1024px){
-  .hero-metric-grid{gap:10px;margin-bottom:16px}
-  .hm-card{min-height:86px;padding:12px 14px 11px 16px;gap:4px}
-  .hm-val{font-size:24px}
+  .hero-metric-grid{gap:12px;margin-bottom:18px}
+  .hm-card{min-height:92px;padding:13px 15px 12px;gap:5px}
+  .hm-val{font-size:25px}
 }
 .status-bar-wrap{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:6px}
 .status-bar-fill{height:100%;border-radius:4px;transition:width 0.4s ease}

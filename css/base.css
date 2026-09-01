@@ -15,6 +15,11 @@
      theme-corrected value as an inline style on :root, which outranks this rule. See
      accentTextHex() in js/app.js for why the two can't be the same colour. */
   --accent-text:var(--accent);
+  /* Accent as a hero FILL — white text sits on these, which is the opposite test to
+     --accent-text. Pre-JS fallback only: applyAccent() writes the real contrast-checked pair
+     as inline styles on :root. See heroStopsFor() in js/app.js. */
+  --accent-hero:#4A4A52;
+  --accent-hero-2:#26262C;
   --positive:#52B788;
   --success:#52B788;
   --danger:#E74C3C;

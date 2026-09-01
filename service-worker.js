@@ -102,7 +102,11 @@
 // protein options — one dish, one default protein and any number of alternatives, resolved
 // through a single reader for shopping, cooking, logging, export and AI — plus Share recipe
 // (readable text) and Copy for Daily (lossless JSON) beside the existing Copy for AI.
-const CACHE_NAME = 'daily-v269';
+// v270 puts the hero treatment back on the Month and Year summaries at SUMMARY size — 84px
+// rather than the 136px banners — after the flat-tile version lost the look entirely. The
+// accent variant reads --accent-hero, a contrast-checked pair of stops so any colour the
+// picker can produce still carries its own white labels.
+const CACHE_NAME = 'daily-v270';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

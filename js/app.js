@@ -1295,6 +1295,29 @@ function accentTextHex(hex, isDark){
   }
   return isDark ? '#ffffff' : '#000000';
 }
+// ── Accent as a HERO SURFACE ──────────────────────────────────────
+// A hero card carries white text on a fill, which is the opposite requirement to --accent-text
+// (accent AS text) and a stricter one than --accent itself. The presets were all hand-checked
+// against white, but Appearance also offers a free colour picker, so a pale yellow is
+// reachable and would render a 9px white label invisible.
+// These two stops keep the accent's hue and saturation and walk the lightness down until
+// white clears 4.2:1, so ANY hex resolves to a surface that can carry its own labels.
+// Published as CSS variables rather than written into an inline style: the cards then restyle
+// themselves the moment applyAccent() runs, with no re-render to remember to trigger.
+function heroStopsFor(hex){
+  const fallback={from:'#4A4A52',to:'#26262C'};
+  if(!/^#[0-9a-fA-F]{6}$/.test(hex||'')) return fallback;
+  const [hu,s,l]=_hexToHsl(hex);
+  // Achromatic accents (the default #5C5C5C) keep their zero saturation rather than being
+  // invented into a colour.
+  const sat = s<0.08 ? s : Math.min(0.90, Math.max(0.40, s));
+  let l1=Math.min(0.55, Math.max(0.28, l));
+  let from=_hslToHex(hu,sat,l1);
+  for(let i=0;i<40 && l1>0.12 && _contrastRatio(from,'#ffffff')<4.2; i++){
+    l1-=0.02; from=_hslToHex(hu,sat,l1);
+  }
+  return {from, to:_hslToHex(hu,sat,Math.max(0.08,l1-0.16))};
+}
 function applyAccent(hex){
   const root=document.documentElement;
   root.style.setProperty('--accent', hex);
@@ -1302,6 +1325,11 @@ function applyAccent(hex){
   // Theme-dependent, so applyTheme() re-runs this. A stale value here is the invisible-text
   // bug in mirror image — the previous theme's variant left sitting on the new background.
   root.style.setProperty('--accent-text', accentTextHex(hex, root.getAttribute('data-theme')!=='light'));
+  // Theme-INdependent, unlike --accent-text: a hero fill carries white in both themes, so the
+  // stops are the same either way and applyTheme() re-running this changes nothing.
+  const hs=heroStopsFor(hex);
+  root.style.setProperty('--accent-hero', hs.from);
+  root.style.setProperty('--accent-hero-2', hs.to);
 }
 // Legacy muscle-group → colour; used only to migrate existing accounts onto the new store.
 const LEGACY_DAY_COLOURS = { 'chest-back':'#3B82F6','shoulders-arms':'#8B5CF6','legs':'#EF4444','rest':'#FF6B35' };
