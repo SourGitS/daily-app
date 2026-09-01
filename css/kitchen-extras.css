@@ -1475,7 +1475,7 @@
   padding:5px 11px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--text-2)}
 .aih-fmt-btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
 /* The preview is wide monospace text: it scrolls inside its own box so the page body never does. */
-.aih-preview{margin:10px 0 0;max-height:340px;overflow:auto;-webkit-overflow-scrolling:touch;
+.aih-preview{min-width:0;max-width:100%;width:100%;box-sizing:border-box;margin:10px 0 0;max-height:340px;overflow:auto;-webkit-overflow-scrolling:touch;
   background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px;
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;line-height:1.5;
   color:var(--text-2);white-space:pre;tab-size:2}
@@ -1555,4 +1555,101 @@ button.aih-row{cursor:pointer}
   .aih-mono{min-height:64px;font-size:11px}
   .aih-row{padding:8px 10px;gap:9px}
   .aih-row-s{font-size:12.5px}
+}
+
+/* ── Daily AI guided workflow ────────────────────────────────────
+   The data builder and write-back Inbox are deliberately separate modes. Their state stays
+   in JavaScript for the current session; these surfaces only express that hierarchy. */
+.aihub-wrap{padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 40px)}
+.aih-shell{width:100%;max-width:1180px;margin:0 auto}
+.aih-hero{position:relative;overflow:hidden;margin-bottom:12px;padding:22px;border-radius:var(--radius-hero);
+  color:#fff;background:linear-gradient(145deg,var(--accent-hero,#4A4A52),var(--accent-hero-2,#26262C));
+  box-shadow:0 16px 40px rgba(var(--accent-rgb),.26)}
+.aih-hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 15% -20%,rgba(255,255,255,.22),transparent 58%);pointer-events:none}
+.aih-hero::after{content:'';position:absolute;width:210px;height:210px;right:-72px;top:-120px;border-radius:50%;background:rgba(255,255,255,.09);pointer-events:none}
+.aih-hero>*{position:relative;z-index:1}
+.aih-hero-eyebrow{font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.74);margin-bottom:8px}
+.aih-hero h1{margin:0;font-size:clamp(26px,4.5vw,38px);line-height:1.08;letter-spacing:-.035em;color:#fff}
+.aih-hero p{max-width:720px;margin:10px 0 18px;font-size:14px;line-height:1.55;font-weight:550;color:rgba(255,255,255,.82)}
+.aih-workflow{display:flex;gap:8px;flex-wrap:wrap}
+.aih-workflow span{display:flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid rgba(255,255,255,.2);border-radius:var(--radius-pill);background:rgba(255,255,255,.1);font-size:11.5px;font-weight:700;color:#fff}
+.aih-workflow b{display:grid;place-items:center;width:19px;height:19px;border-radius:50%;background:#fff;color:var(--accent);font-family:var(--font-num);font-size:10px}
+
+.aih-modes{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:0 0 12px;padding:4px;border:1px solid var(--border);border-radius:14px;background:var(--card)}
+.aih-modes button{min-height:42px;appearance:none;border:0;border-radius:10px;background:transparent;color:var(--muted);font-family:inherit;font-size:13.5px;font-weight:750;cursor:pointer}
+.aih-modes button.on{background:var(--accent);color:#fff;box-shadow:0 3px 10px rgba(var(--accent-rgb),.22)}
+
+.aih-ask-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:0}
+.aih-ask-build{min-width:0}
+.aih-step-card{min-width:0;margin-bottom:12px}
+.aih-step-label{display:flex;align-items:center;gap:7px;margin:0 0 10px;font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.aih-step-label>span{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:rgba(var(--accent-rgb),.12);color:var(--accent-text);font-family:var(--font-num);letter-spacing:0}
+
+.aih-presets{display:grid;grid-template-columns:1fr;gap:7px}
+.aih-preset{display:flex;flex-direction:column;gap:3px;min-height:62px;padding:10px 12px;text-align:left;appearance:none;border:1px solid var(--border);border-radius:13px;background:transparent;color:var(--text);font-family:inherit;cursor:pointer}
+.aih-preset.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.09);box-shadow:inset 3px 0 0 var(--accent)}
+.aih-preset-name{font-size:13.5px;font-weight:750}
+.aih-preset-desc{font-size:11.5px;line-height:1.35;color:var(--muted)}
+.aih-request-label{display:block;margin:18px 0 5px;font-size:14px;font-weight:750;color:var(--text)}
+.aih-request-hint{margin-bottom:8px}
+.aih-request{max-width:720px}
+
+.aih-share-lead{margin-bottom:8px;font-size:13.5px;line-height:1.5;color:var(--text-2)}
+.aih-share-lead strong{color:var(--text)}
+.aih-disclosure{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:44px;margin-top:12px;padding:10px 12px;appearance:none;border:1px solid var(--border);border-radius:11px;background:var(--bg);color:var(--accent-text);font-family:inherit;font-size:13px;font-weight:750;cursor:pointer;text-align:left}
+.aih-share-controls{margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.aih-control-title{margin:0 0 8px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.aih-control-title:not(:first-child){margin-top:18px}
+
+.aih-ready-card{align-self:start}
+.aih-ready-request{padding:12px;border-radius:13px;background:var(--bg);border:1px solid var(--border)}
+.aih-ready-request span,.aih-option-label{display:block;margin-bottom:5px;font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.aih-ready-request strong{display:block;max-height:8.4em;overflow:auto;font-size:13.5px;line-height:1.5;color:var(--text)}
+.aih-ready-meta{margin:10px 0 14px;font-size:12.5px;line-height:1.45;color:var(--muted)}
+.aih-copy-btn{width:100%;min-height:48px}
+.aih-more-toggle{margin-top:14px;background:transparent;color:var(--text-2)}
+.aih-more{margin-top:10px;padding:12px;border-radius:13px;background:var(--bg);border:1px solid var(--border)}
+.aih-option-label{margin:14px 0 7px}
+.aih-fmt{margin-top:0}
+.aih-preview-toggle{min-height:40px;padding:8px 0;text-align:left}
+.aih-btn:disabled{cursor:not-allowed;opacity:.46}
+
+.aih-import-flow{max-width:760px;margin:0 auto}
+.aih-import-intro{margin:4px 2px 14px}
+.aih-import-intro h2{margin:0 0 6px;font-size:22px;line-height:1.2;color:var(--text)}
+.aih-import-intro p{margin:0;font-size:13.5px;line-height:1.55;color:var(--muted)}
+.aih-inbox-step{display:flex;align-items:flex-start;gap:10px;margin:16px 0 8px}
+.aih-inbox-step>span{display:grid;place-items:center;flex:0 0 24px;height:24px;border-radius:50%;background:rgba(var(--accent-rgb),.12);color:var(--accent-text);font-family:var(--font-num);font-size:11px;font-weight:800}
+.aih-inbox-step strong{display:block;font-size:13.5px;line-height:1.35;color:var(--text)}
+.aih-inbox-step p{margin:2px 0 0;font-size:11.5px;line-height:1.4;color:var(--muted)}
+.aih-inbox-step-action{margin-bottom:0}
+.aih-format-copy{margin-left:34px;min-height:36px}
+.aih-inbox-card>.card-hd+.aih-inbox-step{margin-top:2px}
+.aih-inbox-sum{margin-top:8px}
+
+.aih-modes button:focus-visible,.aih-preset:focus-visible,.aih-disclosure:focus-visible,.aih-btn:focus-visible,
+.aih-link:focus-visible,.aih-preview-toggle:focus-visible,.aih-fmt-btn:focus-visible,.aih-scope:focus-visible,.aih-sub:focus-visible{
+  outline:3px solid rgba(var(--accent-rgb),.35);outline-offset:2px}
+
+@media (min-width:700px){
+  .aih-presets{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .aih-modes{max-width:430px;margin-left:auto;margin-right:auto}
+}
+@media (min-width:1024px){
+  .aihub-wrap{padding:20px 24px 48px}
+  .aih-hero{padding:28px 30px;margin-bottom:16px}
+  .aih-modes{margin-bottom:16px}
+  .aih-ask-grid{grid-template-columns:minmax(0,1.25fr) minmax(340px,.75fr);gap:16px;align-items:start}
+  .aih-step-card{margin-bottom:16px}
+  .aih-ready-card{position:sticky;top:74px}
+}
+@media (orientation:landscape) and (max-width:1023px) and (max-height:600px){
+  .aihub-wrap{padding:8px 10px calc(env(safe-area-inset-bottom,0px) + 18px)}
+  .aih-hero{padding:14px 16px;margin-bottom:8px}
+  .aih-hero h1{font-size:23px}
+  .aih-hero p{margin:6px 0 9px;font-size:11.5px;line-height:1.4}
+  .aih-workflow span{padding:4px 8px;font-size:10.5px}
+  .aih-modes{margin-bottom:8px;max-width:380px}
+  .aih-modes button{min-height:36px}
+  .aih-step-card{margin-bottom:8px}
 }

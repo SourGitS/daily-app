@@ -6688,24 +6688,30 @@ function aiScopeIsSensitive(id){ const s=aiScope(id); return !!(s&&s.sensitive);
 // because the user ticked them.
 const AI_PRESETS=[
   {id:'general', label:'General context',
+   description:'Share a balanced snapshot and surface what stands out.',
    scopes:['budget','subscriptions','workouts','habits','kitchen'],
    instructions:'Here is a snapshot of how I am tracking. Give me a short read on where I stand and anything that stands out.'},
   {id:'spending_review', label:'Spending review',
+   description:'Find where money went and identify realistic cuts.',
    scopes:['budget','transactions','subscriptions'],
    instructions:'Where did my money actually go this period? Rank variable categories by spend and by how far each ran over its weekly target, point at specific weeks rather than averages, and tell me the two or three cuts worth making with a rough weekly value for each. Then give me a per-category weekly target for next month derived from what I actually spent. Also check whether Daily itself contains an obvious setup or data-entry mistake, such as a usual spending goal that conflicts sharply with recent weeks, and separate that correction from advice about changing my behaviour.'},
   {id:'subscription_audit', label:'Subscription audit',
+   description:'Spot price changes, duplicates and charges worth cancelling.',
    scopes:['subscriptions','transactions'],
    instructions:'Audit my recurring charges. Flag anything that has gone up in price, anything on a trial about to convert, anything paused or cancelled worth tidying up, and anything I appear to be paying for twice. Give me the annual cost of each and tell me which to drop first.'},
   {id:'workout_review', label:'Workout review',
+   description:'Review consistency, volume and progression.',
    scopes:['workouts','body'],
    instructions:'Review my training for this period: consistency, volume trend and progression per exercise. Tell me what is actually moving, what has stalled, and one concrete goal for next month.'},
   {id:'meal_planning', label:'Meal planning',
+   description:'Use recipes, pantry and shopping information.',
    scopes:['kitchen'],
    instructions:'Using the recipes I already have, plan meals for the week and build me a shopping list. Prefer what I already keep in the pantry.'},
   {id:'weekly_review', label:'Weekly review',
+   description:'Summarise the main patterns across Daily.',
    scopes:['budget','transactions','workouts','habits'],
    instructions:'Give me a short weekly review across money, training and habits. What went well, what slipped, and the one thing worth changing next week.'},
-  {id:'custom', label:'Custom', scopes:[], instructions:''}
+  {id:'custom', label:'Custom', description:'Choose the exact information and request yourself.', scopes:[], instructions:''}
 ];
 function aiPreset(id){ return AI_PRESETS.find(p=>p.id===id)||AI_PRESETS[0]; }
 function aiPresetLabel(id){ const p=AI_PRESETS.find(x=>x.id===id); return p?p.label:String(id||''); }
@@ -7531,6 +7537,7 @@ function renderDailyContextMarkdown(ctx){
 // listeners (see AGENTS.md). Half-typed request text is also not something worth mirroring to
 // the cloud.
 const aiHubState={
+  mode:'ask',
   preset:'spending_review',
   scopes:['budget','transactions','subscriptions'],
   rangeKind:'last_4_weeks',
@@ -7542,7 +7549,9 @@ const aiHubState={
   fullRecipes:false,
   fullJournalText:false,
   previewFormat:'markdown',
-  previewOpen:false
+  previewOpen:false,
+  shareOpen:false,
+  moreOpen:false
 };
 let _aiHubPreviewTimer=null;
 
@@ -7603,6 +7612,11 @@ function closeAIHub(){
 // ── Control handlers ──
 // Preset changes rebuild the panel (they move scopes and the request text). Everything else
 // mutates in place so the textarea keeps its caret while the preview updates underneath.
+function aiHubSetMode(mode){
+  if(mode!=='ask'&&mode!=='import') return;
+  aiHubState.mode=mode;
+  renderAIHub();
+}
 function aiHubSetPreset(id){
   const p=aiPreset(id);
   aiHubState.preset=p.id;
@@ -7653,6 +7667,14 @@ function aiHubTogglePreview(){
   aiHubState.previewOpen=!aiHubState.previewOpen;
   aiHubRefreshPreview();
 }
+function aiHubToggleShare(){
+  aiHubState.shareOpen=!aiHubState.shareOpen;
+  renderAIHub();
+}
+function aiHubToggleMore(){
+  aiHubState.moreOpen=!aiHubState.moreOpen;
+  renderAIHub();
+}
 
 // ── Rendering ──
 function aiHubFileBase(ctx){
@@ -7686,7 +7708,7 @@ const AI_COUNT_LABELS={weeks:'week',transactions:'transaction',subscriptions:'sc
   accounts:'account',sessions:'session',weighIns:'weigh-in',habits:'habit',recipes:'recipe',
   journalEntries:'journal entry',openLoops:'open loop'};
 const AI_COUNT_PLURALS={journalEntries:'journal entries'};
-function aiHubSummaryHtml(){
+function aiHubSummaryData(){
   const ctx=aiHubContext();
   const md=renderDailyContextMarkdown(ctx);
   const json=renderDailyContextJSON(ctx);
@@ -7701,18 +7723,25 @@ function aiHubSummaryHtml(){
   const chars=text.length;
   // Deliberately approximate and labelled as such — a real tokeniser is provider-specific.
   const tokens=Math.ceil(chars/4);
+  return {ctx,md,json,text,counts,chips,sensitive,chars,tokens};
+}
+function aiHubShareSummaryHtml(){
+  const d=aiHubSummaryData(), ctx=d.ctx, esc=_catEscHtml;
   let html='';
+  html+='<div class="aih-share-lead"><strong>'+
+    (ctx.scopes.length?ctx.scopes.map(s=>esc(aiScopeLabel(s))).join(', '):'No information selected')+'</strong> · '+
+    esc(aiRangeLabel(ctx.range.kind))+'</div>';
   html+='<div class="aih-sum-line"><span class="aih-sum-k">Including</span><span class="aih-sum-v">'+
     (ctx.scopes.length?ctx.scopes.map(s=>esc(aiScopeLabel(s))).join(', '):'nothing yet — pick at least one below')+'</span></div>';
   html+='<div class="aih-sum-line"><span class="aih-sum-k">Period</span><span class="aih-sum-v">'+
-    esc(ctx.range.from)+' → '+esc(ctx.range.to)+'</span></div>';
-  if(chips) html+='<div class="aih-chips">'+chips+'</div>';
+    esc(aiRangeLabel(ctx.range.kind))+' · '+esc(ctx.range.from)+' → '+esc(ctx.range.to)+'</span></div>';
+  if(d.chips) html+='<div class="aih-chips">'+d.chips+'</div>';
   html+='<div class="aih-sum-line"><span class="aih-sum-k">Size</span><span class="aih-sum-v">'+
-    chars.toLocaleString()+' characters · roughly '+tokens.toLocaleString()+' tokens ('+
+    d.chars.toLocaleString()+' characters · roughly '+d.tokens.toLocaleString()+' tokens ('+
     (aiHubState.previewFormat==='json'?'JSON':'Markdown')+')</span></div>';
-  if(sensitive.length){
+  if(d.sensitive.length){
     html+='<div class="aih-sensitive">Includes sensitive data: <strong>'+
-      sensitive.map(s=>esc(aiScopeLabel(s))).join(', ')+'</strong>. This will be in what you copy or download.</div>';
+      d.sensitive.map(s=>esc(aiScopeLabel(s))).join(', ')+'</strong>. This will be in what you copy or download.</div>';
   }
   if(ctx.scopes.indexOf('kitchen')>=0&&aiHubState.fullRecipes){
     html+='<div class="aih-note">Full recipe contents are included (ingredients and method).</div>';
@@ -7720,19 +7749,40 @@ function aiHubSummaryHtml(){
   if(ctx.scopes.indexOf('notes')>=0){
     html+='<div class="aih-note">Journal export: '+(aiHubState.fullJournalText?'full entry and Open Loop text is included.':'titles and metadata only; body text is excluded.')+'</div>';
   }
-  html+='<button class="aih-preview-toggle" onclick="aiHubTogglePreview()" aria-expanded="'+(aiHubState.previewOpen?'true':'false')+'">'+
-    (aiHubState.previewOpen?'Hide':'Show')+' preview</button>';
-  if(aiHubState.previewOpen){
-    html+='<div class="aih-fmt">'+
-      ['markdown','json'].map(f=>'<button class="aih-fmt-btn'+(aiHubState.previewFormat===f?' on':'')+
-        '" onclick="aiHubSetFormat(\''+f+'\')">'+(f==='json'?'JSON':'Markdown')+'</button>').join('')+'</div>';
-    html+='<pre class="aih-preview">'+esc(text)+'</pre>';
+  return html;
+}
+function aiHubReadyHtml(){
+  const d=aiHubSummaryData(), ctx=d.ctx, esc=_catEscHtml;
+  const request=String(aiHubState.instructions||'').trim();
+  let html='<div class="aih-ready-request"><span>Request</span><strong>'+esc(request||'No request added')+'</strong></div>'+
+    '<div class="aih-ready-meta">'+esc(aiRangeLabel(ctx.range.kind))+' · '+
+    (ctx.scopes.length?ctx.scopes.map(s=>esc(aiScopeLabel(s))).join(', '):'No information selected')+'</div>'+
+    '<button class="aih-btn aih-btn-primary aih-copy-btn" onclick="aiHubCopy()"'+(ctx.scopes.length?'':' disabled')+'>Copy prompt for AI</button>'+
+    '<div class="aih-foot">Paste it into ChatGPT, Claude or another AI. Daily does not send it anywhere automatically.</div>'+
+    '<button class="aih-disclosure aih-more-toggle" onclick="aiHubToggleMore()" aria-expanded="'+(aiHubState.moreOpen?'true':'false')+'">'+
+      '<span>More export options</span><span aria-hidden="true">'+(aiHubState.moreOpen?'−':'+')+'</span></button>';
+  if(aiHubState.moreOpen){
+    html+='<div class="aih-more">'+
+      '<div class="aih-btn-row">'+
+        '<button class="aih-btn" onclick="aiHubDownload(\'markdown\')">Download Markdown</button>'+
+        '<button class="aih-btn" onclick="aiHubDownload(\'json\')">Download JSON</button>'+
+      '</div>'+
+      '<div class="aih-option-label">Preview format</div>'+
+      '<div class="aih-fmt" role="group" aria-label="Preview format">'+
+        ['markdown','json'].map(f=>'<button class="aih-fmt-btn'+(aiHubState.previewFormat===f?' on':'')+
+          '" aria-pressed="'+(aiHubState.previewFormat===f?'true':'false')+'" onclick="aiHubSetFormat(\''+f+'\')">'+(f==='json'?'JSON':'Markdown')+'</button>').join('')+'</div>'+
+      '<button class="aih-preview-toggle" onclick="aiHubTogglePreview()" aria-expanded="'+(aiHubState.previewOpen?'true':'false')+'">'+
+        (aiHubState.previewOpen?'Hide':'Show')+' full raw preview</button>'+
+      (aiHubState.previewOpen?'<pre class="aih-preview">'+esc(d.text)+'</pre>':'')+
+    '</div>';
   }
   return html;
 }
 function aiHubRefreshPreview(){
-  const el=document.getElementById('aihub-summary');
-  if(el) el.innerHTML=aiHubSummaryHtml();
+  const share=document.getElementById('aihub-share-summary');
+  if(share) share.innerHTML=aiHubShareSummaryHtml();
+  const ready=document.getElementById('aihub-ready');
+  if(ready) ready.innerHTML=aiHubReadyHtml();
 }
 
 
@@ -8355,11 +8405,13 @@ function aiInboxHtml(){
   const esc=_catEscHtml;
   const st=aiInboxState;
   let h='';
-  h+=cardHeader('receipt','AI Inbox');
-  h+='<div class="aih-hint">Paste what your AI sends back. Daily checks every action and shows you exactly what it would add or change — nothing is written until you press Apply.</div>';
-  h+='<button class="aih-link" onclick="aiInboxCopySchema()">Copy the format to give your AI →</button>';
-  h+='<textarea id="aihub-inbox-text" class="aih-textarea aih-mono" rows="5" placeholder=\'{"schema":"daily-actions","version":1,"actions":[…]}\' oninput="aiInboxSetText(this.value)">'+esc(st.text)+'</textarea>';
-  h+='<button class="aih-btn aih-btn-wide" onclick="aiInboxCheck()">Check actions</button>';
+  h+=cardHeader('receipt','Import AI actions');
+  h+='<div class="aih-inbox-step"><span>1</span><div><strong>Copy the supported action format</strong><p>Give this to your AI so its suggestions use Daily’s checked format.</p></div></div>';
+  h+='<button class="aih-link aih-format-copy" onclick="aiInboxCopySchema()">Copy supported format →</button>';
+  h+='<div class="aih-inbox-step"><span>2</span><div><strong>Paste the AI response</strong><p>Imported text is treated as untrusted data and cannot run code.</p></div></div>';
+  h+='<textarea id="aihub-inbox-text" class="aih-textarea aih-mono" rows="7" aria-label="Paste AI response" placeholder=\'{"schema":"daily-actions","version":1,"actions":[…]}\' oninput="aiInboxSetText(this.value)">'+esc(st.text)+'</textarea>';
+  h+='<div class="aih-inbox-step aih-inbox-step-action"><span>3</span><div><strong>Check actions</strong><p>Daily validates every action before anything can be selected.</p></div></div>';
+  h+='<button class="aih-btn '+(st.preview?'':'aih-btn-primary ')+'aih-btn-wide" onclick="aiInboxCheck()">Check actions</button>';
 
   if(st.error) h+='<div class="aih-err">'+esc(st.error)+'</div>';
 
@@ -8369,8 +8421,10 @@ function aiInboxHtml(){
     if(c.new) bits.push(c.new+' ready');
     if(c.already) bits.push(c.already+' already applied');
     if(c.error) bits.push(c.error+' with errors');
+    h+='<div class="aih-inbox-step"><span>4</span><div><strong>Review the checks</strong><p>Valid, duplicate and rejected actions stay visibly separate.</p></div></div>';
     h+='<div class="aih-inbox-sum">'+esc(bits.join(' · ')||'Nothing to import')+
        (pv.source?' <span class="aih-src">from '+esc(pv.source)+'</span>':'')+'</div>';
+    if(c.new) h+='<div class="aih-inbox-step"><span>5</span><div><strong>Select actions</strong><p>Untick anything you do not want to apply.</p></div></div>';
     h+='<div class="aih-rows">';
     pv.rows.forEach(r=>{
       const on=!!st.selected[r.index];
@@ -8394,6 +8448,7 @@ function aiInboxHtml(){
     h+='</div>';
     const sel=pv.rows.filter(r=>r.state==='new'&&st.selected[r.index]).length;
     if(c.new){
+      h+='<div class="aih-inbox-step"><span>6</span><div><strong>Apply selected actions</strong><p>This is the first point where Daily writes anything.</p></div></div>';
       h+='<div class="aih-note">Undo is offered straight after applying. It removes only records that Apply created and restores only settings that Apply changed.</div>';
       h+='<button class="aih-btn aih-btn-primary aih-btn-wide"'+(sel?'':' disabled')+' onclick="aiInboxApply()">'+
          (sel?'Apply '+sel+' action'+(sel===1?'':'s'):'Nothing selected')+'</button>';
@@ -8403,6 +8458,7 @@ function aiInboxHtml(){
 
   if(st.result){
     const r=st.result;
+    h+='<div class="aih-inbox-step"><span>7</span><div><strong>Undo if needed</strong><p>The immediate undo only reverses this import.</p></div></div>';
     h+='<div class="aih-result">Applied '+r.applied+' of '+r.total+' action'+(r.total===1?'':'s')+
        (r.skipped?' · '+r.skipped+' skipped':'')+'.</div>';
     if(st.lastApply&&st.lastApply.ids.length)
@@ -8415,10 +8471,14 @@ function renderAIHub(){
   const wrap=document.getElementById('aihub-body'); if(!wrap) return;
   const esc=_catEscHtml;
   const on=id=>aiHubState.scopes.indexOf(id)>=0;
+  const shareNeedsAttention=!aiHubState.scopes.length||
+    (aiHubState.rangeKind==='custom'&&(!aiIsDate(aiHubState.from)||!aiIsDate(aiHubState.to)));
+  const shareOpen=aiHubState.shareOpen||shareNeedsAttention;
 
-  const presets='<div class="aih-pills">'+AI_PRESETS.map(p=>
-    '<button class="aih-pill'+(aiHubState.preset===p.id?' on':'')+'" onclick="aiHubSetPreset(\''+p.id+'\')">'+
-    esc(p.label)+'</button>').join('')+'</div>';
+  const presets='<div class="aih-presets">'+AI_PRESETS.map(p=>
+    '<button class="aih-preset'+(aiHubState.preset===p.id?' on':'')+'" aria-pressed="'+
+      (aiHubState.preset===p.id?'true':'false')+'" onclick="aiHubSetPreset(\''+p.id+'\')">'+
+      '<span class="aih-preset-name">'+esc(p.label)+'</span><span class="aih-preset-desc">'+esc(p.description||'')+'</span></button>').join('')+'</div>';
 
   const ranges='<div class="aih-pills">'+AI_RANGES.map(r=>
     '<button class="aih-pill'+(aiHubState.rangeKind===r.id?' on':'')+'" onclick="aiHubSetRange(\''+r.id+'\')">'+
@@ -8462,45 +8522,50 @@ function renderAIHub(){
     return row;
   }).join('');
 
-  wrap.innerHTML=
-    '<div class="aih-grid">'+
-      '<div class="aih-col aih-build">'+
-        '<div class="card aih-card">'+
-          cardHeader('note','Purpose')+
-          '<div class="aih-hint">Presets set sensible defaults. Change anything you like afterwards.</div>'+
-          presets+
-        '</div>'+
-        '<div class="card aih-card">'+
-          cardHeader('calendar','Period')+
-          ranges+
-        '</div>'+
-        '<div class="card aih-card">'+
-          cardHeader('check','What to include')+
-          '<div class="aih-scopes">'+scopeRows+'</div>'+
-        '</div>'+
-      '</div>'+
-      '<div class="aih-col aih-out">'+
-        '<div class="card aih-card aih-export-card">'+
-          cardHeader('wallet','Export')+
-          '<div id="aihub-summary">'+aiHubSummaryHtml()+'</div>'+
-          '<div class="aih-actions">'+
-            '<button class="aih-btn aih-btn-primary" onclick="aiHubCopy()">Copy for AI</button>'+
-            '<div class="aih-btn-row">'+
-              '<button class="aih-btn" onclick="aiHubDownload(\'markdown\')">Download Markdown</button>'+
-              '<button class="aih-btn" onclick="aiHubDownload(\'json\')">Download JSON</button>'+
-            '</div>'+
-          '</div>'+
-          '<div class="aih-foot">Nothing here is sent anywhere. Daily has no AI connection — the export goes to your clipboard or your downloads, and you paste it wherever you want.</div>'+
-        '</div>'+
-        '<div class="card aih-card aih-inbox-card">'+aiInboxHtml()+'</div>'+
-        '<div class="card aih-card aih-request-card">'+
-          cardHeader('receipt','What to ask for')+
-          '<div class="aih-hint">Optional. This is pasted at the top of the export as your request.</div>'+
-          '<textarea id="aihub-instructions" class="aih-textarea" rows="5" placeholder="e.g. Where can I realistically cut $50 a week?" '+
+  const hero='<section class="aih-hero" aria-labelledby="aih-hero-title">'+
+    '<div class="aih-hero-eyebrow">Daily AI</div><h1 id="aih-hero-title">Use your Daily data with AI</h1>'+
+    '<p>Choose what you need help with. Daily prepares information from your app for ChatGPT or Claude, but nothing is sent automatically.</p>'+
+    '<div class="aih-workflow" aria-label="Ask AI workflow"><span><b>1</b> Choose a goal</span><span><b>2</b> Review your data</span><span><b>3</b> Copy for AI</span></div>'+
+  '</section>';
+  const modes='<div class="aih-modes" role="tablist" aria-label="Daily AI workflow">'+
+    '<button role="tab" aria-selected="'+(aiHubState.mode==='ask'?'true':'false')+'" class="'+(aiHubState.mode==='ask'?'on':'')+'" onclick="aiHubSetMode(\'ask\')">Ask AI</button>'+
+    '<button role="tab" aria-selected="'+(aiHubState.mode==='import'?'true':'false')+'" class="'+(aiHubState.mode==='import'?'on':'')+'" onclick="aiHubSetMode(\'import\')">Import actions</button>'+
+  '</div>';
+
+  let workflow='';
+  if(aiHubState.mode==='ask'){
+    workflow='<div class="aih-ask-grid">'+
+      '<div class="aih-ask-build">'+
+        '<section class="card aih-card aih-step-card">'+
+          '<div class="aih-step-label"><span>1</span> Choose a goal</div>'+cardHeader('note','What do you want help with?')+
+          '<div class="aih-hint">Choose a starting point. You can adjust the information afterwards.</div>'+presets+
+          '<label class="aih-request-label" for="aihub-instructions">What would you like the AI to do?</label>'+
+          '<div class="aih-hint aih-request-hint">Daily adds this request to the information you copy. You can use the suggested request or write your own.</div>'+
+          '<textarea id="aihub-instructions" class="aih-textarea aih-request" rows="5" placeholder="e.g. Where can I realistically cut $50 a week?" '+
             'oninput="aiHubSetInstructions(this.value)">'+esc(aiHubState.instructions)+'</textarea>'+
-        '</div>'+
+        '</section>'+
+        '<section class="card aih-card aih-step-card">'+
+          '<div class="aih-step-label"><span>2</span> Review your data</div>'+cardHeader('check','What Daily will share')+
+          '<div id="aihub-share-summary">'+aiHubShareSummaryHtml()+'</div>'+
+          '<button class="aih-disclosure" onclick="aiHubToggleShare()" aria-expanded="'+(shareOpen?'true':'false')+'">'+
+            '<span>'+(shareOpen?'Hide information controls':'Change information included')+'</span><span aria-hidden="true">'+(shareOpen?'−':'+')+'</span></button>'+
+          (shareOpen?'<div class="aih-share-controls"><div class="aih-control-title">Period</div>'+ranges+
+            '<div class="aih-control-title">Information groups</div><div class="aih-scopes">'+scopeRows+'</div></div>':'')+
+        '</section>'+
       '</div>'+
+      '<section class="card aih-card aih-step-card aih-ready-card">'+
+        '<div class="aih-step-label"><span>3</span> Copy for AI</div>'+cardHeader('wallet','Ready to copy')+
+        '<div id="aihub-ready">'+aiHubReadyHtml()+'</div>'+
+      '</section>'+
     '</div>';
+  } else {
+    workflow='<div class="aih-import-flow">'+
+      '<div class="aih-import-intro"><h2>Bring AI suggestions back into Daily</h2>'+
+        '<p>Paste structured actions created by your AI. Daily checks every action and shows exactly what would change. Nothing is written until you review it and press Apply.</p></div>'+
+      '<section class="card aih-card aih-inbox-card">'+aiInboxHtml()+'</section>'+
+    '</div>';
+  }
+  wrap.innerHTML='<div class="aih-shell">'+hero+modes+workflow+'</div>';
 }
 
 function fallbackCopy(text,done){
