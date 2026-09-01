@@ -2530,7 +2530,7 @@ function buildSideMenu(){
       if(n.id==='budget') html+='<button class="side-menu-item" onclick="openAccounts()"><span class="smi-label">Accounts</span>'+chev+'</button>';
       // After Journal, matching the sidebar: the secondary tools read Accounts → Plans →
       // Journal → Daily + AI, roughly least-to-most occasional.
-      if(n.id==='notes') html+='<button class="side-menu-item" onclick="openAIHub()"><span class="smi-label">Daily + AI</span>'+chev+'</button>';
+      if(n.id==='notes') html+='<button class="side-menu-item" onclick="openAIHub()"><span class="smi-label">Daily AI</span>'+chev+'</button>';
       return html;
     }).join('')+
     '<div class="side-menu-divider"></div>'+
@@ -5292,7 +5292,7 @@ const SETTINGS_SEARCH=[
   {s:'export', label:'Export all data',     sub:'Backup',    a:'stg-card-backup',  keys:'json save file download copy everything'},
   {s:'export', label:'Import backup',       sub:'Restore',   a:'stg-card-restore', keys:'json restore load paste recover file upload'},
   {s:'export', label:'CSV export',          sub:'Spreadsheet export', a:'stg-card-csv', keys:'excel numbers sheets workout budget spreadsheet download'},
-  {s:'export', label:'Daily + AI',          sub:'Context export', a:'stg-card-ai', keys:'chatgpt claude llm prompt context copy'},
+  {s:'export', label:'Daily AI',            sub:'Context export', a:'stg-card-ai', keys:'chatgpt claude llm prompt context copy'},
   {s:'replay', label:'Run setup again',     sub:'Onboarding', keys:'replay welcome walkthrough tour first run setup wizard'}
 ];
 function settingsGroupOf(key){

@@ -116,7 +116,8 @@
 // plus custom-item rename and pantry-scoped removal without changing the schema or reseeding.
 // v274 visually links each monthly spending slice to its matching category total.
 // v275 resolves historical spending IDs to configured category names and merges duplicates.
-const CACHE_NAME = 'daily-v275';
+// v276 renames the user-facing Daily + AI destination to Daily AI.
+const CACHE_NAME = 'daily-v276';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
