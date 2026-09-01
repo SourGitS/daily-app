@@ -909,6 +909,12 @@
 /* Import is the secondary action beside "+ Add Recipe" — outlined so the primary one keeps
    the accent fill, and narrower since the header row is tight on a phone. */
 .kit-import-btn{background:transparent;color:var(--text);border:1px solid var(--border);padding:0 12px}
+@media(max-width:520px){
+  .kit-list-header{display:grid;grid-template-columns:1fr 1fr}
+  .kit-list-header .kit-search{grid-column:1/-1}
+  .kit-list-header .kit-add-recipe-btn{width:100%}
+  .kit-list-header .kit-add-recipe-btn:last-child{grid-column:1/-1}
+}
 .kit-mobile-filter-bar{display:none}
 .kit-filter-group-label{display:none}
 .kit-filter-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}

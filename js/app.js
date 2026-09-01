@@ -184,6 +184,50 @@ function syncBlobListenTS(uid, path, lsKey, tsKey, onUpdate){
   });
   return ref;
 }
+// Home layout is one synced store but its mobile and desktop profiles merge independently.
+// A plain whole-blob timestamp would let the last device edited erase the other form factor.
+function syncHomeLayoutListen(uid,onUpdate){
+  const path='homeLayout', lsKey='daily_home_layout', tsKey=lsKey+'_ts';
+  if(!SYNC_BLOB_REG.some(b=>b.lsKey===lsKey)) SYNC_BLOB_REG.push({path,lsKey,tsKey});
+  const ref=db.ref('users/'+uid+'/'+path);
+  const localT=()=>parseInt(localStorage.getItem(tsKey)||'0',10)||0;
+  const localModel=()=>homeLayoutsNormalise(localStorage.getItem(lsKey),localT());
+  ref.once('value').then(snap=>{
+    if(snap.exists()) return;
+    const model=localModel();
+    ref.set({v:JSON.stringify(model),t:homeLayoutsTimestamp(model)});
+  }).catch(()=>{});
+  ref.on('value',snap=>{
+    const raw=snap.val(); if(raw==null||raw==='') return;
+    const envelope=raw&&typeof raw==='object'&&'v' in raw;
+    const cloudV=envelope?raw.v:raw;
+    const cloudT=envelope?(raw.t||0):0;
+    const local=localModel();
+    const cloud=homeLayoutsNormalise(cloudV,cloudT);
+    let cloudParsed=cloudV; if(typeof cloudParsed==='string'){ try{ cloudParsed=JSON.parse(cloudParsed); }catch(e){ cloudParsed=null; } }
+    const cloudIsV2=!!(cloudParsed&&cloudParsed.schemaVersion===2&&cloudParsed.mobile&&cloudParsed.desktop);
+    // A legacy bare cloud value has no timestamp. It must still replace untouched timestamp-0
+    // defaults, while a timestamped legacy envelope keeps the normal newer-value-wins rule.
+    const legacyPick=mode=>{
+      const localT=local[mode].updatedAt||0;
+      return cloudT>localT || localT===0 ? cloud[mode] : local[mode];
+    };
+    const merged=!cloudIsV2
+      ? {schemaVersion:2,mobile:legacyPick('mobile'),desktop:legacyPick('desktop')}
+      : homeLayoutsMerge(local,cloud);
+    const mergedRaw=JSON.stringify(merged);
+    const mergedT=homeLayoutsTimestamp(merged);
+    let changed=false;
+    if(localStorage.getItem(lsKey)!==mergedRaw){
+      localStorage.setItem(lsKey,mergedRaw);
+      localStorage.setItem(tsKey,String(mergedT));
+      changed=true;
+    }
+    if(JSON.stringify(cloud)!==mergedRaw || cloudT!==mergedT) ref.set({v:mergedRaw,t:mergedT});
+    if(changed){ try{ onUpdate&&onUpdate(); }catch(e){} }
+  });
+  return ref;
+}
 function setSyncStatus(txt){
   const el=document.getElementById('sync-status');
   if(el) el.textContent=txt;
@@ -524,7 +568,7 @@ if(firebaseReady){
     // phone's default reconnecting, which then clobbered the desktop right back). Both use the
     // timestamped sync instead — same fix as Prompt 26 applied to the budget category lists.
     syncBlobListen(user.uid,'homeOrder','daily_home_order',()=>{ if(S.view==='home'&&typeof renderHome==='function') renderHome(); }); // legacy order (seed source)
-    syncBlobListen(user.uid,'homeLayout','daily_home_layout',()=>{ if(S.view==='home'&&typeof renderHome==='function') renderHome(); if(_activeSettingsKey==='homelayout'&&typeof renderHomeLayoutSection==='function') renderHomeLayoutSection(); });
+    syncHomeLayoutListen(user.uid,()=>{ if(S.view==='home'&&typeof renderHome==='function') renderHome(); if(_activeSettingsKey==='homelayout'&&typeof renderHomeLayoutSection==='function') renderHomeLayoutSection(); });
     syncBlobListen(user.uid,'habitsLog','daily_habits_log',()=>{ try{ habitsLog=loadHabitsLog(); }catch(e){} if(typeof refreshHabitsUI==='function') refreshHabitsUI(); });
     syncBlobListen(user.uid,'dynamicColours','daily_dynamic_colours',()=>{ if(typeof applyDayColour==='function') applyDayColour(); });
     syncBlobListen(user.uid,'dayColors','daily_day_colors',()=>{ if(typeof applyDayColour==='function') applyDayColour(); if(S.view==='settings'&&typeof renderDayColorPickers==='function') renderDayColorPickers(); });
@@ -1828,6 +1872,40 @@ document.addEventListener('visibilitychange',()=>{
   rtUpdateSessionLabels();
 });
 
+// ── Form factor ──────────────────────────────────────────────────
+// Presentation follows capability, never device identity. This is the one desktop boundary
+// used by JS; feature-specific Settings/Journal split points remain intentionally wider.
+const LAYOUT_DESKTOP_MIN=1024;
+const LAYOUT_DESKTOP_MQ=typeof window.matchMedia==='function'
+  ? window.matchMedia('(min-width:'+LAYOUT_DESKTOP_MIN+'px)') : null;
+let _layoutMode=LAYOUT_DESKTOP_MQ&&LAYOUT_DESKTOP_MQ.matches?'desktop':'mobile';
+const _layoutModeCallbacks=[];
+let _layoutModeFrame=0;
+function layoutMode(){ return _layoutMode; }
+function layoutIsDesktop(){ return layoutMode()==='desktop'; }
+function layoutReducedMotion(){ return !!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+function layoutOnModeChange(callback){
+  if(typeof callback!=='function') return function(){};
+  if(_layoutModeCallbacks.indexOf(callback)<0) _layoutModeCallbacks.push(callback);
+  return function(){ const i=_layoutModeCallbacks.indexOf(callback); if(i>=0) _layoutModeCallbacks.splice(i,1); };
+}
+function layoutApplyMode(){
+  const next=LAYOUT_DESKTOP_MQ&&LAYOUT_DESKTOP_MQ.matches?'desktop':'mobile';
+  if(document.documentElement) document.documentElement.dataset.layoutMode=next;
+  if(next===_layoutMode) return;
+  const previous=_layoutMode; _layoutMode=next;
+  _layoutModeCallbacks.slice().forEach(fn=>{ try{ fn(next,previous); }catch(e){ console.error('Layout change failed',e); } });
+}
+function layoutQueueModeChange(){
+  if(_layoutModeFrame) return;
+  _layoutModeFrame=requestAnimationFrame(()=>{ _layoutModeFrame=0; layoutApplyMode(); });
+}
+if(LAYOUT_DESKTOP_MQ){
+  if(LAYOUT_DESKTOP_MQ.addEventListener) LAYOUT_DESKTOP_MQ.addEventListener('change',layoutQueueModeChange);
+  else if(LAYOUT_DESKTOP_MQ.addListener) LAYOUT_DESKTOP_MQ.addListener(layoutQueueModeChange);
+}
+layoutApplyMode();
+
 // Timer controls via event delegation. Buttons carry data-action instead of inline
 // onclick — delegation on document is the more reliable tap path in iOS standalone PWAs
 // (matches how the budget/category controls are wired). One listener, no double-fire.
@@ -1847,7 +1925,7 @@ document.addEventListener('click',function(e){
 (function(){
   let dragging=false,dx=0,dy=0,bar=null;
   document.addEventListener('mousedown',e=>{
-    if(window.innerWidth<1024) return;
+    if(!layoutIsDesktop()) return;
     bar=document.getElementById('rt-bar');
     if(!bar||!bar.contains(e.target)||e.target.closest('button')) return;
     const r=bar.getBoundingClientRect();
@@ -2008,7 +2086,7 @@ function deckApplyTextInputPosition(){
   deck.style.marginLeft=(-(deckIdx*deckPanelW()))+'px';
 }
 function deckEnterTextInputMode(){
-  if(deckTextInputMode || window.innerWidth>=1024) return;
+  if(deckTextInputMode || layoutIsDesktop()) return;
   const deck=document.getElementById('swipe-deck'); if(!deck) return;
   deckCancelPending(deck);
   deck.style.transition='none';
@@ -2073,7 +2151,7 @@ function setDeckPosition(idx, animate){
 // A width change (rotation, resize, desktop breakpoint) changes the panel width, so the deck's
 // px transform has to be recomputed or the panels drift out of alignment.
 window.addEventListener('resize',function(){
-  if(deckTextInputMode && window.innerWidth<1024){ deckApplyTextInputPosition(); return; }
+  if(deckTextInputMode && !layoutIsDesktop()){ deckApplyTextInputPosition(); return; }
   setDeckPosition(deckIdx,false);
 });
 // #app-main must NEVER scroll horizontally — the deck is positioned purely by transform, so any
@@ -2142,7 +2220,7 @@ document.addEventListener('focusout',function(){
   // the click and the button "needs multiple taps". These need a deliberate swipe to page.
   const CONTROL_SEL='button, input, select, textarea, a, label, [onclick], [contenteditable]';
   deck.addEventListener('touchstart',e=>{
-    if(window.innerWidth>=1024 || e.touches.length>1) return; // desktop / pinch → no paging
+    if(layoutIsDesktop() || e.touches.length>1) return; // desktop / pinch → no paging
     // Freeze an in-flight snap exactly where it is and drag on from there, so grabbing the deck
     // mid-animation doesn't teleport it to the snap target.
     const cur=deckOffsetPx(deck);
@@ -2249,7 +2327,7 @@ const BACK_CHEVRON='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" 
   const fnOf=name=>(name&&typeof window[name]==='function')?window[name]:null;
   // Desktop keeps the instant open/close: these views sit beside the sidebar rather than
   // covering the screen, so a slide reads as noise there.
-  const animates=()=>window.innerWidth<1024 && !reduced();
+  const animates=()=>!layoutIsDesktop() && !reduced();
 
   // Topmost open overlay — the one a back gesture should act on.
   function topOverlay(){
@@ -2365,7 +2443,7 @@ function isLandscapePhone(){ return !!(LANDSCAPE_MQ && LANDSCAPE_MQ.matches); }
 // Kitchen's landscape recipe book uses the same list/detail composition as desktop. Keep the
 // breakpoint in one predicate so rendering does not mistake that visible detail pane for the
 // portrait overlay model and leave it empty.
-function kitUsesSplitPane(){ return window.innerWidth>=1024 || isLandscapePhone(); }
+function kitUsesSplitPane(){ return layoutIsDesktop() || isLandscapePhone(); }
 function updateNavPill(v){
   const idx=NAV_ORDER.indexOf(v);
   const n=NAV_ORDER.length;
@@ -2429,21 +2507,25 @@ window.addEventListener('resize',function(){ if(typeof S!=='undefined'&&S.view) 
 // animation, and a rotation must not otherwise disturb the screen (entered values, timers and
 // scroll position all have to survive it).
 (function(){
-  const layoutKind=()=> window.innerWidth>=1024 ? 'desktop' : (isLandscapePhone() ? 'landscape' : 'portrait');
+  const layoutKind=()=> layoutIsDesktop() ? 'desktop' : (isLandscapePhone() ? 'landscape' : 'portrait');
   let was=layoutKind();
   function onGeometryChange(){
     const now=layoutKind();
     if(now===was) return;
     was=now;
     if(typeof S!=='undefined'&&S.view==='home'&&typeof renderHome==='function') renderHome();
-    if(typeof S!=='undefined'&&S.view==='kitchen'&&typeof kitRenderList==='function') kitRenderList();
+    if(typeof S!=='undefined'&&S.view==='kitchen'&&typeof kitRehomeForLayout==='function') kitRehomeForLayout();
     // Budget's two desktop columns are a re-parenting of the same nodes, so crossing 1024px has
     // to redistribute them. Cheap and self-guarding — it no-ops unless the mode actually
     // changed — and it works whether or not Budget is the visible tab.
     if(typeof budApplyLayout==='function') budApplyLayout();
     if(typeof statsApplyFinanceLayout==='function') statsApplyFinanceLayout();
+    const activeIdx=typeof S!=='undefined'?NAV_ORDER.indexOf(S.view):-1;
+    if(activeIdx>=0) setDeckPosition(activeIdx,false);
+    if(typeof S!=='undefined'&&S.view) updateNavPill(S.view);
   }
-  window.addEventListener('resize',onGeometryChange);
+  layoutOnModeChange(onGeometryChange);
+  window.addEventListener('resize',function(){ if(!layoutIsDesktop()) onGeometryChange(); });
   // The peer overlays are inset by the sidebar's width, but only at the moment they OPEN — so
   // one opened on desktop and then narrowed past 1024px kept a 260px inset it no longer has
   // room for, pushing its whole layout off the right edge.
@@ -2679,7 +2761,7 @@ function openExerciseLibrary(){
   if(typeof aiHidePeerOverlays==='function') aiHidePeerOverlays('view-exercise-library');
   v.style.display='block';
   // On desktop, leave the sidebar uncovered
-  v.style.left=window.innerWidth>=1024?'260px':'0';
+  v.style.left=layoutIsDesktop()?'260px':'0';
   document.querySelectorAll('.ds-item').forEach(b=>b.classList.remove('active'));
   const _di=document.getElementById('ds-exlib'); if(_di) _di.classList.add('active'); // desktop sidebar peer
   const s=document.getElementById('lib-search'); if(s) s.value='';
@@ -3181,7 +3263,7 @@ function openStatsEvidence(title,html){
   if(back) back.setAttribute('aria-label',S.view==='budget'?'Back to monthly breakdown':'Back to analysis');
   const t=document.getElementById('stats-evidence-title'); if(t) t.textContent=title||'Evidence';
   const c=document.getElementById('stats-evidence-content'); if(c) c.innerHTML=html||'';
-  v.style.display='block'; v.style.left=window.innerWidth>=1024?'260px':'0'; v.scrollTop=0;
+  v.style.display='block'; v.style.left=layoutIsDesktop()?'260px':'0'; v.scrollTop=0;
 }
 function closeStatsEvidence(){
   const v=document.getElementById('view-stats-evidence'); if(v){ v.style.display='none'; v.style.left='0'; }
@@ -4140,7 +4222,7 @@ function emptyState(emoji,heading,sub,btnLabel,btnAction){
 // ── HISTORY view ──────────────────────────────────────────────────
 function openWorkoutHistory(){
   const v=document.getElementById('view-workout-history'); if(!v) return;
-  v.style.display='block'; v.style.left=window.innerWidth>=1024?'260px':'0'; v.scrollTop=0;
+  v.style.display='block'; v.style.left=layoutIsDesktop()?'260px':'0'; v.scrollTop=0;
   renderHistory();
 }
 function closeWorkoutHistory(){
@@ -5019,7 +5101,7 @@ let _exDetailChart=null;
 function openExerciseDetail(name){
   const v=document.getElementById('view-exercise-detail'); if(!v) return;
   v.style.display='block';
-  v.style.left=window.innerWidth>=1024?'260px':'0';
+  v.style.left=layoutIsDesktop()?'260px':'0';
   v.scrollTop=0;
   renderExerciseDetail(name);
 }
@@ -5256,8 +5338,10 @@ const SETTINGS_SECTIONS={
     label:'Home Layout', icon:'grid', tint:'#FF9F0A',
     open:function(a){ openSettingsSection('homelayout',a); },
     summary:function(){
-      const h=new Set(homeLayout().hidden);
-      return HOME_WIDGETS.filter(function(w){ return w.fixed||!h.has(w.id); }).length+' of '+HOME_WIDGETS.length+' cards';
+      const mobile=new Set(homeLayout('mobile').hidden);
+      const desktop=new Set(homeLayout('desktop').hidden);
+      const count=h=>HOME_WIDGETS.filter(function(w){ return w.fixed||!h.has(w.id); }).length;
+      return count(mobile)+' iPhone · '+count(desktop)+' desktop';
     }
   },
   export:{
@@ -5592,7 +5676,7 @@ function openSettingsSection(key,anchor){
     stgSyncNavActive();
   } else {
     overlay.style.display='block';
-    overlay.style.left=window.innerWidth>=1024?'260px':'0';
+    overlay.style.left=layoutIsDesktop()?'260px':'0';
     overlay.scrollTop=0;
   }
   if(anchor) stgRevealCard(anchor);
@@ -6297,6 +6381,12 @@ function restoreFromText(text, report){
   // first sync after reload reads the cloud as "newer" and wipes the restore. Stamping now
   // is what makes the restored copy win.
   const now=Date.now();
+  if(keys.indexOf('daily_home_layout')>=0){
+    const layouts=homeLayoutsNormalise(localStorage.getItem('daily_home_layout'),now);
+    layouts.mobile.updatedAt=now;
+    layouts.desktop.updatedAt=now;
+    localStorage.setItem('daily_home_layout',JSON.stringify(layouts));
+  }
   keys.forEach(k=>{ if(!/_ts$/.test(k)) localStorage.setItem(k+'_ts', String(now)); });
   if(!signedIn){ alert('Data restored. Reloading…'); location.reload(); return true; }
   // Signed in: push before reloading. The cloud-wins stores (profile, budget defaults,
@@ -7382,7 +7472,7 @@ function aiHidePeerOverlays(keepId){
 // Called on a viewport-kind change (see the geometry watcher): the sidebar inset is decided at
 // open time, so a peer left open across the 1024px boundary needs it recomputed.
 function aiSyncOverlayInset(){
-  const inset=window.innerWidth>=1024?'260px':'0';
+  const inset=layoutIsDesktop()?'260px':'0';
   APP_PEER_OVERLAYS.forEach(id=>{
     const el=document.getElementById(id);
     if(el&&el.style.display!=='none'&&el.style.display!=='') el.style.left=inset;
@@ -7392,7 +7482,7 @@ function openAIHub(){
   const v=document.getElementById('view-aihub'); if(!v) return;
   aiHidePeerOverlays('view-aihub');
   v.style.display='block';
-  v.style.left=window.innerWidth>=1024?'260px':'0';   // leave the desktop sidebar uncovered
+  v.style.left=layoutIsDesktop()?'260px':'0';   // leave the desktop sidebar uncovered
   document.querySelectorAll('.ds-item').forEach(b=>b.classList.remove('active'));
   const di=document.getElementById('ds-aihub'); if(di) di.classList.add('active');
   renderAIHub();
@@ -11172,7 +11262,7 @@ const BUD_LAYOUT={
 };
 let _budLayoutMode=null;
 function budApplyLayout(force){
-  const mode=window.innerWidth>=1024?'desktop':'mobile';
+  const mode=layoutMode();
   if(mode===_budLayoutMode && !force) return;
   const plan=BUD_LAYOUT[mode];
   // Bail rather than half-apply if the markup isn't there (Budget lives in index.html, but this
@@ -12887,7 +12977,7 @@ const STATS_FIN_LAYOUT={
 };
 let _statsFinanceLayoutMode=null;
 function statsApplyFinanceLayout(force){
-  const mode=window.innerWidth>=1024?'desktop':'mobile';
+  const mode=layoutMode();
   if(mode===_statsFinanceLayoutMode&&!force) return;
   const plan=STATS_FIN_LAYOUT[mode];
   if(!plan.every(([colId])=>document.getElementById(colId))) return;
@@ -15837,13 +15927,15 @@ function renderHome(){
   };
   // Ordered + visibility-filtered widget list; skip widgets whose HTML is empty right now
   // (e.g. Recent Workout before any session exists) so edit mode has no invisible boxes.
-  const _homeIds=effectiveHomeWidgetIds(homeCards).filter(k=>homeCards[k]);
+  const _homeMode=layoutMode();
+  const _homeLayout=homeLayout(_homeMode);
+  const _homeIds=effectiveHomeWidgetIds(homeCards,_homeMode).filter(k=>homeCards[k]);
   // Cards that span both desktop columns are a saved per-card preference now, not a hardcoded
   // list. The class is emitted on every layout but only means anything inside the desktop
   // media query, where the grid lives.
-  const _wide=new Set(homeLayout().wide);
+  const _wide=new Set(_homeMode==='desktop'?_homeLayout.wide:[]);
   const _cardHtml=k=>'<div class="home-card'+(_wide.has(k)?' home-card-wide':'')+'" data-card-id="'+k+'">'+homeCards[k]+'</div>';
-  if(window.innerWidth>=1024 || isLandscapePhone()){
+  if(layoutIsDesktop() || isLandscapePhone()){
     // Desktop AND landscape phone: ONE grid holding every card in saved order, so visual order
     // == DOM order. This replaced a column-major layout (cards dealt alternately into two flex
     // columns) that packed more tightly but made the visual order unreadable from the DOM —
@@ -15860,7 +15952,7 @@ function renderHome(){
     wrap.innerHTML=_homeIds.map(_cardHtml).join('');
   }
   const _oldRecent=document.getElementById('home-recent-card'); if(_oldRecent) _oldRecent.innerHTML='';
-  document.querySelectorAll('#view-home .card').forEach((card, i) => {
+  if(!layoutReducedMotion()) document.querySelectorAll('#view-home .card').forEach((card, i) => {
     card.style.animationDelay = (i * 45) + 'ms';
     card.classList.add('home-card-enter');
     setTimeout(() => card.classList.remove('home-card-enter'), 600 + i * 45);
@@ -16089,20 +16181,56 @@ const HOME_DEFAULT_ORDER=['session','weather','streak','prs','calories','weight'
 // reordered their Home keeps the old three and has to change it in Settings.
 const HOME_DEFAULT_WIDE=['session'];
 function loadHomeOrder(){ return lsLoad('daily_home_order', null, Array.isArray); } // legacy (seed only)
-// One preference object {hidden:[], order:[]} — the same overlay convention as per-day
-// exercise customisation (dayCustomFor's added/hidden/order). Seeded once from the legacy
-// daily_home_order array so an existing custom order survives the upgrade.
-function homeLayout(){
-  let l=lsLoad('daily_home_layout', null, v=>v&&typeof v==='object'&&!Array.isArray(v));
-  if(!l) l={hidden:[], order:loadHomeOrder()||[]};
-  if(!Array.isArray(l.hidden)) l.hidden=[];
-  if(!Array.isArray(l.order)) l.order=[];
-  // Seeded only when the key is absent, so a user who deliberately turns every card to
-  // half-width keeps an empty array instead of having the defaults re-applied each load.
-  if(!Array.isArray(l.wide)) l.wide=HOME_DEFAULT_WIDE.slice();
-  return l;
+function homeLayoutProfileNormalise(value,mode,sourceT){
+  const v=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+  return {
+    order:Array.isArray(v.order)?v.order.slice():[],
+    hidden:Array.isArray(v.hidden)?v.hidden.slice():[],
+    ...(mode==='desktop'?{wide:Array.isArray(v.wide)?v.wide.slice():HOME_DEFAULT_WIDE.slice()}:{}),
+    updatedAt:Number.isFinite(Number(v.updatedAt))?Number(v.updatedAt):(sourceT||0)
+  };
 }
-function saveHomeLayout(l){ lsSave('daily_home_layout', l, 'homeLayout'); }
+function homeLayoutsNormalise(value,sourceT){
+  let raw=value;
+  if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(e){ raw=null; } }
+  const legacyOrder=loadHomeOrder()||[];
+  if(raw&&raw.schemaVersion===2&&raw.mobile&&raw.desktop){
+    return {schemaVersion:2,
+      mobile:homeLayoutProfileNormalise(raw.mobile,'mobile',sourceT),
+      desktop:homeLayoutProfileNormalise(raw.desktop,'desktop',sourceT)};
+  }
+  const legacy=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
+  const order=Array.isArray(legacy.order)?legacy.order:legacyOrder;
+  const hidden=Array.isArray(legacy.hidden)?legacy.hidden:[];
+  const wide=Array.isArray(legacy.wide)?legacy.wide:HOME_DEFAULT_WIDE;
+  return {schemaVersion:2,
+    mobile:homeLayoutProfileNormalise({order,hidden,updatedAt:sourceT||0},'mobile',sourceT),
+    desktop:homeLayoutProfileNormalise({order,hidden,wide,updatedAt:sourceT||0},'desktop',sourceT)};
+}
+function homeLayoutsTimestamp(model){ return Math.max(model.mobile.updatedAt||0,model.desktop.updatedAt||0); }
+function homeLayoutsMerge(local,cloud){
+  const pick=(mode)=>{
+    const a=local[mode], b=cloud[mode];
+    return homeLayoutProfileNormalise((b.updatedAt||0)>(a.updatedAt||0)?b:a,mode,Math.max(a.updatedAt||0,b.updatedAt||0));
+  };
+  return {schemaVersion:2,mobile:pick('mobile'),desktop:pick('desktop')};
+}
+function homeLayouts(){
+  const raw=localStorage.getItem('daily_home_layout');
+  const sourceT=parseInt(localStorage.getItem('daily_home_layout_ts')||'0',10)||0;
+  const model=homeLayoutsNormalise(raw,sourceT);
+  const canonical=JSON.stringify(model);
+  if(raw!==canonical) lsSave('daily_home_layout',model,'homeLayout');
+  return model;
+}
+function homeLayout(mode){ return homeLayouts()[mode||layoutMode()]; }
+function saveHomeLayout(profile,mode){
+  const target=mode||layoutMode();
+  const model=homeLayouts();
+  model[target]=homeLayoutProfileNormalise(profile,target,0);
+  model[target].updatedAt=_bootPhase?(model[target].updatedAt||0):Date.now();
+  lsSave('daily_home_layout',model,'homeLayout');
+}
 // One-time narrowing of the default wide set (see HOME_DEFAULT_WIDE). Without this the change
 // would only ever reach brand-new installs: saveHomeOrder() writes the whole layout object
 // back, so the moment anyone drags a Home card the seed of the day is frozen into storage and
@@ -16118,15 +16246,15 @@ function migrateDefaultWideOnce(){
     if(l && Array.isArray(l.wide) && l.wide.length===HOME_LEGACY_WIDE.length
        && HOME_LEGACY_WIDE.every(k=>l.wide.indexOf(k)>=0)){
       l.wide=HOME_DEFAULT_WIDE.slice();
-      saveHomeLayout(l);
+      lsSave('daily_home_layout',l,'homeLayout');
     }
   }catch(e){}
   localStorage.setItem('daily_home_wide_narrowed','1');
 }
 // Saved order first (only ids that exist), then defaults/new widgets appended, then the
 // hidden filter — mirroring effectiveExercises' order-then-hidden overlay application.
-function effectiveHomeWidgetIds(cards){
-  const l=homeLayout();
+function effectiveHomeWidgetIds(cards,mode){
+  const l=homeLayout(mode);
   const keys=homeLayoutOrderIds(l);
   const hidden=new Set(l.hidden);
   return keys.filter(k=>cards[k]!==undefined).filter(k=>{ const w=HOME_WIDGETS.find(x=>x.id===k); return (w&&w.fixed) || !hidden.has(k); });
@@ -16146,19 +16274,32 @@ function saveHomeOrder(){
   // desktop bail-out is gone with the column-major layout that made it necessary.
   const order=[...document.querySelectorAll('#home-content [data-card-id]')].map(c=>c.dataset.cardId);
   if(!order.length) return;
-  const l=homeLayout();
+  const mode=layoutMode();
+  const l=homeLayout(mode);
   // Hidden widgets aren't in the DOM — keep them in the order list (after the visible ones)
   // so toggling one back on doesn't strand it outside the saved order.
   l.order=order.concat(HOME_DEFAULT_ORDER.filter(k=>order.indexOf(k)<0));
-  saveHomeLayout(l);
+  saveHomeLayout(l,mode);
 }
 // Settings → Home Layout: one ordered list matching the dashboard, with each widget's source
 // area kept as a small label rather than splitting the order into unrelated groups.
+let _homeLayoutEditorMode=null;
+function homeLayoutEditorMode(){ return _homeLayoutEditorMode||layoutMode(); }
+function homeLayoutChooseProfile(mode){
+  _homeLayoutEditorMode=mode==='desktop'?'desktop':'mobile';
+  renderHomeLayoutSection();
+}
+function homeLayoutProfilePreview(order,hidden,wide,mode){
+  return '<div class="hl-profile-preview is-'+mode+'" aria-label="'+(mode==='mobile'?'iPhone':'Desktop')+' Home preview">'+
+    order.map(id=>{const w=HOME_WIDGETS.find(x=>x.id===id),off=w&&!w.fixed&&hidden.has(id);return '<span class="'+(off?'is-hidden ':'')+(mode==='desktop'&&wide.has(id)?'is-wide':'')+'">'+(w?w.label:id)+'</span>';}).join('')+
+  '</div>';
+}
 function renderHomeLayoutSection(){
   const wrap=document.getElementById('settings-homelayout-section'); if(!wrap) return;
-  const layout=homeLayout();
+  const mode=homeLayoutEditorMode();
+  const layout=homeLayout(mode);
   const hidden=new Set(layout.hidden);
-  const wide=new Set(layout.wide);
+  const wide=new Set(mode==='desktop'?layout.wide:[]);
   const order=homeLayoutOrderIds(layout);
   const visibleCount=HOME_WIDGETS.filter(w=>w.fixed||!hidden.has(w.id)).length;
   const wideCount=HOME_WIDGETS.filter(w=>wide.has(w.id)).length;
@@ -16167,12 +16308,20 @@ function renderHomeLayoutSection(){
   // control below saves the moment you touch it — there is nothing to press at the end.
   wrap.innerHTML=
     '<div class="stg-card" id="stg-card-homelayout">'+
-      stgCardHead('grid','Your dashboard','Arrange the cards in the exact order they should appear on Home. Changes apply straight away.')+
+      stgCardHead('grid','Your dashboards','iPhone and desktop keep independent presentation choices while every Daily record remains shared.')+
+      '<div class="hl-profile-tabs" role="tablist" aria-label="Home layout profile">'+
+        '<button type="button" role="tab" aria-selected="'+(mode==='mobile')+'" class="'+(mode==='mobile'?'active':'')+'" onclick="homeLayoutChooseProfile(\'mobile\')">iPhone layout</button>'+
+        '<button type="button" role="tab" aria-selected="'+(mode==='desktop')+'" class="'+(mode==='desktop'?'active':'')+'" onclick="homeLayoutChooseProfile(\'desktop\')">Desktop layout</button>'+
+      '</div>'+
       '<div class="stg-row"><span class="stg-row-txt"><span class="stg-row-label">Cards shown</span></span>'+
         '<span class="stg-row-val"><strong>'+visibleCount+'</strong> of '+HOME_WIDGETS.length+'</span></div>'+
-      '<p class="stg-help">Phone uses one column. Desktop uses two; '+wideCount+' card'+(wideCount===1?'':'s')+' currently span'+(wideCount===1?'s':'')+' both columns.</p>'+
+      '<p class="stg-help">'+(mode==='mobile'
+        ? 'This profile is a one-column phone layout. Desktop row widths do not apply here.'
+        : 'This profile uses Daily’s fixed two-column desktop grid; '+wideCount+' card'+(wideCount===1?'':'s')+' span'+(wideCount===1?'s':'')+' both columns.')+'</p>'+
+      homeLayoutProfilePreview(order,hidden,wide,mode)+
+      '<button type="button" class="stg-btn hl-copy-btn" onclick="homeLayoutCopy(\''+(mode==='mobile'?'desktop':'mobile')+'\',\''+mode+'\')">Copy '+(mode==='mobile'?'Desktop':'iPhone')+' order and visibility here</button>'+
     '</div>'+
-    '<div class="hl-layout-list">'+order.map((id,index)=>{
+    '<div class="hl-layout-list is-'+mode+'">'+order.map((id,index)=>{
       const w=HOME_WIDGETS.find(x=>x.id===id);
       const off=!w.fixed&&hidden.has(id);
       const isWide=wide.has(id);
@@ -16180,43 +16329,57 @@ function renderHomeLayoutSection(){
         '<div class="hl-widget-head">'+
           '<span class="hl-widget-order">'+(index+1)+'</span>'+
           '<span class="hl-widget-name"><strong>'+w.label+'</strong><small>'+w.tab+'</small></span>'+
-          (w.fixed?'<span class="hl-always">Always shown</span>':'<label class="hl-show"><span>Show</span><span class="toggle-switch"><input type="checkbox"'+(off?'':' checked')+' onchange="homeWidgetToggle(\''+id+'\',this.checked)"><span class="toggle-slider"></span></span></label>')+
+          (w.fixed?'<span class="hl-always">Always shown</span>':'<label class="hl-show"><span>Show</span><span class="toggle-switch"><input type="checkbox"'+(off?'':' checked')+' onchange="homeWidgetToggle(\''+id+'\',this.checked,\''+mode+'\')"><span class="toggle-slider"></span></span></label>')+
         '</div>'+
         '<div class="hl-widget-preview">'+(w.preview?w.preview():'')+'</div>'+
         '<div class="hl-widget-actions">'+
-          '<div class="hl-order-actions"><button type="button" aria-label="Move '+w.label+' up" onclick="homeWidgetMove(\''+id+'\',-1)"'+(index===0?' disabled':'')+'>↑</button><button type="button" aria-label="Move '+w.label+' down" onclick="homeWidgetMove(\''+id+'\',1)"'+(index===order.length-1?' disabled':'')+'>↓</button></div>'+
-          '<button type="button" class="hl-width-btn'+(isWide?' is-wide':'')+'" aria-pressed="'+(isWide?'true':'false')+'" onclick="homeWidgetWidth(\''+id+'\','+(!isWide)+')"><span>Desktop</span><strong>'+(isWide?'Full row':'Half row')+'</strong></button>'+
+          '<div class="hl-order-actions"><button type="button" aria-label="Move '+w.label+' up" onclick="homeWidgetMove(\''+id+'\',-1,\''+mode+'\')"'+(index===0?' disabled':'')+'>↑</button><button type="button" aria-label="Move '+w.label+' down" onclick="homeWidgetMove(\''+id+'\',1,\''+mode+'\')"'+(index===order.length-1?' disabled':'')+'>↓</button></div>'+
+          (mode==='desktop'?'<button type="button" class="hl-width-btn'+(isWide?' is-wide':'')+'" aria-pressed="'+(isWide?'true':'false')+'" onclick="homeWidgetWidth(\''+id+'\','+(!isWide)+',\'desktop\')"><span>Desktop</span><strong>'+(isWide?'Full row':'Half row')+'</strong></button>':'')+
         '</div>'+
       '</article>';
     }).join('')+'</div>';
 }
+function homeLayoutCopy(from,to){
+  const fromLabel=from==='mobile'?'iPhone':'Desktop';
+  const toLabel=to==='mobile'?'iPhone':'Desktop';
+  if(!confirm('Copy '+fromLabel+' order and visibility to '+toLabel+'?\n\n'+toLabel+' row-width choices will stay unchanged.')) return;
+  const source=homeLayout(from), target=homeLayout(to);
+  target.order=source.order.slice();
+  target.hidden=source.hidden.slice();
+  saveHomeLayout(target,to);
+  if(typeof renderHome==='function'&&layoutMode()===to) renderHome();
+  renderHomeLayoutSection();
+}
 // Half-width (one grid column) vs full-width (both) on the desktop Home grid.
-function homeWidgetWidth(id,on){
-  const l=homeLayout();
+function homeWidgetWidth(id,on,mode){
+  mode=mode||'desktop';
+  const l=homeLayout(mode);
   l.wide=l.wide.filter(x=>x!==id);
   if(on) l.wide.push(id);
-  saveHomeLayout(l);
-  if(typeof renderHome==='function') renderHome();
+  saveHomeLayout(l,mode);
+  if(typeof renderHome==='function'&&layoutMode()===mode) renderHome();
   renderHomeLayoutSection();
 }
-function homeWidgetToggle(id,on){
-  const l=homeLayout();
+function homeWidgetToggle(id,on,mode){
+  mode=mode||homeLayoutEditorMode();
+  const l=homeLayout(mode);
   l.hidden=l.hidden.filter(x=>x!==id);
   if(!on) l.hidden.push(id);
-  saveHomeLayout(l);
-  if(typeof renderHome==='function') renderHome();
+  saveHomeLayout(l,mode);
+  if(typeof renderHome==='function'&&layoutMode()===mode) renderHome();
   renderHomeLayoutSection();
 }
-function homeWidgetMove(id,direction){
-  const l=homeLayout();
+function homeWidgetMove(id,direction,mode){
+  mode=mode||homeLayoutEditorMode();
+  const l=homeLayout(mode);
   const order=homeLayoutOrderIds(l);
   const from=order.indexOf(id);
   const to=from+direction;
   if(from<0||to<0||to>=order.length) return;
   [order[from],order[to]]=[order[to],order[from]];
   l.order=order;
-  saveHomeLayout(l);
-  if(typeof renderHome==='function') renderHome();
+  saveHomeLayout(l,mode);
+  if(typeof renderHome==='function'&&layoutMode()===mode) renderHome();
   renderHomeLayoutSection();
 }
 // ── Height cap for cards that grow with your data ──────────────────
@@ -16252,7 +16415,7 @@ function applyHomeCardCaps(){
     // Caps apply wherever cards share a row — desktop and the landscape rail layout alike.
     // In the portrait single-column stack a tall card costs nothing but its own scroll, so
     // there is nothing to cap.
-    if((window.innerWidth<1024 && !isLandscapePhone()) || HOME_CAPPABLE.indexOf(id)<0) return;
+    if((!layoutIsDesktop() && !isLandscapePhone()) || HOME_CAPPABLE.indexOf(id)<0) return;
     const inner=w.firstElementChild; if(!inner) return;
     const expanded=_homeExpanded.has(id);
     // Measure uncapped, so a card that only just fits keeps no button at all.
@@ -16411,7 +16574,7 @@ function applyHomeEditMode(){
 function buildHomeRecentCard(){
   if(!S.sessions.length) return '';
   const recent=[...S.sessions].sort((a,b)=>a.date<b.date?-1:1).reverse();
-  const collapsible=recent.length>HOME_RECENT_ROWS&&(window.innerWidth>=1024||isLandscapePhone());
+  const collapsible=recent.length>HOME_RECENT_ROWS&&(layoutIsDesktop()||isLandscapePhone());
   const expanded=collapsible&&_homeExpanded.has('recent');
   const rows=recent.map((s,i)=>{
     const m=effortMeta(s.effort);
@@ -16518,7 +16681,7 @@ function swapSyncKeyboard(){
   // top edge moves with it, and ignoring that leaves the sheet floating over the keys.
   const kb = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
   // >100px ≈ a keyboard, the same threshold adjustModalsForKeyboard uses to ignore URL-bar jitter.
-  if(!vv || window.innerWidth>=1024 || kb<=100){ swapClearKeyboardGeometry(modal); return; }
+  if(!vv || layoutIsDesktop() || kb<=100){ swapClearKeyboardGeometry(modal); return; }
   const gap=8;
   modal.style.bottom=Math.round(kb)+'px';
   modal.style.maxHeight=Math.max(140, Math.round(vv.height-gap*2))+'px';
@@ -16534,7 +16697,7 @@ function swapSyncKeyboard(){
 // • Non-modal inputs (budget rows, settings): scroll into view so they aren't hidden.
 document.addEventListener('focusin', function(e){
   const el = e.target;
-  if(!el || window.innerWidth >= 1024) return;
+  if(!el || layoutIsDesktop()) return;
   if(el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT'){
     if(el.closest('#txn-modal')){
       vpSync();
@@ -16892,7 +17055,7 @@ function openSplitEditor(){
   SE.days = splitToDays(splitCfg()); SE.target=-1; SE.pickerQuery=''; SE.container='split-editor-wrap';
   const v=document.getElementById('view-split-editor'); if(!v) return;
   v.style.display='block';
-  v.style.left=window.innerWidth>=1024?'260px':'0';
+  v.style.left=layoutIsDesktop()?'260px':'0';
   renderSplitEditor('split-editor-wrap');
   if(typeof closeMenu==='function') closeMenu();
 }
@@ -16915,7 +17078,7 @@ function saveSplitEditor(){
 function openBudgetEditor(){
   const v=document.getElementById('view-budget-editor'); if(!v) return;
   v.style.display='block';
-  v.style.left=window.innerWidth>=1024?'160px':'0';
+  v.style.left=layoutIsDesktop()?'160px':'0';
   renderBudgetEditor();
   if(typeof closeMenu==='function') closeMenu();
 }
@@ -16955,7 +17118,7 @@ function openAccounts(){
   const v=document.getElementById('view-accounts'); if(!v) return;
   if(typeof aiHidePeerOverlays==='function') aiHidePeerOverlays('view-accounts');
   v.style.display='block';
-  v.style.left=window.innerWidth>=1024?'260px':'0'; // leave the desktop sidebar uncovered
+  v.style.left=layoutIsDesktop()?'260px':'0'; // leave the desktop sidebar uncovered
   // Sidebar peer highlight (mirrors openExerciseLibrary): mark Accounts active, clear the rest.
   document.querySelectorAll('.ds-item').forEach(b=>b.classList.remove('active'));
   const _di=document.getElementById('ds-accounts'); if(_di) _di.classList.add('active');
@@ -18629,7 +18792,7 @@ function kitCookFinish(){
   kitExitCooking();
   kitShowToast('Well done! 🎉');
   kitRenderList();
-  if(kitCookState.recipeId && window.innerWidth>=1024) kitRefreshOpenDetail();
+  if(kitCookState.recipeId && layoutIsDesktop()) kitRefreshOpenDetail();
 }
 function kitCookGo(dir){
   const rv=kitCookResolve(); if(!rv) return;
@@ -18937,6 +19100,21 @@ function kitCloseDetail(){
   updateKitFab();
   kitState.selectedId=null;
   if(kitUsesSplitPane()) kitRenderList();
+}
+function kitRehomeForLayout(){
+  const ov=document.getElementById('kit-detail-overlay');
+  if(kitUsesSplitPane()){
+    if(ov) ov.style.display='none';
+    kitRenderList();
+  } else if(kitState.selectedId&&kitRecipes.some(r=>r.id===kitState.selectedId)){
+    kitRenderList();
+    kitRenderDetail(kitState.selectedId,document.getElementById('kit-detail-overlay-inner'));
+    if(ov) ov.style.display='flex';
+  } else {
+    if(ov) ov.style.display='none';
+    kitRenderList();
+  }
+  updateKitFab();
 }
 function kitRefreshOpenDetail(){
   if(kitUsesSplitPane()){
@@ -19708,7 +19886,7 @@ function kitOpenForm(id){
   ov.classList.remove('hidden');
   if(typeof updateKitFab==='function') updateKitFab();
   // full-screen on mobile
-  if(window.innerWidth<1024){
+  if(!layoutIsDesktop()){
     // Fixed top padding — opaque status bar reserves its height; no env(safe-area-inset-top)
     // double-count (see #app-header). Bottom inset kept.
     ov.style.cssText='position:fixed;inset:0;background:var(--bg);z-index:180;display:flex;flex-direction:column;overflow-y:auto;padding:16px 0 env(safe-area-inset-bottom,24px);align-items:stretch;justify-content:flex-start';
@@ -20249,7 +20427,7 @@ function kitShopRenderSelector(){
     wrap.innerHTML=location+'<div class="empty" style="padding-top:64px"><div style="font-size:48px">🛒</div><div style="font-size:16px;font-weight:600;margin-top:12px">No recipes yet</div><div style="font-size:13px;color:var(--muted);margin-top:6px">Add recipes first, then build a list.</div></div>';
     return;
   }
-  const recs=[...kitRecipes].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const recs=[...kitRecipes].sort((a,b)=>(b.favourite?1:0)-(a.favourite?1:0)||(a.name||'').localeCompare(b.name||''));
   let html=location+'<div class="kitshop-heading">What are you cooking this week?</div>';
   html+='<div class="kitshop-sel-list">';
   recs.forEach(r=>{
@@ -21260,6 +21438,7 @@ try {
   migrateRetiredAccentOnce(); // one-time: retired orange default → neutral grey
   budFreezeLegacyRatesOnce(); // one-time: pin pre-existing weeks so recurring prices stop floating
   migrateDefaultWideOnce();   // one-time: three full-width Home cards → just the session hero
+  homeLayouts();              // boot-safe v1 → independent iPhone/desktop Home profiles
   budCleanupUnnamedCatsOnce(); // one-time: clear machine-id rows left by unnamed categories
   // Warm the timed-exercise cache at boot: getPR/getPoints read it, and Stats can render
   // before renderLog has ever run.
@@ -22848,7 +23027,7 @@ function vpSyncOverlay(){
   if(!m){ vpClearOverlayGeometry(); return; }
   const vv=window.visualViewport;
   // Desktop keeps the plain centred sheet; there is no keyboard stealing the viewport there.
-  if(!vv || window.innerWidth>=1024){ vpClearOverlayGeometry(m); return; }
+  if(!vv || layoutIsDesktop()){ vpClearOverlayGeometry(m); return; }
   m.style.top=Math.round(vv.offsetTop)+'px';
   m.style.left=Math.round(vv.offsetLeft)+'px';
   m.style.width=Math.round(vv.width)+'px';
@@ -22901,7 +23080,7 @@ function deckMisalignPx(){
 }
 function vpSyncDeck(){
   if(typeof deckPanelW!=='function'||typeof setDeckPosition!=='function') return;
-  if(window.innerWidth>=1024) return;                 // desktop pages via .deck-active
+  if(layoutIsDesktop()) return;                 // desktop pages via .deck-active
   if(deckDragging||deckRaf||deckSnapH) return;        // a finger or a running snap owns it
   if(Math.abs(deckMisalignPx())<=1) return;           // already where it belongs
   if(typeof deckTextInputMode!=='undefined'&&deckTextInputMode) deckApplyTextInputPosition();
