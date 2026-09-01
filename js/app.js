@@ -59,11 +59,18 @@ function isEmbeddedBrowser(){
   if(/iPhone|iPad/.test(ua) && !/Safari/.test(ua)) return true;
   return false;
 }
+function authUserPhoto(user){
+  if(!user) return '';
+  if(user.photoURL) return user.photoURL;
+  const provider=(user.providerData||[]).find(p=>p&&p.photoURL);
+  return provider?provider.photoURL:'';
+}
 function updateHeaderAvatar(){
   const btn=document.getElementById('header-avatar'); if(!btn) return;
   const user=(firebaseReady&&auth)?auth.currentUser:null;
-  if(user&&user.photoURL){
-    btn.innerHTML='<img src="'+user.photoURL+'" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover">';
+  const photo=authUserPhoto(user);
+  if(photo){
+    btn.innerHTML='<img src="'+photo+'" referrerpolicy="no-referrer" alt="" style="width:100%;height:100%;object-fit:cover">';
     btn.style.background='transparent';
   } else {
     const name=profileData.name||S.personalInfo?.name||'';
@@ -596,6 +603,7 @@ if(firebaseReady){
     setSyncStatus('Not signed in');
   }
   updateHeaderAvatar();
+  renderSettingsTopCard();
   renderAccountSection();
     });
   } catch(e){
@@ -5408,7 +5416,7 @@ function renderSettingsTopCard(){
   if(!av) return;
   const user=(firebaseReady&&auth)?auth.currentUser:null;
   if(user){
-    const photo=user.photoURL;
+    const photo=authUserPhoto(user);
     const uname=user.displayName||profileData.name||'Google user';
     av.classList.toggle('stg-avatar-grad',!photo);
     av.innerHTML=photo?'<img src="'+photo+'" referrerpolicy="no-referrer" alt="">':'<span style="font-size:20px;font-weight:800;color:#fff">'+uname.charAt(0).toUpperCase()+'</span>';
@@ -5433,7 +5441,9 @@ function updateDesktopSidebar(){
   const user=(firebaseReady&&auth)?auth.currentUser:null;
   const name=(user&&user.displayName)||profileData.name||S.personalInfo?.name||'';
   const initials=name?name.trim().split(/\s+/).map(w=>w.charAt(0).toUpperCase()).slice(0,2).join(''):'?';
-  av.textContent=initials;
+  const photo=authUserPhoto(user);
+  av.classList.toggle('has-photo',!!photo);
+  av.innerHTML=photo?'<img src="'+photo+'" referrerpolicy="no-referrer" alt="">':initials;
   if(nm) nm.textContent=name||'Not signed in';
   if(sy) sy.textContent=user?'Synced':'Local only';
 }

@@ -465,7 +465,7 @@ button.ov-day{cursor:pointer}
   .ov-cell{min-height:104px;padding:16px;border-bottom:0}
   .ov-cell:nth-child(2){border-right:1px solid var(--border)}
   .ov-cell-v{font-size:25px}
-  .ov-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+  .ov-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:stretch}
   .ov-block{margin-bottom:0}
   .rev-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
   #sub-body{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
