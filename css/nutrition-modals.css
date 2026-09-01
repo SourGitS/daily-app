@@ -1,8 +1,3 @@
-/* ── Calorie overlay ── */
-#calorie-overlay{position:fixed;inset:0;background:var(--bg);z-index:100;overflow-y:auto;padding:16px;padding-bottom:80px;display:none;flex-direction:column}
-#calorie-overlay-header{display:flex;align-items:center;gap:12px;margin-bottom:20px}
-#calorie-overlay-back{background:none;border:none;color:var(--text);font-size:22px;cursor:pointer;padding:4px 8px}
-
 /* ── Modals ── */
 /* position:fixed resolves against the LAYOUT viewport, which iOS does not shrink for the
    keyboard, so a bottom-aligned sheet and its button row would sit behind it. Short sheets
@@ -203,18 +198,29 @@
 .tdee-card-lbl{font-size:11px;color:var(--muted);margin-top:2px}
 .tdee-card-active{font-size:10px;font-weight:600;margin-top:4px}
 
-/* Calorie log */
-.cal-entry{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
-.cal-entry-name{font-size:13px;flex:1;margin-right:8px;word-break:break-word}
-.cal-entry-kcal{font-size:13px;font-weight:600;flex-shrink:0}
-.cal-del-btn{font-size:13px;color:var(--danger);background:none;border:none;cursor:pointer;padding:0 4px;margin-left:6px;flex-shrink:0}
-.cal-progress-bar{height:6px;background:var(--border);border-radius:3px;margin:8px 0;overflow:hidden}
-.cal-progress-fill{height:6px;border-radius:3px;transition:width 0.35s}
-.cal-add-row{display:flex;gap:8px;margin:12px 0}
-.cal-food-input{flex:1;height:44px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;padding:0 12px;background:var(--card);color:var(--text);font-family:inherit}
-.cal-food-input:focus{outline:none;border-color:var(--blue)}
-.cal-kcal-input{width:76px;height:44px;border:1.5px solid var(--border);border-radius:8px;font-size:15px;font-weight:500;text-align:center;background:var(--card);color:var(--text);-webkit-appearance:none;appearance:none;font-family:inherit}
-.cal-kcal-input:focus{outline:none;border-color:var(--blue)}
-.cal-add-btn{padding:0 14px;height:44px;background:var(--header);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;flex-shrink:0}
-
-
+#view-nutrition{--nut-gap:12px}
+.nut-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+.nut-title{font-family:var(--font-num);font-size:27px;font-weight:800;letter-spacing:-.03em;color:var(--text)}
+.nut-date{font-size:12px;color:var(--muted);margin-top:2px}
+.nut-tabs{display:flex;background:var(--border);border-radius:12px;padding:3px;margin-bottom:14px;position:sticky;top:0;z-index:5}
+.nut-tab{flex:1;border:0;background:transparent;color:var(--muted);border-radius:9px;padding:9px 5px;font:700 12px var(--font-ui);cursor:pointer}
+.nut-tab.active{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.nut-hero{border-radius:20px;padding:18px;background:linear-gradient(145deg,rgba(var(--accent-rgb),.92),rgba(var(--accent-rgb),.55));color:#fff;margin-bottom:var(--nut-gap)}
+.nut-hero-row{display:flex;align-items:flex-end;justify-content:space-between;gap:14px}
+.nut-kcal{font-family:var(--font-num);font-size:38px;font-weight:800;line-height:1;letter-spacing:-.04em}
+.nut-kcal-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.72;margin-top:5px}
+.nut-status{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:rgba(255,255,255,.18);font-size:11px;font-weight:800}
+.nut-progress{height:5px;border-radius:5px;background:rgba(255,255,255,.2);overflow:hidden;margin:15px 0 8px}.nut-progress>i{display:block;height:100%;background:#fff;border-radius:inherit}
+.nut-target-note{font-size:12px;font-weight:600;opacity:.82}
+.nut-macros{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.nut-macro{text-align:center;padding:8px 4px;border-radius:11px;background:rgba(255,255,255,.13)}.nut-macro b{display:block;font-family:var(--font-num);font-size:17px}.nut-macro span{font-size:10px;opacity:.72;text-transform:uppercase;letter-spacing:.08em}
+.nut-meal{background:var(--surface-card,var(--card));border:1px solid var(--border);border-radius:16px;margin-bottom:10px;overflow:hidden}.nut-meal-hd{display:flex;align-items:center;justify-content:space-between;padding:13px 14px;border-bottom:1px solid var(--border)}.nut-meal-name{font-size:14px;font-weight:800}.nut-meal-total{font-size:12px;color:var(--muted);font-weight:700}
+.nut-entry{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer}.nut-entry:last-of-type{border-bottom:0}.nut-entry-name{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.nut-entry-sub{font-size:11px;color:var(--muted);margin-top:2px}.nut-entry-kcal{font-family:var(--font-num);font-size:13px;font-weight:700}.nut-entry-kcal.unknown{color:var(--warn)}
+.nut-add{width:100%;border:0;background:transparent;color:var(--accent-text);font:800 12px var(--font-ui);text-align:left;padding:11px 14px;cursor:pointer}
+.nut-search{width:100%;padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--text);font:600 14px var(--font-ui);box-sizing:border-box;margin-bottom:10px}
+.nut-section-label{font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);margin:16px 2px 7px}.nut-food-list{background:var(--surface-card,var(--card));border:1px solid var(--border);border-radius:15px;overflow:hidden}.nut-food-row{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;text-align:left;padding:12px 13px;border:0;border-bottom:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer}.nut-food-row:last-child{border-bottom:0}.nut-food-row b{display:block;font-size:13px}.nut-food-row small{display:block;font-size:11px;color:var(--muted);margin-top:2px}.nut-food-kcal{font-family:var(--font-num);font-size:12px;color:var(--muted);align-self:center}.nut-empty{text-align:center;color:var(--muted);font-size:13px;padding:28px 14px}
+.nut-source{font-size:11px;line-height:1.55;color:var(--muted);padding:13px 3px}.nut-source a{color:var(--accent-text)}
+.cw-bar.cw-partial{background:repeating-linear-gradient(135deg,var(--warn) 0 4px,transparent 4px 7px)!important;border:1px solid var(--warn)}
+.nut-review-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:12px 13px;border-bottom:1px solid var(--border)}.nut-review-row:last-child{border-bottom:0}.nut-review-row b{font-size:13px}.nut-review-state{font-size:10px;font-weight:800;border-radius:999px;padding:4px 8px;background:var(--border);white-space:nowrap}.nut-review-state.partial,.nut-review-state.missing{color:var(--warn)}.nut-review-state.calculated{color:var(--success)}
+.nut-sheet-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}.nut-field{display:flex;flex-direction:column;gap:5px}.nut-field.full{grid-column:1/-1}.nut-field label{font-size:11px;font-weight:800;color:var(--muted)}.nut-field input,.nut-field select{width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font-size:14px}.nut-live{background:var(--border);border-radius:12px;padding:12px;margin:12px 0;font-size:13px;line-height:1.5}.nut-sheet-list{max-height:46vh;overflow:auto}.nut-sheet-actions{display:flex;gap:9px;margin-top:14px}.nut-sheet-actions>*{flex:1}.nut-inline-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.nut-small-btn{border:1px solid var(--border);border-radius:999px;background:var(--card);color:var(--text);padding:7px 10px;font:700 11px var(--font-ui);cursor:pointer}
+@media(max-width:370px){.nav-btn{font-size:9px;padding-left:1px;padding-right:1px}.nav-btn svg{width:20px;height:20px}.nut-kcal{font-size:34px}}
+@media(min-width:1024px){#view-nutrition{max-width:1120px!important}.nut-today-grid{display:grid;grid-template-columns:minmax(300px,.8fr) minmax(400px,1.2fr);gap:16px}.nut-today-grid .nut-hero{position:sticky;top:0;align-self:start}.nut-catalog-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}}

@@ -47,6 +47,7 @@
     <button class="ds-item" data-tab="home"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg><span>Home</span></button>
     <button class="ds-item" data-tab="log"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v16M18 4v16"/><path d="M3 8h3M18 8h3M3 16h3M18 16h3"/><path d="M6 12h12"/></svg><span>Log</span></button>
     <button class="ds-item" data-tab="stats"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg><span>Stats</span></button>
+    <button class="ds-item" data-tab="nutrition"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c4.4 0 8-4.1 8-9.2C20 8.4 16.4 5 12 5s-8 3.4-8 7.8C4 17.9 7.6 22 12 22z"/><path d="M12 5c0-2 1.6-3 3.5-3"/><path d="M9 8c1.8 1 4.2 1 6 0"/></svg><span>Nutrition</span></button>
     <button class="ds-item" data-tab="kitchen"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3zm0 0v7"/></svg><span>Kitchen</span></button>
     <button class="ds-item" data-tab="budget"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h2M10 15h4"/></svg><span>Budget</span></button>
     <button class="ds-item" id="ds-accounts" onclick="openAccounts()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/><path d="M16 12h.01"/><path d="M2 10h20"/></svg><span>Accounts</span></button>
@@ -80,8 +81,7 @@
 
   <main id="app-main">
 
-    <!-- Swipe deck: the four bottom-nav views sit side-by-side and page horizontally.
-         DOM order is home, log, stats, budget; CSS `order` lays them out home→budget→log→stats. -->
+    <!-- Swipe deck: the five bottom-nav views page horizontally. CSS order keeps Log central. -->
     <div id="swipe-deck">
 
     <!-- HOME VIEW -->
@@ -395,6 +395,10 @@
       </div>
     </section>
 
+    <section id="view-nutrition" class="swipe-panel">
+      <div id="nutrition-main"></div>
+    </section>
+
     <section id="view-kitchen" class="swipe-panel">
       <div class="kit-subnav">
         <button class="kit-subnav-btn active" id="kit-tab-recipes" onclick="kitSetTab('recipes')">Recipes</button>
@@ -410,6 +414,7 @@
               <input id="kit-search" class="kit-search" type="search" placeholder="Search recipes…" oninput="kitOnSearch(this.value)">
               <button class="kit-add-recipe-btn" onclick="kitOpenForm()">+ Add Recipe</button>
               <button class="kit-add-recipe-btn kit-import-btn" onclick="kitOpenImport()">⇩ Import</button>
+              <button class="kit-add-recipe-btn kit-import-btn" onclick="setView('nutrition');nutSetTab('recipes')">Nutrition Review</button>
             </div>
             <div class="kit-mobile-filter-bar">
               <button id="kit-filter-reset" class="kit-mobile-filter-btn active" onclick="kitResetFilters()">All recipes</button>
@@ -786,10 +791,6 @@
     <div id="stats-evidence-content" class="stats-evidence-content"></div>
   </div>
 
-  <div id="calorie-overlay" style="display:none">
-    <div id="calorie-overlay-inner"></div>
-  </div>
-
   <!-- Journal editor — ONE surface for both journal entries and Open Loop notes.
        This replaces the old compact-modal → fullscreen pair, whose two half-editors were the
        source of three separate bugs (blank ghost records, a stale list after a rename, and a
@@ -1143,6 +1144,10 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v16M18 4v16"/><path d="M3 8h3M18 8h3M3 16h3M18 16h3"/><path d="M6 12h12"/></svg>
     Log
   </button>
+  <button class="nav-btn" data-view="nutrition" onclick="setView('nutrition')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c4.4 0 8-4.1 8-9.2C20 8.4 16.4 5 12 5s-8 3.4-8 7.8C4 17.9 7.6 22 12 22z"/><path d="M12 5c0-2 1.6-3 3.5-3"/><path d="M9 8c1.8 1 4.2 1 6 0"/></svg>
+    Nutrition
+  </button>
   <button class="nav-btn" data-view="kitchen" onclick="setView('kitchen')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 10h14v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z"/><path d="M3 10h18"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
     Kitchen
@@ -1178,6 +1183,10 @@
 <div id="kit-cook-overlay"></div>
 <div id="kit-toast" class="kit-toast"></div>
 
+<div id="nutrition-food-overlay" class="modal-overlay hidden" onclick="if(event.target===this)nutCloseFoodSheet()">
+  <div class="modal-box" id="nutrition-food-box"></div>
+</div>
+
 <!-- HTML PLAN VIEWER -->
 <div id="plan-html-overlay" style="display:none;position:fixed;inset:0;z-index:200;background:var(--bg);flex-direction:column">
   <div style="display:flex;align-items:center;gap:12px;padding:12px 16px 12px;border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0">
@@ -1189,6 +1198,7 @@
 
 <div id="toast-container" aria-live="polite"></div>
 
+<script src="js/nutrition.js" defer></script>
 <script src="js/app.js" defer></script>
 </body>
 </html>

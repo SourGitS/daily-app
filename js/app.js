@@ -566,23 +566,23 @@ if(firebaseReady){
     // (and vice-versa); re-render whatever calorie/streak surface is currently on screen.
     syncBlobListen(user.uid,'calorieLog','wt_calories',()=>{
       try{ S.dailyLog=loadDailyLog(); }catch(e){}
+      if(typeof nutMigrateLegacy==='function') nutMigrateLegacy();
       if(S.view==='home'&&typeof renderHome==='function') renderHome();
-      if(typeof renderCalorieLog==='function') renderCalorieLog();        // self-guards if not mounted
-      const _co=document.getElementById('calorie-overlay');
-      if(_co&&_co.style.display!=='none'&&typeof renderCalorieOverlay==='function') renderCalorieOverlay();
+      if(S.view==='nutrition'&&typeof nutRender==='function') nutRender();
       if(S.view==='stats') refreshStatsForData(['overview','review','nutrition']);
     });
     syncBlobListen(user.uid,'calorieHistory','daily_cal_history',()=>{
       try{ calorieHistory=loadCalorieHistory(); }catch(e){}
+      if(typeof nutMigrateLegacy==='function') nutMigrateLegacy();
       if(S.view==='stats') refreshStatsForData(['overview','review','nutrition']);
-      const _co=document.getElementById('calorie-overlay');
-      if(_co&&_co.style.display!=='none'&&typeof renderCalorieOverlay==='function') renderCalorieOverlay();
     });
     syncBlobListen(user.uid,'savedFoods','daily_saved_foods',()=>{
       try{ savedFoods=loadSavedFoods(); }catch(e){}
-      const _co=document.getElementById('calorie-overlay');
-      if(_co&&_co.style.display!=='none'&&typeof renderCalorieOverlay==='function') renderCalorieOverlay();
+      if(typeof nutMigrateLegacy==='function') nutMigrateLegacy();
     });
+    syncBlobListen(user.uid,'nutritionFoods','daily_my_foods',()=>{ if(typeof nutMigrateLegacy==='function') nutMigrateLegacy(); if(S.view==='nutrition'&&typeof nutRender==='function') nutRender(); });
+    syncBlobListen(user.uid,'nutritionPrefs','daily_food_prefs',()=>{ if(typeof nutMigrateLegacy==='function') nutMigrateLegacy(); if(S.view==='nutrition'&&typeof nutRender==='function') nutRender(); });
+    if(typeof nutSyncListen==='function') nutSyncListen(user.uid);
     syncBlobListen(user.uid,'checkinLog','daily_checkin_log',()=>{
       if(S.view==='home'&&typeof renderHome==='function') renderHome(); // streak lives on Home (calcStreak)
     });
@@ -1891,6 +1891,7 @@ function initDay(idx){
 
 // ── View ─────────────────────────────────────────────────────────
 let statsSubTab = 'overview';
+function dailyHistoryView(v){return ['home','budget','log','nutrition','kitchen','stats','settings','notes','plans'].includes(v);}
 function setView(v, direction, opts){
   opts = opts || {};
   clearSourceReturn();
@@ -1908,6 +1909,12 @@ function setView(v, direction, opts){
   if(_histOv&&_histOv.style.display!=='none'){_histOv.style.display='none';_histOv.style.left='0';}
   const prev=S.view;
   if(prev==='stats'&&v!=='stats') invalidateStatsTabs();
+  if(!opts.fromHistory&&!_bootPhase&&prev!==v&&dailyHistoryView(v)){
+    try{
+      if(!history.state?.dailyView&&dailyHistoryView(prev)) history.replaceState({dailyView:prev},'',location.pathname+location.search+'#'+prev);
+      history.pushState({dailyView:v},'',location.pathname+location.search+'#'+v);
+    }catch(e){}
+  }
   S.view = v;
   const swipeIdx=NAV_ORDER.indexOf(v);
   const isSwipe=swipeIdx>=0;
@@ -1938,6 +1945,7 @@ function setView(v, direction, opts){
   // Stats is a standalone top-level view (its own bottom-nav tab + desktop sidebar item).
   if(v==='stats'){ setStatsTab(statsSubTab,true); }
   if(v==='budget') renderBudgetTab();
+  if(v==='nutrition'&&typeof nutRender==='function') nutRender();
   if(v==='kitchen') kitRender();
   else if(typeof kitShopRenderAddBar==='function') kitShopRenderAddBar(false); // hide fixed shopping add-bar off-tab
   if(v==='settings') renderSettings();
@@ -1954,12 +1962,13 @@ function setView(v, direction, opts){
 // This list IS the deck — a view named here must be a .swipe-panel inside #swipe-deck, and one
 // that isn't must be a direct <section> child of #app-main (see setView). Changing the list
 // without moving the markup gives you a tab you can swipe to but not tap, or the reverse.
-const NAV_ORDER=['home','budget','log','kitchen'];
+const NAV_ORDER=['home','budget','log','nutrition','kitchen'];
 
 // ── Swipe deck (native-feel tab paging) ──────────────────────────
 // The four bottom-nav views sit side-by-side in #swipe-deck and track the finger in real
 // time; releasing spring-snaps to the nearest view. Mobile only — desktop pages via
-// .deck-active (see setView + layout.css). Order matches NAV_ORDER: home,budget,log,stats.
+// .deck-active (see setView + layout.css). Order matches NAV_ORDER: home, budget, log,
+// nutrition, kitchen, keeping the workout action in the centre of the five phone tabs.
 let deckIdx = 0;
 let deckRaf = 0;      // handle of the pending touchmove frame (0 = none) — must be cancellable
 // Mirrors the gesture IIFE's own `dragging`, at module scope: vpSyncDeck must never re-page
@@ -2335,6 +2344,12 @@ function refreshHomeTab(){
   const fb=document.getElementById('home-content');
   if(fb){ fb.style.transition='opacity .2s ease'; fb.style.opacity='.5'; setTimeout(()=>fb.style.opacity='1',300); }
 }
+function dailyApplyHistoryView(state){
+  const v=state&&state.dailyView||decodeURIComponent(location.hash.replace(/^#/,''));
+  if(dailyHistoryView(v)&&v!==S.view) setView(v,null,{fromHistory:true});
+}
+window.addEventListener('popstate',e=>dailyApplyHistoryView(e.state));
+window.addEventListener('hashchange',()=>dailyApplyHistoryView(history.state));
 
 // ── Landscape phone ───────────────────────────────────────────────
 // ONE definition of "is this a phone on its side", matched to the CSS breakpoint character for
@@ -2373,14 +2388,15 @@ function updateNavPill(v){
     } else {
       // Portrait/desktop: clear anything the landscape branch set, then the original logic.
       pill.style.top=''; pill.style.height=''; pill.style.opacity='';
-      if(idx<0){ pill.style.left=(idx*25)+'%'; pill.style.width='25%'; } // off-screen on overlay views
+      const pct=100/n;
+      if(idx<0){ pill.style.left=(idx*pct)+'%'; pill.style.width=pct+'%'; } // off-screen on overlay views
       else {
         // Every tab's pill has a small side margin; tabs 1 & 4 get extra inset on their OUTER
         // edge so the pill curves inward and never touches the left/right screen edge.
         const base=4, outer=10;
         const li=base+(idx===0?outer:0), ri=base+(idx===n-1?outer:0);
-        pill.style.left='calc('+(idx*25)+'% + '+li+'px)';
-        pill.style.width='calc(25% - '+(li+ri)+'px)';
+        pill.style.left='calc('+(idx*pct)+'% + '+li+'px)';
+        pill.style.width='calc('+pct+'% - '+(li+ri)+'px)';
       }
     }
   }
@@ -2510,6 +2526,7 @@ const MENU_NAV=[
   {id:'home',label:'Home'},
   {id:'log',label:'Log'},
   {id:'stats',label:'Stats'},
+  {id:'nutrition',label:'Nutrition'},
   {id:'kitchen',label:'Kitchen'},
   {id:'budget',label:'Budget'},
   {id:'plans',label:'Plans'},
@@ -3242,17 +3259,20 @@ function openWeightEvidence(date){
 }
 function openNutritionEvidence(date){
   const today=getLocalDate();
-  const todayTotal=S.dailyLog.date===today?S.dailyLog.entries.reduce((a,e)=>a+(e.kcal||0),0):0;
+  const todaySummary=typeof nutDaySummary==='function'?nutDaySummary(today):null;
+  const todayTotal=todaySummary&&todaySummary.calories!=null?todaySummary.calories:(S.dailyLog.date===today?S.dailyLog.entries.reduce((a,e)=>a+(e.kcal||0),0):0);
   const end=localMidnight(today), days=[];
   for(let i=29;i>=0;i--){ const d=new Date(end); d.setDate(d.getDate()-i); days.push(dateStr(d)); }
   const rows=days.filter(d=>!date||d===date).reverse().map(d=>{
-    const val=d===today&&todayTotal>0?todayTotal:calorieHistory[d];
-    const logged=parseFloat(val)>0;
-    return '<div class="stats-source-row"><div class="stats-source-top"><span>'+fmtDate(d)+(d===today?' · in progress':'')+'</span><span>'+(logged?Math.round(val)+' kcal':'Not logged')+'</span></div><div class="stats-source-meta">'+(logged?'Persisted daily calorie total':'Missing is unknown, not zero')+'</div></div>';
+    const s=typeof nutDaySummary==='function'?nutDaySummary(d):null;
+    const val=s&&s.calories!=null?s.calories:(d===today&&todayTotal>0?todayTotal:calorieHistory[d]);
+    const logged=parseFloat(val)>=0&&(s?s.status!=='missing':parseFloat(val)>0);
+    const partial=s&&s.status==='partial';
+    return '<div class="stats-source-row"><div class="stats-source-top"><span>'+fmtDate(d)+(d===today?' · in progress':'')+'</span><span>'+(logged?Math.round(val)+' kcal'+(partial?' + unknown':''):'Not logged')+'</span></div><div class="stats-source-meta">'+(partial?'Partial known subtotal · '+s.unknown+' unknown item'+(s.unknown===1?'':'s')+' · excluded from complete-day averages':s&&s.status==='legacy'?'Legacy total · macros and food detail unavailable':logged?'Detailed food-entry snapshots':'Missing is unknown, not zero')+'</div></div>';
   }).join('');
   openStatsEvidence(date?'Calorie evidence · '+fmtDate(date):'Calorie evidence · 30 days',
-    '<div class="stats-data-note">Daily calorie totals are the available historical source. Historical macros and old food-entry detail were not persisted.</div><div class="stats-source-list">'+rows+'</div>'+
-    statsSourceActions(['<button onclick="closeStatsEvidence();openCalorieOverlay()">Open today’s food log →</button>']));
+    '<div class="stats-data-note">New records retain dated foods and macros. Legacy total-only days stay visible without invented detail. Partial known subtotals are never presented as complete intake.</div><div class="stats-source-list">'+rows+'</div>'+
+    statsSourceActions(['<button onclick="closeStatsEvidence();setView(\'nutrition\')">Open today’s food log →</button>']));
 }
 function openFinanceCategoryEvidence(key){
   const c=_statsFinanceEvidence[key]; if(!c) return;
@@ -3916,8 +3936,9 @@ function renderWeekReviewCard(){
   const cg=calcGoalCals();
   const goalCals=cg?(cg.goal==='cut'?cg.cut:cg.goal==='bulk'?cg.bulk:cg.maintain):null;
   if(goalCals){
-    const calTotal=S.dailyLog.entries.reduce((a,e)=>a+e.kcal,0);
-    calLine='<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border)"><span style="font-size:13px;color:var(--muted)">Today\'s cals</span><span style="font-size:13px;font-weight:600">'+calTotal+' / '+goalCals+' kcal</span></div>';
+    const ns=typeof nutDaySummary==='function'?nutDaySummary(getLocalDate()):null;
+    const calTotal=ns&&ns.calories!=null?ns.calories:S.dailyLog.entries.reduce((a,e)=>a+e.kcal,0);
+    calLine='<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border)"><span style="font-size:13px;color:var(--muted)">Today\'s cals</span><span style="font-size:13px;font-weight:600">'+(ns&&ns.status==='partial'?calTotal+' known + '+ns.unknown+' unknown':calTotal+' / '+goalCals+' kcal')+'</span></div>';
   }
 
   let weightLine='';
@@ -3971,10 +3992,11 @@ function buildWeekReviewHTML(){
   const cg=calcGoalCals();
   const goalCals=cg?(cg.goal==='cut'?cg.cut:cg.goal==='bulk'?cg.bulk:cg.maintain):null;
   if(goalCals){
-    const calTotal=S.dailyLog.entries.reduce((a,e)=>a+e.kcal,0);
+    const ns=typeof nutDaySummary==='function'?nutDaySummary(getLocalDate()):null;
+    const calTotal=ns&&ns.calories!=null?ns.calories:S.dailyLog.entries.reduce((a,e)=>a+e.kcal,0);
     const pct=Math.round(calTotal/goalCals*100);
     calHTML='<div style="margin-bottom:16px"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px">Today\'s calories</div>'
-      +'<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px"><span style="color:var(--muted)">Eaten today</span><span style="font-weight:600">'+calTotal+' / '+goalCals+' kcal ('+pct+'%)</span></div></div>';
+      +'<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px"><span style="color:var(--muted)">Eaten today</span><span style="font-weight:600">'+(ns&&ns.status==='partial'?calTotal+' known kcal + '+ns.unknown+' unknown':calTotal+' / '+goalCals+' kcal ('+pct+'%)')+'</span></div></div>';
   }
 
   const weekWeights=S.weights.filter(w=>w.date>=mondayStr&&w.date<=sundayStr).sort((a,b)=>a.date<b.date?-1:1);
@@ -5758,9 +5780,11 @@ function savePersonalInfo(){
     height:   parseFloat(document.getElementById('pi-height').value)||null,
     weight:   parseFloat(document.getElementById('pi-weight').value)||null,
     activity: document.getElementById('pi-activity').value,
-    goal:     S.personalInfo.goal||'maintain'
+    goal:     S.personalInfo.goal||'maintain',
+    customCalorieTarget: S.personalInfo.customCalorieTarget||null
   };
   localStorage.setItem('wt_personalinfo', JSON.stringify(S.personalInfo));
+  syncPersonalInfoToFirebase();
   renderTDEESection();
   renderCalorieLog();
 
@@ -5772,7 +5796,8 @@ function savePersonalInfo(){
 
 function calcGoalCals(){
   const pi = S.personalInfo;
-  if(!pi.age||!pi.height||!pi.weight||!pi.sex) return null;
+  const age=Number(pi.age), height=Number(pi.height), weight=Number(pi.weight);
+  if(!Number.isFinite(age)||age<13||age>120||!Number.isFinite(height)||height<100||height>250||!Number.isFinite(weight)||weight<30||weight>400||!['female','male'].includes(pi.sex)) return null;
   const bmr = pi.sex==='female'
     ? (10*pi.weight)+(6.25*pi.height)-(5*pi.age)-161
     : (10*pi.weight)+(6.25*pi.height)-(5*pi.age)+5;
@@ -5785,10 +5810,10 @@ function calcGoalCals(){
 function selectGoal(goal){
   S.personalInfo.goal = goal;
   localStorage.setItem('wt_personalinfo', JSON.stringify(S.personalInfo));
+  syncPersonalInfoToFirebase();
   renderTDEESection();
   renderCalorieLog();
   renderSettingsList(); // the Health row summarises the active goal
-  if(document.getElementById('calorie-overlay')?.style.display==='flex') renderCalorieOverlay();
 }
 
 function renderTDEESection(){
@@ -5825,281 +5850,48 @@ function renderTDEESection(){
           ${g==='bulk'?'<div class="tdee-card-active" style="color:var(--blue)">✓ Active</div>':''}
         </div>
       </div>
+      <div class="stg-help" style="margin-top:10px">Estimate basis: ${S.personalInfo.weight} kg · ${document.getElementById('pi-activity')?.selectedOptions?.[0]?.textContent||'saved activity level'}. This is a planning estimate, not medical advice.</div>
+      <div class="stg-field" style="margin-top:14px"><label for="pi-custom-target">Custom daily target (optional)</label><input id="pi-custom-target" type="number" min="800" max="8000" step="10" placeholder="Use calculated goal" value="${S.personalInfo.customCalorieTarget||''}"></div>
+      <div class="stg-actions"><button class="stg-btn" onclick="saveCustomCalorieTarget()">Save custom target</button></div>
     </div>`;
+}
+function saveCustomCalorieTarget(){
+  const el=document.getElementById('pi-custom-target'); if(!el) return;
+  const raw=String(el.value||'').trim(), n=raw===''?null:Number(raw);
+  if(n!==null&&(!Number.isFinite(n)||n<800||n>8000)){ showToast('Choose 800–8,000 kcal, or leave it blank'); return; }
+  S.personalInfo.customCalorieTarget=n===null?null:Math.round(n);
+  localStorage.setItem('wt_personalinfo',JSON.stringify(S.personalInfo));
+  syncPersonalInfoToFirebase();
+  if(S.view==='nutrition'&&typeof nutRender==='function')nutRender();
+  if(S.view==='home')renderHome();
+  showToast(n===null?'Using calculated goal':'Custom calorie target saved');
 }
 
 // ── Calorie log ────────────────────────────────────────────────────
 function renderCalorieLog(){
-  const wrap = document.getElementById('calorie-log-inner');
-  if(!wrap) return;
-
-  // Check for midnight reset
-  const today = getLocalDate();
-  if(S.dailyLog.date !== today){
-    S.dailyLog = {date:today, entries:[]};
-    persistDailyLog();
-  }
-
-  const c = calcGoalCals();
-  const goalCals = c ? (c.goal==='cut'?c.cut:c.goal==='bulk'?c.bulk:c.maintain) : null;
-  const total = S.dailyLog.entries.reduce((a,e)=>a+e.kcal, 0);
-  const pct = goalCals ? Math.min(110, Math.round(total/goalCals*100)) : 0;
-  const barColor = pct>100?'var(--danger)':pct>80?'var(--warn)':'var(--success)';
-
-  let html = '';
-
-  if(goalCals){
-    html += `
-      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:4px">
-        <span>${total} kcal eaten</span>
-        <span>Goal: ${goalCals} kcal</span>
-      </div>
-      <div class="cal-progress-bar">
-        <div class="cal-progress-fill" style="width:${Math.min(100,pct)}%;background:${barColor}"></div>
-      </div>
-      <div style="font-size:12px;color:var(--muted);text-align:right;margin-bottom:12px">
-        ${pct<=100?`${goalCals-total} kcal remaining`:`${total-goalCals} kcal over goal`}
-      </div>`;
-  } else {
-    html += `<div style="font-size:13px;color:var(--muted);margin-bottom:12px">Save your personal info to see a calorie goal here.</div>`;
-  }
-
-  html += `
-    <div class="cal-add-row">
-      <input class="cal-food-input" type="text" id="cal-food" placeholder="Food / meal">
-      <input class="cal-kcal-input" type="number" id="cal-kcal" inputmode="numeric" placeholder="kcal" min="1">
-      <button class="cal-add-btn" onclick="logCalorie()">Add</button>
-    </div>`;
-
-  if(S.dailyLog.entries.length){
-    html += `<div style="max-height:220px;overflow-y:auto;margin-top:4px">`;
-    [...S.dailyLog.entries].reverse().forEach((e,ri)=>{
-      const i = S.dailyLog.entries.length-1-ri;
-      html += `<div class="cal-entry">
-        <div class="cal-entry-name">${e.name.replace(/</g,'&lt;')||'—'}</div>
-        <div class="cal-entry-kcal">${e.kcal} kcal</div>
-        <button class="cal-del-btn" onclick="deleteCalEntry(${i})">✕</button>
-      </div>`;
-    });
-    html += `</div>
-      <div style="padding-top:10px;font-size:14px;font-weight:700;text-align:right">Total: ${total} kcal</div>`;
-  } else {
-    html += `<div style="text-align:center;color:var(--muted);font-size:13px;padding:14px 0">No food logged today</div>`;
-  }
-
-  wrap.innerHTML = html;
+  if(S.view==='nutrition'&&typeof nutRender==='function') nutRender();
 }
 
 function logCalorie(category){
-  const food = document.getElementById('cal-food');
-  const kcalEl = document.getElementById('cal-kcal');
-  const kcal = parseInt(kcalEl.value);
-  if(!kcal||kcal<=0) return;
-  S.dailyLog.entries.push({name: food.value.trim()||'Unknown', kcal, category: category||'other'});
-  persistDailyLog();
-  food.value=''; kcalEl.value='';
-  renderCalorieLog();
-  if(document.getElementById('calorie-overlay')?.style.display==='flex') renderCalorieOverlay();
+  if(typeof nutOpen==='function') nutOpen(category||'snacks');
 }
-function deleteCalEntry(i){
-  S.dailyLog.entries.splice(i, 1);
-  persistDailyLog();
-  renderCalorieLog();
-  if(document.getElementById('calorie-overlay')?.style.display==='flex') renderCalorieOverlay();
-}
+function deleteCalEntry(){ if(typeof nutOpen==='function') nutOpen('snacks'); }
 
 // ── Calorie overlay (full-screen) ─────────────────────────────────
-const MEAL_CATS=[
-  {id:'breakfast',emoji:'🌅',label:'Breakfast'},
-  {id:'lunch',emoji:'🥗',label:'Lunch'},
-  {id:'dinner',emoji:'🍽️',label:'Dinner'},
-  {id:'snacks',emoji:'🍎',label:'Snacks'},
-];
-function openCalorieOverlay(){
-  const ov=document.getElementById('calorie-overlay');
-  if(!ov) return;
-  ov.style.display='flex';
-  renderCalorieOverlay();
-}
-function closeCalorieOverlay(){
-  const ov=document.getElementById('calorie-overlay');
-  if(ov) ov.style.display='none';
-  if(S.calOverlayChart){ S.calOverlayChart.destroy(); S.calOverlayChart=null; }
-}
-function overlayAddCalorie(cat){
-  const food=document.getElementById('ov-food-'+cat);
-  const kcalEl=document.getElementById('ov-kcal-'+cat);
-  if(!kcalEl) return;
-  const kcal=parseInt(kcalEl.value);
-  if(!kcal||kcal<=0) return;
-  const today=getLocalDate();
-  if(S.dailyLog.date!==today){ S.dailyLog={date:today,entries:[]}; }
-  S.dailyLog.entries.push({name:(food?.value.trim())||'Unknown', kcal, category:cat});
-  persistDailyLog();
-  renderCalorieLog();
-  renderCalorieOverlay();
-}
-function deleteOverlayEntry(i){
-  S.dailyLog.entries.splice(i,1);
-  persistDailyLog();
-  renderCalorieLog();
-  renderCalorieOverlay();
-}
-function renderCalorieOverlay(){
-  const inner=document.getElementById('calorie-overlay-inner');
-  if(!inner) return;
-  const today=getLocalDate();
-  if(S.dailyLog.date!==today){ S.dailyLog={date:today,entries:[]}; persistDailyLog(); }
-  const c=calcGoalCals();
-  const goal=c?c.goal:'maintain';
-  const goalCals=c?(goal==='cut'?c.cut:goal==='bulk'?c.bulk:c.maintain):null;
-  const eaten=S.dailyLog.entries.reduce((a,e)=>a+e.kcal,0);
-  const rem=goalCals!=null?goalCals-eaten:null;
-
-  // Header
-  let html='<div id="calorie-overlay-header">'+
-    '<button id="calorie-overlay-back" onclick="closeCalorieOverlay()">←</button>'+
-    '<div style="font-size:20px;font-weight:700">Calories</div></div>';
-
-  // Target switcher
-  if(c){
-    const pill=(g,lbl,val)=>{
-      const active=goal===g;
-      return '<button onclick="selectGoal(\''+g+'\')" style="flex:1;padding:10px 6px;border-radius:999px;border:1.5px solid '+(active?'var(--accent)':'var(--border)')+';background:'+(active?'var(--accent)':'transparent')+';color:'+(active?'#fff':'var(--text)')+';font-size:13px;font-weight:600;cursor:pointer;text-align:center">'
-        +lbl+'<div style="font-size:11px;font-weight:500;opacity:0.85;margin-top:1px">'+val+'</div></button>';
-    };
-    html+='<div style="display:flex;gap:8px;margin-bottom:24px">'+
-      pill('bulk','Bulk',c.bulk)+pill('maintain','Maintain',c.maintain)+pill('cut','Cut',c.cut)+'</div>';
-  } else {
-    html+='<div style="text-align:center;color:var(--muted);font-size:13px;margin-bottom:20px">Add your personal info in Settings to see calorie targets.</div>';
-  }
-
-  // Ring + stats
-  if(goalCals!=null){
-    const pct=Math.min(100,Math.round(eaten/goalCals*100));
-    const ringCol=rem<0?'var(--danger)':pct>80?'var(--warn)':'var(--success)';
-    const R=58,circ=+(2*Math.PI*R).toFixed(1),offset=+(circ*(1-pct/100)).toFixed(1);
-    html+='<div style="display:flex;flex-direction:column;align-items:center;margin-bottom:28px">'+
-      '<svg width="150" height="150" viewBox="0 0 150 150">'+
-        '<circle cx="75" cy="75" r="'+R+'" fill="none" stroke="var(--border)" stroke-width="12"/>'+
-        '<circle cx="75" cy="75" r="'+R+'" fill="none" stroke="'+ringCol+'" stroke-width="12" stroke-dasharray="'+circ+'" stroke-dashoffset="'+offset+'" stroke-linecap="round" transform="rotate(-90 75 75)"/>'+
-        '<text x="75" y="70" text-anchor="middle" dominant-baseline="middle" font-size="30" font-weight="800" fill="var(--text)">'+eaten+'</text>'+
-        '<text x="75" y="94" text-anchor="middle" font-size="12" fill="var(--muted)">eaten</text>'+
-      '</svg>'+
-      '<div style="display:flex;gap:28px;margin-top:14px">'+
-        '<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:'+ringCol+'">'+(rem>=0?rem:Math.abs(rem))+'</div><div style="font-size:11px;color:var(--muted)">'+(rem>=0?'remaining':'over')+'</div></div>'+
-        '<div style="text-align:center"><div style="font-size:18px;font-weight:800">'+goalCals+'</div><div style="font-size:11px;color:var(--muted)">goal</div></div>'+
-      '</div></div>';
-  }
-
-  // Meal log by category
-  MEAL_CATS.forEach(cat=>{
-    const items=S.dailyLog.entries.map((e,i)=>({e,i})).filter(o=>(o.e.category||'other')===cat.id);
-    const subtotal=items.reduce((a,o)=>a+o.e.kcal,0);
-    html+='<div class="card" style="margin-bottom:12px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
-        '<div style="font-size:14px;font-weight:700">'+cat.emoji+' '+cat.label+'</div>'+
-        '<div style="font-size:13px;font-weight:600;color:var(--muted)">'+subtotal+' kcal</div>'+
-      '</div>';
-    items.forEach(o=>{
-      html+='<div class="cal-entry"><div class="cal-entry-name">'+(o.e.name.replace(/</g,'&lt;')||'—')+'</div>'+
-        '<div class="cal-entry-kcal">'+o.e.kcal+' kcal</div>'+
-        '<button class="cal-del-btn" onclick="deleteOverlayEntry('+o.i+')">✕</button></div>';
-    });
-    html+='<div class="cal-add-row" style="margin:10px 0 0">'+
-      '<input class="cal-food-input" type="text" id="ov-food-'+cat.id+'" placeholder="Food / meal">'+
-      '<input class="cal-kcal-input" type="number" id="ov-kcal-'+cat.id+'" inputmode="numeric" placeholder="kcal" min="1">'+
-      '<button class="cal-add-btn" onclick="overlayAddCalorie(\''+cat.id+'\')">+ Add</button>'+
-      '</div></div>';
-  });
-
-  // Weekly chart
-  html+='<div class="card" style="margin-bottom:12px"><div style="font-size:14px;font-weight:700;margin-bottom:12px">Last 7 days</div>'+
-    '<canvas id="cal-week-chart" height="160"></canvas></div>';
-
-  inner.innerHTML=html;
-
-  // Build weekly chart
-  const labels=[],eatenData=[],dayInit=[];
-  for(let i=6;i>=0;i--){
-    const d=new Date(today+'T12:00:00'); d.setDate(d.getDate()-i);
-    const key=d.toLocaleDateString('en-CA');
-    const total = key===today ? eaten : (calorieHistory[key]||0);
-    eatenData.push(total);
-    dayInit.push(['S','M','T','W','T','F','S'][d.getDay()]);
-    labels.push(key);
-  }
-  const ctx=document.getElementById('cal-week-chart');
-  if(ctx && typeof Chart!=='undefined'){
-    if(S.calOverlayChart){ S.calOverlayChart.destroy(); S.calOverlayChart=null; }
-    const accent=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#FF6B35';
-    const datasets=[{label:'Eaten',data:eatenData,backgroundColor:accent,borderRadius:4,barPercentage:0.6}];
-    if(goalCals!=null) datasets.push({label:'Target',type:'line',data:eatenData.map(()=>goalCals),borderColor:'rgba(150,150,150,0.7)',borderDash:[5,4],borderWidth:1.5,pointRadius:0,fill:false});
-    S.calOverlayChart=new Chart(ctx,{
-      type:'bar',
-      data:{labels:dayInit,datasets},
-      options:{responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:false}},
-        scales:{x:{grid:{display:false},ticks:{color:'#94a3b8'}},y:{beginAtZero:true,grid:{color:'rgba(150,150,150,0.12)'},ticks:{color:'#94a3b8'}}}}
-    });
-  }
-}
-
-// ── Saved foods (favourites) ──────────────────────────────────────
+// Compatibility names kept for old bookmarks/call sites; Nutrition is the only maintained UI.
+function openCalorieOverlay(){ if(typeof nutOpen==='function') nutOpen('snacks'); }
+function closeCalorieOverlay(){ if(typeof nutCloseFoodSheet==='function') nutCloseFoodSheet(); }
+function overlayAddCalorie(cat){ if(typeof nutOpen==='function') nutOpen(cat||'snacks'); }
+function deleteOverlayEntry(){ if(typeof nutOpen==='function') nutOpen('snacks'); }
+function renderCalorieOverlay(){ if(S.view==='nutrition'&&typeof nutRender==='function') nutRender(); }
+// Legacy saved foods remain readable and synced for migration, but their old editor is retired.
 function loadSavedFoods(){ return lsLoad('daily_saved_foods', []); }
-function persistSavedFoods(){
-  lsSave('daily_saved_foods', savedFoods, 'savedFoods');
-}
+function persistSavedFoods(){ lsSave('daily_saved_foods', savedFoods, 'savedFoods'); }
 let savedFoods = loadSavedFoods();
-
-function addSavedFood(){
-  const nameEl=document.getElementById('saved-food-name');
-  const kcalEl=document.getElementById('saved-food-kcal');
-  const name=nameEl?.value.trim();
-  const kcal=parseInt(kcalEl?.value);
-  if(!name||!kcal||kcal<=0) return;
-  savedFoods.push({name, kcal});
-  persistSavedFoods();
-  nameEl.value=''; kcalEl.value='';
-  renderSavedFoods();
-}
-function deleteSavedFood(i){
-  savedFoods.splice(i,1);
-  persistSavedFoods();
-  renderSavedFoods();
-}
-function logFromFavourite(name, kcal){
-  const today=getLocalDate();
-  if(S.dailyLog.date!==today){ S.dailyLog={date:today,entries:[]}; }
-  S.dailyLog.entries.push({name, kcal, category:'other'});
-  persistDailyLog();
-  renderCalorieLog();
-  if(document.getElementById('calorie-overlay')?.style.display==='flex') renderCalorieOverlay();
-}
-function renderSavedFoods(){
-  const wrap=document.getElementById('saved-foods-inner'); if(!wrap) return;
-  let html=`
-    <div class="cal-add-row" style="margin-bottom:12px">
-      <input class="cal-food-input" type="text" id="saved-food-name" placeholder="Food name">
-      <input class="cal-kcal-input" type="number" id="saved-food-kcal" inputmode="numeric" placeholder="kcal" min="1">
-      <button class="cal-add-btn" onclick="addSavedFood()">Save</button>
-    </div>`;
-  if(savedFoods.length){
-    html+=`<div style="display:flex;flex-wrap:wrap;gap:7px">`;
-    savedFoods.forEach((f,i)=>{
-      const safeName=f.name.replace(/</g,'&lt;').replace(/'/g,'&#39;');
-      html+=`<div style="display:inline-flex;align-items:center;gap:4px;background:var(--blue-bg);border:1.5px solid var(--blue-border);border-radius:20px;padding:5px 8px 5px 12px">
-        <span onclick="logFromFavourite('${safeName}',${f.kcal})" style="font-size:13px;font-weight:600;color:var(--blue-dark);cursor:pointer">${safeName} · ${f.kcal} kcal</span>
-        <button onclick="deleteSavedFood(${i})" style="font-size:12px;color:var(--muted);background:none;border:none;cursor:pointer;padding:0 2px;line-height:1;flex-shrink:0">✕</button>
-      </div>`;
-    });
-    html+=`</div>`;
-  } else {
-    html+=`<div style="text-align:center;color:var(--muted);font-size:13px;padding:10px 0">No saved foods yet — save frequent meals above</div>`;
-  }
-  wrap.innerHTML=html;
-}
-
+function addSavedFood(){ if(typeof nutOpenCustomFood==='function') nutOpenCustomFood(); }
+function deleteSavedFood(){ showToast('Manage this migrated item in Nutrition → Foods'); }
+function logFromFavourite(){ if(typeof nutOpen==='function'){nutOpen('snacks');setTimeout(()=>nutOpenFoodSheet('snacks'),0);} }
+function renderSavedFoods(){}
 // ── Export ────────────────────────────────────────────────────────
 // Comprehensive multi-section budget export. Design notes (read before touching):
 //
@@ -7029,6 +6821,10 @@ function aiKitchenScope(fullRecipes){
   const recipes=(Array.isArray(kitRecipes)?kitRecipes:[]).filter(r=>r&&typeof r==='object').map(r=>{
     const row={id:String(r.id||''), name:String(r.name||''), category:String(r.category||''),
                servings:r.servings==null?null:r.servings};
+    row.nutritionBasis=String(r.nutritionBasis||(r.calories!=null?'manual':'missing'));
+    if(r.nutritionCalculation&&typeof r.nutritionCalculation==='object'){
+      row.nutritionCoverage={status:String(r.nutritionCalculation.status||row.nutritionBasis),resolvedIngredients:r.nutritionCalculation.resolvedIngredients||0,totalIngredients:r.nutritionCalculation.totalIngredients||0};
+    }
     if(Array.isArray(r.tags)&&r.tags.length) row.tags=r.tags.map(String);
     if(r.favourite) row.favourite=true;
     const opts=(typeof kitOptionsOf==='function')?kitOptionsOf(r):[];
@@ -13573,19 +13369,25 @@ function renderBSBestWorst(){
 // ── Stats: Nutrition sub-tab ──────────────────────────────────────
 // Charts the archived daily calorie totals (daily_cal_history, written by
 // recordCalorieHistory on every food log) plus today's live total.
-let nutChart=null;
+let nutChart=null,nutMacroChart=null;
 function renderNutrition(){
   const wrap=document.getElementById('nutrition-content'); if(!wrap) return;
   if(nutChart){ nutChart.destroy(); nutChart=null; }
+  if(nutMacroChart){ nutMacroChart.destroy(); nutMacroChart=null; }
   const today=getLocalDate();
-  const todayTotal=S.dailyLog.date===today?S.dailyLog.entries.reduce((a,e)=>a+(e.kcal||0),0):0;
+  const todaySummary=typeof nutDaySummary==='function'?nutDaySummary(today):null;
+  const todayTotal=todaySummary&&todaySummary.calories!=null?todaySummary.calories:(S.dailyLog.date===today?S.dailyLog.entries.reduce((a,e)=>a+(e.kcal||0),0):0);
   const c=calcGoalCals();
-  const goalCals=c?(c.goal==='cut'?c.cut:c.goal==='bulk'?c.bulk:c.maintain):null;
+  const goalCals=typeof nutTarget==='function'?nutTarget():(c?(c.goal==='cut'?c.cut:c.goal==='bulk'?c.bulk:c.maintain):null);
   const totals={...calorieHistory};
   if(todayTotal>0) totals[today]=todayTotal;
   const calendarDays=[]; const end=localMidnight(today);
   for(let i=29;i>=0;i--){ const d=new Date(end); d.setDate(d.getDate()-i); calendarDays.push(dateStr(d)); }
-  const isLogged=d=>Object.prototype.hasOwnProperty.call(totals,d)&&totals[d]>0;
+  const dayStates={};
+  if(typeof nutDaySummary==='function') calendarDays.forEach(d=>{const s=nutDaySummary(d);dayStates[d]=s;if((s.status==='complete'||s.status==='legacy')&&s.calories!=null)totals[d]=s.calories;else if(s.status==='partial')delete totals[d];});
+  const macroDays=calendarDays.filter(d=>dayStates[d]?.status==='complete'&&dayStates[d].macroComplete);
+  const macroAvg=k=>macroDays.length?Math.round(macroDays.reduce((sum,d)=>sum+dayStates[d].macros[k],0)/macroDays.length):null;
+  const isLogged=d=>Object.prototype.hasOwnProperty.call(totals,d)&&totals[d]>=0&&(dayStates[d]?.status!=='partial');
   const last7=calendarDays.slice(-8,-1);
   const logged7=last7.filter(isLogged);
   const vals7=logged7.map(d=>totals[d]);
@@ -13595,27 +13397,28 @@ function renderNutrition(){
   // Seven-day coverage strip: a missing day is drawn as an outline, never as a zero bar.
   const max7=Math.max(1,...vals7);
   const strip=last7.map(d=>{
-    const v=isLogged(d)?totals[d]:null;
+    const partial=dayStates[d]?.status==='partial';
+    const v=partial?dayStates[d].calories:(isLogged(d)?totals[d]:null);
     const h=v===null?0:Math.max(12,Math.round(v/max7*100));
-    return '<button type="button" class="ov-day'+(v===null?' none':'')+'" onclick="openNutritionEvidence(\''+d+'\')" '+
-      'aria-label="'+fmtDate(d)+(v===null?', not logged':', '+Math.round(v)+' kilocalories')+'">'+
-      '<div class="ov-day-track"><div class="ov-day-fill" style="height:'+h+'%"></div></div>'+
+    return '<button type="button" class="ov-day'+(v===null?' none':'')+(partial?' partial':'')+'" onclick="openNutritionEvidence(\''+d+'\')" '+
+      'aria-label="'+fmtDate(d)+(partial?', partial, '+Math.round(v)+' known kilocalories':v===null?', not logged':', '+Math.round(v)+' kilocalories')+'">'+
+      '<div class="ov-day-track"><div class="ov-day-fill'+(partial?' cw-partial':'')+'" style="height:'+h+'%"></div></div>'+
       '<span>'+new Date(d+'T12:00:00').toLocaleDateString('en-AU',{weekday:'narrow'})+'</span></button>';
   }).join('');
   wrap.innerHTML='<div class="card">'+
     cardHeader('receipt','Calorie coverage',
       statsChip(logged7.length>=5?'good':'warn',logged7.length+' of 7 days')+
-      '<button class="card-hd-act" onclick="openCalorieOverlay()">Food log &rarr;</button>')+
+      '<button class="card-hd-act" onclick="setView(\'nutrition\')">Food log &rarr;</button>')+
     statsFigure(avg7===null?'—':avg7.toLocaleString(),avg7===null?'':'kcal',
       avg7===null?'No completed day logged in the last 7'
         :'Logged-day average · '+fmtDate(last7[0])+' – '+fmtDate(last7[6]))+
     statsSplit([
-      ['Today · in progress',todayTotal>0?todayTotal.toLocaleString()+' kcal':'Not logged'],
+      ['Today · in progress',todayTotal>0?todayTotal.toLocaleString()+' kcal'+(todaySummary&&todaySummary.status==='partial'?' + unknown':''):'Not logged'],
       ['Coverage · 30 days',logged30.length+' of 30'],
       ['Current reference',goalCals?goalCals.toLocaleString()+' kcal':'Not set']
     ])+
     '<div class="card-shape ov-days">'+strip+'</div>'+
-    '<div class="stats-data-note">Hollow bars are days with no record — unknown, never zero, and excluded from the average. Today is counted separately because it is still in progress.'+
+    '<div class="stats-data-note">Hollow bars are days with no record. Striped bars are partial days with unknown items. Both are excluded from complete-day averages; neither is treated as zero. Today is counted separately because it is still in progress.'+
       (goalCals?' The '+(c.goal||'maintain')+' reference ('+goalCals.toLocaleString()+' kcal) is your CURRENT setting; historical goal changes were never stored, so it is not evidence of what a past day was aiming at.':' Set up Health to add a current calorie reference.')+
       (relation!==null?' The logged-day average sits '+(relation===0?'exactly on':Math.abs(relation)+' kcal '+(relation>0?'above':'below'))+' that reference.':'')+
     '</div>'+
@@ -13626,8 +13429,13 @@ function renderNutrition(){
       ? '<div class="card-cap">Gaps are unlogged days and are not joined across · tap a point for that day’s record</div>'+
         '<div class="stats-chart-box"><canvas id="nut-chart" aria-label="Daily calories over the last 30 calendar days"></canvas></div>'
       : '<div class="stats-note-panel">Log at least two days in this window to see a trend.</div>')+
-    '<div class="stats-data-note">Protein, carbohydrate and fat were never stored per day, so no historical macro trend exists to show.</div>'+
-  '</div>';
+    '<div class="stats-data-note">New detailed entries retain macro snapshots. Legacy total-only days remain valid calorie totals but have no invented macros.</div>'+
+  '</div>'+
+  '<div class="card">'+cardHeader('trend','Macro trend · complete detailed days')+
+    (macroDays.length>=2
+      ? statsSplit([['Protein',macroAvg('protein')+' g avg'],['Carbs',macroAvg('carbs')+' g avg'],['Fat',macroAvg('fat')+' g avg']])+'<div class="stats-chart-box"><canvas id="nut-macro-chart" aria-label="Protein, carbohydrate and fat trends over the last 30 calendar days"></canvas></div>'
+      : '<div class="stats-note-panel">Log at least two complete days with all three macros to see a macro trend.</div>')+
+    '<div class="stats-data-note">Partial days, legacy totals and entries with an unknown macro are excluded rather than filled with zero.</div></div>';
   if(logged30.length>=2){
     const ctx=document.getElementById('nut-chart'); if(!ctx) return;
     const {gc,tc}=budChartGridColors();
@@ -13648,6 +13456,13 @@ function renderNutrition(){
         }
       }
     });
+  }
+  if(macroDays.length>=2){
+    const ctx=document.getElementById('nut-macro-chart'); if(!ctx) return;
+    const {gc,tc}=budChartGridColors();
+    const labels=calendarDays.map(d=>d===today?'Today':new Date(d+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'}));
+    const line=(key,label,color)=>({label,data:calendarDays.map(d=>dayStates[d]?.status==='complete'&&dayStates[d].macroComplete?dayStates[d].macros[key]:null),borderColor:color,backgroundColor:'transparent',borderWidth:2,pointRadius:2.5,tension:.25,spanGaps:false});
+    nutMacroChart=new Chart(ctx,{type:'line',data:{labels,datasets:[line('protein','Protein','#5b8def'),line('carbs','Carbs','#f59e0b'),line('fat','Fat','#10b981')]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:tc,usePointStyle:true,boxWidth:8}},tooltip:{callbacks:{label:cx=>cx.dataset.label+': '+Math.round(cx.parsed.y*10)/10+' g'}}},scales:{x:{grid:{color:gc},ticks:{color:tc,font:{size:10},maxTicksLimit:6,maxRotation:0,minRotation:0}},y:{grid:{color:gc},ticks:{color:tc,font:{size:10}},beginAtZero:true}}}});
   }
 }
 
@@ -13698,17 +13513,19 @@ function statsWeightWindow(sorted,fromDate){
 }
 function statsCalorieCoverage(days){
   const today=getLocalDate();
-  const live=S.dailyLog&&S.dailyLog.date===today?S.dailyLog.entries.reduce((a,e)=>a+(e.kcal||0),0):0;
+  const liveSummary=typeof nutDaySummary==='function'?nutDaySummary(today):null;
+  const live=liveSummary&&liveSummary.calories!=null?liveSummary.calories:(S.dailyLog&&S.dailyLog.date===today?S.dailyLog.entries.reduce((a,e)=>a+(e.kcal||0),0):0);
   const end=new Date(localMidnight(today)); end.setDate(end.getDate()-1);
   const out=[];
   for(let i=days-1;i>=0;i--){
     const d=new Date(end); d.setDate(d.getDate()-i);
     const ds=dateStr(d);
-    const v=parseFloat((calorieHistory||{})[ds])||0;
-    out.push({date:ds,val:v>0?v:null});
+    const s=typeof nutDaySummary==='function'?nutDaySummary(ds):null;
+    const v=s&&s.calories!=null?s.calories:(parseFloat((calorieHistory||{})[ds])||0);
+    out.push({date:ds,val:s&&s.status==='partial'?null:(v>0?v:null),status:s?s.status:(v>0?'legacy':'missing'),known:s&&s.status==='partial'?v:null});
   }
   const logged=out.filter(x=>x.val!==null);
-  return {days:out,logged,live,
+  return {days:out,logged,live,liveStatus:liveSummary?liveSummary.status:'complete',liveUnknown:liveSummary?liveSummary.unknown:0,
     avg:logged.length?Math.round(logged.reduce((a,x)=>a+x.val,0)/logged.length):null,
     from:out[0].date,to:out[out.length-1].date};
 }
@@ -14543,8 +14360,12 @@ function buildWeekSummaryCard(){
   // Calories: daily average across the days actually logged in each week. calorieHistory is a
   // flat {date: total} map, so this is a read — no new tracking.
   const avgCals=(a,b)=>{
-    const vals=Object.keys(calorieHistory||{}).filter(d=>inRange(d,a,b))
-      .map(d=>parseFloat(calorieHistory[d])||0).filter(v=>v>0);
+    const dates=new Set(Object.keys(calorieHistory||{}));
+    if(typeof nutLog==='object'){ Object.values(nutLog.entries||{}).forEach(e=>{ if(e&&e.date) dates.add(e.date); }); Object.keys(nutLog.legacyTotals||{}).forEach(d=>dates.add(d)); }
+    const vals=[...dates].filter(d=>inRange(d,a,b)).map(d=>{
+      if(typeof nutDaySummary==='function'){ const s=nutDaySummary(d); return (s.status==='complete'||s.status==='legacy')?s.calories:null; }
+      return parseFloat(calorieHistory[d])||null;
+    }).filter(v=>v!=null);
     return vals.length?Math.round(vals.reduce((x,y)=>x+y,0)/vals.length):null;
   };
   const cNow=avgCals(mondayStr,sundayStr), cPrev=avgCals(prevMonStr,prevSunStr);
@@ -15633,16 +15454,18 @@ function calorieWeekStrip(goalCals,todayTotal){
   const days=[];
   for(let i=6;i>=0;i--){
     const d=dateStr(new Date(t0-i*864e5));
-    days.push({d, v: d===today ? todayTotal : (parseFloat((calorieHistory||{})[d])||0)});
+    const ns=typeof nutDaySummary==='function'?nutDaySummary(d):null;
+    const v=ns?(ns.calories==null?0:ns.calories):(d===today ? todayTotal : (parseFloat((calorieHistory||{})[d])||0));
+    days.push({d,v,status:ns?ns.status:(v?'complete':'missing')});
   }
-  const logged=days.filter(x=>x.v>0);
+  const logged=days.filter(x=>x.v>0&&(x.status==='complete'||x.status==='legacy'));
   // Under three logged days the chart is mostly gaps, which reads as broken rather than as
   // "not much history yet" — better to show nothing at all.
   if(logged.length<3) return '';
   const avg=Math.round(logged.reduce((a,b)=>a+b.v,0)/logged.length);
   const max=Math.max(goalCals||0, ...days.map(x=>x.v))*1.08||1;
   const bars=days.map(x=>
-    '<div class="cw-col"><div class="cw-bar'+(x.d===today?' cw-today':'')+(x.v?'':' cw-empty')+
+    '<div class="cw-col" title="'+(x.status==='partial'?'Partial day — excluded from average':'')+'"><div class="cw-bar'+(x.d===today?' cw-today':'')+(x.v?'':' cw-empty')+(x.status==='partial'?' cw-partial':'')+
     '" style="height:'+Math.min(100,x.v/max*100).toFixed(1)+'%"></div></div>').join('');
   return '<div class="cal-week">'+
       (goalCals?'<div class="cw-target" style="bottom:'+(goalCals/max*100).toFixed(1)+'%"></div>':'')+
@@ -15650,14 +15473,14 @@ function calorieWeekStrip(goalCals,todayTotal){
     '</div>'+
     '<div class="card-cap">7-day avg '+avg.toLocaleString()+(goalCals?' · target '+goalCals.toLocaleString():'')+'</div>';
 }
-function homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt){
+function homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt,unknownCount){
   if(goalCals){
     const pct=Math.min(100,Math.round(kcalTotal/goalCals*100));
     const rem=goalCals-kcalTotal;
     const ringCol=rem<0?'var(--danger)':pct>80?'var(--warn)':'var(--success)';
     const R=44,circ=+(2*Math.PI*R).toFixed(1),offset=+(circ*(1-pct/100)).toFixed(1);
     // Breakfast / lunch / dinner totals, replacing the greeting that used to sit above the
-    // ring. The per-meal category is already recorded on every entry (MEAL_CATS), it just
+    // ring. The per-meal category is already recorded on every canonical nutrition entry; it just
     // was never surfaced here — so this is a read, not new tracking.
     const byMeal={breakfast:0,lunch:0,dinner:0};
     ((S.dailyLog&&S.dailyLog.entries)||[]).forEach(e=>{
@@ -15682,12 +15505,13 @@ function homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt){
         '<text x="55" y="67" text-anchor="middle" font-size="10" fill="var(--muted)">eaten</text>'+
       '</svg>'+
       '<div class="hh-remain">'+
-        '<div style="font-size:30px;font-weight:700;letter-spacing:-1px;color:'+ringCol+';line-height:1">'+(rem>=0?rem:Math.abs(rem))+'</div>'+
-        '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">'+(rem>=0?'kcal remaining':'kcal over target')+'</div>'+
+        (unknownCount?'<div style="font-size:20px;font-weight:800;color:var(--warn);line-height:1.2">Partial</div><div style="font-size:12px;color:var(--muted);margin-bottom:6px">'+unknownCount+' unknown item'+(unknownCount===1?'':'s')+'</div>':'<div style="font-size:30px;font-weight:700;letter-spacing:-1px;color:'+ringCol+';line-height:1">'+(rem>=0?rem:Math.abs(rem))+'</div><div style="font-size:12px;color:var(--muted);margin-bottom:6px">'+(rem>=0?'kcal remaining':'kcal over target')+'</div>')+
         '<div style="font-size:11px;font-weight:600;color:var(--muted)">Goal: '+goalCals+' kcal</div>'+
       '</div>'+
       '</div>'+
       calorieWeekStrip(goalCals,kcalTotal));
+  } else if(kcalTotal>0||unknownCount){
+    return '<div style="text-align:center;padding:12px 0"><div style="font-family:var(--font-num);font-size:34px;font-weight:800;letter-spacing:-1px">'+kcalTotal+'</div><div style="font-size:12px;color:var(--muted)">known kcal'+(unknownCount?' · Partial · '+unknownCount+' unknown item'+(unknownCount===1?'':'s'):'')+'</div><div class="card-cap" style="margin-top:8px">Add Health details if you want a target. Food logging works without one.</div></div>'+calorieWeekStrip(null,kcalTotal);
   } else if(budLeft!==null){
     // Neutral figure, verdict in the chip — the same rule as everywhere else money is shown.
     const kind = budPillCls==='good'?'pos':budPillCls==='warn'?'warn':'neg';
@@ -15741,10 +15565,11 @@ function renderHome(){
 
   // Calories
   const today=getLocalDate();
-  if(S.dailyLog.date!==today){ S.dailyLog={date:today,entries:[]}; persistDailyLog(); }
+  if(typeof nutRefreshLegacyViews==='function') nutRefreshLegacyViews();
   const c=calcGoalCals();
-  const goalCals=c?(c.goal==='cut'?c.cut:c.goal==='bulk'?c.bulk:c.maintain):null;
-  const kcalTotal=S.dailyLog.entries.reduce((a,e)=>a+e.kcal,0);
+  const goalCals=typeof nutTarget==='function'?nutTarget():(c?(c.goal==='cut'?c.cut:c.goal==='bulk'?c.bulk:c.maintain):null);
+  const nutToday=typeof nutDaySummary==='function'?nutDaySummary(today):null;
+  const kcalTotal=nutToday&&nutToday.calories!=null?nutToday.calories:S.dailyLog.entries.reduce((a,e)=>a+e.kcal,0);
 
   // Budget leftover — from the CURRENT WEEK's saved data (same accessors as the Budget
   // tab: weekIncome / weekLeftover) so Home always matches what the Budget tab shows.
@@ -15760,7 +15585,7 @@ function renderHome(){
     budPillTxt=budLeft>=50?'On track':budLeft>=0?'Tight':'Over';
   }
 
-  const heroContent=homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt);
+  const heroContent=homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt,nutToday&&nutToday.status==='partial'?nutToday.unknown:0);
 
   // Workout streak (consecutive days with logged sessions)
   const sessDates=[...new Set(S.sessions.map(s=>s.date))].sort();
@@ -15794,9 +15619,10 @@ function renderHome(){
   const lastWk=budgetData[weekKey(getMondayOf(-1))];
   const lastWeekPay=lastWk?weekIncome(lastWk):0;
 
-  const heroHdrCol=goalCals?'#52B788':budLeft!==null?'#FF6B35':'#64748b';
-  const heroHdrTxt=goalCals?'Calorie progress':budLeft!==null?'Budget summary':'Overview';
-  const heroHdrIcon=goalCals?'flame':budLeft!==null?'wallet':'check';
+  const hasNutrition=nutToday&&nutToday.status!=='missing';
+  const heroHdrCol=(goalCals||hasNutrition)?'#52B788':budLeft!==null?'#FF6B35':'#64748b';
+  const heroHdrTxt=(goalCals||hasNutrition)?'Nutrition today':budLeft!==null?'Budget summary':'Overview';
+  const heroHdrIcon=(goalCals||hasNutrition)?'flame':budLeft!==null?'wallet':'check';
 
   // ── Momentum redesign: top-of-Home cards (display only; reuse existing data) ──
   const mCurType=type(S.dayIdx);
@@ -15892,7 +15718,7 @@ function renderHome(){
 
   // Calorie / overview card
   const overviewCard=
-    '<div class="card hero-card"'+(goalCals?' onclick="openCalorieOverlay()"':'')+' style="margin-bottom:12px;padding:0;overflow:hidden'+(goalCals?';cursor:pointer':'')+'">'+
+    '<div class="card hero-card" onclick="setView(\'nutrition\')" style="margin-bottom:12px;padding:0;overflow:hidden;cursor:pointer">'+
       // Shared header, replacing another inline copy of the 11px/600/uppercase declaration.
       '<div style="padding:16px 16px 0">'+cardHeader(heroHdrIcon,heroHdrTxt)+'</div>'+
       // Greeting removed: it repeated the time of day the app already shows and pushed the
@@ -18383,7 +18209,7 @@ function kitUUID(){
 }
 function kitSeedRecipes(){
   const ig=(name,amount,unit)=>({name,amount,unit:unit||''});
-  const mk=(o)=>Object.assign({id:kitUUID(),description:'',tags:[],calories:null,protein:null,carbs:null,fat:null,favourite:false,batchPrep:false,createdAt:Date.now()},o);
+  const mk=(o)=>Object.assign({id:kitUUID(),description:'',tags:[],calories:null,protein:null,carbs:null,fat:null,nutritionBasis:'manual',favourite:false,batchPrep:false,createdAt:Date.now()},o);
   return [
     mk({name:'French Toast with Berries',category:'breakfast',servings:2,
       description:'Golden eggy toast with fresh berries and maple syrup.',
@@ -18438,7 +18264,7 @@ function kitLoadRecipes(){
     if(raw){ const arr=JSON.parse(raw); if(Array.isArray(arr)) return arr; }
   }catch(e){}
   const seeded=kitSeedRecipes();
-  localStorage.setItem('kitchen_recipes',JSON.stringify(seeded));
+  lsSave('kitchen_recipes',seeded,'kitRecipes');
   return seeded;
 }
 let kitRecipes=kitLoadRecipes();
@@ -19262,9 +19088,8 @@ function kitSheetHead(title,sub){
 // Servings COOKED and servings EATEN are different numbers. Scaling a recipe to four to cook
 // a batch must not log four servings of dinner, so the confirmation asks — starting at one.
 const kitLogState={recipeId:null,optionId:null,servings:1,category:'dinner'};
-// The calorie overlay groups entries by MEAL_CATS — breakfast / lunch / dinner / snacks — and
-// has no group for 'other', so an entry logged there is counted in the day's total but never
-// listed. The chooser therefore offers only real meals, seeded from the recipe's own category.
+// Nutrition groups entries as breakfast / lunch / dinner / snacks. Legacy "other" entries were
+// counted but invisible, so the chooser offers only real meals, seeded from the recipe category.
 const KIT_LOG_CATS=[['breakfast','Breakfast'],['lunch','Lunch'],['dinner','Dinner'],['snacks','Snacks']];
 function kitLogCatFor(r){
   const c=String((r&&r.category)||'').toLowerCase();
@@ -19317,19 +19142,46 @@ function kitLogRender(){
                    carbs:rv.nutrition.carbs==null?null:rv.nutrition.carbs*n,
                    fat:rv.nutrition.fat==null?null:rv.nutrition.fat*n},
                   'Logging '+kitTrim(n)+' serving'+(n===1?'':'s'))+
-    (rv.nutrition.calories==null?'<div class="kit-note-panel">This recipe has no calories saved, so it will be logged at 0 kcal. Add macros in the recipe editor to change that.</div>':'')+
+    (rv.nutrition.calories==null?'<div class="kit-note-panel">Nutrition is unresolved. Enter a one-off manual estimate, return to Nutrition Review, or log explicitly as Unknown; Daily will never turn it into 0 kcal.</div><div class="kit-form-actions"><button class="kit-add-recipe-btn" onclick="kitLogManualEstimate()">Enter manual estimate</button></div>':'')+
     '<div class="kit-sheet-actions">'+
       '<button class="modal-btn secondary" onclick="kitSheetClose()">Cancel</button>'+
       '<button class="modal-btn primary" onclick="kitLogConfirm()">Log it</button>'+
     '</div>');
 }
+function kitLogManualEstimate(){
+  const r=kitRecipes.find(x=>x.id===kitLogState.recipeId); if(!r) return;
+  const n=kitLogState.servings;
+  kitSheetOpen(
+    kitSheetHead('Manual nutrition estimate',r.name)+
+    '<div class="kit-note-panel">These figures apply only to the '+kitTrim(n)+' serving'+(n===1?'':'s')+' being logged. They are saved in the food-log snapshot and do not overwrite the recipe.</div>'+
+    '<div class="kit-form-grid">'+
+      '<label class="kit-form-field"><span>Calories *</span><input id="kit-log-est-cal" type="number" min="0" step="1" inputmode="decimal"></label>'+
+      '<label class="kit-form-field"><span>Protein (g)</span><input id="kit-log-est-pro" type="number" min="0" step="0.1" inputmode="decimal"></label>'+
+      '<label class="kit-form-field"><span>Carbs (g)</span><input id="kit-log-est-carb" type="number" min="0" step="0.1" inputmode="decimal"></label>'+
+      '<label class="kit-form-field"><span>Fat (g)</span><input id="kit-log-est-fat" type="number" min="0" step="0.1" inputmode="decimal"></label>'+
+    '</div><div class="kit-sheet-actions"><button class="modal-btn secondary" onclick="kitLogRender()">Back</button><button class="modal-btn primary" onclick="kitLogSaveEstimate()">Log estimate</button></div>');
+}
+function kitLogSaveEstimate(){
+  const r=kitRecipes.find(x=>x.id===kitLogState.recipeId); if(!r) return;
+  const read=(id,required)=>{const raw=String((document.getElementById(id)||{}).value||'').trim();if(!raw)return required?NaN:null;const n=Number(raw);return Number.isFinite(n)&&n>=0?n:NaN;};
+  const total={calories:read('kit-log-est-cal',true),protein:read('kit-log-est-pro',false),carbs:read('kit-log-est-carb',false),fat:read('kit-log-est-fat',false)};
+  if(Object.values(total).some(v=>Number.isNaN(v))){showToast('Use non-negative numbers and add calories');return;}
+  const n=kitLogState.servings,rv=kitResolve(r,kitLogState.optionId,r.servings),per={};
+  Object.keys(total).forEach(k=>{per[k]=total[k]==null?null:Math.round(total[k]/n*10)/10;});
+  const id=typeof nutLogRecipeSnapshot==='function'?nutLogRecipeSnapshot(r,Object.assign({},rv,{nutrition:per}),n,kitLogState.category,'recipe-manual'):null;
+  if(!id){showToast('Nutrition log is unavailable');return;}
+  kitSheetClose();showToast('Logged '+kitTrim(n)+' serving'+(n===1?'':'s')+' · manual estimate');
+  const dov=document.getElementById('kit-detail-overlay');if(dov)dov.style.display='none';updateKitFab();
+  if(typeof nutOpen==='function')nutOpen(kitLogState.category,id);
+}
 function kitLogConfirm(){
   const r=kitRecipes.find(x=>x.id===kitLogState.recipeId); if(!r) return;
   const rv=kitResolve(r,kitLogState.optionId,r.servings);
   const n=kitLogState.servings;
-  const kcal=rv.nutrition.calories==null?0:Math.round(rv.nutrition.calories*n);
-  const today=getLocalDate();
-  if(S.dailyLog.date!==today){ S.dailyLog={date:today,entries:[]}; }
+  if(rv.nutrition.calories==null&&!confirm('This recipe has unresolved nutrition. Log it explicitly as Unknown?\n\nThe day will be marked Partial.')){
+    kitSheetClose(); if(typeof nutSetTab==='function'){ setView('nutrition'); nutSetTab('recipes'); } return;
+  }
+  const kcal=rv.nutrition.calories==null?null:Math.round(rv.nutrition.calories*n);
   // The NAME is a snapshot: renaming or deleting the recipe later must not rewrite what the
   // food log says was eaten. The stable ids travel beside it for anything that wants to link
   // back, and every added field is optional so old entries keep rendering untouched.
@@ -19338,15 +19190,17 @@ function kitLogConfirm(){
   if(rv.optionId){ entry.proteinOptionId=rv.optionId; entry.proteinLabel=rv.optionLabel; }
   const m=k=>rv.nutrition[k]==null?null:Math.round(rv.nutrition[k]*n*10)/10;
   ['protein','carbs','fat'].forEach(k=>{ const val=m(k); if(val!=null) entry[k]=val; });
-  S.dailyLog.entries.push(entry);
-  persistDailyLog();
-  if(typeof renderCalorieLog==='function') renderCalorieLog();
+  const nutEntryId=typeof nutLogRecipeSnapshot==='function'?nutLogRecipeSnapshot(r,rv,n,kitLogState.category):null;
+  if(!nutEntryId){
+    const today=getLocalDate(); if(S.dailyLog.date!==today)S.dailyLog={date:today,entries:[]};
+    entry.kcal=kcal; entry._unknown=kcal==null; S.dailyLog.entries.push(entry); persistDailyLog();
+  }
   kitSheetClose();
-  showToast('Logged '+kitTrim(n)+' serving'+(n===1?'':'s')+' · '+kcal+' kcal');
+  showToast('Logged '+kitTrim(n)+' serving'+(n===1?'':'s')+(kcal==null?' · Unknown nutrition':' · '+kcal+' kcal'));
   const dov=document.getElementById('kit-detail-overlay');
   if(dov) dov.style.display='none';
   updateKitFab();
-  openCalorieOverlay();
+  if(typeof nutOpen==='function') nutOpen(kitLogState.category,nutEntryId); else openCalorieOverlay();
 }
 
 // ── Sharing ───────────────────────────────────────────────────────
@@ -19518,7 +19372,12 @@ function kitParseImport(text){
       const iname=String(ing.name||'').trim();
       if(!iname) return {error:'"'+name+'": an ingredient is missing "name".'};
       const amt=ing.amount===''||ing.amount==null?'':(isNaN(parseFloat(ing.amount))?String(ing.amount):parseFloat(ing.amount));
-      ingredients.push({name:iname, amount:amt, unit:String(ing.unit||'').trim()});
+      if(typeof amt==='number'&&(!Number.isFinite(amt)||amt<=0)) return {error:'"'+name+'": ingredient "'+iname+'" amount must be greater than zero, or blank.'};
+      const built={name:iname, amount:amt, unit:String(ing.unit||'').trim()};
+      if(typeof ing.foodId==='string'&&ing.foodId) built.foodId=ing.foodId;
+      if(typeof ing.measureId==='string'&&ing.measureId) built.measureId=ing.measureId;
+      if(Number.isFinite(Number(ing.resolvedGrams))&&Number(ing.resolvedGrams)>0) built.resolvedGrams=Number(ing.resolvedGrams);
+      ingredients.push(built);
     }
     // Steps may be plain strings, {text,timerMinutes}, or the single {type:'protein'} slot
     // that marks where a variant recipe's chosen protein instructions belong. A step that is
@@ -19539,10 +19398,13 @@ function kitParseImport(text){
     const numOrNull=(v,label,what)=>{
       if(v==null||v==='') return {v:null};
       const n=parseFloat(v);
-      if(isNaN(n)) return {error:'"'+name+'": '+label+' '+what+' must be a number or null.'};
+      if(!Number.isFinite(n)||n<0) return {error:'"'+name+'": '+label+' '+what+' must be a non-negative number or null.'};
       return {v:n};
     };
     const tags=Array.isArray(r.tags)?r.tags.map(t=>String(t).trim()).filter(Boolean):[];
+    if(r.servings!=null&&(!Number.isFinite(Number(r.servings))||Number(r.servings)<=0)) return {error:'"'+name+'": servings must be greater than zero.'};
+    const baseMacro={};
+    for(const k of ['calories','protein','carbs','fat']){const m=numOrNull(r[k],'recipe',k);if(m.error)return {error:m.error};baseMacro[k]=m.v;}
     // ── Protein options ──
     let proteinOptions=null, defaultProteinOptionId=null;
     if(r.proteinOptions!=null){
@@ -19571,7 +19433,11 @@ function kitParseImport(text){
               const xn=String(x.name||'').trim();
               if(!xn) return {error:'"'+name+'": an extra ingredient in "'+label+'" is missing "name".'};
               const xa=x.amount===''||x.amount==null?'':(isNaN(parseFloat(x.amount))?String(x.amount):parseFloat(x.amount));
-              extras.push({name:xn, amount:xa, unit:String(x.unit||'').trim()});
+              const extra={name:xn, amount:xa, unit:String(x.unit||'').trim()};
+              if(typeof x.foodId==='string'&&x.foodId)extra.foodId=x.foodId;
+              if(typeof x.measureId==='string'&&x.measureId)extra.measureId=x.measureId;
+              if(Number(x.resolvedGrams)>0)extra.resolvedGrams=Number(x.resolvedGrams);
+              extras.push(extra);
             }
           }
           const ct=numOrNull(o.cookTime,'"'+label+'"','cookTime'); if(ct.error) return {error:ct.error};
@@ -19585,8 +19451,12 @@ function kitParseImport(text){
           // them, and a pasted recipe must not be able to collide with an id already used here.
           const newId=kitOptId();
           if(srcId) idMap[srcId]=newId;
+          const mainIng={name:miName, amount:miAmt, unit:String(mi.unit||'').trim()};
+          if(typeof mi.foodId==='string'&&mi.foodId)mainIng.foodId=mi.foodId;
+          if(typeof mi.measureId==='string'&&mi.measureId)mainIng.measureId=mi.measureId;
+          if(Number(mi.resolvedGrams)>0)mainIng.resolvedGrams=Number(mi.resolvedGrams);
           built.push(Object.assign({id:newId, label,
-            ingredient:{name:miName, amount:miAmt, unit:String(mi.unit||'').trim()},
+            ingredient:mainIng,
             extras,
             prep:String(o.prep||'').trim(), cook:String(o.cook||'').trim(),
             cookTime:ct.v, internalTempC:tp.v}, macro));
@@ -19607,9 +19477,11 @@ function kitParseImport(text){
       description:String(r.description||'').trim(),
       servings:Math.max(1,parseInt(r.servings)||2),
       cookTime:num(r.cookTime), ingredients, steps, tags,
-      calories:num(r.calories), protein:num(r.protein), carbs:num(r.carbs), fat:num(r.fat),
-      batchPrep:tags.includes('batch-prep')||tags.includes('bulk-cook')
+      calories:baseMacro.calories, protein:baseMacro.protein, carbs:baseMacro.carbs, fat:baseMacro.fat,
+      batchPrep:tags.includes('batch-prep')||tags.includes('bulk-cook'),
+      nutritionBasis:baseMacro.calories!=null?'manual':'missing'
     };
+    if(['calculated','manual','partial','missing'].includes(r.nutritionBasis)) rec.nutritionBasis=r.nutritionBasis;
     if(proteinOptions){ rec.proteinOptions=proteinOptions; rec.defaultProteinOptionId=defaultProteinOptionId; }
     out.push(rec);
   }
@@ -19628,11 +19500,10 @@ function kitRecipeToExport(r){
     servings:Math.max(1,parseInt(r.servings)||1),
     description:r.description||'',
     cookTime:num(r.cookTime),
-    ingredients:(r.ingredients||[]).map(i=>({
-      name:i.name||'',
-      amount:(i.amount===''||i.amount==null)?'':(num(i.amount)!=null?num(i.amount):i.amount),
-      unit:i.unit||''
-    })),
+    ingredients:(r.ingredients||[]).map(i=>{
+      const x={name:i.name||'',amount:(i.amount===''||i.amount==null)?'':(num(i.amount)!=null?num(i.amount):i.amount),unit:i.unit||''};
+      if(i.foodId)x.foodId=i.foodId;if(i.measureId)x.measureId=i.measureId;if(num(i.resolvedGrams)>0)x.resolvedGrams=num(i.resolvedGrams);return x;
+    }),
     // Steps keep whichever shape they were stored in; all three import cleanly.
     steps:(r.steps||[]).map(s=>{
       if(kitIsProteinStep(s)) return {type:'protein'};
@@ -19642,21 +19513,14 @@ function kitRecipeToExport(r){
     tags:Array.isArray(r.tags)?r.tags.slice():[],
     calories:num(r.calories), protein:num(r.protein), carbs:num(r.carbs), fat:num(r.fat)
   };
+  if(r.nutritionBasis) out.nutritionBasis=r.nutritionBasis;
   const opts=kitOptionsOf(r);
   if(opts.length){
     out.proteinOptions=opts.map(o=>({
       id:String(o.id||''),
       label:String(o.label||''),
-      ingredient:{
-        name:String((o.ingredient&&o.ingredient.name)||''),
-        amount:(()=>{ const a=o.ingredient&&o.ingredient.amount; return (a===''||a==null)?'':(num(a)!=null?num(a):a); })(),
-        unit:String((o.ingredient&&o.ingredient.unit)||'')
-      },
-      extras:(Array.isArray(o.extras)?o.extras:[]).map(x=>({
-        name:String(x.name||''),
-        amount:(x.amount===''||x.amount==null)?'':(num(x.amount)!=null?num(x.amount):x.amount),
-        unit:String(x.unit||'')
-      })),
+      ingredient:(()=>{const i=o.ingredient||{},x={name:String(i.name||''),amount:(i.amount===''||i.amount==null)?'':(num(i.amount)!=null?num(i.amount):i.amount),unit:String(i.unit||'')};if(i.foodId)x.foodId=i.foodId;if(i.measureId)x.measureId=i.measureId;if(num(i.resolvedGrams)>0)x.resolvedGrams=num(i.resolvedGrams);return x;})(),
+      extras:(Array.isArray(o.extras)?o.extras:[]).map(i=>{const x={name:String(i.name||''),amount:(i.amount===''||i.amount==null)?'':(num(i.amount)!=null?num(i.amount):i.amount),unit:String(i.unit||'')};if(i.foodId)x.foodId=i.foodId;if(i.measureId)x.measureId=i.measureId;if(num(i.resolvedGrams)>0)x.resolvedGrams=num(i.resolvedGrams);return x;}),
       prep:String(o.prep||''), cook:String(o.cook||''),
       cookTime:num(o.cookTime), internalTempC:num(o.internalTempC),
       calories:num(o.calories), protein:num(o.protein), carbs:num(o.carbs), fat:num(o.fat)
@@ -19872,10 +19736,13 @@ function kitFormAddIng(data){
     knownUnits.map(u=>'<option value="'+u+'"'+(unitVal===u?' selected':'')+'>'+u+'</option>').join('');
   const row=document.createElement('div');
   row.className='kit-f-ing-row';
+  row.dataset.foodId=d.foodId||'';
+  row.dataset.measureId=d.measureId||'';
+  row.dataset.resolvedGrams=d.resolvedGrams||'';
   row.innerHTML=
-    '<input class="kit-fi-amt" type="text" inputmode="decimal" placeholder="Qty" value="'+kitEsc(String(d.amount||''))+'">'+
-    '<select class="kit-fi-unit-sel">'+unitSel+'</select>'+
-    '<input class="kit-fi-name" type="text" placeholder="Ingredient" value="'+kitEsc(d.name||'')+'">'+
+    '<input class="kit-fi-amt" type="text" inputmode="decimal" placeholder="Qty" value="'+kitEsc(String(d.amount||''))+'" oninput="this.parentElement.dataset.foodId=\'\';this.parentElement.dataset.resolvedGrams=\'\'">'+
+    '<select class="kit-fi-unit-sel" onchange="this.parentElement.dataset.foodId=\'\';this.parentElement.dataset.resolvedGrams=\'\'">'+unitSel+'</select>'+
+    '<input class="kit-fi-name" type="text" placeholder="Ingredient" value="'+kitEsc(d.name||'')+'" oninput="this.parentElement.dataset.foodId=\'\';this.parentElement.dataset.resolvedGrams=\'\'">'+
     '<button class="kit-f-del" onclick="this.parentElement.remove()" aria-label="Remove">✕</button>';
   wrap.appendChild(row);
 }
@@ -19919,8 +19786,8 @@ function kitFormOptSet(id,field,value){
     if(el) el.textContent=value||'Untitled option';
   }
 }
-function kitFormOptIngSet(id,field,value){ const o=kitFormOpt(id); if(o) o.ingredient[field]=value; }
-function kitFormOptExtraSet(id,idx,field,value){ const o=kitFormOpt(id); if(o&&o.extras[idx]) o.extras[idx][field]=value; }
+function kitFormOptIngSet(id,field,value){ const o=kitFormOpt(id); if(o){ o.ingredient[field]=value; if(['name','amount','unit'].includes(field)){delete o.ingredient.foodId;delete o.ingredient.measureId;delete o.ingredient.resolvedGrams;} } }
+function kitFormOptExtraSet(id,idx,field,value){ const o=kitFormOpt(id); if(o&&o.extras[idx]){ o.extras[idx][field]=value; if(['name','amount','unit'].includes(field)){delete o.extras[idx].foodId;delete o.extras[idx].measureId;delete o.extras[idx].resolvedGrams;} } }
 function kitFormOptExtraAdd(id){ const o=kitFormOpt(id); if(!o) return; o.extras.push({name:'',amount:'',unit:'g'}); kitFormRenderProtein(); }
 function kitFormOptExtraDel(id,idx){ const o=kitFormOpt(id); if(!o) return; o.extras.splice(idx,1); kitFormRenderProtein(); }
 function kitFormOptSetDefault(id){ if(kitFormOpt(id)) kitFormProtein.defaultId=id; kitFormRenderProtein(); }
@@ -20123,13 +19990,15 @@ function kitFormBuildProtein(){
     if(!iname) return {error:'"'+label+'" needs a protein ingredient.'};
     const amtRaw=String(ing.amount==null?'':ing.amount).trim();
     const amtNum=parseFloat(amtRaw);
+    const mainIng={name:iname, amount:(amtRaw!==''&&!isNaN(amtNum))?amtNum:amtRaw, unit:String(ing.unit||'')};
+    if(ing.foodId)mainIng.foodId=ing.foodId;if(ing.measureId)mainIng.measureId=ing.measureId;if(parseFloat(ing.resolvedGrams)>0)mainIng.resolvedGrams=parseFloat(ing.resolvedGrams);
     out.push({
       id:o.id||kitOptId(), label,
-      ingredient:{name:iname, amount:(amtRaw!==''&&!isNaN(amtNum))?amtNum:amtRaw, unit:String(ing.unit||'')},
+      ingredient:mainIng,
       extras:(o.extras||[]).map(x=>{
         const n=String(x.name||'').trim(); if(!n) return null;
         const a=String(x.amount==null?'':x.amount).trim(); const an=parseFloat(a);
-        return {name:n, amount:(a!==''&&!isNaN(an))?an:a, unit:String(x.unit||'')};
+        const extra={name:n, amount:(a!==''&&!isNaN(an))?an:a, unit:String(x.unit||'')};if(x.foodId)extra.foodId=x.foodId;if(x.measureId)extra.measureId=x.measureId;if(parseFloat(x.resolvedGrams)>0)extra.resolvedGrams=parseFloat(x.resolvedGrams);return extra;
       }).filter(Boolean),
       prep:String(o.prep||'').trim(), cook:String(o.cook||'').trim(),
       cookTime:num(o.cookTime), internalTempC:num(o.internalTempC),
@@ -20152,11 +20021,10 @@ function kitSaveForm(){
   const num=v=>{ const n=parseFloat(v); return isNaN(n)?null:n; };
   const name=(document.getElementById('kit-f-name')?.value||'').trim();
   if(!name){ alert('Please enter a recipe name.'); return; }
-  const ings=[...document.querySelectorAll('#kit-f-ings .kit-f-ing-row')].map(row=>({
-    name:(row.querySelector('.kit-fi-name')?.value||'').trim(),
-    amount:(()=>{ const v=(row.querySelector('.kit-fi-amt')?.value||'').trim(); const n=parseFloat(v); return (v!==''&&!isNaN(n))?n:v; })(),
-    unit:(row.querySelector('.kit-fi-unit-sel')?.value||row.querySelector('.kit-fi-unit')?.value||'').trim(),
-  })).filter(i=>i.name);
+  const ings=[...document.querySelectorAll('#kit-f-ings .kit-f-ing-row')].map(row=>{
+    const i={name:(row.querySelector('.kit-fi-name')?.value||'').trim(),amount:(()=>{ const v=(row.querySelector('.kit-fi-amt')?.value||'').trim(); const n=parseFloat(v); return (v!==''&&!isNaN(n))?n:v; })(),unit:(row.querySelector('.kit-fi-unit-sel')?.value||row.querySelector('.kit-fi-unit')?.value||'').trim()};
+    if(row.dataset.foodId)i.foodId=row.dataset.foodId;if(row.dataset.measureId)i.measureId=row.dataset.measureId;const g=parseFloat(row.dataset.resolvedGrams);if(g>0)i.resolvedGrams=g;return i;
+  }).filter(i=>i.name);
   const steps=[...document.querySelectorAll('#kit-f-steps .kit-f-step-row')].map(row=>{
     if(row.classList.contains('kit-f-step-slot')) return {type:'protein'};
     const t=(row.querySelector('.kit-fs-text')?.value||'').trim();
@@ -20199,10 +20067,12 @@ function kitSaveForm(){
   if(id){
     const r=kitRecipes.find(x=>x.id===id);
     if(r){
+      if(['calories','protein','carbs','fat'].some(k=>data[k]!==r[k])) data.nutritionBasis=data.calories==null?'missing':'manual';
       Object.assign(r,data);
       if(data.proteinOptions===undefined){ delete r.proteinOptions; delete r.defaultProteinOptionId; }
     }
   } else {
+    data.nutritionBasis=data.calories==null?'missing':'manual';
     if(data.proteinOptions===undefined){ delete data.proteinOptions; delete data.defaultProteinOptionId; }
     kitRecipes.push(Object.assign({id:kitUUID(),favourite:false,lastCooked:null,createdAt:Date.now()},data));
     kitState.selectedId=null;
@@ -21408,6 +21278,9 @@ try {
   restoreQuickSettings();
   applyDayColour();
   logCheckin();
+  // Normalise the canonical food log before any Home/Stats consumer reads calories. Boot-safe
+  // writes keep timestamp 0, so a fresh profile cannot outrank real cloud nutrition data.
+  if(typeof nutInit==='function') nutInit();
   // Restore an in-progress workout from earlier today (survives refresh); else fresh day.
   if(!restoreSetData()) initDay(suggestDay());
   renderHome();
@@ -21443,6 +21316,9 @@ try {
   checkReminders();
   // Boot is over: from here every save is a real edit and stamps the current time.
   _bootPhase = false;
+  const initialView=decodeURIComponent(location.hash.replace(/^#/,''));
+  if(dailyHistoryView(initialView)&&initialView!==S.view) setView(initialView,null,{fromHistory:true});
+  try{history.replaceState({dailyView:S.view},'',location.pathname+location.search+'#'+S.view);}catch(e){}
 } catch(e) {
   // Cleared in the failure path too — otherwise an init error would leave every later save
   // unstamped, and this device could never win a sync conflict again.
@@ -21658,14 +21534,18 @@ function jrnWeekKeyForDate(ds){
   return dateStr(d);
 }
 function jrnCalorieTotalForDate(ds){
+  if(typeof nutDaySummary==='function'){
+    const s=nutDaySummary(ds);
+    if(s.status!=='missing') return {calories:s.calories,status:s.status,unknown:s.unknown||0};
+  }
   const today=getLocalDate();
   if(ds===today&&S.dailyLog&&S.dailyLog.date===today){
     const n=(S.dailyLog.entries||[]).reduce((sum,e)=>sum+(parseFloat(e.kcal)||0),0);
-    if(n>0) return n;
+    if(n>0) return {calories:n,status:'complete',unknown:0};
   }
   if(Object.prototype.hasOwnProperty.call(calorieHistory||{},ds)){
     const n=parseFloat(calorieHistory[ds]);
-    if(!isNaN(n)&&n>0) return n;
+    if(!isNaN(n)&&n>0) return {calories:n,status:'legacy',unknown:0};
   }
   return null;
 }
@@ -21692,7 +21572,7 @@ function jrnDayContext(ds){
     facts.push({kind:'habits',label:done+' habit'+(done===1?'':'s')+' completed',detail:'Habits'});
   }
   const kcal=jrnCalorieTotalForDate(ds);
-  if(kcal!==null) facts.push({kind:'calories',label:Math.round(kcal).toLocaleString()+' kcal',detail:ds===getLocalDate()?'Food log · in progress':'Archived calorie total'});
+  if(kcal!==null) facts.push({kind:'calories',label:Math.round(kcal.calories).toLocaleString()+' kcal'+(kcal.status==='partial'?' + unknown':''),detail:kcal.status==='partial'?'Partial known subtotal':kcal.status==='legacy'?'Legacy calorie total':ds===getLocalDate()?'Food log · in progress':'Detailed food log'});
   const weight=(S.weights||[]).find(w=>w&&w.date===ds&&parseFloat(w.weight)>0);
   if(weight) facts.push({kind:'weight',label:parseFloat(weight.weight)+' kg',detail:'Weight check-in'});
   const dayTxns=(txnData||[]).filter(t=>t&&t.date===ds);
@@ -21737,7 +21617,7 @@ function jrnOpenDaySource(kind,ds){
     return;
   }
   if(kind==='calories'){
-    if(ds===getLocalDate()){ setView('home'); openCalorieOverlay(); }
+    if(ds===getLocalDate()){ setView('nutrition'); }
     else { setView('stats'); setStatsTab('nutrition',true); openNutritionEvidence(ds); }
     return;
   }
@@ -21764,10 +21644,12 @@ function jrnWeekReflection(){
   }
   const spend=jrnVariableWeekFact(today);
   if(spend) facts.push({label:'Spending',value:fmtMoneyExact(spend.amount),detail:'Variable spend recorded · '+spend.source});
-  const calDays=days.map(d=>({d,n:jrnCalorieTotalForDate(d)})).filter(x=>x.n!==null);
+  const calAll=days.map(d=>({d,n:jrnCalorieTotalForDate(d)})).filter(x=>x.n!==null);
+  const calDays=calAll.filter(x=>x.n.status==='complete'||x.n.status==='legacy');
   if(calDays.length){
-    const avg=Math.round(calDays.reduce((sum,x)=>sum+x.n,0)/calDays.length);
-    facts.push({label:'Calories',value:avg.toLocaleString()+' kcal average',detail:calDays.length+' logged day'+(calDays.length===1?'':'s')+' · unlogged days excluded'});
+    const avg=Math.round(calDays.reduce((sum,x)=>sum+x.n.calories,0)/calDays.length);
+    const partial=calAll.filter(x=>x.n.status==='partial').length;
+    facts.push({label:'Calories',value:avg.toLocaleString()+' kcal average',detail:calDays.length+' complete/legacy day'+(calDays.length===1?'':'s')+' · unlogged'+(partial?' and '+partial+' partial':'')+' excluded'});
   }
   const weights=(S.weights||[]).filter(w=>w&&w.date>=monday&&w.date<=today&&parseFloat(w.weight)>0).sort((a,b)=>a.date<b.date?-1:1);
   if(weights.length){

@@ -983,10 +983,6 @@
   /* Daily habits toggles must sit above any sibling stacking contexts */
   #view-home #habits-today-list>div{position:relative;z-index:1}
 
-  /* Calorie overlay centered as a card on desktop */
-  #calorie-overlay{padding:32px 16px 80px}
-  #calorie-overlay-inner{max-width:800px;margin:0 auto;width:100%;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px}
-
   /* Onboarding: widen into a centered card on desktop (same pattern as the calorie overlay)
      instead of a 400px mobile card floating in empty space. */
   #onboarding-overlay{padding:48px 20px 64px}

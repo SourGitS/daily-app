@@ -26,15 +26,16 @@
 #app-main{flex:1;overflow:hidden;position:relative}
 
 /* ── Swipe deck (mobile tab paging) ── */
-#swipe-deck{display:flex;flex-direction:row;width:400%;height:100%;will-change:transform;transition:none;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+#swipe-deck{display:flex;flex-direction:row;width:500%;height:100%;will-change:transform;transition:none;backface-visibility:hidden;-webkit-backface-visibility:hidden}
 #swipe-deck.snapping{transition:transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)}
-.swipe-panel{width:25%;flex-shrink:0;height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:16px;padding-bottom:calc(104px + env(safe-area-inset-bottom));box-sizing:border-box;will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.swipe-panel{width:20%;flex-shrink:0;height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:16px;padding-bottom:calc(104px + env(safe-area-inset-bottom));box-sizing:border-box;will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden}
 /* Visual order home→budget→log→kitchen, matching NAV_ORDER in js/app.js.
    Stats left the deck for the hamburger menu; Kitchen took its slot. */
 #view-home{order:0}
 #view-budget{order:1}
 #view-log{order:2}
-#view-kitchen{order:3}
+#view-nutrition{order:3}
+#view-kitchen{order:4}
 /* Non-swipe views (kitchen/settings/plans/notes) overlay the deck when shown. */
 #app-main>section{position:absolute;top:0;left:0;right:0;bottom:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px;padding-bottom:calc(104px + env(safe-area-inset-bottom));background:var(--bg);z-index:5;box-sizing:border-box;animation:fadeIn 0.18s ease}
 
@@ -96,7 +97,7 @@
    bottom (the same safe-area expression as the nav's padding-bottom), NOT the screen edge, so
    it no longer bleeds into the bottom padding. Per-tab left/width (with outer insets on tabs
    1 & 4) are set by updateNavPill; width transitions so the outer curve animates. */
-#nav-pill{position:absolute;top:5px;bottom:max(18px, calc(env(safe-area-inset-bottom, 0px) + 2px));width:25%;background:rgba(var(--accent-rgb),0.12);border-radius:14px;left:0;transition:left 0.25s cubic-bezier(0.4,0,0.2,1),width 0.25s cubic-bezier(0.4,0,0.2,1),background 0.3s ease;pointer-events:none;z-index:0}
+#nav-pill{position:absolute;top:5px;bottom:max(18px, calc(env(safe-area-inset-bottom, 0px) + 2px));width:20%;background:rgba(var(--accent-rgb),0.12);border-radius:14px;left:0;transition:left 0.25s cubic-bezier(0.4,0,0.2,1),width 0.25s cubic-bezier(0.4,0,0.2,1),background 0.3s ease;pointer-events:none;z-index:0}
 [data-theme="dark"] #nav-pill{background:rgba(var(--accent-rgb),0.18)}
 /* Accent underline under the active tab. Raised off the screen edge to sit just beneath the
    icon+label (anchored to the button-content bottom, not bottom:2px), centred on the icon and

@@ -118,7 +118,8 @@
 // v275 resolves historical spending IDs to configured category names and merges duplicates.
 // v276 renames the user-facing Daily + AI destination to Daily AI.
 // v277 reorganises Daily AI into separate guided Ask AI and Import actions workflows.
-const CACHE_NAME = 'daily-v277';
+// v278: first-class Nutrition, canonical dated food entries and an offline AUSNUT catalogue.
+const CACHE_NAME = 'daily-v278';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
@@ -135,6 +136,7 @@ const ASSETS = [
   './css/journal.css',
   './css/settings.css',
   './js/app.js',
+  './js/nutrition.js',
   './icon-192.png',
   './icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js',
