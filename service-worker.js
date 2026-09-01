@@ -115,7 +115,8 @@
 // v273 gives every Pantry row a local item editor for category and canonical stock status,
 // plus custom-item rename and pantry-scoped removal without changing the schema or reseeding.
 // v274 visually links each monthly spending slice to its matching category total.
-const CACHE_NAME = 'daily-v274';
+// v275 resolves historical spending IDs to configured category names and merges duplicates.
+const CACHE_NAME = 'daily-v275';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

@@ -12185,8 +12185,11 @@ function monthSpendBreakdown(monthDate,keys){
       return;
     }
     if(val<=0) return;
-    const mapKey=id+'|'+label;
+    // Identity is the stable category id, not whichever label a particular week happened to
+    // carry. Otherwise one category can split into "Personal" and "Category personal".
+    const mapKey=id;
     if(!byKey[mapKey]) byKey[mapKey]={id,label,kind,val:0,weeks:[]};
+    if(savedLabel) byKey[mapKey].label=savedLabel;
     byKey[mapKey].val+=val;
     byKey[mapKey].weeks.push({key,val,label:savedLabel||''});
   };
@@ -12221,7 +12224,13 @@ function monthSpendBreakdown(monthDate,keys){
       add('__uncategorised__','Uncategorised / archived','Legacy',variable,k,'');
       return;
     }
-    weekCats.forEach(({def,val})=>add(def.id,def.label,'Variable',val,k,def.snapshot?def.label:''));
+    weekCats.forEach(({def,val})=>add(
+      def.groupId||def.id,
+      def.label,
+      def.labelSource==='unknown'?'Legacy':'Variable',
+      val,k,
+      def.labelSource==='unknown'?'':def.label
+    ));
     const remainder=variable-detailedTotal;
     if(remainder>0.005) add('__uncategorised__','Uncategorised / archived','Legacy',remainder,k,'');
   });
@@ -13289,12 +13298,33 @@ function statsWeekCatDefs(d,key,kind){
   const snap=d&&d.statsSnapshot;
   const prefix=kind==='fixed'?'fix_':'var_';
   const snapDefs=snap&&Array.isArray(snap[kind])?snap[kind]:[];
-  const byId={}; snapDefs.forEach(c=>{ if(c&&c.id) byId[c.id]=c.label||('Category '+c.id); });
+  const cleanLabel=(label,id)=>{
+    const value=String(label||'').trim();
+    return (!value||value===id||value==='Category '+id||CAT_ID_SHAPE.test(value))?'':catDisplayName(value);
+  };
+  const byId=new Map();
+  snapDefs.forEach(c=>{
+    if(!c||!c.id) return;
+    const label=cleanLabel(c.label,c.id);
+    if(label) byId.set(c.id,label);
+  });
+  const currentById=new Map();
+  const current=kind==='fixed'?loadFixCats():loadVarCats();
+  current.forEach(c=>{ if(c&&c.id) currentById.set(c.id,catLabel(c)); });
   const ids=new Set(Object.keys(d||{}).filter(k=>k.startsWith(prefix)&&k!=='var_goal').map(k=>k.slice(prefix.length)));
   snapDefs.forEach(c=>{ if(c&&c.id) ids.add(c.id); });
   if(kind==='fixed'&&d&&d.fixRates) Object.keys(d.fixRates).forEach(id=>ids.add(id));
   if(kind==='variable') txnsForWeek(key).forEach(t=>{ if(t&&t.catId) ids.add(t.catId); });
-  return [...ids].map(id=>({id,label:byId[id]||('Category '+id),snapshot:!!byId[id]}));
+  return [...ids].map(id=>{
+    const currentLabel=currentById.get(id), snapshotLabel=byId.get(id);
+    const label=currentLabel||snapshotLabel||'Uncategorised / archived';
+    return {
+      id,label,
+      snapshot:!!snapshotLabel,
+      labelSource:currentLabel?'current':snapshotLabel?'snapshot':'unknown',
+      groupId:(currentLabel||snapshotLabel)?id:'__uncategorised__'
+    };
+  });
 }
 function statsFixedCatAmount(d,id){
   const v=d&&d['fix_'+id];
@@ -13357,8 +13387,10 @@ function renderBSCatBreakdown(){
   const catMap={}; let legacyWeeks=0, ambiguousWeeks=0;
   const add=(kind,def,val,key)=>{
     if(!val) return;
-    const mapKey=kind+'|'+def.id+'|'+def.label;
-    if(!catMap[mapKey]) catMap[mapKey]={id:def.id,label:def.label,val:0,kind:kind==='fixed'?'Fixed':kind==='variable'?'Variable':'Legacy',weeks:[]};
+    const stableId=def.groupId||def.id;
+    const mapKey=kind+'|'+stableId;
+    if(!catMap[mapKey]) catMap[mapKey]={id:stableId,label:def.label,val:0,kind:kind==='fixed'?'Fixed':kind==='variable'?'Variable':'Legacy',weeks:[]};
+    if(def.labelSource&&def.labelSource!=='unknown') catMap[mapKey].label=def.label;
     catMap[mapKey].val+=val;
     catMap[mapKey].weeks.push({key,val});
   };
@@ -13402,7 +13434,7 @@ function renderBSCatBreakdown(){
     '<div style="padding:16px 16px 0">'+cardHeader('receipt','Where the money goes',statsChip('neutral',bsFinRangeLabel()))+'</div>'+
     '<div style="padding:2px 16px 14px">'+
       '<div class="stats-data-note" style="margin-top:0">'+bsFinCoverageText(sum)+'. Committed and variable spending are both shown; savings are not spending and are excluded.</div>'+
-      (legacyWeeks?'<div class="stats-data-note">'+legacyWeeks+' legacy week'+(legacyWeeks===1?' has':'s have')+' no saved category labels. Archived IDs are retained, but current labels are not presented as historical fact.</div>':'')+
+      (legacyWeeks?'<div class="stats-data-note">'+legacyWeeks+' legacy week'+(legacyWeeks===1?' has':'s have')+' no complete saved category labels. Stable IDs use your configured names; anything no longer identifiable is combined under Uncategorised / archived.</div>':'')+
       (ambiguousWeeks?'<div class="stats-data-note">'+ambiguousWeeks+' snapshot-only legacy week'+(ambiguousWeeks===1?' has':'s have')+' later transaction detail that cannot be safely reconciled with the old aggregate. Only known transaction detail is shown; no total is invented.</div>':'')+
       '<div style="margin-top:10px">'+rows+'</div>'+
       '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px;margin-top:4px"><span>'+(ambiguousWeeks?'Known categorised spend':'Total spent')+'</span><b style="color:var(--text)">$'+Math.round(total).toLocaleString()+'</b></div>'+
