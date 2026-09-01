@@ -534,18 +534,21 @@
    category, amount and percentage so the chart is still useful without colour. */
 .month-spend-card{cursor:default}
 .month-spend-title{margin-bottom:14px}
-.month-spend-layout{display:grid;grid-template-columns:minmax(210px,.72fr) minmax(0,1.28fr);gap:24px;align-items:center}
-.month-spend-visual{min-width:0;display:flex;flex-direction:column;align-items:center;gap:10px}
+.month-spend-layout{position:relative;display:grid;grid-template-columns:minmax(210px,.72fr) minmax(0,1.28fr);gap:24px;align-items:center}
+.month-spend-connectors{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;z-index:0}
+.month-spend-connector{fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.28;transition:opacity .15s ease,stroke-width .15s ease}
+.month-spend-connector.active{opacity:.92;stroke-width:2.5}
+.month-spend-visual{position:relative;z-index:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:10px}
 .month-spend-chart{position:relative;width:min(100%,250px);aspect-ratio:1;min-width:0}
 .month-spend-chart canvas{position:absolute;inset:0;width:100%!important;height:100%!important}
 .month-spend-centre{position:absolute;inset:27%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none;line-height:1.15}
 .month-spend-centre strong{font-family:var(--font-num);font-size:22px;font-weight:800;letter-spacing:-.035em;color:var(--text);overflow-wrap:anywhere}
 .month-spend-centre span{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.075em;color:var(--muted);margin-top:4px}
 .month-spend-compare{min-height:18px;font-size:11px;font-weight:650;line-height:1.4;color:var(--text-2);text-align:center}
-.month-spend-list{min-width:0;display:flex;flex-direction:column}
+.month-spend-list{position:relative;z-index:1;min-width:0;display:flex;flex-direction:column}
 .month-spend-row{display:grid;grid-template-columns:12px minmax(0,1fr) minmax(74px,auto) 48px;align-items:center;gap:10px;width:100%;min-height:47px;padding:8px 9px;border:0;border-bottom:1px solid var(--border);border-radius:9px;background:transparent;color:var(--text);font:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s ease,transform .15s ease}
 .month-spend-row:last-child{border-bottom-color:transparent}
-.month-spend-row:hover,.month-spend-row.selected{background:var(--track)}
+.month-spend-row:hover,.month-spend-row.selected,.month-spend-row.chart-active{background:var(--track)}
 .month-spend-row:active{transform:scale(.995)}
 .month-spend-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px;position:relative;z-index:1}
 .month-spend-swatch{width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.18)}
@@ -563,6 +566,7 @@
 .month-spend-empty span{font-size:12px;line-height:1.45}
 @media (max-width:680px){
   .month-spend-layout{grid-template-columns:1fr;gap:15px}
+  .month-spend-connectors{display:none}
   .month-spend-chart{width:min(72vw,230px)}
   .month-spend-row{grid-template-columns:12px minmax(0,1fr) minmax(70px,auto) 44px;padding-left:5px;padding-right:5px}
   .month-spend-note{align-items:flex-start;flex-direction:column;gap:3px}

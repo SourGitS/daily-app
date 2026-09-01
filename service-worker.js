@@ -112,7 +112,10 @@
 // v272 replaces Budget > Month's unsorted max-relative spending bars with a reconciled
 // category-composition donut, ranked exact-value list, like-for-like month comparison and
 // source-week evidence, while keeping transfers explicit and legacy category gaps visible.
-const CACHE_NAME = 'daily-v272';
+// v273 gives every Pantry row a local item editor for category and canonical stock status,
+// plus custom-item rename and pantry-scoped removal without changing the schema or reseeding.
+// v274 visually links each monthly spending slice to its matching category total.
+const CACHE_NAME = 'daily-v274';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

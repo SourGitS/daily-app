@@ -12270,6 +12270,68 @@ function openMonthSpendCategory(evidenceKey){
   document.querySelectorAll('.month-spend-row').forEach(row=>row.classList.toggle('selected',row.dataset.evidenceKey===_monthSpendSelected));
   openFinanceCategoryEvidence(evidenceKey);
 }
+function monthSpendHighlight(index,fromRow){
+  const active=Number.isInteger(index)&&index>=0;
+  if(monthCategoryChart) monthCategoryChart.$monthSpendActiveIndex=active?index:-1;
+  document.querySelectorAll('.month-spend-row').forEach(row=>row.classList.toggle('chart-active',active&&Number(row.dataset.chartIndex)===index));
+  document.querySelectorAll('.month-spend-connector').forEach(path=>path.classList.toggle('active',active&&Number(path.dataset.chartIndex)===index));
+  const centre=document.querySelector('.month-spend-centre');
+  const cats=monthCategoryChart&&monthCategoryChart.$monthSpendCats;
+  if(centre&&cats){
+    const item=active?cats[index]:null;
+    const strong=centre.querySelector('strong'), label=centre.querySelector('span');
+    if(strong) strong.textContent=item?fmtMoneyExact(item.val):monthCategoryChart.$monthSpendTotal;
+    if(label) label.textContent=item?item.label:'Variable spend';
+  }
+  if(fromRow&&monthCategoryChart){
+    monthCategoryChart.setActiveElements(active?[{datasetIndex:0,index}]:[]);
+    monthCategoryChart.update('none');
+  }
+}
+function monthSpendDrawConnectors(chart){
+  const layout=chart&&chart.canvas&&chart.canvas.closest('.month-spend-layout');
+  const svg=layout&&layout.querySelector('.month-spend-connectors');
+  const cats=chart&&chart.$monthSpendCats;
+  if(!layout||!svg||!cats) return;
+  svg.replaceChildren();
+  if(window.matchMedia&&window.matchMedia('(max-width:680px)').matches) return;
+  const layoutRect=layout.getBoundingClientRect(), canvasRect=chart.canvas.getBoundingClientRect();
+  const meta=chart.getDatasetMeta(0), ns='http://www.w3.org/2000/svg';
+  svg.setAttribute('viewBox','0 0 '+layoutRect.width+' '+layoutRect.height);
+  cats.forEach((cat,index)=>{
+    const arc=meta.data[index], row=layout.querySelector('.month-spend-row[data-chart-index="'+index+'"]');
+    if(!arc||!row) return;
+    const swatch=row.querySelector('.month-spend-swatch');
+    if(!swatch) return;
+    const swatchRect=swatch.getBoundingClientRect();
+    const angle=(arc.startAngle+arc.endAngle)/2;
+    const cos=Math.cos(angle), sin=Math.sin(angle);
+    const cx=canvasRect.left-layoutRect.left+arc.x, cy=canvasRect.top-layoutRect.top+arc.y;
+    const sx=cx+cos*(arc.outerRadius+2), sy=cy+sin*(arc.outerRadius+2);
+    const rx=cx+cos*(arc.outerRadius+14), ry=cy+sin*(arc.outerRadius+14);
+    const ex=swatchRect.left-layoutRect.left+swatchRect.width/2;
+    const ey=swatchRect.top-layoutRect.top+swatchRect.height/2;
+    const rightRail=canvasRect.right-layoutRect.left+12;
+    let d='M '+sx.toFixed(1)+' '+sy.toFixed(1)+' L '+rx.toFixed(1)+' '+ry.toFixed(1);
+    if(cos<0){
+      const leftRail=canvasRect.left-layoutRect.left-12;
+      const wrapY=(sy<cy?canvasRect.top:canvasRect.bottom)-layoutRect.top+(sy<cy?-10:10);
+      d+=' L '+leftRail.toFixed(1)+' '+ry.toFixed(1)+' Q '+leftRail.toFixed(1)+' '+wrapY.toFixed(1)+' '+(leftRail+12).toFixed(1)+' '+wrapY.toFixed(1)+
+        ' L '+(rightRail-12).toFixed(1)+' '+wrapY.toFixed(1)+' Q '+rightRail.toFixed(1)+' '+wrapY.toFixed(1)+' '+rightRail.toFixed(1)+' '+(wrapY+(ey-wrapY)*.28).toFixed(1);
+    }else{
+      d+=' Q '+rightRail.toFixed(1)+' '+ry.toFixed(1)+' '+rightRail.toFixed(1)+' '+(ry+(ey-ry)*.28).toFixed(1);
+    }
+    d+=' Q '+rightRail.toFixed(1)+' '+ey.toFixed(1)+' '+ex.toFixed(1)+' '+ey.toFixed(1);
+    const path=document.createElementNS(ns,'path');
+    path.setAttribute('d',d);
+    path.setAttribute('stroke',cat.color);
+    path.setAttribute('vector-effect','non-scaling-stroke');
+    path.classList.add('month-spend-connector');
+    if(chart.$monthSpendActiveIndex===index) path.classList.add('active');
+    path.dataset.chartIndex=String(index);
+    svg.appendChild(path);
+  });
+}
 function renderMonthSpendBreakdown(wrap,monthDate,keys,weekCount,isCurrent){
   if(monthCategoryChart){ monthCategoryChart.destroy(); monthCategoryChart=null; }
   if(!weekCount){
@@ -12282,24 +12344,18 @@ function renderMonthSpendBreakdown(wrap,monthDate,keys,weekCount,isCurrent){
     return;
   }
   const comparison=monthSpendComparison(monthDate,keys,breakdown.total,isCurrent);
-  const list=breakdown.cats.map(c=>
-    '<button type="button" class="month-spend-row'+(c.evidenceKey===_monthSpendSelected?' selected':'')+'" data-evidence-key="'+c.evidenceKey+'" onclick="openMonthSpendCategory(\''+c.evidenceKey+'\')" aria-label="Open '+_catEsc(c.label)+' source records">'+
+  const list=breakdown.cats.map((c,index)=>
+    '<button type="button" class="month-spend-row'+(c.evidenceKey===_monthSpendSelected?' selected':'')+'" data-evidence-key="'+c.evidenceKey+'" data-chart-index="'+index+'" onclick="openMonthSpendCategory(\''+c.evidenceKey+'\')" onmouseenter="monthSpendHighlight('+index+',true)" onmouseleave="monthSpendHighlight(-1,true)" onfocus="monthSpendHighlight('+index+',true)" onblur="monthSpendHighlight(-1,true)" aria-label="Open '+_catEsc(c.label)+' source records">'+
       '<span class="month-spend-swatch" style="background:'+c.color+'"></span>'+
       '<span class="month-spend-name">'+_catEscHtml(c.label)+'</span>'+
       '<span class="month-spend-amount">'+fmtMoneyExact(c.val)+'</span>'+
       '<span class="month-spend-pct">'+_catEscHtml(c.pctLabel)+'</span>'+
     '</button>').join('');
-  let chartCats=breakdown.cats;
-  if(breakdown.cats.length>6){
-    const smaller=breakdown.cats.slice(5);
-    const other={id:'__other__',label:'Other',val:smaller.reduce((sum,c)=>sum+c.val,0),color:budIsDark()?'#64748B':'#475569',other:true};
-    other.pctLabel=monthSpendPct(other.val,breakdown.total);
-    other.evidenceKey=monthRegisterOtherEvidence(breakdown.periodKey,breakdown.periodLabel,smaller,breakdown.total);
-    chartCats=breakdown.cats.slice(0,5).concat(other);
-  }
+  const chartCats=breakdown.cats;
   const issue=breakdown.issues.length?'<div class="month-spend-quality">'+_catEscHtml(breakdown.issues.join(' '))+'</div>':'';
   wrap.innerHTML=
     '<div class="month-spend-layout">'+
+      '<svg class="month-spend-connectors" aria-hidden="true"></svg>'+
       '<div class="month-spend-visual">'+
         '<div class="month-spend-chart">'+
           '<canvas id="month-spend-chart" role="img" aria-label="Variable spending by category for '+_catEsc(breakdown.periodLabel)+'"></canvas>'+
@@ -12322,12 +12378,14 @@ function renderMonthSpendBreakdown(wrap,monthDate,keys,weekCount,isCurrent){
     options:{
       responsive:true,maintainAspectRatio:false,cutout:'68%',
       animation:reduced?false:{duration:260},
-      onHover:(event,els)=>{ if(event.native&&event.native.target) event.native.target.style.cursor=els.length?'pointer':'default'; },
+      onHover:(event,els)=>{
+        if(event.native&&event.native.target) event.native.target.style.cursor=els.length?'pointer':'default';
+        monthSpendHighlight(els.length?els[0].index:-1,false);
+      },
       onClick:(event,els)=>{
         if(!els.length) return;
         const c=chartCats[els[0].index];
-        if(c.other) openMonthOtherEvidence(c.evidenceKey);
-        else openMonthSpendCategory(c.evidenceKey);
+        openMonthSpendCategory(c.evidenceKey);
       },
       plugins:{
         legend:{display:false},
@@ -12336,8 +12394,11 @@ function renderMonthSpendBreakdown(wrap,monthDate,keys,weekCount,isCurrent){
           return item.label+': '+fmtMoneyExact(item.val)+' · '+monthSpendPct(item.val,breakdown.total);
         }}}
       }
-    }
+    },
+    plugins:[{id:'monthSpendConnectors',afterRender:chart=>requestAnimationFrame(()=>monthSpendDrawConnectors(chart))}]
   });
+  monthCategoryChart.$monthSpendCats=chartCats;
+  monthCategoryChart.$monthSpendTotal=fmtMoneyExact(breakdown.total);
 }
 
 function renderMonth(){
@@ -19084,6 +19145,7 @@ function kitRenderDetail(id,target){
 function kitSheetOpen(html){
   const ov=document.getElementById('kit-sheet-overlay'), box=document.getElementById('kit-sheet-box');
   if(!ov||!box) return;
+  ov.classList.remove('kitpantry-item-sheet');
   box.innerHTML=html;
   ov.classList.remove('hidden');
   box.scrollTop=0;
@@ -19091,7 +19153,7 @@ function kitSheetOpen(html){
 }
 function kitSheetClose(){
   const ov=document.getElementById('kit-sheet-overlay');
-  if(ov) ov.classList.add('hidden');
+  if(ov){ ov.classList.add('hidden'); ov.classList.remove('kitpantry-item-sheet'); }
   if(typeof updateKitFab==='function') updateKitFab();
 }
 function kitSheetHead(title,sub){
@@ -20670,12 +20732,15 @@ function kitPantryStatusOf(it){
   if(it.inStock===false) return 'out';
   return it.runningLow?'low':'in';
 }
+function kitPantryApplyStatus(it,status){
+  if(!it) return;
+  if(status==='out'){ it.inStock=false; it.runningLow=false; }
+  else if(status==='low'){ it.inStock=true; it.runningLow=true; }
+  else { it.inStock=true; it.runningLow=false; }
+}
 function kitPantrySetStatus(id,status,pantryId){
   const pantry=kitPantryGet(pantryId); if(!pantry||!pantry.items[id]) return;
-  const v=pantry.items[id];
-  if(status==='out'){ v.inStock=false; v.runningLow=false; }
-  else if(status==='low'){ v.inStock=true; v.runningLow=true; }
-  else { v.inStock=true; v.runningLow=false; }
+  kitPantryApplyStatus(pantry.items[id],status);
   kitPantrySave();
   kitPantryRefreshViews();
 }
@@ -20724,10 +20789,10 @@ function kitPantryMatchIngredient(name,index){
   const idx=index||kitPantryIngredientIndex();
   return idx.exact[kitPantryExactName(name)]||idx.canonical[kitPantryCanonicalName(name)]||null;
 }
-function kitPantryHasDuplicateItem(name,pantryId){
+function kitPantryHasDuplicateItem(name,pantryId,exceptId){
   const key=kitPantryCanonicalName(name); if(!key) return false;
   const pantry=kitPantryGet(pantryId); if(!pantry) return false;
-  return Object.keys(pantry.items||{}).some(id=>kitPantryCanonicalName(pantry.items[id].name)===key);
+  return Object.keys(pantry.items||{}).some(id=>id!==exceptId&&kitPantryCanonicalName(pantry.items[id].name)===key);
 }
 
 // ── View state: DEVICE-LOCAL ──
@@ -20809,9 +20874,8 @@ function kitPantrySubmitAdd(){
     if(el){ el.value=''; el.focus(); }
   },20);
 }
-// One row. Name on the left, one status control on the right — no checkbox, and no
-// permanently-inactive Low button reserving space on all 41 items. Custom-item deletion is
-// configuration, so its destructive control only exists while Pantry Edit mode is deliberate.
+// One row. Status and item management are separate controls so cycling stock can never open
+// the editor (or vice versa); destructive actions live inside the editor, not on every row.
 function kitPantryRowHTML(it){
   const st=kitPantryStatusOf(it);
   const meta=KITPANTRY_STATUS.find(s=>s.id===st)||KITPANTRY_STATUS[0];
@@ -20820,11 +20884,156 @@ function kitPantryRowHTML(it){
   return '<div class="kitpantry-item s-'+st+'">'+
     '<span class="kitpantry-name">'+kitEsc(it.name)+'</span>'+
     // Status is carried by an icon AND a word, never colour alone.
-    '<button type="button" class="kitpantry-status s-'+st+'" onclick="kitPantryCycle(decodeURIComponent(\''+arg+'\'))" '+
+    '<button type="button" class="kitpantry-status s-'+st+'" onclick="event.stopPropagation();kitPantryCycle(decodeURIComponent(\''+arg+'\'))" '+
       'aria-label="'+escAttr(it.name+': '+meta.label+'. Change to '+next.label+'.')+'">'+
       '<span class="kitpantry-status-ic" aria-hidden="true">'+meta.icon+'</span>'+meta.short+'</button>'+
-    (it.custom&&kitPantryEditMode?'<button class="kitpantry-del" onclick="kitPantryDeleteCustom(decodeURIComponent(\''+arg+'\'))" aria-label="Remove '+escAttr(it.name)+'">\u2715</button>':'')+
+    '<button type="button" class="kitpantry-more" onclick="event.stopPropagation();kitPantryOpenItemEdit(decodeURIComponent(\''+arg+'\'))" '+
+      'aria-label="Edit '+escAttr(it.name)+'" title="Edit '+escAttr(it.name)+'">\u22ef</button>'+
   '</div>';
+}
+
+let kitPantryItemEditState=null;
+function kitPantryItemSignature(id,item){
+  const v=kitPantryNormaliseItem(id,item);
+  return JSON.stringify([v.name,v.cat,kitPantryStatusOf(v),v.custom]);
+}
+function kitPantryAdoptPersistedIfChanged(){
+  const persisted=lsLoad('kitchen_pantry',null);
+  if(!(persisted&&typeof persisted==='object')) return false;
+  const latest=kitPantryNormaliseData(persisted,false);
+  if(JSON.stringify(latest)===JSON.stringify(kitPantryData)) return false;
+  // Another tab or a just-landed sync owns the newer complete blob. Adopt it for rendering,
+  // but do not save from this stale editor or turn its partial field snapshot into the truth.
+  kitPantryData=latest;
+  kitPantryRefreshViews();
+  return true;
+}
+function kitPantryCatLabel(cat){
+  const row=KITPANTRY_CATS.find(c=>c[0]===cat);
+  return row?row[1]:'Dry Goods';
+}
+function kitPantryItemEditError(message){
+  const el=document.getElementById('kitpantry-item-edit-error');
+  if(el) el.textContent=message||'';
+}
+function kitPantryCloseItemEdit(){
+  kitPantryItemEditState=null;
+  kitSheetClose();
+}
+function kitPantryOpenItemEdit(id){
+  kitPantryAdoptPersistedIfChanged();
+  const pantry=kitPantryActive();
+  if(!pantry||!pantry.items[id]){ showToast('That pantry item is no longer available.'); return; }
+  kitPantryItemEditState={pantryId:pantry.id,itemId:id,signature:kitPantryItemSignature(id,pantry.items[id])};
+  kitPantryRenderItemEdit();
+}
+function kitPantryRenderItemEdit(){
+  const state=kitPantryItemEditState;
+  const pantry=state&&kitPantryGet(state.pantryId);
+  const raw=pantry&&pantry.items[state.itemId];
+  if(!state||!pantry||!raw){
+    kitSheetOpen(kitSheetHead('Edit pantry item','This item is no longer available.')+
+      '<div class="kit-sheet-actions"><button class="modal-btn secondary" onclick="kitPantryCloseItemEdit()">Close</button></div>');
+    const unavailableSheet=document.getElementById('kit-sheet-overlay'); if(unavailableSheet) unavailableSheet.classList.add('kitpantry-item-sheet');
+    return;
+  }
+  const item=kitPantryNormaliseItem(state.itemId,raw);
+  const categories=KITPANTRY_CATS.map(([id,label])=>
+    '<option value="'+escAttr(id)+'"'+(item.cat===id?' selected':'')+'>'+escText(label)+'</option>').join('');
+  const statuses=KITPANTRY_STATUS.map(s=>{
+    const label=s.id==='in'?'Stocked':s.id==='low'?'Low':'Out';
+    return '<option value="'+s.id+'"'+(kitPantryStatusOf(item)===s.id?' selected':'')+'>'+label+'</option>';
+  }).join('');
+  const removeLabel=item.custom?'Delete item':'Remove from '+pantry.name;
+  kitSheetOpen(
+    kitSheetHead('Edit pantry item',pantry.name)+
+    '<div class="kitpantry-item-form">'+
+      '<label><span>Item name</span><input id="kitpantry-item-edit-name" type="text" autocomplete="off" value="'+escAttr(item.name)+'"'+
+        (item.custom?'':' readonly aria-describedby="kitpantry-item-name-note"')+
+        ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();kitPantrySaveItemEdit();}"></label>'+
+      (item.custom?'':'<div id="kitpantry-item-name-note" class="kitpantry-item-form-note">Catalogue names stay fixed so recipe matching remains predictable.</div>')+
+      '<div class="kitpantry-item-form-grid">'+
+        '<label><span>Category</span><select id="kitpantry-item-edit-cat">'+categories+'</select></label>'+
+        '<label><span>Status</span><select id="kitpantry-item-edit-status">'+statuses+'</select></label>'+
+      '</div>'+
+      '<div id="kitpantry-item-edit-error" class="kitpantry-item-edit-error" role="alert"></div>'+
+    '</div>'+
+    '<div class="kit-sheet-actions kitpantry-item-actions">'+
+      '<button class="modal-btn secondary" onclick="kitPantryCloseItemEdit()">Cancel</button>'+
+      '<button class="modal-btn primary" onclick="kitPantrySaveItemEdit()">Save changes</button>'+
+    '</div>'+
+    '<div class="kitpantry-item-danger"><button type="button" onclick="kitPantryConfirmRemove()">'+escText(removeLabel)+'</button></div>');
+  const itemSheet=document.getElementById('kit-sheet-overlay'); if(itemSheet) itemSheet.classList.add('kitpantry-item-sheet');
+  setTimeout(()=>{
+    const el=document.getElementById(item.custom?'kitpantry-item-edit-name':'kitpantry-item-edit-cat');
+    if(el){ el.focus(); if(item.custom&&el.select) el.select(); }
+  },40);
+}
+function kitPantrySaveItemEdit(){
+  const state=kitPantryItemEditState;
+  if(kitPantryAdoptPersistedIfChanged()){
+    kitPantryItemEditError('Pantry data changed while the editor was open. Close it and reopen the latest item.');
+    return;
+  }
+  const pantry=state&&kitPantryGet(state.pantryId);
+  const raw=pantry&&pantry.items[state.itemId];
+  if(!state||!pantry||!raw){ kitPantryItemEditError('This item no longer exists. Close the editor and try again.'); return; }
+  if(kitPantryActiveId()!==state.pantryId){ kitPantryItemEditError('The active pantry changed. Close the editor and reopen the item.'); return; }
+  if(kitPantryItemSignature(state.itemId,raw)!==state.signature){
+    kitPantryItemEditError('This item changed while the editor was open. Close it and reopen the latest version.');
+    return;
+  }
+  const current=kitPantryNormaliseItem(state.itemId,raw);
+  const nameEl=document.getElementById('kitpantry-item-edit-name');
+  const catEl=document.getElementById('kitpantry-item-edit-cat');
+  const statusEl=document.getElementById('kitpantry-item-edit-status');
+  const name=current.custom&&nameEl?nameEl.value.trim():current.name;
+  const cat=catEl?catEl.value:'';
+  const status=statusEl?statusEl.value:'';
+  if(!name){ kitPantryItemEditError('Give the item a name.'); if(nameEl) nameEl.focus(); return; }
+  if(!KITPANTRY_CAT_KEYS.has(cat)){ kitPantryItemEditError('Choose a valid pantry category.'); return; }
+  if(!KITPANTRY_STATUS.some(s=>s.id===status)){ kitPantryItemEditError('Choose Stocked, Low or Out.'); return; }
+  if(current.custom&&kitPantryHasDuplicateItem(name,pantry.id,state.itemId)){
+    kitPantryItemEditError('That item, or a matching pantry alias, is already in '+pantry.name+'.');
+    if(nameEl) nameEl.focus();
+    return;
+  }
+  const moved=current.cat!==cat;
+  if(current.custom) raw.name=name;
+  raw.cat=cat;
+  kitPantryApplyStatus(raw,status);
+  kitPantrySave();
+  kitPantryItemEditState=null;
+  kitSheetClose();
+  kitPantryRefreshViews();
+  showToast(moved?'Moved to '+kitPantryCatLabel(cat):'Pantry item updated');
+}
+function kitPantryConfirmRemove(){
+  const state=kitPantryItemEditState;
+  if(kitPantryAdoptPersistedIfChanged()){
+    kitPantryItemEditError('Pantry data changed while the editor was open. Close it and reopen the latest item.');
+    return;
+  }
+  const pantry=state&&kitPantryGet(state.pantryId);
+  const raw=pantry&&pantry.items[state.itemId];
+  if(!state||!pantry||!raw){ kitPantryItemEditError('This item no longer exists. Close the editor and try again.'); return; }
+  if(kitPantryActiveId()!==state.pantryId){ kitPantryItemEditError('The active pantry changed. Close the editor and reopen the item.'); return; }
+  if(kitPantryItemSignature(state.itemId,raw)!==state.signature){
+    kitPantryItemEditError('This item changed while the editor was open. Close it and reopen the latest version.');
+    return;
+  }
+  const item=kitPantryNormaliseItem(state.itemId,raw);
+  const action=item.custom?'Delete':'Remove';
+  const detail=item.custom
+    ? 'This deletes only this item from '+pantry.name+'.'
+    : 'This removes the catalogue item only from '+pantry.name+'.';
+  if(!confirm(action+' "'+item.name+'" from "'+pantry.name+'"? '+detail+' Other pantries, recipes and manual shopping items stay unchanged.')) return;
+  delete pantry.items[state.itemId];
+  kitPantrySave();
+  kitPantryItemEditState=null;
+  kitSheetClose();
+  kitPantryRefreshViews();
+  showToast(item.custom?'Deleted '+item.name:'Removed '+item.name+' from '+pantry.name);
 }
 
 let kitPantryEditMode=false,kitPantryManageMode='',kitPantryManageError='';
@@ -21063,13 +21272,6 @@ function kitPantryRender(){
     if(el){ el.focus(); try{ el.setSelectionRange(caret,caret); }catch(e){} }
   }
 }
-function kitPantryDeleteCustom(id){
-  const pantry=kitPantryActive(); if(!pantry) return;
-  delete pantry.items[id];
-  kitPantrySave();
-  kitPantryRefreshViews();
-}
-
 // ── Portrait lock ─────────────────────────────────────────────────
 // iOS Safari ignores the JS screen-orientation lock API, so the manifest's
 // "orientation":"portrait" only covers Android/installed PWAs. This overlay is the real
