@@ -94,7 +94,8 @@
 // its New, Rename and Delete controls no longer occupy the everyday inventory view.
 // v265 also keeps custom pantry-item deletion behind that same deliberate edit state.
 // v266 makes Recent Sessions collapse on complete rows with its disclosure inside the card.
-const CACHE_NAME = 'daily-v266';
+// v267 keeps recipe ingredient names visible and editable on phone-sized screens.
+const CACHE_NAME = 'daily-v267';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

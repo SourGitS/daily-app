@@ -97,9 +97,12 @@
 .kit-macro-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .kit-macro-grid input{height:44px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:14px;text-align:center;-webkit-appearance:none}
 .kit-add-row{width:100%;padding:9px;margin-top:8px;border:1.5px dashed var(--border);border-radius:8px;background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.kit-f-ing-row{display:flex;gap:6px;margin-bottom:6px}
-.kit-fi-name{flex:1;min-width:0;height:40px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:14px;padding:0 10px}
-.kit-fi-amt{width:60px;flex-shrink:0;height:40px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:14px;text-align:center}
+.kit-f-ing-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 40px;grid-template-areas:"name name delete" "amount unit delete";gap:6px;padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+#kit-f-ings{display:flex;flex-direction:column;gap:8px}
+#kit-f-ings .kit-fi-name{grid-area:name;width:100%;min-width:0;height:40px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:14px;padding:0 10px}
+#kit-f-ings .kit-fi-amt{grid-area:amount;width:100%;min-width:0;height:40px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:14px;text-align:center}
+#kit-f-ings .kit-fi-unit-sel{grid-area:unit;width:100%;min-width:0}
+#kit-f-ings .kit-f-del{grid-area:delete;height:auto;min-height:40px}
 .kit-fi-unit{width:70px;flex-shrink:0;height:40px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:14px;padding:0 8px}
 .kit-f-step-row{display:flex;gap:6px;margin-bottom:6px;align-items:flex-start}
 .kit-fs-text{flex:1;min-width:0;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:14px;padding:8px 10px;font-family:inherit;resize:vertical}
@@ -107,6 +110,10 @@
 .kit-f-del{width:40px;flex-shrink:0;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--danger);font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;height:40px}
 .kit-macro-grid input:focus,.kit-fi-name:focus,.kit-fi-amt:focus,.kit-fi-unit:focus,.kit-fi-unit-sel:focus,.kit-fs-text:focus,.kit-fs-timer:focus{outline:none;border-color:var(--accent)}
 [data-theme="dark"] .kit-macro-grid input,[data-theme="dark"] .kit-fi-name,[data-theme="dark"] .kit-fi-amt,[data-theme="dark"] .kit-fi-unit,[data-theme="dark"] .kit-fi-unit-sel,[data-theme="dark"] .kit-fs-text,[data-theme="dark"] .kit-fs-timer{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.1)}
+@media(min-width:600px){
+  .kit-f-ing-row{grid-template-columns:70px 96px minmax(0,1fr) 40px;grid-template-areas:"amount unit name delete";padding:0;border:0;border-radius:0;background:transparent}
+  #kit-f-ings .kit-f-del{height:40px}
+}
 
 /* ── Kitchen Shopping ── */
 .kitshop-heading{font-size:18px;font-weight:700;color:var(--text);margin-bottom:16px;line-height:1.3}
