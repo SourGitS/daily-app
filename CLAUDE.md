@@ -185,7 +185,12 @@ the accent or the theme must go through those, not set `--accent` directly.
   `{line:true}` (solid line) and `{ring:hex}` (outlined swatch, for the held-back committed
   fill), the savings-rate line is dashed with `rectRot` markers, and expenses are BARS while
   income is a LINE on the Stats money-flow chart. Ordinary currency totals stay `var(--text)`.
-  The same mapping is used by the Stats → Finance charts and the category breakdown.
+  The same mapping is used by the Stats → Finance direction charts and its fixed/variable
+  breakdown. **Budget → Month's category-composition donut is the deliberate exception:**
+  `BUD_CATEGORY_COLORS` / `budCategoryColor()` assigns a stable, ID-derived categorical colour
+  so adjacent slices remain distinguishable when rank changes. It is red/rose/plum-led, never
+  uses income green or warning amber, and the HTML list repeats every label, dollar value and
+  percentage so colour is not the only cue.
   **Chart.js gotcha, learned here:** `scales.y.stacked:true` stacks LINE datasets too, not just
   bars — the money-flow chart drew a $1,023 income week at $1,856 until each line was given its
   own single-member `stack` group.
@@ -210,6 +215,15 @@ the accent or the theme must go through those, not set `--accent` directly.
   on purpose, because `kitchen-extras.css` loads last and its `[data-theme="dark"] .tstat.pos`
   would otherwise outrank a three-deep rule.
   **`.summary-grid` / `.sum-card` are GONE** — they were used by nothing else.
+- **Budget → Month's variable-spending breakdown is one reconciled composition view.**
+  `monthSpendBreakdown()` resolves each recorded week through `statsWeekParts()` and
+  `varCatAmount()` (transaction precedence intact), then feeds both the donut and the ranked
+  list. More than six slices become top-five + Other in the canvas only; the full HTML list
+  remains visible and Other opens its component categories. Missing legacy category detail is
+  shown as `Uncategorised / archived`, never silently dropped or assigned today's label.
+  `monthCategoryChart` must be destroyed before every Month rerender. Category rows register
+  scoped evidence through the existing Stats evidence overlay; their source-week return target
+  is Budget → Month, while Stats evidence still returns to Stats → Finance.
 - **Stats → Finance has ONE range for its budget-derived cards.** `bsFinRange`
   (`12w` | `year` | `all`, default `year`) drives the Financial picture hero, the Money flow
   chart and the category breakdown together; `bsFinRangeKeys()` returns completed weeks only

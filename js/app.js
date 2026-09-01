@@ -3142,14 +3142,14 @@ let _statsEvidenceExercise='';
 // transaction sync, opening Review after Finance) could point the same link at a different
 // category. Keys are derived from the record's own identity, so re-registering overwrites
 // rather than renumbers.
-const _statsFinanceEvidence={}, _statsAccountEvidence={};
+const _statsFinanceEvidence={}, _statsAccountEvidence={}, _monthOtherEvidence={};
 const _statsEvidenceKeys={}; let _statsEvidenceSeq=0;
 function statsEvidenceKey(sig,prefix){
   if(!_statsEvidenceKeys[sig]) _statsEvidenceKeys[sig]=prefix+(++_statsEvidenceSeq);
   return _statsEvidenceKeys[sig];
 }
 function statsRegisterFinanceEvidence(c){
-  const key=statsEvidenceKey('fin|'+c.kind+'|'+c.id+'|'+c.label,'fc');
+  const key=statsEvidenceKey('fin|'+(c.scope||'stats')+'|'+c.kind+'|'+c.id+'|'+c.label,'fc');
   _statsFinanceEvidence[key]=c;
   return key;
 }
@@ -3160,6 +3160,8 @@ function statsRegisterAccountEvidence(r){
 }
 function openStatsEvidence(title,html){
   const v=document.getElementById('view-stats-evidence'); if(!v) return;
+  const back=v.querySelector('.back-btn');
+  if(back) back.setAttribute('aria-label',S.view==='budget'?'Back to monthly breakdown':'Back to analysis');
   const t=document.getElementById('stats-evidence-title'); if(t) t.textContent=title||'Evidence';
   const c=document.getElementById('stats-evidence-content'); if(c) c.innerHTML=html||'';
   v.style.display='block'; v.style.left=window.innerWidth>=1024?'260px':'0'; v.scrollTop=0;
@@ -3273,7 +3275,27 @@ function openFinanceCategoryEvidence(key){
     : c.kind==='Fixed'
       ? 'Fixed category. A saved weekly field governs; otherwise the week’s frozen rate is used.'
       : 'Legacy aggregate. Category identity and item-level source metadata were not stored.';
-  openStatsEvidence(c.label+' · spend evidence','<div class="stats-data-note">'+sourceRule+'</div><div class="stats-source-list">'+rows+'</div>');
+  const period=c.periodLabel
+    ? '<strong>'+_catEscHtml(c.periodLabel)+'</strong> · '+fmtMoneyExact(c.total||0)+
+      (c.pctLabel?' · '+_catEscHtml(c.pctLabel)+' of variable spending':'')+'<br>'
+    : '';
+  openStatsEvidence(c.label+' · spend evidence','<div class="stats-data-note">'+period+sourceRule+'</div><div class="stats-source-list">'+rows+'</div>');
+}
+function monthRegisterOtherEvidence(periodKey,periodLabel,cats,total){
+  const key=statsEvidenceKey('month-other|'+periodKey,'mo');
+  _monthOtherEvidence[key]={periodLabel,cats,total};
+  return key;
+}
+function openMonthOtherEvidence(key){
+  const group=_monthOtherEvidence[key]; if(!group) return;
+  const rows=(group.cats||[]).map(c=>
+    '<button class="stats-source-row" onclick="openMonthSpendCategory(\''+c.evidenceKey+'\',\''+_catEsc(c.id)+'\')">'+
+      '<div class="stats-source-top"><span>'+_catEscHtml(c.label)+'</span><span>'+fmtMoneyExact(c.val)+'</span></div>'+
+      '<div class="stats-source-meta">'+_catEscHtml(c.pctLabel)+' of variable spending · open weekly source records</div>'+
+    '</button>').join('');
+  openStatsEvidence('Other spending · '+group.periodLabel,
+    '<div class="stats-data-note">The donut groups these smaller categories only to keep its slices readable. Every amount remains separate in the ranked list.</div>'+
+    '<div class="stats-source-list">'+rows+'</div>');
 }
 function openNetWorthEvidence(date){
   const rows=accounts.filter(a=>a).map(a=>{
@@ -9537,6 +9559,7 @@ let habitsLog          = loadHabitsLog();
 let budChart           = null;
 let budDonutChart      = null;
 let monthWeekChart     = null;   // Month view: weekly grouped bar chart
+let monthCategoryChart = null;   // Month view: variable-spending composition donut
 let yearStackChart     = null;   // Yearly view: stacked bars + savings-rate line
 let yearCCChart        = null;   // Yearly view: monthly CC / variable spending line
 let budTrendRange      = 'monthly';
@@ -10098,12 +10121,14 @@ function budEnsureFixRates(d){
 }
 function openBudgetWeekFromStats(key){
   if(!key) return;
-  const returnView=S.view==='notes'?'notes':'stats';
+  const returnView=S.view==='notes'?'notes':S.view==='budget'?'budget':'stats';
+  const returnTab=returnView==='stats'?'finance':returnView==='budget'?budgetView:'';
   const cur=getMondayOf(0), target=localMidnight(key);
   currentWeekIdx=Math.round((target-cur)/(7*864e5));
   budgetView='week'; budPastEdit=false;
-  setView('budget');
-  showSourceReturn(returnView,returnView==='stats'?'finance':'');
+  if(returnView==='budget') setBudgetView('week');
+  else setView('budget');
+  showSourceReturn(returnView,returnTab);
 }
 let _sourceReturn=null;
 function clearSourceReturn(){
@@ -10114,12 +10139,17 @@ function clearSourceReturn(){
 function showSourceReturn(view,tab){
   _sourceReturn={view,tab};
   const bar=document.getElementById('source-return-bar'); if(!bar) return;
-  bar.textContent=view==='notes'?'← Back to Journal':'← Back to Finance analysis';
+  bar.textContent=view==='notes'?'← Back to Journal':view==='budget'?'← Back to monthly breakdown':'← Back to Finance analysis';
   bar.classList.remove('hidden');
 }
 function returnFromSourceView(){
   const dest=_sourceReturn; _sourceReturn=null;
   if(!dest) return;
+  if(dest.view==='budget'){
+    setBudgetView(dest.tab||'month');
+    clearSourceReturn();
+    return;
+  }
   setView(dest.view);
   if(dest.view==='stats') setStatsTab(dest.tab||'finance');
 }
@@ -10297,14 +10327,28 @@ const BUD_MONEY={
   income:  {dark:'#22C55E', light:'#15803D'},
   expense: {dark:'#EF4444', light:'#DC2626'}
 };
+// A composition chart has a different job from a direction chart: its slices must distinguish
+// categories WITHIN outgoing money. This stable, no-green/no-amber palette keeps the expense
+// family red-led without turning eight categories into eight indistinguishable red opacities.
+// The id hash means Food stays the same colour when its rank changes next month.
+const BUD_CATEGORY_COLORS={
+  dark:['#EF4444','#FB7185','#E11D48','#DB2777','#C026D3','#A855F7','#9333EA','#7C3AED','#F43F5E','#BE123C','#D946EF','#8B5CF6'],
+  light:['#DC2626','#E11D48','#BE123C','#BE185D','#A21CAF','#9333EA','#7E22CE','#6D28D9','#C2415D','#9F1239','#C026D3','#7C3AED']
+};
 function budIsDark(){ return (typeof S==='object') ? S.theme!=='light' : true; }
 function budIncomeHex(){ return budIsDark()?BUD_MONEY.income.dark:BUD_MONEY.income.light; }
 function budExpenseHex(){ return budIsDark()?BUD_MONEY.expense.dark:BUD_MONEY.expense.light; }
 function budIncomeRgba(a){ return 'rgba('+hexToRgb(budIncomeHex())+','+a+')'; }
-// A tint of the outgoing red — committed-spending fills, area fills under a spending line and
-// the per-category bars, which are all one family separated by opacity rather than by a
-// rainbow. Replaces budWarmRgba(); same role, semantically correct hue.
+// A tint of the outgoing red — committed-spending fills and area fills under a spending line.
+// Category-composition charts use budCategoryColor(), because their slices need identity.
 function budExpenseRgba(a){ return 'rgba('+hexToRgb(budExpenseHex())+','+a+')'; }
+function budCategoryColor(id){
+  const palette=budIsDark()?BUD_CATEGORY_COLORS.dark:BUD_CATEGORY_COLORS.light;
+  const s=String(id||'uncategorised');
+  let hash=2166136261;
+  for(let i=0;i<s.length;i++){ hash^=s.charCodeAt(i); hash=Math.imul(hash,16777619); }
+  return palette[(hash>>>0)%palette.length];
+}
 // Chart marks that follow the ACCENT use --accent-text, not --accent. The CSS rule of thumb
 // ("fills get --accent") assumes white text will sit on the fill; a chart bar is a graphic
 // read AGAINST the card, and --accent is only guaranteed to carry white — the night weather
@@ -12114,6 +12158,188 @@ function renderPrevWeeks(){
   wrap.innerHTML=html;
 }
 
+let _monthSpendSelected='';
+function monthRecordedKeys(monthDate){
+  return getMondaysInMonth(monthDate).filter(k=>budgetData[k]).sort();
+}
+function monthVariableTotal(keys){
+  return (keys||[]).reduce((sum,k)=>{
+    const d=budgetData[k];
+    return sum+(d?statsWeekParts(d,k).variable:0);
+  },0);
+}
+function monthSpendPct(val,total){
+  if(!(total>0)) return '0%';
+  const pct=val/total*100;
+  if(pct>0&&pct<0.1) return '<0.1%';
+  return (pct<10?Math.round(pct*10)/10:Math.round(pct))+'%';
+}
+function monthSpendBreakdown(monthDate,keys){
+  const periodKey=monthDate.getFullYear()+'-'+String(monthDate.getMonth()+1).padStart(2,'0');
+  const periodLabel=fmtMonthLabel(monthDate);
+  const byKey={}, issues=[];
+  let canonicalTotal=0;
+  const add=(id,label,kind,val,key,savedLabel)=>{
+    if(!Number.isFinite(val)||val<0){
+      issues.push('A negative or invalid '+label+' value in the week of '+fmtDate(key)+' was excluded from the chart.');
+      return;
+    }
+    if(val<=0) return;
+    const mapKey=id+'|'+label;
+    if(!byKey[mapKey]) byKey[mapKey]={id,label,kind,val:0,weeks:[]};
+    byKey[mapKey].val+=val;
+    byKey[mapKey].weeks.push({key,val,label:savedLabel||''});
+  };
+  (keys||[]).forEach(k=>{
+    const d=budgetData[k]; if(!d) return;
+    const parts=statsWeekParts(d,k);
+    const variable=Number(parts.variable);
+    if(!Number.isFinite(variable)||variable<0){
+      issues.push('The variable total for the week of '+fmtDate(k)+' is invalid and was excluded.');
+      return;
+    }
+    canonicalTotal+=variable;
+    const defs=statsWeekCatDefs(d,k,'variable');
+    const detailed=statsHasVariableDetail(d,k,defs);
+    if(!detailed){
+      add('__uncategorised__','Uncategorised / archived','Legacy',variable,k,'');
+      return;
+    }
+    let detailedTotal=0; const weekCats=[];
+    defs.forEach(def=>{
+      const val=Number(varCatAmount(d,k,def.id));
+      if(!Number.isFinite(val)||val<0){
+        issues.push('A negative or invalid '+def.label+' value in the week of '+fmtDate(k)+' was excluded from the chart.');
+        return;
+      }
+      if(val>0){ detailedTotal+=val; weekCats.push({def,val}); }
+    });
+    // A corrupt historical snapshot must not make the category list exceed the canonical
+    // variable total. Keep the trusted weekly total and surface the affected week as legacy.
+    if(detailedTotal-variable>0.005){
+      issues.push('Category detail exceeds the canonical variable total in the week of '+fmtDate(k)+'. It is shown as uncategorised.');
+      add('__uncategorised__','Uncategorised / archived','Legacy',variable,k,'');
+      return;
+    }
+    weekCats.forEach(({def,val})=>add(def.id,def.label,'Variable',val,k,def.snapshot?def.label:''));
+    const remainder=variable-detailedTotal;
+    if(remainder>0.005) add('__uncategorised__','Uncategorised / archived','Legacy',remainder,k,'');
+  });
+  const cats=Object.values(byKey).sort((a,b)=>b.val-a.val||a.label.localeCompare(b.label));
+  const mappedTotal=cats.reduce((sum,c)=>sum+c.val,0);
+  const total=canonicalTotal;
+  if(Math.abs(mappedTotal-canonicalTotal)>0.01) issues.push('Some category detail could not be reconciled to the variable total.');
+  cats.forEach(c=>{
+    c.color=c.kind==='Legacy'?(budIsDark()?'#94A3B8':'#64748B'):budCategoryColor(c.id);
+    c.pctLabel=monthSpendPct(c.val,total);
+    c.evidenceKey=statsRegisterFinanceEvidence({
+      scope:'month-'+periodKey,
+      id:c.id,label:c.label,kind:c.kind,weeks:c.weeks,
+      periodLabel,total:c.val,pctLabel:c.pctLabel
+    });
+  });
+  return {periodKey,periodLabel,cats,total,issues};
+}
+function monthSpendComparison(monthDate,keys,total,isCurrent){
+  if(!keys.length) return {text:'No comparable prior period',available:false};
+  let prevDate=null,prevKeys=[];
+  for(let i=1;i<=24;i++){
+    const d=new Date(monthDate.getFullYear(),monthDate.getMonth()-i,1);
+    const found=monthRecordedKeys(d);
+    if(found.length){ prevDate=d; prevKeys=found; break; }
+  }
+  if(!prevDate) return {text:'No comparable prior period',available:false};
+  let compareKeys=prevKeys, prefix='';
+  if(isCurrent){
+    if(prevKeys.length<keys.length) return {text:'No comparable prior period',available:false};
+    compareKeys=prevKeys.slice(0,keys.length);
+    prefix='first '+keys.length+' recorded week'+(keys.length===1?'':'s')+' of ';
+  }
+  const previous=monthVariableTotal(compareKeys);
+  if(!Number.isFinite(previous)||previous<0) return {text:'No comparable prior period',available:false};
+  const diff=total-previous;
+  const against=prefix+prevDate.toLocaleDateString('en-AU',{month:'long',year:'numeric'});
+  return {
+    available:true,
+    direction:diff>0.005?'more':diff<-0.005?'less':'same',
+    text:Math.abs(diff)<=0.005?'Same as '+against:fmtMoneyExact(Math.abs(diff))+' '+(diff>0?'more':'less')+' than '+against
+  };
+}
+function openMonthSpendCategory(evidenceKey){
+  _monthSpendSelected=evidenceKey||'';
+  document.querySelectorAll('.month-spend-row').forEach(row=>row.classList.toggle('selected',row.dataset.evidenceKey===_monthSpendSelected));
+  openFinanceCategoryEvidence(evidenceKey);
+}
+function renderMonthSpendBreakdown(wrap,monthDate,keys,weekCount,isCurrent){
+  if(monthCategoryChart){ monthCategoryChart.destroy(); monthCategoryChart=null; }
+  if(!weekCount){
+    wrap.innerHTML='<div class="month-spend-empty">'+cardIcon('receipt')+'<strong>No saved weeks in this month</strong><span>Navigate to a month with recorded budget data.</span></div>';
+    return;
+  }
+  const breakdown=monthSpendBreakdown(monthDate,keys);
+  if(!(breakdown.total>0)||!breakdown.cats.length){
+    wrap.innerHTML='<div class="month-spend-empty">'+cardIcon('receipt')+'<strong>No variable spending recorded for this month</strong><span>Purchases and weekly category entries will appear here.</span></div>';
+    return;
+  }
+  const comparison=monthSpendComparison(monthDate,keys,breakdown.total,isCurrent);
+  const list=breakdown.cats.map(c=>
+    '<button type="button" class="month-spend-row'+(c.evidenceKey===_monthSpendSelected?' selected':'')+'" data-evidence-key="'+c.evidenceKey+'" onclick="openMonthSpendCategory(\''+c.evidenceKey+'\')" aria-label="Open '+_catEsc(c.label)+' source records">'+
+      '<span class="month-spend-swatch" style="background:'+c.color+'"></span>'+
+      '<span class="month-spend-name">'+_catEscHtml(c.label)+'</span>'+
+      '<span class="month-spend-amount">'+fmtMoneyExact(c.val)+'</span>'+
+      '<span class="month-spend-pct">'+_catEscHtml(c.pctLabel)+'</span>'+
+    '</button>').join('');
+  let chartCats=breakdown.cats;
+  if(breakdown.cats.length>6){
+    const smaller=breakdown.cats.slice(5);
+    const other={id:'__other__',label:'Other',val:smaller.reduce((sum,c)=>sum+c.val,0),color:budIsDark()?'#64748B':'#475569',other:true};
+    other.pctLabel=monthSpendPct(other.val,breakdown.total);
+    other.evidenceKey=monthRegisterOtherEvidence(breakdown.periodKey,breakdown.periodLabel,smaller,breakdown.total);
+    chartCats=breakdown.cats.slice(0,5).concat(other);
+  }
+  const issue=breakdown.issues.length?'<div class="month-spend-quality">'+_catEscHtml(breakdown.issues.join(' '))+'</div>':'';
+  wrap.innerHTML=
+    '<div class="month-spend-layout">'+
+      '<div class="month-spend-visual">'+
+        '<div class="month-spend-chart">'+
+          '<canvas id="month-spend-chart" role="img" aria-label="Variable spending by category for '+_catEsc(breakdown.periodLabel)+'"></canvas>'+
+          '<div class="month-spend-centre"><strong>'+fmtMoneyExact(breakdown.total)+'</strong><span>Variable spend</span></div>'+
+        '</div>'+
+        '<div class="month-spend-compare '+comparison.direction+'">'+_catEscHtml(comparison.text)+'</div>'+
+      '</div>'+
+      '<div class="month-spend-list" role="list" aria-label="Variable spending categories">'+list+'</div>'+
+    '</div>'+issue+
+    '<div class="month-spend-note"><span>Transfers recorded as variable categories are included in these totals.</span><button type="button" onclick="openBudgetEditor()">Review categories →</button></div>';
+
+  const ctx=document.getElementById('month-spend-chart'); if(!ctx) return;
+  const reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  monthCategoryChart=new Chart(ctx,{
+    type:'doughnut',
+    data:{
+      labels:chartCats.map(c=>c.label),
+      datasets:[{data:chartCats.map(c=>c.val),backgroundColor:chartCats.map(c=>c.color),borderColor:budIsDark()?'#1B1B1D':'#FFFFFF',borderWidth:3,hoverOffset:4,spacing:1}]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,cutout:'68%',
+      animation:reduced?false:{duration:260},
+      onHover:(event,els)=>{ if(event.native&&event.native.target) event.native.target.style.cursor=els.length?'pointer':'default'; },
+      onClick:(event,els)=>{
+        if(!els.length) return;
+        const c=chartCats[els[0].index];
+        if(c.other) openMonthOtherEvidence(c.evidenceKey);
+        else openMonthSpendCategory(c.evidenceKey);
+      },
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:c=>{
+          const item=chartCats[c.dataIndex];
+          return item.label+': '+fmtMoneyExact(item.val)+' · '+monthSpendPct(item.val,breakdown.total);
+        }}}
+      }
+    }
+  });
+}
+
 function renderMonth(){
   const monthDate=getMonthDate(currentMonthOffset);
   const isCur=currentMonthOffset>=0;
@@ -12178,30 +12404,7 @@ function renderMonth(){
   }
 
   const catEl=document.getElementById('month-categories');
-  if(catEl){
-    // varCatAmount, not a raw var_ read: a category backed by transactions has its total in
-    // the ledger, and reading the manual field directly reported it as zero.
-    // Every one of these is variable spending, so they are ONE family (the outgoing red)
-    // stepped down in opacity by rank — not eight unrelated hues. The bar LENGTH already says
-    // which is biggest; the old rainbow was re-encoding the category name in colour and
-    // nothing else.
-    const catTotals=activeCats(loadVarCats()).map(c=>({
-      label:catLabel(c),
-      val:keys.reduce((s,k)=>s+varCatAmount(budgetData[k],k,c.id),0)
-    }));
-    const catRank=catTotals.slice().sort((a,b)=>b.val-a.val);
-    catTotals.forEach(c=>{
-      const i=catRank.indexOf(c);
-      c.color=budExpenseRgba(Math.max(0.32, 0.94 - i*0.12).toFixed(2));
-    });
-    const maxVal=Math.max(1,...catTotals.map(c=>c.val));
-    catEl.innerHTML=catTotals.length?catTotals.map(c=>{
-      const pct=Math.round(c.val/maxVal*100);
-      return '<div class="month-cat-row"><div class="month-cat-label">'+c.label+'</div>'
-        +'<div class="month-cat-bar-wrap"><div class="month-cat-bar-fill" style="width:'+pct+'%;background:'+c.color+'"></div></div>'
-        +'<div class="month-cat-amount">'+(c.val>0?'$'+c.val.toFixed(0):'—')+'</div></div>';
-    }).join(''):'<div style="font-size:13px;color:var(--muted);text-align:center;padding:8px 0">No variable categories</div>';
-  }
+  if(catEl) renderMonthSpendBreakdown(catEl,monthDate,keys.filter(k=>budgetData[k]),weekCount,isCur);
 
   const wl=document.getElementById('month-weeks-list');
   if(monthWeekChart){ monthWeekChart.destroy(); monthWeekChart=null; }

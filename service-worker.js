@@ -109,7 +109,10 @@
 // v271 gives the Accounts net-worth and debt-payoff cards the same hero surface, at their own
 // full width — the surface now carries covered-vs-short, which used to be a coloured figure on
 // a flat card.
-const CACHE_NAME = 'daily-v271';
+// v272 replaces Budget > Month's unsorted max-relative spending bars with a reconciled
+// category-composition donut, ranked exact-value list, like-for-like month comparison and
+// source-week evidence, while keeping transfers explicit and legacy category gaps visible.
+const CACHE_NAME = 'daily-v272';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
