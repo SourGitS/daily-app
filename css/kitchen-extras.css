@@ -14,9 +14,13 @@
 .kit-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform 0.1s ease}
 .kit-card:active{transform:scale(0.985)}
 .kit-card-active{border-color:var(--accent);box-shadow:0 0 0 1.5px var(--accent)}
-/* Kitchen content cards don't inherit the .card rule — give them the same frosted glass */
-[data-theme="dark"] .kit-card,[data-theme="dark"] .kit-scaler,[data-theme="dark"] .kit-macro,[data-theme="dark"] .kit-ing-list,[data-theme="dark"] .kitshop-sel-card{background:linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.09));border:0.5px solid var(--card-border);box-shadow:inset 0 1px 0 rgba(255,255,255,.20),0 6px 22px rgba(0,0,0,.3);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
-[data-theme="dark"] .kit-card.kit-card-active{box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 0 0 1.5px var(--accent)}
+/* Kitchen content cards don't inherit the .card rule, so they restate the matte surface from
+   budget-home.css. .kit-scaler and .kit-macro are deliberately NOT here: the scaler is a
+   +/- control row and the macro chips are compact figures — both stay flat (see the surface
+   hierarchy note in budget-home.css). */
+[data-theme="dark"] .kit-card,[data-theme="dark"] .kit-ing-list,[data-theme="dark"] .kitshop-sel-card,[data-theme="dark"] .bst-tile,[data-theme="dark"] .wt-log-row{
+  background:var(--surface-card);border:0.5px solid var(--surface-card-border);box-shadow:var(--surface-card-top)}
+[data-theme="dark"] .kit-card.kit-card-active{box-shadow:0 0 0 1.5px var(--accent)}
 /* Three children now: tile | name | actions. The name takes the slack (min-width:0 so a long
    title wraps instead of shoving the actions off the edge), and centring keeps the 38px tile
    visually locked to the title rather than towering over a single-line one. */
@@ -205,8 +209,8 @@
   -webkit-tap-highlight-color:transparent}
 /* One surface per category with dividers, not one elevated card per item. */
 .kitpantry-group{background:var(--card);border:1px solid var(--card-border);border-radius:14px;overflow:hidden;margin-bottom:4px}
-[data-theme="dark"] .kitpantry-group{background:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.07));
-  border:0.5px solid var(--card-border);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 6px 22px rgba(0,0,0,.28)}
+[data-theme="dark"] .kitpantry-group{background:var(--surface-card);
+  border:0.5px solid var(--surface-card-border);box-shadow:var(--surface-card-top)}
 .kitpantry-item{display:flex;align-items:center;gap:10px;padding:9px 13px;background:transparent;
   border:none;border-bottom:1px solid var(--border);margin:0;min-height:48px;box-sizing:border-box}
 .kitpantry-group .kitpantry-item:last-child{border-bottom:none}
@@ -387,6 +391,33 @@
 .card-split>.card-split-div{flex:0 0 1px;width:1px;background:var(--border);align-self:stretch}
 .card-split-l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px}
 .card-split-v{font-family:var(--font-num);font-size:17px;font-weight:800;color:var(--text)}
+
+/* ── Tonal status components ────────────────────────────────────────────────
+   A judgement, not a decoration: "Under goal", "$62 over", "Improving". These carry the
+   semantic colour so the MONEY beside them doesn't have to — an income figure is not a
+   good outcome and a spending figure is not a bad one, so an ordinary total stays
+   var(--text) and any actual verdict moves into one of these.
+   Three families, deliberately desaturated so a row of them never reads as a warning
+   light: sage (safely under / improving), ochre (close to a limit), coral (over / getting
+   worse). Every one carries an ICON and a WORD as well as the tint — meaning must survive
+   a greyscale screenshot and a red-green colour deficiency.
+   Restrained by construction: a 14%-alpha fill, a hairline border of the same hue, and no
+   gradient, glow or shadow. If one of these needs to shout, the answer is fewer of them,
+   not a louder one. */
+.tstat{display:inline-flex;align-items:center;gap:5px;font-family:var(--font-ui);
+  font-size:11.5px;font-weight:700;line-height:1.35;white-space:nowrap;
+  padding:3px 9px;border-radius:999px;border:1px solid transparent}
+.tstat svg{width:12px;height:12px;flex-shrink:0;stroke:currentColor;fill:none;
+  stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.tstat.pos {background:rgba(111,160,128,.13);border-color:rgba(111,160,128,.30);color:#4F7A5F}
+.tstat.warn{background:rgba(191,146,74,.14);border-color:rgba(191,146,74,.32);color:#8A6420}
+.tstat.neg {background:rgba(214,110,90,.13);border-color:rgba(214,110,90,.30);color:#A8452F}
+[data-theme="dark"] .tstat.pos {background:rgba(111,160,128,.16);border-color:rgba(111,160,128,.34);color:#93C3A4}
+[data-theme="dark"] .tstat.warn{background:rgba(191,146,74,.17);border-color:rgba(191,146,74,.36);color:#DCAF69}
+[data-theme="dark"] .tstat.neg {background:rgba(214,110,90,.16);border-color:rgba(214,110,90,.34);color:#E79080}
+/* Sits at the end of a figure row without pushing the row taller. */
+.tstat.sm{font-size:10.5px;padding:2px 7px;gap:4px}
+.tstat.sm svg{width:11px;height:11px}
 /* Canonical card header label. .sec-label keeps its own bottom margin (it is used standalone in
    ~20 places outside .card-hd) but is otherwise folded into the same type, replacing a second
    near-identical definition at 600/0.5px/--text-secondary. Sixteen further inline copies of
@@ -782,7 +813,11 @@
 
 .bst-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px}
 .bst-tile{background:var(--card);border:0.5px solid var(--card-border);border-radius:18px;padding:16px 12px;text-align:center}
-.bst-tile-icon{font-size:22px;margin-bottom:4px}
+/* Monochrome stroke icon (cardIcon) rather than 🏆/⚠️ — it inherits --text-2 and so keeps
+   the tile's own colour out of the tile's chrome; the verdict lives in .bst-tile-chip. */
+.bst-tile-icon{display:flex;justify-content:center;margin-bottom:6px;color:var(--text-2)}
+.bst-tile-icon .card-hd-ico{width:20px;height:20px}
+.bst-tile-chip{margin-top:7px;display:flex;justify-content:center}
 .bst-tile-lbl{font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px}
 .bst-tile-date{font-size:12px;color:var(--muted);margin-bottom:8px}
 .bst-tile-val{font-size:14px;font-weight:700}
@@ -1054,8 +1089,8 @@
   #kitpantry .kitpantry-group{background:none;border:none;border-radius:0;box-shadow:none;overflow:visible}
   #kitpantry .kitpantry-item{border:1px solid var(--card-border);border-bottom:1px solid var(--card-border);
     border-radius:11px;background:var(--card);margin-bottom:7px}
-  [data-theme="dark"] #kitpantry .kitpantry-item{background:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.07));
-    border:0.5px solid var(--card-border);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 4px 14px rgba(0,0,0,.24)}
+  [data-theme="dark"] #kitpantry .kitpantry-item{background:var(--surface-card);
+    border:0.5px solid var(--surface-card-border);box-shadow:none}
   #kitpantry .kitpantry-item.s-out{background:rgba(231,76,60,0.09)}
   #kitpantry .kitpantry-item.s-low{background:rgba(245,158,11,0.09)}
   .kitshop-cat-head,.kitshop-list-head,.kitpantry-cat-head{grid-column:1 / -1}

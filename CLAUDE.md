@@ -86,11 +86,41 @@ older summary — re-grep before assuming a fact from here is still true if it l
 --accent: #5C5C5C neutral slate (--accent-rgb for rgba() use)   --accent-text
 --positive / --success: #52B788   --danger: #E74C3C   --purple: #6366f1
 --bg / --card / --card-border / --card-top / --text / --text-2 / --text-3 / --muted / --border
+--surface-card / --surface-card-border / --surface-card-top      (content containers)
+--surface-raised / --surface-raised-border / --surface-raised-top (active workspaces)
 ```
 
 Light values live in `:root` as defaults; `[data-theme="dark"]` overrides colour tokens only
-(dark `--bg: #080808`, `--card` becomes a translucent white gradient "glass" look — never a
-pure-black card surface).
+(dark `--bg: #080808` — never a pure-black card surface).
+
+**There is a deliberate surface hierarchy, and `--card` is NOT the card token.** Read this
+before styling any new surface:
+
+| layer | token / treatment | examples |
+|---|---|---|
+| page canvas | `--bg`, completely flat | every screen background |
+| control | `--card` (dark: a FLAT `rgba(255,255,255,.055)`) | inputs, calculator keys, segmented "on" states, filter chips, search fields, dropdown sheets |
+| content card | `--surface-card` (dark: solid `#1b1b1d`) + `--surface-card-border` + `--surface-card-top` | `.card`, `.ex-card`, `.session-card`, `.week-section`, `.stg-card`, `.kit-card`, `.jrn-entry` |
+| active workspace | `--surface-raised` (dark: `#222225`) + a narrow accent edge | the desktop Journal editor |
+| hero | its own accent/scene gradient | `.hero-workout-card`, `#budget-hero-card`, `.kitchen-hero-card`, `.home-weather-card` |
+
+`--card` used to be a `linear-gradient(180deg, …)` in dark mode, which meant every surface
+reading it stretched the same white wash over whatever height it happened to be: invisible on a
+38px input, an obvious grey ramp down a 600px card. It is one flat tone now, so a card's height
+stopped being a visual property.
+
+**Do not "simplify" this by pushing the card treatment into `--card`.** ~120 rules read that
+token and most of them are controls; a global swap puts a miniature card behind every button.
+The matte surface is applied through an explicitly NAMED selector list — the big one is in
+`css/budget-home.css` (search "The matte content-card surface"), with restatements in
+`kitchen-extras.css`, `settings.css` and `journal.css` for the classes those files own, because
+they load later and would otherwise win. Never widen it to `[class*="card"]`: several classes
+use "card" as a historical name while behaving like a button, a row or a preview
+(`.kit-subnav-btn.active`, `.acct-type-btn.on`, `.hl-prev-plain`, `.ob-pv-card`).
+
+Rows inside a card, and repeated list items, stay FLAT — dividers and spacing, not nested
+cards. Navigation lists (Settings groups, the Journal rail) are one surface with flat rows,
+never a stack of floating rectangles.
 
 The app no longer ships the old orange `#FF6B35` — that is `RETIRED_ACCENT` in `js/app.js`,
 migrated away from once. `--accent` is whatever the user's Appearance settings resolve to:
@@ -111,6 +141,69 @@ moved until it clears 5.0:1 against the current theme's background) and written 
 the accent or the theme must go through those, not set `--accent` directly.
 
 ## Known history worth knowing before touching these areas
+
+- **Budget's palette is neutral-first, and colour means a judgement.** `BUD_CHART_COLORS` was
+  six unrelated hues (emerald income, orange variable, grey fixed, blue saved, a second emerald
+  for the rate, a red spending) used at equal strength on the charts AND on the summary figures
+  beside them — so all the colour the interface had was spent saying which category a number
+  belonged to, and none was left to say whether anything was going well. Now:
+  `budPalette()` (js/app.js) maps **saved/rate → the live accent**, **income → a strong neutral**
+  (the reference bar), **fixed/committed → a quiet neutral**, **variable → ONE muted warm tone**
+  (`BUD_WARM`). `BUD_CHART_COLORS` survives as a `Proxy` over `budPalette()` so ~25 call sites
+  keep working and every chart picks up an accent or theme change on its next redraw.
+  Chart marks use `budAccentHex()`, which returns **`accentTextHex(currentAccentHex())`, not the
+  raw accent** — the "fills get `--accent`" rule assumes white text will sit on the fill, and a
+  chart bar is read against the card, so a night-weather accent would draw an invisible series.
+  The savings-rate line shares the accent with the Saved bars deliberately and is separated by
+  being dashed with `rectRot` markers; `budChartLegend()` takes `{dash:true}` so the legend says
+  so by shape too. Ordinary totals — Month, Yearly, and the week view's Total income / saved /
+  fixed / variable — are `var(--text)`. The same mapping is used by the Stats → Finance charts
+  and the category breakdown (which was its own ten-colour rainbow).
+- **Judgements go in `.tstat` chips, not in the colour of the number.** Sage / ochre / coral,
+  each carrying a tint, a hairline border, a monochrome stroke icon AND a word, built by
+  `tstat(kind,label,icon,small)` with icons from `TSTAT_ICONS` (css/kitchen-extras.css). The
+  rule is: the money stays neutral, the chip beside it carries the verdict — "Goal met",
+  "$15 over", "Close to goal". Use one only where a real comparison exists; a chip on every
+  value is the same as a chip on none. This replaced recolouring `calc-saved` blue/red, the
+  `🟢/🟡/🔴` status pill, and the `+X%` red in Yearly's "Rising fastest".
+- **Budget card chrome uses `CARD_ICONS`, not emoji.** `budCardHead(type,label,isCur,icon)`
+  takes the icon as a SEPARATE argument now — it used to be baked into the label string
+  ("📌 Fixed expenses"), which put uncontrollable hues in the chrome and, worse, meant those
+  emoji lived in the same strings as the user's stored category names. The stored names
+  (`💵 Income` defaults, `⚖️ Fine repayment`, recipe emoji, note titles) are CONTENT and are
+  still left alone — `catDisplayName()` exists precisely to strip a legacy emoji prefix for
+  display without touching what is saved.
+- **Journal desktop is a two-pane workspace, and its split point is 1240px — not 1024.**
+  `JRN_SPLIT_MIN` (js/app.js) and the `@media` in `css/journal.css` **must agree**: the constant
+  decides whether the editor mounts inline or as a full-screen overlay, the media query decides
+  whether the pane it would mount into exists. 1240 is chosen, not inherited: at 1024 the 260px
+  sidebar plus 32px section padding leave ~700px, and a 400px list would hand the editor ~225px.
+  Below 1240 the phone's list-first flow is used instead — same conclusion Settings reached at
+  1180. The grid is `clamp(380px,30%,420px) minmax(0,1fr)` and is gated on
+  `#journal-root:has(.jrn-rail)` so a CSS/JS disagreement degrades to the mobile layout rather
+  than dealing single-column markup into two columns.
+  The left pane is a NAVIGATION list (`.jrn-nav` › `.jrn-sec` › `.jrn-row`): flat rows, inset
+  hairline dividers, one selected state (accent tint + a rail in **`--accent-text`**, because
+  the default accent is a neutral grey that vanishes as a 3px bar on `#080808`). Today is a row
+  there, not the phone's tinted composer card, and today's entries are filtered OUT of the month
+  groups below so they are not listed twice.
+  `renderJournal()` calls `jrnEnsureDesktopSelection()` BEFORE building the markup — the pane is
+  never blank, it opens on today's entry or a ready-to-write surface for today. That is safe
+  only because `jrnLoadEditor()` (split out of `jrnOpenEditor()` so it can run inside a render
+  without re-entering it) does not persist anything: **merely opening Journal must never leave a
+  blank entry behind.** `jrnEdPatch()` promotes a pending record into storage on a MEANINGFUL
+  edit only (mood, tag, pin, title, body — see `JRN_MEANINGFUL_KEYS`), never on a date change.
+- **`jrnRefreshLists()` defers only for TEXT fields.** On desktop the editor is MOVED into the
+  detail column on every render, which blurs whatever inside it had focus — unforgivable
+  mid-sentence, fine for a mood pill. It used to defer for any focus inside the editor, and
+  nothing ever flushed `jrnListsDirty`, so the list kept showing "Start writing" after a mood
+  had already created the entry. `jrnEdHoldsText()` decides, and a `focusout` listener settles
+  the deferral when the field is left.
+- **`.empty` is a live bare class in `workout.css`** (`text-align:center;padding:48px 20px`, for
+  the Kitchen empty states) and it will match any element you give an `empty` MODIFIER. It was
+  hitting `.jrn-comp-line.empty` and inflating the phone's Journal composer to a 167px box with
+  one centred line floating in it; the modifier is `.is-empty` now. Same class of fault as the
+  retired `.set-row` collision below — do not use a generic word as a modifier.
 
 - **Settings is registry-driven — never hardcode a settings row, title or label again.**
   `SETTINGS_SECTIONS` / `SETTINGS_GROUPS` / `SETTINGS_SEARCH` in `js/app.js` are the single

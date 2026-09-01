@@ -44,7 +44,12 @@
 .jrn-comp-date{font-size:11px;font-weight:600;color:var(--muted);margin-left:auto}
 .jrn-comp-line{font-size:15.5px;font-weight:600;color:var(--text);line-height:1.4;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.jrn-comp-line.empty{color:var(--text-2);font-weight:500}
+/* .is-empty, not .empty: workout.css declares a BARE `.empty{text-align:center;padding:48px
+   20px}` for the Kitchen empty states, and it matched this modifier too — so the phone's
+   composer was a 167px box with one centred line floating in the middle of it. Same class of
+   fault as the retired `.set-row` collision (see CLAUDE.md); the fix is to stop using a
+   generic word as a modifier. */
+.jrn-comp-line.is-empty{color:var(--text-2);font-weight:500}
 .jrn-comp-meta{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px}
 
 /* Sunday exposes the same on-demand reflection behind the header icon. It is an invitation,
@@ -58,8 +63,8 @@
 .jrn-reflect-card>span:last-child{font-size:20px;color:var(--muted)}
 
 /* ── Open Loops ── */
-.jrn-loops{background:var(--card);border:0.5px solid var(--card-border);box-shadow:var(--card-top);
-  border-radius:var(--radius-card);padding:12px 14px}
+.jrn-loops{background:var(--surface-card);border:0.5px solid var(--surface-card-border);
+  box-shadow:var(--surface-card-top);border-radius:var(--radius-card);padding:12px 14px}
 .jrn-loops-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .jrn-loops-ttl{font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
 .jrn-loops-n{font-size:11px;font-weight:700;color:var(--muted);background:var(--bg);border-radius:20px;padding:1px 7px}
@@ -87,7 +92,8 @@
   font-weight:600;cursor:pointer;padding:0 6px;-webkit-tap-highlight-color:transparent}
 
 .jrn-entry{display:block;width:100%;text-align:left;font-family:inherit;cursor:pointer;
-  background:var(--card);border:0.5px solid var(--card-border);box-shadow:var(--card-top);
+  background:var(--surface-card);border:0.5px solid var(--surface-card-border);
+  box-shadow:var(--surface-card-top);
   border-radius:var(--radius-card);padding:13px 15px;margin-bottom:9px;-webkit-tap-highlight-color:transparent}
 .jrn-entry.sel{border-color:rgba(var(--accent-rgb),.55);box-shadow:0 0 0 1px rgba(var(--accent-rgb),.35)}
 .jrn-entry-ttl{font-size:15px;font-weight:700;color:var(--text);margin-bottom:3px;line-height:1.35}
@@ -156,6 +162,12 @@
   color:var(--text);font-family:inherit;font-size:16px;line-height:1.62;padding:0 0 28px;
   box-sizing:border-box;white-space:pre-wrap;overflow-wrap:anywhere}
 .jrn-ed-body::placeholder{color:var(--muted)}
+/* base.css fills every dark-theme input/textarea with rgba(255,255,255,.06). That selector is
+   (0,1,1) and .jrn-ed-title is (0,1,0), so it wins on specificity no matter which file loads
+   last — which was invisible while the editor sat on the page background and obvious the
+   moment the desktop workspace got a surface of its own: the title and body drew a second,
+   lighter panel inside the card. The writing surface IS the workspace. */
+[data-theme="dark"] .jrn-ed-title,[data-theme="dark"] .jrn-ed-body{background:transparent}
 
 /* Computed from dateAbout on every render. These are links back to the source screens, never
    cached metadata on the entry itself. */
@@ -225,29 +237,165 @@
   font-size:12.5px;font-weight:700;padding:6px 10px;cursor:pointer;font-family:inherit;flex-shrink:0;
   -webkit-tap-highlight-color:transparent}
 
-/* ── Desktop: master / detail ──────────────────────────────────────────────
-   The rail carries search, composer, Open Loops and the timeline; the entry opens BESIDE it in
-   a capped reading column instead of a full-width card or an overlay. Ordinary writing on
-   desktop never opens a modal. */
-@media (min-width:1024px){
-  #journal-root{display:grid;grid-template-columns:344px minmax(0,1fr);gap:26px;align-items:start}
-  .jrn-rail{display:flex;flex-direction:column;gap:13px;position:sticky;top:0;
-    max-height:calc(100vh - 80px);overflow-y:auto;padding-right:2px}
-  .jrn-detail{min-width:0;border-left:1px solid var(--border);padding-left:26px;min-height:60vh}
-  .jrn-entry{padding:11px 13px;margin-bottom:7px}
-  .jrn-entry-body{-webkit-line-clamp:2;font-size:13px}
-  .jrn-entry-ttl{font-size:14px}
+/* ── Desktop: a two-pane workspace ─────────────────────────────────────────
+   Editor-first, not the phone column stretched. The left pane is a NAVIGATION list at a
+   fixed 400px reading width — wide enough for a date, a title and a line of preview, which
+   is what an entry list is for — and everything else goes to the writing surface. The old
+   layout gave the list 344px and left the remaining ~900px showing "Nothing open".
+   400px sits in the middle of the 380–440px band: below ~380 the preview line clips after
+   three or four words, above ~440 the list starts competing with the editor for attention. */
+/* 1240, not the app's 1024 desktop line — see JRN_SPLIT_MIN in js/app.js for why, and keep the
+   two numbers in step. The list width is clamped rather than fixed so it stays inside the
+   380–440px band at every desktop size while the editor takes every pixel that is left. */
+@media (min-width:1240px){
+  /* :has(.jrn-rail) makes the pair fail safe. The grid and jrnIsDesktop() are two independent
+     decisions about the same number, and if they ever disagree — a stale render, a resize the
+     page did not hear — the phone's single-column markup would be dealt into two columns.
+     Gating on the desktop structure actually being present means the worst case is the mobile
+     layout on a wide screen, not a shuffled one. (:has() is already used in budget-home.css.) */
+  #journal-root:has(.jrn-rail){display:grid;grid-template-columns:clamp(380px,30%,420px) minmax(0,1fr);gap:28px;align-items:start}
+  .jrn-rail{display:flex;flex-direction:column;gap:12px;position:sticky;top:0;
+    max-height:calc(100vh - 80px);overflow-y:auto;padding-right:4px;
+    /* The rail's scrollbar sits between the two panes, so it ends up reading as the divider —
+       and the default dark-theme bar is a bright white stripe down the middle of the screen.
+       Thin and low-contrast: still grabbable, no longer the loudest thing on the page. */
+    scrollbar-width:thin;scrollbar-color:rgba(128,128,128,.35) transparent}
+  .jrn-rail::-webkit-scrollbar{width:8px}
+  .jrn-rail::-webkit-scrollbar-track{background:transparent}
+  .jrn-rail::-webkit-scrollbar-thumb{background:rgba(128,128,128,.32);border-radius:4px;
+    border:2px solid transparent;background-clip:content-box}
+  .jrn-rail::-webkit-scrollbar-thumb:hover{background:rgba(128,128,128,.5);
+    border:2px solid transparent;background-clip:content-box}
+  /* No divider rule between the panes: the editor's own surface is the edge. A border here
+     plus a bordered workspace read as two lines two pixels apart. */
+  .jrn-detail{min-width:0;min-height:60vh}
 
-  /* On desktop the editor is the detail column, not an overlay. */
-  #jrn-editor.inline{position:static;display:flex;height:auto;background:none;overflow:visible}
+  /* ── The navigation list ──
+     Flat rows on the page's own background, separated by hairlines. Deliberately NOT cards:
+     a column of forty elevated rectangles is what made this screen read as boxes on a page,
+     and it left no visual room for the one thing that IS selected. */
+  .jrn-nav{display:flex;flex-direction:column;gap:2px}
+  .jrn-sec{margin-bottom:14px}
+  .jrn-sec-hd{display:flex;align-items:center;gap:8px;padding:6px 12px 5px}
+  .jrn-sec-ttl{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--text-2)}
+  .jrn-sec-act{margin-left:auto;background:none;border:none;font-family:inherit;
+    font-size:12.5px;font-weight:700;color:var(--accent-text);cursor:pointer;padding:4px 6px;
+    border-radius:9px;-webkit-tap-highlight-color:transparent}
+  .jrn-sec-act:hover{background:rgba(var(--accent-rgb),.10)}
+
+  .jrn-row{position:relative;display:flex;flex-direction:column;gap:2px;width:100%;
+    text-align:left;font-family:inherit;background:none;border:none;border-radius:10px;
+    padding:9px 12px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  /* The divider is on the row, inset past the padding, so the selected row's fill reads as
+     one continuous shape rather than a block with a line cutting across its top. */
+  .jrn-row+.jrn-row::before{content:'';position:absolute;top:0;left:12px;right:12px;height:1px;
+    background:var(--border)}
+  .jrn-row:hover{background:rgba(128,128,128,.07)}
+  /* The tint alone cannot carry this: the app's DEFAULT accent is a neutral #5C5C5C, and an
+     11%-alpha grey on a near-black page is a difference you have to hunt for. So the selected
+     row gets a lighter fill AND a rail, and the rail is drawn in --accent-text (the
+     contrast-corrected variant) rather than --accent, so it stays visible whatever colour the
+     accent happens to be — including the night weather scenes, which measure 1.7:1 raw. */
+  .jrn-row.sel,.jrn-row.sel:hover{background:rgba(var(--accent-rgb),.16)}
+  [data-theme="dark"] .jrn-row.sel,[data-theme="dark"] .jrn-row.sel:hover{
+    background:linear-gradient(rgba(255,255,255,.055),rgba(255,255,255,.055)),rgba(var(--accent-rgb),.16)}
+  .jrn-row.sel::before,.jrn-row.sel+.jrn-row::before{background:transparent}
+  /* The selection rail: narrow, accent-derived, and the only ornament the row gets. */
+  .jrn-row.sel::after{content:'';position:absolute;left:0;top:5px;bottom:5px;width:3px;
+    border-radius:0 3px 3px 0;background:var(--accent-text)}
+  .jrn-row-top{display:flex;align-items:baseline;gap:8px}
+  .jrn-row-date{font-size:11.5px;font-weight:700;letter-spacing:.03em;color:var(--text-2)}
+  .jrn-row-time{margin-left:auto;font-size:11px;font-weight:600;color:var(--text-3);
+    font-variant-numeric:tabular-nums}
+  .jrn-row-ttl{font-size:14.5px;font-weight:700;color:var(--text);line-height:1.35;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .jrn-row-prev{font-size:12.5px;line-height:1.45;color:var(--text-2);
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .jrn-row-meta{font-size:11px;font-weight:600;color:var(--text-3);margin-top:2px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .jrn-row.sel .jrn-row-date,.jrn-row.sel .jrn-row-ttl{color:var(--text)}
+  .jrn-row-start .jrn-row-ttl{color:var(--accent-text)}
+
+  /* Open Loops joins the list as a section instead of a standalone card competing with the
+     editor. Same markup as the phone's card; only the surface comes off. */
+  .jrn-nav .jrn-loops{background:none;border:none;box-shadow:none;padding:0;border-radius:0}
+  .jrn-nav .jrn-loop{padding:8px 12px;border-top:none;position:relative}
+  .jrn-nav .jrn-loop+.jrn-loop::before{content:'';position:absolute;top:0;left:12px;right:12px;
+    height:1px;background:var(--border)}
+  .jrn-nav .jrn-loop:hover{background:rgba(128,128,128,.07);border-radius:10px}
+  .jrn-nav .jrn-loops-empty{padding:4px 12px 6px}
+  .jrn-nav .jrn-loops-btn{padding:5px 8px}
+  .jrn-nav .jrn-empty{padding:26px 14px;text-align:left}
+  .jrn-nav .jrn-ed-row{padding:0 8px}
+  /* The Sunday reflection invitation is a row here too, not a bordered card. */
+  .jrn-nav .jrn-reflect-card{background:none;border:none;border-radius:10px;padding:9px 12px}
+  .jrn-nav .jrn-reflect-card:hover{background:rgba(128,128,128,.07)}
+
+  /* ── The writing workspace ──
+     The one prominent matte surface on the screen: lifted charcoal, a readable edge, a soft
+     top highlight, and a narrow accent line along the top to say "this is the active pane".
+     Explicitly NOT a hero — no full-strength gradient, no glow, no drop shadow, and no fixed
+     navy, which would ignore the accent the user actually chose. */
+  #jrn-editor.inline{position:relative;display:flex;height:auto;overflow:visible;
+    background:var(--surface-raised);
+    border:1px solid var(--surface-raised-border);
+    border-radius:var(--radius-card);
+    box-shadow:var(--surface-raised-top);
+    padding:20px 24px 14px}
+  #jrn-editor.inline::before{content:'';position:absolute;left:0;right:0;top:0;height:2px;
+    border-radius:var(--radius-card) var(--radius-card) 0 0;
+    background:rgba(var(--accent-rgb),.75);pointer-events:none}
   #jrn-editor.inline .jrn-ed-top{border-bottom:1px solid var(--border);background:none;padding:0 0 10px}
+  /* The date is the pane's heading, so it is set as one — not as an 11px uppercase kicker. */
+  #jrn-editor.inline .jrn-ed-kind{font-size:15px;font-weight:700;letter-spacing:-.01em;
+    text-transform:none;color:var(--text)}
   #jrn-editor.inline .jrn-ed-scroll{overflow:visible}
-  #jrn-editor.inline .jrn-ed-inner{padding:16px 0 0;max-width:74ch}
-  #jrn-editor.inline .jrn-ed-body{min-height:38vh}
-  #jrn-editor.inline .jrn-ed-foot{background:none;padding:10px 0 0;border-top:1px solid var(--border)}
+  #jrn-editor.inline .jrn-ed-inner{padding:18px 0 0;max-width:74ch}
+  #jrn-editor.inline .jrn-ed-title{font-size:23px;padding-bottom:12px}
+  /* The writing area is the purpose of the screen, so it is sized like it. */
+  #jrn-editor.inline .jrn-ed-body{min-height:46vh;font-size:16.5px}
+  /* Mood, tags and the save row stay FLAT inside the workspace — no second card edge. */
+  #jrn-editor.inline .jrn-ed-foot{background:none;padding:12px 0 0;border-top:1px solid var(--border)}
+  #jrn-editor.inline .jrn-pill,#jrn-editor.inline .jrn-ed-date,#jrn-editor.inline .jrn-tag-in{
+    background:rgba(128,128,128,.10)}
+  #jrn-editor.inline .jrn-pill.on{background:rgba(var(--accent-rgb),.16)}
   #jrn-editor.inline .back-btn{display:none}
-  .jrn-detail-empty{padding:56px 20px;text-align:center;color:var(--muted)}
+  #jrn-editor.inline .jrn-context-chip{background:rgba(128,128,128,.09)}
+
+  .jrn-detail-empty{padding:56px 20px;text-align:center}
+  .jrn-detail-empty .jrn-empty-ttl{color:var(--text)}
+  .jrn-detail-empty-btn{margin-top:16px;padding:10px 18px;border-radius:12px;font-family:inherit;
+    font-size:13.5px;font-weight:700;cursor:pointer;
+    border:1px solid rgba(var(--accent-rgb),.45);background:rgba(var(--accent-rgb),.14);
+    color:var(--accent-text)}
 }
+
+/* ── Text contrast ─────────────────────────────────────────────────────────
+   Journal is mostly secondary text — dates, previews, tag lists, due context, empty states —
+   so --text-2 at 45% alpha was doing more work here than anywhere else in the app, and the
+   screen read as grey on grey. Hierarchy comes from SIZE and WEIGHT here; the secondary
+   colour only has to be quieter than the body, not nearly invisible. */
+.jrn-empty-ttl{color:var(--text)}
+.jrn-loop-ttl{color:var(--text)}
+[data-theme="dark"] .jrn-loops-empty,[data-theme="dark"] .jrn-empty-sub,
+[data-theme="dark"] .jrn-entry-body,[data-theme="dark"] .jrn-day-date,
+[data-theme="dark"] .jrn-reflect-card small,[data-theme="dark"] .jrn-context-detail,
+[data-theme="dark"] .jrn-context-note,[data-theme="dark"] .jrn-trash-when,
+[data-theme="dark"] .jrn-search-count,[data-theme="dark"] .jrn-row-prev,
+[data-theme="dark"] .jrn-comp-meta{color:rgba(255,255,255,.62)}
+[data-theme="dark"] .jrn-row-date,[data-theme="dark"] .jrn-row-meta,
+[data-theme="dark"] .jrn-row-time,[data-theme="dark"] .jrn-sec-ttl,
+[data-theme="dark"] .jrn-month,[data-theme="dark"] .jrn-chip{color:rgba(255,255,255,.56)}
+[data-theme="light"] .jrn-loops-empty,[data-theme="light"] .jrn-empty-sub,
+[data-theme="light"] .jrn-entry-body,[data-theme="light"] .jrn-day-date,
+[data-theme="light"] .jrn-reflect-card small,[data-theme="light"] .jrn-context-detail,
+[data-theme="light"] .jrn-context-note,[data-theme="light"] .jrn-trash-when,
+[data-theme="light"] .jrn-search-count,[data-theme="light"] .jrn-row-prev,
+[data-theme="light"] .jrn-comp-meta{color:rgba(0,0,0,.58)}
+[data-theme="light"] .jrn-row-date,[data-theme="light"] .jrn-row-meta,
+[data-theme="light"] .jrn-row-time,[data-theme="light"] .jrn-sec-ttl,
+[data-theme="light"] .jrn-month,[data-theme="light"] .jrn-chip{color:rgba(0,0,0,.52)}
 
 /* Phone landscape: the editor is short, so the body must not demand half a viewport. */
 @media (orientation:landscape) and (max-width:1023px) and (max-height:600px){

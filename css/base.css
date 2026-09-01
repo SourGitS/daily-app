@@ -27,6 +27,21 @@
   --card:#ffffff;
   --card-border:rgba(0,0,0,0.08);
   --card-top:0 1px 3px rgba(0,0,0,0.06);
+  /* ── Content-card surface ────────────────────────────────────────────────────
+     A SEPARATE token from --card on purpose. --card is used by ~120 rules, and most of them
+     are not cards: inputs, calculator keys, segmented-control "on" states, filter buttons,
+     search fields, dropdown sheets. Pushing the card treatment (matte fill + edge + inset
+     highlight) into --card would put a miniature card behind every one of those controls.
+     Only genuine content CONTAINERS read these — see the matte rule in budget-home.css.
+     In light mode they resolve to exactly what .card already looked like, so light is
+     unchanged; the dark values are where the surface hierarchy actually lives. */
+  --surface-card:#ffffff;
+  --surface-card-border:rgba(0,0,0,0.07);
+  --surface-card-top:0 1px 3px rgba(0,0,0,0.06);
+  /* An elevated workspace (the Journal editor pane) — one step above an ordinary card. */
+  --surface-raised:#ffffff;
+  --surface-raised-border:rgba(0,0,0,0.10);
+  --surface-raised-top:0 2px 10px rgba(0,0,0,0.06);
   --text:#1c1c1e;
   --text-2:rgba(0,0,0,0.45);
   --text-3:rgba(0,0,0,0.35);
@@ -47,9 +62,21 @@
 [data-theme="dark"]{
   --bg:#080808;
   --bg-rgb:8,8,8;
-  --card:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025));
+  /* FLAT, not a gradient. This was a 180deg white wash, which meant every surface reading
+     --card stretched the same fade over whatever height it happened to be: invisible on a
+     38px input, an obvious grey ramp down a 600px card. A control surface wants one tone. */
+  --card:rgba(255,255,255,.055);
   --card-border:rgba(255,255,255,.10);
   --card-top:inset 0 1px 0 rgba(255,255,255,.07);
+  /* Matte charcoal, SOLID: the same colour at the top of a tall card as at the bottom, so a
+     card's height stops being a visual property. Visibly lighter than --bg (#080808) without
+     approaching the heroes, which keep their gradients. */
+  --surface-card:#1b1b1d;
+  --surface-card-border:rgba(255,255,255,.085);
+  --surface-card-top:inset 0 1px 0 rgba(255,255,255,.045);
+  --surface-raised:#222225;
+  --surface-raised-border:rgba(255,255,255,.12);
+  --surface-raised-top:inset 0 1px 0 rgba(255,255,255,.06);
   --text:#ffffff;
   --text-2:rgba(255,255,255,.45);
   --text-3:rgba(255,255,255,.35);

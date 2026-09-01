@@ -516,7 +516,6 @@ button.ov-day{cursor:pointer}
 
 /* ── Training split editor (onboarding step + Settings overlay) ── */
 .se-day-card{background:var(--card);border:1px solid var(--card-border,var(--border));border-radius:16px;padding:14px;margin-bottom:12px;box-shadow:var(--card-top)}
-[data-theme="dark"] .se-day-card{background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.025))}
 .se-day-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .se-day-dot{width:12px;height:12px;border-radius:3px;flex-shrink:0}
 .se-day-name{flex:1;min-width:0;height:38px;border:1px solid var(--border);border-radius:9px;font-size:15px;font-weight:600;padding:0 10px;background:var(--card);color:var(--text)}

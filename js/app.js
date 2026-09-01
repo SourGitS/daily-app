@@ -3844,9 +3844,10 @@ function renderWeekReviewCard(){
     const inc=weekIncome(weekBudget);
     const leftover=inc>0?weekLeftover(weekBudget):null;
     if(leftover!==null){
-      const statusTxt=leftover>=50?'🟢 On track':leftover>=0?'🟡 Tight':'🔴 Over';
-      const col=leftover>=0?'var(--success)':'var(--danger)';
-      leftoverLine='<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border)"><span style="font-size:13px;color:var(--muted)">Budget</span><span style="font-size:13px;font-weight:600;color:'+col+'">'+(leftover>=0?'+$':'-$')+Math.abs(leftover).toFixed(0)+' · '+statusTxt+'</span></div>';
+      const chip = leftover>=50 ? tstat('pos','On track','check',true)
+        : leftover>=0 ? tstat('warn','Tight','flat',true)
+        : tstat('neg','Over','alert',true);
+      leftoverLine='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)"><span style="font-size:13px;color:var(--muted)">Budget</span><span style="display:flex;align-items:center;gap:7px"><span style="font-size:13px;font-weight:600;color:var(--text)">'+(leftover>=0?'+$':'-$')+Math.abs(leftover).toFixed(0)+'</span>'+chip+'</span></div>';
     }
   }
 
@@ -9176,7 +9177,7 @@ function renderStrandedCard(){
   if(!orphans.length) return '';
   const label={inc:'Income',fix:'Fixed',var:'Variable'};
   return '<div class="card" data-bud-key="stranded">'+
-    '<div class="sec-label bud-toggle"><span class="bud-head-label">⚠️ Stranded data</span>'+
+    '<div class="sec-label bud-toggle"><span class="bud-head-label">'+cardIcon('alert')+'<span>Stranded data</span></span>'+
       '<span class="bud-head-right">'+BUD_CHEVRON+'</span></div>'+
     '<div style="font-size:12.5px;color:var(--muted);line-height:1.5;margin-bottom:10px">'+
       'These amounts are saved against past weeks but their category was deleted, so they no '+
@@ -10187,12 +10188,89 @@ function weekVarTotal(d,mondayStr){
 }
 // Sum of all fixed-category amounts for a week (same pattern as weekSpending's fixed half).
 function weekFixed(d){ return weekFixedTotal(d); }
-// Shared chart colours for the budget month/year charts (matches renderBudTrend palette).
-const BUD_CHART_COLORS={income:'#1d9e75',variable:'#d85a30',fixed:'#888780',saved:'#378add',rate:'#1d9e75',spending:'#e74c3c'};
+// ── Budget palette ────────────────────────────────────────────────────────────
+// Was six unrelated hues — emerald income, orange variable, grey fixed, blue saved, a second
+// emerald for the rate and a red spending — used at equal strength on every chart AND on the
+// summary figures beside them. That spent all the colour the interface had on saying which
+// category a number belonged to, leaving none to say whether anything was going well.
+// Neutral-first instead:
+//   · saved / rate  → the live accent, because "what stuck" is the series worth following
+//   · income        → a strong neutral: the reference bar everything else is measured against
+//   · fixed         → a quiet neutral: committed money is not a choice, so it recedes
+//   · variable      → ONE muted warm tone, the only non-neutral hue on the chart
+// The savings-rate LINE shares the accent with the saved BAR on purpose and is separated by
+// line style (dashed) and markers rather than by inventing a fifth hue.
+// Read at render time, not frozen at load: currentAccentHex() changes with the training day,
+// the weather scene and the Appearance picker, and a canvas cannot inherit a CSS variable.
+const BUD_WARM='#B5814A';          // muted terracotta — variable/discretionary spending
+const BUD_WARM_DARK='#C08E56';
+// Chart marks use --accent-text, not --accent. The CSS rule of thumb ("fills get --accent")
+// assumes white text will sit on the fill; a chart bar is a graphic read AGAINST the card, and
+// --accent is only guaranteed to carry white — the night weather scenes measure 1.7:1 against
+// the dark background, which would draw the Saved series as a bar you cannot see. The
+// corrected variant keeps the hue and clears 5:1, which is what a mark on a card needs.
+function budAccentHex(){
+  try{
+    const raw=(typeof currentAccentHex==='function' && currentAccentHex()) || '#5C5C5C';
+    const dark=(typeof S==='object')?S.theme!=='light':true;
+    return (typeof accentTextHex==='function') ? accentTextHex(raw, dark) : raw;
+  }catch(e){ return '#5C5C5C'; }
+}
+function budPalette(){
+  const dark = (typeof S==='object') ? S.theme!=='light' : true;
+  const accent=budAccentHex();
+  return {
+    saved:    accent,
+    rate:     accent,
+    // Income is the reference bar in its own stack; Committed is the quietest thing on the
+    // chart. Both neutral, and far enough apart in value that they never trade places — the
+    // gap between them is also what leaves room for Saved to sit between them legibly when
+    // the accent is the app's default neutral grey.
+    income:   dark?'rgba(255,255,255,.34)':'rgba(28,28,30,.30)',
+    fixed:    dark?'rgba(255,255,255,.13)':'rgba(28,28,30,.17)',
+    variable: dark?BUD_WARM_DARK:BUD_WARM,
+    spending: dark?BUD_WARM_DARK:BUD_WARM
+  };
+}
+// Kept as a name because ~25 call sites read it, but it is now a live getter over budPalette()
+// so every chart picks up an accent or theme change on its next redraw.
+const BUD_CHART_COLORS=new Proxy({},{get:(t,k)=>budPalette()[k]});
+// rgba() form of the accent, for chart fills that sit under a line.
+function budAccentRgba(a){ return 'rgba('+hexToRgb(budAccentHex())+','+a+')'; }
+// A tint of the warm tone — variable-spending fills and the per-category bars, which are all
+// one family separated by opacity rather than by a rainbow.
+function budWarmRgba(a){
+  const dark=(typeof S==='object')?S.theme!=='light':true;
+  return 'rgba('+hexToRgb(dark?BUD_WARM_DARK:BUD_WARM)+','+a+')';
+}
+
+// ── Tonal status chip ─────────────────────────────────────────────────────────
+// The semantic half of a figure, so the figure itself can stay neutral. kind is
+// 'pos' | 'warn' | 'neg'; dir adds a direction glyph where one is meaningful.
+// Never emit one of these unless the interface is actually making a judgement — a chip on
+// every value is the same as a chip on none.
+const TSTAT_ICONS={
+  up:'<path d="M12 19V5M6 11l6-6 6 6"/>',
+  down:'<path d="M12 5v14M6 13l6 6 6-6"/>',
+  check:'<path d="M4 12.5 9.5 18 20 6.5"/>',
+  alert:'<path d="M12 8v5M12 16.5v.01M12 3 2.5 20h19z"/>',
+  flat:'<path d="M4 12h16"/>'
+};
+function tstatIcon(name){
+  const d=TSTAT_ICONS[name]; if(!d) return '';
+  return '<svg viewBox="0 0 24 24" aria-hidden="true">'+d+'</svg>';
+}
+function tstat(kind, label, icon, small){
+  const k=(kind==='pos'||kind==='warn'||kind==='neg')?kind:'warn';
+  return '<span class="tstat '+k+(small?' sm':'')+'">'+tstatIcon(icon)+'<span>'+escText(label)+'</span></span>';
+}
 // Inline legend pills rendered above a Chart.js canvas (more legible on mobile than
 // the built-in legend). items = [{c:'#hex', l:'Label'}, …]
 function budChartLegend(items){
-  return items.map(it=>'<span class="chart-legend-pill"><span class="chart-legend-dot" style="background:'+it.c+'"></span>'+it.l+'</span>').join('');
+  // it.dash marks a series drawn as a dashed LINE rather than a filled bar, so the legend
+  // distinguishes them by shape too — the savings rate shares the accent with Saved, and a
+  // legend that separated them by colour alone would be separating them by nothing.
+  return items.map(it=>'<span class="chart-legend-pill"><span class="chart-legend-dot'+(it.dash?' dash':'')+'" style="'+(it.dash?'border-color:':'background:')+it.c+'"></span>'+it.l+'</span>').join('');
 }
 // Grid + tick colours that adapt to the active theme (same values as renderBudTrend).
 function budChartGridColors(){
@@ -10220,15 +10298,21 @@ const budEditMode = {inc:false, fix:false, var:false, vargoal:false};
 let budPastEdit = false;
 // Collapsible card header with an Edit/Done toggle (current week only). The toggle lives
 // inside .bud-toggle but the collapse listener ignores taps on it (see that handler).
-function budCardHead(type, label, isCur){
+// icon is a CARD_ICONS name. It used to be an emoji baked into the label string ("📌 Fixed
+// expenses"), which put four uncontrollable hues across the Budget tab's chrome — and those
+// emoji sat in the same strings as the user's own stored category names, so nothing could be
+// changed here without risking their content. The icon is now a separate argument, and the
+// label is plain text.
+function budCardHead(type, label, isCur, icon){
   const editing=budEditMode[type];
   const editBtn = isCur
     ? '<button class="bud-edit-btn'+(editing?' active':'')+'" data-type="'+type+'" data-action="bud-edit-toggle">'+(editing?'Done':'Edit')+'</button>'
     : '';
+  const ico = icon ? cardIcon(icon) : '';
   // bud-head-sum carries the card's total so a collapsed card still states its figure; it is
   // shown only while collapsed (the row below says the same thing when open). Filled by
   // budRecalc, which already computes every one of these totals.
-  return '<div class="sec-label bud-toggle"><span class="bud-head-label">'+label+'</span>'+
+  return '<div class="sec-label bud-toggle"><span class="bud-head-label">'+ico+'<span>'+label+'</span></span>'+
     '<span class="bud-head-right"><span class="bud-head-sum" id="sum-'+type+'"></span>'+editBtn+BUD_CHEVRON+'</span></div>';
 }
 // In edit mode (current week) category names are editable inputs; otherwise plain labels.
@@ -10279,7 +10363,7 @@ function renderFixedCard(data,isCur){
       '</div>').join('');
     recurBlock=
       '<div class="bud-row bud-recur-head" onclick="var l=this.nextElementSibling;var open=l.style.display!==\'none\';l.style.display=open?\'none\':\'block\';var ch=this.querySelector(\'.bud-recur-chev\');if(ch)ch.textContent=open?\'▾\':\'▴\'">'+
-        '<div class="bud-row-left"><span class="bud-recur-ic">🔁</span>'+
+        '<div class="bud-row-left"><span class="bud-recur-ic">'+cardIcon('repeat')+'</span>'+
           '<div class="bud-row-name">Recurring<span class="bud-recur-count">'+recurCats.length+'</span></div></div>'+
         '<div class="bud-row-calc bud-recur-total">$'+recurTotal.toFixed(2)+
           '<span class="bud-recur-chev">▾</span></div>'+
@@ -10289,8 +10373,8 @@ function renderFixedCard(data,isCur){
       '</div>';
   }
 
-  return '<div class="card" data-bud-key="fix">'+budCardHead('fix','📌 Fixed expenses',isCur)+rows+recurBlock+
-    '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total fixed</div><div class="bud-row-calc" id="calc-fixed" style="color:var(--muted)">—</div></div>'+
+  return '<div class="card" data-bud-key="fix">'+budCardHead('fix','Fixed expenses',isCur,'pin')+rows+recurBlock+
+    '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total fixed</div><div class="bud-row-calc" id="calc-fixed" style="color:var(--text)">—</div></div>'+
     (editing?'<button class="add-cat-btn" data-type="fix">+ Add fixed expense</button>':'')+
   '</div>';
 }
@@ -10328,10 +10412,10 @@ function renderVarGoalCard(data,editable){
     : '';
   // The goal has to survive the input disappearing — updateVarGoalCard falls back to this.
   return '<div class="card vg-card" data-bud-key="vargoal" data-vg-goal="'+(goal===null?'':goal)+'">'+
-    budCardHead('vargoal','🎯 Spending goal',editable)+
+    budCardHead('vargoal','Spending goal',editable,'target')+
     goalRow+
     '<div class="vg-body">'+
-      '<div class="vg-amt" id="vargoal-amt">—</div>'+
+      '<div class="vg-head"><span class="vg-amt" id="vargoal-amt">—</span><span id="vargoal-status"></span></div>'+
       '<div class="vg-sub" id="vargoal-sub">Set a goal to start tracking it</div>'+
       '<div class="vg-bar-wrap"><div class="vg-bar-fill" id="vargoal-bar" style="width:0%"></div></div>'+
       '<div class="vg-foot"><span id="vargoal-spent">$0 spent</span><span id="vargoal-pace"></span></div>'+
@@ -10362,6 +10446,7 @@ function updateVarGoalCard(totalVar){
     if(amtEl){ amtEl.textContent='—'; amtEl.style.color='var(--muted)'; }
     $('vargoal-sub',document.getElementById('vargoal-input')?'Enter a goal to start tracking it':'Tap Edit to set a weekly goal');
     $('vargoal-pace','');
+    const st0=document.getElementById('vargoal-status'); if(st0) st0.innerHTML='';
     if(barEl){ barEl.style.width='0%'; barEl.style.background='var(--muted)'; }
     if(cardEl) cardEl.classList.remove('vg-over');
     updateVarGoalDefaultLine(goal);
@@ -10371,9 +10456,17 @@ function updateVarGoalCard(totalVar){
   const left=goal-totalVar;
   const over=left<0;
   const pct=Math.min(100,Math.round(totalVar/goal*100));
-  // Green under, amber from 85% (close enough to pull up), red the moment it ticks over.
-  const col=over?'var(--danger)':(totalVar/goal>=0.85?'var(--accent)':'var(--success)');
-  if(amtEl){ amtEl.textContent=(over?'-$':'$')+Math.abs(left).toFixed(0); amtEl.style.color=col; }
+  // The BAR keeps the semantic colour — green under, amber from 85% (close enough to pull up),
+  // red the moment it ticks over — but the figure does not. A 34px number that changes colour
+  // says "something is wrong" without ever saying what; the chip beside it says which.
+  const col=over?'var(--danger)':(totalVar/goal>=0.85?'var(--warn)':'var(--success)');
+  if(amtEl){ amtEl.textContent=(over?'-$':'$')+Math.abs(left).toFixed(0); amtEl.style.color='var(--text)'; }
+  const statusEl=document.getElementById('vargoal-status');
+  if(statusEl){
+    statusEl.innerHTML = over ? tstat('neg','$'+Math.abs(left).toFixed(0)+' over','alert')
+      : totalVar/goal>=0.85 ? tstat('warn','Close to goal','flat')
+      : tstat('pos','Under goal','check');
+  }
   $('vargoal-sub',over?'over your $'+goal.toFixed(0)+' goal':'left of your $'+goal.toFixed(0)+' goal');
   if(barEl){ barEl.style.width=pct+'%'; barEl.style.background=col; }
   if(cardEl) cardEl.classList.toggle('vg-over',over);
@@ -10388,7 +10481,7 @@ function updateVarGoalCard(totalVar){
     const days=varGoalDaysLeft();
     $('vargoal-pace',days+' day'+(days===1?'':'s')+' still to go');
   } else {
-    $('vargoal-pace',totalVar<=goal?'✓ Stayed under':'✗ Went over');
+    $('vargoal-pace','');
   }
   updateVarGoalDefaultLine(goal);
 }
@@ -10761,7 +10854,7 @@ function renderUpcomingCard(){
     : '<div class="up-none">Nothing due in the next 30 days.</div>';
   const undated=recur.length-dated;
   return '<div class="card" data-bud-key="upcoming">'+
-    budCardHead('upcoming','📅 Upcoming charges',false)+
+    budCardHead('upcoming','Upcoming charges',false,'calendar')+
     cluster+rows+
     (list.length?'<div class="up-total"><span>Next 30 days</span><span>'+fmtMoney(total)+'</span></div>':'')+
     (undated?'<div class="up-hint">'+undated+' recurring charge'+(undated===1?'':'s')+' without a billing date — add one in Settings → Budget setup to see '+(undated===1?'it':'them')+' here.</div>':'')+
@@ -11192,9 +11285,9 @@ function renderVariableCard(data,isCur){
     }
     return row;
   }).join('');
-  return '<div class="card" data-bud-key="var">'+budCardHead('var','🛒 Variable expenses',isCur)+
+  return '<div class="card" data-bud-key="var">'+budCardHead('var','Variable expenses',isCur,'cart')+
     rows+
-    '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total variable</div><div class="bud-row-calc" id="calc-variable" style="color:var(--muted)">$0</div></div>'+
+    '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total variable</div><div class="bud-row-calc" id="calc-variable" style="color:var(--text)">$0</div></div>'+
     (editing?'<button class="add-cat-btn" data-type="var">+ Add variable expense</button>':'')+
   '</div>';
 }
@@ -11216,8 +11309,10 @@ function renderIncomeCard(data,isCur){
       (editing?'<button class="delete-cat-btn" data-type="inc" data-id="'+c.id+'" aria-label="Remove income source">×</button>':'')+
     '</div>';
   }).join('');
-  return '<div class="card" data-bud-key="inc">'+budCardHead('inc','💵 Income',isCur)+rows+
-    '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total income</div><div class="bud-row-calc" id="calc-income" style="color:var(--green)">$0</div></div>'+
+  return '<div class="card" data-bud-key="inc">'+budCardHead('inc','Income',isCur,'wallet')+rows+
+    // Neutral, like every other total on this tab: green here asserted that earning is a good
+    // outcome, which is a judgement the app has not made and cannot make from one figure.
+    '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total income</div><div class="bud-row-calc" id="calc-income" style="color:var(--text)">$0</div></div>'+
     (editing?'<button class="add-cat-btn" data-type="inc">+ Add income source</button>':'')+
   '</div>';
 }
@@ -11654,18 +11749,33 @@ function budRecalc(animate){
   const _vg=currentVarGoal&&currentVarGoal();
   $('sum-vargoal',_vg?(fmtMoneyExact(totalVar)+' / '+fmtMoney(_vg)):'—');
   const savSum=document.getElementById('sav-head-sum');
-  if(savSum) savSum.style.color = totalSaved>=getSavingsGoal() ? 'var(--blue)' : 'var(--muted)';
+  if(savSum) savSum.style.color='var(--text)';
 
-  // Suggestive savings goal: below it → red, met → blue
+  // The savings goal IS a judgement, so it gets said in words. It used to be said by recolouring
+  // the amount — blue when met, red when not — which meant the figure changed meaning with no
+  // label attached to it, and red on a number that is simply "less than a target you set
+  // yourself" reads as an error rather than as information.
   const calcSavedEl=document.getElementById('calc-saved');
-  if(calcSavedEl) calcSavedEl.style.color = totalSaved>=getSavingsGoal() ? 'var(--blue)' : 'var(--danger)';
+  if(calcSavedEl) calcSavedEl.style.color='var(--text)';
+  const savStatus=document.getElementById('sav-status');
+  if(savStatus){
+    const goal=getSavingsGoal();
+    savStatus.innerHTML = (!goal || !(totalIncome>0 || totalSaved>0)) ? ''
+      : totalSaved>=goal ? tstat('pos','Goal met','check',true)
+      : totalSaved>=goal*0.6 ? tstat('warn','Under goal','flat',true)
+      : tstat('neg','Well under','down',true);
+  }
 
+  // Was a coloured circle emoji plus a word. The emoji ignores currentColor, so the dot and the
+  // pill it sat in could never be the same hue, and it rendered differently on every OS. The
+  // tonal chip carries the tint, a stroke icon and the word together.
   const pill=document.getElementById('week-status-pill');
   if(pill){
-    if(leftover===null){pill.className='status-pill good';pill.textContent='⏳ Enter income';}
-    else if(leftover>=50){pill.className='status-pill good';pill.textContent='🟢 On track';}
-    else if(leftover>=0){pill.className='status-pill warn';pill.textContent='🟡 Tight week';}
-    else{pill.className='status-pill over';pill.textContent='🔴 Over budget';}
+    pill.className='';
+    pill.innerHTML = leftover===null ? tstat('warn','Enter income','flat')
+      : leftover>=50 ? tstat('pos','On track','check')
+      : leftover>=0  ? tstat('warn','Tight week','flat')
+      :                tstat('neg','Over budget','alert');
   }
 
   // ── Hero: SPENT vs COMMITTED vs AVAILABLE ──
@@ -11906,11 +12016,21 @@ function renderMonth(){
     // the savings rate beside it. These three now describe the same month — what came in,
     // what went out (fixed + variable), and what proportion stuck.
     const savRate=totalIncome>0?(totalSaved/totalIncome*100).toFixed(0)+'%':'—';
+    // Neutral figures. These used to be painted in their chart-series colours — income green,
+    // expenses orange, rate green — which asserted that earning is good and spending is bad
+    // before anything had actually been compared. The only judgement available here is the
+    // savings rate against a target, and that now travels as a chip beside the number rather
+    // than as the number's own colour.
+    const rateChip = (weekCount>0 && totalIncome>0)
+      ? (totalSaved/totalIncome>=0.2 ? tstat('pos','On track','check',true)
+        : totalSaved>0 ? tstat('warn','Below 20%','flat',true)
+        : tstat('neg','Nothing saved','down',true))
+      : '';
     sg.innerHTML=[
-      {val:savRate,lbl:'Savings rate',color:BUD_CHART_COLORS.rate},
-      {val:weekCount>0?'$'+Math.round(totalIncome).toLocaleString():'—',lbl:'Income',color:BUD_CHART_COLORS.income},
-      {val:weekCount>0?'$'+Math.round(totalSpending).toLocaleString():'—',lbl:'Expenses',color:BUD_CHART_COLORS.variable},
-    ].map(s=>'<div class="sum-card"><div class="sum-card-val" style="color:'+s.color+'">'+s.val+'</div><div class="sum-card-lbl">'+s.lbl+'</div></div>').join('');
+      {val:savRate,lbl:'Savings rate',chip:rateChip},
+      {val:weekCount>0?'$'+Math.round(totalIncome).toLocaleString():'—',lbl:'Income'},
+      {val:weekCount>0?'$'+Math.round(totalSpending).toLocaleString():'—',lbl:'Expenses'},
+    ].map(s=>'<div class="sum-card"><div class="sum-card-val">'+s.val+'</div><div class="sum-card-lbl">'+s.lbl+'</div>'+(s.chip?'<div class="sum-card-chip">'+s.chip+'</div>':'')+'</div>').join('');
   }
 
   const barEl=document.getElementById('month-bar');
@@ -11930,14 +12050,20 @@ function renderMonth(){
 
   const catEl=document.getElementById('month-categories');
   if(catEl){
-    const MONTH_CAT_COLORS=['#52B788','#f59e0b','#6366f1','#3b82f6','#ec4899','#8b5cf6','#FF6B35','#14b8a6'];
     // varCatAmount, not a raw var_ read: a category backed by transactions has its total in
     // the ledger, and reading the manual field directly reported it as zero.
-    const catTotals=activeCats(loadVarCats()).map((c,i)=>({
+    // Every one of these is variable spending, so they are ONE family (the warm tone) stepped
+    // down in opacity by rank — not eight unrelated hues. The bar LENGTH already says which is
+    // biggest; the old rainbow was re-encoding the category name in colour and nothing else.
+    const catTotals=activeCats(loadVarCats()).map(c=>({
       label:catLabel(c),
-      val:keys.reduce((s,k)=>s+varCatAmount(budgetData[k],k,c.id),0),
-      color:MONTH_CAT_COLORS[i%MONTH_CAT_COLORS.length]
+      val:keys.reduce((s,k)=>s+varCatAmount(budgetData[k],k,c.id),0)
     }));
+    const catRank=catTotals.slice().sort((a,b)=>b.val-a.val);
+    catTotals.forEach(c=>{
+      const i=catRank.indexOf(c);
+      c.color=budWarmRgba(Math.max(0.30, 0.92 - i*0.13).toFixed(2));
+    });
     const maxVal=Math.max(1,...catTotals.map(c=>c.val));
     catEl.innerHTML=catTotals.length?catTotals.map(c=>{
       const pct=Math.round(c.val/maxVal*100);
@@ -12089,18 +12215,26 @@ function renderYear(){
     const avgRate=totIncome>0?(totSaved/totIncome*100):0;
     // Best month by what was actually put away, which is the number worth chasing.
     const best=withData.slice().sort((a,b)=>b.saved-a.saved)[0];
+    // Neutral, for the same reason as the Month tiles: none of these is a verdict. The one
+    // genuine comparison on this screen — the year's average rate against a 20% target —
+    // is carried by a chip, not by recolouring the percentage itself.
+    const rateChip = withData.length
+      ? (avgRate>=20 ? tstat('pos','On track','check',true)
+        : avgRate>=10 ? tstat('warn','Below 20%','flat',true)
+        : tstat('neg','Well below 20%','down',true))
+      : '';
     sg.innerHTML=[
-      {val:'$'+Math.round(totIncome).toLocaleString(),lbl:'Earned in '+year,color:BUD_CHART_COLORS.income},
-      {val:'$'+Math.round(totSaved).toLocaleString(),lbl:'Saved in '+year,color:BUD_CHART_COLORS.saved},
-      {val:avgRate.toFixed(0)+'%',lbl:'Average savings rate',color:BUD_CHART_COLORS.rate},
-      {val:best?best.label:'—',lbl:best?'Best month · $'+Math.round(best.saved).toLocaleString():'Best month',color:BUD_CHART_COLORS.saved},
+      {val:'$'+Math.round(totIncome).toLocaleString(),lbl:'Earned in '+year},
+      {val:'$'+Math.round(totSaved).toLocaleString(),lbl:'Saved in '+year},
+      {val:avgRate.toFixed(0)+'%',lbl:'Average savings rate',chip:rateChip},
+      {val:best?best.label:'—',lbl:best?'Best month · $'+Math.round(best.saved).toLocaleString():'Best month'},
       // Annual cost of every recurring charge still running. Individually a subscription reads
       // as a few dollars a week and never looks worth cancelling; the yearly figure is the one
       // that makes the case either way, and it is the number nobody ever works out by hand.
       {val:'$'+Math.round(loadFixCats().filter(c=>catIsRecurring(c)&&catIsCharging(c))
             .reduce((s,c)=>s+((parseFloat(catAmount(c))||0)*({weekly:52,monthly:12,yearly:1}[catCycle(c)]||0)),0)).toLocaleString(),
-       lbl:'Recurring, per year',color:BUD_CHART_COLORS.fixed},
-    ].map(s=>'<div class="sum-card"><div class="sum-card-val" style="color:'+s.color+'">'+s.val+'</div><div class="sum-card-lbl">'+s.lbl+'</div></div>').join('');
+       lbl:'Recurring, per year'},
+    ].map(s=>'<div class="sum-card"><div class="sum-card-val">'+s.val+'</div><div class="sum-card-lbl">'+s.lbl+'</div>'+(s.chip?'<div class="sum-card-chip">'+s.chip+'</div>':'')+'</div>').join('');
   }
 
   // ── Month-by-month table ──
@@ -12112,13 +12246,15 @@ function renderYear(){
         withData.map(m=>{
           const out=m.fixed+m.variable;
           const rate=m.income>0?(m.saved/m.income*100):0;
-          const rateCol=rate>=20?'var(--positive)':rate>0?'var(--amber-dark,#f59e0b)':'var(--muted)';
+          // Flat and legible: a twelve-row table with a green/amber/grey column in it was
+          // twelve verdicts stacked on top of each other. A month with nothing recorded is
+          // still muted, because that is absence of data rather than a bad result.
           return '<div class="year-mo-row">'+
             '<span class="year-mo-name">'+m.label+'</span>'+
             '<span>'+fmtMoney(m.income)+'</span>'+
             '<span>'+fmtMoney(out)+'</span>'+
             '<span>'+fmtMoney(m.saved)+'</span>'+
-            '<span style="color:'+rateCol+'">'+rate.toFixed(0)+'%</span>'+
+            '<span'+(rate>0?'':' style="color:var(--muted)"')+'>'+rate.toFixed(0)+'%</span>'+
           '</div>';
         }).join('')
       : '<div style="text-align:center;color:var(--muted);font-size:13px;padding:18px 0">Nothing recorded in '+year+' yet.</div>';
@@ -12148,7 +12284,9 @@ function renderYear(){
             '<div class="up-hint" style="border:none;margin:0 0 8px;padding:0">Average per month, last 3 vs the 3 before</div>'+
             rows.map(r=>'<div class="up-row">'+
               '<span class="up-name">'+_catEscHtml(r.label)+'</span>'+
-              '<span class="up-when" style="flex:0 0 auto;color:var(--danger)">+'+Math.round(r.pct)+'%</span>'+
+              // A real judgement — this category is getting worse — so it gets a tonal chip
+              // with an arrow and a number, and the money beside it stays neutral.
+              '<span class="up-when" style="flex:0 0 auto">'+tstat(r.pct>=25?'neg':'warn','+'+Math.round(r.pct)+'%','up',true)+'</span>'+
               '<span class="up-amt">'+fmtMoney(r.was)+' → '+fmtMoney(r.now)+'</span>'+
             '</div>').join('')+
           '</div>';
@@ -12171,7 +12309,7 @@ function renderYear(){
         {c:BUD_CHART_COLORS.fixed,l:'Fixed'},
         {c:BUD_CHART_COLORS.variable,l:'CC / variable'},
         {c:BUD_CHART_COLORS.saved,l:'Saved'},
-        {c:BUD_CHART_COLORS.rate,l:'Savings rate %'},
+        {c:BUD_CHART_COLORS.rate,l:'Savings rate %',dash:true},
       ]);
       stackWrap.style.height='280px';
       stackWrap.innerHTML='<canvas id="year-stack-chart"></canvas>';
@@ -12183,7 +12321,9 @@ function renderYear(){
             {label:'Fixed',data:fixedArr,backgroundColor:BUD_CHART_COLORS.fixed,stack:'s'},
             {label:'CC / variable',data:varArr,backgroundColor:BUD_CHART_COLORS.variable,stack:'s'},
             {label:'Saved',data:points.map(p=>p.saved),backgroundColor:BUD_CHART_COLORS.saved,stack:'s',borderRadius:{topLeft:4,topRight:4}},
-            {label:'Savings rate',data:rateArr,type:'line',yAxisID:'y2',borderColor:BUD_CHART_COLORS.rate,backgroundColor:BUD_CHART_COLORS.rate,borderWidth:2.5,pointRadius:4,pointBackgroundColor:BUD_CHART_COLORS.rate,tension:0.3,fill:false}
+            // Same accent as the Saved bars — they are the same story — separated by being a
+            // dashed line with markers on a second axis rather than by a fifth unrelated hue.
+            {label:'Savings rate',data:rateArr,type:'line',yAxisID:'y2',borderColor:BUD_CHART_COLORS.rate,backgroundColor:BUD_CHART_COLORS.rate,borderWidth:2,borderDash:[5,4],pointRadius:3,pointStyle:'rectRot',pointBackgroundColor:BUD_CHART_COLORS.rate,tension:0.3,fill:false}
           ]
         },
         options:{
@@ -12195,7 +12335,7 @@ function renderYear(){
           scales:{
             x:{stacked:true,grid:{display:false},ticks:{color:tc,font:{size:11},maxTicksLimit:12}},
             y:{stacked:true,grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>'$'+v},beginAtZero:true},
-            y2:{position:'right',min:0,max:50,grid:{display:false},ticks:{color:BUD_CHART_COLORS.rate,font:{size:11},callback:v=>v+'%'}}
+            y2:{position:'right',min:0,max:50,grid:{display:false},ticks:{color:tc,font:{size:11},callback:v=>v+'%'}}
           }
         }
       });
@@ -12219,7 +12359,7 @@ function renderYear(){
         data:{
           labels:points.map(p=>p.label),
           datasets:[
-            {label:'CC / variable spending',data:varArr,borderColor:BUD_CHART_COLORS.variable,backgroundColor:'rgba(216,90,48,0.12)',borderWidth:2.5,pointRadius:3,pointBackgroundColor:BUD_CHART_COLORS.variable,fill:true,tension:0.3}
+            {label:'CC / variable spending',data:varArr,borderColor:BUD_CHART_COLORS.variable,backgroundColor:budWarmRgba(0.14),borderWidth:2.5,pointRadius:3,pointBackgroundColor:BUD_CHART_COLORS.variable,fill:true,tension:0.3}
           ]
         },
         options:{
@@ -12298,10 +12438,12 @@ function renderBudTrend(){
     data:{
       labels:points.map(p=>p.label),
       datasets:[
-        {label:'Income',data:points.map(p=>p.income),borderColor:BUD_CHART_COLORS.income,backgroundColor:'rgba(29,158,117,0.08)',borderWidth:2.5,pointRadius:4,pointBackgroundColor:BUD_CHART_COLORS.income,fill:false,tension:0.3},
-        {label:'Spending',data:points.map(p=>p.spending),borderColor:BUD_CHART_COLORS.spending,backgroundColor:'rgba(231,76,60,0.08)',borderWidth:2.5,pointRadius:4,pointBackgroundColor:BUD_CHART_COLORS.spending,fill:false,tension:0.3},
-        {label:'Saved',data:points.map(p=>p.saved),borderColor:BUD_CHART_COLORS.saved,backgroundColor:'rgba(55,138,221,0.08)',borderWidth:2.5,pointRadius:4,pointBackgroundColor:BUD_CHART_COLORS.saved,fill:false,tension:0.3},
-        {label:'Account',data:points.map(p=>p.balance),borderColor:'#94a3b8',backgroundColor:'transparent',borderWidth:2,pointRadius:3,pointBackgroundColor:'#94a3b8',fill:false,tension:0.3,spanGaps:false,borderDash:[5,4]}
+        // Same mapping as Budget Month / Yearly: neutral income, warm spending, accent saved,
+        // and the account balance as a dashed neutral reference.
+        {label:'Income',data:points.map(p=>p.income),borderColor:BUD_CHART_COLORS.income,backgroundColor:'transparent',borderWidth:2,pointRadius:3,pointBackgroundColor:BUD_CHART_COLORS.income,fill:false,tension:0.3},
+        {label:'Spending',data:points.map(p=>p.spending),borderColor:BUD_CHART_COLORS.spending,backgroundColor:budWarmRgba(0.10),borderWidth:2.5,pointRadius:4,pointBackgroundColor:BUD_CHART_COLORS.spending,fill:false,tension:0.3},
+        {label:'Saved',data:points.map(p=>p.saved),borderColor:BUD_CHART_COLORS.saved,backgroundColor:budAccentRgba(0.10),borderWidth:2.5,pointRadius:4,pointBackgroundColor:BUD_CHART_COLORS.saved,fill:false,tension:0.3},
+        {label:'Account',data:points.map(p=>p.balance),borderColor:BUD_CHART_COLORS.fixed,backgroundColor:'transparent',borderWidth:2,pointRadius:3,pointBackgroundColor:BUD_CHART_COLORS.fixed,fill:false,tension:0.3,spanGaps:false,borderDash:[5,4]}
       ]
     },
     options:{
@@ -12330,7 +12472,7 @@ function renderSavingsCard(){
   const sorted=[...savingsLog].sort((a,b)=>a.date<b.date?-1:1);
   const cur=sorted.length?sorted[sorted.length-1]:null;
   wrap.innerHTML=`<div class="card">
-    <div class="sec-label" style="margin-bottom:12px">🏦 Savings account</div>
+    <div class="sec-label bud-head-label" style="margin-bottom:12px">${cardIcon('bank')}<span>Savings account</span></div>
     <div style="display:flex;gap:8px;margin-bottom:12px;align-items:stretch">
       <div style="flex:1;display:flex;flex-direction:column;gap:6px">
         <input type="date" id="sav-log-date" value="${today}"
@@ -12406,7 +12548,7 @@ function renderGoalsCard(){
     </div>`;
   }).join('');
   wrap.innerHTML=`<div class="card">
-    <div class="sec-label" style="margin-bottom:12px">🎯 Savings goals</div>
+    <div class="sec-label bud-head-label" style="margin-bottom:12px">${cardIcon('target')}<span>Savings goals</span></div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:${goals.length?'4px':'0'}">
       <input type="text" id="goal-name" placeholder="Goal name" style="flex:1 1 100px;min-width:0;max-width:100%;box-sizing:border-box;height:38px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;padding:0 8px;background:var(--card);color:var(--text)">
       <input type="number" id="goal-target" inputmode="decimal" placeholder="$ Target" style="flex:1 1 70px;min-width:0;max-width:100%;box-sizing:border-box;height:38px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;text-align:center;background:var(--card);color:var(--text)">
@@ -12502,7 +12644,7 @@ function renderBSAccountGrowth(){
   const wrap=document.getElementById('bs-acctgrowth-wrap'); if(!wrap) return;
   const head=(body)=>'<div class="card" style="padding:0;overflow:hidden">'+
     '<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px">'+
-      '<span>📊 Account growth</span>'+
+      '<span class="bud-head-label">'+cardIcon('trend')+'<span>Account growth</span></span>'+
       '<div class="bs-growth-range">'+
         [['30','30d'],['90','90d'],['all','All']].map(([v,l])=>
           '<button onclick="setBSGrowthRange(\''+v+'\')" class="'+(bsGrowthRange===v?'on':'')+'">'+l+'</button>').join('')+
@@ -12614,7 +12756,15 @@ function renderBSCatBreakdown(){
     .filter(k=>{const d=budgetData[k]; return d&&(d.saved||d.draft||d.snapshot);})
     .sort().slice(-12);
   if(!keys.length){ wrap.innerHTML=''; return; }
-  const CAT_COLORS=['#52B788','#f59e0b','#6366f1','#3b82f6','#ec4899','#8b5cf6','#FF6B35','#14b8a6','#94a3b8','#d85a30'];
+  // Same mapping as Budget Month/Yearly rather than a tenth of a rainbow: committed money is
+  // neutral, discretionary money is the one warm tone, and rank inside each family is carried
+  // by opacity. The bar LENGTH is what says which category is biggest.
+  const catBarColor=(kind,rank)=>{
+    const a=Math.max(0.28, 0.92 - rank*0.11).toFixed(2);
+    if(kind==='Variable') return budWarmRgba(a);
+    const dark=(typeof S==='object')?S.theme!=='light':true;
+    return (dark?'rgba(255,255,255,':'rgba(28,28,30,')+(a*0.42).toFixed(3)+')';
+  };
   const catMap={}; let legacyWeeks=0, ambiguousWeeks=0;
   const add=(kind,def,val,key)=>{
     if(!val) return;
@@ -12639,12 +12789,17 @@ function renderBSCatBreakdown(){
   const total=cats.reduce((s,c)=>s+c.val,0);
   if(total<=0){ wrap.innerHTML=''; return; }
   const max=Math.max(1,...cats.map(c=>c.val));
-  const rows=cats.filter(c=>c.val>0).map((c,i)=>{
+  const shownCats=cats.filter(c=>c.val>0);
+  // Rank restarts per family, so the biggest variable category and the biggest fixed one are
+  // each the strongest tone of their own tone rather than competing on one ramp.
+  const seen={};
+  shownCats.forEach(c=>{ c.barColor=catBarColor(c.kind, seen[c.kind]=(seen[c.kind]===undefined?0:seen[c.kind]+1)); });
+  const rows=shownCats.map(c=>{
     const evidenceKey=statsRegisterFinanceEvidence(c);
     const pctOfTotal=Math.round(c.val/total*100);
     return '<button type="button" class="stats-muscle-row" onclick="openFinanceCategoryEvidence(\''+evidenceKey+'\')" aria-label="Open '+_catEsc(c.label)+' source records"><div class="muscle-bar-row">'+
       '<div class="muscle-bar-label" style="width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+_catEsc(c.label)+'">'+_catEscHtml(c.label)+'</div>'+
-      '<div class="muscle-bar-track"><div class="muscle-bar-fill" style="width:'+Math.round(c.val/max*100)+'%;background:'+CAT_COLORS[i%CAT_COLORS.length]+'"></div></div>'+
+      '<div class="muscle-bar-track"><div class="muscle-bar-fill" style="width:'+Math.round(c.val/max*100)+'%;background:'+c.barColor+'"></div></div>'+
       '<div class="muscle-bar-count" style="width:78px">$'+Math.round(c.val).toLocaleString()+' · '+pctOfTotal+'%</div>'+
     '</div></button>';
   }).join('');
@@ -12667,16 +12822,23 @@ function renderBSProgress(){
   const goal=getSavingsGoal();
   const cumulativeGoal=goal*weekCount;
   const pct=cumulativeGoal>0?Math.min(100,Math.round(totalSaved/cumulativeGoal*100)):0;
-  const onTrack=totalSaved>=cumulativeGoal*0.85;
-  const barColor=onTrack?'var(--positive)':'var(--accent)';
+  // The bar is the primary saved series, so it stays in the accent whatever the outcome; the
+  // outcome itself is stated in words beside the percentage.
+  const chip = !cumulativeGoal ? ''
+    : totalSaved>=cumulativeGoal ? tstat('pos','At goal','check',true)
+    : totalSaved>=cumulativeGoal*0.85 ? tstat('pos','On track','check',true)
+    : totalSaved>=cumulativeGoal*0.6 ? tstat('warn','Behind','flat',true)
+    : tstat('neg','Well behind','down',true);
   wrap.innerHTML='<div class="card bst-prog-card">'+
     '<div class="bst-prog-label">Total saved · '+weekCount+' week'+(weekCount>1?'s':'')+' tracked</div>'+
     '<div class="bst-prog-val">$'+Math.round(totalSaved).toLocaleString()+'</div>'+
     '<div class="bst-prog-goal">of $'+cumulativeGoal.toLocaleString()+' cumulative goal ($'+goal+'/wk)</div>'+
     '<div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-top:12px">'+
-      '<div style="width:'+pct+'%;height:100%;background:'+barColor+';border-radius:4px;transition:width .4s ease"></div>'+
+      '<div style="width:'+pct+'%;height:100%;background:var(--accent);border-radius:4px;transition:width .4s ease"></div>'+
     '</div>'+
-    '<div style="font-size:12px;color:var(--muted);margin-top:6px">'+pct+'% of goal</div>'+
+    '<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-top:8px">'+
+      '<span>'+pct+'% of goal</span>'+chip+
+    '</div>'+
   '</div>';
 }
 
@@ -12695,16 +12857,19 @@ function renderBSBestWorst(){
   const fmtWk=k=>k?new Date(k+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'}):'—';
   wrap.innerHTML='<div class="bst-tiles">'+
     '<div class="bst-tile">'+
-      '<div class="bst-tile-icon">🏆</div>'+
+      '<div class="bst-tile-icon">'+cardIcon('trophy')+'</div>'+
       '<div class="bst-tile-lbl">Best week</div>'+
       '<div class="bst-tile-date">'+fmtWk(bestKey)+'</div>'+
-      '<div class="bst-tile-val" style="color:var(--positive)">'+(bestKey?'saved $'+Math.round(bestSav):'—')+'</div>'+
+      // The amount stays neutral; the verdict travels as a chip beside it.
+      '<div class="bst-tile-val">'+(bestKey?'$'+Math.round(bestSav):'—')+'</div>'+
+      (bestKey?'<div class="bst-tile-chip">'+tstat('pos','Most saved','check',true)+'</div>':'')+
     '</div>'+
     '<div class="bst-tile">'+
-      '<div class="bst-tile-icon">⚠️</div>'+
+      '<div class="bst-tile-icon">'+cardIcon('alert')+'</div>'+
       '<div class="bst-tile-lbl">Worst week</div>'+
       '<div class="bst-tile-date">'+fmtWk(worstKey)+'</div>'+
-      '<div class="bst-tile-val" style="color:var(--danger)">'+(worstKey?'over by $'+Math.round(worstOver):'No overspend 🎉')+'</div>'+
+      '<div class="bst-tile-val">'+(worstKey?'$'+Math.round(worstOver):'—')+'</div>'+
+      '<div class="bst-tile-chip">'+(worstKey?tstat('neg','Over budget','alert',true):tstat('pos','No overspend','check',true))+'</div>'+
     '</div>'+
   '</div>';
 }
@@ -13231,9 +13396,11 @@ function renderBSTrend(){
     '<div class="stats-chart-box"><canvas id="bs-trend-chart" aria-label="Weekly spending and saved plans"></canvas></div>');
   const ctx=document.getElementById('bs-trend-chart'); if(!ctx) return;
   const {gc,tc}=budChartGridColors();
-  const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#FF6B35').trim();
+  const accent=budAccentHex();
   const datasets=[
-    {type:'bar',label:'Spent',data:spent,backgroundColor:'rgba(231,76,60,0.6)',borderColor:BUD_CHART_COLORS.spending,borderWidth:1,borderRadius:6,maxBarThickness:48}
+    // Warm tone for spending, matching Budget Month/Yearly, so the same money is the same
+    // colour wherever it is drawn.
+    {type:'bar',label:'Spent',data:spent,backgroundColor:budWarmRgba(0.62),borderColor:BUD_CHART_COLORS.spending,borderWidth:1,borderRadius:6,maxBarThickness:48}
   ];
   if(goalCoverage){
     datasets.push({type:'line',label:'Saved plan',data:goals,borderColor:accent,borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,tension:0,spanGaps:false});
@@ -13373,7 +13540,7 @@ function renderBSConsist(){
   const wrap=document.getElementById('bs-consist-wrap'); if(!wrap) return;
   const allKeys=Object.keys(budgetData).sort().reverse().slice(0,8).reverse();
   if(!allKeys.length){
-    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">📅 Budget consistency</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">No weeks saved yet.</div></div>';
+    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+cardIcon('calendar')+'Budget consistency</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">No weeks saved yet.</div></div>';
     return;
   }
   const cells=allKeys.map(k=>{
@@ -13392,7 +13559,7 @@ function renderBSConsist(){
       +'</div>';
   }).join('');
   wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden">'
-    +'<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">📅 Budget consistency</div>'
+    +'<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+cardIcon('calendar')+'Budget consistency</div>'
     +'<div style="padding:14px 16px">'
     +'<div style="display:flex;gap:5px;margin-bottom:10px">'+cells+'</div>'
     +'<div style="display:flex;gap:14px;font-size:11px;color:var(--muted)">'
@@ -13405,7 +13572,7 @@ function renderBSRecords(){
   const wrap=document.getElementById('bs-records-wrap'); if(!wrap) return;
   const keys=Object.keys(budgetData);
   if(keys.length<2){
-    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">🏆 Personal records</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Save at least 2 weeks to see records.</div></div>';
+    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+cardIcon('trophy')+'Personal records</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Save at least 2 weeks to see records.</div></div>';
     return;
   }
   let bestInc={val:0,key:null},bestSav={val:0,key:null},loSpend={val:Infinity,key:null};
@@ -13420,12 +13587,12 @@ function renderBSRecords(){
   });
   const fmtWk=k=>{if(!k) return '—'; return new Date(k+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'2-digit'});};
   const rows=[
-    {icon:'💵',label:'Highest income',val:bestInc.key?'$'+bestInc.val.toFixed(0):'—',wk:fmtWk(bestInc.key)},
-    {icon:'📉',label:'Lowest spending',val:loSpend.key&&isFinite(loSpend.val)?'$'+loSpend.val.toFixed(0):'—',wk:fmtWk(loSpend.key)},
-    {icon:'🏅',label:'Most saved',val:bestSav.key?'$'+bestSav.val.toFixed(0):'—',wk:fmtWk(bestSav.key)},
+    {icon:cardIcon('wallet'),label:'Highest income',val:bestInc.key?'$'+bestInc.val.toFixed(0):'—',wk:fmtWk(bestInc.key)},
+    {icon:cardIcon('down'),label:'Lowest spending',val:loSpend.key&&isFinite(loSpend.val)?'$'+loSpend.val.toFixed(0):'—',wk:fmtWk(loSpend.key)},
+    {icon:cardIcon('medal'),label:'Most saved',val:bestSav.key?'$'+bestSav.val.toFixed(0):'—',wk:fmtWk(bestSav.key)},
   ];
   wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden">'
-    +'<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">🏆 Personal records</div>'
+    +'<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+cardIcon('trophy')+'Personal records</div>'
     +'<div style="padding:2px 16px">'
     +rows.map(r=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--border)">'
       +'<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">'+r.icon+'</span>'
@@ -13473,7 +13640,7 @@ function renderBSGoals(){
     </div>`;
   }).join('');
   wrap.innerHTML=`<div class="card" style="padding:0;overflow:hidden">
-    <div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)">🎯 Savings goals</div>
+    <div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">${cardIcon('target')}Savings goals</div>
     <div style="padding:14px 16px">
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:${goals.length?'12px':'0'}">
         <input type="text" id="bs-goal-name" placeholder="Goal name" style="flex:1 1 100px;min-width:0;box-sizing:border-box;height:38px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;padding:0 8px;background:var(--card);color:var(--text)">
@@ -14664,7 +14831,7 @@ function loadCCInput(){
   block.innerHTML=
     '<div class="bud-row cc-row" onclick="openAccounts()" style="cursor:pointer">'+
       '<div class="bud-row-left">'+
-        '<div class="bud-row-name">💳 Cards &amp; debts</div>'+
+        '<div class="bud-row-name bud-row-name-ico">'+cardIcon('wallet')+'<span>Cards &amp; debts</span></div>'+
         '<div class="bud-row-budget">Managed in Accounts →</div>'+
       '</div>'+
       '<div class="bud-row-calc" style="color:var(--text)">'+(accounts.length?fmtMoney(debts):'—')+'</div>'+
@@ -14696,7 +14863,16 @@ const CARD_ICONS={
   flame:'<path d="M12 3c3 4 6 5.5 6 9a6 6 0 0 1-12 0c0-2 1-3.5 2.5-5 .3 1.2 1 2 2 2.2C10 7 11 4.6 12 3z"/>',
   receipt:'<path d="M6 3h12v18l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L6 21zM9.5 8h5M9.5 12h5"/>',
   trend:'<path d="M3 17l6-6 4 4 7-7"/><path d="M20 8v5h-5"/>',
-  target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>'
+  target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  /* Added for the Budget chrome pass — these replace 📌 🛒 💵 🎯 📅 🏆 ⚠️ 🔁 in card
+     headings. An emoji ignores currentColor, so it could not follow the theme or the accent
+     and rendered differently on every OS; these inherit like any other stroke icon. */
+  cart:'<path d="M3 4h2l2.4 10.2a2 2 0 0 0 2 1.55h7.3a2 2 0 0 0 1.95-1.55L20.5 8H6"/><circle cx="10" cy="19.5" r="1.3"/><circle cx="17.5" cy="19.5" r="1.3"/>',
+  pin:'<path d="M9 3h6M12 3v6M8.5 9h7l1.5 5H7zM12 14v7"/>',
+  alert:'<path d="M12 9v5M12 17.5v.01M10.3 3.9 2.6 17.4A2 2 0 0 0 4.3 20.4h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
+  repeat:'<path d="M17 2l3 3-3 3"/><path d="M4 11.5V11a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 12.5v.5a4 4 0 0 1-4 4H4"/>',
+  down:'<path d="M12 4v14M6 12l6 6 6-6"/>',
+  medal:'<circle cx="12" cy="15" r="5.5"/><path d="M12 12.8l.9 1.9 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3zM8 3l1.8 5.2M16 3l-1.8 5.2M7 3h10"/>'
 };
 function cardIcon(name){
   const d=CARD_ICONS[name];
@@ -14801,12 +14977,14 @@ function homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt){
       '</div>'+
       calorieWeekStrip(goalCals,kcalTotal));
   } else if(budLeft!==null){
-    const col=budLeft>=0?'var(--success)':'var(--danger)';
+    // Neutral figure, verdict in the chip — the same rule as everywhere else money is shown.
+    const kind = budPillCls==='good'?'pos':budPillCls==='warn'?'warn':'neg';
+    const ico  = kind==='pos'?'check':kind==='warn'?'flat':'alert';
     return (
       '<div style="text-align:center;padding:14px 0">'+
-        '<div style="font-size:30px;font-weight:700;letter-spacing:-1px;color:'+col+';line-height:1;margin-bottom:6px">'+(budLeft>=0?'+$':'-$')+Math.abs(budLeft).toFixed(0)+'</div>'+
+        '<div style="font-size:30px;font-weight:700;letter-spacing:-1px;color:var(--text);line-height:1;margin-bottom:6px">'+(budLeft>=0?'+$':'-$')+Math.abs(budLeft).toFixed(0)+'</div>'+
         '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">This week\'s leftover</div>'+
-        '<span class="status-pill '+budPillCls+'">'+budPillTxt+'</span>'+
+        tstat(kind,budPillTxt,ico)+
       '</div>');
   } else {
     return '<div style="text-align:center;padding:14px 0;font-size:13px;color:var(--muted)">Set up your profile to see calorie targets</div>';
@@ -14864,8 +15042,9 @@ function renderHome(){
   if(incTot>0){
     budLeft=weekLeftover(curWk);
     budPillCls=budLeft>=50?'good':budLeft>=0?'warn':'over';
-    // The .status-pill class already carries the state colour, so the emoji was saying the
-    // same thing a second time in a way that can't follow the theme.
+    // Words only — the tonal chip these feed (tstat) supplies the tint and the icon, and an
+    // emoji here would have restated the state a third time in a colour that cannot follow
+    // the theme.
     budPillTxt=budLeft>=50?'On track':budLeft>=0?'Tight':'Over';
   }
 
@@ -19145,7 +19324,18 @@ let jrnSearchOpen=false;
 let jrnSelId=null;          // desktop detail selection
 let jrnListsDirty=false;
 
-function jrnIsDesktop(){ return window.innerWidth>=1024; }
+// Journal's two-pane split point, NOT the app's 1024px desktop line — the same reasoning as
+// STG_SPLIT_MIN in Settings, and for the same reason it is a different number.
+// At 1024 the 260px sidebar plus the section's 32px padding leave ~700px of content; a 400px
+// navigation list would take most of it and hand the writing surface about 225px. A 225px
+// editor is worse than no editor: the point of the desktop layout is that writing gets the
+// space. Below this the phone's list-first flow is used instead — a clean full-screen editor
+// beats a cramped pane.
+// THIS NUMBER IS DUPLICATED in the @media query in css/journal.css and the two must agree:
+// this function decides whether the editor mounts inline or as an overlay, and the CSS decides
+// whether the pane it would mount into exists at all.
+const JRN_SPLIT_MIN=1240;
+function jrnIsDesktop(){ return window.innerWidth>=JRN_SPLIT_MIN; }
 function jrnEntries(){ return jrnLive().filter(r=>r.kind==='entry'); }
 function jrnNotesAll(){ return jrnLive().filter(r=>r.kind!=='entry'); }
 // An entry always carries dateAbout, but fall back to its creation day rather than dropping a
@@ -19390,29 +19580,118 @@ function jrnDetachEditor(){
   return ed;
 }
 function renderNotes(){ renderJournal(); }
+// Two layouts over ONE set of data, not one layout squeezed into two widths.
+//   · Phone   — list-first. The tinted composer card is the primary affordance, entries are
+//               cards, and opening one pushes the fullscreen editor. Unchanged.
+//   · Desktop — editor-first. The left column is a NAVIGATION list (flat rows, quiet dividers,
+//               one selected state) at a fixed reading width, and the writing surface owns the
+//               rest of the screen. Before this it was the phone column stretched beside a
+//               mostly empty "Nothing open" region, so the widest screen showed the least
+//               writing.
 function renderJournal(){
   const wrap=document.getElementById('notes-content'); if(!wrap) return;
   jrnDetachEditor();
+  const desktop=jrnIsDesktop();
+  // Pick the selection BEFORE the pane is built, so the list can mark the selected row and the
+  // detail column has something to mount. Never re-enters renderJournal.
+  if(desktop) jrnEnsureDesktopSelection();
   // While a search is running the screen is a results view: the composer previews today's entry,
   // which is not a result, and showing it at the top of a search for something else reads as a
   // false match. It comes straight back when the query is cleared.
-  const rail=jrnHeadHtml()+(jrnQ()?'':jrnComposerHtml()+jrnSundayReflectHtml())+jrnLoopsHtml()+jrnBodyHtml();
-  wrap.innerHTML = jrnIsDesktop()
+  const rail = desktop
+    ? jrnHeadHtml()+jrnNavHtml()
+    : jrnHeadHtml()+(jrnQ()?'':jrnComposerHtml()+jrnSundayReflectHtml())+jrnLoopsHtml()+jrnBodyHtml();
+  wrap.innerHTML = desktop
     ? '<div id="journal-root"><div class="jrn-rail">'+rail+'</div><div class="jrn-detail" id="jrn-detail"></div></div>'
     : '<div id="journal-root">'+rail+'</div>';
-  if(jrnIsDesktop()) jrnMountDetail();
+  if(desktop) jrnMountDetail();
   const s=document.getElementById('jrn-search');
   if(s && jrnSearchOpen && document.activeElement!==s){ s.value=jrnQuery; }
 }
-// Re-render deferred while the editor holds focus — on desktop the editor lives inside the
-// detail column, and moving it mid-keystroke would blur the field the user is typing into.
-function jrnRefreshLists(){
+// The desktop left column. Sections, not cards: a heading, flat rows, quiet dividers.
+function jrnNavHtml(){
+  let h='<div class="jrn-nav">';
+  if(!jrnQ() && jrnTab==='timeline') h+=jrnTodaySectionHtml()+jrnSundayReflectHtml();
+  // The All notes tab IS the list of loops, grouped; showing the Open Loops section above it
+  // printed the pinned rows twice, a few lines apart.
+  if(jrnTab!=='notes') h+=jrnLoopsHtml();
+  h+=jrnBodyHtml();
+  return h+'</div>';
+}
+// Today is a ROW in the navigation list rather than the phone's tinted composer card — a card
+// here would be the one elevated object in a column of flat rows, which is exactly the
+// "rounded black boxes on a black page" effect the rest of this pass removes.
+// It always offers a way in: "Start writing" when nothing has been written yet.
+function jrnTodaySectionHtml(){
+  const today=getLocalDate();
+  const mine=jrnEntries().filter(r=>jrnEntryDay(r)===today)
+    .sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0));
+  // The unsaved "today" editor the desktop opens by default has no stored record to match on,
+  // so the placeholder row carries the selected state on its behalf.
+  const pendingToday = !!(jrnEdPending && jrnEdPending.id===jrnSelId);
+  const rows = mine.length
+    ? mine.map(r=>jrnEntryRow(r, jrnLongDay(today))).join('')
+    : '<button class="jrn-row jrn-row-start'+(pendingToday?' sel':'')+'" data-jrn="new-entry">'+
+        '<span class="jrn-row-top"><span class="jrn-row-date">'+escText(jrnLongDay(today))+'</span></span>'+
+        '<span class="jrn-row-ttl">Start writing</span>'+
+        '<span class="jrn-row-prev">How was today?</span>'+
+      '</button>';
+  return '<section class="jrn-sec">'+
+    '<div class="jrn-sec-hd"><span class="jrn-sec-ttl">Today</span>'+
+      '<button class="jrn-sec-act" data-jrn="new-entry">+ New entry</button></div>'+
+    rows+
+  '</section>';
+}
+// One flat row: date, title, a line of preview, quiet metadata. No shadow and no card edge —
+// the divider and the selected state do all the work.
+function jrnEntryRow(r, dateLabel){
+  const title=String(r.title||'').trim();
+  const body=String(r.body||'').replace(/\s+/g,' ').trim();
+  const meta=[];
+  if(r.mood) meta.push(jrnMoodLabel(r.mood));
+  (Array.isArray(r.tags)?r.tags:[]).forEach(t=>meta.push(t));
+  const t=jrnTimeOf(r);
+  return '<button class="jrn-row'+(jrnSelId===r.id?' sel':'')+'" data-jrn="open" data-id="'+escAttr(r.id)+'">'+
+    '<span class="jrn-row-top">'+
+      (dateLabel?'<span class="jrn-row-date">'+escText(dateLabel)+'</span>':'')+
+      (t?'<span class="jrn-row-time">'+escText(t)+'</span>':'')+
+    '</span>'+
+    '<span class="jrn-row-ttl">'+escText(title||body.slice(0,64)||'Untitled')+'</span>'+
+    (body&&title?'<span class="jrn-row-prev">'+escText(body)+'</span>':'')+
+    (meta.length?'<span class="jrn-row-meta">'+escText(meta.join(' · '))+'</span>':'')+
+  '</button>';
+}
+// Re-render deferred while the editor holds a TEXT field — on desktop the editor is MOVED into
+// the detail column on every render, and moving an element blurs whatever inside it had focus,
+// which mid-sentence is unforgivable.
+// It used to defer for any focus inside the editor at all, including a mood pill or a tag
+// chip. Those are discrete presses, not typing: deferring them left the list showing "Start
+// writing" after a mood had already created the entry, and nothing ever flushed the deferral,
+// so the stale list survived until some unrelated render happened to come along.
+function jrnEdHoldsText(){
+  const a=document.activeElement; if(!a) return false;
   const ed=document.getElementById('jrn-editor');
-  if(ed && document.activeElement && ed.contains(document.activeElement)){ jrnListsDirty=true; return; }
+  if(!ed || !ed.contains(a)) return false;
+  const tag=(a.tagName||'').toLowerCase();
+  if(tag==='textarea') return true;
+  if(tag!=='input') return false;
+  // A date input is a picker, not a text field being typed into.
+  return (a.type||'text')!=='date';
+}
+function jrnRefreshLists(){
+  if(jrnEdHoldsText()){ jrnListsDirty=true; return; }
   jrnListsDirty=false;
   renderJournal();
   if(typeof renderHomeNotesBubble==='function') renderHomeNotesBubble();
 }
+// The deferral above is now actually settled: when the field being typed into gives up focus,
+// any render it postponed runs.
+document.addEventListener('focusout',function(e){
+  if(!jrnListsDirty) return;
+  const ed=document.getElementById('jrn-editor');
+  if(!ed || !e.target || !ed.contains(e.target)) return;
+  setTimeout(function(){ if(jrnListsDirty && !jrnEdHoldsText()) jrnRefreshLists(); }, 0);
+});
 function jrnMountDetail(){
   const detail=document.getElementById('jrn-detail'); if(!detail) return;
   const ed=jrnDetachEditor();
@@ -19428,9 +19707,13 @@ function jrnMountDetail(){
   } else {
     jrnSelId=null;
     if(ed) ed.classList.remove('inline','open');
+    // Reached only if the editor element is missing or a selection was dropped mid-render —
+    // jrnEnsureDesktopSelection() means the ordinary path always has today open. It is styled
+    // to be READ rather than to fill space: a legible heading, not a faint grey block.
     detail.innerHTML='<div class="jrn-detail-empty">'+
       '<div class="jrn-empty-ttl">Nothing open</div>'+
       '<div class="jrn-empty-sub">Pick an entry from the list, or write about today.</div>'+
+      '<button class="jrn-detail-empty-btn" data-jrn="new-entry">Write about today</button>'+
     '</div>';
   }
 }
@@ -19475,7 +19758,7 @@ function jrnComposerHtml(){
       '<span class="jrn-comp-eyebrow">'+(latest?"Today's entry":'Today')+'</span>'+
       '<span class="jrn-comp-date">'+escText(jrnLongDay(today))+'</span>'+
     '</div>'+
-    '<div class="jrn-comp-line'+(latest?'':' empty')+'">'+(latest?escText(firstLine):'How was today?')+'</div>'+
+    '<div class="jrn-comp-line'+(latest?'':' is-empty')+'">'+(latest?escText(firstLine):'How was today?')+'</div>'+
     meta+
   '</button>'+
   (latest?'<button class="jrn-loops-btn" data-jrn="new-entry" style="align-self:flex-start;margin:-6px 0 0 2px">+ Add another moment today</button>':'');
@@ -19503,10 +19786,14 @@ function jrnLoopsHtml(){
   if(q) rows=rows.filter(r=>jrnMatch(r,q));
   const shown=rows.slice(0,5);
   const total=L.all.length;
-  let h='<div class="jrn-loops">'+
-    '<div class="jrn-loops-hd">'+
-      '<span class="jrn-loops-ttl">Open loops</span>'+
-      (rows.length?'<span class="jrn-loops-n">'+rows.length+'</span>':'')+
+  // On desktop this is a compact SECTION of the navigation list, matching Today and the month
+  // groups; on the phone it stays the standalone card it has always been. Same markup, and the
+  // desktop rules in css/journal.css strip the card surface — one code path, two treatments.
+  const dk=jrnIsDesktop();
+  let h='<div class="jrn-loops'+(dk?' jrn-sec':'')+'">'+
+    '<div class="jrn-loops-hd'+(dk?' jrn-sec-hd':'')+'">'+
+      '<span class="jrn-loops-ttl'+(dk?' jrn-sec-ttl':'')+'">Open loops'+(dk&&rows.length?' · '+rows.length:'')+'</span>'+
+      (rows.length&&!dk?'<span class="jrn-loops-n">'+rows.length+'</span>':'')+
       '<span class="jrn-loops-act">'+
         (total?'<button class="jrn-loops-btn" data-jrn="tab" data-tab-id="notes">All notes</button>':'')+
         '<button class="jrn-loops-btn" data-jrn="new-note" aria-label="New note">+</button>'+
@@ -19543,6 +19830,28 @@ function jrnTimelineHtml(){
       '<div class="jrn-empty-ttl">'+(q?'No entries match':'No entries yet')+'</div>'+
       '<div class="jrn-empty-sub">'+(q?'Try a different word, or check All notes.':'Tap the card above to write about today. Entries are grouped by the day they are about.')+'</div>'+
     '</div>';
+  }
+  // Desktop groups by MONTH and renders flat rows carrying their own date, because a per-day
+  // sub-heading above every one-entry day turns a navigation list into a stack of headings.
+  // The phone keeps its day headings above entry cards.
+  if(jrnIsDesktop()){
+    let h='', lastMonth='', open=false;
+    // Today already has its own section at the top of the list; leaving it in the month groups
+    // as well listed the same entry twice, three rows apart. While a search is running there
+    // is no Today section, so nothing is withheld.
+    const groups=jrnGroupByDay(list).filter(g=>q||jrnTab!=='timeline'||g.date!==today);
+    groups.forEach(g=>{
+      const mon=g.date.slice(0,7);
+      if(mon!==lastMonth){
+        if(open) h+='</section>';
+        h+='<section class="jrn-sec"><div class="jrn-sec-hd"><span class="jrn-sec-ttl">'+escText(jrnMonthLabel(g.date))+'</span></div>';
+        lastMonth=mon; open=true;
+      }
+      const diff=notesDayDiff(g.date, today);
+      const label = diff===0?'Today' : diff===-1?'Yesterday' : jrnLongDay(g.date);
+      g.items.forEach(r=>{ h+=jrnEntryRow(r, label); });
+    });
+    return h+(open?'</section>':'');
   }
   let h='', lastMonth='';
   jrnGroupByDay(list).forEach(g=>{
@@ -19688,25 +19997,35 @@ function jrnEdStatus(txt){
   // that appears on every keystroke is a flicker.
   jrnEdStatusTimer=setTimeout(()=>{ el.style.opacity='0'; }, 1400);
 }
-function jrnOpenEditor(id, kind){
+// Loading the editor's FIELDS is separated from PRESENTING it, because the desktop pane has to
+// be filled from inside renderJournal() (which is what draws the pane) and cannot re-enter it.
+// Returns false if the id no longer resolves.
+function jrnLoadEditor(id, kind){
   const rec = id ? loadNotes().find(r=>r.id===id&&!r.deletedAt) : null;
-  if(id && !rec) return;
+  if(id && !rec) return false;
   jrnEdTagsOpen=false;
   if(rec){ jrnEdId=rec.id; jrnEdPending=null; }
   else {
     // Not persisted until it has content — this is what stops "open and back out" leaving a
-    // blank record behind, which the old editor did on every fullscreen jump.
+    // blank record behind, which the old editor did on every fullscreen jump. It is also what
+    // makes the desktop "always open today" default safe: merely LOOKING at Journal builds
+    // this object in memory and writes nothing.
     const fresh=jrnNewRecord(kind==='note'?'note':'entry');
     if(fresh.kind==='entry') fresh.dateAbout=getLocalDate();
     jrnEdId=fresh.id; jrnEdPending=fresh;
   }
   const r=jrnEdRec();
-  const ed=document.getElementById('jrn-editor'); if(!ed) return;
+  const ed=document.getElementById('jrn-editor'); if(!ed) return false;
   const t=document.getElementById('jrn-ed-title'), b=document.getElementById('jrn-ed-body');
   const isEntry=r.kind==='entry';
-  document.getElementById('jrn-ed-kind').textContent=isEntry?'Entry':'Note';
-  t.placeholder=isEntry?'Title (optional)':'Title';
-  b.placeholder=isEntry?'How was today?':'Details';
+  // The kind word ("Entry") told you nothing you could not see; the DATE is what a reader of
+  // an open entry actually needs, and it is the heading in the desktop pane's own layout.
+  document.getElementById('jrn-ed-kind').textContent =
+    isEntry ? jrnLongDay(r.dateAbout||getLocalDate()) : 'Note';
+  // "How was today?" is the prompt, so it belongs on the writing surface rather than on a
+  // small card in the list column.
+  t.placeholder=isEntry?'How was today?':'Title';
+  b.placeholder=isEntry?'Write about your day…':'Details';
   t.value=String(r.title||'');
   b.value=String(r.body||'');
   const del=document.getElementById('jrn-ed-del');
@@ -19715,22 +20034,47 @@ function jrnOpenEditor(id, kind){
   jrnRenderDayContext();
   jrnEdStatus('');
   const status=document.getElementById('jrn-ed-status'); if(status) status.style.opacity='0';
+  return true;
+}
+function jrnOpenEditor(id, kind){
+  const existed = !!(id && loadNotes().find(r=>r.id===id&&!r.deletedAt));
+  if(!jrnLoadEditor(id, kind)) return;
+  const ed=document.getElementById('jrn-editor');
   if(jrnIsDesktop()){
-    jrnSelId=r.id;
+    jrnSelId=jrnEdId;
     renderJournal();
-  } else {
+  } else if(ed){
     ed.classList.remove('inline');
     ed.classList.add('open');
     jrnEdSyncViewport();
   }
   // A new entry goes straight to the body: the title is optional and asking for one first is
   // how a nightly habit dies.
+  const isEntry=(jrnEdRec()||{}).kind==='entry';
   setTimeout(()=>{
     const bb=document.getElementById('jrn-ed-body');
     const tt=document.getElementById('jrn-ed-title');
-    if(!rec && isEntry && bb) bb.focus();
-    else if(!rec && !isEntry && tt) tt.focus();
+    if(!existed && isEntry && bb) bb.focus();
+    else if(!existed && !isEntry && tt) tt.focus();
   }, 60);
+}
+// Desktop opens editor-first: today's entry if there is one, otherwise a ready-to-write
+// surface for today. Nothing is stored until the first meaningful edit (see jrnEdWrite and
+// jrnEdPatch), so arriving on the screen never leaves a blank entry behind.
+// Runs BEFORE the pane is drawn, and deliberately never calls renderJournal itself.
+function jrnEnsureDesktopSelection(){
+  if(!jrnIsDesktop()) return;
+  if(jrnEdId && !jrnSelId) jrnSelId=jrnEdId;
+  if(jrnSelId){
+    const live = loadNotes().find(r=>r.id===jrnSelId&&!r.deletedAt)
+      || ((jrnEdPending && jrnEdPending.id===jrnSelId) ? jrnEdPending : null);
+    if(live && jrnEdId===jrnSelId) return;      // an open editor is never reloaded under the user
+    if(live){ if(jrnLoadEditor(jrnSelId)) return; }
+  }
+  const today=getLocalDate();
+  const mine=jrnEntries().filter(r=>jrnEntryDay(r)===today)
+    .sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0));
+  if(jrnLoadEditor(mine.length?mine[0].id:null, 'entry')) jrnSelId=jrnEdId;
 }
 function jrnEdRenderFoot(){
   const foot=document.getElementById('jrn-ed-foot'); if(!foot) return;
@@ -19784,11 +20128,34 @@ function jrnEdRenderFoot(){
   jrnRenderDayContext();
 }
 // Metadata is a discrete action, so it writes immediately; only typing is debounced.
+// On a record that has never been stored the patch normally stays in memory — but picking a
+// mood or adding a tag IS the user saying something about the day, and losing it because they
+// hadn't typed a sentence yet would be a silent data loss. Those promote the pending record
+// into storage; the ones that only describe an empty shell (which day it is about, whether it
+// is a reminder) do not, or the desktop's default-to-today editor would save a blank entry
+// the moment anything touched its date.
+const JRN_MEANINGFUL_KEYS=['mood','tags','pinned','title','body'];
 function jrnEdPatch(patch){
   if(!jrnEdId) return;
   const stored=loadNotes().find(r=>r.id===jrnEdId);
-  if(stored) jrnPut(Object.assign({}, stored, patch));
-  else jrnEdPending=jrnNormalise(Object.assign({}, jrnEdPending||{}, patch));
+  if(stored){ jrnPut(Object.assign({}, stored, patch)); }
+  else {
+    jrnEdPending=jrnNormalise(Object.assign({}, jrnEdPending||{}, patch));
+    const meaningful=Object.keys(patch).some(k=>JRN_MEANINGFUL_KEYS.indexOf(k)>=0);
+    // A tags patch that empties the list is a removal, not a statement — don't let it be the
+    // thing that creates the record.
+    const hasSubstance = jrnEdPending.mood
+      || (Array.isArray(jrnEdPending.tags) && jrnEdPending.tags.filter(t=>t!=='work'&&t!=='personal').length)
+      || jrnEdPending.pinned
+      || String(jrnEdPending.title||'').trim()
+      || String(jrnEdPending.body||'').trim();
+    if(meaningful && hasSubstance){
+      jrnPut(jrnEdPending);
+      jrnEdPending=null;
+      const del=document.getElementById('jrn-ed-del'); if(del) del.style.display='';
+      jrnEdStatus('Saved');
+    }
+  }
   jrnEdRenderFoot();
   jrnRefreshLists();
 }
@@ -19985,7 +20352,7 @@ function buildHomeNotesCard(){
     '</button>';
   } else {
     h+='<button class="jrn-composer" data-jrn-home="new" style="margin-bottom:'+(rows.length?'10px':'0')+'">'+
-      '<div class="jrn-comp-line empty">Write about today →</div>'+
+      '<div class="jrn-comp-line is-empty">Write about today →</div>'+
     '</button>';
   }
   if(rows.length){

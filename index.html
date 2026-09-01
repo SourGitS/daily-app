@@ -245,7 +245,7 @@
         <div class="card" id="bud-savings-card" data-bud-key="sav">
           <!-- Same head structure as budCardHead() so the collapsed summary has a slot to sit
                in. #sav-head-sum is filled by budRecalc and only shows while collapsed. -->
-          <div class="sec-label bud-toggle"><span class="bud-head-label">&#127974; Savings</span><span class="bud-head-right"><span class="bud-head-sum" id="sav-head-sum"></span><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span></div>
+          <div class="sec-label bud-toggle"><span class="bud-head-label"><svg class="card-hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 10v11M19 10v11M9.5 10v11M14.5 10v11M4 10h16L12 4z"/></svg><span>Savings</span></span><span class="bud-head-right"><span class="bud-head-sum" id="sav-head-sum"></span><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span></div>
           <div class="bud-row">
             <div class="bud-row-left">
               <div class="bud-row-name">This week's savings</div>
@@ -256,8 +256,11 @@
             <input class="bud-row-input" type="number" inputmode="decimal" placeholder="$0" id="sav-amount" oninput="budRecalc();budSaveDraft()">
           </div>
           <div class="bud-row">
-            <div class="bud-row-name" style="font-weight:700">Total saved</div>
-            <div class="bud-row-calc" id="calc-saved" style="color:var(--blue)">$0</div>
+            <div class="bud-row-left"><div class="bud-row-name" style="font-weight:700">Total saved</div>
+              <!-- Whether the week's savings cleared the goal is a real judgement, so it is
+                   stated as a tonal chip (budRecalc fills it) and the amount stays neutral. -->
+              <span id="sav-status"></span></div>
+            <div class="bud-row-calc" id="calc-saved" style="color:var(--text)">$0</div>
           </div>
           <div id="cc-card-block"></div>
         </div>
@@ -282,10 +285,12 @@
         <div id="bud-stranded-card"></div>
 
         <div class="card" id="bud-result-card" data-bud-key="result">
-          <div class="sec-label bud-toggle">&#128202; Weekly result<svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="sec-label bud-toggle"><span class="bud-head-label"><svg class="card-hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 7-7"/><path d="M20 8v5h-5"/></svg><span>Weekly result</span></span><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
             <div><div style="font-size:13px;color:var(--muted);margin-bottom:2px">Money left over</div><div style="font-size:28px;font-weight:800;line-height:1" id="calc-leftover">&#8212;</div></div>
-            <div id="week-status-pill" class="status-pill good">&#128994; On track</div>
+            <!-- Filled by budRecalc() with a tonal status chip; the markup here is only a pre-paint
+                 placeholder. -->
+            <div id="week-status-pill"></div>
           </div>
           <div style="margin-bottom:10px">
             <div class="sec-label" style="margin-bottom:6px">&#128221; Notes</div>

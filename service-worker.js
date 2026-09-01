@@ -61,7 +61,24 @@
 //     3 Mar) and compounded because each step started from the previous overflowed result. A
 //     bill anchored on 31 Jan 2026 reported its next charge as 3 Sept rather than 30 Sept.
 //     Anything dated on the 29th, 30th or 31st was affected.
-const CACHE_NAME = 'daily-v258';
+// v259 is a surface-hierarchy pass. Dark-theme content cards stop using the full-height
+// white gradient that made a card's height a visual property — a solid charcoal
+// (--surface-card, new in css/base.css) replaces it, applied to a NAMED list of content
+// containers rather than through --card, which ~120 rules read and most of them are controls.
+// --card itself is flattened from a gradient to one tone so inputs, keys and segmented
+// controls stay flat. Heroes and the weather card are untouched.
+// Journal's desktop layout is rebuilt as a real two-pane workspace: a 380-420px navigation
+// list of flat rows beside a lifted charcoal editor that opens on today by default (nothing is
+// persisted until a real edit — typing, a mood, a tag). Its split point is JRN_SPLIT_MIN
+// (1240), not the app's 1024 desktop line. Mobile Journal stays list-first, and the composer's
+// `.empty` modifier is renamed `.is-empty` — workout.css's bare `.empty` was matching it and
+// inflating the phone's composer to 167px.
+// Budget goes neutral-first: totals and summary figures are plain foreground text, charts map
+// to accent = saved, neutral greys = income/committed, one muted warm tone = variable, and the
+// savings-rate line is separated by dash and markers rather than a fifth hue. Judgements move
+// into tonal status chips (.tstat, sage/ochre/coral, each with an icon and a word). Decorative
+// emoji in Budget card chrome are replaced with the monochrome CARD_ICONS set.
+const CACHE_NAME = 'daily-v259';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

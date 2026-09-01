@@ -173,7 +173,7 @@
 .hl-width-btn span{font-size:10px}
 .hl-width-btn strong{font-size:11px;color:var(--text)}
 .hl-width-btn.is-wide{border-color:rgba(var(--accent-rgb),.45);background:rgba(var(--accent-rgb),.08)}
-[data-theme="dark"] .hl-widget{background:linear-gradient(180deg,rgba(255,255,255,.095),rgba(255,255,255,.055))}
+[data-theme="dark"] .hl-widget{background:var(--surface-card)}
 @media(min-width:700px){
   .hl-widget{display:grid;grid-template-columns:minmax(0,1fr) 210px;grid-template-areas:"head preview" "actions preview";column-gap:16px;align-items:center;padding:14px}
   .hl-widget-head{grid-area:head;align-self:end}

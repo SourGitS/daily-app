@@ -80,7 +80,9 @@
 /* Recurring (monthly/yearly) fixed expenses — one summary row that expands to a read-only
    breakdown. No inputs: their prorated share is already counted, so typing would double it. */
 .bud-recur-head{cursor:pointer;-webkit-tap-highlight-color:transparent}
-.bud-recur-ic{font-size:15px;line-height:1;flex-shrink:0}
+/* Was a 🔁 emoji, which could not follow the theme. The svg inherits the row's colour. */
+.bud-recur-ic{display:inline-flex;align-items:center;flex-shrink:0;color:var(--muted)}
+.bud-recur-ic .card-hd-ico{width:14px;height:14px}
 .bud-recur-count{display:inline-block;margin-left:7px;padding:1px 7px;border-radius:20px;background:var(--track);color:var(--muted);font-size:11px;font-weight:700}
 .bud-recur-total{display:flex;align-items:center;gap:7px;font-weight:700}
 .bud-recur-chev{color:var(--muted);font-size:11px}
@@ -266,6 +268,14 @@
 .acct-type-btn.on{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,0.12)}
 .delete-cat-btn{min-width:40px;min-height:40px;margin:-10px -6px -10px 0;display:flex;align-items:center;justify-content:center;font-size:20px;line-height:1;background:transparent;border:none;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;flex-shrink:0}
 .delete-cat-btn:active{color:var(--danger);opacity:0.7}
+/* The heading's icon and words are one unit; the icon is a CARD_ICONS stroke svg
+   (cardIcon()) sized to the 11px uppercase label and inheriting its --text-2 colour, which
+   is the whole point of it replacing an emoji. */
+.bud-head-label{display:flex;align-items:center;gap:7px;min-width:0}
+/* A row label that leads with a monochrome icon (Cards & debts, recurring markers). */
+.bud-row-name-ico{display:flex;align-items:center;gap:7px;min-width:0}
+.bud-row-name-ico .card-hd-ico{width:15px;height:15px;color:var(--muted)}
+.bud-head-label .card-hd-ico{width:13px;height:13px}
 .bud-head-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .bud-edit-btn{font-size:12px;font-weight:600;padding:4px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;text-transform:none;letter-spacing:0}
 .bud-edit-btn.active{color:var(--accent-text);border-color:var(--accent);background:rgba(var(--accent-rgb),.1)}
@@ -417,7 +427,7 @@
 .budget-archived-row strong{font-size:13px;color:var(--text)}
 .budget-archived-row small{font-size:10px;color:var(--muted)}
 .budget-archived-row button{min-height:36px;padding:0 12px;border:1px solid var(--border);border-radius:9px;background:transparent;color:var(--accent-text);font-size:12px;font-weight:750}
-[data-theme="dark"] .budget-setup-section{background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.075));border-color:var(--card-border)}
+[data-theme="dark"] .budget-setup-section{border-color:var(--surface-card-border)}
 [data-theme="dark"] .budget-setup-item{background:rgba(0,0,0,.12)}
 @media (min-width:700px){
   .budget-setup-wrap{padding:28px 24px 50px}
@@ -431,13 +441,16 @@
 [data-theme="dark"] .sum-card{background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.07)}
 .sum-card-val{font-size:19px;font-weight:700;letter-spacing:-0.5px;line-height:1}
 .sum-card-lbl{font-size:9px;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-secondary);margin-top:5px}
+/* Where a summary tile has a genuine verdict attached, it sits BELOW the figure as a tonal
+   chip — the figure itself stays var(--text). Only the tiles that make a comparison get one. */
+.sum-card-chip{margin-top:7px;display:flex;justify-content:center}
 .status-bar-wrap{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:6px}
 .status-bar-fill{height:100%;border-radius:4px;transition:width 0.4s ease}
 .status-text{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:14px}
-.status-pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px}
-.status-pill.good{background:rgba(82,183,136,0.15);color:#52B788}
-.status-pill.warn{background:rgba(var(--warn-rgb),0.15);color:var(--warn)}
-.status-pill.over{background:rgba(var(--danger-rgb),0.15);color:var(--danger)}
+/* .status-pill (good / warn / over) lived here. It is superseded by .tstat in
+   css/kitchen-extras.css — same idea, but every state carries an icon and a word as well as
+   the tint, so the meaning survives greyscale and colour-blindness. Build one with
+   tstat(kind,label,icon) in js/app.js; do not reintroduce a colour-only pill. */
 .week-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px}
 .week-nav-btn{width:34px;height:34px;border:1.5px solid var(--border);border-radius:10px;background:transparent;color:var(--text);font-size:18px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}
 .week-nav-btn:active{background:var(--bg)}
@@ -469,6 +482,9 @@
 .chart-legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:10px}
 .chart-legend-pill{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
 .chart-legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+/* A dashed line, not a dot: the savings-rate series shares the accent with Saved, so shape
+   is what tells them apart in the legend as well as on the canvas. */
+.chart-legend-dot.dash{width:14px;height:0;border-radius:0;border-top:2px dashed currentColor;background:none}
 .home-two-col{display:flex;gap:10px;margin-bottom:12px}
 .home-half-card{flex:1;min-width:0}
 .hidden{display:none!important}
@@ -524,19 +540,49 @@
    need a tinted background behind it. Worth noting both outside reviews reported this card as
    "a hero in light, neutral in dark" — measured, it is neutral in both. */
 
-/* ── Theme-aware card borders (glass feel) ── */
+/* ── Theme-aware card borders ── */
 [data-theme="dark"] .card,[data-theme="dark"] .ex-card:not(.done),[data-theme="dark"] .session-card,[data-theme="dark"] .week-section,[data-theme="dark"] .week-nav,[data-theme="dark"] .pr-row{border:0.5px solid var(--card-border)}
 [data-theme="light"] .card,[data-theme="light"] .ex-card:not(.done),[data-theme="light"] .session-card,[data-theme="light"] .week-section,[data-theme="light"] .week-nav,[data-theme="light"] .pr-row{border:1px solid rgba(0,0,0,0.07)}
-/* Tint scoped above the dark-glass .card rule; no border so it uses the neutral card edge */
-/* Calorie/overview hero now reads as a neutral grey card (no accent tint) */
-[data-theme="dark"] .card.hero-card{background:linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.09))}
-[data-theme="light"] .card.hero-card{background:var(--card)}
-/* Dark-only frosted-glass card treatment; light mode uses flat --card tokens */
-[data-theme="dark"] .card,[data-theme="dark"] .ex-card{background:linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.09));box-shadow:inset 0 1px 0 rgba(255,255,255,.20),0 6px 22px rgba(0,0,0,.3);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
-/* Weekly review: extra-glassy + a top sheen so it reads as polished glass */
-[data-theme="dark"] .card.weekly-review-card{background:linear-gradient(180deg, rgba(255,255,255,.20), rgba(255,255,255,.06));box-shadow:inset 0 1px 0 rgba(255,255,255,.32),0 10px 30px rgba(0,0,0,.38);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+/* Calorie/overview hero reads as a neutral card (no accent tint) — it inherits the matte
+   surface below like any other card. */
+
+/* ── The matte content-card surface (dark) ──────────────────────────────────────
+   Replaces the frosted-glass treatment that used to live here:
+     background: linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.09))
+   That was a FULL-HEIGHT gradient, so identical cards looked different depending on how tall
+   they happened to be — a short streak card read as an even light grey, a long habits list
+   read as a grey ramp, and neither was a decision anyone made. The fix is a solid charcoal:
+   the same tone at the top of a 600px card as at the bottom of a 90px one.
+   The blur went with it. backdrop-filter on ~40 simultaneous cards costs real compositing
+   work on a phone, and it was blurring a flat #080808 page background — there is nothing
+   behind these cards to see through.
+   The SELECTOR LIST IS THE POINT: this is a narrow, named set of genuine content containers,
+   not `[class*="card"]`. Controls that happen to read var(--card) (inputs, calculator keys,
+   segmented-control "on" states, filter chips, dropdown sheets) are deliberately absent and
+   stay flat — a button must not look like a smaller card. Anything added here should be a
+   container that HOLDS content, not one you press.
+   Excluded on purpose: .home-weather-card (its scene gradient is the card's whole subject —
+   kitchen-extras.css loads later and re-declares it anyway) and every .hero-* class. */
+[data-theme="dark"] .card:not(.home-weather-card),
+[data-theme="dark"] .ex-card,
+[data-theme="dark"] .session-card,
+[data-theme="dark"] .week-section,
+[data-theme="dark"] .stat-card,
+[data-theme="dark"] .psw-card,
+[data-theme="dark"] .budget-setup-section,
+[data-theme="dark"] .ov-rail,
+[data-theme="dark"] .se-day-card,
+[data-theme="dark"] .log-timer-card,
+[data-theme="dark"] #chart-wrap{
+  background:var(--surface-card);
+  border-color:var(--surface-card-border);
+  box-shadow:var(--surface-card-top);
+}
+/* Weekly review keeps a whisper of a top sheen — a highlight, not a gradient fill. Its base
+   is the same matte surface as every other card, so it no longer out-shines the real heroes. */
 .card.weekly-review-card{position:relative}
-.card.weekly-review-card::before{content:'';position:absolute;inset:0;pointer-events:none;border-radius:inherit;background:radial-gradient(120% 80% at 50% -20%, rgba(255,255,255,.16), transparent 60%)}
+[data-theme="dark"] .card.weekly-review-card{box-shadow:inset 0 1px 0 rgba(255,255,255,.09)}
+[data-theme="dark"] .card.weekly-review-card::before{content:'';position:absolute;inset:0;pointer-events:none;border-radius:inherit;background:radial-gradient(120% 70% at 50% -30%, rgba(255,255,255,.055), transparent 62%)}
 .card.weekly-review-card>*{position:relative;z-index:1}
 .hero-card .hero-big{font-size:30px;font-weight:700;letter-spacing:-1px}
 
@@ -850,8 +896,8 @@
   #kitpantry .kitpantry-group{background:none;border:none;border-radius:0;box-shadow:none;overflow:visible}
   #kitpantry .kitpantry-item{border:1px solid var(--card-border);border-bottom:1px solid var(--card-border);
     border-radius:11px;background:var(--card);margin-bottom:7px}
-  [data-theme="dark"] #kitpantry .kitpantry-item{background:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.07));
-    border:0.5px solid var(--card-border);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 4px 14px rgba(0,0,0,.24)}
+  [data-theme="dark"] #kitpantry .kitpantry-item{background:var(--surface-card);
+    border:0.5px solid var(--surface-card-border);box-shadow:none}
   #kitpantry .kitpantry-item.s-out{background:rgba(231,76,60,0.09)}
   #kitpantry .kitpantry-item.s-low{background:rgba(245,158,11,0.09)}
 
@@ -1175,6 +1221,9 @@
    (see the Weekly result card), so a centred headline here read as a different card style.
    The bar and its foot are full-width rows, so only the figure and caption move. */
 .vg-body{padding:10px 2px 4px;text-align:left}
+/* Figure and verdict on one baseline: the number stays neutral, the chip beside it carries
+   the semantic colour (see updateVarGoalCard). */
+.vg-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .vg-amt{font-family:var(--font-num);font-size:34px;font-weight:800;line-height:1;letter-spacing:-.02em;color:var(--muted)}
 .vg-sub{font-size:12px;font-weight:600;color:var(--muted);margin-top:5px}
 .vg-bar-wrap{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin:12px 0 6px}
