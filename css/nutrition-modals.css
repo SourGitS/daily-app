@@ -199,9 +199,7 @@
 .tdee-card-active{font-size:10px;font-weight:600;margin-top:4px}
 
 #view-nutrition{--nut-gap:12px}
-.nut-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
-.nut-title{font-family:var(--font-num);font-size:27px;font-weight:800;letter-spacing:-.03em;color:var(--text)}
-.nut-date{font-size:12px;color:var(--muted);margin-top:2px}
+#nutrition-main{width:100%}
 .nut-tabs{display:flex;background:var(--border);border-radius:12px;padding:3px;margin-bottom:14px;position:sticky;top:0;z-index:5}
 .nut-tab{flex:1;border:0;background:transparent;color:var(--muted);border-radius:9px;padding:9px 5px;font:700 12px var(--font-ui);cursor:pointer}
 .nut-tab.active{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.12)}
@@ -223,4 +221,4 @@
 .nut-review-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:12px 13px;border-bottom:1px solid var(--border)}.nut-review-row:last-child{border-bottom:0}.nut-review-row b{font-size:13px}.nut-review-state{font-size:10px;font-weight:800;border-radius:999px;padding:4px 8px;background:var(--border);white-space:nowrap}.nut-review-state.partial,.nut-review-state.missing{color:var(--warn)}.nut-review-state.calculated{color:var(--success)}
 .nut-sheet-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}.nut-field{display:flex;flex-direction:column;gap:5px}.nut-field.full{grid-column:1/-1}.nut-field label{font-size:11px;font-weight:800;color:var(--muted)}.nut-field input,.nut-field select{width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font-size:14px}.nut-live{background:var(--border);border-radius:12px;padding:12px;margin:12px 0;font-size:13px;line-height:1.5}.nut-sheet-list{max-height:46vh;overflow:auto}.nut-sheet-actions{display:flex;gap:9px;margin-top:14px}.nut-sheet-actions>*{flex:1}.nut-inline-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.nut-small-btn{border:1px solid var(--border);border-radius:999px;background:var(--card);color:var(--text);padding:7px 10px;font:700 11px var(--font-ui);cursor:pointer}
 @media(max-width:370px){.nav-btn{font-size:9px;padding-left:1px;padding-right:1px}.nav-btn svg{width:20px;height:20px}.nut-kcal{font-size:34px}}
-@media(min-width:1024px){#view-nutrition{max-width:1120px!important}.nut-today-grid{display:grid;grid-template-columns:minmax(300px,.8fr) minmax(400px,1.2fr);gap:16px}.nut-today-grid .nut-hero{position:sticky;top:0;align-self:start}.nut-catalog-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}}
+@media(min-width:1024px){.nut-today-grid{display:grid;grid-template-columns:minmax(320px,.7fr) minmax(520px,1.3fr);gap:20px}.nut-today-grid .nut-hero{position:sticky;top:0;align-self:start}.nut-catalog-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}}

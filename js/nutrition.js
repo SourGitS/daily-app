@@ -243,8 +243,7 @@ function nutSetTab(tab){nutTab=['today','foods','recipes'].includes(tab)?tab:'to
 function nutOpen(meal,highlight){nutMeal=meal||'snacks';nutTab='today';setView('nutrition');setTimeout(()=>{const e=highlight&&document.querySelector('[data-nut-entry="'+highlight+'"]');if(e)e.scrollIntoView({behavior:'smooth',block:'center'});},80);}
 function nutRender(){
   const wrap=document.getElementById('nutrition-main');if(!wrap)return;const date=typeof getLocalDate==='function'?getLocalDate():new Date().toLocaleDateString('en-CA');
-  wrap.innerHTML='<div class="nut-head"><div><div class="nut-title">Nutrition</div><div class="nut-date">'+nutEsc(new Date(date+'T12:00:00').toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'}))+'</div></div></div>'+
-    '<div class="nut-tabs" role="tablist">'+[['today','Today'],['foods','Foods'],['recipes','Recipes']].map(x=>'<button class="nut-tab'+(nutTab===x[0]?' active':'')+'" onclick="nutSetTab(\''+x[0]+'\')">'+x[1]+'</button>').join('')+'</div><div id="nut-pane"></div>';
+  wrap.innerHTML='<div class="nut-tabs" role="tablist">'+[['today','Today'],['foods','Foods'],['recipes','Recipes']].map(x=>'<button class="nut-tab'+(nutTab===x[0]?' active':'')+'" onclick="nutSetTab(\''+x[0]+'\')">'+x[1]+'</button>').join('')+'</div><div id="nut-pane"></div>';
   if(nutTab==='today')nutRenderToday(date);else if(nutTab==='foods')nutRenderFoods();else nutRenderRecipes();
 }
 function nutSummaryLabel(s){return s.status==='partial'?'Partial · '+s.unknown+' unknown':s.status==='complete'?'Complete':s.status==='legacy'?'Legacy total':'Not logged';}

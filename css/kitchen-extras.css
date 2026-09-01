@@ -14,6 +14,9 @@
 .kit-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform 0.1s ease}
 .kit-card:active{transform:scale(0.985)}
 .kit-card-active{border-color:var(--accent);box-shadow:0 0 0 1.5px var(--accent)}
+.kit-card-favourite{background:linear-gradient(145deg,rgba(255,218,112,.30),rgba(216,166,42,.14) 58%,rgba(255,255,255,.55));border-color:rgba(183,132,18,.45);box-shadow:0 10px 28px rgba(146,99,0,.10),inset 0 1px 0 rgba(255,255,255,.58)}
+.kit-card-favourite.kit-card-active{border-color:#d9a928;box-shadow:0 0 0 1.5px rgba(217,169,40,.82),0 12px 30px rgba(146,99,0,.14)}
+.kit-card-favourite .kit-fav.on{filter:drop-shadow(0 2px 5px rgba(132,87,0,.28));transform:scale(1.06)}
 /* Kitchen content cards don't inherit the .card rule, so they restate the matte surface from
    budget-home.css. .kit-scaler and .kit-macro are deliberately NOT here: the scaler is a
    +/- control row and the macro chips are compact figures — both stay flat (see the surface
@@ -21,6 +24,8 @@
 [data-theme="dark"] .kit-card,[data-theme="dark"] .kit-ing-list,[data-theme="dark"] .kitshop-sel-card,[data-theme="dark"] .bst-tile,[data-theme="dark"] .wt-log-row{
   background:var(--surface-card);border:0.5px solid var(--surface-card-border);box-shadow:var(--surface-card-top)}
 [data-theme="dark"] .kit-card.kit-card-active{box-shadow:0 0 0 1.5px var(--accent)}
+[data-theme="dark"] .kit-card.kit-card-favourite{background:linear-gradient(145deg,rgba(226,185,72,.24),rgba(125,84,8,.16) 58%,rgba(255,255,255,.035));border:1px solid rgba(231,187,68,.40);box-shadow:0 12px 30px rgba(91,58,0,.20),inset 0 1px 0 rgba(255,226,142,.12)}
+[data-theme="dark"] .kit-card.kit-card-favourite.kit-card-active{border-color:#e2b746;box-shadow:0 0 0 1.5px rgba(226,183,70,.82),0 14px 32px rgba(91,58,0,.24)}
 /* Three children now: tile | name | actions. The name takes the slack (min-width:0 so a long
    title wraps instead of shoving the actions off the edge), and centring keeps the 38px tile
    visually locked to the title rather than towering over a single-line one. */
@@ -120,6 +125,10 @@
 .kitshop-sel-list{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
 .kitshop-sel-card{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kitshop-sel-card.selected{border-color:var(--accent);box-shadow:0 0 0 1.5px var(--accent)}
+.kitshop-sel-card.favourite{background:linear-gradient(145deg,rgba(255,218,112,.30),rgba(216,166,42,.14) 58%,rgba(255,255,255,.55));border-color:rgba(183,132,18,.45);box-shadow:0 10px 28px rgba(146,99,0,.10),inset 0 1px 0 rgba(255,255,255,.58)}
+.kitshop-sel-card.favourite.selected{border-color:#d9a928;box-shadow:0 0 0 1.5px rgba(217,169,40,.82),0 12px 30px rgba(146,99,0,.14)}
+[data-theme="dark"] .kitshop-sel-card.favourite{background:linear-gradient(145deg,rgba(226,185,72,.24),rgba(125,84,8,.16) 58%,rgba(255,255,255,.035));border:1px solid rgba(231,187,68,.40);box-shadow:0 12px 30px rgba(91,58,0,.20),inset 0 1px 0 rgba(255,226,142,.12)}
+[data-theme="dark"] .kitshop-sel-card.favourite.selected{border-color:#e2b746;box-shadow:0 0 0 1.5px rgba(226,183,70,.82),0 14px 32px rgba(91,58,0,.24)}
 .kitshop-sel-check{width:26px;height:26px;flex-shrink:0;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff}
 .kitshop-sel-card.selected .kitshop-sel-check{background:var(--accent);border-color:var(--accent)}
 .kitshop-sel-body{flex:1;min-width:0}

@@ -18847,6 +18847,7 @@ function kitRenderList(){
   } else {
     list.innerHTML=items.map(r=>{
       const sel=r.id===kitState.selectedId?' kit-card-active':'';
+      const fav=r.favourite?' kit-card-favourite':'';
       // The card has no action-specific choice to honour, so it states the DEFAULT option's
       // figures — and says how many alternatives exist rather than listing them all.
       const rv=kitResolveDefault(r);
@@ -18860,7 +18861,7 @@ function kitRenderList(){
         const days=Math.floor((Date.now()-r.lastCooked)/86400000);
         cookedLabel='<div class="kit-cooked-ago">'+(days===0?'Cooked today':days===1?'Cooked yesterday':'Cooked '+days+' days ago')+'</div>';
       }
-      return '<div class="kit-card kit-c-'+(r.category||'dinner')+sel+'" onclick="kitOpenDetail(\''+r.id+'\')">'+
+      return '<div class="kit-card kit-c-'+(r.category||'dinner')+fav+sel+'" onclick="kitOpenDetail(\''+r.id+'\')">'+
         '<div class="kit-card-top">'+
           '<div class="kit-cat-tile" aria-hidden="true">'+kitCardEmoji(r)+'</div>'+
           '<div class="kit-card-name">'+kitEsc(r.name)+'</div>'+
@@ -20257,7 +20258,7 @@ function kitShopRenderSelector(){
     const on=sels.length>0;
     // The row itself is the add/remove target; every control inside it stops propagation, so
     // changing a protein or a serving count can never toggle the whole recipe off by accident.
-    html+='<div class="kitshop-sel-card'+(on?' selected':'')+'" onclick="kitShopToggleRecipe(\''+r.id+'\')">'+
+    html+='<div class="kitshop-sel-card'+(r.favourite?' favourite':'')+(on?' selected':'')+'" onclick="kitShopToggleRecipe(\''+r.id+'\')">'+
       '<div class="kitshop-sel-check">'+(on?'✓':'')+'</div>'+
       '<div class="kitshop-sel-body">'+
         '<div class="kitshop-sel-name">'+kitEsc(r.name)+'</div>'+

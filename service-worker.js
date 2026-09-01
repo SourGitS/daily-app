@@ -119,7 +119,8 @@
 // v276 renames the user-facing Daily + AI destination to Daily AI.
 // v277 reorganises Daily AI into separate guided Ask AI and Import actions workflows.
 // v278: first-class Nutrition, canonical dated food entries and an offline AUSNUT catalogue.
-const CACHE_NAME = 'daily-v278';
+// v279: full-width headerless Nutrition and gold favourites in recipes and Shopping.
+const CACHE_NAME = 'daily-v279';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
