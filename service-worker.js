@@ -78,7 +78,9 @@
 // savings-rate line is separated by dash and markers rather than a fifth hue. Judgements move
 // into tonal status chips (.tstat, sage/ochre/coral, each with an icon and a word). Decorative
 // emoji in Budget card chrome are replaced with the monochrome CARD_ICONS set.
-const CACHE_NAME = 'daily-v259';
+// v260 keeps the Daily habits weekly-progress strip visible on wide screens instead of
+// hiding it behind the generic Home-card disclosure.
+const CACHE_NAME = 'daily-v260';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

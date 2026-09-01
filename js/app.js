@@ -15699,7 +15699,9 @@ function homeWidgetMove(id,direction){
 // (habits, notes, recent sessions) is the one case a fixed content height can't fix on its own:
 // 25 notes made this card 837px tall and dragged its row down with it. HOME_CARD_CAP is a flat
 // pixel ceiling, not tied to any row grid, since there is no row grid to tie it to any more.
-const HOME_CAPPABLE=['notes','habits','recent'];
+// Habits keeps its weekly progress visible: capping the whole card hid that context behind
+// an oversized disclosure even when every habit row was already on screen.
+const HOME_CAPPABLE=['notes','recent'];
 const HOME_CARD_CAP=280;   // ≈ the tallest naturally-occurring standard card, so unaffected in the common case
 const _homeExpanded=new Set();   // survives re-render; renderHome rebuilds innerHTML and would lose a class
 function applyHomeCardCaps(){
