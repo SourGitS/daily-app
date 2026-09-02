@@ -124,8 +124,7 @@
 // v281: independent iPhone/desktop composition service and Home layout profiles.
 // v282: add a conversational Talk it through goal to Daily AI context export.
 // v283: make visible weekly income authoritative over stale legacy snapshots in Finance.
-// v284: exclude hidden archived income from totals while preserving and disclosing it.
-const CACHE_NAME = 'daily-v284';
+const CACHE_NAME = 'daily-v283';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
