@@ -122,7 +122,8 @@
 // v279: full-width headerless Nutrition and gold favourites in recipes and Shopping.
 // v280: keep favourite recipes at the top of the Shopping recipe picker.
 // v281: independent iPhone/desktop composition service and Home layout profiles.
-const CACHE_NAME = 'daily-v281';
+// v282: add a conversational Talk it through goal to Daily AI context export.
+const CACHE_NAME = 'daily-v282';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

@@ -6565,14 +6565,18 @@ function aiScope(id){ return AI_SCOPES.find(x=>x.id===id)||null; }
 function aiScopeLabel(id){ const s=aiScope(id); return s?s.label:String(id||''); }
 function aiScopeIsSensitive(id){ const s=aiScope(id); return !!(s&&s.sensitive); }
 
-// A preset seeds the scopes and the request text; it never locks a control. Nothing sensitive
-// is ever seeded — Accounts, Body, Notes and full recipe contents are only ever included
-// because the user ticked them.
+// A preset seeds the scopes and the request text; it never locks a control. Sensitive data is
+// seeded only when the goal names it plainly (Talk it through includes Journal); the review
+// step still shows the sensitive-data warning before anything can be copied.
 const AI_PRESETS=[
   {id:'general', label:'General context',
    description:'Share a balanced snapshot and surface what stands out.',
    scopes:['budget','subscriptions','workouts','habits','kitchen'],
    instructions:'Here is a snapshot of how I am tracking. Give me a short read on where I stand and anything that stands out.'},
+  {id:'talk_it_through', label:'Talk it through',
+   description:'Have a natural conversation using your journal, spending, workouts and habits.',
+   scopes:['budget','transactions','workouts','habits','notes'], fullJournalText:true,
+   instructions:'Use this Daily context as background for a natural conversation with me. Do not give me a full report unless I ask for one. Start with one brief, human observation about what seems most relevant, then ask me one thoughtful question at a time. Refer to my journal, spending, workouts and habits only when it helps the conversation. Be curious, supportive and honest, distinguish facts from guesses, and do not overwhelm me with advice.'},
   {id:'spending_review', label:'Spending review',
    description:'Find where money went and identify realistic cuts.',
    scopes:['budget','transactions','subscriptions'],
@@ -7507,6 +7511,7 @@ function aiHubSetPreset(id){
   const p=aiPreset(id);
   aiHubState.preset=p.id;
   if(p.scopes.length) aiHubState.scopes=p.scopes.slice();
+  aiHubState.fullJournalText=!!p.fullJournalText;
   if(!aiHubState.instructionsEdited) aiHubState.instructions=p.instructions;
   renderAIHub();
 }
