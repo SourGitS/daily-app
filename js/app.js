@@ -6032,7 +6032,7 @@ function exportBudgetCSV(){
   const row=arr=>arr.map(cell).join(',');
   const rows=[];
 
-  const incCats=loadIncCats(), fixCats=loadFixCats(), varCats=loadVarCats(); // live per-week category definitions
+  const incCats=activeCats(loadIncCats()), fixCats=loadFixCats(), varCats=loadVarCats(); // visible per-week income + historical expense definitions
   // Do any weeks record hours for any income source? Only then do we emit hours columns.
   const anyHours=Object.values(budgetData).some(d=>incCats.some(c=>{const v=d&&d['hrs_'+c.id];return v!==undefined&&v!=='';}));
   // Single-category actual reader — same fallback logic as weekFixedTotal/weekVarTotal, just
@@ -6623,6 +6623,7 @@ function aiWeekKeysIn(range){
 }
 function aiBudgetScope(range){
   const incCats=loadIncCats(), fixCats=loadFixCats(), varCats=loadVarCats();
+  const activeIncCats=activeCats(incCats);
   const keys=aiWeekKeysIn(range);
   const thisMonday=weekKey(getMondayOf(0));
   const planRow=c=>({
@@ -6653,7 +6654,7 @@ function aiBudgetScope(range){
   const weeks=keys.map(k=>{
     const d=budgetData[k]||{};
     const income=[], fixed=[], variable=[];
-    incCats.forEach(c=>{ const n=parseFloat(d['inc_'+c.id])||0; bump('inc',c,n); if(n) income.push({id:c.id,name:catLabel(c),amount:aiR2(n)}); });
+    activeIncCats.forEach(c=>{ const n=parseFloat(d['inc_'+c.id])||0; bump('inc',c,n); if(n) income.push({id:c.id,name:catLabel(c),amount:aiR2(n)}); });
     fixCats.forEach(c=>{ const n=aiFixCatAmount(d,c); if(n===null) return; bump('fix',c,n); if(n) fixed.push({id:c.id,name:catLabel(c),amount:aiR2(n)}); });
     varCats.forEach(c=>{ const n=varCatAmount(d,k,c.id); bump('var',c,n); if(n) variable.push({id:c.id,name:catLabel(c),amount:aiR2(n)}); });
     const goal=(typeof getWeekVarGoal==='function')?getWeekVarGoal(d):null;
@@ -6662,6 +6663,7 @@ function aiBudgetScope(range){
       state: k===thisMonday?'draft':'final',   // the current week is still accruing
       ratesFrozen: !!d.fixRates,
       income:      aiR2(weekIncome(d)),
+      excludedIncome: aiR2(weekHiddenIncome(d)),
       actualSpent: aiR2(weekVarTotal(d,k)),    // variable spending that actually happened
       committed:   aiR2(weekFixedTotal(d)),    // recurring cost accrued — NOT discretionary spend
       saved:       aiR2(weekSavedAmt(d)),
@@ -6720,9 +6722,10 @@ function aiBudgetScope(range){
   }).sort((a,b)=>b.total-a.total);
   return {
     targets, weeks, months, checks,
-    categoryTotals:{income:finish('inc',incCats), fixed:finish('fix',fixCats), variable:finish('var',varCats)},
+    categoryTotals:{income:finish('inc',activeIncCats), fixed:finish('fix',fixCats), variable:finish('var',varCats)},
     periodTotals:{
       income:      aiR2(aiSum(weeks.map(w=>w.income))),
+      excludedIncome: aiR2(aiSum(weeks.map(w=>w.excludedIncome))),
       actualSpent: aiR2(aiSum(weeks.map(w=>w.actualSpent))),
       committed:   aiR2(aiSum(weeks.map(w=>w.committed))),
       saved:       aiR2(aiSum(weeks.map(w=>w.saved))),
@@ -7171,6 +7174,7 @@ function renderDailyContextMarkdown(ctx){
       const p=b.periodTotals;
       push('Period totals: income '+aiMoney(p.income)+' · spent '+aiMoney(p.actualSpent)+' · committed '+
         aiMoney(p.committed)+' · saved '+aiMoney(p.saved)+' · available '+aiMoney(p.available)+'.');
+      if(p.excludedIncome>0) push('Archived or unavailable income excluded from those totals: '+aiMoney(p.excludedIncome)+'. Restore the source in Daily if it belongs in the history.');
       blank();
 
       if(b.months.length>1){
@@ -9097,11 +9101,11 @@ function catLabel(c){ return catIsUnnamed(c) ? 'Other' : catDisplayName(c.name);
 // to "Other" instead of deleted — deleting one would strand its amounts (see budScanOrphans),
 // which is the very bug this must not cause.
 // ── Archived categories ────────────────────────────────────────────
-// A category you've finished with (a job you left, a spend you no longer have) shouldn't sit
-// in the entry lists collecting blank rows — but deleting it strands every past week's amount
-// (see budScanOrphans). Archiving keeps the record and drops the row: loadXCats() still
-// returns it, so every history and total path counts it unchanged, and only the entry UI
-// filters it out.
+// A category you've finished with shouldn't sit in entry lists collecting blank rows, but
+// deleting it strands every past amount (see budScanOrphans). Archived expense history still
+// counts. Archived INCOME remains stored but is excluded from totals while hidden; Finance
+// states the excluded amount, and restoring the source includes it again. That keeps the
+// headline reconcilable with the income rows the user can actually see.
 function catIsArchived(c){ return !!(c && c.archived); }
 function activeCats(list){ return (list||[]).filter(c=>!catIsArchived(c)); }
 function catArchive(type,id,on){
@@ -9282,11 +9286,19 @@ function weekIncome(d){
   // saved a prefilled plan total in snapshot.income; cloud sync can reintroduce that shadow
   // after boot recovery, so it must never outrank the user's visible per-source amounts.
   const fields=Object.keys(d).filter(k=>k.startsWith('inc_'));
-  if(fields.length) return fields.reduce((s,k)=>s+(parseFloat(d[k])||0),0);
+  if(fields.length){
+    return activeCats(loadIncCats()).reduce((s,c)=>s+(parseFloat(d['inc_'+c.id])||0),0);
+  }
   if(d.income&&typeof d.income==='object'){
     return Object.values(d.income).reduce((a,v)=>a+(parseFloat(v)||0),0);
   }
   return d.snapshot&&typeof d.snapshot==='object' ? parseFloat(d.snapshot.income)||0 : 0;
+}
+function weekHiddenIncome(d){
+  if(!d) return 0;
+  const activeKeys=new Set(activeCats(loadIncCats()).map(c=>'inc_'+c.id));
+  return Object.keys(d).filter(k=>k.startsWith('inc_')&&!activeKeys.has(k))
+    .reduce((s,k)=>s+(parseFloat(d[k])||0),0);
 }
 function weekSpending(d){
   if(!d) return 0;
@@ -11419,7 +11431,7 @@ function renderVariableCard(data,isCur){
 }
 function renderIncomeCard(data,isCur){
   const editing=budEditMode.inc && isCur;
-  const cats=activeCats(loadIncCats()); // archived keep counting in totals, just no row
+  const cats=activeCats(loadIncCats()); // archived stay stored but do not count while hidden
   const rows=cats.map(c=>{
     const raw=data['inc_'+c.id];
     const val=(raw!==undefined&&raw!=='')?raw:'';
@@ -11810,12 +11822,12 @@ function countUp(el, target, duration){
 function budRecalc(animate){
   const v=id=>parseFloat(document.getElementById(id)?.value)||0;
   let totalIncome=0;
-  // An archived category has no input, so fall back to whatever the week already holds —
-  // otherwise the on-screen total would disagree with weekIncome(), which still counts it.
+  // Only visible income sources count. Archived sources remain recoverable in Budget setup,
+  // but including their hidden values here was what made the headline impossible to reconcile.
   const _wk=budgetData[weekKey(getMondayOf(currentWeekIdx))]||{};
   const liveOrSaved=(pre,c)=>{ const el=document.getElementById(pre+'-'+c.id);
     return el ? (parseFloat(el.value)||0) : (parseFloat(_wk[pre+'_'+c.id])||0); };
-  loadIncCats().forEach(c=>{ totalIncome += liveOrSaved('inc',c); });
+  activeCats(loadIncCats()).forEach(c=>{ totalIncome += liveOrSaved('inc',c); });
 
   // Fixed + variable totals are computed by the CANONICAL readers (weekFixedTotal /
   // weekVarTotal) against a copy of the week with the live input values merged over it, rather
@@ -13049,7 +13061,9 @@ function statsWeekIncomeKnown(d){
   // Match weekIncome()'s precedence: once visible per-source fields exist, an old snapshot is
   // not allowed to turn a cleared/unknown week back into recorded income.
   const fields=Object.keys(d).filter(k=>k.startsWith('inc_'));
-  if(fields.length) return fields.some(k=>d[k]!==''&&d[k]!==null&&d[k]!==undefined);
+  if(fields.length) return activeCats(loadIncCats()).some(c=>{
+    const v=d['inc_'+c.id]; return v!==''&&v!==null&&v!==undefined;
+  });
   if(d.income&&typeof d.income==='object'&&Object.keys(d.income).length) return true;
   return !!(d.snapshot&&typeof d.snapshot==='object'&&d.snapshot.income!==undefined&&d.snapshot.income!=='');
 }
@@ -13058,11 +13072,12 @@ function statsWeekIncomeKnown(d){
 // card and the category breakdown use — so fixed + variable always adds up to the expenses
 // figure shown beside them. Saved is never folded into expenses.
 function bsFinSummary(keys){
-  let income=0,fixed=0,variable=0,saved=0,incomeWeeks=0,ambiguous=0,legacy=0,snapAgg=0;
+  let income=0,excludedIncome=0,fixed=0,variable=0,saved=0,incomeWeeks=0,ambiguous=0,legacy=0,snapAgg=0;
   keys.forEach(k=>{
     const d=budgetData[k]; if(!d) return;
     const parts=statsWeekParts(d,k);
     income+=weekIncome(d);
+    excludedIncome+=weekHiddenIncome(d);
     fixed+=parts.fixed; variable+=parts.variable;
     saved+=weekSavedAmt(d);
     if(statsWeekIncomeKnown(d)) incomeWeeks++;
@@ -13072,7 +13087,7 @@ function bsFinSummary(keys){
   });
   const expenses=fixed+variable;
   return {weeks:keys.length,from:keys[0]||null,to:keys[keys.length-1]||null,
-    income,fixed,variable,expenses,saved,net:income-expenses-saved,
+    income,excludedIncome,fixed,variable,expenses,saved,net:income-expenses-saved,
     avgExpenses:keys.length?expenses/keys.length:0,
     rate:income>0?(saved/income*100):null,
     incomeWeeks,ambiguous,legacy,snapAgg};
@@ -13121,6 +13136,7 @@ function renderBSFinPicture(){
   const sub=(label,val)=>'<div class="fh-sc"><span class="fh-sl">'+label+'</span><span class="fh-sv">'+val+'</span></div>';
   const notes=[];
   if(sum.incomeWeeks<sum.weeks) notes.push('Income recorded in '+sum.incomeWeeks+' of '+sum.weeks+' weeks; the rest are unknown, not zero.');
+  if(sum.excludedIncome>0) notes.push(money(sum.excludedIncome)+' stored under archived or unavailable income sources is excluded. Restore a source in Settings → Budget setup if it belongs in this history.');
   if(sum.ambiguous) notes.push(sum.ambiguous+' snapshot-only legacy week'+(sum.ambiguous===1?'':'s')+' cannot be reconciled with later transaction detail, so only known spend is counted.');
   else if(sum.snapAgg) notes.push(sum.snapAgg+(sum.snapAgg===1?' week contributes':' weeks contribute')+' a stored aggregate with no per-category detail.');
   wrap.innerHTML='<div class="fin-hero">'+
