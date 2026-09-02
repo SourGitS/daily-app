@@ -9278,12 +9278,15 @@ function refreshCatBudgetUI(){
 // ── Per-week snapshot accessors (history reads these; legacy fallback) ─
 function weekIncome(d){
   if(!d) return 0;
-  if(d.snapshot&&typeof d.snapshot==='object') return parseFloat(d.snapshot.income)||0;
+  // The editable inc_* fields are what the Budget week visibly shows. An older design also
+  // saved a prefilled plan total in snapshot.income; cloud sync can reintroduce that shadow
+  // after boot recovery, so it must never outrank the user's visible per-source amounts.
+  const fields=Object.keys(d).filter(k=>k.startsWith('inc_'));
+  if(fields.length) return fields.reduce((s,k)=>s+(parseFloat(d[k])||0),0);
   if(d.income&&typeof d.income==='object'){
     return Object.values(d.income).reduce((a,v)=>a+(parseFloat(v)||0),0);
   }
-  // Sum the dynamic income sources (ids fuji/mcd map onto legacy d.inc_fuji / d.inc_mcd)
-  return loadIncCats().reduce((s,c)=>s+(parseFloat(d['inc_'+c.id])||0),0);
+  return d.snapshot&&typeof d.snapshot==='object' ? parseFloat(d.snapshot.income)||0 : 0;
 }
 function weekSpending(d){
   if(!d) return 0;
@@ -9675,10 +9678,10 @@ function changeMonth(dir){
 //   • aggregate snapshots      (d.snapshot = {income, variable, …}) ← shadows legacy fields
 //   • category objects         (d.cats = {groceries, transport, …})
 // Crucially the redesigns never DELETED the original per-input fields — they only added
-// aggregates on top, and the history readers (weekIncome/weekSpending) prefer those
-// aggregates, which is why real data appeared to vanish. This normalises every saved
-// week back to the per-input fields and removes the shadowing aggregates so the restored
-// tab and the Stats readers both see the user's real numbers. Runs once; idempotent.
+// aggregates on top. Older history readers preferred those aggregates, which is why real data
+// appeared to vanish. This normalises every saved week back to the per-input fields and removes
+// the shadowing aggregates. weekIncome() also prefers the fields in case cloud sync brings an
+// old aggregate back after this boot-time pass. Runs on every boot; idempotent.
 // Remove residue of the deleted weekly-savings target from the CURRENT/FUTURE weeks so they
 // never auto-show or re-bake the old target (e.g. 300). Past weeks were frozen by
 // recoverBudgetData and are left untouched. Returns true if it changed anything.
@@ -12598,7 +12601,7 @@ function renderYear(){
       .reduce((s,c)=>s+((parseFloat(catAmount(c))||0)*({weekly:52,monthly:12,yearly:1}[catCycle(c)]||0)),0));
     sg.className='hero-metric-grid hm-two';
     sg.innerHTML=[
-      {variant:'income', icon:'wallet', label:'Earned in '+year,
+      {variant:'income', icon:'wallet', label:'Money in · '+year,
        val:'$'+Math.round(totIncome).toLocaleString(), sub:monthsSub},
       {variant:'expense', icon:'receipt', label:'Spent in '+year,
        val:'$'+Math.round(totSpent).toLocaleString(),
@@ -13043,9 +13046,12 @@ function bsFinRangeKeys(){
 // only what the chart plots and what the coverage line claims.
 function statsWeekIncomeKnown(d){
   if(!d) return false;
-  if(d.snapshot&&typeof d.snapshot==='object'&&d.snapshot.income!==undefined&&d.snapshot.income!=='') return true;
+  // Match weekIncome()'s precedence: once visible per-source fields exist, an old snapshot is
+  // not allowed to turn a cleared/unknown week back into recorded income.
+  const fields=Object.keys(d).filter(k=>k.startsWith('inc_'));
+  if(fields.length) return fields.some(k=>d[k]!==''&&d[k]!==null&&d[k]!==undefined);
   if(d.income&&typeof d.income==='object'&&Object.keys(d.income).length) return true;
-  return Object.keys(d).some(k=>k.startsWith('inc_')&&d[k]!==''&&d[k]!==null&&d[k]!==undefined);
+  return !!(d.snapshot&&typeof d.snapshot==='object'&&d.snapshot.income!==undefined&&d.snapshot.income!=='');
 }
 // One reduction over the selected weeks, used by every card in the shared range so they cannot
 // disagree. Spending comes from statsWeekParts() — the same resolver the Latest completed week
@@ -13123,7 +13129,7 @@ function renderBSFinPicture(){
       '<span class="fh-range">'+escText(bsFinRangeLabel())+'<span class="fh-cov">'+bsFinCoverageText(sum)+'</span></span>'+
     '</div>'+
     '<div class="fh-grid">'+
-      cell('in','Earned',money(sum.income),money(sum.weeks?sum.income/sum.weeks:0)+' / week')+
+      cell('in','Money in',money(sum.income),money(sum.weeks?sum.income/sum.weeks:0)+' / week')+
       cell('out','Expenses',money(sum.expenses),money(sum.avgExpenses)+' / week')+
       cell('save','Saved',money(sum.saved),sum.rate===null?'No income recorded':sum.rate.toFixed(0)+'% of income')+
       cell('net','Net after expenses &amp; savings',money(sum.net),'Income − expenses − saved')+
