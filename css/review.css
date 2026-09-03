@@ -1,0 +1,176 @@
+/* Weekly Review — the money/work/life review that lives in Stats › Review.
+   Loads LAST so its own vocabulary wins ties against journal.css and settings.css, which
+   also load late. Cards, headers, figures and verdict chips come from the shared vocabulary
+   (.card, cardHeader(), .card-fig, .tstat) — nothing below re-implements one.
+
+   The prefix is .wkr-, NOT .wr-. `.wr-row`, `.wr-row-l`, `.wr-row-v`, `.wr-row-none`,
+   `.wr-row-u` and `.wr-chip*` already belong to Home's "Week in review" card
+   (buildWeekSummaryCard in js/app.js, styled in kitchen-extras.css). This file loads after
+   that one, so a .wr-* namespace here silently restyled that card's rows — the same class of
+   collision as the retired .set-row and .empty ones. Do not rename these back. */
+
+/* ── Shell ─────────────────────────────────────────────────────── */
+.wkr-wrap{display:block;margin-bottom:18px}
+.wkr-sec-divider{display:flex;align-items:center;gap:10px;margin:26px 2px 14px;color:var(--text-3);
+  font-size:10.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase}
+.wkr-sec-divider::after{content:"";flex:1;height:1px;background:var(--border)}
+
+/* ── Week bar: which week is being reviewed, and where it stands ─ */
+.wkr-weekbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.wkr-weekbar select{flex:1;min-width:0;min-height:42px;padding:9px 11px;border-radius:var(--radius-pill);
+  border:1px solid var(--border);background:var(--card);color:var(--text);font:inherit;
+  font-size:13px;font-weight:700}
+.wkr-weekbar select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wkr-status{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;
+  font-size:10.5px;font-weight:800;letter-spacing:.02em;white-space:nowrap;
+  border:1px solid var(--border);background:var(--card);color:var(--text-2)}
+.wkr-status.is-done{border-color:rgba(82,183,136,.4);background:rgba(82,183,136,.12);color:var(--success)}
+.wkr-status.is-draft{border-color:rgba(var(--accent-rgb),.35);background:rgba(var(--accent-rgb),.10);color:var(--accent-text)}
+
+/* ── Section switcher (Money / Work / Life / Reflection) ────────── */
+.wkr-tabs{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none;margin:0 0 14px;padding-bottom:2px}
+.wkr-tabs::-webkit-scrollbar{display:none}
+.wkr-tabs button{flex:0 0 auto;min-height:38px;padding:8px 14px;border-radius:var(--radius-pill);
+  border:1px solid transparent;background:transparent;color:var(--muted);
+  font:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+/* The selected state is carried by the FILL and the text weight, not by an accent tint. The
+   default accent is a neutral grey, so `rgba(var(--accent-rgb),.12)` on the dark canvas is
+   indistinguishable from the unselected pill — the same trap the Journal rail hit. This
+   mirrors .stats-tab-btn.active, which is legible whatever the accent resolves to; the accent
+   only tints the border, where it can add nothing and lose nothing. */
+.wkr-tabs button.on{background:var(--card);border-color:rgba(var(--accent-rgb),.45);
+  color:var(--text);font-weight:800;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.wkr-tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ── Plan vs actual rows ────────────────────────────────────────
+   A four-part row: name, planned, actual, verdict. The money itself stays var(--text) —
+   the judgement is carried by the .tstat chip beside it, never by recolouring the number. */
+.wkr-pv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;
+  padding:11px 0;border-top:1px solid var(--border)}
+.wkr-pv:first-of-type{border-top:0}
+.wkr-pv-name{font-size:13.5px;font-weight:700;color:var(--text);min-width:0;overflow-wrap:anywhere}
+.wkr-pv-figs{display:flex;align-items:baseline;gap:8px;justify-self:end;white-space:nowrap}
+.wkr-pv-actual{font-family:var(--font-num);font-size:15px;font-weight:700;color:var(--text)}
+.wkr-pv-planned{font-size:11.5px;color:var(--muted);font-weight:600}
+.wkr-pv-foot{grid-column:1/-1;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.wkr-pv-sub{font-size:11px;color:var(--muted);line-height:1.45}
+.wkr-pv-track{grid-column:1/-1;height:5px;border-radius:3px;background:var(--border);overflow:hidden}
+.wkr-pv-fill{height:100%;border-radius:3px}
+
+/* Totals row — the same shape, weighted so the reconciled figure reads as a conclusion. */
+.wkr-total{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+  margin-top:12px;padding-top:12px;border-top:1.5px solid var(--border)}
+.wkr-total-l{font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--text-3)}
+.wkr-total-v{font-family:var(--font-num);font-size:19px;font-weight:800;color:var(--text)}
+
+/* ── Generic list rows (income lines, CC transactions, bills) ──── */
+.wkr-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:9px 0;border-top:1px solid var(--border);font-size:13px}
+.wkr-row:first-of-type{border-top:0}
+.wkr-row-l{min-width:0;display:flex;flex-direction:column;gap:2px}
+.wkr-row-name{font-weight:700;color:var(--text);overflow-wrap:anywhere}
+.wkr-row-meta{font-size:11px;color:var(--muted)}
+.wkr-row-v{font-family:var(--font-num);font-weight:700;color:var(--text);white-space:nowrap}
+
+/* ── Fields ─────────────────────────────────────────────────────── */
+.wkr-field{margin-top:14px}
+.wkr-field:first-child{margin-top:0}
+.wkr-label{display:block;font-size:12px;font-weight:800;color:var(--text-2);margin-bottom:6px;line-height:1.4}
+.wkr-help{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:6px}
+.wkr-input,.wkr-area,.wkr-select{width:100%;padding:10px 12px;border-radius:12px;
+  border:1px solid var(--border);background:var(--card);color:var(--text);
+  font:inherit;font-size:14px;-webkit-appearance:none;appearance:none}
+.wkr-area{min-height:74px;resize:vertical;line-height:1.5}
+.wkr-input:focus-visible,.wkr-area:focus-visible,.wkr-select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.wkr-2col{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.wkr-money-in{position:relative}
+.wkr-money-in>span{position:absolute;left:12px;top:50%;transform:translateY(-50%);
+  font-size:14px;color:var(--muted);pointer-events:none}
+.wkr-money-in .wkr-input{padding-left:26px;font-family:var(--font-num);font-weight:700}
+
+/* Checkbox row — a real 44px target, the label is the hit area. */
+.wkr-check{display:flex;align-items:flex-start;gap:11px;padding:11px 0;cursor:pointer;
+  border-top:1px solid var(--border)}
+.wkr-check:first-child{border-top:0}
+.wkr-check input{width:20px;height:20px;flex:0 0 auto;margin-top:1px;accent-color:var(--accent);cursor:pointer}
+/* The title and its description are spans (a <label> may not contain a <div> and stay valid
+   with the input inside it), so they need an explicit block or the description runs on from
+   the end of a wrapped title rather than starting its own line. */
+.wkr-check>span{display:flex;flex-direction:column;min-width:0}
+.wkr-check-t{display:block;font-size:13.5px;font-weight:700;color:var(--text);line-height:1.45}
+.wkr-check-d{display:block;font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:3px}
+
+/* ── Buttons ────────────────────────────────────────────────────── */
+.wkr-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.wkr-btn{min-height:42px;padding:10px 15px;border-radius:12px;border:1px solid var(--border);
+  background:var(--card);color:var(--text);font:inherit;font-size:12.5px;font-weight:800;cursor:pointer}
+.wkr-btn.primary{border-color:transparent;background:var(--accent);color:#fff}
+.wkr-btn.quiet{background:transparent;color:var(--text-2)}
+.wkr-btn.danger{background:transparent;border-color:rgba(231,76,60,.4);color:var(--danger)}
+.wkr-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wkr-btn:disabled{opacity:.5;cursor:default}
+.wkr-btn-add{min-height:40px;width:100%;margin-top:10px;padding:9px;border-radius:12px;
+  border:1px dashed var(--border);background:transparent;color:var(--text-2);
+  font:inherit;font-size:12.5px;font-weight:800;cursor:pointer}
+
+/* ── Setup / empty state ────────────────────────────────────────── */
+.wkr-setup-lead{font-size:14.5px;line-height:1.55;color:var(--text-2);margin-top:4px}
+.wkr-template{margin-top:14px;padding:14px;border-radius:var(--radius);
+  border:1px solid var(--border);background:var(--card)}
+.wkr-template-hd{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--text-3);margin-bottom:10px}
+.wkr-tpl-row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;
+  border-top:1px solid var(--border);font-size:13px}
+.wkr-tpl-row:first-of-type{border-top:0}
+.wkr-tpl-row b{font-family:var(--font-num);font-weight:700}
+.wkr-tpl-sum{display:flex;justify-content:space-between;gap:10px;margin-top:9px;padding-top:9px;
+  border-top:1.5px solid var(--border);font-size:13px;font-weight:800}
+.wkr-note{font-size:11.5px;line-height:1.55;color:var(--muted);margin-top:12px;
+  padding:11px 12px;border-radius:12px;background:var(--card)}
+
+/* ── Opportunities ──────────────────────────────────────────────── */
+.wkr-opp{margin-top:10px;padding:12px;border-radius:var(--radius);
+  border:1px solid var(--border);background:var(--card)}
+.wkr-opp-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+.wkr-opp-n{font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3)}
+.wkr-opp-del{min-height:32px;padding:5px 9px;border-radius:9px;border:1px solid var(--border);
+  background:transparent;color:var(--danger);font:inherit;font-size:11px;font-weight:800;cursor:pointer}
+
+/* ── Forecast ───────────────────────────────────────────────────── */
+.wkr-fc-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+  padding:9px 0;border-top:1px solid var(--border)}
+.wkr-fc-row:first-of-type{border-top:0}
+.wkr-fc-l{font-size:13px;color:var(--text-2);font-weight:600;min-width:0}
+.wkr-fc-v{font-family:var(--font-num);font-size:15px;font-weight:700;color:var(--text);white-space:nowrap}
+.wkr-fc-total{border-top:1.5px solid var(--border);margin-top:4px;padding-top:12px}
+.wkr-fc-total .wkr-fc-l{font-weight:800;color:var(--text)}
+.wkr-fc-total .wkr-fc-v{font-size:20px;font-weight:800}
+
+/* ── Empty / calm states inside a section ───────────────────────── */
+.wkr-blank{font-size:13px;line-height:1.55;color:var(--muted);padding:10px 0}
+
+/* ── Next-week summary ──────────────────────────────────────────── */
+.wkr-plan-out{margin-top:12px;padding:14px;border-radius:var(--radius);
+  border:1px solid rgba(var(--accent-rgb),.28);background:rgba(var(--accent-rgb),.07)}
+.wkr-plan-out h4{margin:0 0 8px;font-size:12px;font-weight:800;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--accent-text)}
+.wkr-plan-line{font-size:13px;line-height:1.6;color:var(--text);padding:4px 0}
+.wkr-plan-line b{font-family:var(--font-num)}
+
+/* ── Home nudge ─────────────────────────────────────────────────── */
+.wkr-nudge{display:flex;align-items:center;gap:10px;width:100%;margin-top:12px;padding:11px 12px;
+  border-radius:12px;border:1px solid rgba(var(--accent-rgb),.3);background:rgba(var(--accent-rgb),.09);
+  color:var(--text);font:inherit;font-size:13px;font-weight:700;text-align:left;cursor:pointer}
+.wkr-nudge span{margin-left:auto;color:var(--accent-text);font-weight:800;white-space:nowrap}
+
+/* ── Desktop ────────────────────────────────────────────────────
+   Two columns of independent cards, matching the Review insight grid above it. Cards keep
+   their own heights (align-items:start) — a review section is a form, and stretching a short
+   card to match a tall neighbour just pads a form with dead space. */
+@media (min-width:1024px){
+  .wkr-body{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+  .wkr-body>.card{margin-bottom:0}
+  .wkr-body>.wkr-span{grid-column:1/-1}
+  .wkr-weekbar select{flex:0 0 320px}
+}

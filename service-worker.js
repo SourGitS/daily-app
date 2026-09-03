@@ -125,7 +125,8 @@
 // v282: add a conversational Talk it through goal to Daily AI context export.
 // v283: make visible weekly income authoritative over stale legacy snapshots in Finance.
 // v285: reconcile duplicate legacy income without hiding genuine archived week history.
-const CACHE_NAME = 'daily-v285';
+// v286: add the opt-in Weekly Review (money/work/life) to Stats > Review, plus css/review.css.
+const CACHE_NAME = 'daily-v286';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
@@ -141,6 +142,7 @@ const ASSETS = [
   './css/kitchen-extras.css',
   './css/journal.css',
   './css/settings.css',
+  './css/review.css',
   './js/app.js',
   './js/nutrition.js',
   './icon-192.png',

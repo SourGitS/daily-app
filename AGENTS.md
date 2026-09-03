@@ -26,8 +26,10 @@ Four main areas plus supporting screens:
 ## Tech stack, hosting, structure
 
 - Vanilla HTML/CSS/JS. **No build step, no bundler, no package.json, no npm scripts.**
-- Entry point `index.html`, loads six CSS files in a fixed cascade order (do not reorder the
-  `<link>` tags) and one `js/app.js` (~13,800 lines, all app logic).
+- Entry point `index.html`, loads NINE CSS files in a fixed cascade order (do not reorder the
+  `<link>` tags; new ones are appended, never inserted) and one `js/app.js` (~24,500 lines,
+  all app logic). Both of these counts have gone stale in this file before — `wc -l` and
+  `grep rel="stylesheet" index.html` rather than trusting them.
 - PWA: `manifest.json` + `service-worker.js` (cache-first fetch handler).
 - External deps loaded from CDN, no local copies: Chart.js (cdnjs), Tabler Icons (jsdelivr),
   Google Fonts (Manrope + Space Grotesk), Firebase compat SDK.
@@ -85,6 +87,21 @@ rules below, not by hiding this value). Project: `workout-tracker-5dd55`.
   - Newer-timestamp-wins is the general conflict rule. Budget week data instead **merges**
     per-week (`mergeBudgetWeeks()`, `js/app.js:92`) since weeks are never deleted, so a union
     is safe and a stale device can't wipe a different week than the one it touched.
+  - **Weekly Review** adds two stores, and they use the two different mechanisms deliberately:
+    - `daily_review_plan` → `reviewPlan` is one config blob on the ordinary timestamped
+      listener (`syncBlobListen`), so it self-registers in `SYNC_BLOB_REG`.
+    - `daily_reviews` → `weeklyReviews` is a **keyed collection** (one child node per Monday
+      week key), attached by `wkrAttachSync()` and merged per record by `wkrMergeReviews()` —
+      union, newer `updatedAt` wins, ties keep the cloud, same rule as `mergeBudgetWeeks`.
+      Writes go to `ref.child(week).set(...)`, never to the whole node, so a device that has
+      only ever reviewed one week cannot replace the others. Because it is keyed rather than a
+      blob it is NOT in `SYNC_BLOB_REG`, so it needs its own explicit line in
+      `restorePushToCloud()` — it has one, next to the Journal's, for exactly the reason the
+      Journal's exists (without it a restore never reaches the cloud and the reload that
+      follows silently replaces the restored data with the older cloud copy).
+    Neither store is written during boot: the review plan stays absent until the user finishes
+    setup, and a review record is created only on a meaningful edit — opening the screen must
+    never leave a blank review behind.
 
 ## Known bugs / risk areas
 
@@ -284,13 +301,41 @@ Before pushing to `main`:
 No staging environment exists — a push to `main` is live immediately at
 `sourgits.github.io/daily-app`.
 
+## Weekly Review (Stats → Review)
+
+Opt-in review of one finished week against a saved weekly plan. `wkr*`/`WKR_*` in
+`js/app.js`, `.wkr-*` in `css/review.css`. Full design rationale is in `CLAUDE.md`; the
+safety-critical parts:
+
+- **It never writes to existing data.** Money is read through the canonical Finance readers
+  (`statsWeekParts`, `weekIncome`/`weekIncomeKeys`, `varCatAmount`, `weekSavedAmt`,
+  `weekLeftover`) and nothing here recomputes a figure one of those already answers.
+  Completing a review writes the review record only — the budget week's saved/finished state,
+  its transactions, accounts and the training Plans screen are untouched.
+- **A completed review is frozen** against the plan (`planSnapshot`) and the figures
+  (`actualSnapshot`) as they stood. Editing the plan later cannot rewrite it. When Budget
+  moves underneath a completed review, a banner offers the explicit
+  `wkrRefreshActuals()` — which re-takes the actuals only and leaves `planSnapshot` alone.
+  Never make that automatic.
+- **The prefix is `wkr`, not `wr`** — `.wr-row*`/`.wr-chip*` belong to Home's Week in review
+  card and `css/review.css` loads after the file that styles it. See `CLAUDE.md`.
+- **Daily AI handoff sends nothing.** `wkrAskDailyAI()` seeds `aiHubState` (a `review` scope,
+  the week as a custom range, a review-specific request) and opens the existing Ask AI screen;
+  the user still has to press Copy there. No API, no key, no automatic transmission.
+
 ## Current unfinished work
 
-Uncommitted changes on `main` as of 2026-09-01 implement Prompt 42: multiple named pantries,
-lossless schema-v2 migration, pantry-aware ingredient matching and shopping-list context.
-They require the migration, phone/desktop, light/dark and fresh-profile checks in that prompt
-before any production push. `.claude/settings.local.json` and untracked files under `Prompts/`
-are local working files and are unrelated to the app implementation.
+The Prompt 42 pantry work described here previously is committed and shipped.
+
+Uncommitted on `main` as of 2026-09-03: the Weekly Review feature (new `css/review.css`, the
+`wkr*` block in `js/app.js`, the `review` AI scope, `CACHE_NAME` at `daily-v286`). Verified
+locally against a seeded multi-week budget — reconciliation against Stats → Finance, plan
+snapshotting, the per-week sync merge, backup round trip, phone/desktop and light/dark.
+**Not yet verified against a real signed-in account with existing cloud data**, which the
+sync rules above require before a push, because it adds two synced stores.
+
+`.claude/settings.local.json` and untracked files under `Prompts/` are local working files and
+are unrelated to the app implementation.
 
 ## Uncertain / not verified — flagging rather than guessing
 

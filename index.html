@@ -34,6 +34,10 @@
 <!-- Settings last of all: it replaces older per-feature settings rules (.settings-card and
      friends) with one .stg-* vocabulary, so it has to win the ties. Do not reorder. -->
 <link rel="stylesheet" href="css/settings.css">
+<!-- Weekly Review after Settings: its .wr-* vocabulary is its own, but it reuses .card and the
+     shared card helpers, so it has to be able to win a tie against anything above. Appended,
+     never inserted — the order of every link before this one is load-bearing. -->
+<link rel="stylesheet" href="css/review.css">
 </head>
 <body>
 <div id="app">

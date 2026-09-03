@@ -12,13 +12,15 @@ older summary — re-grep before assuming a fact from here is still true if it l
 ## Stack
 
 - Vanilla HTML/CSS/JS — no framework, no bundler, no npm build step.
-- Entry point `index.html`. Styles split into **eight** files, loaded in this order (cascade
+- Entry point `index.html`. Styles split into **nine** files, loaded in this order (cascade
   order matters, don't reorder the `<link>` tags): `css/base.css`, `css/layout.css`,
   `css/workout.css`, `css/nutrition-modals.css`, `css/budget-home.css`,
-  `css/kitchen-extras.css`, `css/journal.css`, `css/settings.css`. The first six were split
-  from one `style.css` partway through the project (commit `52f32d0`); journal and settings
-  were added later and load last *so they win ties* — that is the point of their position.
-- All logic in one `js/app.js` (~10,000 lines).
+  `css/kitchen-extras.css`, `css/journal.css`, `css/settings.css`, `css/review.css`. The
+  first six were split from one `style.css` partway through the project (commit `52f32d0`);
+  journal, settings and review were added later and load last *so they win ties* — that is the
+  point of their position. New files are APPENDED, never inserted.
+- All logic in one `js/app.js` (~24,500 lines — this number has been wrong in this file
+  before; `wc -l` it rather than trusting it).
 - PWA: `manifest.json` + `service-worker.js`, installable to iOS/Android home screen,
   `display: standalone`.
 - Optional cross-device sync: Firebase Realtime Database + Google Auth. localStorage is the
@@ -46,9 +48,17 @@ older summary — re-grep before assuming a fact from here is still true if it l
   auto-collapse, per-day session notes, rest timer (sticky bar + fullscreen, timestamp-based so
   it keeps correct time if the phone locks or the app backgrounds), session timer, optional
   effort rating (Easy/Moderate/Hard/Brutal), optional hours-worked tracking.
-- **Stats** — Overview + History / Training / Body / Nutrition / Finance sub-tabs. Per-exercise
+- **Stats** — Overview + Review / Training / Body / Nutrition / Finance sub-tabs. Per-exercise
   history view, swap-aware personal records, progress charts, 8-week consistency grid,
-  body-weight log/chart, budget charts.
+  body-weight log/chart, budget charts. **Review holds two different things**: the opt-in
+  **Weekly Review** the user drives (see below), and beneath it the automatic
+  `statsReviewInsights()` cards — a short ranked set of conclusions that cleared an evidence
+  threshold. They are separate features that share a tab.
+- **Weekly Review** (Stats → Review, `css/review.css`, `wkr*`/`WKR_*` in `js/app.js`) — an
+  opt-in review of ONE finished week against a saved weekly plan, ending in a next-week plan.
+  Four sections: Money, Work and commission, General life, Reflection and next week. New users
+  see a setup screen; the suggested template is visible but is only written when they press the
+  button that saves it. See "Known history" for the three rules it is built on.
 - **Kitchen** — Recipe Book (9 preloaded + custom), pantry-aware Shopping List, multiple named
   Pantry inventories, cooking mode with per-step timers, favourites/recently cooked.
   Firebase-synced.
@@ -331,6 +341,41 @@ the accent or the theme must go through those, not set `--accent` directly.
   `.stg-nav-row`, and the Log rows render on their intended
   `28px 20px 1fr 10px 1fr 32px 22px` grid. Do not reintroduce a bare `.set-row` rule outside
   `workout.css`.
+
+- **Weekly Review is `wkr-`, NOT `wr-`, and that is not a typo.** `.wr-row`, `.wr-row-l`,
+  `.wr-row-v`, `.wr-row-none`, `.wr-row-u` and `.wr-chip*` already belong to Home's **Week in
+  review** card (`buildWeekSummaryCard()`, styled in `kitchen-extras.css`). `css/review.css`
+  loads after that, so the feature's first draft — namespaced `wr-` for "weekly review" —
+  silently restyled that card's rows. Third instance of the same fault after `.set-row` and
+  `.empty`. The whole feature (CSS classes AND the ~100 JS identifiers) is `wkr`/`WKR_` so one
+  grep finds all of it. `renderWeekReviewCard()` is unrelated DEAD code, left in place — Home
+  renders `buildWeekSummaryCard()`, which is where the review nudge actually lives.
+
+- **Weekly Review never recomputes money, and a completed review is frozen.** Three rules:
+  1. It reads through the canonical Finance readers only — `statsWeekParts()`, `weekIncome()`/
+     `weekIncomeKeys()`, `varCatAmount()`, `weekSavedAmt()`, `weekLeftover()` — and writes to
+     none of them. The group split is a PARTITION of `statsWeekParts()`: `fixedBills` **is**
+     the fixed half (it owns no category list; "all canonical fixed expenses" is its
+     definition), the three named variable groups own explicit variable category IDs, and
+     `other` is whatever variable category is left. That is why the section reconciles with
+     Budget and Stats → Finance by construction, whatever the user maps where — do not give
+     `fixedBills` its own category list, and do not let a category land in two groups.
+  2. Completing writes `planSnapshot` (the plan as it stood) and `actualSnapshot` (the whole
+     DISPLAY model, not just totals — `money`, `cardTxns`, `upcoming`), so a completed review
+     redraws itself exactly as completed. `wkrEffectivePlan()` and `wkrDisplayActuals()` are the
+     only two functions that decide frozen-vs-live; every section goes through them, or the
+     Money figures and the facts quoted beside the reflection questions could describe
+     different versions of the week. Changing the plan later cannot touch a completed review;
+     when Budget moves underneath one, `wkrActualsDrifted()` shows a banner offering the
+     explicit `wkrRefreshActuals()` — which re-takes the ACTUALS ONLY and deliberately leaves
+     `planSnapshot` alone. Nothing is ever rewritten silently.
+  3. It is opt-in and writes nothing at boot. `daily_review_plan` and `daily_reviews` stay
+     absent until the user presses a button in setup — the suggested template (Francois's real
+     numbers) is rendered as visible, editable text and is NOT a default. Never seed it from
+     onboarding or a migration; that is the `_bootPhase` trap in AGENTS.md.
+  `wkrCurrentWeek()` PINS its choice into `wkrUI.week`, because the fallback is "the newest
+  finished week still awaiting a review" — without the pin, completing a review changed what
+  the function answered and the screen jumped off the week just completed.
 - **Settings' desktop landing is master–detail, and the split point is 1180px — not 1024.**
   `.stg-workspace` is `340px minmax(0,1fr)` with a 22px gap inside a 1240px `.settings-main`;
   the profile card spans both panes above it. Below 1180 (and on mobile) the workspace is a
