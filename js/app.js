@@ -20640,9 +20640,10 @@ function kitRenderList(){
         '<div class="kit-card-top">'+
           '<div class="kit-cat-tile" aria-hidden="true">'+kitCardEmoji(r)+'</div>'+
           '<div class="kit-card-name">'+kitEsc(r.name)+'</div>'+
+          // No favourite star on the card face: favouriting lives in the ⋯ menu, and the card
+          // says it with the accent edge .kit-card-favourite draws. One control per card.
           '<div class="kit-card-actions" onclick="event.stopPropagation()">'+
-            '<button class="kit-fav'+(r.favourite?' on':'')+'" onclick="kitToggleFav(\''+r.id+'\')" aria-label="Favourite">'+(r.favourite?'⭐':'☆')+'</button>'+
-            '<button class="kit-menu-btn" onclick="kitToggleMenu(\''+r.id+'\',event)">⋯</button>'+
+            '<button class="kit-menu-btn" onclick="kitToggleMenu(\''+r.id+'\',event)" aria-label="More actions">⋯</button>'+
           '</div>'+
         '</div>'+
         '<div class="kit-card-meta"><span class="kit-cat-tag kit-cat-'+r.category+'">'+r.category+'</span>'+cal+cookTime+batch+optBadge+brokeBadge+'</div>'+
@@ -20651,6 +20652,10 @@ function kitRenderList(){
         cookedLabel+
         (kitMenuOpenId===r.id?
           '<div class="kit-menu-dropdown" onclick="event.stopPropagation()">'+
+            // Text stars (U+2605/U+2606), not the ⭐ emoji — these inherit currentColor, so the
+            // row follows the theme like every other item instead of forcing an OS gold.
+            '<button onclick="kitMenuOpenId=null;kitToggleFav(\''+r.id+'\')">'+
+              (r.favourite?'★ Remove from favourites':'☆ Add to favourites')+'</button>'+
             '<button onclick="kitMenuOpenId=null;kitOpenForm(\''+r.id+'\')">✏️ Edit</button>'+
             '<button onclick="kitMenuOpenId=null;kitShareRecipe(\''+r.id+'\')">📤 Share recipe</button>'+
             '<button onclick="kitMenuOpenId=null;kitCopyForDaily(\''+r.id+'\')">📋 Copy for Daily</button>'+
@@ -20827,7 +20832,11 @@ function kitRenderDetail(id,target){
   const chooser=rv.variant?kitProteinChooserHTML(r,rv.optionId,"kitSetDetailProtein('%ID%')"):'';
   target.innerHTML=
     '<div class="kit-detail-head">'+backBtn+
-      '<button class="kit-fav'+(r.favourite?' on':'')+'" onclick="kitToggleFav(\''+r.id+'\')" style="margin-left:auto" aria-label="Favourite">'+(r.favourite?'⭐':'☆')+'</button>'+
+      // The detail header keeps a one-tap toggle — it is the natural place to favourite the
+      // thing you are looking at, and it is a header control, not a card face.
+      '<button class="kit-fav'+(r.favourite?' on':'')+'" onclick="kitToggleFav(\''+r.id+'\')" style="margin-left:auto" '+
+        'aria-pressed="'+(r.favourite?'true':'false')+'" aria-label="'+(r.favourite?'Remove from favourites':'Add to favourites')+'">'+
+        (r.favourite?'★':'☆')+'</button>'+
     '</div>'+
     (r.emoji?'<div class="kit-detail-emoji">'+r.emoji+'</div>':'')+
     '<div class="kit-detail-name">'+kitEsc(r.name)+'</div>'+

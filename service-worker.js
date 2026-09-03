@@ -126,7 +126,8 @@
 // v283: make visible weekly income authoritative over stale legacy snapshots in Finance.
 // v285: reconcile duplicate legacy income without hiding genuine archived week history.
 // v286: add the opt-in Weekly Review (money/work/life) to Stats > Review, plus css/review.css.
-const CACHE_NAME = 'daily-v286';
+// v287: move Kitchen favouriting off the recipe card face into its menu; the gold card stays.
+const CACHE_NAME = 'daily-v287';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

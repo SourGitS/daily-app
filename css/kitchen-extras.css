@@ -14,9 +14,13 @@
 .kit-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform 0.1s ease}
 .kit-card:active{transform:scale(0.985)}
 .kit-card-active{border-color:var(--accent);box-shadow:0 0 0 1.5px var(--accent)}
+/* The gold favourite card is deliberate and stays. It is the one place in the app where gold
+   is NOT the warning colour it is everywhere else (#f59e0b: low pantry, over budget, stale
+   data) — a favourite recipe is simply meant to look warm. Do not "fix" this for consistency
+   with the warning palette; it was removed once on that reasoning and put straight back.
+   What DID go is the ⭐ emoji that used to sit on the card face — see .kit-fav below. */
 .kit-card-favourite{background:linear-gradient(145deg,rgba(255,218,112,.30),rgba(216,166,42,.14) 58%,rgba(255,255,255,.55));border-color:rgba(183,132,18,.45);box-shadow:0 10px 28px rgba(146,99,0,.10),inset 0 1px 0 rgba(255,255,255,.58)}
 .kit-card-favourite.kit-card-active{border-color:#d9a928;box-shadow:0 0 0 1.5px rgba(217,169,40,.82),0 12px 30px rgba(146,99,0,.14)}
-.kit-card-favourite .kit-fav.on{filter:drop-shadow(0 2px 5px rgba(132,87,0,.28));transform:scale(1.06)}
 /* Kitchen content cards don't inherit the .card rule, so they restate the matte surface from
    budget-home.css. .kit-scaler and .kit-macro are deliberately NOT here: the scaler is a
    +/- control row and the macro chips are compact figures — both stay flat (see the surface
@@ -31,8 +35,14 @@
    visually locked to the title rather than towering over a single-line one. */
 .kit-card-top{display:flex;align-items:center;gap:10px}
 .kit-card-name{flex:1;min-width:0;font-size:15px;font-weight:700;color:var(--text);line-height:1.3}
-.kit-fav{background:none;border:none;font-size:18px;cursor:pointer;padding:0;line-height:1;flex-shrink:0;-webkit-tap-highlight-color:transparent;filter:grayscale(1);opacity:0.6}
-.kit-fav.on{filter:none;opacity:1}
+/* Only the recipe DETAIL header uses this now — the card face has no star; favouriting moved
+   into the card's ⋯ menu. The glyph is a text star (U+2605/U+2606), not the ⭐ emoji, so it
+   inherits currentColor and follows the theme. The old rule desaturated the emoji with
+   filter:grayscale(1) precisely because it could not be given a colour any other way. */
+.kit-fav{background:none;border:none;font-size:20px;cursor:pointer;padding:4px 6px;line-height:1;
+  flex-shrink:0;-webkit-tap-highlight-color:transparent;color:var(--text-3)}
+.kit-fav.on{color:var(--accent-text)}
+.kit-fav:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px}
 .kit-card-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px}
 /* One colour per category, declared once on the card and used by BOTH the emoji tile and the
    pill. Previously the pill had its own palette and the card had a separate border-left strip
@@ -125,6 +135,8 @@
 .kitshop-sel-list{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
 .kitshop-sel-card{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kitshop-sel-card.selected{border-color:var(--accent);box-shadow:0 0 0 1.5px var(--accent)}
+/* The Shopping picker carries its own copy of the gold favourite treatment on purpose, so the
+   two places a favourite appears look the same. Change one, change the other. */
 .kitshop-sel-card.favourite{background:linear-gradient(145deg,rgba(255,218,112,.30),rgba(216,166,42,.14) 58%,rgba(255,255,255,.55));border-color:rgba(183,132,18,.45);box-shadow:0 10px 28px rgba(146,99,0,.10),inset 0 1px 0 rgba(255,255,255,.58)}
 .kitshop-sel-card.favourite.selected{border-color:#d9a928;box-shadow:0 0 0 1.5px rgba(217,169,40,.82),0 12px 30px rgba(146,99,0,.14)}
 [data-theme="dark"] .kitshop-sel-card.favourite{background:linear-gradient(145deg,rgba(226,185,72,.24),rgba(125,84,8,.16) 58%,rgba(255,255,255,.035));border:1px solid rgba(231,187,68,.40);box-shadow:0 12px 30px rgba(91,58,0,.20),inset 0 1px 0 rgba(255,226,142,.12)}
