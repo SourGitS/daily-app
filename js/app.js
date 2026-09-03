@@ -24545,9 +24545,6 @@ function renderLogOverview(){
   const onToday = S.dayIdx===todayIdx;
   const done = onToday ? S.checked.size : 0;
   const savedToday=(S.sessions||[]).some(s=>s&&s.date===getLocalDate());
-  const nextT=type((todayIdx+1)%scheduleLen());
-  const prog=logActiveProgram();
-  const types=splitTypes()||[];
 
   const lead = savedToday ? 'Session saved' : done>0 ? 'In progress' : 'Ready';
   const cta  = savedToday ? 'Open today’s session' : done>0 ? 'Continue today’s session' : 'Open today’s session';
@@ -24560,36 +24557,87 @@ function renderLogOverview(){
         '<span class="lg-row-v">'+(s.duration?escText(fmtDuration(s.duration)):'—')+'</span></button>').join('')
     : '<div class="lg-blank">No sessions saved yet. Your first one shows up here.</div>';
   const weightCard=renderLogWeightCard();
+  const consistencyCard=renderLogConsistencyCard();
+  const improvementCard=renderLogImprovementCard();
 
   el.innerHTML=
     '<div class="lg-hero">'+
-      '<div class="lg-hero-lead">'+escText(lead)+' · '+escText(fmtDate(getLocalDate()))+'</div>'+
+      '<div class="lg-hero-lead">Today’s workout · '+escText(lead)+'</div>'+
       '<div class="lg-hero-title">'+escText(t&&t.name?t.name:'Training')+'</div>'+
       '<div class="lg-hero-sub">'+exs.length+' exercise'+(exs.length===1?'':'s')+
         (onToday&&exs.length?' · '+done+' of '+exs.length+' done':'')+'</div>'+
       '<button type="button" class="lg-hero-btn" onclick="logOpenSession()">'+escText(cta)+' &rarr;</button>'+
     '</div>'+
 
+    consistencyCard+
+
+    improvementCard+
+
     weightCard+
 
     '<div class="lg-card">'+
-      '<div class="lg-card-hd"><span class="lg-card-lbl">Your program</span>'+
-        '<button type="button" class="lg-card-act" onclick="setLogTab(\'program\')">Open &rarr;</button></div>'+
-      (types.length
-        ? '<div class="lg-row"><span class="lg-row-l"><span class="lg-row-name">'+
-            escText(prog?prog.name:'Current split')+'</span>'+
-            (prog?'':'<span class="lg-row-meta">Not saved as a program yet</span>')+'</span>'+
-            '<span class="lg-row-v">'+types.length+' day'+(types.length===1?'':'s')+'</span></div>'+
-          '<div class="lg-row"><span class="lg-row-l"><span class="lg-row-name">Next up</span></span>'+
-            '<span class="lg-row-v">'+escText(nextT&&nextT.name?nextT.name:'—')+'</span></div>'
-        : '<div class="lg-blank">No training days set up yet. Build your split in Program.</div>')+
-    '</div>'+
-
-    '<div class="lg-card">'+
-      '<div class="lg-card-hd"><span class="lg-card-lbl">Recent</span>'+
+      '<div class="lg-card-hd"><span class="lg-card-lbl">What have I completed?</span>'+
         '<button type="button" class="lg-card-act" onclick="logGoto(\'history\')">All history &rarr;</button></div>'+
       recentRows+
     '</div>';
+}
+
+function renderLogConsistencyCard(){
+  const today=localMidnight(getLocalDate());
+  const typeByName={};
+  splitTypes().forEach(t=>{ typeByName[t.name]=t; });
+  const byDate={};
+  (S.sessions||[]).forEach(s=>{
+    if(!s||!s.date) return;
+    const item=byDate[s.date]||(byDate[s.date]={count:0,type:s.sessionType||''});
+    item.count++;
+  });
+  const days=[];
+  for(let i=6;i>=0;i--){
+    const d=new Date(today); d.setDate(today.getDate()-i);
+    const ds=dateStr(d), saved=byDate[ds]||null;
+    days.push({date:ds,label:d.toLocaleDateString('en-AU',{weekday:'narrow'}),saved,
+      color:saved&&typeByName[saved.type]?typeGridColor(typeByName[saved.type]):saved?'#94a3b8':''});
+  }
+  const trained=days.filter(d=>d.saved).length;
+  const sessions=days.reduce((n,d)=>n+(d.saved?d.saved.count:0),0);
+  return '<div class="lg-card">'+
+    '<div class="lg-card-hd"><span class="lg-card-lbl">7-day consistency</span>'+
+      '<span class="lg-consistency-score">'+trained+' / 7 days</span></div>'+
+    '<div class="lg-consistency" aria-label="'+trained+' trained days in the last seven days">'+
+      days.map(d=>'<button type="button" class="lg-consistency-day'+(d.date===getLocalDate()?' today':'')+'" '+
+        'aria-label="'+escAttr(fmtDate(d.date)+(d.saved?': '+d.saved.count+' saved session'+(d.saved.count===1?'':'s'):': no saved session'))+'" '+
+        'onclick="logGoto(\'history\')"><span>'+escText(d.label)+'</span><i'+(d.saved?' class="done" style="background:'+escAttr(d.color)+'"':'')+'></i></button>').join('')+
+    '</div>'+
+    '<div class="lg-help">'+sessions+' session'+(sessions===1?'':'s')+' saved across the last seven calendar days.</div>'+
+  '</div>';
+}
+
+function logImprovementSuggestions(){
+  const out=[];
+  (splitTypes()||[]).forEach(t=>{
+    (t.exercises||[]).forEach(ex=>{
+      if(out.some(s=>s.name===ex.name)) return;
+      const hist=poHistoryFor(ex.name,t.name), reason=poShouldIncrease(hist);
+      if(reason&&hist[0]) out.push({name:ex.name,weight:hist[0].weight,reps:hist[0].reps,reason});
+    });
+  });
+  return out.slice(0,3);
+}
+function renderLogImprovementCard(){
+  const suggestions=logImprovementSuggestions();
+  return '<div class="lg-card">'+
+    '<div class="lg-card-hd"><span class="lg-card-lbl">What should I improve?</span>'+
+      '<button type="button" class="lg-card-act" onclick="logGoto(\'exercises\')">Exercises &rarr;</button></div>'+
+    (suggestions.length
+      ? '<div class="lg-focus-list">'+suggestions.map(s=>
+          '<button type="button" class="lg-focus-row" onclick="openExerciseDetail(\''+escAttr(s.name)+'\')">'+
+            '<span class="lg-focus-copy"><strong>'+escText(s.name)+'</strong>'+
+              '<small>'+escText(s.reason)+' · now '+s.weight+' kg × '+s.reps+'</small></span>'+
+            '<span class="lg-focus-target">'+escText(String(s.weight+2.5))+' kg</span>'+
+          '</button>').join('')+'</div>'
+      : '<div class="lg-blank">Keep logging your working sets. Daily will suggest an increase after a repeatable trend, not a single good session.</div>')+
+  '</div>';
 }
 
 // A compact view of the canonical weight check-ins. This never keeps its own copy: saves go
@@ -24624,7 +24672,7 @@ function renderLogWeightCard(){
     ? Math.abs(parseFloat(latest.weight)-goal).toFixed(1)+' kg from goal'
     : latest?'Latest · '+fmtDate(latest.date):'Start with today’s check-in';
   return '<div class="lg-card">'+
-    '<div class="lg-card-hd"><span class="lg-card-lbl">Weight</span>'+
+    '<div class="lg-card-hd"><span class="lg-card-lbl">How is my weight moving?</span>'+
       '<button type="button" class="lg-card-act" onclick="setView(\'stats\');setStatsTab(\'body\')">Full trend &rarr;</button></div>'+
     (latest
       ? '<div class="lg-weight-top"><div><span class="lg-weight-current">'+escText(String(latest.weight))+'</span><span class="lg-weight-unit">kg</span></div>'+

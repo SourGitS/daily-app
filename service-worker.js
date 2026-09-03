@@ -130,7 +130,8 @@
 // v288: Log becomes the workout hub - Today/Program/Exercises/History; Plans is documents only.
 // v289: add canonical weight check-ins and a compact recent trend to Log > Today.
 // v290: keep the Weekly Review plan editor compact on wide desktop screens.
-const CACHE_NAME = 'daily-v290';
+// v291: add seven-day consistency and progression focus to the Log Today hub.
+const CACHE_NAME = 'daily-v291';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
