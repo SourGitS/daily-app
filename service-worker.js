@@ -133,7 +133,8 @@
 // v291: add seven-day consistency and progression focus to the Log Today hub.
 // v292: replace the Log weight chart with the three latest recorded weights.
 // v293: show current weight and the latest recorded change above those readings.
-const CACHE_NAME = 'daily-v293';
+// v294: give Budget's Accounts link a clearer secondary-action hierarchy.
+const CACHE_NAME = 'daily-v294';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

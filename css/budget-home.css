@@ -150,6 +150,18 @@
 .bud-setup-btn:active{opacity:.75}
 .bud-setup-x{border:none;background:transparent;color:var(--muted);font-size:20px;line-height:1;
   cursor:pointer;padding:0 2px;-webkit-tap-highlight-color:transparent}
+
+/* Secondary navigation within the Budget hero. The soft grey fill gives Accounts a real
+   place in the hierarchy without competing with the primary figures and week controls. */
+.bud-accounts-link{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+  min-height:40px;margin-top:12px;padding:9px 13px;border:1px solid rgba(255,255,255,.18);
+  border-radius:11px;background:rgba(20,20,22,.22);color:rgba(255,255,255,.9);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07);font:inherit;font-size:12px;font-weight:750;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s ease,transform .15s ease}
+.bud-accounts-link span:last-child{font-size:15px;color:rgba(255,255,255,.68)}
+.bud-accounts-link:hover{background:rgba(20,20,22,.3)}
+.bud-accounts-link:active{transform:scale(.99)}
+.bud-accounts-link:focus-visible{outline:2px solid #fff;outline-offset:2px}
 .rec-spend-cap{font-size:13px;line-height:1.45;color:var(--muted);margin-bottom:12px}
 .rec-add-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;
   padding:13px;border-radius:14px;border:none;background:var(--accent);color:#fff;
