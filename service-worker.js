@@ -128,7 +128,8 @@
 // v286: add the opt-in Weekly Review (money/work/life) to Stats > Review, plus css/review.css.
 // v287: move Kitchen favouriting off the recipe card face into its menu; the gold card stays.
 // v288: Log becomes the workout hub - Today/Program/Exercises/History; Plans is documents only.
-const CACHE_NAME = 'daily-v288';
+// v289: add canonical weight check-ins and a compact recent trend to Log > Today.
+const CACHE_NAME = 'daily-v289';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

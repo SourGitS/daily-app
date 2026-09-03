@@ -417,6 +417,28 @@ button.lg-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;
 .lg-back:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .lg-help{font-size:11.5px;line-height:1.55;color:var(--muted);margin-top:10px}
 .lg-blank{font-size:13.5px;line-height:1.55;color:var(--muted);padding:8px 0}
+.lg-weight-top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:5px 0 2px}
+.lg-weight-current{font-family:var(--font-num);font-size:30px;font-weight:800;letter-spacing:-.03em;color:var(--text)}
+.lg-weight-unit{margin-left:3px;font-size:13px;font-weight:700;color:var(--muted)}
+.lg-weight-meta{max-width:60%;font-size:11.5px;line-height:1.45;text-align:right;color:var(--muted)}
+.lg-weight-chart{margin:7px 0 4px}
+.lg-weight-chart svg{display:block;width:100%;height:68px;overflow:visible}
+.lg-weight-grid{stroke:var(--border);stroke-width:1}
+.lg-weight-line{fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.lg-weight-dates{display:flex;justify-content:space-between;margin-top:-2px;font-size:10px;color:var(--text-3)}
+.lg-weight-entry{display:grid;grid-template-columns:auto minmax(90px,1fr) auto;align-items:center;gap:8px;
+  margin-top:10px;padding-top:11px;border-top:1px solid var(--border)}
+.lg-weight-entry label{font-size:12px;font-weight:700;color:var(--text-2)}
+.lg-weight-input-wrap{display:flex;align-items:center;min-width:0;border:1px solid var(--border);border-radius:10px;background:var(--bg);overflow:hidden}
+.lg-weight-input-wrap:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px rgba(var(--accent-rgb),.12)}
+.lg-weight-input-wrap input{width:100%;min-width:0;padding:9px 4px 9px 10px;border:0;outline:0;background:transparent;color:var(--text);font:inherit;font-family:var(--font-num);font-size:14px;font-weight:700}
+.lg-weight-input-wrap span{padding-right:9px;font-size:11px;color:var(--muted)}
+.lg-weight-entry>button{min-height:38px;padding:8px 11px;border:0;border-radius:10px;background:var(--accent);color:#fff;font:inherit;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap}
+.lg-weight-entry>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:390px){
+  .lg-weight-entry{grid-template-columns:auto 1fr}
+  .lg-weight-entry>button{grid-column:1/-1;width:100%}
+}
 /* The muscle-filter strip used to sit in a fixed overlay where its scrollbar never showed.
    Inside the Log panel it does, as a bar across the page — hidden here the same way every
    other horizontal strip in the app hides one. */

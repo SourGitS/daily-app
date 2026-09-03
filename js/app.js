@@ -370,6 +370,7 @@ if(firebaseReady){
       // merged while signed out must be re-applied here and pushed back up.
       if(mergeLegacyWeightEntries()) persistWeights();
       else localStorage.setItem('wt_weight', JSON.stringify(S.weights));
+      if(S.view==='log'&&logSubTab==='today'&&logTodayView==='overview') renderLogOverview();
       if(S.view==='stats') refreshStatsForData(['overview','review','body']);
     });
 
@@ -4344,6 +4345,7 @@ function addWeightEntry(date, weight){
   S.weights.push({date, weight});
   S.weights.sort((a,b)=>a.date<b.date?-1:1);
   persistWeights();
+  if(S.view==='log'&&logSubTab==='today'&&logTodayView==='overview') renderLogOverview();
 }
 function logWeight(){
   const dateEl  = document.getElementById('weight-date');
@@ -24557,6 +24559,7 @@ function renderLogOverview(){
         '<span class="lg-row-meta">'+escText(fmtDate(s.date))+'</span></span>'+
         '<span class="lg-row-v">'+(s.duration?escText(fmtDuration(s.duration)):'—')+'</span></button>').join('')
     : '<div class="lg-blank">No sessions saved yet. Your first one shows up here.</div>';
+  const weightCard=renderLogWeightCard();
 
   el.innerHTML=
     '<div class="lg-hero">'+
@@ -24566,6 +24569,8 @@ function renderLogOverview(){
         (onToday&&exs.length?' · '+done+' of '+exs.length+' done':'')+'</div>'+
       '<button type="button" class="lg-hero-btn" onclick="logOpenSession()">'+escText(cta)+' &rarr;</button>'+
     '</div>'+
+
+    weightCard+
 
     '<div class="lg-card">'+
       '<div class="lg-card-hd"><span class="lg-card-lbl">Your program</span>'+
@@ -24585,6 +24590,66 @@ function renderLogOverview(){
         '<button type="button" class="lg-card-act" onclick="logGoto(\'history\')">All history &rarr;</button></div>'+
       recentRows+
     '</div>';
+}
+
+// A compact view of the canonical weight check-ins. This never keeps its own copy: saves go
+// through addWeightEntry(), and the full history/goal tools remain in Stats > Body and Health.
+function logWeightSparkline(entries){
+  if(entries.length<2) return '';
+  const vals=entries.map(w=>parseFloat(w.weight)).filter(Number.isFinite);
+  if(vals.length<2) return '';
+  const lo=Math.min(...vals), hi=Math.max(...vals), span=hi-lo||1;
+  const pts=vals.map((v,i)=>{
+    const x=6+(288*i/(vals.length-1));
+    const y=58-((v-lo)/span)*44;
+    return x.toFixed(1)+','+y.toFixed(1);
+  }).join(' ');
+  return '<div class="lg-weight-chart" aria-label="Weight trend from '+escAttr(fmtDate(entries[0].date))+' to '+escAttr(fmtDate(entries[entries.length-1].date))+'">'+
+    '<svg viewBox="0 0 300 68" role="img" aria-hidden="true" preserveAspectRatio="none">'+
+      '<line x1="6" y1="58" x2="294" y2="58" class="lg-weight-grid" />'+
+      '<polyline points="'+pts+'" class="lg-weight-line" />'+
+    '</svg>'+
+    '<div class="lg-weight-dates"><span>'+escText(fmtDate(entries[0].date))+'</span><span>'+escText(fmtDate(entries[entries.length-1].date))+'</span></div>'+
+  '</div>';
+}
+function renderLogWeightCard(){
+  const sorted=[...(S.weights||[])].filter(w=>w&&Number.isFinite(parseFloat(w.weight)))
+    .sort((a,b)=>a.date<b.date?-1:1);
+  const recent=sorted.slice(-12), latest=sorted[sorted.length-1]||null;
+  const previous=sorted[sorted.length-2]||null;
+  const today=getLocalDate(), todayEntry=sorted.find(w=>w.date===today);
+  const delta=latest&&previous?+(parseFloat(latest.weight)-parseFloat(previous.weight)).toFixed(1):null;
+  const goal=parseFloat(weightGoal&&weightGoal.target);
+  const goalText=latest&&Number.isFinite(goal)
+    ? Math.abs(parseFloat(latest.weight)-goal).toFixed(1)+' kg from goal'
+    : latest?'Latest · '+fmtDate(latest.date):'Start with today’s check-in';
+  return '<div class="lg-card">'+
+    '<div class="lg-card-hd"><span class="lg-card-lbl">Weight</span>'+
+      '<button type="button" class="lg-card-act" onclick="setView(\'stats\');setStatsTab(\'body\')">Full trend &rarr;</button></div>'+
+    (latest
+      ? '<div class="lg-weight-top"><div><span class="lg-weight-current">'+escText(String(latest.weight))+'</span><span class="lg-weight-unit">kg</span></div>'+
+          '<div class="lg-weight-meta">'+escText(goalText)+(delta!==null?' · '+(delta>0?'+':'')+delta+' kg since previous':'')+'</div></div>'+
+        logWeightSparkline(recent)
+      : '<div class="lg-blank">No weight check-ins yet. Add one below to start your trend.</div>')+
+    '<div class="lg-weight-entry">'+
+      '<label for="log-weight-input">Today</label>'+
+      '<div class="lg-weight-input-wrap"><input id="log-weight-input" type="number" inputmode="decimal" min="30" max="250" step="0.1" placeholder="kg" value="'+(todayEntry?escAttr(String(todayEntry.weight)):'')+'" onkeydown="if(event.key===\'Enter\')logTodayWeight()">'+
+        '<span>kg</span></div>'+
+      '<button type="button" onclick="logTodayWeight()">'+(todayEntry?'Update':'Log weight')+'</button>'+
+    '</div>'+
+  '</div>';
+}
+function logTodayWeight(){
+  const input=document.getElementById('log-weight-input');
+  const value=parseFloat(input&&input.value);
+  if(!Number.isFinite(value)||value<30||value>250){
+    if(input){ input.focus(); input.setCustomValidity('Enter a weight between 30 and 250 kg.'); input.reportValidity(); }
+    return;
+  }
+  if(input) input.setCustomValidity('');
+  addWeightEntry(getLocalDate(), value);
+  renderLogOverview();
+  if(typeof showToast==='function') showToast('Weight logged');
 }
 
 // ── Program ─────────────────────────────────────────────────────
