@@ -24646,12 +24646,19 @@ function renderLogWeightCard(){
   const sorted=[...(S.weights||[])].filter(w=>w&&Number.isFinite(parseFloat(w.weight)))
     .sort((a,b)=>a.date<b.date?-1:1);
   const recent=sorted.slice(-3);
+  const current=recent[recent.length-1]||null;
+  const previous=recent[recent.length-2]||null;
+  const change=current&&previous?+(parseFloat(current.weight)-parseFloat(previous.weight)).toFixed(1):null;
   const today=getLocalDate(), todayEntry=sorted.find(w=>w.date===today);
   return '<div class="lg-card">'+
     '<div class="lg-card-hd"><span class="lg-card-lbl">How is my weight moving?</span>'+
       '<button type="button" class="lg-card-act" onclick="setView(\'stats\');setStatsTab(\'body\')">Full trend &rarr;</button></div>'+
     (recent.length
-      ? '<div class="lg-weight-recent">'+recent.map((w,i)=>
+      ? '<div class="lg-weight-summary">'+
+          '<div><span>Current weight</span><strong>'+escText(String(current.weight))+'<small>kg</small></strong></div>'+
+          '<div><span>Last change</span><strong>'+(change===null?'—':(change>0?'+':'')+change+'<small>kg</small>')+'</strong></div>'+
+        '</div>'+
+        '<div class="lg-weight-recent">'+recent.map((w,i)=>
           '<div class="lg-weight-reading'+(i===recent.length-1?' latest':'')+'">'+
             '<span>'+escText(fmtDate(w.date))+'</span><strong>'+escText(String(w.weight))+'<small>kg</small></strong>'+
           '</div>').join('')+'</div>'
