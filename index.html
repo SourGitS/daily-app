@@ -99,7 +99,25 @@
     </section>
 
     <!-- LOG VIEW -->
+    <!-- LOG VIEW — the workout hub. Four sections behind one sub-tab strip: Today (an
+         overview that opens the set logger), Program, Exercises and History. Exercises and
+         History hold the ONLY copy of those screens' markup — they used to be full-screen
+         overlays, and openExerciseLibrary()/openWorkoutHistory() now route here instead, so
+         every old entry point still works against one copy. -->
     <section id="view-log" class="swipe-panel">
+      <div class="log-tab-row" id="log-tab-row" role="tablist" aria-label="Workout sections">
+        <button class="log-tab-btn active" id="lg-today-btn" role="tab" aria-selected="true" aria-controls="log-sub-today" onclick="setLogTab('today')">Today</button>
+        <button class="log-tab-btn" id="lg-prog-btn" role="tab" aria-selected="false" aria-controls="log-sub-program" onclick="setLogTab('program')">Program</button>
+        <button class="log-tab-btn" id="lg-ex-btn" role="tab" aria-selected="false" aria-controls="log-sub-exercises" onclick="setLogTab('exercises')">Exercises</button>
+        <button class="log-tab-btn" id="lg-hist-btn" role="tab" aria-selected="false" aria-controls="log-sub-history" onclick="setLogTab('history')">History</button>
+      </div>
+
+      <div id="log-sub-today" role="tabpanel" aria-labelledby="lg-today-btn">
+      <div id="log-overview"></div>
+      <div id="log-session" class="hidden">
+      <!-- The way back out of the set logger. Tapping the already-active Today tab does the
+           same thing, but that is not discoverable on its own. -->
+      <button type="button" class="lg-back" onclick="logBackToOverview()">&larr; Workout overview</button>
       <div class="log-cols">
         <div class="log-left">
           <div id="log-day-hero"></div>
@@ -137,9 +155,40 @@
           <div id="save-msg"></div>
           <div id="post-save-weight"></div>
           <div id="post-save-effort"></div>
-          <button data-action="open-exercise-library" style="width:100%;margin-top:16px;padding:12px;border-radius:12px;border:1px solid var(--border);background:none;color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent">Manage Exercise Library</button>
-          <button onclick="openWorkoutHistory()" style="width:100%;margin-top:8px;padding:12px;border-radius:12px;border:1px solid var(--border);background:none;color:var(--text);font-size:14px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent">Workout history →</button>
         </div>
+      </div>
+      </div><!-- /#log-session -->
+      </div><!-- /#log-sub-today -->
+
+      <div id="log-sub-program" class="hidden" role="tabpanel" aria-labelledby="lg-prog-btn">
+        <div id="log-program-content"></div>
+      </div>
+
+      <!-- Exercise Library, re-homed from the #view-exercise-library overlay. Same ids, same
+           handlers — only the wrapper changed, so renderExerciseLibList() and the filter row
+           are untouched. -->
+      <div id="log-sub-exercises" class="hidden" role="tabpanel" aria-labelledby="lg-ex-btn">
+        <div class="log-sec-head">
+          <span class="log-sec-title">Exercise Library</span>
+        </div>
+        <div style="padding:0 0 10px">
+          <input id="lib-search" type="search" placeholder="Search exercises…" oninput="renderExerciseLibList()" class="modal-input" style="width:100%">
+        </div>
+        <!-- Category filter pills — rendered by renderMuscleFilterRow() so user-added groups appear. -->
+        <div id="lib-filter-row" class="lg-scroll-x" style="display:flex;gap:8px;padding:0 0 12px;overflow-x:auto"></div>
+        <div id="exercise-lib-list"></div>
+        <div style="padding:16px 0 calc(env(safe-area-inset-bottom,0px) + 24px)">
+          <button data-action="new-custom-exercise" style="width:100%;padding:14px;border-radius:14px;border:1px dashed var(--border);background:none;color:var(--accent-text);font-size:15px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent">+ Add custom exercise</button>
+        </div>
+      </div>
+
+      <!-- Workout history, re-homed from the #view-workout-history overlay. #history-list is
+           the same element renderHistory() has always written to. -->
+      <div id="log-sub-history" class="hidden" role="tabpanel" aria-labelledby="lg-hist-btn">
+        <div class="log-sec-head">
+          <span class="log-sec-title">Workout history</span>
+        </div>
+        <div id="history-list" class="workout-history-content"></div>
       </div>
     </section>
 
@@ -779,13 +828,8 @@
 
   </main>
 
-  <div id="view-workout-history" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:110;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
-    <div class="detail-header">
-      <button class="back-btn" onclick="closeWorkoutHistory()" aria-label="Back to Log"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
-      <div class="detail-title">Workout history</div><div style="width:36px"></div>
-    </div>
-    <div id="history-list" class="workout-history-content"></div>
-  </div>
+  <!-- The workout-history overlay was retired: its list now lives in Log › History, which is
+       where openWorkoutHistory() sends you. One copy of the markup, every entry point intact. -->
 
   <div id="view-stats-evidence" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:115;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
     <div class="detail-header">
@@ -960,21 +1004,8 @@
 </div>
 
 <!-- EXERCISE LIBRARY PAGE -->
-<div id="view-exercise-library" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
-  <div style="position:sticky;top:0;background:var(--bg);z-index:10;padding:12px 16px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
-    <button class="back-btn" data-back="closeExerciseLibrary" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
-    <span style="font-size:18px;font-weight:700;color:var(--text)">Exercise Library</span>
-  </div>
-  <div style="padding:16px 16px 10px">
-    <input id="lib-search" type="search" placeholder="Search exercises…" oninput="renderExerciseLibList()" class="modal-input" style="width:100%">
-  </div>
-  <!-- Category filter pills — rendered by renderMuscleFilterRow() so user-added groups appear. -->
-  <div id="lib-filter-row" style="display:flex;gap:8px;padding:0 16px 12px;overflow-x:auto"></div>
-  <div id="exercise-lib-list" style="padding:0 16px"></div>
-  <div style="padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 24px)">
-    <button data-action="new-custom-exercise" style="width:100%;padding:14px;border-radius:14px;border:1px dashed var(--border);background:none;color:var(--accent-text);font-size:15px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent">+ Add custom exercise</button>
-  </div>
-</div>
+<!-- The exercise-library overlay was retired: its body now lives in Log › Exercises, which is
+     where openExerciseLibrary() sends you. Same element ids, so every handler is unchanged. -->
 
 <!-- SETTINGS DETAIL — full-screen pushed view for each settings item -->
 <div id="view-settings-detail" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
@@ -988,7 +1019,10 @@
 <!-- TRAINING SPLIT EDITOR PAGE -->
 <div id="view-split-editor" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
   <div class="detail-topbar">
-    <button class="back-btn with-label" data-back="closeSplitEditor"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Settings</button>
+    <!-- "Back", not "Settings": this editor is opened from Log › Program now as well as from
+         the Settings row, and closeSplitEditor() just dismisses the overlay onto whichever
+         one you came from. -->
+    <button class="back-btn with-label" data-back="closeSplitEditor"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Back</button>
     <span class="detail-title">Training Split</span>
     <button class="detail-action" onclick="saveSplitEditor()">Save</button>
   </div>

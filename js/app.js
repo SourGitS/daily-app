@@ -351,10 +351,8 @@ if(firebaseReady){
       // converge the cloud so the next pull, on any device, sees them too.
       const cloudMissingSome = Object.keys(localMap).some(id=>!(id in cloudMap));
       if(cloudMissingSome) dbRef.set(mergedMap);
-      if(S.view==='stats'){
-        if(document.getElementById('view-workout-history')?.style.display==='block') renderHistory();
-        refreshStatsForData(['overview','review','training']);
-      }
+      if(S.view==='log'&&logSubTab==='history') renderHistory();
+      if(S.view==='stats') refreshStatsForData(['overview','review','training']);
     });
 
     weightDbRef = db.ref('users/'+user.uid+'/weights');
@@ -584,7 +582,7 @@ if(firebaseReady){
     });
     syncBlobListen(user.uid,'dayCustom','wt_day_custom',()=>{ try{ dayCustom=JSON.parse(localStorage.getItem('wt_day_custom')||'{}')||{}; }catch(e){} if(S.view==='log'&&typeof renderLog==='function') renderLog(); if(S.view==='home'&&typeof renderHome==='function') renderHome(); });
     syncBlobListenTS(user.uid,'exerciseLib','wt_exercise_lib','wt_exercise_lib_ts',()=>{ if(typeof renderExerciseLibList==='function') renderExerciseLibList(); if(typeof SE!=='undefined' && SE.target>=0 && document.getElementById('se-picker-list')) document.getElementById('se-picker-list').innerHTML=sePickerListHTML(); if(S.view==='stats') refreshStatsForData(['overview','review','training']); });
-    syncBlobListen(user.uid,'customMuscles','wt_custom_muscles',()=>{ try{ const v=document.getElementById('view-exercise-library'); if(v && v.style.display!=='none' && typeof renderMuscleFilterRow==='function') renderMuscleFilterRow(); }catch(e){} });
+    syncBlobListen(user.uid,'customMuscles','wt_custom_muscles',()=>{ try{ if(S.view==='log'&&logSubTab==='exercises'&&typeof renderMuscleFilterRow==='function') renderMuscleFilterRow(); }catch(e){} });
     syncBlobListen(user.uid,'libHidden','wt_lib_hidden',()=>{ if(typeof renderExerciseLibList==='function') renderExerciseLibList(); });
     syncBlobListenTS(user.uid,'trainingSplit','wt_split','wt_split_ts',()=>{
       splitConfig=null; splitCfg(); // reload from the just-updated localStorage copy
@@ -635,7 +633,7 @@ if(firebaseReady){
     // sign-in — the shorter local list always lost to the stale cloud copy. A legacy raw
     // value in the cloud reads as timestamp 0, so any real local edit beats it.
     syncBlobListenTS(user.uid,'plans','wt_plans','wt_plans_ts',()=>{
-      if(S.view==='plans'&&typeof renderPlans==='function') renderPlans();
+      if(typeof plansRefreshViews==='function') plansRefreshViews();
     });
     // Weekly Review. The PLAN is one config blob and resolves by timestamp like any other
     // setting; the weekly RECORDS are a keyed collection, merged per week by wkrAttachSync so a
@@ -1978,11 +1976,25 @@ function initDay(idx){
 // ── View ─────────────────────────────────────────────────────────
 let statsSubTab = 'overview';
 function dailyHistoryView(v){return ['home','budget','log','nutrition','kitchen','stats','settings','notes','plans'].includes(v);}
+function dailyHistoryTarget(raw,state){
+  const value=String(raw||'');
+  const parts=value.split('/');
+  const view=parts[0];
+  if(!dailyHistoryView(view)) return null;
+  let logTab=null;
+  if(view==='log'){
+    const candidate=(state&&state.dailyLogTab)||parts[1]||'today';
+    logTab=LOG_TABS[candidate]?candidate:'today';
+  }
+  return {view,logTab};
+}
+function dailyHistoryUrl(v,logTab){
+  const suffix=v==='log'&&logTab&&logTab!=='today'?'/'+logTab:'';
+  return location.pathname+location.search+'#'+v+suffix;
+}
 function setView(v, direction, opts){
   opts = opts || {};
   clearSourceReturn();
-  const _libOv=document.getElementById('view-exercise-library');
-  if(_libOv&&_libOv.style.display!=='none'){_libOv.style.display='none';_libOv.style.left='0';}
   // Accounts is a fixed overlay (not an #app-main>section), so — like the library above — it
   // won't be hidden by the .hidden toggle below; close it explicitly so a sidebar switch away
   // from Accounts actually leaves it. The .ds-item active state is handled by line ~1165.
@@ -1991,14 +2003,18 @@ function setView(v, direction, opts){
   // Daily + AI is the same kind of peer destination, so it needs the same explicit close.
   const _aiOv=document.getElementById('view-aihub');
   if(_aiOv&&_aiOv.style.display!=='none'){_aiOv.style.display='none';_aiOv.style.left='0';}
-  const _histOv=document.getElementById('view-workout-history');
-  if(_histOv&&_histOv.style.display!=='none'){_histOv.style.display='none';_histOv.style.left='0';}
   const prev=S.view;
   if(prev==='stats'&&v!=='stats') invalidateStatsTabs();
+  if(v==='log'&&prev!=='log'){
+    logSubTab=LOG_TABS[opts.logTab]?opts.logTab:'today';
+    logTodayView='overview';
+  }
   if(!opts.fromHistory&&!_bootPhase&&prev!==v&&dailyHistoryView(v)){
     try{
-      if(!history.state?.dailyView&&dailyHistoryView(prev)) history.replaceState({dailyView:prev},'',location.pathname+location.search+'#'+prev);
-      history.pushState({dailyView:v},'',location.pathname+location.search+'#'+v);
+      if(!history.state?.dailyView&&dailyHistoryView(prev)) history.replaceState({dailyView:prev},'',dailyHistoryUrl(prev,prev==='log'?logSubTab:null));
+      const nextState={dailyView:v};
+      if(v==='log') nextState.dailyLogTab=logSubTab;
+      history.pushState(nextState,'',dailyHistoryUrl(v,v==='log'?logSubTab:null));
     }catch(e){}
   }
   S.view = v;
@@ -2021,7 +2037,10 @@ function setView(v, direction, opts){
   const _sf=document.getElementById('scroll-fade'); if(_sf) _sf.style.display = (v==='kitchen') ? 'none' : '';
   if(v==='home') renderHome();
   if(v==='log'){
-    renderLog(true); // entering the tab → play the entrance animations
+    // Entering Log from anywhere else lands on the workout overview, not the set logger —
+    // the agreed landing behaviour. setView is the only place that can tell a genuine tab
+    // entry from an in-tab re-render, which is why the reset lives here and not in setLogTab.
+    setLogTab(logSubTab, true, {skipHistory:true});
     // The rest-timer bar lives inside #view-log, so it shows/hides with the tab.
     rtInitDisplay();
     rtStartUi();
@@ -2049,6 +2068,23 @@ function setView(v, direction, opts){
 // that isn't must be a direct <section> child of #app-main (see setView). Changing the list
 // without moving the markup gives you a tab you can swipe to but not tap, or the reverse.
 const NAV_ORDER=['home','budget','log','nutrition','kitchen'];
+
+// ── Log hub state ───────────────────────────────────────────────
+// Declared HERE, not next to the hub's render functions further down, because init() calls
+// setView() to restore a #hash view and setView touches these. Function declarations hoist;
+// `let`/`const` do not, so a late declaration threw "Cannot access 'logTodayView' before
+// initialization" and aborted boot for anyone reloading on a hash. Keep these above init.
+const LOG_TABS={today:'log-sub-today', program:'log-sub-program', exercises:'log-sub-exercises', history:'log-sub-history'};
+const LOG_TAB_BTNS={today:'lg-today-btn', program:'lg-prog-btn', exercises:'lg-ex-btn', history:'lg-hist-btn'};
+let logSubTab='today';
+// Whether Today is showing the overview or the set logger. Entering Log from another view
+// resets this to the overview — the agreed landing behaviour, and setView is the one place
+// that knows a genuine tab entry from an in-tab re-render.
+let logTodayView='overview';
+// Which saved program / imported document each screen is looking at. In-memory ON PURPOSE:
+// merely selecting one to read must never write to wt_plans.
+let logProgSel=null;
+let plansDocSel=null;
 
 // ── Swipe deck (native-feel tab paging) ──────────────────────────
 // The four bottom-nav views sit side-by-side in #swipe-deck and track the finger in real
@@ -2431,8 +2467,14 @@ function refreshHomeTab(){
   if(fb){ fb.style.transition='opacity .2s ease'; fb.style.opacity='.5'; setTimeout(()=>fb.style.opacity='1',300); }
 }
 function dailyApplyHistoryView(state){
-  const v=state&&state.dailyView||decodeURIComponent(location.hash.replace(/^#/,''));
-  if(dailyHistoryView(v)&&v!==S.view) setView(v,null,{fromHistory:true});
+  const raw=state&&state.dailyView||decodeURIComponent(location.hash.replace(/^#/,''));
+  const target=dailyHistoryTarget(raw,state);
+  if(!target) return;
+  if(target.view!==S.view) setView(target.view,null,{fromHistory:true,logTab:target.logTab});
+  else if(target.view==='log'){
+    logTodayView='overview';
+    setLogTab(target.logTab,true,{skipHistory:true});
+  }
 }
 window.addEventListener('popstate',e=>dailyApplyHistoryView(e.state));
 window.addEventListener('hashchange',()=>dailyApplyHistoryView(history.state));
@@ -2764,23 +2806,20 @@ function fmtLoggedSet(set,unit){
   return !isNaN(w)&&w!==0 ? w+'kg × '+amount : amount+' reps';
 }
 let _libMuscle='all';
+// The library is a SECTION of Log now, not an overlay of its own. Every old entry point —
+// the desktop sidebar, the hamburger, the in-Log button, a deep link — still calls this; it
+// just navigates instead of stacking a fixed layer over the app. The search box and filter
+// are reset here exactly as the overlay used to on open.
 function openExerciseLibrary(){
-  const v=document.getElementById('view-exercise-library'); if(!v) return;
-  if(typeof aiHidePeerOverlays==='function') aiHidePeerOverlays('view-exercise-library');
-  v.style.display='block';
-  // On desktop, leave the sidebar uncovered
-  v.style.left=layoutIsDesktop()?'260px':'0';
-  document.querySelectorAll('.ds-item').forEach(b=>b.classList.remove('active'));
-  const _di=document.getElementById('ds-exlib'); if(_di) _di.classList.add('active'); // desktop sidebar peer
   const s=document.getElementById('lib-search'); if(s) s.value='';
   _libMuscle='all';
-  renderMuscleFilterRow();
-  renderExerciseLibList();
   if(typeof closeMenu==='function') closeMenu();
+  logGoto('exercises');
 }
+// Kept because `data-back="closeExerciseLibrary"` and older call sites still reference it.
+// There is no overlay to dismiss any more, so "close" means "back to the workout overview".
 function closeExerciseLibrary(){
-  const v=document.getElementById('view-exercise-library');
-  if(v){ v.style.display='none'; v.style.left='0'; }
+  if(S.view==='log') setLogTab('today');
   document.querySelectorAll('.ds-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===S.view));
 }
 // Library filter pills (All + every group). Rebuilt so user-added groups show up.
@@ -4228,14 +4267,15 @@ function emptyState(emoji,heading,sub,btnLabel,btnAction){
 }
 
 // ── HISTORY view ──────────────────────────────────────────────────
+// History is a SECTION of Log now (see openExerciseLibrary for the same reasoning). Callers
+// from Home, Stats evidence and the Journal day-context all still work unchanged — some of
+// them call setView('log') first, which is harmless because logGoto does it idempotently.
 function openWorkoutHistory(){
-  const v=document.getElementById('view-workout-history'); if(!v) return;
-  v.style.display='block'; v.style.left=layoutIsDesktop()?'260px':'0'; v.scrollTop=0;
-  renderHistory();
+  logGoto('history');
 }
+// Kept for the empty state's "Go to Log →" and any older caller: back to the overview.
 function closeWorkoutHistory(){
-  const v=document.getElementById('view-workout-history'); if(v){ v.style.display='none'; v.style.left='0'; }
-  if(S.view==='log') renderLog(false);
+  if(S.view==='log') setLogTab('today');
 }
 function renderHistory(){
   const list = document.getElementById('history-list');
@@ -5305,8 +5345,12 @@ const SETTINGS_SECTIONS={
     }
   },
   training:{
+    // The key stays 'training' and the row stays visible: section keys are persisted in deep
+    // links, and this is the path anyone who learned it will still try. Only the destination
+    // moved — days and exercises are edited from Log > Program now, next to the saved
+    // programs that snapshot them.
     label:'Training setup', icon:'dumbbell', tint:'#FF9500',
-    open:function(){ openSplitEditor(); },
+    open:function(){ logGoto('program'); },
     summary:function(){
       const n=splitTypes().length;
       return n ? (n+' day'+(n===1?'':'s')+' · '+scheduleLen()+'-day rotation') : '';
@@ -5389,8 +5433,10 @@ const SETTINGS_SEARCH=[
   {s:'health',  label:'Calorie target',     sub:'Daily calorie targets', a:'stg-card-calories', keys:'kcal calories tdee cut bulk maintain deficit surplus goal energy macro'},
   {s:'health',  label:'Body weight log',    sub:'Body weight', a:'stg-card-weight',    keys:'weigh in kg scale check chart history track'},
   {s:'health',  label:'Weight goal',        sub:'Weight goal', a:'stg-card-weightgoal', keys:'target body weight target date lose gain drop pace kg'},
-  {s:'training',label:'Training days',      sub:'Split',     keys:'split rotation push pull legs day names schedule programme program'},
-  {s:'training',label:'Exercises per day',  sub:'Split',     keys:'add remove swap movement lift library order'},
+  {s:'training',label:'Training days',      sub:'Log \u203a Program', keys:'split rotation push pull legs day names schedule programme program'},
+  {s:'training',label:'Exercises per day',  sub:'Log \u203a Program', keys:'add remove swap movement lift library order'},
+  {s:'training',label:'Saved programs',     sub:'Log \u203a Program', keys:'plan plans program switch snapshot save split preset'},
+  {s:'training',label:'Exercise Library',   sub:'Log \u203a Exercises', keys:'exercise library custom movement muscle group hidden'},
   {s:'budget',  label:'Income sources',     sub:'Categories', keys:'pay wage salary money in earnings'},
   {s:'budget',  label:'Fixed expenses',     sub:'Categories', keys:'rent bills subscriptions recurring monthly direct debit'},
   {s:'budget',  label:'Variable spending',  sub:'Categories', keys:'groceries fuel spending weekly categories'},
@@ -7648,8 +7694,8 @@ function aiHubText(ctx,fmt){
 
 // The peer overlays all sit at the same z-index, so opening one on top of another would leave
 // the first showing underneath when this one closes. Each open function hides its peers.
-const AI_PEER_OVERLAYS=['view-accounts','view-exercise-library','view-aihub'];
-const APP_PEER_OVERLAYS=[...AI_PEER_OVERLAYS,'view-workout-history','view-stats-evidence','view-exercise-detail'];
+const AI_PEER_OVERLAYS=['view-accounts','view-aihub'];
+const APP_PEER_OVERLAYS=[...AI_PEER_OVERLAYS,'view-stats-evidence','view-exercise-detail'];
 function aiHidePeerOverlays(keepId){
   APP_PEER_OVERLAYS.forEach(id=>{
     if(id===keepId) return;
@@ -18608,7 +18654,7 @@ function seAddDay(){ const i=SE.days.length; SE.days.push({id:'d'+Date.now()+'_'
 // Wipe the editor back to one blank day. Resets to ONE rather than zero because a split must
 // have at least one type to be valid (sanitizeSplit), and seRemoveDay refuses to delete the
 // last day for the same reason.
-// Offers to save the current split to Plans first, but only when it isn't already stored
+// Offers to save the current split as a program first, but only when it isn't already stored
 // there — otherwise the prompt is noise on every clear.
 function seClearAll(){
   let alreadySaved=false;
@@ -18616,7 +18662,7 @@ function seClearAll(){
     alreadySaved=(loadPlans().plans||[]).some(p=>planIsProgram(p)&&planCfgFingerprint(p.cfg)===planCfgFingerprint(daysToSplit(SE.days)));
   }catch(e){}
   if(!alreadySaved && SE.days.some(d=>(d.exercises||[]).length)){
-    if(confirm('Save this split to Plans before clearing it?\n\nYou can switch back to it any time from the Plans tab.')){
+    if(confirm('Save this split as a program before clearing it?\n\nYou can switch back to it any time from Log › Program.')){
       // Persist what's in the editor right now, so the saved program matches what's on screen.
       const cfg=sanitizeSplit(daysToSplit(SE.days));
       if(cfg){
@@ -23117,9 +23163,15 @@ try {
   checkReminders();
   // Boot is over: from here every save is a real edit and stamps the current time.
   _bootPhase = false;
-  const initialView=decodeURIComponent(location.hash.replace(/^#/,''));
-  if(dailyHistoryView(initialView)&&initialView!==S.view) setView(initialView,null,{fromHistory:true});
-  try{history.replaceState({dailyView:S.view},'',location.pathname+location.search+'#'+S.view);}catch(e){}
+  const initialTarget=dailyHistoryTarget(decodeURIComponent(location.hash.replace(/^#/,'')));
+  if(initialTarget&&(initialTarget.view!==S.view||initialTarget.view==='log')){
+    setView(initialTarget.view,null,{fromHistory:true,logTab:initialTarget.logTab});
+  }
+  try{
+    const state={dailyView:S.view};
+    if(S.view==='log') state.dailyLogTab=logSubTab;
+    history.replaceState(state,'',dailyHistoryUrl(S.view,S.view==='log'?logSubTab:null));
+  }catch(e){}
 } catch(e) {
   // Cleared in the failure path too — otherwise an init error would leave every later save
   // unstamped, and this device could never win a sync conflict again.
@@ -24320,127 +24372,355 @@ document.addEventListener('click',function(e){
 });
 
 // ── Plans ──────────────────────────────────────────────────────────
+// Plans is the imported-DOCUMENTS tab. Saved workout programs moved to Log > Program; this
+// screen deliberately shows only entries with type:'html' — the plan files you have imported
+// and read inside the app. Both kinds still live in the same wt_plans store and are told
+// apart at render time, so nothing was migrated, rewritten or deleted to make this split.
+// The streak that used to head this screen is gone from the UI. It counted days the TAB was
+// opened, never days trained, and Home's streak card and Stats' consistency grid both measure
+// the real thing. Its stored field is left untouched in wt_plans on purpose: removing it
+// would be a migration, and an unread field costs nothing.
+function plansDocList(){
+  try{ return (loadPlans().plans||[]).filter(p=>p&&p.type==='html'); }catch(e){ return []; }
+}
+function plansDocSelected(){
+  const list=plansDocList(); if(!list.length) return null;
+  let hit=list.find(p=>p.id===plansDocSel);
+  if(hit) return hit;
+  try{ const id=loadPlans().activePlanId; hit=list.find(p=>p.id===id); }catch(e){}
+  return hit || list[0];
+}
+function plansDocSelect(id){ plansDocSel=id; renderPlans(); }
+function plansDocExport(){
+  const sel=plansDocSelected();
+  if(!sel){ alert('No plan to export'); return; }
+  plansExportPlan(sel.id);
+}
 function renderPlans(){
   const wrap=document.getElementById('plans-content'); if(!wrap) return;
-  const data=loadPlans();
-  const active=data.plans.find(p=>p.id===data.activePlanId)||data.plans[0]||null;
+  const docs=plansDocList();
+  const sel=plansDocSelected();
+  const programCount=(function(){ try{ return (loadPlans().plans||[]).filter(planIsWorkoutSaved).length; }catch(e){ return 0; } })();
 
-  const today=getLocalDate();
-  if(active && data.streak.lastDate!==today){
-    const yesterday=new Date(today); yesterday.setDate(yesterday.getDate()-1);
-    const yStr=dateStr(yesterday);
-    if(data.streak.lastDate===yStr){
-      data.streak.count++;
-    } else if(data.streak.lastDate!==today){
-      data.streak.count=0;
-    }
-    data.streak.lastDate=today;
-    savePlans(data);
-  }
+  let h='<div class="lg-card">'+
+    '<div class="lg-card-hd"><span class="lg-card-lbl">Imported plans</span></div>'+
+    '<div class="lg-help" style="margin-top:0">Plan documents you have imported as HTML — a coach’s block, a printout, anything you want to keep and read inside Daily.</div>'+
+    '<button type="button" class="lg-btn primary" onclick="plansImportHTML()">Import an HTML plan</button>'+
+  '</div>';
 
-  let html='';
-
-  if(active){
-    html+=`<div style="background:linear-gradient(135deg,rgba(var(--accent-rgb),.15),rgba(var(--accent-rgb),.05));border-radius:16px;padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;gap:14px">
-      <div style="font-size:32px">🔥</div>
-      <div>
-        <div style="font-size:24px;font-weight:800;color:var(--accent-text);font-family:var(--font-num)">${data.streak.count} day streak</div>
-        <div style="font-size:13px;color:var(--muted)">Active: ${active.name}</div>
-      </div>
-    </div>`;
-  }
-
-  // Saving the current split is the primary action now — it's the only one that produces a
-  // program you can actually train, so it leads and the import/export tools follow.
-  html+=`<button onclick="plansSaveCurrentAsProgram()" style="width:100%;padding:13px;border-radius:12px;border:none;background:var(--accent);color:#fff;font-size:15px;font-weight:700;margin-bottom:8px">+ Save current split as a program</button>`;
-  html+=`<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-    <button onclick="plansImport()" style="flex:1;padding:10px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;font-weight:600">⬆ JSON</button>
-    <button onclick="plansImportHTML()" style="flex:1;padding:10px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;font-weight:600">⬆ HTML</button>
-    <button onclick="plansExport()" style="flex:1;padding:10px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;font-weight:600">⬇ Export</button>
-  </div>`;
-
-  if(!data.plans.length){
-    html+=`<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">🗂️</div><div style="font-size:16px;font-weight:600;margin-bottom:6px;color:var(--text)">No programs yet</div><div style="font-size:14px;line-height:1.5">Save your current training split as a program, then build others and switch between them any time.</div></div>`;
+  if(docs.length){
+    h+='<div class="lg-card">'+
+      '<div class="lg-card-hd"><span class="lg-card-lbl">Your plans</span></div>'+
+      docs.map(function(p){
+        const on=p.id===(sel&&sel.id);
+        return '<button type="button" class="lg-row lg-pick'+(on?' on':'')+'" onclick="plansDocSelect(\''+escAttr(p.id)+'\')">'+
+          '<span class="lg-row-l"><span class="lg-row-name">'+escText(p.name||'Untitled')+'</span>'+
+          '<span class="lg-row-meta">HTML document</span></span>'+
+          '<span class="lg-row-v">'+(on?'Selected':'Select')+'</span></button>';
+      }).join('')+
+    '</div>';
   } else {
-    html+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">${data.plans.map(p=>`<button onclick="plansSetActive('${p.id}')" style="padding:6px 14px;border-radius:20px;border:none;background:${p.id===data.activePlanId?'var(--accent)':'var(--card-2)'};color:${p.id===data.activePlanId?'#fff':'var(--text)'};font-size:13px;font-weight:600">${p.name}</button>`).join('')}</div>`;
-
-    if(active){
-      if(planIsProgram(active)){
-        // A saved training split: its real days and exercises, plus whether it's the one
-        // currently driving the Log.
-        const applied=planAppliedState(active)==='active';
-        const types=active.cfg.types||[], sched=active.cfg.schedule||[];
-        html+=`<div style="background:var(--card);border-radius:16px;padding:16px;margin-bottom:12px">`;
-        html+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <div style="font-size:16px;font-weight:700;color:var(--text);flex:1;min-width:0">${_catEscHtml(active.name)}</div>
-          ${applied?`<span style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:rgba(var(--accent-rgb),.16);color:var(--accent-text)">Training now</span>`:''}
-        </div>`;
-        html+=`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${types.length} day${types.length===1?'':'s'} · ${sched.length}-day rotation</div>`;
-        types.forEach((t,i)=>{
-          const exs=t.exercises||[];
-          html+=`<div style="border-bottom:1px solid var(--border);padding:10px 0">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:${exs.length?6:0}px">
-              <div style="width:32px;height:32px;border-radius:8px;background:rgba(var(--accent-rgb),.12);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent-text)">${i+1}</div>
-              <div style="font-weight:600;color:var(--text);font-size:14px">${_catEscHtml(t.name||'Day '+(i+1))}</div>
-              <div style="margin-left:auto;font-size:12px;color:var(--muted)">${exs.length} ex</div>
-            </div>
-            ${exs.map(e=>`<div style="padding:3px 0 3px 40px;font-size:13px;color:var(--text-2)">${_catEscHtml(e.name||'')}</div>`).join('')}
-          </div>`;
-        });
-        html+=`</div>`;
-        html+=`<button onclick="plansApply('${active.id}')" ${applied?'disabled':''} style="width:100%;padding:13px;border-radius:12px;border:none;background:${applied?'var(--card-2)':'var(--accent)'};color:${applied?'var(--muted)':'#fff'};font-size:15px;font-weight:700;margin-bottom:8px">${applied?'Currently training this':'Switch to this program'}</button>`;
-        html+=`<div style="display:flex;gap:8px;margin-bottom:8px">
-          <button onclick="plansUpdateFromCurrent('${active.id}')" style="flex:1;padding:10px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;font-weight:600">Save current split into this</button>
-          <button onclick="plansRename('${active.id}')" style="flex:1;padding:10px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;font-weight:600">Rename</button>
-        </div>`;
-      } else if(active.type==='html'){
-        // HTML plan — show open button and a preview description
-        html+=`<div style="background:var(--card);border-radius:16px;padding:20px;margin-bottom:12px;text-align:center">
-          <div style="font-size:36px;margin-bottom:10px">📄</div>
-          <div style="font-size:16px;font-weight:700;margin-bottom:6px;color:var(--text)">${active.name}</div>
-          <div style="font-size:13px;color:var(--muted);margin-bottom:16px">HTML plan · tap to open full screen</div>
-          <button onclick="plansOpenHTML('${active.id}')" style="width:100%;padding:13px;border-radius:12px;border:none;background:var(--accent);color:#fff;font-size:15px;font-weight:700">Open</button>
-        </div>`;
-      } else if(!active.days && Array.isArray(active.exercises)){
-        // Legacy "daily routine" plan — a flat exercise list, no 7-day grid. Render the list
-        // so the plan's real content shows instead of an empty week of rest days.
-        html+=`<div style="background:var(--card);border-radius:16px;padding:16px;margin-bottom:12px">`;
-        html+=`<div style="font-size:16px;font-weight:700;margin-bottom:${active.description?6:12}px;color:var(--text)">${active.name}</div>`;
-        if(active.description) html+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">${active.description}</div>`;
-        active.exercises.forEach(e=>{
-          const detail=e.detail||(e.sets&&e.reps?e.sets+'×'+e.reps:'');
-          html+=`<div style="border-bottom:1px solid var(--border);padding:10px 0">
-            <div style="font-weight:600;color:var(--text);font-size:14px">${e.name||''}</div>
-            ${detail?`<div style="font-size:12px;color:var(--muted);margin-top:2px">${detail}</div>`:''}
-          </div>`;
-        });
-        html+=`</div>`;
-      } else {
-        // Workout plan — existing 7-day grid
-        const dayNames=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-        html+=`<div style="background:var(--card);border-radius:16px;padding:16px;margin-bottom:12px">`;
-        html+=`<div style="font-size:16px;font-weight:700;margin-bottom:12px;color:var(--text)">${active.name}</div>`;
-        if(active.description) html+=`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">${active.description}</div>`;
-        for(let d=0;d<7;d++){
-          const day=active.days&&active.days[String(d)];
-          const dayLabel=day?.name||dayNames[d];
-          const exs=day?.exercises||[];
-          const isRest=!exs.length;
-          html+=`<div style="border-bottom:1px solid var(--border);padding:10px 0">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:${isRest?0:6}px">
-              <div style="width:32px;height:32px;border-radius:8px;background:${isRest?'var(--card-2)':'rgba(var(--accent-rgb),.12)'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:${isRest?'var(--muted)':'var(--accent)'}">${dayNames[d]}</div>
-              <div style="font-weight:600;color:${isRest?'var(--muted)':'var(--text)'};font-size:14px">${dayLabel}</div>
-            </div>
-            ${exs.map(e=>`<div style="padding:4px 0 4px 40px;font-size:13px;color:var(--text)">${e.name}${e.sets&&e.reps?' — '+e.sets+'×'+e.reps:''}</div>`).join('')}
-          </div>`;
-        }
-        html+=`</div>`;
-      }
-      html+=`<button onclick="plansDelete('${active.id}')" style="width:100%;padding:10px;border-radius:12px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-size:14px;font-weight:600">Delete this plan</button>`;
-    }
+    h+='<div class="lg-card"><div class="lg-blank">No imported plans yet. Import an HTML file above and it opens full screen, in a sandboxed frame.</div></div>';
   }
 
-  wrap.innerHTML=html;
+  if(sel){
+    h+='<div class="lg-card">'+
+      '<div class="lg-card-hd"><span class="lg-card-lbl">'+escText(sel.name||'Plan')+'</span></div>'+
+      '<button type="button" class="lg-btn primary" onclick="plansOpenHTML(\''+escAttr(sel.id)+'\')">Open</button>'+
+      '<div class="lg-btn-row">'+
+        '<button type="button" class="lg-btn" onclick="plansDocExport()">Export</button>'+
+        '<button type="button" class="lg-btn" onclick="plansRename(\''+escAttr(sel.id)+'\')">Rename</button>'+
+      '</div>'+
+      '<button type="button" class="lg-btn danger" onclick="plansDelete(\''+escAttr(sel.id)+'\')">Delete this plan</button>'+
+    '</div>';
+  }
+
+  // Programs are not shown here any more, so say where they went rather than leaving anyone
+  // who saved one wondering whether it survived.
+  if(programCount){
+    h+='<div class="lg-card">'+
+      '<div class="lg-blank">Your '+programCount+' saved workout program'+(programCount===1?'':'s')+
+      ' moved to Log › Program.</div>'+
+      '<button type="button" class="lg-btn" onclick="logGoto(\'program\')">Open Log › Program</button>'+
+    '</div>';
+  }
+
+  wrap.innerHTML=h;
+}
+
+// ══ Log: the workout hub ════════════════════════════════════════
+// Log holds four sections behind one sub-tab strip. Today is an overview that opens the set
+// logger; Program, Exercises and History are the screens that used to be a separate tab and
+// two full-screen overlays. Consolidated because they are one subject: what you train, what
+// you train it with, and what you already trained.
+//
+// Nothing here reads or writes a store of its own. The overview is assembled from splitCfg(),
+// S.sessions and loadPlans() — all existing readers — so it cannot disagree with the screens
+// it links to, and it adds no sync surface.
+
+function setLogTab(tab, force, opts){
+  opts=opts||{};
+  if(!LOG_TABS[tab]) tab='today';
+  // Pressing Today while already inside the set logger goes back up to the overview, the way
+  // re-tapping a selected tab returns to the top of a stack on iOS.
+  if(tab==='today'&&logSubTab==='today'&&logTodayView==='session'&&!force) logTodayView='overview';
+  const changed = logSubTab!==tab;
+  logSubTab=tab;
+  if(changed&&!opts.skipHistory&&!_bootPhase&&S.view==='log'){
+    try{ history.pushState({dailyView:'log',dailyLogTab:tab},'',dailyHistoryUrl('log',tab)); }catch(e){}
+  }
+  Object.keys(LOG_TABS).forEach(t=>{
+    const pane=document.getElementById(LOG_TABS[t]); if(pane) pane.classList.toggle('hidden', t!==tab);
+    const btn=document.getElementById(LOG_TAB_BTNS[t]);
+    if(btn){ btn.classList.toggle('active', t===tab); btn.setAttribute('aria-selected', t===tab?'true':'false'); }
+  });
+  // Scroll ONLY the strip, by a measured rect offset. scrollIntoView() walks every scrollable
+  // ancestor, and #view-log is a .swipe-panel inside the transformed #swipe-deck — the exact
+  // shape of the bug that used to shove the Stats deck sideways and expose bare background.
+  // See the same treatment in setStatsTab().
+  const btn=document.getElementById(LOG_TAB_BTNS[tab]);
+  const row=document.getElementById('log-tab-row');
+  if(btn&&row){
+    const br=btn.getBoundingClientRect(), rr=row.getBoundingClientRect();
+    row.scrollLeft += (br.left+br.width/2)-(rr.left+rr.width/2);   // the browser clamps
+  }
+  if(tab==='today')          renderLogToday();
+  else if(tab==='program')   renderLogProgram();
+  else if(tab==='exercises'){ renderMuscleFilterRow(); renderExerciseLibList(); }
+  else if(tab==='history')    renderHistory();
+  // The timer card lives inside #log-session, so it hides and shows with the section on its
+  // own — there is no separate bar to keep in sync.
+  if(changed||force){
+    const main=document.getElementById('app-main');
+    if(main) main.scrollTop=0;
+  }
+}
+// One entry point for "open Log on this section", used by the sidebar, the hamburger, the
+// Settings row and every old open*() function. Idempotent about the view switch.
+function logGoto(tab){
+  if(S.view!=='log'){
+    setView('log',null,{logTab:tab});
+    return;
+  }
+  setLogTab(tab, true);
+}
+function logOpenSession(){
+  logTodayView='session';
+  setLogTab('today',true);
+}
+function logBackToOverview(){
+  logTodayView='overview';
+  setLogTab('today');
+}
+
+// ── Today: overview vs the set logger ───────────────────────────
+function renderLogToday(){
+  const ov=document.getElementById('log-overview'), se=document.getElementById('log-session');
+  const showSession = logTodayView==='session';
+  if(ov) ov.classList.toggle('hidden', showSession);
+  if(se) se.classList.toggle('hidden', !showSession);
+  if(showSession) renderLog(false);
+  else renderLogOverview();
+}
+
+// Which saved program, if any, matches the split currently driving the Log. Reuses the
+// fingerprint Plans already compares with, so "training now" means the same thing in both.
+function logActiveProgram(){
+  try{
+    const plans=(loadPlans().plans||[]).filter(planIsProgram);
+    return plans.find(p=>planAppliedState(p)==='active')||null;
+  }catch(e){ return null; }
+}
+function logRecentSessions(n){
+  return (S.sessions||[]).slice(-(n||3)).reverse();
+}
+function renderLogOverview(){
+  const el=document.getElementById('log-overview'); if(!el) return;
+  const todayIdx=suggestDay();
+  const t=type(todayIdx);
+  const exs=(t&&t.exercises)||[];
+  // Done count only means anything for the day the logger is actually on.
+  const onToday = S.dayIdx===todayIdx;
+  const done = onToday ? S.checked.size : 0;
+  const savedToday=(S.sessions||[]).some(s=>s&&s.date===getLocalDate());
+  const nextT=type((todayIdx+1)%scheduleLen());
+  const prog=logActiveProgram();
+  const types=splitTypes()||[];
+
+  const lead = savedToday ? 'Session saved' : done>0 ? 'In progress' : 'Ready';
+  const cta  = savedToday ? 'Open today’s session' : done>0 ? 'Continue today’s session' : 'Open today’s session';
+
+  const recent=logRecentSessions(3);
+  const recentRows = recent.length
+    ? recent.map(s=>'<button type="button" class="lg-row" onclick="logGoto(\'history\')">'+
+        '<span class="lg-row-l"><span class="lg-row-name">'+escText(s.sessionType||'Session')+'</span>'+
+        '<span class="lg-row-meta">'+escText(fmtDate(s.date))+'</span></span>'+
+        '<span class="lg-row-v">'+(s.duration?escText(fmtDuration(s.duration)):'—')+'</span></button>').join('')
+    : '<div class="lg-blank">No sessions saved yet. Your first one shows up here.</div>';
+
+  el.innerHTML=
+    '<div class="lg-hero">'+
+      '<div class="lg-hero-lead">'+escText(lead)+' · '+escText(fmtDate(getLocalDate()))+'</div>'+
+      '<div class="lg-hero-title">'+escText(t&&t.name?t.name:'Training')+'</div>'+
+      '<div class="lg-hero-sub">'+exs.length+' exercise'+(exs.length===1?'':'s')+
+        (onToday&&exs.length?' · '+done+' of '+exs.length+' done':'')+'</div>'+
+      '<button type="button" class="lg-hero-btn" onclick="logOpenSession()">'+escText(cta)+' &rarr;</button>'+
+    '</div>'+
+
+    '<div class="lg-card">'+
+      '<div class="lg-card-hd"><span class="lg-card-lbl">Your program</span>'+
+        '<button type="button" class="lg-card-act" onclick="setLogTab(\'program\')">Open &rarr;</button></div>'+
+      (types.length
+        ? '<div class="lg-row"><span class="lg-row-l"><span class="lg-row-name">'+
+            escText(prog?prog.name:'Current split')+'</span>'+
+            (prog?'':'<span class="lg-row-meta">Not saved as a program yet</span>')+'</span>'+
+            '<span class="lg-row-v">'+types.length+' day'+(types.length===1?'':'s')+'</span></div>'+
+          '<div class="lg-row"><span class="lg-row-l"><span class="lg-row-name">Next up</span></span>'+
+            '<span class="lg-row-v">'+escText(nextT&&nextT.name?nextT.name:'—')+'</span></div>'
+        : '<div class="lg-blank">No training days set up yet. Build your split in Program.</div>')+
+    '</div>'+
+
+    '<div class="lg-card">'+
+      '<div class="lg-card-hd"><span class="lg-card-lbl">Recent</span>'+
+        '<button type="button" class="lg-card-act" onclick="logGoto(\'history\')">All history &rarr;</button></div>'+
+      recentRows+
+    '</div>';
+}
+
+// ── Program ─────────────────────────────────────────────────────
+// The split editor and the saved snapshots of it, finally adjacent. Reads wt_plans through
+// loadPlans() and filters with planIsProgram(); HTML plan documents stay in the Plans tab and
+// are never touched here. The selection below is IN-MEMORY only — picking a program to look
+// at must not write to the store.
+function logProgramList(){
+  try{ return (loadPlans().plans||[]).filter(planIsWorkoutSaved); }catch(e){ return []; }
+}
+function logProgramSelected(){
+  const list=logProgramList(); if(!list.length) return null;
+  let hit=list.find(p=>p.id===logProgSel);
+  if(hit) return hit;
+  // Fall back to whatever the store already considers active, then to the applied one, then
+  // to the first. Reading activePlanId is fine; writing it for a mere selection is not.
+  try{ const id=loadPlans().activePlanId; hit=list.find(p=>p.id===id); }catch(e){}
+  return hit || list.find(p=>planAppliedState(p)==='active') || list[0];
+}
+function logProgSelect(id){ logProgSel=id; renderLogProgram(); }
+
+function renderLogProgram(){
+  const el=document.getElementById('log-program-content'); if(!el) return;
+  const types=splitTypes()||[], sched=splitSchedule()||[];
+  const list=logProgramList();
+  const sel=logProgramSelected();
+  const applied=sel?planAppliedState(sel)==='active':false;
+
+  let h='<div class="log-sec-head"><span class="log-sec-title">Program</span></div>';
+
+  // What the Log is actually running right now, and the way to change it.
+  h+='<div class="lg-card">'+
+    '<div class="lg-card-hd"><span class="lg-card-lbl">Now training</span></div>'+
+    (types.length
+      ? '<div class="lg-prog-now">'+escText(logActiveProgram()?logActiveProgram().name:'Current split')+'</div>'+
+        '<div class="lg-prog-meta">'+types.length+' day'+(types.length===1?'':'s')+' · '+
+          (sched.length||1)+'-day rotation</div>'+
+        '<div class="lg-day-list">'+types.map((t,i)=>
+          '<div class="lg-day"><span class="lg-day-n">'+(i+1)+'</span>'+
+          '<span class="lg-day-name">'+escText(t.name||('Day '+(i+1)))+'</span>'+
+          '<span class="lg-day-ex">'+((t.exercises||[]).length)+' ex</span></div>').join('')+
+        '</div>'
+      : '<div class="lg-blank">No training days yet. Add them in the editor below.</div>')+
+    // The split editor is a collection editor with its own top-bar Save, so it stays a
+    // full-screen push rather than being inlined here — the same rule Settings follows.
+    '<button type="button" class="lg-btn primary" onclick="openSplitEditor()">Edit days &amp; exercises</button>'+
+  '</div>';
+
+  // Saved snapshots.
+  h+='<div class="lg-card">'+
+    '<div class="lg-card-hd"><span class="lg-card-lbl">Saved programs</span></div>'+
+    (list.length
+      ? list.map(p=>{
+          const on=p.id===(sel&&sel.id);
+          const isLive=planAppliedState(p)==='active';
+          const dayCount=planIsProgram(p)?((p.cfg&&p.cfg.types||[]).length):0;
+          return '<button type="button" class="lg-row lg-pick'+(on?' on':'')+'" onclick="logProgSelect(\''+escAttr(p.id)+'\')">'+
+            '<span class="lg-row-l"><span class="lg-row-name">'+escText(p.name||'Untitled')+'</span>'+
+            '<span class="lg-row-meta">'+(planIsProgram(p)?dayCount+' day'+(dayCount===1?'':'s'):'Legacy workout plan')+'</span></span>'+
+            (isLive?'<span class="lg-live">Training now</span>':'<span class="lg-row-v">Select</span>')+
+          '</button>';
+        }).join('')
+      : '<div class="lg-blank">No saved programs yet. Save your current split below and you can switch back to it any time.</div>')+
+    '<button type="button" class="lg-btn" onclick="plansSaveCurrentAsProgram()">+ Save current split as a program</button>'+
+  '</div>';
+
+  // Actions for whichever snapshot is selected.
+  if(sel&&planIsProgram(sel)){
+    h+='<div class="lg-card">'+
+      '<div class="lg-card-hd"><span class="lg-card-lbl">'+escText(sel.name||'Program')+'</span>'+
+        (applied?'<span class="lg-live">Training now</span>':'')+'</div>'+
+      '<div class="lg-day-list">'+((sel.cfg&&sel.cfg.types)||[]).map((t,i)=>
+        '<div class="lg-day"><span class="lg-day-n">'+(i+1)+'</span>'+
+        '<span class="lg-day-name">'+escText(t.name||('Day '+(i+1)))+'</span>'+
+        '<span class="lg-day-ex">'+((t.exercises||[]).length)+' ex</span></div>').join('')+
+      '</div>'+
+      '<button type="button" class="lg-btn primary" onclick="plansApply(\''+escAttr(sel.id)+'\')"'+(applied?' disabled':'')+'>'+
+        (applied?'Currently training this':'Switch to this program')+'</button>'+
+      '<div class="lg-btn-row">'+
+        '<button type="button" class="lg-btn" onclick="plansUpdateFromCurrent(\''+escAttr(sel.id)+'\')">Save current split into this</button>'+
+        '<button type="button" class="lg-btn" onclick="plansRename(\''+escAttr(sel.id)+'\')">Rename</button>'+
+      '</div>'+
+      '<button type="button" class="lg-btn danger" onclick="plansDelete(\''+escAttr(sel.id)+'\')">Delete this program</button>'+
+    '</div>';
+  }else if(sel){
+    const dayNames=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    let legacyRows='';
+    if(Array.isArray(sel.exercises)){
+      legacyRows=sel.exercises.map(e=>{
+        const detail=e&&(e.detail||(e.sets&&e.reps?e.sets+'×'+e.reps:''));
+        return '<div class="lg-day"><span class="lg-day-name">'+escText(e&&e.name||'Exercise')+'</span>'+
+          '<span class="lg-day-ex">'+escText(detail||'')+'</span></div>';
+      }).join('');
+    }else{
+      legacyRows=dayNames.map((name,i)=>{
+        const day=sel.days&&sel.days[String(i)], exs=day&&Array.isArray(day.exercises)?day.exercises:[];
+        if(!day&&!exs.length) return '';
+        return '<div class="lg-day"><span class="lg-day-n">'+name+'</span><span class="lg-day-name">'+
+          escText(day&&day.name||name)+'</span><span class="lg-day-ex">'+exs.length+' ex</span></div>';
+      }).join('');
+    }
+    h+='<div class="lg-card">'+
+      '<div class="lg-card-hd"><span class="lg-card-lbl">'+escText(sel.name||'Legacy workout plan')+'</span></div>'+
+      (sel.description?'<div class="lg-help">'+escText(sel.description)+'</div>':'')+
+      '<div class="lg-day-list">'+(legacyRows||'<div class="lg-blank">This older plan has no saved exercises.</div>')+'</div>'+
+      '<div class="lg-help">This older format is kept unchanged for reference and export. Save your current split as a new program to use the live workout logger.</div>'+
+      '<div class="lg-btn-row">'+
+        '<button type="button" class="lg-btn" onclick="plansRename(\''+escAttr(sel.id)+'\')">Rename</button>'+
+        '<button type="button" class="lg-btn" onclick="plansExportPlan(\''+escAttr(sel.id)+'\')">Export</button>'+
+      '</div>'+
+      '<button type="button" class="lg-btn danger" onclick="plansDelete(\''+escAttr(sel.id)+'\')">Delete this plan</button>'+
+    '</div>';
+  }
+
+  // Program transfer. HTML plan documents import in the Plans tab instead — this is workout
+  // data only, which is why the HTML button is not repeated here.
+  h+='<div class="lg-card">'+
+    '<div class="lg-card-hd"><span class="lg-card-lbl">Import &amp; export</span></div>'+
+    '<div class="lg-btn-row">'+
+      '<button type="button" class="lg-btn" onclick="plansImport()">Import JSON</button>'+
+      '<button type="button" class="lg-btn" onclick="logProgramExport()"'+(sel?'':' disabled')+'>Export selected</button>'+
+    '</div>'+
+    '<div class="lg-help">Exports the selected program as JSON. Imported plan documents live in Plans.</div>'+
+  '</div>';
+
+  el.innerHTML=h;
+}
+function logProgramExport(){
+  const sel=logProgramSelected();
+  if(!sel){ alert('No program selected to export.'); return; }
+  plansExportPlan(sel.id);
+}
+function plansRefreshViews(){
+  if(S.view==='plans') renderPlans();
+  if(S.view==='log'&&logSubTab==='program') renderLogProgram();
+  if(S.view==='log'&&logSubTab==='today'&&logTodayView==='overview') renderLogOverview();
 }
 
 // ── Programs ───────────────────────────────────────────────────────
@@ -24462,6 +24742,9 @@ function planCfgFingerprint(cfg){
   });
 }
 function planIsProgram(p){ return p&&p.kind==='split'&&p.cfg&&Array.isArray(p.cfg.types); }
+function planIsWorkoutSaved(p){
+  return !!(p&&p.type!=='html'&&(planIsProgram(p)||Array.isArray(p.exercises)||(p.days&&typeof p.days==='object')));
+}
 function planAppliedState(p){
   if(!planIsProgram(p)) return 'n/a';
   return planCfgFingerprint(p.cfg)===planCfgFingerprint(splitCfg())?'active':'inactive';
@@ -24476,7 +24759,7 @@ function plansSaveCurrentAsProgram(){
   data.plans.push({id,name,kind:'split',description:'',cfg:planSnapshotSplit(),createdAt:Date.now()});
   data.activePlanId=id;
   savePlans(data);
-  renderPlans();
+  plansRefreshViews();
 }
 // Overwrite a saved program with whatever the split looks like now.
 function plansUpdateFromCurrent(id){
@@ -24485,7 +24768,7 @@ function plansUpdateFromCurrent(id){
   if(!confirm('Replace "'+p.name+'" with your current training split?')) return;
   p.cfg=planSnapshotSplit(); p.updatedAt=Date.now();
   savePlans(data);
-  renderPlans();
+  plansRefreshViews();
 }
 // Write a program back into the Log's split. Mirrors the split editor's save path (9417):
 // assign, persist, clamp the day index, then re-render the Log.
@@ -24502,8 +24785,8 @@ function plansApply(id){
   p.lastAppliedAt=Date.now();
   savePlans(data);
   if(typeof applyDayColour==='function') applyDayColour();
-  if(S.view==='log'&&typeof renderLog==='function') renderLog();
-  renderPlans();
+  if(S.view==='log'&&logSubTab==='today'&&logTodayView==='session') renderLog();
+  plansRefreshViews();
   if(typeof showToast==='function') showToast('Now training "'+p.name+'"');
 }
 function plansRename(id){
@@ -24511,13 +24794,13 @@ function plansRename(id){
   const p=data.plans.find(x=>x.id===id); if(!p) return;
   const name=(prompt('Rename program', p.name)||'').trim();
   if(!name) return;
-  p.name=name; savePlans(data); renderPlans();
+  p.name=name; savePlans(data); plansRefreshViews();
 }
 function plansSetActive(id){
   const data=loadPlans();
   data.activePlanId=id;
   savePlans(data);
-  renderPlans();
+  plansRefreshViews();
 }
 
 function plansDelete(id){
@@ -24526,7 +24809,7 @@ function plansDelete(id){
   data.plans=data.plans.filter(p=>p.id!==id);
   if(data.activePlanId===id) data.activePlanId=data.plans[0]?.id||null;
   savePlans(data);
-  renderPlans();
+  plansRefreshViews();
 }
 
 // plansNew() removed: it created a plan with seven empty days, and no screen anywhere could
@@ -24542,14 +24825,20 @@ function plansImport(){
     reader.onload=ev=>{
       try{
         const plan=JSON.parse(ev.target.result);
-        if(!plan.name||!plan.days) throw new Error('Invalid plan format');
+        if(!plan||!plan.name||!planIsWorkoutSaved(plan)) throw new Error('Invalid workout program format');
+        if(planIsProgram(plan)){
+          const clean=sanitizeSplit(JSON.parse(JSON.stringify(plan.cfg)));
+          if(!clean) throw new Error('This program has no valid training days');
+          plan.kind='split';
+          plan.cfg={types:clean.types,schedule:clean.schedule};
+        }
         const data=loadPlans();
         if(!plan.id) plan.id='plan_'+Date.now();
         data.plans=data.plans.filter(p=>p.id!==plan.id);
         data.plans.push(plan);
         if(!data.activePlanId) data.activePlanId=plan.id;
         savePlans(data);
-        renderPlans();
+        plansRefreshViews();
       }catch(err){ alert('Import failed: '+err.message); }
     };
     reader.readAsText(file);
@@ -24572,7 +24861,7 @@ function plansImportHTML(){
         data.plans.push({id, name, type:'html', content});
         if(!data.activePlanId) data.activePlanId=id;
         savePlans(data);
-        renderPlans();
+        plansRefreshViews();
       }catch(err){ alert('Import failed: '+err.message); }
     };
     reader.readAsText(file);
@@ -24600,6 +24889,28 @@ function plansCloseHTML(){
   if(frame) frame.srcdoc='';
 }
 
+// Export ONE plan by id. Split out of plansExport() because Program and Plans now each export
+// their own selection: a program is JSON, an imported document is the HTML it came from, and
+// neither view should be able to export the other's item just because it happens to be the
+// stored activePlanId.
+function plansExportPlan(id){
+  const data=loadPlans();
+  const active=data.plans.find(p=>p.id===id);
+  if(!active){ alert('No plan to export'); return; }
+  if(active.type==='html'){
+    const blob=new Blob([active.content],{type:'text/html'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=active.name.replace(/\s+/g,'_')+'.html';
+    a.click();
+  } else {
+    const blob=new Blob([JSON.stringify(active,null,2)],{type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=active.name.replace(/\s+/g,'_')+'.json';
+    a.click();
+  }
+}
 function plansExport(){
   const data=loadPlans();
   const active=data.plans.find(p=>p.id===data.activePlanId)||data.plans[0];

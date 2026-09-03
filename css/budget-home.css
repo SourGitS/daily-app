@@ -895,7 +895,9 @@
      the ring and its text use the same size as mobile, on every screen. */
 
 
-  /* Log tab */
+  /* Log tab. The sub-tab strip caps to the same measure as the sections beneath it so the
+     four pills don't stretch across a 2200px monitor. */
+  #view-log .log-tab-row{max-width:760px}
   #view-log .log-cols{display:flex;gap:20px;height:100%}
   #view-log .log-left{width:35%;flex-shrink:0;overflow-y:auto}
   #view-log .log-right{flex:1;overflow-y:auto}

@@ -334,6 +334,95 @@
 .ob-tm-row i{flex:1;height:15px;border-radius:5px;background:rgba(128,128,128,.28)}
 
 
+/* ── Log hub: sub-tab strip + overview/program surfaces ──────────────
+   Log holds Today / Program / Exercises / History behind one strip. The strip deliberately
+   reuses the .stats-tab-row shape (a track with a raised active pill) rather than inventing a
+   second segmented control — two sub-tab looks in one app is one too many. Its own class
+   names, though: .stats-tab-* is styled per-screen at ≥1024px and Log needs different rules.
+   The selected pill is carried by FILL and weight, not an accent tint — the default accent is
+   a neutral grey that is indistinguishable from the track at low alpha. */
+.log-tab-row{display:flex;gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch;
+  background:var(--border);border-radius:10px;padding:3px;margin-bottom:16px;scrollbar-width:none}
+.log-tab-row::-webkit-scrollbar{display:none}
+.log-tab-btn{flex:1 0 auto;padding:8px 13px;border:none;background:transparent;border-radius:8px;
+  font:inherit;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;white-space:nowrap;
+  -webkit-tap-highlight-color:transparent}
+.log-tab-btn.active{background:var(--card);font-weight:700;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,0.1)}
+.log-tab-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+
+.log-sec-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.log-sec-title{font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--text)}
+
+/* Today's overview. One accent surface on the screen — the thing you press to start
+   training — and everything under it quiet, so the thumb has an obvious target. */
+.lg-hero{border-radius:var(--radius-hero);padding:18px 18px 16px;margin-bottom:14px;color:#fff;
+  background:linear-gradient(150deg,rgba(var(--accent-rgb),.92),rgba(var(--accent-rgb),.58) 55%,rgba(var(--accent-rgb),.4));
+  box-shadow:0 16px 40px rgba(var(--accent-rgb),.28)}
+.lg-hero-lead{font-size:10.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;opacity:.86}
+.lg-hero-title{font-size:30px;font-weight:800;letter-spacing:-.025em;line-height:1.1;margin-top:6px}
+.lg-hero-sub{font-size:13px;opacity:.88;margin-top:4px}
+.lg-hero-btn{width:100%;margin-top:15px;min-height:46px;padding:12px;border:none;border-radius:13px;
+  background:rgba(255,255,255,.94);color:#141416;font:inherit;font-size:15px;font-weight:800;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.lg-hero-btn:active{transform:scale(.985)}
+.lg-hero-btn:focus-visible{outline:2px solid #fff;outline-offset:3px}
+
+.lg-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-card);
+  padding:14px 16px;margin-bottom:12px}
+.lg-card-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.lg-card-lbl{font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--text-3)}
+.lg-card-act{border:none;background:transparent;color:var(--accent-text);font:inherit;font-size:12px;
+  font-weight:800;cursor:pointer;padding:4px 2px;-webkit-tap-highlight-color:transparent}
+.lg-card-act:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+
+/* Rows double as buttons in some lists and plain rows in others; one shape either way. */
+.lg-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+  padding:11px 0;border-top:1px solid var(--border);border-bottom:0;border-left:0;border-right:0;
+  background:transparent;color:var(--text);font:inherit;text-align:left;font-size:14px}
+.lg-row:first-of-type{border-top:0}
+button.lg-row{cursor:pointer;-webkit-tap-highlight-color:transparent}
+button.lg-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:8px}
+.lg-row-l{display:flex;flex-direction:column;gap:2px;min-width:0}
+.lg-row-name{font-weight:700;color:var(--text);overflow-wrap:anywhere}
+.lg-row-meta{font-size:11.5px;color:var(--muted)}
+.lg-row-v{font-family:var(--font-num);font-weight:700;color:var(--text-2);white-space:nowrap;font-size:13px}
+.lg-pick.on .lg-row-name{color:var(--accent-text)}
+.lg-live{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;
+  padding:3px 9px;border-radius:999px;background:rgba(var(--accent-rgb),.16);color:var(--accent-text)}
+
+.lg-prog-now{font-size:18px;font-weight:800;color:var(--text);letter-spacing:-.015em}
+.lg-prog-meta{font-size:12px;color:var(--muted);margin-top:2px}
+.lg-day-list{margin-top:10px}
+.lg-day{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)}
+.lg-day:first-child{border-top:0}
+.lg-day-n{flex:0 0 auto;width:26px;height:26px;border-radius:8px;background:rgba(var(--accent-rgb),.12);
+  color:var(--accent-text);display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-num);font-size:12px;font-weight:700}
+.lg-day-name{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--text);overflow-wrap:anywhere}
+.lg-day-ex{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+.lg-btn{width:100%;min-height:44px;margin-top:10px;padding:11px;border-radius:12px;
+  border:1px solid var(--border);background:transparent;color:var(--text);
+  font:inherit;font-size:14px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.lg-btn.primary{border-color:transparent;background:var(--accent);color:#fff}
+.lg-btn.danger{border-color:var(--danger);color:var(--danger)}
+.lg-btn:disabled{opacity:.5;cursor:default}
+.lg-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.lg-btn-row{display:flex;gap:8px}
+.lg-btn-row .lg-btn{flex:1;min-width:0}
+.lg-back{display:inline-flex;align-items:center;min-height:36px;margin-bottom:10px;padding:6px 10px;
+  border:none;border-radius:9px;background:transparent;color:var(--muted);
+  font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.lg-back:active{background:var(--card)}
+.lg-back:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.lg-help{font-size:11.5px;line-height:1.55;color:var(--muted);margin-top:10px}
+.lg-blank{font-size:13.5px;line-height:1.55;color:var(--muted);padding:8px 0}
+/* The muscle-filter strip used to sit in a fixed overlay where its scrollbar never showed.
+   Inside the Log panel it does, as a bar across the page — hidden here the same way every
+   other horizontal strip in the app hides one. */
+.lg-scroll-x{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch}
+.lg-scroll-x::-webkit-scrollbar{display:none}
+
 /* ── Stats tab bar (Overview + 5 sub-tabs, horizontally scrollable) ── */
 .stats-tab-row{display:flex;gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch;background:var(--border);border-radius:10px;padding:3px;margin-bottom:16px;scrollbar-width:none}
 .stats-tab-row::-webkit-scrollbar{display:none}
@@ -774,6 +863,17 @@ button.ov-day{cursor:pointer}
   /* The panel itself stops scrolling; the two regions scroll independently, and only the
      right-hand one has any real distance to travel. */
   #view-log{overflow:hidden;display:flex;flex-direction:column}
+  /* .log-cols is a grandchild now (Log › Today wraps the overview and the session), so the
+     two wrappers have to pass the flex height through or the columns collapse to content
+     height and the pinned timer scrolls away — the exact thing this layout exists to stop.
+     The tab strip stays flex:0 0 auto so it keeps its height and never gets squeezed. */
+  #view-log > .log-tab-row{flex:0 0 auto}
+  #view-log > #log-sub-today{display:flex;flex-direction:column;flex:1;min-height:0}
+  #view-log #log-session{display:flex;flex-direction:column;flex:1;min-height:0}
+  /* The overview-back link keeps its own height inside that column; only .log-cols gives. */
+  #view-log #log-session > .lg-back{flex:0 0 auto;align-self:flex-start}
+  #view-log #log-sub-program,#view-log #log-sub-exercises,#view-log #log-sub-history{
+    flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
   #view-log .log-cols{display:flex;gap:12px;flex:1;min-height:0}
   /* 38% keeps the day hero's title readable and the timer controls at a real tap size.
      The column itself does NOT scroll: the day hero and the timer card are pinned, and only the
