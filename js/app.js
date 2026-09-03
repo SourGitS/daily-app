@@ -15018,7 +15018,7 @@ function wkrSetupFormHtml(){
           ? '<input class="wkr-input" type="text" value="'+wkrAttr(d.money.groupLabels[k])+'" '+
             'aria-label="Name for '+wkrAttr(label)+'" oninput="wkrSetupText(\'money.groupLabels.'+k+'\',this.value)">'
           : '<div class="wkr-row-name" style="align-self:center">'+escText(label)+'</div>';
-        return '<div class="wkr-2col" style="margin-top:8px;align-items:center">'+left+
+        return '<div class="wkr-2col wkr-alloc-row" style="margin-top:8px;align-items:center">'+left+
           wkrMoneyInput('wr-su-'+k, d.money.allocations[k], 'wkrSetupMoney(\'money.allocations.'+k+'\',this.value)')+
         '</div>';
       }).join('')+
@@ -15040,7 +15040,7 @@ function wkrSetupFormHtml(){
           'not listed here.</div>'+
         varCats.map(c=>
           '<div class="wkr-row"><span class="wkr-row-l"><span class="wkr-row-name">'+escText(catLabel(c))+'</span></span>'+
-          '<select class="wkr-select" style="width:auto;min-width:150px;font-size:12.5px" '+
+          '<select class="wkr-select wkr-map-select" '+
             'aria-label="Group for '+wkrAttr(catLabel(c))+'" '+
             'onchange="wkrSetupMapToggle(this.value,\''+wkrAttr(c.id)+'\',this.value!==\'other\')">'+
             WKR_VAR_GROUPS.concat([{id:'other',label:'Other spending'}]).map(g=>
@@ -15086,7 +15086,7 @@ function wkrSetupFormHtml(){
       'wkrSetupToggle(\'life.enabled\',this.checked)')+
   '</div>';
 
-  return '<div class="wkr-wrap">'+
+  return '<div class="wkr-wrap wkr-setup-form">'+
     '<div class="wkr-weekbar"><div class="wkr-status">'+(isNew?'Setting up':'Editing your plan')+'</div></div>'+
     '<div class="wkr-body">'+money+mapping+income+work+life+'</div>'+
     '<div class="wkr-actions">'+

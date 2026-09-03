@@ -173,4 +173,19 @@
   .wkr-body>.card{margin-bottom:0}
   .wkr-body>.wkr-span{grid-column:1/-1}
   .wkr-weekbar select{flex:0 0 320px}
+
+  /* Setup is a form, not a dashboard. Keep its controls at a readable measure even though
+     the rest of Stats deliberately uses the full wide-screen canvas for charts and grids. */
+  .wkr-setup-form{max-width:920px;margin-left:auto;margin-right:auto}
+  .wkr-setup-form .wkr-body{gap:10px}
+  .wkr-setup-form .card{padding:14px}
+  .wkr-setup-form .wkr-field{margin-top:10px}
+  .wkr-setup-form .wkr-label{margin-bottom:4px}
+  .wkr-setup-form .wkr-input,.wkr-setup-form .wkr-select{padding:8px 10px;border-radius:10px;font-size:13px}
+  .wkr-setup-form .wkr-area{min-height:62px;padding:8px 10px;border-radius:10px;font-size:13px}
+  .wkr-setup-form .wkr-help{margin-top:4px;line-height:1.4}
+  .wkr-setup-form .wkr-alloc-row{grid-template-columns:minmax(0,1fr) 120px;gap:7px;margin-top:6px!important}
+  .wkr-setup-form .wkr-row{padding:7px 0}
+  .wkr-setup-form .wkr-map-select{width:180px;min-width:0;font-size:12px}
+  .wkr-setup-form .wkr-actions{margin-top:12px}
 }
