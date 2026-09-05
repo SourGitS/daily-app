@@ -1450,7 +1450,7 @@ const WEATHER_ACCENTS={
   // now also what tells the two apart.
   'clear-dawn':'#A05E18','clear-noon':'#0072EA','clear-day':'#0072EA','clear-dusk':'#9B3D7A','clear-night':'#2B3566',
   'partly-dawn':'#96662F','partly-noon':'#3E6E99','partly-day':'#3E6E99','partly-dusk':'#8A4A78','partly-night':'#313B57',
-  'cloudy-day':'#5C5C5C','cloudy-night':'#35393D','fog':'#5E6368',
+  'cloudy-day':'#5C5C5C','cloudy-night':'#35393D','fog-day':'#5E6368','fog-night':'#39454F',
   'rain-day':'#3D5A70','rain-night':'#2A3A48','storm':'#4B3A66',
   'snow-day':'#4F6C82','snow-night':'#33454F'
 };
@@ -16786,15 +16786,39 @@ function getGreeting(){
 
 // ── Home weather card ──────────────────────────────────────────────
 // Open-Meteo: free, no API key (nothing to hide in a static public repo), CORS-enabled.
-// WMO weather codes → icon/label (https://open-meteo.com/en/docs — "WMO Weather interpretation codes").
+// WMO weather codes → controlled Tabler icon/label (https://open-meteo.com/en/docs —
+// "WMO Weather interpretation codes"). These are presentation values only; API text is
+// never inserted as markup.
+const WEATHER_ICONS={
+  sun:'ti-sun',moon:'ti-moon',partly:'ti-cloud-sun',partlyNight:'ti-cloud-moon',
+  cloud:'ti-cloud',fog:'ti-mist',rain:'ti-cloud-rain',snow:'ti-snowflake',
+  storm:'ti-cloud-storm',location:'ti-map-pin',unknown:'ti-help-circle'
+};
+function weatherIcon(name){
+  const cls=WEATHER_ICONS[name]||WEATHER_ICONS.unknown;
+  return '<i class="ti '+cls+'" aria-hidden="true"></i>';
+}
+function weatherSetIcon(el,name){ if(el) el.innerHTML=weatherIcon(name); }
 const WEATHER_CODES={
-  0:['☀️','Clear sky'],1:['🌤️','Mostly clear'],2:['⛅','Partly cloudy'],3:['☁️','Overcast'],
-  45:['🌫️','Fog'],48:['🌫️','Fog'],
-  51:['🌦️','Light drizzle'],53:['🌦️','Drizzle'],55:['🌦️','Heavy drizzle'],
-  61:['🌧️','Light rain'],63:['🌧️','Rain'],65:['🌧️','Heavy rain'],
-  71:['🌨️','Light snow'],73:['🌨️','Snow'],75:['🌨️','Heavy snow'],
-  80:['🌦️','Rain showers'],81:['🌧️','Rain showers'],82:['⛈️','Violent showers'],
-  95:['⛈️','Thunderstorm'],96:['⛈️','Thunderstorm'],99:['⛈️','Thunderstorm'],
+  0:['sun','Clear sky'],1:['partly','Mainly clear'],2:['partly','Partly cloudy'],3:['cloud','Overcast'],
+  45:['fog','Fog'],48:['fog','Depositing rime fog'],
+  51:['rain','Light drizzle'],53:['rain','Moderate drizzle'],55:['rain','Dense drizzle'],
+  56:['rain','Light freezing drizzle'],57:['rain','Dense freezing drizzle'],
+  61:['rain','Light rain'],63:['rain','Moderate rain'],65:['rain','Heavy rain'],
+  66:['rain','Light freezing rain'],67:['rain','Heavy freezing rain'],
+  71:['snow','Light snow'],73:['snow','Moderate snow'],75:['snow','Heavy snow'],77:['snow','Snow grains'],
+  80:['rain','Light rain showers'],81:['rain','Rain showers'],82:['storm','Violent rain showers'],
+  85:['snow','Light snow showers'],86:['snow','Heavy snow showers'],
+  95:['storm','Thunderstorm'],96:['storm','Thunderstorm with light hail'],99:['storm','Thunderstorm with heavy hail']
+};
+const WEATHER_RAIN_INTENSITY={
+  51:'drizzle-light',53:'drizzle',55:'drizzle-heavy',56:'drizzle-light',57:'drizzle-heavy',
+  61:'rain-light',63:'rain',65:'rain-heavy',66:'rain-light',67:'rain-heavy',
+  80:'shower-light',81:'shower',82:'shower-heavy',95:'storm',96:'storm-hail',99:'storm-hail-heavy'
+};
+const WEATHER_SNOW_INTENSITY={
+  71:'snow-light',73:'snow',75:'snow-heavy',77:'snow-grains',
+  85:'snow-shower-light',86:'snow-shower-heavy'
 };
 // A dry sky — no precipitation, fog or storm — is the only case where cloud_cover should
 // override the code (see cloudLook below).
@@ -16806,10 +16830,10 @@ function isDrySkyCode(code){ return code===0||code===1||code===2||code===3; }
 // drives the icon, the label and the scene whenever the sky is dry.
 // Thresholds follow the usual met convention (roughly okta bands): few / scattered / broken / overcast.
 const CLOUD_LOOKS=[
-  {max:15,  base:'clear',  day:['☀️','Clear sky'],     night:['🌙','Clear night']},
-  {max:40,  base:'clear',  day:['🌤️','Mostly sunny'],  night:['🌙','Mostly clear']},
-  {max:70,  base:'partly', day:['⛅','Partly cloudy'],  night:['☁️','Partly cloudy']},
-  {max:101, base:'cloudy', day:['☁️','Cloudy'],         night:['☁️','Cloudy']},
+  {max:15,  base:'clear',  day:['sun','Clear sky'],       night:['moon','Clear night']},
+  {max:40,  base:'clear',  day:['partly','Mostly sunny'], night:['moon','Mostly clear']},
+  {max:70,  base:'partly', day:['partly','Partly cloudy'],night:['partlyNight','Partly cloudy']},
+  {max:101, base:'cloudy', day:['cloud','Cloudy'],         night:['cloud','Cloudy']}
 ];
 function cloudLook(cloud){
   for(const l of CLOUD_LOOKS){ if(cloud<l.max) return l; }
@@ -16817,24 +16841,23 @@ function cloudLook(cloud){
 }
 // Icon + label for the card. Dry skies read from cloud_cover; anything with actual weather in
 // it (rain/snow/fog/storm) still reads from the code, which is authoritative for those.
-// Night matters here too: a clear sky at 9pm was previously drawing a ☀️.
+// Night matters here too: a clear sky at 9pm must use the moon treatment.
 function weatherLook(entry){
   if(entry&&isDrySkyCode(entry.code)&&entry.cloud!=null){
     const l=cloudLook(entry.cloud);
     return weatherPhase(entry)==='night'?l.night:l.day;
   }
-  return WEATHER_CODES[entry&&entry.code]||['🌡️','—'];
+  return WEATHER_CODES[entry&&entry.code]||['unknown','—'];
 }
 // Condition → animated background "scene" (see .home-weather-card[data-scene] in
-// kitchen-extras.css). Storm and fog skip the day/night split: a storm already reads as
-// dark regardless of clock time, and fog's flat haze doesn't have a distinct night look in
-// practice either — building separate art for those would just duplicate the day scene.
+// kitchen-extras.css). The final taxonomy is 19 scenes: five clear, five partly, two cloudy,
+// two fog, two rain, one deliberately dark storm, and two snow.
 function weatherSceneBase(code,cloud){
   // Real weather first — these are what the code is actually good for.
   if(code===45||code===48) return 'fog';
-  if(code===82||code>=95) return 'storm';
-  if((code>=71&&code<=77)||(code>=85&&code<=86)) return 'snow';
-  if((code>=51&&code<=67)||code===80||code===81) return 'rain';
+  if(code===82||code===95||code===96||code===99) return 'storm';
+  if(WEATHER_SNOW_INTENSITY[code]) return 'snow';
+  if(WEATHER_RAIN_INTENSITY[code]) return 'rain';
   // Dry sky → let measured cloud cover decide how cloudy it looks.
   if(cloud!=null) return cloudLook(cloud).base;
   if(code===0||code===1) return 'clear';
@@ -16925,10 +16948,16 @@ function weatherPlaceholderScene(){ return 'clear-'+weatherClockPhase(); }
 // snow the sun's height barely changes how the sky reads, so those stay day/night.
 function weatherScene(code,entry){
   const base=weatherSceneBase(code,entry&&entry.cloud);
-  if(base==='storm'||base==='fog') return base;
+  if(base==='storm') return base;
   const phase=weatherPhase(entry);
   if(base==='clear'||base==='partly') return base+'-'+phase;
   return base+'-'+(phase==='night'?'night':'day');
+}
+function applyWeatherIntensity(card,code){
+  const rain=WEATHER_RAIN_INTENSITY[code]||'';
+  const snow=WEATHER_SNOW_INTENSITY[code]||'';
+  if(rain) card.dataset.rain=rain; else delete card.dataset.rain;
+  if(snow) card.dataset.snow=snow; else delete card.dataset.snow;
 }
 // "Australia/Sydney" → "Sydney". Uses the timezone the forecast call already returns, so
 // there's no second request and no extra service to depend on. It's the timezone's city, not
@@ -17011,7 +17040,7 @@ function renderWeatherInto(entry){
   if(!tempEl) return; // card isn't in the current layout — nothing else to patch
   tempEl.textContent=Math.round(entry.tempC)+'°';
   const look=weatherLook(entry);
-  document.getElementById('home-weather-icon').textContent=look[0];
+  weatherSetIcon(document.getElementById('home-weather-icon'),look[0]);
   // On the sample reading the tappable label states what tapping does, rather than the
   // condition — the icon already carries that, and an unexplained city is the confusing part.
   const labelEl=document.getElementById('home-weather-label');
@@ -17031,6 +17060,7 @@ function renderWeatherInto(entry){
   const card=document.querySelector('.home-weather-card');
   if(card){
     card.dataset.scene=weatherScene(entry.code,entry);
+    applyWeatherIntensity(card,entry.code);
     applyWeatherMotion(card,entry);
   }
 }
@@ -17042,14 +17072,14 @@ function renderWeatherInto(entry){
 function renderWeatherPrompt(){
   const labelEl=document.getElementById('home-weather-label'); if(!labelEl) return;
   document.getElementById('home-weather-temp').textContent='';
-  document.getElementById('home-weather-icon').textContent='📍';
+  weatherSetIcon(document.getElementById('home-weather-icon'),'location');
   labelEl.textContent='Tap for weather';
   setWeatherPlaceholderScene();
 }
 function renderWeatherError(denied){
   const labelEl=document.getElementById('home-weather-label'); if(!labelEl) return;
   document.getElementById('home-weather-temp').textContent='';
-  document.getElementById('home-weather-icon').textContent='📍';
+  weatherSetIcon(document.getElementById('home-weather-icon'),'location');
   labelEl.textContent=denied?'Enable location for weather':'Couldn\'t load weather — tap to retry';
   setWeatherPlaceholderScene();
 }
@@ -17057,7 +17087,11 @@ function renderWeatherError(denied){
 // already on the card, which on a cold start is the daytime placeholder gradient.
 function setWeatherPlaceholderScene(){
   const card=document.querySelector('.home-weather-card');
-  if(card) card.dataset.scene=weatherPlaceholderScene();
+  if(card){
+    card.dataset.scene=weatherPlaceholderScene();
+    delete card.dataset.rain;
+    delete card.dataset.snow;
+  }
 }
 // One place that turns coordinates into a reading, so the sample city, the saved-coordinate
 // refresh and the real geolocation path all build an identical entry.
@@ -17265,16 +17299,17 @@ function weatherEnsureFresh(){
 }
 // Fixed set of decorative layers for every possible scene, shown/hidden per
 // .home-weather-card[data-scene] in CSS — cheaper and simpler than swapping markup per
-// condition, since it's just one attribute write in renderWeatherInto(). Stars/snow use a
-// handful of individually-delayed elements rather than a repeating background pattern so
-// they read as scattered/organic instead of a visible grid.
+// condition, since it is just controlled data-attribute writes in renderWeatherInto(). The
+// shared cloud banks and fixed rain/snow fields stay organic through varied shape and timing,
+// never per-frame DOM work or repeating particle textures.
 function buildWeatherCard(){
   const d=localMidnight(getLocalDate());
   const dayLabel=d.toLocaleDateString('en-AU',{weekday:'long'});
   const dateLabel=d.toLocaleDateString('en-AU',{day:'numeric',month:'long'});
   const stars=Array.from({length:5},(_,i)=>'<div class="wfx-star wfx-star-'+(i+1)+'"></div>').join('');
-  const flakes=Array.from({length:6},(_,i)=>'<div class="wfx-flake wfx-flake-'+(i+1)+'"></div>').join('');
-  const drops=Array.from({length:6},(_,i)=>'<div class="wfx-drop wfx-drop-'+(i+1)+'"></div>').join('');
+  const flakes=Array.from({length:12},(_,i)=>'<div class="wfx-flake wfx-flake-'+(i+1)+'"></div>').join('');
+  const drops=Array.from({length:16},(_,i)=>'<div class="wfx-drop wfx-drop-'+(i+1)+'"></div>').join('');
+  const clouds=Array.from({length:3},(_,i)=>'<div class="wfx-cloud wfx-cloud-'+(i+1)+'"><span class="wfx-cloud-body"></span></div>').join('');
   // Built with the clock-based sky already applied so a cold start paints the right time of
   // day immediately, instead of flashing the daytime placeholder before any render runs.
   return '<div class="card home-weather-card" data-scene="'+weatherPlaceholderScene()+'">'+
@@ -17282,15 +17317,15 @@ function buildWeatherCard(){
       '<div class="wfx-sun"></div>'+
       '<div class="wfx-moon"></div>'+
       '<div class="wfx-stars">'+stars+'</div>'+
-      '<div class="wfx-cloud wfx-cloud-1"></div>'+
-      '<div class="wfx-cloud wfx-cloud-2"></div>'+
-      '<div class="wfx-cloud wfx-cloud-3"></div>'+
+      clouds+
       '<div class="wfx-fog wfx-fog-1"></div>'+
       '<div class="wfx-fog wfx-fog-2"></div>'+
       '<div class="wfx-rain">'+drops+'</div>'+
       '<div class="wfx-snow">'+flakes+'</div>'+
       '<div class="wfx-flash"></div>'+
     '</div>'+
+    '<div class="weather-legibility weather-legibility-left" aria-hidden="true"></div>'+
+    '<div class="weather-legibility weather-legibility-right" aria-hidden="true"></div>'+
     '<div class="weather-content">'+
       '<div class="weather-left">'+
         '<div class="weather-city" id="home-weather-city"></div>'+
@@ -17299,7 +17334,7 @@ function buildWeatherCard(){
       '</div>'+
       '<div class="weather-right">'+
         '<div class="weather-temp-row">'+
-          '<span class="weather-icon" id="home-weather-icon"></span>'+
+          '<span class="weather-icon" id="home-weather-icon">'+weatherIcon('location')+'</span>'+
           '<span class="weather-temp" id="home-weather-temp"></span>'+
         '</div>'+
         '<div class="weather-condition" id="home-weather-label" onclick="loadWeatherWidget(true)">Loading…</div>'+
@@ -17959,7 +17994,7 @@ function hlPrevWeather(){
       '<div><div style="font-size:13px;font-weight:800">Saturday</div><div class="hl-sub">15 August</div></div>'+
       '<div style="text-align:right">'+
         '<div style="display:flex;align-items:center;gap:4px;justify-content:flex-end">'+
-          '<span style="font-size:14px;line-height:1">☀️</span>'+
+          '<span class="weather-icon" style="font-size:14px">'+weatherIcon('sun')+'</span>'+
           '<span class="hl-num">21°</span>'+
         '</div>'+
         '<div class="hl-sub">Clear sky</div>'+

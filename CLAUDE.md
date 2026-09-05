@@ -128,6 +128,21 @@ older summary — re-grep before assuming a fact from here is still true if it l
 - **Home** — dashboard of widget cards, each independently show/hideable via
   Settings → Home Layout. Today's session hero, weekly budget snapshot, calorie card,
   savings/CC balance, notes bubble, habits.
+  - The weather card has **19 derived presentation scenes** and no scene state of its own:
+    `clear-*` and `partly-*` each use dawn/noon/day/dusk/night; cloudy, fog, rain and snow each
+    use day/night; storm is one deliberately dark scene. Fog must keep distinct pale-day and
+    cool-dark-night treatments. Clear/partly night may show stars; cloudy night must not.
+  - Partly, cloudy, rain and storm all use the same layered cloud-bank grammar: a broad
+    asymmetric body with a flat underside, unequal merged lobes, an upper highlight and a
+    darker base. Scene modifiers change its scale, tone, coverage and depth planes; wind still
+    drives the shared slow CSS drift. Do not replace it with blurred ovals or separate drawings.
+  - Rain is one fixed **fine single-layer** field of 1px, short, uneven drops beginning below
+    the bank. Explicit WMO-derived `data-rain` modifiers change the visible count, opacity,
+    length and pace for drizzle/rain/showers/storm; `data-snow` similarly refines the two snow
+    scenes without adding scene IDs. These attributes are render state only, never persisted.
+  - Weather labels and decorative condition/location marks come from controlled mappings and
+    the existing Tabler line-icon resource—no weather emoji. The card retains Daily's exact
+    Manrope UI / Space Grotesk numeric typography and its existing information geometry.
 - **Log** (was "Train") — **the workout hub**, four sections behind one sub-tab strip
   (`setLogTab()`, `LOG_TABS`): **Today**, **Program**, **Exercises**, **History**.
   - **Today** lands on an OVERVIEW (`renderLogOverview()`), not the set logger: today's
