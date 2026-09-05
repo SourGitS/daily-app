@@ -65,21 +65,25 @@ older summary — re-grep before assuming a fact from here is still true if it l
 - **The JS hook is `[data-nav-row]` / `[data-nav-group]`, not a class.** `renderQuickSettingsMenu`
   used to emit `.ds-item` buttons with no `data-tab`, which is the only reason the old toggles
   did not light them up.
-- **Accordion: exactly one group open at a time**, animating `max-height` + a chevron rotation
-  at 0.25s (matching the disclosure idiom the quick-settings dropdown used). Navigating opens
-  the group that owns the destination and closes the rest; pressing the open group's header
-  collapses it (all-closed is a valid state). That is what keeps the component shorter than the
-  twelve flat rows it replaced while reaching twice as many places.
-- **Expansion state is device-local, in `daily_nav_ui`**, written with a plain
-  `localStorage.setItem` and **never** `lsSave(key, value, syncName)` — the three-argument form
-  is the synced path and the sidebar is desktop-only, so a phone must not write a preference
-  only the laptop reads. `daily_pantry_ui` is the precedent, and like it, `daily_nav_ui` is
-  excluded from `exportAllData()`. **Nothing is written at boot**: the key stays absent until
-  the user actually presses a group header. Which group opens is resolved once, and the rule is
-  worth knowing — a STORED record is the user's own choice and wins during `_bootPhase`, so a
-  collapse survives a reload; with no record, the group owning the boot destination opens. The
-  `#hash` restore runs AFTER `_bootPhase` clears, so a deep link (`#log`, `#budget`) still lands
-  with its own group open without overwriting the stored preference.
+- **Any number of groups can be open at once**, animating `max-height` + a chevron rotation at
+  0.25s (matching the disclosure idiom the quick-settings dropdown used). Pressing a header
+  toggles that group and nothing else; all-closed and all-open are both valid. It was
+  one-at-a-time for a day (2026-09-04 → 09-05) and that was wrong — an accordion is a
+  space-saving device, the sidebar has room, and all the restriction did was take away a
+  choice. **The one automatic move is ADDITIVE**: navigating expands the group that owns the
+  destination, so the lit row is never hidden inside a collapsed group. It never collapses
+  anything, which is the whole difference. Do not reintroduce the close-the-others behaviour.
+- **Expansion state is device-local, in `daily_nav_ui`** as `{open:[groupId, …]}`, written with
+  a plain `localStorage.setItem` and **never** `lsSave(key, value, syncName)` — the
+  three-argument form is the synced path and the sidebar is desktop-only, so a phone must not
+  write a preference only the laptop reads. `daily_pantry_ui` is the precedent, and like it,
+  `daily_nav_ui` is excluded from `exportAllData()`. **Whatever is expanded when you leave is
+  expanded when you come back**, so every change persists — a header press and the additive
+  open on navigation alike — not just deliberate toggles. **Nothing is written during
+  `_bootPhase`**, so restoring a stored state cannot rewrite it, and a fresh device with no
+  record simply opens the group owning wherever the app started. `navResolveOpen()` also reads
+  the one-at-a-time era's `{open:"money"}` string shape without rewriting it; the next toggle
+  saves the array form. Deleting the key resets to that first-run default.
 - **`#ds-nav` scrolls independently of `.ds-profile`.** `#desktop-sidebar` is
   `height:100vh; position:sticky` with `.ds-profile{margin-top:auto}`; twelve flat rows just
   fitted, and the moment a group expanded past the viewport the profile would have been pushed

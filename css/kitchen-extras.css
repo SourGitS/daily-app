@@ -807,8 +807,9 @@
    alone. The default accent is a neutral grey that vanishes as a 3px bar on #080808, which is
    why the rail is --accent-text and not --accent (same reason the Journal rail is). Colour is
    never the only cue: the weight change carries it with no colour at all.
-   The accordion animates max-height, matching the 0.25s ease the retired quick-settings
-   dropdown used. A fixed cap, not a JS-measured height: the largest group is six rows. */
+   Any number of groups can be open at once — see navResolveOpen() in js/app.js. The expand
+   animates max-height, matching the 0.25s ease the retired quick-settings dropdown used. A
+   fixed cap, not a JS-measured height: the largest group is six rows. */
 .nv-group{display:block}
 .nv-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;
   background:transparent;border:0;cursor:pointer;text-align:left;

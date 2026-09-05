@@ -2182,35 +2182,54 @@ function navCurrentRow(){
   return '';
 }
 
-// Which group is expanded. Device-local: the sidebar is desktop-only, so a phone must not
-// write a preference only the laptop reads — plain localStorage, never lsSave(key,value,sync),
-// whose three-argument form is the synced path. daily_pantry_ui is the precedent. Nothing is
-// written until the user actually presses a group header (the _bootPhase trap in AGENTS.md).
 const NAV_UI_KEY='daily_nav_ui';
-let navOpenGroup=null;   // null = not resolved yet; '' = every group collapsed, a valid state
+// WHICH groups are expanded — a set, not one id. Any number can be open at once, and closing
+// one never opens or closes another. It was one-at-a-time until 2026-09-05 and that was wrong:
+// an accordion is a space-saving device, and the sidebar has room, so all it actually did was
+// take away a choice. The only automatic move left is ADDITIVE — navigating expands the group
+// that owns where you just went, so the lit row is never hidden inside a collapsed group. It
+// never collapses anything, which is the difference that matters.
+// Whatever is expanded when you leave is expanded when you come back, so this persists on
+// every change, not only on a header press. Plain localStorage, never lsSave(key,value,sync):
+// the three-argument form is the synced path and the sidebar is desktop-only, so a phone must
+// not write a preference only the laptop reads. Excluded from exportAllData() for the same
+// reason. Nothing is written during _bootPhase — the key stays absent until a real interaction.
+let navOpenGroups=null;   // null = not resolved yet; an empty Set = all collapsed, and valid
 function navResolveOpen(){
-  if(navOpenGroup!==null) return navOpenGroup;
+  if(navOpenGroups) return navOpenGroups;
   let rec=null;
   try{ rec=JSON.parse(localStorage.getItem(NAV_UI_KEY)||'null'); }catch(e){}
-  // A stored record is the user's own choice and wins at boot. With no record — which is the
-  // state until they touch a header — open whichever group owns wherever the app started.
-  navOpenGroup = (rec&&typeof rec.open==='string') ? rec.open : (NAV_GROUP_OF_ROW[navCurrentRow()]||NAV_TREE[0].id);
-  return navOpenGroup;
+  const known=id=>NAV_TREE.some(g=>g.id===id);
+  if(rec&&Array.isArray(rec.open))            navOpenGroups=new Set(rec.open.filter(known));
+  // The one-at-a-time era stored a single id (or '' for none). Read it, don't rewrite it:
+  // this is device-local UI state, and the next toggle saves the new shape anyway.
+  else if(rec&&typeof rec.open==='string')    navOpenGroups=new Set(rec.open&&known(rec.open)?[rec.open]:[]);
+  // No record at all — first run on this device. Open whichever group owns wherever the app
+  // started, so something is expanded and the current row is visible.
+  else                                        navOpenGroups=new Set([NAV_GROUP_OF_ROW[navCurrentRow()]||NAV_TREE[0].id]);
+  return navOpenGroups;
+}
+function navSaveOpen(){
+  if(_bootPhase) return;
+  try{ localStorage.setItem(NAV_UI_KEY, JSON.stringify({open:[...navResolveOpen()]})); }catch(e){}
 }
 function navToggleGroup(id){
-  navOpenGroup = (navResolveOpen()===id) ? '' : id;   // re-pressing the open header collapses it
-  try{ localStorage.setItem(NAV_UI_KEY, JSON.stringify({open:navOpenGroup})); }catch(e){}
+  const open=navResolveOpen();
+  if(open.has(id)) open.delete(id); else open.add(id);
+  navSaveOpen();
   navApplyState();
 }
 
 // The ONLY place a nav row's selected state is written, for BOTH surfaces.
 function setNavActive(){
   const row=navCurrentRow();
-  navResolveOpen();
-  // Navigating opens the group that owns the destination. Not during boot: a stored collapse
-  // is the user's choice and must survive a reload, and the post-boot #hash restore runs
-  // after _bootPhase clears, so a deep link still lands with its group open.
-  if(!_bootPhase){ const g=NAV_GROUP_OF_ROW[row]; if(g) navOpenGroup=g; }
+  const open=navResolveOpen();
+  // Additive only: expand the group you have just navigated into, never collapse the others.
+  // Skipped during boot so a stored state is restored exactly as it was left.
+  if(!_bootPhase){
+    const g=NAV_GROUP_OF_ROW[row];
+    if(g&&!open.has(g)){ open.add(g); navSaveOpen(); }
+  }
   navApplyState(row);
 }
 function navApplyState(row){
@@ -2222,7 +2241,7 @@ function navApplyState(row){
     if(on) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
   });
   document.querySelectorAll('[data-nav-group]').forEach(g=>{
-    const isOpen=g.dataset.navGroup===open;
+    const isOpen=open.has(g.dataset.navGroup);
     g.classList.toggle('is-open',isOpen);
     const hd=g.querySelector('[data-nav-group-hd]');
     if(hd) hd.setAttribute('aria-expanded',isOpen?'true':'false');

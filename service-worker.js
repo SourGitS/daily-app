@@ -151,7 +151,9 @@
 // app squares off behind a new --radius-bar token; the Budget week's cards are reordered from
 // ONE BUD_CARDS list that both layout modes derive from; and Home's weight card shows the last
 // three readings instead of a sparkline.
-const CACHE_NAME = 'daily-v299';
+// v300: the nav groups stop being an accordion - any number can be expanded at once, closing
+// one never touches another, and whatever is open persists across a reload.
+const CACHE_NAME = 'daily-v300';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

@@ -378,7 +378,7 @@ day card, the hero-card consolidation (one `.hero-panel` for
 Budget › Month, Year and Accounts),
 Budget/Accounts hierarchy wording, Log Today weight cards, the Log training hub
 (`83f9969` then `54073ce`), the Weekly Review, and the Kitchen favourite change.
-`CACHE_NAME` is at `daily-v299`.
+`CACHE_NAME` is at `daily-v300`.
 
 The workout hub adds **no** synced store and performs **no** migration, so it does not carry
 the fresh-profile sync risk the Weekly Review does. The Weekly Review's two stores
