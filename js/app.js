@@ -10779,7 +10779,7 @@ function budAccentRgba(a){ return 'rgba('+hexToRgb(budAccentHex())+','+a+')'; }
 // rather than saying something different about each cell.
 function budHeroPanel(items, opts){
   const o=opts||{};
-  return '<div class="hero-panel hero-surface hero-wide" style="--hp-cols:'+(o.cols||3)+';--hp-cols-sm:'+(o.colsSm||2)+'">'+
+  return '<div class="hero-panel hero-surface hero-wide'+(o.className?' '+o.className:'')+'" style="--hp-cols:'+(o.cols||3)+';--hp-cols-sm:'+(o.colsSm||2)+'">'+
     '<div class="hp-grid">'+items.map(m=>
       '<div class="hp-cell'+(m.lg?' hp-lg':'')+(m.lead?' hp-lead':'')+'">'+
         '<div class="hm-label">'+(m.icon?cardIcon(m.icon):'')+'<span>'+escText(m.label)+'</span></div>'+
@@ -11618,17 +11618,15 @@ function renderBillsView(){
       ' to include '+(undated===1?'it':'them')+' here.</div>'
     : '';
 
-  const summary=
-    '<div class="card bills-summary">'+
-      cardHeader('calendar','Bills calendar')+
-      (anyDated
-        ? '<div class="card-fig">'+fmtMoney(heaviest.total)+'</div>'+
-          '<div class="card-fig-u">'+_catEscHtml(heaviest.label)+' has the most scheduled bills — set aside '+
-            fmtMoney(heaviest.total)+'.</div>'
-        : '<div class="bills-empty-lead">Nothing scheduled in the next three months.</div>'+
-          '<div class="card-fig-u">Add a billing date to a recurring charge in Settings → Budget setup and it will appear here.</div>')+
-      undatedHint+
-    '</div>';
+  const summary=budHeroPanel([{
+    icon:'calendar', label:'Bills calendar',
+    val:anyDated?fmtMoney(heaviest.total):'Nothing scheduled',
+    sub:anyDated
+      ? _catEscHtml(heaviest.label)+' has the most scheduled bills — set aside '+fmtMoney(heaviest.total)+'.'
+      : 'No dated recurring charges fall in the next three months. Add a billing date in Settings → Budget setup and it will appear here.',
+    extra:undatedHint,
+    lg:anyDated, lead:true
+  }],{cols:1,colsSm:1,className:'bills-summary'});
 
   const chart=anyDated ? '<div class="card bills-chart-card">'+billsChartHtml(months,heaviest)+'</div>' : '';
 

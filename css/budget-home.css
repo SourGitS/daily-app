@@ -1580,12 +1580,12 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 }
 
 /* ── Bills calendar ────────────────────────────────────────────────
-   Forward planning for scheduled charges. Uses the shared card vocabulary (.card-hd via
-   cardHeader(), .card-fig / .card-fig-u) rather than a competing card style. */
-.bills-summary .card-fig-u{margin-top:2px}
-.bills-empty-lead{font-size:15px;font-weight:700;color:var(--text);margin-top:6px}
+   Forward planning for scheduled charges. Its one decision-making figure — the heaviest
+   upcoming month and what to set aside — leads in the shared hero panel; the chart and dated
+   month lists remain evidence cards underneath it. */
 .bills-hint{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);
   font-size:12px;font-weight:600;color:var(--muted);line-height:1.45}
+.hero-panel .bills-hint{border-top-color:rgba(255,255,255,.18);color:rgba(255,255,255,.78)}
 
 /* Three-month chart. Bars carry the accent as a FILL (never as text — see the
    --accent vs --accent-text note in CLAUDE.md); the heaviest month gets the solid accent
