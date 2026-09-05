@@ -2,6 +2,11 @@
 :root{
   /* ── Shared tokens (theme-agnostic: layout, type, accent/semantic) ── */
   --radius-card:22px;
+  /* Magnitude bars and progress meters — square, one value, one place. Every track+fill pair
+     in the app reads this; a 4px radius on an 8px bar is a full pill, and rounding one bar
+     while squaring another is what made them read as unrelated components. .card-bar-pace
+     keeps its own 1px: it is a 2px marker, not a bar. */
+  --radius-bar:0;
   --radius-hero:24px;
   --radius-pill:14px;
   --radius:16px;

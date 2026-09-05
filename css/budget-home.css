@@ -213,8 +213,8 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .bud-day-today{padding:2px 6px;border-radius:999px;background:rgba(var(--accent-rgb),.14);
   color:var(--accent-text);font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
 .bud-day-row.is-today .bud-day-name{color:var(--accent-text)}
-.bud-day-bar{height:6px;border-radius:3px;background:var(--track);overflow:hidden}
-.bud-day-bar-fill{display:block;height:100%;border-radius:3px;transition:width .35s ease}
+.bud-day-bar{height:6px;border-radius:var(--radius-bar);background:var(--track);overflow:hidden}
+.bud-day-bar-fill{display:block;height:100%;border-radius:var(--radius-bar);transition:width .35s ease}
 .bud-day-amt{font-family:var(--font-num);font-size:14px;font-weight:800;color:var(--text);
   text-align:right;white-space:nowrap}
 /* A day with nothing on it still prints its figure — it is information, not an error — but it
@@ -359,8 +359,8 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .budget-hero-stat-val{font-family:var(--font-num);font-size:20px;font-weight:700;color:#fff}
 .budget-hero-stat-label{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.72);margin-top:2px}
 .budget-hero-pill{background:rgba(255,255,255,.2);color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;display:inline-block}
-.budget-hero-bar-wrap{height:4px;background:rgba(255,255,255,.2);border-radius:4px;overflow:hidden;margin-bottom:6px}
-.budget-hero-bar-fill{height:100%;background:#fff;border-radius:4px;transition:width .4s ease}
+.budget-hero-bar-wrap{height:4px;background:rgba(255,255,255,.2);border-radius:var(--radius-bar);overflow:hidden;margin-bottom:6px}
+.budget-hero-bar-fill{height:100%;background:#fff;border-radius:var(--radius-bar);transition:width .4s ease}
 .budget-hero-bar-labels{display:flex;justify-content:space-between;font-size:11px;color:rgba(255,255,255,.65);font-weight:500}
 
 /* Collapsible budget cards (.bud-toggle header → toggles .bud-collapsed on the card) */
@@ -501,80 +501,61 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   .budget-setup-primary-fields.has-cycle{grid-template-columns:minmax(180px,1fr) minmax(130px,.55fr) minmax(130px,.55fr)}
   .budget-setup-primary-fields.has-charge-type{grid-template-columns:minmax(180px,1fr) repeat(3,minmax(120px,.55fr))}
 }
-/* ── Budget period hero metrics (Month + Year) ──────────────────────────────────
-   Hero cards, at summary SIZE. Two earlier attempts bracket this one and neither should come
-   back: full-height hero banners (136px tall with a 30px figure) turned six summaries into six
-   competing posters, and flat neutral tiles with a 3px coloured edge fixed the size by giving
-   up the treatment entirely. The gradient, white text and clipped decorative shape stay; the
-   geometry is the compact one.
+/* ── The hero SURFACE ───────────────────────────────────────────────────────────
+   Held apart from any one component's geometry: the gradient, the white text, the clipped
+   decorative circle and the top glare. Its only wearer now is .hero-panel — Accounts, Budget
+   > Month and Budget > Year — at .hero-wide's full width.
+   Deliberately NOT bundled with .card: these surfaces open nothing, and .card would drag in
+   the press-lift and cursor:pointer that made the old .sum-card rear up under a finger.
 
-   Three things this pattern does deliberately:
+   Three things it does deliberately:
+   · It FOLLOWS THE ACCENT. --accent-hero / --accent-hero-2 are written by applyAccent() from
+     heroStopsFor(), which keeps hue and saturation and walks lightness down until white clears
+     4.2:1 — so a pale custom accent from the colour picker produces a deep, readable surface
+     rather than an unreadable one, and an achromatic accent keeps its zero saturation instead
+     of being invented into a colour. The literal graphite stayed here long after every other
+     hero had migrated, which is why these three screens were the only ones ignoring the user's
+     colour. The hexes survive as the var() FALLBACK — the pre-JS paint, before applyAccent()
+     has run. Because these are custom properties the surface restyles itself the moment they
+     are written, so nothing here needs a forced re-render from applyAccent()/applyDayColour().
    · The stops are SOLID. An rgba() ramp blends into --bg, so its pale end cannot carry a 9px
      white label in light mode — the reason .ov-hero and .budget-snapshot-card each needed a
-     [data-theme="light"] floor. The accent variant reads --accent-hero / --accent-hero-2,
-     which heroStopsFor() in js/app.js walks down until white clears 4.2:1, so a pale custom
-     accent from the colour picker produces a deep surface rather than an unreadable one.
-   · It is NOT in the press-lift list and carries no cursor:pointer. These cards open nothing;
-     the old .sum-card inherited both and reared up under a finger that had nowhere to go.
+     [data-theme="light"] floor before they were migrated too.
    · The decorative circle is a ::before behind a z-indexed content layer, so it never crosses
-     a figure and never reads as an unexplained data line. */
-.hero-metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:16px;align-items:stretch}
-/* The hero SURFACE, separated from any one card's geometry: the gradient, the white text, the
-   clipped circle and the top glare. .hm-card wears it at summary size; the Accounts net-worth
-   and debt-payoff cards wear it at their own full width, keeping their three-column spread.
-   Deliberately NOT bundled with .card — these cards open nothing, and .card would drag in the
-   press-lift and cursor:pointer that made the old .sum-card rear up under a finger. */
-.hero-surface{--hm-from:#4A4A52;--hm-mid:#33333A;--hm-to:#232329;
+     a figure and never reads as an unexplained data line.
+   Following the accent does NOT reopen the per-cell colour question. One accent-tinted surface
+   holding hairline-divided cells is still ONE surface; what .hero-panel exists to prevent is
+   six cells in four saturated colours reading as six unrelated announcements. */
+.hero-surface{--hm-from:var(--accent-hero,#4A4A52);
+  --hm-mid:var(--accent-hero,#4A4A52);
+  --hm-to:var(--accent-hero-2,#26262C);
   position:relative;overflow:hidden;border-radius:var(--radius-hero);color:#fff;
   background:linear-gradient(152deg,var(--hm-from) 0%,var(--hm-mid) 52%,var(--hm-to) 100%);
   box-shadow:0 6px 16px rgba(0,0,0,.18);text-shadow:0 1px 2px rgba(0,0,0,.18)}
-/* Sized to the compact card — the old 148px circle was drawn for a 136px-tall hero and would
-   swamp this one. .hero-wide re-scales it for the full-width cards. */
+/* Sized to a compact surface — the old 148px circle was drawn for a 136px-tall hero and would
+   swamp one. .hero-wide re-scales it for the full-width panels, which is every caller today. */
 .hero-surface::before{content:'';position:absolute;width:96px;height:96px;right:-40px;top:-54px;border-radius:50%;background:rgba(255,255,255,.10);pointer-events:none}
 .hero-surface::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% -25%,rgba(255,255,255,.12),transparent 62%);pointer-events:none}
 .hero-surface>*{position:relative;z-index:1}
 .hero-wide::before{width:200px;height:200px;right:-70px;top:-108px}
-.hm-card{padding:11px 13px 10px;display:flex;flex-direction:column;gap:4px;min-height:84px}
-/* Direction, not judgement: green in, red out, the live accent for what stuck, and a cool
-   slate for a figure that is neither — kept off plain graphite because the DEFAULT accent is
-   a neutral grey and the two collided. */
-.hm-income,.hm-good {--hm-from:#1E9553;--hm-mid:#116E3A;--hm-to:#0A4C27}
-.hm-expense,.hm-short{--hm-from:#E03131;--hm-mid:#B91C1C;--hm-to:#8E1616}
-.hm-accent {--hm-from:var(--accent-hero,#4A4A52);--hm-mid:var(--accent-hero,#4A4A52);--hm-to:var(--accent-hero-2,#26262C)}
-.hm-neutral{--hm-from:#3E4557;--hm-mid:#2B303D;--hm-to:#1E222C}
+/* The .hm-* parts BELOW are shared: .hp-cell (the hero panel's cell) builds its markup from
+   them. What is gone is the card that used to wear them — .hero-metric-grid, .hm-card and its
+   six direction-coloured variants (.hm-income/.hm-good, .hm-expense/.hm-short, .hm-accent,
+   .hm-neutral). budHeroMetric() had no callers left after Budget > Month became a hero panel,
+   so the whole component was unreachable. Do not delete the rest of this block with it. */
 .hm-label{display:flex;align-items:center;gap:5px;font-size:9px;font-weight:800;letter-spacing:.075em;text-transform:uppercase;line-height:1.25;color:rgba(255,255,255,.82)}
 .hm-label .card-hd-ico{width:12px;height:12px;flex-shrink:0;color:inherit;opacity:.92}
 .hm-val{font-family:var(--font-num);font-size:22px;font-weight:800;line-height:1;letter-spacing:-.02em;color:#fff;margin-top:auto;overflow-wrap:anywhere}
 .hm-unit{font-family:var(--font-ui);font-size:11px;font-weight:700;color:rgba(255,255,255,.78);margin-left:5px}
 .hm-sub{font-size:10.5px;font-weight:600;line-height:1.3;color:rgba(255,255,255,.82)}
 .hm-chip{display:flex}
-/* .tstat's tints are drawn for a card background and disappear on a saturated hero. Four
-   selectors deep on purpose: kitchen-extras.css loads LAST, so its [data-theme="dark"]
-   .tstat.pos (0,3,0) would otherwise outrank a .hm-card .tstat.pos of the same weight. */
-.hero-metric-grid .hm-card .tstat{background:rgba(255,255,255,.17);border-color:rgba(255,255,255,.32);color:#fff;text-shadow:none}
-.hero-metric-grid .hm-card .tstat.pos{color:#BCF3D2}
-.hero-metric-grid .hm-card .tstat.warn{color:#FFE3A4}
-.hero-metric-grid .hm-card .tstat.neg{color:#FFC9C0}
-.hero-metric-grid .hm-card .tstat svg{opacity:.95}
-@media (max-width:560px){
-  /* At ~110px a card the figure would shrink below the point where it reads as the focal
-     element, so the rate leads full-width and income/expenses pair beneath it. */
-  .hero-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
-  .hm-card{min-height:78px;padding:10px 11px 9px}
-  .hm-val{font-size:20px}
-}
-@media (min-width:1024px){
-  .hero-metric-grid{gap:12px;margin-bottom:18px}
-  .hm-card{min-height:92px;padding:13px 15px 12px;gap:5px}
-  .hm-val{font-size:25px}
-}
 
 /* ── .hero-panel — ONE hero card holding several figures ──────────────────────
-   The consolidated form of .hero-metric-grid. That component gives every figure its own
-   card and colours each one by direction; put six of them on a screen and the result is
-   green, red, accent and slate slabs sitting side by side, which reads as four unrelated
-   things rather than one summary. This one is a SINGLE .hero-surface in the neutral
-   graphite default, divided into cells by hairlines — so the card says "here is the
+   The consolidated form of the retired .hero-metric-grid / .hm-card pair. That component gave
+   every figure its own card and coloured each one by direction; put six of them on a screen
+   and the result is green, red, accent and slate slabs side by side, which reads as four
+   unrelated things rather than one summary. This one is a SINGLE .hero-surface — one accent
+   tint for the whole panel — divided into cells by hairlines, so the card says "here is the
    summary" and any verdict inside it travels in a .tstat chip, which is the house rule
    everywhere else (see "Judgements go in .tstat chips" in CLAUDE.md).
    · The dividers are a border on every cell's TOP and LEFT edge, with the grid pulled 1px
@@ -591,17 +572,26 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .hp-cell{min-width:0;padding:14px 16px 15px;
   border-top:1px solid rgba(255,255,255,.15);border-left:1px solid rgba(255,255,255,.15)}
 .hp-cell .hm-label{margin-bottom:9px}
-/* .hm-val carries margin-top:auto for .hm-card's bottom-aligned figure; a panel cell stacks
-   from the top and can hold trailing detail, so it is reset here rather than inherited. */
+/* .hm-val still carries the margin-top:auto that bottom-aligned the retired .hm-card's figure;
+   a panel cell stacks from the top and can hold trailing detail, so it is reset here. */
 .hp-cell .hm-val{margin-top:0;font-size:24px}
 .hp-cell .hm-sub{font-size:11.5px;margin-top:5px}
 .hp-cell .hm-chip{margin-top:8px}
 /* The lead figure of a two-up panel (Accounts) — the first thing that screen says, so it is
    sized like a hero figure rather than a summary tile. */
 .hp-cell.hp-lg .hm-val{font-size:38px}
-/* Same reason as the .hero-metric-grid block above: kitchen-extras.css loads LAST, so its
-   [data-theme="dark"] .tstat.pos (0,3,0) has to be outweighed, not merely followed. */
-.hero-panel .hp-cell .tstat{background:rgba(255,255,255,.17);border-color:rgba(255,255,255,.32);color:#fff;text-shadow:none}
+/* .tstat's tints are drawn for a card background and disappear on a saturated hero. Four
+   selectors deep on purpose: kitchen-extras.css loads LAST, so its [data-theme="dark"]
+   .tstat.pos (0,3,0) has to be OUTWEIGHED, not merely followed.
+   The state classes are repeated on this first rule for exactly that reason. Written three-deep
+   it tied [data-theme="dark"] .tstat.warn and lost the tie on load order — so every chip on a
+   hero kept its amber/green/red card BACKGROUND and only had its text colour rescued by the
+   four-deep rules below. Invisible while the surface was graphite; an amber chip on a blue
+   hero is not. */
+.hero-panel .hp-cell .tstat,
+.hero-panel .hp-cell .tstat.pos,
+.hero-panel .hp-cell .tstat.warn,
+.hero-panel .hp-cell .tstat.neg{background:rgba(255,255,255,.17);border-color:rgba(255,255,255,.32);color:#fff;text-shadow:none}
 .hero-panel .hp-cell .tstat.pos{color:#BCF3D2}
 .hero-panel .hp-cell .tstat.warn{color:#FFE3A4}
 .hero-panel .hp-cell .tstat.neg{color:#FFC9C0}
@@ -626,8 +616,8 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   .hp-cell .hm-sub{font-size:12.5px}
   .hp-cell.hp-lg .hm-val{font-size:46px}
 }
-.status-bar-wrap{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:6px}
-.status-bar-fill{height:100%;border-radius:4px;transition:width 0.4s ease}
+.status-bar-wrap{height:8px;background:var(--border);border-radius:var(--radius-bar);overflow:hidden;margin-bottom:6px}
+.status-bar-fill{height:100%;border-radius:var(--radius-bar);transition:width 0.4s ease}
 .status-text{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:14px}
 /* .status-pill (good / warn / over) lived here. It is superseded by .tstat in
    css/kitchen-extras.css — same idea, but every state carries an icon and a word as well as
@@ -671,18 +661,28 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .month-spend-compare{font-size:11.5px;font-weight:650;line-height:1.4;color:var(--text-2)}
 /* Part-to-whole, which is the one thing the donut did well — kept, as a single bar read left
    to right. The 2px gaps are the card colour, not a stroke, so segments stay flat. */
-.month-spend-strip{display:flex;gap:2px;height:10px;margin:13px 0 7px;border-radius:5px;overflow:hidden}
+.month-spend-strip{display:flex;gap:2px;height:10px;margin:13px 0 7px;border-radius:var(--radius-bar);overflow:hidden}
 .month-spend-seg{display:block;height:100%;min-width:2px}
 .month-spend-lead{font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:14px}
 .month-spend-list{min-width:0;display:flex;flex-direction:column}
-.month-spend-row{display:grid;grid-template-columns:minmax(84px,auto) minmax(40px,1fr) minmax(74px,auto) 46px;align-items:center;gap:12px;width:100%;padding:9px 8px;border:0;border-top:1px solid var(--border);border-radius:9px;background:transparent;color:var(--text);font:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s ease,transform .15s ease}
+/* The label and amount columns are FIXED. minmax(84px,auto) sized column 1 to each row's own
+   label, and every row is its own grid — so every category that fitted inside 84px shared that
+   width while one longer name ("Money Transfer") grew its column and started its bar ~23px
+   further right than the rest. The amount column had the same fault, hidden only because the
+   figures are right-aligned against a fixed share column. Fixed tracks put every bar on one x;
+   .month-spend-name already truncates with an ellipsis, so a long label cannot push anything.
+   164px is measured, not guessed: it clears "Uncategorised / archived" (159px at 13px/650),
+   which is the app's OWN label for legacy detail it cannot attribute and the longest string
+   this list can produce. It costs the bar 44px of ~760 on desktop, which is nothing; on a
+   phone the bar is the scarce resource, so the label column gives instead. */
+.month-spend-row{display:grid;grid-template-columns:164px minmax(40px,1fr) 88px 46px;align-items:center;gap:12px;width:100%;padding:9px 8px;border:0;border-top:1px solid var(--border);border-radius:9px;background:transparent;color:var(--text);font:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s ease,transform .15s ease}
 .month-spend-list>.month-spend-row:first-child{border-top:none}
 .month-spend-row:hover,.month-spend-row.selected{background:var(--track)}
 .month-spend-row:active{transform:scale(.995)}
 .month-spend-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px;position:relative;z-index:1}
 .month-spend-name{min-width:0;font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.month-spend-track{height:8px;border-radius:4px;background:var(--track);overflow:hidden}
-.month-spend-fill{display:block;height:100%;border-radius:4px;transition:width .35s ease}
+.month-spend-track{height:8px;border-radius:var(--radius-bar);background:var(--track);overflow:hidden}
+.month-spend-fill{display:block;height:100%;border-radius:var(--radius-bar);transition:width .35s ease}
 .month-spend-amount{font-family:var(--font-num);font-size:13px;font-weight:750;text-align:right;white-space:nowrap}
 .month-spend-pct{font-family:var(--font-num);font-size:11px;font-weight:700;text-align:right;color:var(--muted);white-space:nowrap}
 .month-spend-note{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:15px;padding-top:12px;border-top:1px solid var(--border);font-size:10.5px;line-height:1.45;color:var(--muted)}
@@ -695,13 +695,13 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .month-spend-empty span{font-size:12px;line-height:1.45}
 @media (max-width:680px){
   .month-spend-total{font-size:26px}
-  .month-spend-row{grid-template-columns:minmax(72px,auto) minmax(28px,1fr) minmax(70px,auto) 42px;gap:9px;padding-left:5px;padding-right:5px}
+  .month-spend-row{grid-template-columns:116px minmax(28px,1fr) 84px 42px;gap:9px;padding-left:5px;padding-right:5px}
   .month-spend-note{align-items:flex-start;flex-direction:column;gap:3px}
 }
 @media (max-width:390px){
   /* The bar is the first thing to give up room — the label, amount and share are the record;
      the bar is only the comparison, and it still works at 28px. */
-  .month-spend-row{gap:7px;grid-template-columns:minmax(62px,auto) minmax(20px,1fr) minmax(64px,auto) 38px}
+  .month-spend-row{gap:7px;grid-template-columns:98px minmax(20px,1fr) 78px 38px}
   .month-spend-name,.month-spend-amount{font-size:12px}
   .month-spend-pct{font-size:10.5px}
 }
@@ -1418,8 +1418,8 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .vg-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .vg-amt{font-family:var(--font-num);font-size:34px;font-weight:800;line-height:1;letter-spacing:-.02em;color:var(--muted)}
 .vg-sub{font-size:12px;font-weight:600;color:var(--muted);margin-top:5px}
-.vg-bar-wrap{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin:12px 0 6px}
-.vg-bar-fill{height:100%;border-radius:4px;background:var(--muted);transition:width .35s ease,background .35s ease}
+.vg-bar-wrap{height:8px;background:var(--border);border-radius:var(--radius-bar);overflow:hidden;margin:12px 0 6px}
+.vg-bar-fill{height:100%;border-radius:var(--radius-bar);background:var(--muted);transition:width .35s ease,background .35s ease}
 .vg-foot{display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:var(--muted)}
 /* Over the goal: a tint on the whole card, so it reads at a glance without hunting for the number */
 .vg-card.vg-over{border-color:rgba(231,76,60,.45)}
@@ -1436,6 +1436,10 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .nw-chart-kicker{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .nw-chart-value{font-family:var(--font-num);font-size:32px;font-weight:800;line-height:1;letter-spacing:-.025em;margin-top:8px;color:var(--text)}
 .nw-chart-change{font-family:var(--font-num);font-size:12px;font-weight:700;margin-top:6px}
+/* Absorbed from the Accounts hero panel, which used to state net worth directly above this
+   card. .tstat needs no re-tint here: this is a .card, not a hero surface. */
+.nw-chart-mix{font-size:11.5px;font-weight:600;color:var(--muted);margin-top:7px}
+.nw-chart-verdict{margin-top:9px}
 .nw-chart-ranges{display:flex;gap:2px;padding:3px;background:var(--border);border-radius:10px;flex-shrink:0}
 .nw-chart-ranges button{height:28px;min-width:32px;padding:0 7px;border:0;border-radius:7px;background:transparent;color:var(--muted);font-size:10px;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .nw-chart-ranges button.on{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.12)}

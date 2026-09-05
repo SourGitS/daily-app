@@ -110,9 +110,9 @@
 .hl-prev-plain .hl-lbl,.hl-prev-plain .hl-sub{color:var(--muted);opacity:1}
 .hl-row-between{display:flex;align-items:center;justify-content:space-between;gap:8px}
 /* Progress bar — white on the tinted heroes, --border on the plain card surface */
-.hl-bar{height:4px;border-radius:3px;background:rgba(255,255,255,.28);overflow:hidden;margin-top:7px}
+.hl-bar{height:4px;border-radius:var(--radius-bar);background:rgba(255,255,255,.28);overflow:hidden;margin-top:7px}
 .hl-prev-plain .hl-bar{background:var(--border)}
-.hl-bar>i{display:block;height:100%;border-radius:3px;background:currentColor}
+.hl-bar>i{display:block;height:100%;border-radius:var(--radius-bar);background:currentColor}
 /* Weekly "6 sessions" segment row (mirrors .session-seg on the real Streak card) */
 .hl-segs{display:flex;gap:3px;margin-top:5px}
 .hl-segs>i{flex:1;height:3px;border-radius:2px;background:var(--border)}

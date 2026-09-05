@@ -10740,18 +10740,11 @@ function budPalette(){
 const BUD_CHART_COLORS=new Proxy({},{get:(t,k)=>budPalette()[k]});
 // rgba() form of the accent, for chart fills that sit under a line.
 function budAccentRgba(a){ return 'rgba('+hexToRgb(budAccentHex())+','+a+')'; }
-// m = {variant, icon, label, val, unit, sub, chip}. val/sub/chip are raw HTML (they carry
-// already-escaped figures and tstat markup); label is plain text.
-function budHeroMetric(m){
-  return '<div class="hm-card hero-surface hm-'+(m.variant||'neutral')+'">'+
-    '<div class="hm-label">'+(m.icon?cardIcon(m.icon):'')+'<span>'+escText(m.label)+'</span></div>'+
-    '<div class="hm-val">'+m.val+(m.unit?'<span class="hm-unit">'+escText(m.unit)+'</span>':'')+'</div>'+
-    (m.sub?'<div class="hm-sub">'+m.sub+'</div>':'')+
-    (m.chip?'<div class="hm-chip">'+m.chip+'</div>':'')+
-  '</div>';
-}
-
-// ONE hero card holding several figures, against budHeroMetric's one card per figure.
+// ONE hero card holding several figures. It replaced budHeroMetric(), which built one card
+// per figure and coloured each by direction; that function outlived its last caller when
+// Budget > Month became a panel, so it and its .hm-card / .hero-metric-grid CSS are gone.
+// The .hm-* PARTS it shared with this one (.hm-label/.hm-val/.hm-unit/.hm-sub/.hm-chip) are
+// still very much alive — the cells below are built from them.
 // items = [{icon,label,val,unit,sub,chip,extra,lg}] — val/sub/chip/extra are raw HTML (they
 // carry already-escaped figures and tstat markup), label is plain text, lg promotes the
 // figure to hero size. opts = {cols, colsSm}: the column count is handed to CSS as a custom
@@ -10759,10 +10752,12 @@ function budHeroMetric(m){
 // grid-template-columns would outrank them). `lead` spans a cell across the whole panel at
 // the narrow breakpoint — a LAYOUT affordance, not a colour variant: three cells at two
 // columns otherwise leave a half-empty second row.
-// There is deliberately NO per-cell colour variant. Six budHeroMetric cards put green, red,
+// There is deliberately NO per-cell colour variant. One card per figure put green, red,
 // accent and slate slabs next to each other, which is four announcements where the screen
-// only has one thing to say; here the surface is one neutral graphite and the verdict rides
-// in a .tstat chip inside the cell. Don't reintroduce a variant argument.
+// only has one thing to say; here the surface is ONE accent-tinted .hero-surface and the
+// verdict rides in a .tstat chip inside the cell. Don't reintroduce a variant argument — the
+// surface following the accent is not a hole in that rule, because it tints the whole panel
+// rather than saying something different about each cell.
 function budHeroPanel(items, opts){
   const o=opts||{};
   return '<div class="hero-panel hero-surface hero-wide" style="--hp-cols:'+(o.cols||3)+';--hp-cols-sm:'+(o.colsSm||2)+'">'+
@@ -11809,19 +11804,48 @@ function renderRecordCard(){
 // screen — no CSS `order`, no duplicate copies with duplicate ids and handlers. Every id below
 // is a stable wrapper element; its renderer replaces innerHTML, never the element itself, so
 // re-parenting survives any number of re-renders and keeps each card's data-bud-key intact.
+// ── Budget week: card order ───────────────────────────────────────
+// ONE ordered list, and it is the ONLY place a Budget card's position is decided. `col` says
+// which DESKTOP column the card lands in; MOBILE is simply this order, top to bottom.
+// The two-list version this replaced is how bud-setup-card ended up named in the mobile plan
+// and in neither desktop column: budApplyLayout() only appendChild()s the ids it is given, and
+// appending MOVES a node to the end — so on desktop every other card was appended past the
+// setup card and it ended up first in the left column, above Income. Invisible in normal use
+// (renderBudgetSetupCard() returns '' once the week has any income), which is why it survived.
+// Adding a Budget card now means adding ONE line here.
+//
+// Mobile reads action-first: record a purchase, see what it did to the week, then the plan the
+// week is measured against, then reference. Setup is a dismissible onboarding banner so it
+// leads; Stranded data is a maintenance state so it trails.
+// Desktop keeps the plan and the entry work on the left — the long Variable card lives there
+// and is what makes the page tall — and puts the action, the verdict and the tools on the
+// right, which is what keeps that tall column from dwarfing a short one.
+const BUD_CARDS=[
+  {id:'bud-setup-card',      col:'left' },
+  {id:'bud-record-card',     col:'right'},
+  {id:'bud-result-card',     col:'right'},
+  {id:'bud-forecast-card',   col:'right'},
+  {id:'bud-income-card',     col:'left' },
+  {id:'bud-savings-card',    col:'left' },
+  {id:'bud-fixed-card',      col:'left' },
+  {id:'bud-upcoming-card',   col:'left' },
+  {id:'bud-vargoal-card',    col:'left' },
+  {id:'bud-variable-card',   col:'left' },
+  {id:'bud-days-card',       col:'left' },
+  {id:'prev-weeks-section',  col:'right'},
+  {id:'bud-calc-card',       col:'right'},
+  {id:'bud-stranded-card',   col:'right'},
+];
+// Derived, so the two modes cannot drift apart. Mobile keeps the constant's single column
+// because #bud-col-left is the only column the phone layout renders (and in the landscape
+// block it is itself a grid, where prev-weeks-section and bud-calc-card span both tracks via
+// .bud-span-2). The name stays BUD_LAYOUT so budApplyLayout() and anything else reading it
+// keeps working.
 const BUD_LAYOUT={
-  // Mobile: one linear stack, in the order the week is actually worked through.
-  mobile:[['bud-col-left',['bud-income-card','bud-savings-card','bud-fixed-card','bud-upcoming-card',
-    'bud-setup-card','bud-vargoal-card','bud-record-card','bud-variable-card','bud-days-card','bud-forecast-card','bud-stranded-card','bud-result-card',
-    'prev-weeks-section','bud-calc-card']]],
-  // Desktop: left is the plan and this week's entry, right is the action, the outcome and the
-  // supporting tools. Upcoming and the calculator move right because the left stack (a long
-  // Variable card especially) is what makes the page tall.
+  mobile:[['bud-col-left', BUD_CARDS.map(c=>c.id)]],
   desktop:[
-    ['bud-col-left',['bud-income-card','bud-savings-card','bud-fixed-card','bud-vargoal-card',
-      'bud-variable-card','bud-forecast-card','bud-stranded-card']],
-    ['bud-col-right',['bud-record-card','bud-days-card','bud-result-card','bud-upcoming-card','prev-weeks-section',
-      'bud-calc-card']]
+    ['bud-col-left',  BUD_CARDS.filter(c=>c.col==='left' ).map(c=>c.id)],
+    ['bud-col-right', BUD_CARDS.filter(c=>c.col==='right').map(c=>c.id)]
   ]
 };
 let _budLayoutMode=null;
@@ -12906,8 +12930,7 @@ function renderMonth(){
     // ONE hero panel, not three direction-coloured hero cards. Month opened with an accent
     // slab, a green one and a red one side by side, which is three announcements where the
     // screen has one thing to say; Year and Accounts had already been consolidated the same
-    // way. The rate leads full-width on a phone so the other two still pair beneath it,
-    // which is the layout .hero-metric-grid used to get from a :first-child rule.
+    // way. The rate leads full-width on a phone so the other two still pair beneath it.
     sg.className='';
     sg.innerHTML=budHeroPanel([
       {icon:'target', label:'Savings rate', val:savRate, lead:true,
@@ -16000,6 +16023,11 @@ function renderNetWorthChartInto(wrapId){
   const debtsData =dates.map(d=>debtAccts.reduce((s,a)=>s+accountBalanceAt(a,d),0));
   const netData   =dates.map((d,i)=>assetsData[i]-debtsData[i]);
   const curNet=netData[netData.length-1];
+  // The chart's OWN last common-coverage point, not accountsNetWorth()/accountsAssetsTotal().
+  // Those are live; this is where the line beneath actually ends, and a card must state the
+  // figure its own chart draws or the two disagree by whatever has been recorded since.
+  const curAssets=assetsData[assetsData.length-1], curDebts=debtsData[debtsData.length-1];
+  const nwChip=curNet>=0?tstat('pos','In the black','check',true):tstat('neg','Under water','down',true);
   const firstNet=netData[0], change=curNet-firstNet;
   const changePct=firstNet?change/Math.abs(firstNet)*100:null;
   const changeCol=change>0?'var(--success)':change<0?'var(--danger)':'var(--muted)';
@@ -16018,7 +16046,11 @@ function renderNetWorthChartInto(wrapId){
     '<div class="nw-chart-head">'+
       '<div><div class="nw-chart-kicker">'+acctIcon('trend',13)+'Net worth</div>'+
         '<div class="nw-chart-value">'+fmtMoney(curNet)+'</div>'+
-        '<div class="nw-chart-change" style="color:'+changeCol+'">'+changeText+'</div></div>'+
+        '<div class="nw-chart-change" style="color:'+changeCol+'">'+changeText+'</div>'+
+        // Absorbed from the Accounts hero, which used to state the same figure directly above
+        // this card. Shown in BOTH mounts — it is the same truth on Stats > Finance.
+        '<div class="nw-chart-mix">'+fmtMoney(curAssets)+' assets · '+fmtMoney(curDebts)+' debts</div>'+
+        '<div class="nw-chart-verdict">'+nwChip+'</div></div>'+
       '<div class="nw-chart-ranges">'+ranges.map(r=>'<button onclick="setNWChartRange(\''+r[0]+'\')" class="'+(nwChartRange===r[0]?'on':'')+'">'+r[1]+'</button>').join('')+'</div>'+
     '</div>'+
     '<div class="nw-chart-canvas"><canvas id="'+canvasId+'"></canvas></div>'+
@@ -16417,10 +16449,15 @@ function buildWeightGoalCard(){
   const cur=sorted[sorted.length-1];
   const target=parseFloat(weightGoal&&weightGoal.target);
   const hasGoal=!isNaN(target)&&target>0;
-  // Last ~8 weeks of readings for the shape.
-  const cutoff=dateStr(new Date(Date.now()-56*864e5));
-  const recent=sorted.filter(w=>w.date>=cutoff);
-  const series=(recent.length>=2?recent:sorted.slice(-8)).map(w=>parseFloat(w.weight)).filter(v=>isFinite(v));
+  // The three most recent readings, oldest to newest, so the eye runs left to right into today
+  // — the same thing Log > Today shows, built from the SHARED card vocabulary (.card-split via
+  // statsSplit) rather than the Log hub's own .lg-weight-* classes. It replaced a sparkline
+  // whose target line was already stated in words in .card-cap ("10.5 kg to go") and whose
+  // trend was already judged by the On pace / Behind pace pill in the header.
+  // Never padded to three: two readings render two cells, one renders one. A row of em dashes
+  // reads as broken rather than as "not enough history yet".
+  const readings=statsSplit(sorted.slice(-3).map(w=>
+    [fmtDate(w.date), escText(String(w.weight))+'<span class="card-fig-u">kg</span>']));
   // Week-over-week delta from the readings inside the current week.
   const {mondayStr}=getWeekBounds();
   const wk=sorted.filter(w=>w.date>=mondayStr);
@@ -16453,7 +16490,7 @@ function buildWeightGoalCard(){
   return '<div class="card" '+open+' style="cursor:pointer">'+
     cardHeader('scale','Weight',pillHtml||(hasGoal?'':'<span class="card-hd-act">Set a goal →</span>'))+
     '<div><span class="card-fig">'+cur.weight+'</span><span class="card-fig-u">kg</span></div>'+
-    (series.length>=2?'<div class="card-shape">'+sparkline(series,{target:hasGoal?target:null,height:40})+'</div>':'')+
+    readings+
     (capParts.length?'<div class="card-cap">'+capParts.join(' · ')+'</div>':'')+
   '</div>';
 }
@@ -17414,6 +17451,10 @@ function cardHeader(icon,label,rightHtml){
   return '<div class="card-hd"><div class="card-hd-l">'+cardIcon(icon)+
     '<span class="card-label">'+label+'</span></div>'+(rightHtml||'')+'</div>';
 }
+// NOTE: no callers as of 2026-09-05. Home's weight card was the last one, and it now shows the
+// three most recent readings via statsSplit() instead. Kept rather than deleted because it is a
+// small, self-contained helper and .card-shape (its intended slot) is still used by five other
+// cards — but if you are here looking for a live example, there isn't one.
 // Inline SVG sparkline — one path, no axes, no labels, no library. Chart.js is loaded but a
 // 40px trend line inside a card wants a shape, not a chart: axes and tooltips at this size are
 // noise, and a hand-rolled path costs nothing and scales with the card.
@@ -19135,7 +19176,6 @@ function acctChangeHtml(a){
 function renderAccountsHero(){
   const el=document.getElementById('accounts-hero'); if(!el) return;
   if(!accounts.length){ el.innerHTML=''; return; }
-  const nw=accountsNetWorth();
   const assets=accountsAssetsTotal(), debts=accountsDebtsTotal();
   const savers=accounts.filter(acctIsSaver);
   const saverTot=accountsSaverTotal();
@@ -19160,15 +19200,14 @@ function renderAccountsHero(){
   const mathLine=debts>0
     ? '<div class="acct-payoff-math">'+fmtMoney(assets-saverTot)+' spendable − '+fmtMoney(debts)+' debts</div>'
     : '';
+  // ONE cell. Net worth used to lead this panel and was then restated — same figure, same
+  // label, same source — in the .nw-chart-card immediately beneath it, roughly 340px away.
+  // It now leads that chart card instead, where the line under it is the thing it describes.
+  // What is left here is the question the chart cannot answer: am I covered?
   el.innerHTML=budHeroPanel([
-    {icon:'scale', label:'Net worth', lg:true, val:fmtMoney(nw),
-     sub:fmtMoney(assets)+' assets · '+fmtMoney(debts)+' debts',
-     chip:nw>=0?tstat('pos','In the black','check',true):tstat('neg','Under water','down',true)},
     {icon:'target', label:'Debt payoff position', lg:true, val:fmtMoney(Math.abs(pos)),
      sub:headline, chip:payoffChip, extra:mathLine+kindLine+saverLine},
-  // Stacked on a phone, side by side from 561px up: the payoff cell carries three supporting
-  // lines, and two 170px columns would set them four words to a line.
-  ],{cols:2,colsSm:1});
+  ],{cols:1,colsSm:1});
 }
 function renderAccountsPage(){
   // Net worth and the payoff position are one card built by one function — they used to be

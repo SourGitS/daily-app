@@ -304,14 +304,19 @@
         <div id="bud-fixed-card"></div>
         <div id="bud-upcoming-card"></div>
 
-        <!-- Weekly variable-spend goal. Sits between the two expense cards deliberately:
-             it's the ceiling the Variable card below has to stay under. -->
+        <!-- NOTE: source order here is NOT render order. BUD_CARDS in js/app.js is the single
+             source for both, and budApplyLayout() moves these nodes into place on every layout
+             change — so read that constant, not this file, to know where a card actually sits.
+             Weekly variable-spend goal: it renders directly above the Variable expenses card,
+             because it is the ceiling that card has to stay under. -->
         <div id="bud-vargoal-card"></div>
 
-        <!-- Record spending: the primary capture action for the whole spending system. It used
-             to be a dashed button INSIDE the Variable expenses card, where it read as a
-             configuration control belonging to that one category list rather than the one place
-             you log any purchase, to any category, on any account. -->
+        <!-- Record spending: the primary capture action for the whole spending system, and the
+             thing done most often, so BUD_CARDS puts it first on a phone and at the top of the
+             right-hand column on desktop. It used to be a dashed button INSIDE the Variable
+             expenses card, where it read as a configuration control belonging to that one
+             category list rather than the one place you log any purchase, to any category, on
+             any account. -->
         <div id="bud-setup-card"></div>
         <div id="bud-record-card"></div>
 

@@ -358,7 +358,15 @@ safety-critical parts:
 The Prompt 42 pantry work described here previously is committed and shipped.
 
 Nothing is uncommitted as of 2026-09-05 beyond documentation. Recently shipped, newest
-first: one navigation registry (`NAV_TREE` drives the desktop sidebar AND the mobile hamburger
+first: five targeted presentation fixes — the hero surface follows the accent (so Accounts and
+Budget > Month/Year stop being the only graphite screens) and the dead `.hm-card` /
+`budHeroMetric()` component is deleted; Accounts states net worth once, on the chart card, with
+the hero panel reduced to one cell for the debt payoff position; Budget > Month's spending rows
+get fixed label/amount columns so every bar starts at one x, and every magnitude bar squares off
+behind a new `--radius-bar` token; the Budget week's card order is rebuilt from ONE `BUD_CARDS`
+list both layout modes derive from; and Home's weight card shows the last three readings via
+`statsSplit()` instead of a sparkline. None of it touches data, storage, calculation or
+Firebase. Before that: one navigation registry (`NAV_TREE` drives the desktop sidebar AND the mobile hamburger
 as six accordion groups; `MENU_NAV`/`MENU_SECTIONS`/`buildSideMenu()` and the quick-settings
 popover are gone) together with a visual-consistency pass (one `.seg-tabs` segmented control
 replacing five, a three-step uppercase micro-label scale, Log's cards on the matte
@@ -370,7 +378,7 @@ day card, the hero-card consolidation (one `.hero-panel` for
 Budget › Month, Year and Accounts),
 Budget/Accounts hierarchy wording, Log Today weight cards, the Log training hub
 (`83f9969` then `54073ce`), the Weekly Review, and the Kitchen favourite change.
-`CACHE_NAME` is at `daily-v298`.
+`CACHE_NAME` is at `daily-v299`.
 
 The workout hub adds **no** synced store and performs **no** migration, so it does not carry
 the fresh-profile sync risk the Weekly Review does. The Weekly Review's two stores

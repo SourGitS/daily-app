@@ -143,7 +143,15 @@
 // steps, Log's cards join the matte content-card surface and use cardHeader(), every hero
 // reads the contrast-checked --accent-hero stops, and Nutrition adopts the radius tokens
 // plus a real empty state.
-const CACHE_NAME = 'daily-v298';
+// v299: heroes follow the accent (.hero-surface reads --accent-hero, so Accounts, Budget >
+// Month and Budget > Year stop being the only graphite screens) and the dead .hm-card /
+// budHeroMetric component goes; Accounts states net worth once, on the chart card it belongs
+// to, leaving the hero panel one cell for the debt payoff position; the Month spending rows
+// get fixed label/amount columns so every bar starts at one x, and every magnitude bar in the
+// app squares off behind a new --radius-bar token; the Budget week's cards are reordered from
+// ONE BUD_CARDS list that both layout modes derive from; and Home's weight card shows the last
+// three readings instead of a sparkline.
+const CACHE_NAME = 'daily-v299';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

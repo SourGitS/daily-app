@@ -469,8 +469,8 @@
 .rw-effort-none{background:transparent;border:1px solid var(--border);color:var(--muted);font-weight:600}
 /* Progress bar with an optional pace marker. Not overflow:hidden — the marker deliberately
    overhangs the track top and bottom so it reads as a gate rather than as part of the fill. */
-.card-bar{position:relative;height:8px;border-radius:5px;background:var(--track);margin-top:12px}
-.card-bar-fill{height:100%;border-radius:5px;transition:width .3s ease}
+.card-bar{position:relative;height:8px;border-radius:var(--radius-bar);background:var(--track);margin-top:12px}
+.card-bar-fill{height:100%;border-radius:var(--radius-bar);transition:width .3s ease}
 .card-bar-pace{position:absolute;top:-3px;height:14px;width:2px;border-radius:1px;background:var(--text);opacity:.45}
 /* Two-up split with a divider — the .stats-split-card pattern generalised, so cards that show
    a pair of related figures rhyme with the streak card instead of inventing a layout. */
@@ -539,8 +539,8 @@
 .hero-meta{font-size:14px;font-weight:600;color:rgba(255,255,255,.75);margin:0 0 16px}
 .hero-progress-row{display:flex;justify-content:space-between;margin-bottom:8px}
 .hero-progress-text,.hero-progress-pct{font-size:13px;font-weight:700;color:rgba(255,255,255,.85)}
-.hero-progress-track{height:7px;background:rgba(0,0,0,.18);border-radius:5px;overflow:hidden}
-.hero-progress-fill{height:100%;background:rgba(255,255,255,.9);border-radius:5px;transition:width .3s ease}
+.hero-progress-track{height:7px;background:rgba(0,0,0,.18);border-radius:var(--radius-bar);overflow:hidden}
+.hero-progress-fill{height:100%;background:rgba(255,255,255,.9);border-radius:var(--radius-bar);transition:width .3s ease}
 
 /* Step 6 — Split stats card */
 .stats-split-card{display:flex;align-items:stretch;padding:18px}
@@ -1172,8 +1172,8 @@
 .kit-cook-topbar{display:flex;align-items:center;justify-content:space-between;padding:8px 16px 12px;flex-shrink:0}
 .kit-cook-exit{height:36px;padding:0 14px;background:rgba(255,255,255,.08);border:none;border-radius:999px;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kit-cook-recipe-name{font-size:14px;font-weight:600;color:var(--muted);text-align:center;flex:1;padding:0 8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.kit-cook-progress-bar{height:4px;background:var(--border);margin:0 16px 6px;border-radius:2px;flex-shrink:0}
-.kit-cook-progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .35s ease}
+.kit-cook-progress-bar{height:4px;background:var(--border);margin:0 16px 6px;border-radius:var(--radius-bar);flex-shrink:0}
+.kit-cook-progress-fill{height:100%;background:var(--accent);border-radius:var(--radius-bar);transition:width .35s ease}
 .kit-cook-step-label{text-align:center;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:16px;flex-shrink:0}
 /* Holds the ingredients-all panel, the step body, and the ingredients-for-this-step panel.
    Column (stacked) on mobile — `order` puts the step first, then what THIS step needs, then

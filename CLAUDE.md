@@ -177,9 +177,23 @@ older summary — re-grep before assuming a fact from here is still true if it l
   reconciliation rule below before touching it.
 - **Accounts** — net-worth tracking across accounts; added after Budget, migrated from the old
   savings/CC logs. An asset can be flagged `saver:true` ("Savers account"): it still counts in
-  net worth but is excluded from the **debt payoff position**
-  (`(assets − savers) − debts`, the second cell of the Accounts hero panel), which
-  answers "am I covered" rather than "what am I worth".
+  net worth but is excluded from the **debt payoff position** (`(assets − savers) − debts`),
+  which answers "am I covered" rather than "what am I worth".
+  **The screen states net worth ONCE, and where it does is deliberate (2026-09-05).** The hero
+  panel used to lead with a Net worth cell and the `.nw-chart-card` directly beneath it repeated
+  the same figure, same label, same source, ~340px lower — the exact thing the "Home cards must
+  not restate a number another card already shows" rule forbids. Net worth now leads the CHART
+  card, where the line under it is the thing it describes, carrying the assets/debts sub-line
+  (`.nw-chart-mix`) and the In the black / Under water chip (`.nw-chart-verdict`) the hero cell
+  used to hold. `renderAccountsHero()` is one `hp-lg` cell: the debt payoff position, with its
+  headline, chip, spendable-minus-debts math line, debt-kind line and savers note.
+  **The chart card's figures come from the CHART's own last data point** (`assetsData`,
+  `debtsData`, `netData`), never from `accountsNetWorth()` / `accountsAssetsTotal()`. Those are
+  live; the chart ends at the last date every account has a recorded balance for. They can
+  legitimately differ, and the card has to state the one its own line ends on.
+  `renderNetWorthChartInto()` has TWO mounts — `accounts-chart` and `bs-balance-wrap`
+  (Stats → Finance) — and both show the sub-line and the chip. Only the Stats mount gets the
+  "Open account records →" link; that gate stays on `wrapId`.
 - **Plans** — **imported plan DOCUMENTS only** (the `type:'html'` entries: import any HTML
   file, view it in a sandboxed iframe). Saved workout programs moved to Log › Program, and the
   streak that used to head this screen is gone from the UI. The nav label stays "Plans".
@@ -198,6 +212,7 @@ older summary — re-grep before assuming a fact from here is still true if it l
 
 ```
 --radius-card: 22px    --radius-hero: 24px    --radius-pill: 14px    --radius: 16px
+--radius-bar: 0        (magnitude bars and progress meters — see the bar note below)
 --font-ui: 'Manrope'   --font-num: 'Space Grotesk'
 --accent: #5C5C5C neutral slate (--accent-rgb for rgba() use)   --accent-text
 --positive / --success: #52B788   --danger: #E74C3C   --purple: #6366f1
@@ -317,81 +332,83 @@ the accent or the theme must go through those, not set `--accent` directly.
   **Chart.js gotcha, learned here:** `scales.y.stacked:true` stacks LINE datasets too, not just
   bars — the money-flow chart drew a $1,023 income week at $1,856 until each line was given its
   own single-member `stack` group.
-- **The hero SURFACE is shared; the two components that wear it are not.** `.hero-surface`
-  (`css/budget-home.css`) owns the treatment ONLY — the graphite gradient, the white text, the
-  clipped decorative circle, the top glare — held apart from any one card's geometry, and
-  deliberately not folded into `.card` (see the press-lift note below). `.hero-wide` rescales
-  the circle for a full-width surface. Two components wear it, and choosing the wrong one is
-  the mistake this split exists to prevent:
-  - **`.hero-panel` — SEVERAL figures on ONE neutral surface.** Built by
-    `budHeroPanel(items,{cols,colsSm})`: a single `.hero-surface.hero-wide` holding a `.hp-grid`
-    of `.hp-cell`s split by hairlines. Per-cell flags: `lg` promotes the figure to hero size,
-    `lead` spans the cell across the whole panel at the narrow breakpoint. **This is now the
-    only hero-summary component with call sites** — all three are panels:
-    **Budget → Month** (three cells, 3-up, the rate leading full-width above a 2-up row on a
-    phone), **Budget → Year** (six cells, 3-up, 2-up on a phone) and **Accounts**
-    (`renderAccountsHero()` — net worth and debt payoff position, two `hp-lg` cells side by side
-    from 561px, stacked below it because the payoff cell carries three supporting lines).
-  - **`.hm-card` — ONE figure per card, coloured BY DIRECTION — has NO remaining call sites.**
-    `budHeroMetric(m)`, the `.hero-metric-grid` block and the `hm-income`/`hm-expense`/
-    `hm-accent`/`hm-neutral` variants (plus the `hm-good`/`hm-short` aliases) are all still in
-    the tree but nothing builds one any more: Month was the last user and moved to a panel on
-    2026-09-05 at Francois's request. Kept rather than deleted because removing it is a
-    separate decision, not because it is in use — do not cite it as precedent for a new screen
-    without checking that first. Its shared half, `.hero-surface`, is very much alive.
+- **The hero SURFACE is `.hero-surface`, and it FOLLOWS THE ACCENT.** (`css/budget-home.css`)
+  It owns the treatment ONLY — the gradient, the white text, the clipped decorative circle, the
+  top glare — held apart from any one component's geometry, and deliberately not folded into
+  `.card` (see the press-lift note below). `.hero-wide` rescales the circle for a full-width
+  surface, which is every caller today. Its stops are `--accent-hero` / `--accent-hero-2` with
+  the old graphite hexes surviving only as the `var()` FALLBACK, i.e. the pre-JS paint. Until
+  2026-09-05 those hexes were literals, which is why Accounts, Budget → Month and Budget → Year
+  were the only three screens in the app still ignoring the user's colour. Because the stops are
+  custom properties the surface restyles itself the instant `applyAccent()` writes them — do not
+  add a re-render to `applyAccent()`, `applyTheme()` or `applyDayColour()` for it.
+- **`.hero-panel` — SEVERAL figures on ONE surface — is the only thing that wears it.** Built by
+  `budHeroPanel(items,{cols,colsSm})`: a single `.hero-surface.hero-wide` holding a `.hp-grid`
+  of `.hp-cell`s split by hairlines. Per-cell flags: `lg` promotes the figure to hero size,
+  `lead` spans the cell across the whole panel at the narrow breakpoint. Three call sites:
+  **Budget → Month** (three cells, 3-up, the rate leading full-width above a 2-up row on a
+  phone), **Budget → Year** (six cells, 3-up, 2-up on a phone) and **Accounts**
+  (`renderAccountsHero()` — ONE `hp-lg` cell, the debt payoff position; see the Accounts entry).
+  **`.hm-card` / `.hero-metric-grid` / `budHeroMetric()` are GONE** (2026-09-05). That component
+  gave every figure its own card and coloured it by direction, and it lost its last caller when
+  Budget → Month became a panel. Its six colour variants (`hm-income`/`hm-good`,
+  `hm-expense`/`hm-short`, `hm-accent`, `hm-neutral`) went with it. **The `.hm-*` PARTS did
+  not** — `.hm-label`, `.hm-label .card-hd-ico`, `.hm-val`, `.hm-unit`, `.hm-sub` and `.hm-chip`
+  are what `.hp-cell` builds its markup from, so deleting the whole `hm-` block breaks all three
+  panels.
   **The panel has NO per-cell colour variant, and adding one back is the thing it was built to
   remove.** All three call sites used to be direction-coloured `.hm-card`s: Year opened with six
   saturated slabs in four colours, Accounts with two stacked full-width cards that flipped
   the whole surface green or red with their sign, and Month with an accent slab, a green one
-  and a red one in a row — so each screen read as several unrelated
-  announcements rather than one summary. On a panel the FIGURES are what differ, not the
-  backgrounds, and any verdict rides in a `.tstat` chip inside the cell, which is the house rule
-  everywhere else. Colour by direction is for a SET of cards being compared; one card holding
-  several figures stays graphite. `lead` is a LAYOUT flag and not a hole in that rule — it
-  exists so an odd cell count (Month's three at two columns) does not leave a half-empty
-  second row, and it needs no special case in the divider system: a spanning cell in the first
-  row still has its top and left edges clipped like any other.
+  and a red one in a row — so each screen read as several unrelated announcements rather than
+  one summary. On a panel the FIGURES are what differ, not the backgrounds, and any verdict
+  rides in a `.tstat` chip inside the cell, which is the house rule everywhere else. The surface
+  following the accent is NOT a hole in that rule: one accent tint across the whole panel still
+  says one thing, where a per-cell variant says several. `lead` is likewise a LAYOUT flag — it
+  exists so an odd cell count (Month's three at two columns) does not leave a half-empty second
+  row, and it needs no special case in the divider system.
   Panel mechanics worth not rediscovering: the dividers are a `border-top` + `border-left` on
   every cell with `.hp-grid` pulled 1px up and left so the surface's `overflow:hidden` clips the
-  outermost pair away. That holds for ANY column count, so a breakpoint changes only the column
-  variable and there is no `:nth-child` arithmetic to break silently when a figure is added.
-  Column counts arrive as `--hp-cols` / `--hp-cols-sm` set inline **on the panel** and read from
-  the stylesheet, so the media queries still win — an inline `grid-template-columns` on
-  `.hp-grid` would outrank them.
-  **The `--accent-hero` migration is FINISHED (2026-09-05).** Every hero surface in the app
-  reads `linear-gradient(150deg, var(--accent-hero), var(--accent-hero-2))`: `.lg-hero`,
-  `.ov-hero`, `.fin-hero`, `.budget-hero-card`, `#budget-hero-card` (the real Budget weekly
-  hero, whose gradient is an inline style in `index.html` and now names the tokens),
-  `.hero-workout-card`, `.kitchen-hero-card`, `.nut-hero`, `.hl-prev-hero`, the onboarding
-  preview heroes `.ob-pv-hero` / `.ob-tm-hero`, and the shared
-  `.card-hero,.budget-hero-card,.hero-workout-card,.kitchen-hero-card` rule in
-  `kitchen-extras.css` that overrides several of them. It had stalled at two consumers
-  (`.hm-accent` and the AI hub header) while nine surfaces stayed on the retired
-  `rgba(var(--accent-rgb), .9 → .4)` ramp. **The three `[data-theme="light"]` floors are gone**
-  (`.ov-hero`, `.fin-hero`, `.hl-prev-hero`) — they existed only to lift the ramp's pale end
-  off `--bg`, and a solid contrast-checked stop makes them dead weight. `.log-day-hero-card`
-  is still the one exception: its gradient is set inline per training day in `js/app.js`
-  (~line 3493) by the dynamic day-colour system, and if it is ever changed it must go through
-  `applyAccent()` / `heroStopsFor()`, never a fixed CSS gradient.
+  outermost pair away. That holds for ANY column count — verified at 1, 3 and 6 — so a
+  breakpoint changes only the column variable and there is no `:nth-child` arithmetic to break
+  silently when a figure is added. Column counts arrive as `--hp-cols` / `--hp-cols-sm` set
+  inline **on the panel** and read from the stylesheet, so the media queries still win — an
+  inline `grid-template-columns` on `.hp-grid` would outrank them.
+  **The `--accent-hero` migration is FINISHED.** Every hero surface in the app reads the tokens:
+  `.hero-surface` itself, plus `.lg-hero`, `.ov-hero`, `.fin-hero`, `.budget-hero-card`,
+  `#budget-hero-card` (the real Budget weekly hero, whose gradient is an inline style in
+  `index.html` and now names the tokens), `.hero-workout-card`, `.kitchen-hero-card`,
+  `.nut-hero`, `.hl-prev-hero`, the onboarding preview heroes `.ob-pv-hero` / `.ob-tm-hero`, and
+  the shared `.card-hero,.budget-hero-card,.hero-workout-card,.kitchen-hero-card` rule in
+  `kitchen-extras.css` that overrides several of them. **The three `[data-theme="light"]` floors
+  are gone** (`.ov-hero`, `.fin-hero`, `.hl-prev-hero`) — they existed only to lift the retired
+  `rgba(var(--accent-rgb), .9 → .4)` ramp's pale end off `--bg`, and a solid contrast-checked
+  stop makes them dead weight. `.log-day-hero-card` is the one exception: its gradient is set
+  inline per training day in `js/app.js` (~line 3493) by the dynamic day-colour system, and if
+  it is ever changed it must go through `applyAccent()` / `heroStopsFor()`, never a fixed CSS
+  gradient.
   **The accent hero stops are CSS custom properties, not inline hexes.** `--accent-hero` /
   `--accent-hero-2` (defaults in `css/base.css`) are written by `applyAccent()` from
   `heroStopsFor()`, which keeps hue and saturation and walks the lightness down until white
   clears 4.2:1 — so a pale custom accent from the colour picker yields a deep surface rather
   than an unreadable one, and an achromatic accent keeps its zero saturation instead of being
-  invented into a colour. They are theme-INdependent (a hero fill carries white in both themes),
-  unlike `--accent-text`. The stops stay SOLID: an `rgba()` ramp blends into `--bg` and its pale
-  end cannot carry a 9px white label in light mode — the reason `.ov-hero` and
-  `.budget-snapshot-card` each needed a `[data-theme="light"]` floor. **This inverts an older
-  rule that was in this file:** the heroes now restyle themselves the moment `applyAccent()`
-  writes the token, so `applyDayColour()` no longer force-re-renders the Month/Year view or the
-  Finance picture hero. Do not re-add that.
-  **Neither `.hm-card` nor `.hero-panel` is in the press-lift list in `budget-home.css` or the
-  `cursor:pointer` list in `base.css`, and neither should be added.** These surfaces open
-  nothing; the old `.sum-card` inherited both and reared up under a finger that had nowhere
-  to go. `.tstat` chips on a hero are re-tinted by `.hero-metric-grid .hm-card .tstat…` **and**
-  `.hero-panel .hp-cell .tstat…` — four selectors deep on purpose, because
-  `kitchen-extras.css` loads last and its
-  `[data-theme="dark"] .tstat.pos` would otherwise outrank a three-deep rule.
+  invented into a colour. Measured across the presets plus `#FFE082`, `#FFFFFF`, `#101010` and
+  both night weather scenes, the worst case is 4.27:1 against white. They are theme-INdependent
+  (a hero fill carries white in both themes), unlike `--accent-text`. The stops stay SOLID: an
+  `rgba()` ramp blends into `--bg` and its pale end cannot carry a 9px white label in light
+  mode. **This inverts an older rule that was in this file:** the heroes restyle themselves the
+  moment `applyAccent()` writes the token, so `applyDayColour()` no longer force-re-renders the
+  Month/Year view or the Finance picture hero. Do not re-add that.
+  **`.hero-panel` is not in the press-lift list in `budget-home.css` or the `cursor:pointer`
+  list in `base.css`, and must not be added.** These surfaces open nothing; the old `.sum-card`
+  inherited both and reared up under a finger that had nowhere to go.
+  **The `.tstat` re-tint on a hero repeats the state classes, and that is load-bearing.**
+  `.hero-panel .hp-cell .tstat` written three-deep TIES `[data-theme="dark"] .tstat.warn`
+  (both 0,3,0) and loses on load order, because `kitchen-extras.css` comes last — so every chip
+  on a hero kept its amber/green/red CARD background and only had its text colour rescued by the
+  four-deep per-state rules. The first rule now lists `.tstat`, `.tstat.pos`, `.tstat.warn` and
+  `.tstat.neg` explicitly so the background and border win too. Invisible while the surface was
+  graphite; an amber chip on a blue hero is not.
   **`.summary-grid` / `.sum-card` are GONE**, as are `BUD_HERO_SCENES` and `budHeroStops()` —
   the scene table and its inline gradients died with the custom properties above.
 - **Budget → Week's "Day by day" card reconciles with the Variable card BY CONSTRUCTION, and
@@ -437,6 +454,16 @@ the accent or the theme must go through those, not set `--accent` directly.
   a donut asks the reader to compare ANGLES, the hardest visual judgement there is, and a real
   month's tail was five categories within four percentage points of each other. No palette
   fixes that; the shape was wrong for the data. Sorted bars make it a length comparison.
+  **The row grid's label and amount columns are FIXED widths, and that is not cosmetic.** They
+  were `minmax(84px,auto)` / `minmax(74px,auto)`, and every row is its OWN grid — so every
+  category whose label fitted inside 84px shared that width while one longer name ("Money
+  Transfer") grew its column and started its bar ~23px right of the rest, which is what made the
+  list look unaligned. They are `164px … 88px` now (`116/84` at ≤680px, `98/78` at ≤390px), with
+  all the slack going to the bar. 164 is measured, not guessed: it clears "Uncategorised /
+  archived" at 159px, the app's OWN label for legacy detail it cannot attribute and the longest
+  string this list can produce. `.month-spend-name` already truncates with an ellipsis, so a
+  longer label cannot move a bar — which is the property to preserve if the number is ever
+  changed.
   Three things follow, and each removed a whole class of problem:
   - **Colour now carries NO information.** The rows are sorted, so rank is already stated by
     position; the fill is one red shaded by rank (`budRankShade(i,n)`, derived from
@@ -733,6 +760,27 @@ the accent or the theme must go through those, not set `--accent` directly.
 - **Roughly half the app's typography is inline in JS**, not in the stylesheets — `js/app.js`
   and `index.html` carry ~420 `font-size` declarations between them against ~420 in all six CSS
   files. A CSS-only type-scale sweep would therefore make the app *less* consistent, not more.
+- **`BUD_CARDS` is the single source for the Budget week's card order, in BOTH layout modes**
+  (`js/app.js`, beside `budApplyLayout`). One ordered list of `{id, col}`: `col` picks the
+  desktop column, and MOBILE is simply that order top to bottom. `BUD_LAYOUT` is derived from
+  it and keeps its name so existing readers work. Adding a Budget card means adding ONE line.
+  It used to be two hand-maintained lists, which is how `bud-setup-card` ended up named in the
+  mobile plan and in NEITHER desktop column — `budApplyLayout()` only `appendChild()`s the ids
+  it is given and appending MOVES a node, so every other card was appended past the setup card
+  and it was stranded first in the left column, above Income. Invisible in normal use, because
+  `renderBudgetSetupCard()` returns `''` once the week has any income.
+  Current order (2026-09-05): **mobile** is action-first — Setup, Record spending, Weekly
+  result, Until next pay, Income, Savings, Fixed, Upcoming, Spending goal, Variable, Day by day,
+  Previous weeks, Calculator, Stranded data. **Desktop** is plan-left / action-right: left is
+  Setup → Income → Savings → Fixed → Upcoming → Spending goal → Variable → Day by day (the long
+  Variable card lives here and is what makes the page tall), right is Record spending → Weekly
+  result → Until next pay → Previous weeks → Calculator → Stranded data. Two things this
+  restored: the two verdict cards are adjacent again, and the spending goal sits directly above
+  the card it caps. **Source order in `index.html` is NOT render order** — read `BUD_CARDS`.
+  `budApplyLayout()`'s no-op guard is load-bearing: it compares the column's current children
+  against the wanted list and returns early when they match, because re-appending a node that is
+  already in place still detaches and re-inserts it, which drops focus out of a budget input
+  mid-typing. Keep that check.
 - **Budget card collapse state is keyed by `data-bud-key`**, not by card index (it was
   index-based, which mis-applied the saved state whenever the card count changed — the due
   banner and previous-weeks list render `.card`s conditionally). Any new card in
@@ -826,7 +874,22 @@ the accent or the theme must go through those, not set `--accent` directly.
   In JS, build headers with `cardHeader(icon, label, rightHtml)` and icons from `CARD_ICONS`
   via `cardIcon(name)` — do not hand-roll another inline `11px/uppercase` header.
   `sparkline(vals, {target, height})` renders an inline-SVG trend line (no Chart.js needed for
-  in-card shapes).
+  in-card shapes) — but note it has **no callers** as of 2026-09-05: Home's weight card was the
+  last, and it now shows the three most recent readings via `statsSplit()` instead (see below).
+  `.card-shape`, its intended slot, is still used by five other cards.
+- **Every magnitude bar and progress meter is SQUARE, from one token.** `--radius-bar: 0`
+  (`css/base.css`). Every track+fill pair in the app reads it: `.month-spend-strip` /
+  `-track` / `-fill`, `.card-bar` / `.card-bar-fill`, `.hero-progress-track` / `-fill`,
+  `.wkr-pv-track` / `-fill`, `.kit-cook-progress-bar` / `-fill`, `.status-bar-wrap` / `-fill`,
+  `.bud-day-bar` / `-fill`, `.budget-hero-bar-wrap` / `-fill`, `.vg-bar-wrap` / `-fill`,
+  `.ldh-bar` / `-fill`, `#pbar-wrap` / `#pbar`, and `.hl-bar` (the Home-Layout preview's
+  miniature of `.card-bar`). They were at 5 / 4 / 3 / 2px, which on an 8px bar is a full pill,
+  and squaring one would have made it the odd one out — so the value moved into a token and
+  every bar reads it. **Two deliberate exclusions:** `.card-bar-pace` keeps its own 1px (it is a
+  2px marker, not a bar), and `.nut-progress` was left rounded on instruction — it is the one
+  remaining rounded progress bar in the app, and it is inconsistent. Pills on CONTROLS
+  (`.nw-chart-series` chips, `.tstat`, `.muscle-pill`) and shaped chart COLUMNS
+  (`.bills-col-bar`, `.cw-bar`) are not bars and keep their radii.
 - **Emoji do not belong in card CHROME** — they ignore `currentColor`, so they can't follow the
   theme or the accent, and they render differently per OS. Use `CARD_ICONS`. Emoji the *user*
   typed (note titles, recipe names, `sub.emoji`) are content and must be left alone — and note
@@ -837,6 +900,15 @@ the accent or the theme must go through those, not set `--accent` directly.
   (`--positive` / amber / `--danger`), because the accent can be any hue at runtime and a
   colour pairing that works for one accent won't for another. The weather card is the one
   scene-gradient exception.
+- **Home's weight card shows the LAST THREE READINGS, not a sparkline.** `buildWeightGoalCard()`
+  ends in `statsSplit()` — the shared `.card-split` vocabulary, oldest to newest, so the eye runs
+  left to right into today. Deliberately NOT `.lg-weight-recent` / `.lg-weight-reading`: those
+  belong to the Log hub's own vocabulary in `css/workout.css`, and Home uses the shared
+  components. **Never padded to three**: two readings render two cells, one renders one, none
+  hits the existing "Log your weight to start tracking" empty state. A row of em dashes reads as
+  broken rather than as "not enough history". Nothing was lost with the sparkline — its target
+  line is already stated in words in `.card-cap` ("6.6 kg to go") and its trend is already
+  judged by the On pace / Behind pace pill in the header; both stay.
 - **Home cards must not restate a number another card already shows.** The Week in Review card
   was three-quarters duplicate (its Workouts cell recomputed the streak card's figure exactly),
   which is what made Home feel busy without being informative. It now shows week-over-week
