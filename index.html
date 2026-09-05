@@ -328,6 +328,11 @@
 
         <div id="bud-variable-card"></div>
 
+        <!-- The same variable spending the card above breaks down by category, read by
+             DAY instead. Only money with a date can appear here, so it states its own
+             undated remainder rather than quietly disagreeing with the card above. -->
+        <div id="bud-days-card"></div>
+
         <!-- Pay-cycle forecast. Filled by renderForecastCard() from budRecalc's own
              `available` figure so it can never disagree with the hero. It follows Variable
              expenses in both BUD_LAYOUT modes and stays empty when no honest forecast exists. -->
@@ -406,7 +411,7 @@
           <div class="week-label"><div class="week-label-main" id="month-label-main">&#8212;</div><div class="week-label-sub" id="month-label-sub">&#8212;</div></div>
           <button class="week-nav-btn" onclick="changeMonth(1)" id="month-next-btn">&#8250;</button>
         </div>
-        <div class="hero-metric-grid" id="month-summary-grid"></div>
+        <div id="month-summary-grid"></div>
         <div class="status-bar-wrap"><div class="status-bar-fill" id="month-bar" style="width:0%"></div></div>
         <div class="status-text"><span id="month-bar-label-l"></span><span id="month-bar-label-r"></span></div>
         <div class="card"><div class="sec-label" style="margin-bottom:10px">Weekly breakdown</div><div id="month-weeks-list"></div></div>

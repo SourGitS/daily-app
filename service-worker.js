@@ -135,7 +135,8 @@
 // v293: show current weight and the latest recorded change above those readings.
 // v294: give Budget's Accounts link a clearer secondary-action hierarchy.
 // v295: consolidate the hero cards - one .hero-panel for Budget > Year and Accounts.
-const CACHE_NAME = 'daily-v295';
+// v296: add Budget > Week 'Day by day'; Month's summary becomes one .hero-panel too.
+const CACHE_NAME = 'daily-v296';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

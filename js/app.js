@@ -10620,7 +10620,9 @@ function budHeroMetric(m){
 // carry already-escaped figures and tstat markup), label is plain text, lg promotes the
 // figure to hero size. opts = {cols, colsSm}: the column count is handed to CSS as a custom
 // property on the panel so the stylesheet's breakpoints still win (an inline
-// grid-template-columns would outrank them).
+// grid-template-columns would outrank them). `lead` spans a cell across the whole panel at
+// the narrow breakpoint — a LAYOUT affordance, not a colour variant: three cells at two
+// columns otherwise leave a half-empty second row.
 // There is deliberately NO per-cell colour variant. Six budHeroMetric cards put green, red,
 // accent and slate slabs next to each other, which is four announcements where the screen
 // only has one thing to say; here the surface is one neutral graphite and the verdict rides
@@ -10629,7 +10631,7 @@ function budHeroPanel(items, opts){
   const o=opts||{};
   return '<div class="hero-panel hero-surface hero-wide" style="--hp-cols:'+(o.cols||3)+';--hp-cols-sm:'+(o.colsSm||2)+'">'+
     '<div class="hp-grid">'+items.map(m=>
-      '<div class="hp-cell'+(m.lg?' hp-lg':'')+'">'+
+      '<div class="hp-cell'+(m.lg?' hp-lg':'')+(m.lead?' hp-lead':'')+'">'+
         '<div class="hm-label">'+(m.icon?cardIcon(m.icon):'')+'<span>'+escText(m.label)+'</span></div>'+
         '<div class="hm-val">'+m.val+(m.unit?'<span class="hm-unit">'+escText(m.unit)+'</span>':'')+'</div>'+
         (m.sub?'<div class="hm-sub">'+m.sub+'</div>':'')+
@@ -11222,6 +11224,141 @@ function txnToggleCat(catId){
   if(_txnOpenCats.has(catId)) _txnOpenCats.delete(catId); else _txnOpenCats.add(catId);
   if(typeof renderBudgetTab==='function') renderBudgetTab();
 }
+// ── Day by day ────────────────────────────────────────────────────────────────
+// The Variable card answers "which categories"; this answers "which days", off the same
+// records. Same money read the other way, so the two have to reconcile — and they only can
+// for money that HAS a day. Two kinds of variable spend deliberately do not:
+//   · a category still on its typed weekly total (varCatAmount's fallback) — one figure
+//     standing for seven days, so putting it on any one of them would invent a purchase;
+//   · a carry record, which IS a transaction but is a converted weekly total dated to its
+//     week's Monday (see budResolveConflict), so counting it as a day would draw a Monday
+//     spike that never happened.
+// Both are reported beneath the days as an explicit undated remainder rather than dropped: a
+// day list whose total quietly disagrees with the Variable card above it reads as a bug.
+// Monday-first, and NOT the existing BUD_DAY_NAMES further down — that one is Sunday-first
+// full names for the pay-day selectors. Same idea, different order and length; naming both
+// the same thing is a duplicate top-level const and will not parse.
+const BUD_WEEK_DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+function budDaySpend(wk){
+  const out={days:[],dated:0,carry:0,carryCount:0,undated:0,txnCount:0,max:0,busiest:null};
+  if(!wk) return out;
+  const mon=localMidnight(wk);
+  const byKey={};
+  for(let i=0;i<7;i++){
+    const dt=new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+i);
+    const row={key:dateStr(dt),name:BUD_WEEK_DAYS[i],dt,txns:[],total:0};
+    out.days.push(row); byKey[row.key]=row;
+  }
+  txnsForWeek(wk).forEach(t=>{
+    const amt=parseFloat(t&&t.amount)||0;
+    if(txnIsCarryRecord(t)){ out.carry+=amt; out.carryCount++; return; }
+    const row=byKey[t.date];
+    // txnsForWeek already bounds the range, so this cannot normally fire; fold anything
+    // unexpected into the remainder rather than losing it out of a total the user can check.
+    if(!row){ out.undated+=amt; return; }
+    row.txns.push(t); row.total+=amt; out.dated+=amt; out.txnCount++;
+  });
+  // The SAME id set weekVarTotal() builds, so "itemised + undated" cannot drift from the
+  // Variable card's total. A category with any transaction is itemised and already counted
+  // above; only the ones still on a typed figure contribute here.
+  const d=budgetData[wk]||{};
+  const ids=new Set(loadVarCats().map(c=>c.id));
+  Object.keys(d).filter(k=>k.startsWith('var_')&&k!=='var_goal').forEach(k=>ids.add(k.slice(4)));
+  txnsForWeek(wk).forEach(t=>{ if(t&&t.catId) ids.add(t.catId); });
+  ids.forEach(id=>{ if(!txnsForWeekCat(wk,id).length) out.undated+=parseFloat(d['var_'+id])||0; });
+  out.days.forEach(r=>{
+    r.txns.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+    if(r.total>out.max){ out.max=r.total; out.busiest=r; }
+  });
+  return out;
+}
+// Expand/collapse one day's purchases.
+const _budOpenDays=new Set();
+function budToggleDay(key){
+  if(_budOpenDays.has(key)) _budOpenDays.delete(key); else _budOpenDays.add(key);
+  if(typeof renderBudgetTab==='function') renderBudgetTab();
+}
+function budDayDateLabel(dt){
+  try{ return dt.toLocaleDateString('en-AU',{day:'numeric',month:'short'}); }
+  catch(e){ return ''; }
+}
+function renderDaysCard(wk){
+  const m=budDaySpend(wk);
+  const today=getLocalDate();   // already a 'YYYY-MM-DD' string, not a Date
+  const cats=loadVarCats();
+  const catName=id=>{ const c=cats.find(x=>x&&x.id===id); return c?catLabel(c):'Uncategorised'; };
+  const acctName=id=>{ const a=(accounts||[]).find(x=>x&&x.id===id); return a?(a.name||''):''; };
+
+  const rows=m.days.map(r=>{
+    const isToday=r.key===today;
+    // A day that hasn't happened yet reads as "nothing spent" if it shows the same figure as a
+    // day that came and went without a purchase, so it says nothing instead.
+    const future=r.key>today;
+    const open=_budOpenDays.has(r.key);
+    const has=r.txns.length>0;
+    // A one-cent day would otherwise draw an invisible bar; floor a real figure at 6%.
+    const pct=(m.max>0&&r.total>0)?Math.max(6,Math.round(r.total/m.max*100)):0;
+    const inner=
+      '<span class="bud-day-l">'+
+        '<span class="bud-day-name">'+r.name+(isToday?'<span class="bud-day-today">Today</span>':'')+'</span>'+
+        '<span class="bud-day-date">'+budDayDateLabel(r.dt)+
+          (has?' · '+r.txns.length+' purchase'+(r.txns.length===1?'':'s'):'')+'</span>'+
+      '</span>'+
+      // The fill colour comes from budExpenseHex(), the same source every spending chart
+      // reads, rather than a second red hardcoded in CSS that could drift from BUD_MONEY.
+      // Like the charts, it takes a theme change on the next render.
+      '<span class="bud-day-bar" aria-hidden="true"><span class="bud-day-bar-fill" style="width:'+pct+'%;background:'+budExpenseHex()+'"></span></span>'+
+      '<span class="bud-day-amt'+(r.total>0?'':' is-quiet')+'">'+
+        (r.total>0?fmtMoneyExact(r.total):(future?'—':'$0'))+'</span>'+
+      (has?'<svg class="bud-day-chev'+(open?' open':'')+'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>':'<span class="bud-day-chev-sp" aria-hidden="true"></span>');
+    // Only a day with something to show is a control; the rest are plain rows, so nothing
+    // carries a press affordance that leads nowhere.
+    let row = has
+      ? '<button type="button" class="bud-day-row'+(isToday?' is-today':'')+(open?' is-open':'')+'" '+
+          'aria-expanded="'+(open?'true':'false')+'" data-day="'+_catEsc(r.key)+'" onclick="budToggleDay(this.dataset.day)">'+inner+'</button>'
+      : '<div class="bud-day-row is-flat'+(isToday?' is-today':'')+(future?' is-future':'')+'">'+inner+'</div>';
+    if(has && open){
+      row+='<div class="txn-list bud-day-txns">'+r.txns.map(t=>{
+        const meta=[catName(t.catId), acctName(t.acctId), t.note].filter(Boolean).map(_catEscHtml).join(' · ');
+        return '<button type="button" class="txn-item" data-id="'+_catEsc(t.id)+'" onclick="openTxnModal({id:this.dataset.id})">'+
+          '<span class="txn-item-l">'+
+            '<span class="txn-item-name">'+(t.merchant?_catEscHtml(t.merchant):'Expense')+'</span>'+
+            (meta?'<span class="txn-item-meta">'+meta+'</span>':'')+
+          '</span>'+
+          '<span class="txn-item-amt">'+fmtMoneyExact(parseFloat(t.amount)||0)+'</span>'+
+        '</button>';
+      }).join('')+'</div>';
+    }
+    return row;
+  }).join('');
+
+  // Everything that is real spending this week but has no day. Stated, never dropped.
+  const notes=[];
+  if(m.undated>0) notes.push(fmtMoneyExact(m.undated)+' is still a typed weekly total, so it has no day yet.');
+  if(m.carry>0) notes.push(fmtMoneyExact(m.carry)+' came from a converted weekly total and counts for the week, not a day.');
+  const noteHtml=notes.map(n=>'<div class="bud-day-note">'+n+'</div>').join('');
+
+  let body;
+  if(!m.txnCount){
+    body='<div class="bud-day-none is-empty">'+(m.undated>0
+      ? 'This week’s variable spending is recorded as typed weekly totals, so there is no day-by-day breakdown of it yet. Log purchases with <strong>Record spending</strong> and they will appear here on the day you made them.'
+      : 'Nothing logged this week yet. Anything you add with <strong>Record spending</strong> shows up here on the day you spent it.')+'</div>'+
+      (noteHtml?'<div class="bud-day-foot">'+noteHtml+'</div>':'');
+  } else {
+    const busiest=(m.busiest&&m.busiest.total>0)
+      ? '<div class="bud-day-cap">Biggest day: '+m.busiest.name+' · '+fmtMoneyExact(m.busiest.total)+'</div>'
+      : '';
+    body='<div class="bud-day-list">'+rows+'</div>'+
+      '<div class="bud-day-foot">'+
+        '<div class="bud-day-total"><span>Itemised this week</span><span>'+fmtMoneyExact(m.dated)+'</span></div>'+
+        busiest+noteHtml+
+      '</div>';
+  }
+  return '<div class="card" data-bud-key="days">'+
+    budCardHead('days','Day by day',false,'calendar')+
+    body+
+  '</div>';
+}
 // ── Upcoming charges ──────────────────────────────────────────────
 // "$3.23/week" tells you how to budget for Spotify; it does not tell you that $13.99 leaves
 // your account on Thursday. This is the forward-looking half of recurring costs, and the only
@@ -11539,7 +11676,7 @@ function renderRecordCard(){
 const BUD_LAYOUT={
   // Mobile: one linear stack, in the order the week is actually worked through.
   mobile:[['bud-col-left',['bud-income-card','bud-savings-card','bud-fixed-card','bud-upcoming-card',
-    'bud-setup-card','bud-vargoal-card','bud-record-card','bud-variable-card','bud-forecast-card','bud-stranded-card','bud-result-card',
+    'bud-setup-card','bud-vargoal-card','bud-record-card','bud-variable-card','bud-days-card','bud-forecast-card','bud-stranded-card','bud-result-card',
     'prev-weeks-section','bud-calc-card']]],
   // Desktop: left is the plan and this week's entry, right is the action, the outcome and the
   // supporting tools. Upcoming and the calculator move right because the left stack (a long
@@ -11547,7 +11684,7 @@ const BUD_LAYOUT={
   desktop:[
     ['bud-col-left',['bud-income-card','bud-savings-card','bud-fixed-card','bud-vargoal-card',
       'bud-variable-card','bud-forecast-card','bud-stranded-card']],
-    ['bud-col-right',['bud-record-card','bud-result-card','bud-upcoming-card','prev-weeks-section',
+    ['bud-col-right',['bud-record-card','bud-days-card','bud-result-card','bud-upcoming-card','prev-weeks-section',
       'bud-calc-card']]
   ]
 };
@@ -11885,6 +12022,8 @@ function renderBudgetTab(){
   if(recWrap) recWrap.innerHTML=renderRecordCard();
   const varWrap=document.getElementById('bud-variable-card');
   if(varWrap) varWrap.innerHTML=renderVariableCard(data,editable);
+  const daysWrap=document.getElementById('bud-days-card');
+  if(daysWrap) daysWrap.innerHTML=renderDaysCard(weekKey(getMondayOf(currentWeekIdx)));
   // Empty string when nothing is stranded, so this slot collapses to nothing in normal use.
   const strandedWrap=document.getElementById('bud-stranded-card');
   if(strandedWrap) strandedWrap.innerHTML=renderStrandedCard();
@@ -12161,6 +12300,8 @@ function budRecalc(animate){
   $('sum-var',fmtMoneyExact(totalVar));
   const _vg=currentVarGoal&&currentVarGoal();
   $('sum-vargoal',_vg?(fmtMoneyExact(totalVar)+' / '+fmtMoney(_vg)):'—');
+  // Only the itemised half has days, so that is what the collapsed Day by day card states.
+  $('sum-days',fmtMoneyExact(budDaySpend(_wkKey).dated));
   const savSum=document.getElementById('sav-head-sum');
   if(savSum) savSum.style.color='var(--text)';
 
@@ -12691,17 +12832,22 @@ function renderMonth(){
         : totalSaved>0 ? tstat('warn','Below 20%','flat',true)
         : tstat('neg','Nothing saved','down',true))
       : '';
-    sg.className='hero-metric-grid';
-    sg.innerHTML=[
-      {variant:'accent', icon:'target', label:'Savings rate', val:savRate,
+    // ONE hero panel, not three direction-coloured hero cards. Month opened with an accent
+    // slab, a green one and a red one side by side, which is three announcements where the
+    // screen has one thing to say; Year and Accounts had already been consolidated the same
+    // way. The rate leads full-width on a phone so the other two still pair beneath it,
+    // which is the layout .hero-metric-grid used to get from a :first-child rule.
+    sg.className='';
+    sg.innerHTML=budHeroPanel([
+      {icon:'target', label:'Savings rate', val:savRate, lead:true,
        sub:weekCount>0?'$'+Math.round(totalSaved).toLocaleString()+' saved this month':'No weeks saved yet', chip:rateChip},
-      {variant:'income', icon:'wallet', label:'Income',
+      {icon:'wallet', label:'Income',
        val:weekCount>0?'$'+Math.round(totalIncome).toLocaleString():'—',
        sub:weekCount>0?'Across '+weekCount+' week'+(weekCount>1?'s':''):'Nothing recorded'},
-      {variant:'expense', icon:'receipt', label:'Expenses',
+      {icon:'receipt', label:'Expenses',
        val:weekCount>0?'$'+Math.round(totalSpending).toLocaleString():'—',
        sub:weekCount>0?'Committed + variable':'Nothing recorded'},
-    ].map(budHeroMetric).join('');
+    ],{cols:3,colsSm:2});
   }
 
   const barEl=document.getElementById('month-bar');

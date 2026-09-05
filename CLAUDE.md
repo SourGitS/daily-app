@@ -92,7 +92,9 @@ older summary — re-grep before assuming a fact from here is still true if it l
   spending, distinct from "money left over"): the goal input is behind the card's Edit button
   (`budEditMode.vargoal`, same convention as the other budget cards), the usual goal is
   `budDefaults.varGoal`, and each week stores the goal that applied to it as `var_goal` so past
-  weeks aren't rewritten later.
+  weeks aren't rewritten later. A **Day by day** card under Variable expenses breaks the same
+  week down by date instead of by category, expanding each day into its purchases — see the
+  reconciliation rule below before touching it.
 - **Accounts** — net-worth tracking across accounts; added after Budget, migrated from the old
   savings/CC logs. An asset can be flagged `saver:true` ("Savers account"): it still counts in
   net worth but is excluded from the **debt payoff position**
@@ -234,27 +236,34 @@ the accent or the theme must go through those, not set `--accent` directly.
   deliberately not folded into `.card` (see the press-lift note below). `.hero-wide` rescales
   the circle for a full-width surface. Two components wear it, and choosing the wrong one is
   the mistake this split exists to prevent:
-  - **`.hm-card` — ONE figure per card, coloured BY DIRECTION.** Built by `budHeroMetric(m)`,
-    laid out in a `.hero-metric-grid`. Four variants: `hm-income` (green), `hm-expense` (red),
-    `hm-accent` (the live accent) and `hm-neutral` (a cool slate for a figure that is neither in
-    nor out — kept off plain graphite because the DEFAULT accent is a neutral grey and the two
-    collided; `hm-good`/`hm-short` are unused CSS aliases of the first two, not a fifth and
-    sixth). Used by **Budget → Month**, whose three figures genuinely differ in direction:
-    what came in, what went out, what proportion stuck.
   - **`.hero-panel` — SEVERAL figures on ONE neutral surface.** Built by
     `budHeroPanel(items,{cols,colsSm})`: a single `.hero-surface.hero-wide` holding a `.hp-grid`
-    of `.hp-cell`s split by hairlines, `.hp-lg` promoting a cell's figure to hero size. Used by
-    **Budget → Year** (six cells, 3-up, 2-up on a phone) and **Accounts**
+    of `.hp-cell`s split by hairlines. Per-cell flags: `lg` promotes the figure to hero size,
+    `lead` spans the cell across the whole panel at the narrow breakpoint. **This is now the
+    only hero-summary component with call sites** — all three are panels:
+    **Budget → Month** (three cells, 3-up, the rate leading full-width above a 2-up row on a
+    phone), **Budget → Year** (six cells, 3-up, 2-up on a phone) and **Accounts**
     (`renderAccountsHero()` — net worth and debt payoff position, two `hp-lg` cells side by side
     from 561px, stacked below it because the payoff cell carries three supporting lines).
+  - **`.hm-card` — ONE figure per card, coloured BY DIRECTION — has NO remaining call sites.**
+    `budHeroMetric(m)`, the `.hero-metric-grid` block and the `hm-income`/`hm-expense`/
+    `hm-accent`/`hm-neutral` variants (plus the `hm-good`/`hm-short` aliases) are all still in
+    the tree but nothing builds one any more: Month was the last user and moved to a panel on
+    2026-09-05 at Francois's request. Kept rather than deleted because removing it is a
+    separate decision, not because it is in use — do not cite it as precedent for a new screen
+    without checking that first. Its shared half, `.hero-surface`, is very much alive.
   **The panel has NO per-cell colour variant, and adding one back is the thing it was built to
-  remove.** Both call sites used to be direction-coloured `.hm-card`s: Year opened with six
-  saturated slabs in four colours, and Accounts with two stacked full-width cards that flipped
-  the whole surface green or red with their sign — so each screen read as several unrelated
+  remove.** All three call sites used to be direction-coloured `.hm-card`s: Year opened with six
+  saturated slabs in four colours, Accounts with two stacked full-width cards that flipped
+  the whole surface green or red with their sign, and Month with an accent slab, a green one
+  and a red one in a row — so each screen read as several unrelated
   announcements rather than one summary. On a panel the FIGURES are what differ, not the
   backgrounds, and any verdict rides in a `.tstat` chip inside the cell, which is the house rule
   everywhere else. Colour by direction is for a SET of cards being compared; one card holding
-  several figures stays graphite.
+  several figures stays graphite. `lead` is a LAYOUT flag and not a hole in that rule — it
+  exists so an odd cell count (Month's three at two columns) does not leave a half-empty
+  second row, and it needs no special case in the divider system: a spanning cell in the first
+  row still has its top and left edges clipped like any other.
   Panel mechanics worth not rediscovering: the dividers are a `border-top` + `border-left` on
   every cell with `.hp-grid` pulled 1px up and left so the surface's `overflow:hidden` clips the
   outermost pair away. That holds for ANY column count, so a breakpoint changes only the column
@@ -283,6 +292,41 @@ the accent or the theme must go through those, not set `--accent` directly.
   `[data-theme="dark"] .tstat.pos` would otherwise outrank a three-deep rule.
   **`.summary-grid` / `.sum-card` are GONE**, as are `BUD_HERO_SCENES` and `budHeroStops()` —
   the scene table and its inline gradients died with the custom properties above.
+- **Budget → Week's "Day by day" card reconciles with the Variable card BY CONSTRUCTION, and
+  that is the whole point of it.** `budDaySpend(wk)` / `renderDaysCard(wk)` (js/app.js, beside
+  the `txn*` helpers) answer "which days" off the same records the Variable card reads for
+  "which categories". They can only agree for money that HAS a day, so the function returns
+  three parts and the card shows all three: `dated` (real transactions, on their day), `carry`
+  (converted weekly totals) and `undated` (categories still on a typed weekly figure).
+  `dated + carry + undated === weekVarTotal(d,wk)`, and it stays that way because
+  `budDaySpend()` builds **the same category-id set `weekVarTotal()` builds** — the stored
+  `var_*` keys plus `loadVarCats()` plus every id appearing in the week's transactions — rather
+  than iterating `loadVarCats()` alone. Verified against a week whose stored keys included two
+  ids (`var_fuel`, `var_fun`) that no longer exist as categories: iterating the live list only
+  would have silently dropped them and made the day list disagree with the card above it.
+  Two things deliberately do NOT get a day, and both are printed under the list rather than
+  dropped:
+  - a category still on its typed weekly total — one figure standing for seven days, so
+    putting it on any one of them would invent a purchase that never happened;
+  - a **carry record**, which IS a transaction but is a converted weekly total dated to its
+    week's MONDAY (see `budResolveConflict`'s `convert` branch). Counting it as a day would
+    draw a Monday spike that never happened, so `txnIsCarryRecord()` filters it out of the day
+    rows and into its own line.
+  A day list whose total quietly disagrees with the card above it reads as a bug, which is why
+  the remainder is stated in words instead of being rounded away.
+  Mechanics: rows are FLAT with hairline dividers (never a stack of little cards); only a day
+  with purchases is a `<button>`, the rest are `<div>`s, so nothing carries a press affordance
+  that leads nowhere; the expanded purchases reuse the existing `.txn-item` markup rather than
+  inventing a second row vocabulary. The bar fill is set inline from **`budExpenseHex()`**, the
+  same source every spending chart reads — a second red hardcoded in CSS would be free to drift
+  from `BUD_MONEY`. Like the charts, it takes a theme change on the next render. The amount
+  itself stays `var(--text)`: the bar is a redundant encoding of a figure that is already
+  printed, so the row still reads with no colour at all.
+  **`BUD_WEEK_DAYS` is Monday-first short names and is NOT `BUD_DAY_NAMES`**, which already
+  existed further down as Sunday-first FULL names for the pay-day selectors. Both are top-level
+  `const`s, so reusing the name is a hard parse error that takes the whole app down — the same
+  class of fault as `.set-row`, `.empty` and the `wr-`/`wkr-` collision, now seen in JS as well
+  as CSS. The card's own empty state uses `.is-empty`, never `.empty`, for the same reason.
 - **Budget → Month's variable-spending breakdown is one reconciled composition view.**
   `monthSpendBreakdown()` resolves each recorded week through `statsWeekParts()` and
   `varCatAmount()` (transaction precedence intact), then feeds both the donut and the ranked
