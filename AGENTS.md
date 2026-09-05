@@ -31,8 +31,11 @@ Four main areas plus supporting screens:
 
 - Vanilla HTML/CSS/JS. **No build step, no bundler, no package.json, no npm scripts.**
 - Entry point `index.html`, loads NINE CSS files in a fixed cascade order (do not reorder the
-  `<link>` tags; new ones are appended, never inserted) and one `js/app.js` (~24,500 lines,
-  all app logic). Both of these counts have gone stale in this file before — `wc -l` and
+  `<link>` tags; new ones are appended, never inserted) and TWO scripts: `js/nutrition.js`
+  (~340 lines — the food catalogue, the day log and the Nutrition tab) then `js/app.js`
+  (~25,400 lines, everything else). Both are plain `<script defer>` in one global scope. The
+  "all app logic in one file" claim in this doc was stale for a long time after nutrition.js
+  was split out, and both line counts have gone stale before — `wc -l` and
   `grep rel="stylesheet" index.html` rather than trusting them.
 - PWA: `manifest.json` + `service-worker.js` (cache-first fetch handler).
 - External deps loaded from CDN, no local copies: Chart.js (cdnjs), Tabler Icons (jsdelivr),
@@ -355,12 +358,19 @@ safety-critical parts:
 The Prompt 42 pantry work described here previously is committed and shipped.
 
 Nothing is uncommitted as of 2026-09-05 beyond documentation. Recently shipped, newest
-first: Budget › Month's ranked spending breakdown (the donut is gone), Budget › Week's Day by
+first: one navigation registry (`NAV_TREE` drives the desktop sidebar AND the mobile hamburger
+as six accordion groups; `MENU_NAV`/`MENU_SECTIONS`/`buildSideMenu()` and the quick-settings
+popover are gone) together with a visual-consistency pass (one `.seg-tabs` segmented control
+replacing five, a three-step uppercase micro-label scale, Log's cards on the matte
+content-card surface with `cardHeader()` headers, the `--accent-hero` migration finished
+across every hero, and Nutrition on the radius tokens with a real empty state). Its only new
+persisted value is the device-local, backup-excluded `daily_nav_ui`; it performs no migration
+and touches no synced store. Before that: Budget › Month's ranked spending breakdown (the donut is gone), Budget › Week's Day by
 day card, the hero-card consolidation (one `.hero-panel` for
 Budget › Month, Year and Accounts),
 Budget/Accounts hierarchy wording, Log Today weight cards, the Log training hub
 (`83f9969` then `54073ce`), the Weekly Review, and the Kitchen favourite change.
-`CACHE_NAME` is at `daily-v297`.
+`CACHE_NAME` is at `daily-v298`.
 
 The workout hub adds **no** synced store and performs **no** migration, so it does not carry
 the fresh-profile sync risk the Weekly Review does. The Weekly Review's two stores

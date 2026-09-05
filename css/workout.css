@@ -258,7 +258,7 @@
    CLAUDE.md — sub-10px type inside a mock-up is intentional, not a legibility bug). */
 .ob-preview{display:flex;flex-direction:column;gap:7px;margin:4px 0 18px;text-align:left}
 .ob-pv-hero{border-radius:14px;padding:12px 14px;color:#fff;
-  background:linear-gradient(150deg,rgba(var(--accent-rgb),.95),rgba(var(--accent-rgb),.6))}
+  background:linear-gradient(150deg,var(--accent-hero),var(--accent-hero-2))}
 .ob-pv-hero-label{font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;opacity:.75}
 .ob-pv-hero-title{font-family:var(--font-num);font-size:20px;font-weight:800;line-height:1.1;margin-top:2px}
 .ob-pv-hero-meta{font-size:10px;font-weight:600;opacity:.8;margin-top:3px}
@@ -329,26 +329,70 @@
 /* Theme thumbnails, rebuilt: the old ones embedded a legacy Budget hero with hardcoded
    figures, which showed a screen the app no longer has. Now abstract card shapes. */
 .ob-tm-hero{display:block;height:22px;border-radius:6px;margin-bottom:5px;
-  background:linear-gradient(150deg,rgba(var(--accent-rgb),.9),rgba(var(--accent-rgb),.55))}
+  background:linear-gradient(150deg,var(--accent-hero),var(--accent-hero-2))}
 .ob-tm-row{display:flex;gap:5px;margin-bottom:5px}
 .ob-tm-row i{flex:1;height:15px;border-radius:5px;background:rgba(128,128,128,.28)}
 
 
-/* ── Log hub: sub-tab strip + overview/program surfaces ──────────────
-   Log holds Today / Program / Exercises / History behind one strip. The strip deliberately
-   reuses the .stats-tab-row shape (a track with a raised active pill) rather than inventing a
-   second segmented control — two sub-tab looks in one app is one too many. Its own class
-   names, though: .stats-tab-* is styled per-screen at ≥1024px and Log needs different rules.
-   The selected pill is carried by FILL and weight, not an accent tint — the default accent is
-   a neutral grey that is indistinguishable from the track at low alpha. */
-.log-tab-row{display:flex;gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch;
-  background:var(--border);border-radius:10px;padding:3px;margin-bottom:16px;scrollbar-width:none}
-.log-tab-row::-webkit-scrollbar{display:none}
-.log-tab-btn{flex:1 0 auto;padding:8px 13px;border:none;background:transparent;border-radius:8px;
-  font:inherit;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;white-space:nowrap;
-  -webkit-tap-highlight-color:transparent}
-.log-tab-btn.active{background:var(--card);font-weight:700;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,0.1)}
-.log-tab-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* ── Log hub ──────────────────────────────────────────────────────
+   Log holds Today / Program / Exercises / History behind one strip. That strip is the
+   shared .seg-tabs control below, not a class of its own — .log-tab-row/.log-tab-btn were
+   one of the five near-copies it replaced. */
+
+/* ── The ONE segmented control ───────────────────────────────────────
+   Five near-identical implementations were collapsed into this: .stats-tab-row (Stats),
+   .log-tab-row (Log), .nut-tabs (Nutrition), .kit-subnav (Kitchen) and Budget's
+   inline-styled .sub-toggle. No two of them agreed on radius, padding, gap, type or the
+   selected treatment. Geometry, type and the selected state live HERE and nowhere else; the
+   only thing a screen chooses is whether its buttons FILL the track (3-4 tabs, fits a phone)
+   or SCROLL (Stats' six), and that is a modifier, not a second control.
+   The selected pill is carried by FILL and WEIGHT, never an accent tint — the default accent
+   is a neutral grey that is indistinguishable from the track at low alpha. `.on` is the same
+   selected class .stats-seg and .wkr-tabs already use.
+   Sticky at every width, which means the track has to be OPAQUE: var(--border) is an rgba()
+   in both themes, and a translucent pinned surface is the ghosting bug the Budget toggle hit.
+   The tint is composited over --bg rather than used alone, so it renders exactly as before
+   and cannot be seen through.
+   The bleed is a box-shadow rather than a ::before, because .seg-scroll sets overflow-x and
+   would clip a pseudo-element — and a box-shadow affects neither layout nor scrollable
+   overflow, so it cannot produce a scrollbar. ONE shadow does the whole job: grown by the
+   bleed on every side, then offset UP by it, so it covers both side gutters and the band
+   above the track while stopping dead at the track's bottom edge — the margin below stays
+   clear, which is what lets content appear from under a pinned strip normally.
+   --seg-bleed is the scroll container's own padding, which is not part of this element's box
+   and is exactly where cards were scrolling visibly past the strip: 16px on a phone (the
+   .swipe-panel / section padding), 14px in landscape. On desktop it is 0, and correctly so —
+   there #app-main is the scroller and carries no padding of its own, so nothing passes above
+   the strip, and the track is capped well inside the content width where painting a --bg
+   curtain across the rest would hide cards as they scroll up. */
+.seg-tabs{--seg-bleed:16px;
+  display:flex;gap:4px;padding:3px;border-radius:10px;margin-bottom:16px;
+  background:linear-gradient(var(--border),var(--border)),var(--bg);
+  position:sticky;top:0;z-index:8;
+  box-shadow:0 calc(var(--seg-bleed) * -1) 0 var(--seg-bleed) var(--bg);
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none}
+.seg-tabs::-webkit-scrollbar{display:none}
+.seg-tabs>button{padding:8px 13px;border:none;background:transparent;border-radius:8px;
+  font:inherit;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;
+  white-space:nowrap;-webkit-tap-highlight-color:transparent}
+.seg-tabs>button.on{background:var(--card);font-weight:700;color:var(--text);
+  box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.seg-tabs>button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.seg-fill>button{flex:1 0 auto}                    /* Log, Nutrition, Kitchen, Budget */
+.seg-scroll{overflow-x:auto}                       /* Stats — six tabs do not fit a phone */
+.seg-scroll>button{flex:0 0 auto}
+@media (orientation:landscape) and (max-width:1023px) and (max-height:600px){
+  .seg-tabs{--seg-bleed:14px}
+}
+@media (min-width:1024px){
+  /* One measure for every strip, and it starts at the CONTENT's left edge. The Stats strip
+     used to be `margin:0 auto`, so it floated at the middle of a 2200px canvas while the week
+     selector, the section pills and both card columns began at the left — the only element on
+     the page off that line. 760 is not new: it is the cap Log and Stats already chose,
+     because four pills stretched across a wide monitor is absurd. */
+  .seg-tabs{--seg-bleed:0px;max-width:760px;margin-left:0;margin-right:auto}
+  .seg-scroll>button{flex:1;text-align:center}
+}
 
 .log-sec-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
 .log-sec-title{font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--text)}
@@ -356,9 +400,10 @@
 /* Today's overview. One accent surface on the screen — the thing you press to start
    training — and everything under it quiet, so the thumb has an obvious target. */
 .lg-hero{border-radius:var(--radius-hero);padding:18px 18px 16px;margin-bottom:14px;color:#fff;
-  background:linear-gradient(150deg,rgba(var(--accent-rgb),.92),rgba(var(--accent-rgb),.58) 55%,rgba(var(--accent-rgb),.4));
+  background:linear-gradient(150deg,var(--accent-hero),var(--accent-hero-2));
   box-shadow:0 16px 40px rgba(var(--accent-rgb),.28)}
-.lg-hero-lead{font-size:10.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;opacity:.86}
+/* Hero eyebrow — step 3: white-on-accent, on a hero surface only. */
+.lg-hero-lead{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.72)}
 .lg-hero-title{font-size:30px;font-weight:800;letter-spacing:-.025em;line-height:1.1;margin-top:6px}
 .lg-hero-sub{font-size:13px;opacity:.88;margin-top:4px}
 .lg-hero-btn{width:100%;margin-top:15px;min-height:46px;padding:12px;border:none;border-radius:13px;
@@ -367,13 +412,14 @@
 .lg-hero-btn:active{transform:scale(.985)}
 .lg-hero-btn:focus-visible{outline:2px solid #fff;outline-offset:3px}
 
-.lg-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-card);
+/* A genuine content card, so it reads --card-border like .card and is in the matte
+   content-card surface list in budget-home.css. It used to be var(--card) + a 1px
+   var(--border) outline: --card is the CONTROL token (a flat translucent wash in dark mode,
+   for inputs, keys and chips), so these four rendered as wash panels while every other card
+   in the app sat on a solid #1b1b1d. Its header is cardHeader() now — .lg-card-hd,
+   .lg-card-lbl and .lg-card-act are retired. */
+.lg-card{background:var(--card);border:0.5px solid var(--card-border);border-radius:var(--radius-card);
   padding:14px 16px;margin-bottom:12px}
-.lg-card-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
-.lg-card-lbl{font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--text-3)}
-.lg-card-act{border:none;background:transparent;color:var(--accent-text);font:inherit;font-size:12px;
-  font-weight:800;cursor:pointer;padding:4px 2px;-webkit-tap-highlight-color:transparent}
-.lg-card-act:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
 
 /* Rows double as buttons in some lists and plain rows in others; one shape either way. */
 .lg-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
@@ -463,11 +509,8 @@ button.lg-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;
 .lg-scroll-x{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch}
 .lg-scroll-x::-webkit-scrollbar{display:none}
 
-/* ── Stats tab bar (Overview + 5 sub-tabs, horizontally scrollable) ── */
-.stats-tab-row{display:flex;gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch;background:var(--border);border-radius:10px;padding:3px;margin-bottom:16px;scrollbar-width:none}
-.stats-tab-row::-webkit-scrollbar{display:none}
-.stats-tab-btn{flex:0 0 auto;padding:8px 13px;border:none;background:transparent;border-radius:8px;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent}
-.stats-tab-btn.active{background:var(--card);font-weight:700;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,0.1)}
+/* Stats' Overview + 5 sub-tabs ride the shared .seg-tabs.seg-scroll control (see the Log hub
+   section above); .stats-tab-row / .stats-tab-btn are retired. */
 
 /* ── Stats insight system ── */
 .stats-review-intro{padding:4px 2px 14px}
@@ -485,7 +528,10 @@ button.lg-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;
 .stats-status.neutral{color:var(--text-2)}
 .stats-chart-box{height:260px;margin-top:14px;position:relative}
 .stats-chart-summary{font-size:14px;font-weight:700;line-height:1.45;color:var(--text);margin-bottom:6px}
-.stats-inline-link{border:0;background:none;color:var(--accent-text);font:inherit;font-size:12px;font-weight:700;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+/* The same secondary action as .card-hd-act, whose rule it now shares (kitchen-extras.css).
+   All it keeps of its own is the underline, which is what makes it read as a link when it
+   sits in body flow instead of on a card-header row. */
+.stats-inline-link{text-decoration:underline;text-underline-offset:2px}
 .stats-evidence-empty{height:100%;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);font-size:13px;line-height:1.5;padding:18px}
 .stats-evidence-row{display:flex;justify-content:space-between;gap:16px;border-top:1px solid var(--border);padding-top:12px;margin-top:12px;font-size:12px;color:var(--muted)}
 .stats-evidence-row strong{color:var(--text);text-align:right}
@@ -506,7 +552,9 @@ button.lg-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;
    card system. */
 #view-stats .card-hd>.stats-status{margin-left:auto}
 #view-stats .card-hd>.stats-status+.card-hd-act{margin-left:8px}
-.stats-kicker,.stats-sec-label{font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+/* Section / card eyebrow — step 1 of the three-step micro-label scale (see .card-label in
+   kitchen-extras.css, which is the canonical one). */
+.stats-kicker,.stats-sec-label{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2)}
 .stats-sec-label{margin:22px 2px 9px}
 .stats-seg{display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:9px;background:var(--track);flex-shrink:0}
 .stats-seg button{min-width:44px;height:34px;padding:0 8px;border:0;border-radius:7px;background:transparent;color:var(--muted);font:inherit;font-size:10px;font-weight:800;cursor:pointer}
@@ -531,10 +579,9 @@ button.lg-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;
    card's 10px white labels wash out in light mode (the same fix .budget-snapshot-card needed).
    CSS, not an inline style: reading var(--accent-rgb) means the card restyles itself when the
    accent changes instead of waiting for a re-render. */
-.fin-hero{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.6) 55%, rgba(var(--accent-rgb),.4));
+.fin-hero{background:linear-gradient(150deg, var(--accent-hero), var(--accent-hero-2));
   border-radius:var(--radius-hero);padding:16px 16px 14px;margin-bottom:16px;position:relative;overflow:hidden;color:#fff;
   box-shadow:0 14px 36px rgba(var(--accent-rgb),.28);text-shadow:0 1px 2px rgba(0,0,0,.16)}
-[data-theme="light"] .fin-hero{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.7) 55%, rgba(var(--accent-rgb),.65))}
 .fin-hero::before{content:'';position:absolute;width:190px;height:190px;right:-92px;top:-112px;border-radius:50%;background:rgba(255,255,255,.075);pointer-events:none}
 .fin-hero>*{position:relative;z-index:1}
 .fh-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:0 2px 10px;border-bottom:1px solid rgba(255,255,255,.18)}
@@ -626,8 +673,6 @@ button.ov-day{cursor:pointer}
 }
 
 @media (min-width:1024px){
-  .stats-tab-row{position:sticky;top:0;z-index:8;max-width:760px;margin:0 auto 20px}
-  .stats-tab-btn{flex:1;text-align:center}
   .stats-review-grid{grid-template-columns:1fr 1fr;gap:16px}
   .ov-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:stretch}
   .ov-block{margin-bottom:0}
@@ -678,8 +723,7 @@ button.ov-day{cursor:pointer}
 /* Stats → Overview hero: single accent-gradient card (matches Home/Budget heroes). Reuses
    the .budget-hero-card gradient formula; light mode floors the low-opacity end at .65 so it
    doesn't wash out into the page background (same fix as .budget-snapshot-card). */
-.ov-hero{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.6) 55%, rgba(var(--accent-rgb),.4));border-radius:var(--radius-hero);box-shadow:0 16px 40px rgba(var(--accent-rgb),.3);padding:14px 14px 12px;margin-bottom:16px;position:relative;overflow:hidden;text-shadow:0 1px 2px rgba(0,0,0,.16)}
-[data-theme="light"] .ov-hero{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.7) 55%, rgba(var(--accent-rgb),.65))}
+.ov-hero{background:linear-gradient(150deg, var(--accent-hero), var(--accent-hero-2));border-radius:var(--radius-hero);box-shadow:0 16px 40px rgba(var(--accent-rgb),.3);padding:14px 14px 12px;margin-bottom:16px;position:relative;overflow:hidden;text-shadow:0 1px 2px rgba(0,0,0,.16)}
 .ov-hero::before{content:'';position:absolute;width:190px;height:190px;right:-84px;top:-118px;border-radius:50%;background:rgba(255,255,255,.1);pointer-events:none}
 .ov-hero>*{position:relative;z-index:1}
 .ov-hero-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:0 10px 10px;margin-bottom:3px;border-bottom:1px solid rgba(255,255,255,.18)}
@@ -907,7 +951,7 @@ button.ov-day{cursor:pointer}
      two wrappers have to pass the flex height through or the columns collapse to content
      height and the pinned timer scrolls away — the exact thing this layout exists to stop.
      The tab strip stays flex:0 0 auto so it keeps its height and never gets squeezed. */
-  #view-log > .log-tab-row{flex:0 0 auto}
+  #view-log > .seg-tabs{flex:0 0 auto}
   #view-log > #log-sub-today{display:flex;flex-direction:column;flex:1;min-height:0}
   #view-log #log-session{display:flex;flex-direction:column;flex:1;min-height:0}
   /* The overview-back link keeps its own height inside that column; only .log-cols gives. */

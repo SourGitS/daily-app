@@ -1,9 +1,10 @@
 /* ── Kitchen ── */
 .kit-pane{position:relative}
 .kit-detail-col{display:none}
-.kit-subnav{display:flex;gap:6px;background:var(--border);border-radius:12px;padding:3px;margin-bottom:16px}
-.kit-subnav-btn{flex:1;padding:8px;border:none;background:transparent;border-radius:9px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent}
-.kit-subnav-btn.active{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,0.1)}
+/* Recipes / Shopping / Pantry ride the shared .seg-tabs.seg-fill control (css/workout.css).
+   .kit-subnav / .kit-subnav-btn were one of the five near-copies it replaced — this is the
+   strip that visibly changes: 13px/600 becomes 12px/500, and the selected tab now gains
+   weight instead of relying on its fill alone. */
 .kit-search{width:100%;height:42px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font-size:14px;padding:0 14px;margin-bottom:12px;-webkit-appearance:none}
 .kit-search:focus{outline:none;border-color:var(--accent)}
 [data-theme="dark"] .kit-search{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.1)}
@@ -371,7 +372,7 @@
 .card-hd-ico{width:14px;height:14px;flex-shrink:0;color:var(--text-2);stroke-width:2.2}
 /* The right-hand affordance ("Manage →"). --accent-text, not --accent: this is accent-coloured
    TEXT on the card surface, which is the case --accent is not tuned for. */
-.card-hd-act{font-size:12px;font-weight:700;color:var(--accent-text);cursor:pointer;white-space:nowrap;text-transform:none;letter-spacing:0;background:none;border:none;padding:0;font-family:inherit}
+.card-hd-act,.stats-inline-link{font-size:12px;font-weight:700;color:var(--accent-text);cursor:pointer;white-space:nowrap;text-transform:none;letter-spacing:0;background:none;border:none;padding:0;font-family:inherit}
 /* The one primary number. One per card — a card with two competing figures has no hierarchy. */
 .card-fig{font-family:var(--font-num);font-size:32px;font-weight:800;line-height:1;letter-spacing:-.02em;color:var(--text);margin:0}
 .card-fig-sm{font-size:24px}
@@ -420,7 +421,7 @@
 /* Pay-day cells hold a phrase ("in 3 days"), not a figure, so they take UI type at a size that
    can wrap to two lines without shoving the row around. */
 .mt-val-sm{font-family:var(--font-ui);font-size:14px;font-weight:700;line-height:1.2}
-.mt-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:4px}
+.mt-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:4px}
 /* ── Personal record rows ──
    Name left, value hard right in font-num so the figures form a column regardless of how long
    the exercise names are. */
@@ -523,7 +524,7 @@
 /* Step 5 — Orange hero workout card */
 /* Rich crimson card with a vignette to black at the edges (depth) — tracks --accent-rgb
    so it follows the day theme. The ::before adds a soft, centred inner glow. */
-.hero-workout-card{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.55) 55%, rgba(var(--accent-rgb),.35));border-radius:var(--radius-hero);padding:22px;margin-bottom:12px;box-shadow:0 16px 40px rgba(var(--accent-rgb),.3);position:relative;overflow:hidden}
+.hero-workout-card{background:linear-gradient(150deg, var(--accent-hero), var(--accent-hero-2));border-radius:var(--radius-hero);padding:22px;margin-bottom:12px;box-shadow:0 16px 40px rgba(var(--accent-rgb),.3);position:relative;overflow:hidden}
 .hero-workout-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% -10%, rgba(255,255,255,.12), transparent 55%);pointer-events:none}
 .hero-label{font-size:11px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.75)}
 .hero-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
@@ -796,17 +797,63 @@
 .nav-btn.active{font-weight:700;color:var(--accent-text)}
 .nav-btn.active svg{color:var(--accent-text)}
 
-/* Step 12 — Desktop sidebar (≥1024px) */
+/* ── Navigation tree (.nv-*) — ONE component, two mounts ──────────────
+   Rendered from NAV_TREE by renderNav() into #ds-nav (the desktop sidebar) and
+   #side-menu-list (the phone's hamburger sheet). Same groups, same rows, same order and the
+   same accordion on both; they differ in DENSITY only, which is the two blocks at the end.
+   This replaced twelve literal .ds-item buttons in index.html, a similar-but-different list
+   built by buildSideMenu(), and a third in renderQuickSettingsMenu().
+   Selection is carried by an accent TINT plus a rail plus a weight change — never by tint
+   alone. The default accent is a neutral grey that vanishes as a 3px bar on #080808, which is
+   why the rail is --accent-text and not --accent (same reason the Journal rail is). Colour is
+   never the only cue: the weight change carries it with no colour at all.
+   The accordion animates max-height, matching the 0.25s ease the retired quick-settings
+   dropdown used. A fixed cap, not a JS-measured height: the largest group is six rows. */
+.nv-group{display:block}
+.nv-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;
+  background:transparent;border:0;cursor:pointer;text-align:left;
+  font-family:var(--font-ui);font-size:11px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted);-webkit-tap-highlight-color:transparent}
+.nv-caret{flex-shrink:0;transition:transform .2s ease}
+.nv-group.is-open .nv-caret{transform:rotate(180deg)}
+.nv-rows{display:flex;flex-direction:column;overflow:hidden;max-height:0;
+  transition:max-height .25s ease}
+.nv-group.is-open .nv-rows{max-height:520px}
+.nv-row{display:block;width:100%;background:transparent;border:0;cursor:pointer;
+  text-align:left;font-family:var(--font-ui);color:var(--muted);
+  -webkit-tap-highlight-color:transparent;position:relative}
+.nv-row:hover{background:var(--track);color:var(--text)}
+.nv-row.is-on{background:rgba(var(--accent-rgb),.13);color:var(--accent-text);font-weight:700}
+.nv-row.is-on::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:3px;
+  border-radius:0 3px 3px 0;background:var(--accent-text)}
+.nv-row:focus-visible,.nv-hd:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+
+/* Phone: the hamburger sheet keeps its 16px rows and 44px targets. */
+#side-menu-list .nv-hd{padding:14px 14px 6px}
+#side-menu-list .nv-group:first-child .nv-hd{padding-top:6px}
+#side-menu-list .nv-row{min-height:44px;padding:12px 14px;border-radius:12px;
+  font-size:16px;font-weight:600;color:var(--text)}
+#side-menu-list .nv-row.is-on{color:var(--accent-text);font-weight:700}
+#side-menu-list .nv-row.is-on::before{left:-4px}
+
+/* Desktop sidebar: 14px rows in the pill shape the old .ds-item used. */
 @media (min-width:1024px){
-  #desktop-sidebar{width:260px;background:var(--card);border-right:0.5px solid var(--border)}
-  .ds-item{border-radius:12px;padding:10px 14px;margin:0 10px 2px;width:auto;display:flex;align-items:center;gap:10px;font-family:var(--font-ui);font-size:14px;font-weight:600;color:var(--muted);border-left:none;transition:background .15s,color .15s}
-  .ds-item:hover{background:var(--track);color:var(--text)}
-  .ds-item.active{background:rgba(var(--accent-rgb),.13);color:var(--accent-text);border-left:none;font-weight:700}
-  .ds-item.active svg{color:var(--accent-text)}
-  /* Readable, bolder nav labels (inactive items were washed-out --muted) */
-  .ds-item:not(.active){color:#555;font-weight:600}
-  [data-theme="dark"] .ds-item:not(.active){color:rgba(255,255,255,0.7);font-weight:600}
-  .ds-section{font-weight:700;font-size:11px;letter-spacing:0.08em;color:#999;text-transform:uppercase}
+  /* The nav list is the part that scrolls, so an expanded group can never push .ds-profile
+     (margin-top:auto) off the bottom of a 100vh sticky column. min-height:0 is the load-bearing
+     half: a flex child will not shrink below its content height without it. The scrollbar is
+     hidden the same way every other strip in the app hides one (.lg-scroll-x). */
+  #ds-nav{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none}
+  #ds-nav::-webkit-scrollbar{display:none}
+  #ds-nav .nv-hd{padding:12px 24px 4px}
+  #ds-nav .nv-row{margin:0 10px 2px;width:auto;border-radius:12px;padding:9px 14px;
+    font-size:14px;font-weight:600;color:#555;transition:background .15s,color .15s}
+  [data-theme="dark"] #ds-nav .nv-row{color:rgba(255,255,255,0.7)}
+  #ds-nav .nv-row.is-on{color:var(--accent-text);font-weight:700}
+}
+
+/* Step 12 — Desktop shell (≥1024px). #desktop-sidebar itself is declared ONCE, in
+   budget-home.css, with the values that used to win here. */
+@media (min-width:1024px){
   .kitshop-addbar{left:260px}
   .screen-title{font-size:34px}
   .hero-workout-card{padding:28px}
@@ -823,8 +870,8 @@
 #rt-bar,
 .session-seg,
 .budget-snap-pill,
-.ds-item.active,
-.ds-item.active svg{
+.nv-row.is-on,
+.nv-row.is-on::before{
   transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 /* Preserve the sliding pill / width animations while adding a colour fade */
@@ -1184,7 +1231,7 @@
 /* ══ Visual polish pass ══════════════════════════════════════════ */
 /* Log hero strip */
 .log-hero-strip{background:linear-gradient(135deg,rgba(var(--accent-rgb),.18),rgba(var(--accent-rgb),.06));border:0.5px solid rgba(var(--accent-rgb),.25);border-radius:var(--radius-card);padding:14px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
-.log-strip-label{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2);margin:0 0 3px}
+.log-strip-label{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--text-2);margin:0 0 3px}
 .log-strip-title{font-size:18px;font-weight:800;color:var(--text);margin:0;letter-spacing:-.02em}
 .log-strip-right{text-align:right}
 .log-strip-val{font-family:var(--font-num);font-size:24px;font-weight:700;color:var(--accent-text);margin:0;line-height:1}
@@ -1222,10 +1269,10 @@
 .logpick-muscle{font-size:12px;color:var(--muted);text-transform:capitalize;flex-shrink:0}
 
 /* Kitchen featured hero card */
-.kitchen-hero-card{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.55) 55%, rgba(var(--accent-rgb),.35));border:none;border-radius:var(--radius-hero);box-shadow:0 16px 40px rgba(var(--accent-rgb),.3);padding:20px;margin-bottom:16px;position:relative;overflow:hidden}
+.kitchen-hero-card{background:linear-gradient(150deg, var(--accent-hero), var(--accent-hero-2));border:none;border-radius:var(--radius-hero);box-shadow:0 16px 40px rgba(var(--accent-rgb),.3);padding:20px;margin-bottom:16px;position:relative;overflow:hidden}
 .kitchen-hero-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% -10%, rgba(255,255,255,.12), transparent 55%);pointer-events:none}
 .kitchen-hero-card>*{position:relative;z-index:1}
-.kitchen-hero-card .card-label{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.7);margin:0}
+.kitchen-hero-card .card-label{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.72);margin:0}
 .kitchen-hero-name{font-size:22px;font-weight:800;color:#fff;margin:4px 0 0;letter-spacing:-.02em}
 .kitchen-hero-cal{font-family:var(--font-num);font-size:16px;font-weight:700;color:#fff}
 .kitchen-hero-time{font-size:14px;color:rgba(255,255,255,.8)}
@@ -1254,13 +1301,8 @@
 #side-menu-title .wordmark-img{height:18px}
 .side-menu-close{background:transparent;border:none;color:var(--muted);font-size:24px;line-height:1;cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;padding:0}
 #side-menu-list{display:flex;flex-direction:column;padding:10px;gap:2px}
-.side-menu-item{display:flex;align-items:center;gap:14px;width:100%;padding:14px 14px;background:transparent;border:none;border-radius:12px;color:var(--text);font-size:16px;font-weight:600;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent}
-.side-menu-item:active{background:var(--card)}
-.side-menu-item .smi-label{flex:1}
-.side-menu-item .smi-chev{color:var(--muted);flex-shrink:0}
-.side-menu-divider{height:1px;background:var(--border);margin:8px 14px}
-.side-menu-group-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-secondary);padding:14px 14px 6px}
-#side-menu-list > .side-menu-group-label:first-child{padding-top:6px}
+/* The hamburger's rows are the shared .nv-* nav tree now (see above); .side-menu-item,
+   .smi-label, .smi-chev, .side-menu-divider and .side-menu-group-label are retired. */
 
 /* ══ Design system · Tier-1 hero cards (card-hierarchy consolidation, Part 1) ══════════════
    One shared geometry + accent-gradient rule so adjacent screens stop using
@@ -1280,7 +1322,7 @@
   position:relative;overflow:hidden;color:#fff;
 }
 .card-hero,.budget-hero-card,.hero-workout-card,.kitchen-hero-card{
-  background:linear-gradient(150deg,rgba(var(--accent-rgb),.9),rgba(var(--accent-rgb),.6) 55%,rgba(var(--accent-rgb),.4));
+  background:linear-gradient(150deg,var(--accent-hero),var(--accent-hero-2));
   box-shadow:0 16px 40px rgba(var(--accent-rgb),.3);
 }
 /* Re-assert the desktop enlargement the shared rule would otherwise override. */
@@ -1312,7 +1354,7 @@
      column of two-word lines. */
   #view-kitchen{overflow:hidden;display:flex;flex-direction:column}
   #view-kitchen .kit-pane:not(.hidden){flex:1;min-height:0;display:flex;flex-direction:column}
-  .kit-subnav{flex-shrink:0}
+  #view-kitchen > .seg-tabs{flex-shrink:0}
   #kit-recipes .kit-cols{display:flex;gap:12px;flex:1;min-height:0;align-items:stretch}
   #kit-recipes .kit-list-col{width:300px;flex-shrink:0;overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0}
   #kit-recipes .kit-detail-col{flex:1;min-width:0;display:block;overflow-y:auto;
@@ -1397,8 +1439,8 @@
   #side-menu{width:min(300px,78vw);overflow-y:auto;-webkit-overflow-scrolling:touch;
     padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));
     padding-left:env(safe-area-inset-left,0px)}
-  .side-menu-item{padding:9px 14px;font-size:14px}
-  .side-menu-group-label{padding:8px 14px 3px}
+  #side-menu-list .nv-row{min-height:40px;padding:9px 14px;font-size:14px}
+  #side-menu-list .nv-hd{padding:8px 14px 3px}
 
   /* ── Charts ──
      A chart with no height collapses; one sized in vh on a 390px viewport is barely a strip.

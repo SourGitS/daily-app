@@ -19,8 +19,13 @@ older summary — re-grep before assuming a fact from here is still true if it l
   first six were split from one `style.css` partway through the project (commit `52f32d0`);
   journal, settings and review were added later and load last *so they win ties* — that is the
   point of their position. New files are APPENDED, never inserted.
-- All logic in one `js/app.js` (~24,500 lines — this number has been wrong in this file
-  before; `wc -l` it rather than trusting it).
+- Nearly all logic in one `js/app.js` (~25,400 lines), plus a second script `js/nutrition.js`
+  (~340 lines: the food catalogue, the day log and the Nutrition tab), loaded BEFORE `app.js`
+  at the bottom of `index.html`. Both are plain `<script defer>` in one global scope, so
+  `app.js` can read `nutrition.js`'s top-level `let`s (`nutTab`) and `nutrition.js` guards its
+  calls into `app.js` with `typeof`. Both line counts have been wrong in this file before —
+  `wc -l` rather than trusting them, and note the "all logic in one file" claim was stale for
+  a long while after nutrition.js was split out.
 - PWA: `manifest.json` + `service-worker.js`, installable to iOS/Android home screen,
   `display: standalone`.
 - Optional cross-device sync: Firebase Realtime Database + Google Auth. localStorage is the
@@ -28,20 +33,91 @@ older summary — re-grep before assuming a fact from here is still true if it l
 - Chart.js (cdnjs), Tabler Icons (jsdelivr), Google Fonts — Manrope (UI) + Space Grotesk
   (numerals/wordmark).
 
-## Navigation (restructured many times over the project's life — this is current as of 2026-09-04)
+## Navigation (restructured many times over the project's life — this is current as of 2026-09-05)
 
+- **`NAV_TREE` (`js/app.js`, beside `NAV_ORDER`) is the ONE source for the desktop sidebar and
+  the mobile hamburger.** Six labelled groups — Today, Training, Money, Kitchen, Stats, More —
+  holding 25 rows between them, reaching every real destination rather than only the twelve
+  top-level ones. `renderNav()` builds the tree ONCE and mounts the same markup into `#ds-nav`
+  (sidebar) and `#side-menu-list` (hamburger); the two differ in DENSITY only (16px rows and
+  44px targets on the phone, 14px pill rows on the sidebar), never in content, order or which
+  destinations exist. **Adding a destination means adding a row to `NAV_TREE` — never a literal
+  button in `index.html` again.** This is the fix Settings already made with
+  `SETTINGS_SECTIONS`: before it, twelve hand-written `.ds-item` buttons in `index.html`, a
+  similar-but-different list in `buildSideMenu()` (from `MENU_NAV` + `MENU_SECTIONS` + four
+  more literals) and a third in `renderQuickSettingsMenu()` each carried their own copy.
+- A row is DATA, not code: `{id, label, view, sub}`. `navGo(view, sub)` is the single
+  dispatcher — nothing calls `setView` plus a sub-tab setter by hand any more — and inside it
+  the sub-tab call must come AFTER `setView`, because `setView('log')` resets `logTodayView`
+  and `setView('stats')` calls `setStatsTab(statsSubTab, true)`.
+- **`navCurrentRow()` → `setNavActive()` is the only place a selected row is written**, for
+  both surfaces, and it computes the answer from the state the screens themselves read
+  (`S.view`, `logSubTab`, `statsSubTab`, `budgetView`, `kitState.tab`, `nutTab`, plus the
+  Accounts / AI-hub overlay display flags). There is deliberately NO parallel "currently
+  selected nav row" variable — that is the thing that goes stale. This replaced seven scattered
+  `.ds-item` `classList.toggle` sites that all keyed on `data-tab` alone. `setNavActive()` is
+  called from `setView` and from every sub-tab setter (`setLogTab`, `setStatsTab`,
+  `setBudgetView`, `kitSetTab`, `nutSetTab`), so the sidebar follows a sub-tab change made from
+  inside a screen, and from the open/close of Accounts, Daily AI, the split editor, the Stats
+  evidence overlay, an exercise detail and a mounted Settings section. Those last four are not
+  nav destinations (`NAV_NO_ROW_OVERLAYS`) and light NO row — they are inset past the sidebar
+  rather than covering it, so a stale highlight beside them would be visible.
+- **The JS hook is `[data-nav-row]` / `[data-nav-group]`, not a class.** `renderQuickSettingsMenu`
+  used to emit `.ds-item` buttons with no `data-tab`, which is the only reason the old toggles
+  did not light them up.
+- **Accordion: exactly one group open at a time**, animating `max-height` + a chevron rotation
+  at 0.25s (matching the disclosure idiom the quick-settings dropdown used). Navigating opens
+  the group that owns the destination and closes the rest; pressing the open group's header
+  collapses it (all-closed is a valid state). That is what keeps the component shorter than the
+  twelve flat rows it replaced while reaching twice as many places.
+- **Expansion state is device-local, in `daily_nav_ui`**, written with a plain
+  `localStorage.setItem` and **never** `lsSave(key, value, syncName)` — the three-argument form
+  is the synced path and the sidebar is desktop-only, so a phone must not write a preference
+  only the laptop reads. `daily_pantry_ui` is the precedent, and like it, `daily_nav_ui` is
+  excluded from `exportAllData()`. **Nothing is written at boot**: the key stays absent until
+  the user actually presses a group header. Which group opens is resolved once, and the rule is
+  worth knowing — a STORED record is the user's own choice and wins during `_bootPhase`, so a
+  collapse survives a reload; with no record, the group owning the boot destination opens. The
+  `#hash` restore runs AFTER `_bootPhase` clears, so a deep link (`#log`, `#budget`) still lands
+  with its own group open without overwriting the stored preference.
+- **`#ds-nav` scrolls independently of `.ds-profile`.** `#desktop-sidebar` is
+  `height:100vh; position:sticky` with `.ds-profile{margin-top:auto}`; twelve flat rows just
+  fitted, and the moment a group expanded past the viewport the profile would have been pushed
+  off screen with nothing to scroll. `#ds-nav{flex:1;min-height:0;overflow-y:auto}` — the
+  `min-height:0` is the load-bearing half, because a flex child will not shrink below its
+  content height without it — with the scrollbar hidden the same way every other strip hides
+  one.
 - **Mobile bottom nav** (`#bottom-nav`, 5 fixed tabs): Home, Budget, Log, Nutrition, Kitchen.
   These five and only these five are the swipe deck — `NAV_ORDER` in `js/app.js` IS the deck,
   and a view named there must be a `.swipe-panel` inside `#swipe-deck` while one that isn't
   must be a direct `<section>` child of `#app-main`. **Stats is NOT in the deck** (this file
-  said it was for a long time); it is an overlay section reached from the menu/sidebar.
-- **Mobile hamburger menu** (`#side-menu`, list populated dynamically in JS): the five tabs
-  plus Stats, Accounts, Plans, Journal, Daily AI, Exercise Library, Settings.
-- **Desktop** (`#desktop-sidebar`, ≥1024px): all of the above as one persistent left sidebar,
-  plus an inline quick-settings popover instead of a separate Settings screen.
-- **Exercise Library and Workout history are no longer top-level destinations.** Their sidebar
-  and hamburger rows remain, but `openExerciseLibrary()` / `openWorkoutHistory()` now navigate
-  to Log › Exercises / Log › History — see the Log entry below.
+  said it was for a long time); it is an overlay section reached from the nav or the header
+  chip. The deck, the bottom nav and `#header-stats-pill` are untouched by the nav registry.
+- **Two placements in `NAV_TREE` are deliberate, so they do not get "corrected".** *Weekly
+  review* sits under **Money** even though it opens `stats.review`: it is a money review in
+  practice — its first and largest section is Money — and the group says what the user is
+  doing, not which screen hosts it. *Exercise Library* and *workout History* are gone as
+  top-level rows and are **Training › Exercises / History**, which is where they have actually
+  gone since the Log hub was built; `openExerciseLibrary()` / `openWorkoutHistory()` stay
+  exported for their other callers, but the nav rows dispatch through `navGo` directly.
+  *Settings* pushes its own screen and stops there — that screen is already registry-driven and
+  searchable, and mirroring its ten destinations here would rebuild the duplication this
+  registry removes. A second nesting level anywhere in this component is out of scope.
+- **Retired, do not bring back:** `MENU_NAV`, `MENU_SECTIONS`, `menuSectionLabel()`,
+  `menuNav()`, `buildSideMenu()`, `renderQuickSettingsMenu()`, `setQuickSettingsOpen()`,
+  `toggleQuickSettings()`, `restoreQuickSettings()`, the `daily_qs_open` key, `.ds-item`,
+  `.ds-section`, `.ds-settings-row`, `.ds-caret-btn`, `#quick-settings-menu`,
+  `.side-menu-item`, `.smi-label`, `.smi-chev`, `.side-menu-divider` and
+  `.side-menu-group-label`. The desktop quick-settings caret is deliberately removed: its three
+  shortcuts are one tap deeper on a searchable Settings landing page, and keeping it meant the
+  sidebar had one row that expanded differently from every other row. `js/app.js` carries a
+  comment saying exactly what would restore it.
+- **`#desktop-sidebar` is declared ONCE now**, in `css/budget-home.css`, with the values that
+  used to win (260px, `0.5px` border). It was previously declared there at 160px with 12px rows
+  and a `border-left` rail AND again in `css/kitchen-extras.css` at 260px with 14px pill rows —
+  the second won on load order, so half of what the first file said never rendered. The `.nv-*`
+  component itself lives in `css/kitchen-extras.css` beside `#side-menu`, because both surfaces
+  share it and that file loads late enough to win ties.
 
 ## What's in each area
 
@@ -61,6 +137,10 @@ older summary — re-grep before assuming a fact from here is still true if it l
   - **Program** holds the live split (with `openSplitEditor()` as a full-screen push, since it
     is a collection editor with its own top-bar Save) AND the saved program snapshots that
     used to be the Plans tab: switch, save-current-as, rename, delete, JSON import/export.
+  - Every card in the hub is a `.lg-card` on the shared MATTE content-card surface with a
+    `cardHeader(icon, label, rightHtml)` header — those four Log › Today cards were the app's
+    only iconless card headers until 2026-09-05, and the only content cards reading the
+    `--card` control token. `.lg-card-hd` / `.lg-card-lbl` / `.lg-card-act` are retired.
   - **Exercises** and **History** are the SAME markup that used to be the
     `#view-exercise-library` and `#view-workout-history` overlays, re-homed into Log sections.
     Same element ids, so `renderExerciseLibList()` / `renderHistory()` are untouched. Those
@@ -152,7 +232,14 @@ The matte surface is applied through an explicitly NAMED selector list — the b
 `kitchen-extras.css`, `settings.css` and `journal.css` for the classes those files own, because
 they load later and would otherwise win. Never widen it to `[class*="card"]`: several classes
 use "card" as a historical name while behaving like a button, a row or a preview
-(`.kit-subnav-btn.active`, `.acct-type-btn.on`, `.hl-prev-plain`, `.ob-pv-card`).
+(`.acct-type-btn.on`, `.hl-prev-plain`, `.ob-pv-card`).
+
+**`.lg-card` (the Log hub's cards) is in that list now.** It read `var(--card)` with a 1px
+`var(--border)` outline until 2026-09-05, so the four Log › Today cards rendered as translucent
+wash panels with a hard edge while every other card in the app sat on a solid `#1b1b1d` with a
+`0.5px --card-border` and an inset top highlight. Its own border is `0.5px solid
+var(--card-border)` to match `.card`. Anything that looks like a content card and reads
+`--card` is probably making the same mistake — check the named list before styling a new one.
 
 Rows inside a card, and repeated list items, stay FLAT — dividers and spacing, not nested
 cards. Navigation lists (Settings groups, the Journal rail) are one surface with flat rows,
@@ -271,7 +358,22 @@ the accent or the theme must go through those, not set `--accent` directly.
   Column counts arrive as `--hp-cols` / `--hp-cols-sm` set inline **on the panel** and read from
   the stylesheet, so the media queries still win — an inline `grid-template-columns` on
   `.hp-grid` would outrank them.
-  **The accent hero stops are CSS custom properties now, not inline hexes.** `--accent-hero` /
+  **The `--accent-hero` migration is FINISHED (2026-09-05).** Every hero surface in the app
+  reads `linear-gradient(150deg, var(--accent-hero), var(--accent-hero-2))`: `.lg-hero`,
+  `.ov-hero`, `.fin-hero`, `.budget-hero-card`, `#budget-hero-card` (the real Budget weekly
+  hero, whose gradient is an inline style in `index.html` and now names the tokens),
+  `.hero-workout-card`, `.kitchen-hero-card`, `.nut-hero`, `.hl-prev-hero`, the onboarding
+  preview heroes `.ob-pv-hero` / `.ob-tm-hero`, and the shared
+  `.card-hero,.budget-hero-card,.hero-workout-card,.kitchen-hero-card` rule in
+  `kitchen-extras.css` that overrides several of them. It had stalled at two consumers
+  (`.hm-accent` and the AI hub header) while nine surfaces stayed on the retired
+  `rgba(var(--accent-rgb), .9 → .4)` ramp. **The three `[data-theme="light"]` floors are gone**
+  (`.ov-hero`, `.fin-hero`, `.hl-prev-hero`) — they existed only to lift the ramp's pale end
+  off `--bg`, and a solid contrast-checked stop makes them dead weight. `.log-day-hero-card`
+  is still the one exception: its gradient is set inline per training day in `js/app.js`
+  (~line 3493) by the dynamic day-colour system, and if it is ever changed it must go through
+  `applyAccent()` / `heroStopsFor()`, never a fixed CSS gradient.
+  **The accent hero stops are CSS custom properties, not inline hexes.** `--accent-hero` /
   `--accent-hero-2` (defaults in `css/base.css`) are written by `applyAccent()` from
   `heroStopsFor()`, which keeps hue and saturation and walks the lightness down until white
   clears 4.2:1 — so a pale custom accent from the colour picker yields a deep surface rather
@@ -647,6 +749,75 @@ the accent or the theme must go through those, not set `--accent` directly.
 - **Card and button CSS grew one class per feature area**, not from a shared base — expect
   near-duplicate patterns (e.g. multiple independent "hero card" implementations with slightly
   different padding/gradient values) rather than one canonical definition per component type.
+- **There is ONE segmented control, `.seg-tabs`** (`css/workout.css`), and the five it replaced
+  must not come back: `.stats-tab-row`/`.stats-tab-btn`, `.log-tab-row`/`.log-tab-btn`,
+  `.nut-tabs`/`.nut-tab`, `.kit-subnav`/`.kit-subnav-btn` and Budget's inline-styled
+  `.sub-toggle`. No two of them agreed on radius, padding, gap, type or the selected treatment.
+  Anatomy: `.seg-tabs` (the track) + `.seg-fill` (buttons fill it — Log, Nutrition, Kitchen,
+  Budget) or `.seg-scroll` (buttons scroll — Stats' six do not fit a phone), and the selected
+  button carries **`.on`**, the same class `.stats-seg` and `.wkr-tabs` already used. Selection
+  is FILL plus WEIGHT, never an accent tint: the default accent is a neutral grey that is
+  indistinguishable from the track at low alpha. In JS, `segSetOn(btn, on)` writes the class and
+  `aria-selected` together, and `segScrollToTab(row, btn)` is the ONE scroll-into-view helper.
+  Three things about it are load-bearing:
+  - **Never `scrollIntoView()`.** It walks every scrollable ancestor, and `#view-log` is a
+    `.swipe-panel` inside the transformed `#swipe-deck` — it used to shove the deck sideways and
+    expose bare background. `segScrollToTab` nudges the strip's own `scrollLeft` by a measured
+    RECT offset (rect, not `offsetLeft`: `.seg-tabs` is `position:static`, so `offsetLeft` is
+    measured from `#app` and is wildly wrong).
+  - **The track is opaque by construction**, because it is `position:sticky` at every width and
+    `var(--border)` is an `rgba()` in both themes. The tint is composited over `--bg`
+    (`linear-gradient(var(--border),var(--border)),var(--bg)`), which renders identically to
+    the old translucent fill but cannot be seen through. That is the ghosting bug the Budget
+    toggle hit, now impossible rather than patched.
+  - **The bleed is ONE box-shadow, not a `::before`.** `.seg-scroll` sets `overflow-x`, which
+    would clip a pseudo-element; a box-shadow affects neither layout nor scrollable overflow so
+    it cannot produce a scrollbar. Grown by `--seg-bleed` on every side then offset UP by it, it
+    covers both side gutters and the band above the track while stopping at the track's bottom
+    edge, leaving the margin below clear. `--seg-bleed` is the SCROLL CONTAINER's own padding
+    (16px phone, 14px landscape, **0 on desktop** — there `#app-main` is the scroller and has no
+    padding, and the track is capped at 760px well inside the content width, where painting a
+    `--bg` curtain across the rest would hide cards as they scroll up).
+  - **Desktop: `max-width:760px; margin-left:0`.** The Stats strip used to be `margin:0 auto`,
+    so it floated at the middle of a 2200px canvas while the week selector, the section pills
+    and both card columns began at the left content edge — the only element on the page off that
+    line. 760 is not new; it is the cap Log and Stats already chose.
+  Budget's landscape-phone layout is the one screen with extra rules: the toggle keeps its exact
+  `--bud-switch-h` height (`.bud-compact-nav` sticks below it and offsets against that number)
+  and a `::before` backdrop, because two sticky strips stacking with a 6px gap between them is
+  a case the shared bleed does not cover.
+- **The uppercase micro-label scale is THREE steps, each with a different job.** Nine
+  near-identical eyebrow treatments existed at 9 / 9.5 / 10 / 10.5 / 11px, weights 600–800,
+  tracking .04–.12em, across three colour tokens — two of them in the same card on Stats ›
+  Review ("SPENDING" at 11/700/.06em beside "TOTAL SPENT" at 12/800/.04em).
+  | step | value | job |
+  |---|---|---|
+  | section / card eyebrow | `11px / 700 / .06em / var(--text-2)` | the label above a card or a group of cards |
+  | sub-label | `10px / 700 / .06em / var(--muted)` | a label INSIDE a card: a totals row, a split cell, a field |
+  | hero eyebrow | `10px / 800 / .1em / rgba(255,255,255,.72)` | white-on-accent, on a hero surface only |
+  Canonical for step 1 is `.card-label` / `.sec-label` (`css/kitchen-extras.css`), unchanged.
+  Aliased to step 1: `.stats-kicker`, `.stats-sec-label`, `.wkr-sec-divider` (keeps its `::after`
+  hairline), `.nut-section-label`, `.jrn-month`, `.jrn-ed-kind`, `.jrn-loops-ttl`. To step 2:
+  `.wkr-total-l`, `.card-split-l`, `.mt-lbl`, `.jrn-ed-lbl`, `.wkr-opp-n`. To step 3:
+  `.lg-hero-lead`, `.nut-kcal-label`, `.budget-hero-week-label`, `.budget-hero-income-label`,
+  `.budget-hero-stat-label`, `.kitchen-hero-card .card-label`, and `.log-strip-label` (which
+  takes the size/weight/tracking but keeps `var(--text-2)`, because it sits on a tinted strip on
+  `--bg`, not on a white-text hero). `.jrn-month` also keeps its own per-theme colour overrides
+  further down `journal.css`; only its type is shared.
+  **Do not sweep beyond that list.** Every `font-size` below 10px inside `.hl-*` (Settings →
+  Home Layout thumbnails) and `.ob-mini-*` / `.ob-pv-*` (onboarding mini screens) is a
+  deliberate scaled-down replica, and the dense recipe/pantry labels (`.kit-pchip-def`,
+  `.kit-step-who`, `.kit-po-def`, `.kitpantry-*`) are a different component at a different
+  density. Roughly half the app's type is declared inline in `js/app.js` and `index.html`
+  (~420 declarations against ~420 in all CSS), so a blind CSS-only sweep makes the app LESS
+  consistent, not more — the eyebrow is one of the few cases that is almost entirely in CSS,
+  which is exactly why it is the one that got done.
+- **One secondary-action treatment on a card header: `.card-hd-act`** (12px/700,
+  `--accent-text`). `.lg-card-act` (12px/800) is retired — the Log hub's headers are
+  `cardHeader()` now. `.stats-inline-link` SHARES the `.card-hd-act` rule and keeps only its
+  underline, which is what makes it read as a link when it sits in body flow instead of on a
+  header row. `.rev-act` stays separate on purpose: it is a real button in a row of buttons, a
+  different component.
 - **There IS now a shared card vocabulary — use it for new cards** (`css/kitchen-extras.css`,
   which loads last so it wins ties). Anatomy, top to bottom: `.card-hd` (with `.card-hd-l`,
   `.card-hd-ico`, `.card-hd-act`) → `.card-fig` + `.card-fig-u` (ONE primary number per card)

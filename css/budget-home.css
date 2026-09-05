@@ -345,19 +345,19 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .bud-edit-btn{font-size:12px;font-weight:600;padding:4px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;text-transform:none;letter-spacing:0}
 .bud-edit-btn.active{color:var(--accent-text);border-color:var(--accent);background:rgba(var(--accent-rgb),.1)}
 /* Budget hero summary card (accent gradient — tracks the dynamic day colour) */
-.budget-hero-card{background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.6) 55%, rgba(var(--accent-rgb),.4));border-radius:var(--radius-hero,22px);padding:20px 20px 16px;margin-bottom:16px;box-shadow:0 16px 40px rgba(var(--accent-rgb),.3)}
+.budget-hero-card{background:linear-gradient(150deg, var(--accent-hero), var(--accent-hero-2));border-radius:var(--radius-hero,22px);padding:20px 20px 16px;margin-bottom:16px;box-shadow:0 16px 40px rgba(var(--accent-rgb),.3)}
 .budget-hero-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .budget-hero-nav-btn{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .budget-hero-week{text-align:center}
-.budget-hero-week-label{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.7)}
+.budget-hero-week-label{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.72)}
 .budget-hero-week-dates{font-size:14px;font-weight:600;color:#fff;margin-top:2px}
 .budget-hero-income{font-family:var(--font-num);font-size:42px;font-weight:800;color:#fff;letter-spacing:-.02em;line-height:1;margin-bottom:2px}
-.budget-hero-income-label{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.6);margin-bottom:16px}
+.budget-hero-income-label{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.72);margin-bottom:16px}
 .budget-hero-stats{display:flex;align-items:center;margin-bottom:14px}
 .budget-hero-stat{flex:1;text-align:center}
 .budget-hero-stat-divider{width:1px;height:28px;background:rgba(255,255,255,.25)}
 .budget-hero-stat-val{font-family:var(--font-num);font-size:20px;font-weight:700;color:#fff}
-.budget-hero-stat-label{font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.6);margin-top:2px}
+.budget-hero-stat-label{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.72);margin-top:2px}
 .budget-hero-pill{background:rgba(255,255,255,.2);color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;display:inline-block}
 .budget-hero-bar-wrap{height:4px;background:rgba(255,255,255,.2);border-radius:4px;overflow:hidden;margin-bottom:6px}
 .budget-hero-bar-fill{height:100%;background:#fff;border-radius:4px;transition:width .4s ease}
@@ -746,10 +746,10 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
    NOT applied via a blanket `button:active` — that selector outranks single-class rules and
    would stomp elements whose transform does layout work (#lap-fab translateX centring,
    .set-sign-btn translateY centring), so this stays a curated list of the app's real buttons. */
-.sg-btn,.modal-btn,#save-btn,.nav-btn,.day-pill,.week-nav-btn,.swap-btn,.ex-collapse-btn,.set-check,.set-warmup-btn,.set-delete-btn,.add-set-btn,.add-warmup-btn,.muscle-filter,.exlib-muscle-pick,.exlib-muscle-add,.stats-tab-btn,.kit-subnav-btn,.lib-edit-btn,.lib-del-btn,.home-edit-btn,.detail-action,.budget-hero-nav-btn,.ldh-arrow,.rt-fs-btn{
+.sg-btn,.modal-btn,#save-btn,.nav-btn,.day-pill,.week-nav-btn,.swap-btn,.ex-collapse-btn,.set-check,.set-warmup-btn,.set-delete-btn,.add-set-btn,.add-warmup-btn,.muscle-filter,.exlib-muscle-pick,.exlib-muscle-add,.seg-tabs>button,.lib-edit-btn,.lib-del-btn,.home-edit-btn,.detail-action,.budget-hero-nav-btn,.ldh-arrow,.rt-fs-btn{
   transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.2s ease;
 }
-.sg-btn:active,.modal-btn:active,#save-btn:active,.nav-btn:active,.day-pill:active,.week-nav-btn:active,.swap-btn:active,.ex-collapse-btn:active,.set-check:active,.set-warmup-btn:active,.set-delete-btn:active,.add-set-btn:active,.add-warmup-btn:active,.muscle-filter:active,.exlib-muscle-pick:active,.exlib-muscle-add:active,.stats-tab-btn:active,.kit-subnav-btn:active,.lib-edit-btn:active,.lib-del-btn:active,.home-edit-btn:active,.detail-action:active,.budget-hero-nav-btn:active,.ldh-arrow:active,.rt-fs-btn:active{
+.sg-btn:active,.modal-btn:active,#save-btn:active,.nav-btn:active,.day-pill:active,.week-nav-btn:active,.swap-btn:active,.ex-collapse-btn:active,.set-check:active,.set-warmup-btn:active,.set-delete-btn:active,.add-set-btn:active,.add-warmup-btn:active,.muscle-filter:active,.exlib-muscle-pick:active,.exlib-muscle-add:active,.seg-tabs>button:active,.lib-edit-btn:active,.lib-del-btn:active,.home-edit-btn:active,.detail-action:active,.budget-hero-nav-btn:active,.ldh-arrow:active,.rt-fs-btn:active{
   transform:scale(0.93);
   transition:transform 0.08s ease;
 }
@@ -806,6 +806,7 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 [data-theme="dark"] .budget-setup-section,
 [data-theme="dark"] .se-day-card,
 [data-theme="dark"] .log-timer-card,
+[data-theme="dark"] .lg-card,
 [data-theme="dark"] #chart-wrap{
   background:var(--surface-card);
   border-color:var(--surface-card-border);
@@ -889,35 +890,17 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      instead of 270. */
   #app-main>section,#app-main .swipe-panel{width:100%;max-width:2200px;margin:0 auto;padding:40px 32px}
 
-  #desktop-sidebar{width:160px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);color:var(--text);display:flex;flex-direction:column;padding:16px 0;height:100vh;position:sticky;top:0}
+  /* Declared ONCE. This used to be 160px with 12px rows and a border-left rail, and
+     kitchen-extras.css declared it again at 260px with 14px pill rows — the second won on load
+     order, so half of what was written here never rendered. These are the values that won. */
+  #desktop-sidebar{width:260px;flex-shrink:0;background:var(--card);border-right:0.5px solid var(--border);color:var(--text);display:flex;flex-direction:column;padding:16px 0;height:100vh;position:sticky;top:0}
   /* Real wordmark image (see layout.css) — theme-paired, same as the header/side-menu.
-     Flush left at 14px, matching the sidebar's own left edge (.ds-section uses the same
-     14px). Previously inset to 54px to align with the nav ITEM LABELS rather than the
+     Flush left at 14px, matching the sidebar's own left edge. Previously inset to 54px to
+     align with the nav ITEM LABELS rather than the
      sidebar edge — moved back to the edge on request. Only one of the two theme wordmarks is
      display:block at a time, so this positions whichever is showing. */
   .ds-logo{display:flex;justify-content:flex-start;padding:0 14px 18px}
   .ds-logo .wordmark-img{height:28px}
-  .ds-section{font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--muted);padding:10px 14px 4px}
-  .ds-item{display:flex;align-items:center;gap:8px;padding:7px 14px;font-size:12px;color:var(--muted);background:transparent;border:none;border-left:2px solid transparent;width:100%;cursor:pointer;text-align:left}
-  .ds-item.active{color:var(--text);background:rgba(var(--accent-rgb),0.08);border-left-color:var(--accent);font-weight:500}
-  .ds-item svg{width:20px;height:20px;flex-shrink:0}
-  /* Quick settings — shortcuts to Settings sections, collapsed by default under the
-     Settings nav item, expanded via the chevron in .ds-settings-row. Rows carry the real
-     .ds-item class directly (not a hand-copied lookalike) so they can never drift out of
-     sync with the nav's font/colour again — see .ds-item in css/kitchen-extras.css.
-     That base rule sets width:auto, which a <button> (unlike a <div>) shrink-wraps to its
-     text instead of filling the row — harmless for the main nav, because #desktop-sidebar
-     is itself flex-column and stretches its direct children regardless of their own width.
-     #quick-settings-menu needs the same treatment (not a plain width:100% override — that
-     ignores the item's own left/right margin and overflows the row by exactly that much). */
-  .ds-settings-row{display:flex;align-items:center;gap:2px;margin:0 10px 2px}
-  .ds-settings-row .ds-item{margin:0;flex:1;min-width:0}
-  .ds-caret-btn{flex-shrink:0;width:32px;height:32px;border:none;border-radius:8px;background:transparent;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,color .15s}
-  .ds-caret-btn:hover{background:var(--track);color:var(--text)}
-  .ds-caret-btn svg{transition:transform .2s ease}
-  .ds-caret-btn.open svg{transform:rotate(180deg)}
-  #quick-settings-menu{display:flex;flex-direction:column;overflow:hidden;max-height:0;transition:max-height .25s ease}
-  #quick-settings-menu.open{max-height:320px}
   .ds-profile{margin-top:auto;padding:10px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px}
   .ds-av{width:24px;height:24px;border-radius:50%;background:rgba(var(--accent-rgb),0.25);color:var(--accent-text);font-size:9px;font-weight:600;display:flex;align-items:center;justify-content:center}
   .ds-av.has-photo{background:transparent}
@@ -1022,9 +1005,6 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      the ring and its text use the same size as mobile, on every screen. */
 
 
-  /* Log tab. The sub-tab strip caps to the same measure as the sections beneath it so the
-     four pills don't stretch across a 2200px monitor. */
-  #view-log .log-tab-row{max-width:760px}
   #view-log .log-cols{display:flex;gap:20px;height:100%}
   #view-log .log-left{width:35%;flex-shrink:0;overflow-y:auto}
   #view-log .log-right{flex:1;overflow-y:auto}
@@ -1553,16 +1533,17 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      selector that matches no element in the app, so the rule pinned only the hero: a
      translucent 200px card covering most of a 430px viewport, with Fixed expenses and
      Upcoming charges ghosting through its background. The controls that actually need to
-     stay put are the Week/Month/Year toggle (a .sub-toggle) and the week navigation, and
+     stay put are the Week/Month/Year toggle (a .seg-tabs) and the week navigation, and
      both are small and opaque.
      The two stack rather than overlap: the toggle is given an exact height so the strip
      below it has a real number to offset against. */
   :root{--bud-switch-h:34px}
-  /* !important because the toggle carries an inline background:var(--border) from index.html,
-     which is translucent — and a translucent PINNED surface is the ghosting bug this whole
-     block exists to fix. An inline style outranks any selector, so this is the only way to
-     reach it without editing the markup's own colour choice for every other layout. */
-  #view-budget .sub-toggle{position:sticky;top:0;z-index:7;height:var(--bud-switch-h);
+  /* The !important that used to be here is gone with the markup's inline styles: the toggle
+     is a .seg-tabs now, whose track is opaque by construction (the tint is composited over
+     --bg), so the ghosting this block exists to fix cannot come back through it. Sticky and
+     z-index come from .seg-tabs too — only the exact height, which .bud-compact-nav offsets
+     against, and the tighter padding belong to this layout. */
+  #view-budget .seg-tabs{height:var(--bud-switch-h);
     box-sizing:border-box;margin-bottom:6px;padding:2px;
     box-shadow:0 6px 12px -8px rgba(0,0,0,.5)}
   /* A pinned control has to be opaque across the FULL scrollport, and the panel's own
@@ -1572,11 +1553,11 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      which is why the toggle keeps its pill instead of being flooded with --bg. Negative
      z-index stays inside the sticky element's own stacking context, so it paints over the
      cards but under the control. */
-  #view-budget .sub-toggle::before,#view-budget .bud-compact-nav::before{
+  #view-budget .seg-tabs::before,#view-budget .bud-compact-nav::before{
     content:'';position:absolute;z-index:-1;background:var(--bg);left:-14px;right:-14px}
-  #view-budget .sub-toggle::before{top:-10px;bottom:-6px}
+  #view-budget .seg-tabs::before{top:-10px;bottom:-6px}
   #view-budget .bud-compact-nav::before{top:0;bottom:-8px}
-  #view-budget .sub-toggle > button{padding:4px 8px;font-size:12.5px}
+  #view-budget .seg-tabs > button{padding:4px 8px;font-size:12.5px}
   #view-budget .bud-compact-nav{display:flex;position:sticky;top:var(--bud-switch-h);z-index:7}
   #budget-hero-card{padding:12px 14px !important}
   #bud-hero-avail{font-size:30px !important}

@@ -137,7 +137,13 @@
 // v295: consolidate the hero cards - one .hero-panel for Budget > Year and Accounts.
 // v296: add Budget > Week 'Day by day'; Month's summary becomes one .hero-panel too.
 // v297: Month's spending breakdown becomes a ranked bar list - donut and leader lines out.
-const CACHE_NAME = 'daily-v297';
+// v298: one navigation registry (NAV_TREE drives the sidebar AND the hamburger as six
+// accordion groups; the quick-settings popover is gone) and one visual system - five
+// segmented controls collapse into .seg-tabs, the uppercase micro-labels settle to three
+// steps, Log's cards join the matte content-card surface and use cardHeader(), every hero
+// reads the contrast-checked --accent-hero stops, and Nutrition adopts the radius tokens
+// plus a real empty state.
+const CACHE_NAME = 'daily-v298';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

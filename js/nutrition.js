@@ -239,11 +239,13 @@ function nutFoodSearch(q){
   if(q)foods=foods.filter(f=>(f.name+' '+(f.aliases||[]).join(' ')).toLowerCase().includes(q));
   const recent=new Map((nutPrefs.recent||[]).map((id,i)=>[id,i]));return foods.sort((a,b)=>{const ar=recent.has(a.id)?recent.get(a.id):99,br=recent.has(b.id)?recent.get(b.id):99;if(ar!==br)return ar-br;const af=nutPrefs.favourites[a.id]?0:1,bf=nutPrefs.favourites[b.id]?0:1;return af-bf||a.name.localeCompare(b.name);});
 }
-function nutSetTab(tab){nutTab=['today','foods','recipes'].includes(tab)?tab:'today';nutRender();}
+function nutSetTab(tab){nutTab=['today','foods','recipes'].includes(tab)?tab:'today';nutRender();if(typeof setNavActive==='function')setNavActive();}
 function nutOpen(meal,highlight){nutMeal=meal||'snacks';nutTab='today';setView('nutrition');setTimeout(()=>{const e=highlight&&document.querySelector('[data-nut-entry="'+highlight+'"]');if(e)e.scrollIntoView({behavior:'smooth',block:'center'});},80);}
 function nutRender(){
   const wrap=document.getElementById('nutrition-main');if(!wrap)return;const date=typeof getLocalDate==='function'?getLocalDate():new Date().toLocaleDateString('en-CA');
-  wrap.innerHTML='<div class="nut-tabs" role="tablist">'+[['today','Today'],['foods','Foods'],['recipes','Recipes']].map(x=>'<button class="nut-tab'+(nutTab===x[0]?' active':'')+'" onclick="nutSetTab(\''+x[0]+'\')">'+x[1]+'</button>').join('')+'</div><div id="nut-pane"></div>';
+  // The app's one segmented control (.seg-tabs, css/workout.css) — this strip used to be a
+  // fifth near-identical implementation of it, at its own radius, padding and type.
+  wrap.innerHTML='<div class="seg-tabs seg-fill" role="tablist" aria-label="Nutrition sections">'+[['today','Today'],['foods','Foods'],['recipes','Recipes']].map(x=>'<button'+(nutTab===x[0]?' class="on"':'')+' role="tab" aria-selected="'+(nutTab===x[0]?'true':'false')+'" onclick="nutSetTab(\''+x[0]+'\')">'+x[1]+'</button>').join('')+'</div><div id="nut-pane"></div>';
   if(nutTab==='today')nutRenderToday(date);else if(nutTab==='foods')nutRenderFoods();else nutRenderRecipes();
 }
 function nutSummaryLabel(s){return s.status==='partial'?'Partial · '+s.unknown+' unknown':s.status==='complete'?'Complete':s.status==='legacy'?'Legacy total':'Not logged';}
@@ -255,10 +257,24 @@ function nutritionTodayModel(date){
     meals:NUT_MEALS.map(([id,label])=>{const items=summary.entries.filter(e=>e.meal===id),previous=nutEntries(previousDate).filter(e=>e.meal===id);return {id,label,items,previous,known:items.reduce((a,e)=>a+(e.nutritionStatus==='known'?(e.nutrition.calories||0):0),0),unknown:items.filter(e=>e.nutritionStatus==='unknown').length};})};
 }
 function nutRenderToday(date){
-  const pane=document.getElementById('nut-pane'),model=nutritionTodayModel(date),s=model.summary,target=model.target,macro=model.macros;let hero='<div class="nut-hero"><div class="nut-hero-row"><div><div class="nut-kcal">'+(s.calories==null?'—':s.calories)+'</div><div class="nut-kcal-label">known kcal</div></div><span class="nut-status">'+nutSummaryLabel(s)+'</span></div>';
-  if(target)hero+='<div class="nut-progress"><i style="width:'+model.progress+'%"></i></div><div class="nut-target-note">'+(s.status==='partial'?'Known subtotal only — remaining is not calculated.':(s.calories==null?'Target '+target+' kcal':Math.abs(target-s.calories)+' kcal '+(s.calories<=target?'remaining':'over')+' · target '+target))+'</div>';
-  else hero+='<div class="nut-target-note" style="margin-top:13px">Logging works without a target. Add Health details later if you want one.</div>';
-  hero+='<div class="nut-macros">'+[['Protein',macro.protein],['Carbs',macro.carbs],['Fat',macro.fat]].map(x=>'<div class="nut-macro"><b>'+(s.macroComplete?nutRound(x[1],0)+'g':'—')+'</b><span>'+x[0]+'</span></div>').join('')+'</div></div>';
+  const pane=document.getElementById('nut-pane'),model=nutritionTodayModel(date),s=model.summary,target=model.target,macro=model.macros;
+  // Nothing logged is an EMPTY STATE, not a zero. It used to draw a 38px em dash over three
+  // more of them, which reads as a broken card however clearly the chip beside it said
+  // "Not logged" — and drawing missing data as a value is the one thing the house rule
+  // forbids. One line in the hero's own voice instead, and the meal cards below already
+  // carry the "+ Add food" affordance, so the hero does not repeat it.
+  let hero='<div class="nut-hero">';
+  if(s.status==='missing'){
+    hero+='<div class="nut-hero-empty">Nothing logged yet'+(target?' · target '+Number(target).toLocaleString()+' kcal':'')+'</div>';
+  }else{
+    hero+='<div class="nut-hero-row"><div><div class="nut-kcal">'+s.calories+'</div><div class="nut-kcal-label">known kcal</div></div><span class="nut-status">'+nutSummaryLabel(s)+'</span></div>';
+    if(target)hero+='<div class="nut-progress"><i style="width:'+model.progress+'%"></i></div><div class="nut-target-note">'+(s.status==='partial'?'Known subtotal only — remaining is not calculated.':Math.abs(target-s.calories)+' kcal '+(s.calories<=target?'remaining':'over')+' · target '+Number(target).toLocaleString())+'</div>';
+    else hero+='<div class="nut-target-note" style="margin-top:13px">Logging works without a target. Add Health details later if you want one.</div>';
+    // The macro row appears only once every entry carries macros; a partial day says so in
+    // its chip and its note rather than printing three dashes.
+    if(s.macroComplete)hero+='<div class="nut-macros">'+[['Protein',macro.protein],['Carbs',macro.carbs],['Fat',macro.fat]].map(x=>'<div class="nut-macro"><b>'+nutRound(x[1],0)+'g</b><span>'+x[0]+'</span></div>').join('')+'</div>';
+  }
+  hero+='</div>';
   const meals=model.meals.map(meal=>'<div class="nut-meal"><div class="nut-meal-hd"><span class="nut-meal-name">'+meal.label+'</span><span class="nut-meal-total">'+nutRound(meal.known,0)+' kcal'+(meal.unknown?' + '+meal.unknown+' unknown':'')+'</span></div>'+meal.items.map(e=>'<div class="nut-entry" data-nut-entry="'+e.id+'" onclick="nutEditEntry(\''+e.id+'\')"><div><div class="nut-entry-name">'+nutEsc(e.name)+'</div><div class="nut-entry-sub">'+nutEsc(e.measureLabel)+' × '+nutRound(e.quantity,2)+'</div></div><div class="nut-entry-kcal'+(e.nutritionStatus==='unknown'?' unknown':'')+'">'+(e.nutritionStatus==='unknown'?'Unknown':nutRound(e.nutrition.calories,0)+' kcal')+'</div><span aria-hidden="true">›</span></div>').join('')+'<button class="nut-add" onclick="nutOpenFoodSheet(\''+meal.id+'\')">+ Add food</button>'+(meal.previous.length?'<button class="nut-add" onclick="nutCopyPreviousMeal(\''+meal.id+'\',\''+model.previousDate+'\')">↻ Copy yesterday’s '+meal.label.toLowerCase()+'</button>':'')+'</div>').join('');
   pane.innerHTML='<div class="nut-today-grid">'+hero+'<div>'+meals+'</div></div>';
 }

@@ -11,8 +11,10 @@
 
 /* ── Shell ─────────────────────────────────────────────────────── */
 .wkr-wrap{display:block;margin-bottom:18px}
-.wkr-sec-divider{display:flex;align-items:center;gap:10px;margin:26px 2px 14px;color:var(--text-3);
-  font-size:10.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase}
+/* Section eyebrow — step 1 of the micro-label scale (canonical: .card-label). Keeps its own
+   margins and its ::after hairline; only the type is shared. */
+.wkr-sec-divider{display:flex;align-items:center;gap:10px;margin:26px 2px 14px;color:var(--text-2);
+  font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
 .wkr-sec-divider::after{content:"";flex:1;height:1px;background:var(--border)}
 
 /* ── Week bar: which week is being reviewed, and where it stands ─ */
@@ -37,7 +39,7 @@
 /* The selected state is carried by the FILL and the text weight, not by an accent tint. The
    default accent is a neutral grey, so `rgba(var(--accent-rgb),.12)` on the dark canvas is
    indistinguishable from the unselected pill — the same trap the Journal rail hit. This
-   mirrors .stats-tab-btn.active, which is legible whatever the accent resolves to; the accent
+   mirrors .seg-tabs>button.on, which is legible whatever the accent resolves to; the accent
    only tints the border, where it can add nothing and lose nothing. */
 .wkr-tabs button.on{background:var(--card);border-color:rgba(var(--accent-rgb),.45);
   color:var(--text);font-weight:800;box-shadow:0 1px 3px rgba(0,0,0,.12)}
@@ -61,7 +63,9 @@
 /* Totals row — the same shape, weighted so the reconciled figure reads as a conclusion. */
 .wkr-total{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
   margin-top:12px;padding-top:12px;border-top:1.5px solid var(--border)}
-.wkr-total-l{font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--text-3)}
+/* Sub-label — step 2: a label INSIDE a card. This and the SPENDING eyebrow above it were
+   12px/800/.04em against 11px/700/.06em, two sizes of the same thing in one card. */
+.wkr-total-l{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .wkr-total-v{font-family:var(--font-num);font-size:19px;font-weight:800;color:var(--text)}
 
 /* ── Generic list rows (income lines, CC transactions, bills) ──── */
@@ -133,7 +137,7 @@
 .wkr-opp{margin-top:10px;padding:12px;border-radius:var(--radius);
   border:1px solid var(--border);background:var(--card)}
 .wkr-opp-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
-.wkr-opp-n{font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3)}
+.wkr-opp-n{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .wkr-opp-del{min-height:32px;padding:5px 9px;border-radius:9px;border:1px solid var(--border);
   background:transparent;color:var(--danger);font:inherit;font-size:11px;font-weight:800;cursor:pointer}
 

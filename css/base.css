@@ -121,7 +121,7 @@ input{font-family:inherit}
    touch-action:manipulation drops the legacy 300ms double-tap-zoom wait so taps register
    immediately. Panning/scrolling is unaffected; drag handles opt out via touch-action:none. */
 button,[onclick],[role="button"],a,label,summary,select,
-.sg-btn,.side-menu-item,.nav-btn,.week-nav-btn,.day-pill,.modal-btn,
+.sg-btn,.nv-row,.nav-btn,.week-nav-btn,.day-pill,.modal-btn,
 .session-card,.stat-card,.ex-card,.card,.week-section,
 .home-edit-btn,.bud-toggle{
   cursor:pointer;

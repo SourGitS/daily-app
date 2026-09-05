@@ -1998,7 +1998,7 @@ function setView(v, direction, opts){
   clearSourceReturn();
   // Accounts is a fixed overlay (not an #app-main>section), so — like the library above — it
   // won't be hidden by the .hidden toggle below; close it explicitly so a sidebar switch away
-  // from Accounts actually leaves it. The .ds-item active state is handled by line ~1165.
+  // from Accounts actually leaves it. The nav's selected row is set by setNavActive() below.
   const _acctOv=document.getElementById('view-accounts');
   if(_acctOv&&_acctOv.style.display!=='none'){_acctOv.style.display='none';_acctOv.style.left='0';}
   // Daily + AI is the same kind of peer destination, so it needs the same explicit close.
@@ -2032,7 +2032,7 @@ function setView(v, direction, opts){
   if(isSwipe && !opts.fromSwipe) setDeckPosition(swipeIdx, prev!==v);
   else if(isSwipe) deckIdx=swipeIdx;
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
-  document.querySelectorAll('.ds-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===v));
+  setNavActive();
   // The bottom scroll-fade paints over the kitchen's floating "+" / add bars (the tab-slide
   // transform traps those fixed elements below it), so hide it on the Kitchen tab.
   const _sf=document.getElementById('scroll-fade'); if(_sf) _sf.style.display = (v==='kitchen') ? 'none' : '';
@@ -2069,6 +2069,198 @@ function setView(v, direction, opts){
 // that isn't must be a direct <section> child of #app-main (see setView). Changing the list
 // without moving the markup gives you a tab you can swipe to but not tap, or the reverse.
 const NAV_ORDER=['home','budget','log','nutrition','kitchen'];
+
+// ── Navigation registry ──────────────────────────────────────────
+// The ONE source for the desktop sidebar and the mobile hamburger. Six groups, one open at a
+// time. A row is DATA, not code: {id,label,view,sub} — navGo() turns view+sub into the right
+// call and navCurrentRow() turns the current state back into a row id, so the selected state
+// is computed in one place instead of the seven scattered .ds-item toggles this replaced.
+// Adding a destination means adding a row HERE; never a literal button in index.html again.
+// This is the same fix Settings made with SETTINGS_SECTIONS — before it, twelve literal rows
+// in index.html, MENU_NAV/MENU_SECTIONS in buildSideMenu() and renderQuickSettingsMenu()
+// each carried their own copy of the app's destinations.
+//
+// Declared beside NAV_ORDER, not next to renderNav(), for exactly the reason the Log hub
+// state is: the boot sequence restores a #hash view through setView(), setView() calls
+// setNavActive(), and `const` does not hoist. A late declaration would throw
+// "Cannot access 'NAV_TREE' before initialization" and abort boot — silently, because the
+// restore only fires when the URL actually carries a hash.
+//
+// Two placements are deliberate. Weekly review is filed under Money even though it opens
+// stats.review: it is a money review in practice (its first and largest section is Money),
+// and the group says what the user is doing, not which screen hosts it. Exercise Library and
+// workout History stop being top-level rows and become Training › Exercises / History, which
+// is where they have actually gone since the Log hub was built.
+const NAV_TREE=[
+  {id:'today', label:'Today', rows:[
+    {id:'home',      label:'Home',             view:'home'},
+    {id:'log-today', label:"Today's session",  view:'log',       sub:'today'},
+    {id:'nut-today', label:'Food log',         view:'nutrition', sub:'today'},
+  ]},
+  {id:'training', label:'Training', rows:[
+    {id:'log-program',   label:'Program',   view:'log', sub:'program'},
+    {id:'log-exercises', label:'Exercises', view:'log', sub:'exercises'},
+    {id:'log-history',   label:'History',   view:'log', sub:'history'},
+  ]},
+  {id:'money', label:'Money', rows:[
+    {id:'bud-week',   label:'This week',     view:'budget',   sub:'week'},
+    {id:'bud-month',  label:'Month',         view:'budget',   sub:'month'},
+    {id:'bud-bills',  label:'Bills',         view:'budget',   sub:'bills'},
+    {id:'bud-year',   label:'Year',          view:'budget',   sub:'year'},
+    {id:'accounts',   label:'Accounts',      view:'accounts'},
+    {id:'wkr',        label:'Weekly review', view:'stats',    sub:'review'},
+  ]},
+  {id:'kitchen', label:'Kitchen', rows:[
+    {id:'kit-recipes',  label:'Recipes',      view:'kitchen',   sub:'recipes'},
+    {id:'kit-shopping', label:'Shopping',     view:'kitchen',   sub:'shopping'},
+    {id:'kit-pantry',   label:'Pantry',       view:'kitchen',   sub:'pantry'},
+    {id:'nut-foods',    label:'Food library', view:'nutrition', sub:'foods'},
+  ]},
+  {id:'stats', label:'Stats', rows:[
+    {id:'st-overview',  label:'Overview',  view:'stats', sub:'overview'},
+    {id:'st-training',  label:'Training',  view:'stats', sub:'training'},
+    {id:'st-body',      label:'Body',      view:'stats', sub:'body'},
+    {id:'st-nutrition', label:'Nutrition', view:'stats', sub:'nutrition'},
+    {id:'st-finance',   label:'Finance',   view:'stats', sub:'finance'},
+  ]},
+  {id:'more', label:'More', rows:[
+    {id:'journal',  label:'Journal',  view:'notes'},
+    {id:'plans',    label:'Plans',    view:'plans'},
+    {id:'aihub',    label:'Daily AI', view:'aihub'},
+    // Settings pushes its own screen and stops there. That screen is already registry-driven
+    // and searchable, so mirroring its ten destinations here would rebuild the duplication
+    // this registry exists to remove.
+    {id:'settings', label:'Settings', view:'settings'},
+  ]},
+];
+const NAV_ROW_BY_ID={}, NAV_GROUP_OF_ROW={};
+NAV_TREE.forEach(g=>g.rows.forEach(r=>{ NAV_ROW_BY_ID[r.id]=r; NAV_GROUP_OF_ROW[r.id]=g.id; }));
+// Pushed screens that are not nav destinations: a collection editor with its own top-bar
+// Save, the Stats evidence overlay, an exercise detail, a mounted Settings section. They are
+// inset past the desktop sidebar rather than covering it, so the nav is visible beside them —
+// which is why they clear the selected row instead of leaving the one underneath lit.
+const NAV_NO_ROW_OVERLAYS=['view-settings-detail','view-split-editor','view-stats-evidence','view-exercise-detail'];
+
+// One dispatcher. Every nav row goes through here; nothing calls setView plus a sub-tab setter
+// by hand any more. Order matters: setView('log') resets logTodayView and setView('stats')
+// calls setStatsTab(statsSubTab,true), so the explicit sub-tab call has to come AFTER setView.
+function navGo(viewId, sub){
+  closeMenu();
+  if(viewId==='accounts') return openAccounts();
+  if(viewId==='aihub')    return openAIHub();
+  setView(viewId);
+  if(!sub) return;
+  if(viewId==='log')            setLogTab(sub);
+  else if(viewId==='stats')     setStatsTab(sub);
+  else if(viewId==='budget')    setBudgetView(sub);
+  else if(viewId==='kitchen')   kitSetTab(sub);
+  else if(viewId==='nutrition' && typeof nutSetTab==='function') nutSetTab(sub);
+}
+function navRowGo(id){ const r=NAV_ROW_BY_ID[id]; if(r) navGo(r.view,r.sub); }
+
+// The current destination as a NAV_TREE row id, or '' on a screen with no row. This reads the
+// same state the screens themselves read — there is deliberately no parallel "selected nav
+// row" variable, because that is the thing that goes stale.
+function navCurrentRow(){
+  const shown=id=>{ const el=document.getElementById(id); return !!(el&&el.style.display&&el.style.display!=='none'); };
+  if(NAV_NO_ROW_OVERLAYS.some(shown)) return '';
+  if(shown('view-accounts')) return 'accounts';
+  if(shown('view-aihub'))    return 'aihub';
+  const v=(typeof S!=='undefined'&&S&&S.view)||'home';
+  if(v==='home')    return 'home';
+  if(v==='log')     return ({today:'log-today',program:'log-program',exercises:'log-exercises',history:'log-history'})[logSubTab]||'';
+  if(v==='budget')  return ({week:'bud-week',month:'bud-month',bills:'bud-bills',year:'bud-year'})[budgetView]||'';
+  if(v==='stats')   return ({overview:'st-overview',review:'wkr',training:'st-training',body:'st-body',nutrition:'st-nutrition',finance:'st-finance'})[statsSubTab]||'';
+  if(v==='kitchen') return ({recipes:'kit-recipes',shopping:'kit-shopping',pantry:'kit-pantry'})[kitState&&kitState.tab]||'';
+  if(v==='nutrition'){
+    const t=(typeof nutTab!=='undefined')?nutTab:'today';
+    return t==='today'?'nut-today':t==='foods'?'nut-foods':'';   // Nutrition > Recipes is a review screen, not a destination
+  }
+  if(v==='notes')    return 'journal';
+  if(v==='plans')    return 'plans';
+  if(v==='settings') return 'settings';
+  return '';
+}
+
+// Which group is expanded. Device-local: the sidebar is desktop-only, so a phone must not
+// write a preference only the laptop reads — plain localStorage, never lsSave(key,value,sync),
+// whose three-argument form is the synced path. daily_pantry_ui is the precedent. Nothing is
+// written until the user actually presses a group header (the _bootPhase trap in AGENTS.md).
+const NAV_UI_KEY='daily_nav_ui';
+let navOpenGroup=null;   // null = not resolved yet; '' = every group collapsed, a valid state
+function navResolveOpen(){
+  if(navOpenGroup!==null) return navOpenGroup;
+  let rec=null;
+  try{ rec=JSON.parse(localStorage.getItem(NAV_UI_KEY)||'null'); }catch(e){}
+  // A stored record is the user's own choice and wins at boot. With no record — which is the
+  // state until they touch a header — open whichever group owns wherever the app started.
+  navOpenGroup = (rec&&typeof rec.open==='string') ? rec.open : (NAV_GROUP_OF_ROW[navCurrentRow()]||NAV_TREE[0].id);
+  return navOpenGroup;
+}
+function navToggleGroup(id){
+  navOpenGroup = (navResolveOpen()===id) ? '' : id;   // re-pressing the open header collapses it
+  try{ localStorage.setItem(NAV_UI_KEY, JSON.stringify({open:navOpenGroup})); }catch(e){}
+  navApplyState();
+}
+
+// The ONLY place a nav row's selected state is written, for BOTH surfaces.
+function setNavActive(){
+  const row=navCurrentRow();
+  navResolveOpen();
+  // Navigating opens the group that owns the destination. Not during boot: a stored collapse
+  // is the user's choice and must survive a reload, and the post-boot #hash restore runs
+  // after _bootPhase clears, so a deep link still lands with its group open.
+  if(!_bootPhase){ const g=NAV_GROUP_OF_ROW[row]; if(g) navOpenGroup=g; }
+  navApplyState(row);
+}
+function navApplyState(row){
+  if(row===undefined) row=navCurrentRow();
+  const open=navResolveOpen();
+  document.querySelectorAll('[data-nav-row]').forEach(b=>{
+    const on=b.dataset.navRow===row;
+    b.classList.toggle('is-on',on);
+    if(on) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
+  });
+  document.querySelectorAll('[data-nav-group]').forEach(g=>{
+    const isOpen=g.dataset.navGroup===open;
+    g.classList.toggle('is-open',isOpen);
+    const hd=g.querySelector('[data-nav-group-hd]');
+    if(hd) hd.setAttribute('aria-expanded',isOpen?'true':'false');
+  });
+}
+
+// One builder, two mounts. Same tree, same labels, same order, same accordion on both — they
+// differ in density only (see #side-menu-list .nv-row in css/kitchen-extras.css), never in
+// content or in which destinations exist.
+function navBuildHtml(){
+  const caret='<svg class="nv-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
+  return NAV_TREE.map(g=>
+    '<div class="nv-group" data-nav-group="'+g.id+'">'+
+      '<button type="button" class="nv-hd" data-nav-group-hd="'+g.id+'" aria-expanded="false">'+
+        '<span>'+g.label+'</span>'+caret+'</button>'+
+      '<div class="nv-rows">'+g.rows.map(r=>
+        '<button type="button" class="nv-row" data-nav-row="'+r.id+'">'+r.label+'</button>'
+      ).join('')+'</div>'+
+    '</div>').join('');
+}
+function renderNav(){
+  const html=navBuildHtml();
+  ['ds-nav','side-menu-list'].forEach(id=>{
+    const el=document.getElementById(id); if(!el) return;
+    el.innerHTML=html;
+    // Delegated on the stable mount, so it survives every re-render and never double-binds.
+    if(el.dataset.navBound!=='1'){
+      el.dataset.navBound='1';
+      el.addEventListener('click',e=>{
+        const hd=e.target.closest('[data-nav-group-hd]');
+        if(hd){ navToggleGroup(hd.dataset.navGroupHd); return; }
+        const r=e.target.closest('[data-nav-row]');
+        if(r) navRowGo(r.dataset.navRow);
+      });
+    }
+  });
+  navApplyState();
+}
 
 // ── Log hub state ───────────────────────────────────────────────
 // Declared HERE, not next to the hub's render functions further down, because init() calls
@@ -2645,50 +2837,6 @@ function openStatsFromChip(){
 }
 function openProfile(){ setView('settings'); if(typeof openSettingsSection==='function') openSettingsSection('account'); }
 
-// ── Slide-out settings menu ───────────────────────────────────────
-// Just the two most-used settings shortcuts; everything else is reachable via "All settings".
-// Labels are LOOKED UP in SETTINGS_SECTIONS rather than repeated here — this list used to
-// carry its own copy, which is exactly how "Export" outlived being renamed elsewhere.
-const MENU_SECTIONS=['account','appearance'];
-function menuSectionLabel(id){
-  return (typeof SETTINGS_SECTIONS!=='undefined' && SETTINGS_SECTIONS[id]) ? SETTINGS_SECTIONS[id].label : id;
-}
-// Primary destinations, mirroring the desktop sidebar so the hamburger reaches everything
-// the sidebar does — including views not in the mobile bottom nav (Kitchen, Plans, Notes).
-const MENU_NAV=[
-  {id:'home',label:'Home'},
-  {id:'log',label:'Log'},
-  {id:'stats',label:'Stats'},
-  {id:'nutrition',label:'Nutrition'},
-  {id:'kitchen',label:'Kitchen'},
-  {id:'budget',label:'Budget'},
-  {id:'plans',label:'Plans'},
-  {id:'notes',label:'Journal'},
-];
-function menuNav(v){ closeMenu(); setView(v); }
-function buildSideMenu(){
-  const list=document.getElementById('side-menu-list');
-  if(!list) return;
-  const chev='<svg class="smi-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
-  const groupLabel=t=>'<div class="side-menu-group-label">'+t+'</div>';
-  list.innerHTML =
-    groupLabel('Navigate')+
-    // Accounts renders directly after Budget so the two read as a group (both are money views),
-    // rather than floating near Exercise Library at the bottom.
-    MENU_NAV.map(n=>{
-      let html='<button class="side-menu-item" onclick="menuNav(\''+n.id+'\')"><span class="smi-label">'+n.label+'</span>'+chev+'</button>';
-      if(n.id==='budget') html+='<button class="side-menu-item" onclick="openAccounts()"><span class="smi-label">Accounts</span>'+chev+'</button>';
-      // After Journal, matching the sidebar: the secondary tools read Accounts → Plans →
-      // Journal → Daily + AI, roughly least-to-most occasional.
-      if(n.id==='notes') html+='<button class="side-menu-item" onclick="openAIHub()"><span class="smi-label">Daily AI</span>'+chev+'</button>';
-      return html;
-    }).join('')+
-    '<div class="side-menu-divider"></div>'+
-    '<button class="side-menu-item" data-action="open-exercise-library"><span class="smi-label">Exercise Library</span>'+chev+'</button>'+
-    groupLabel('Settings')+
-    '<button class="side-menu-item" onclick="openMenuSection(\'\')"><span class="smi-label">All settings</span>'+chev+'</button>'+
-    MENU_SECTIONS.map(id=>'<button class="side-menu-item" onclick="openMenuSection(\''+id+'\')"><span class="smi-label">'+menuSectionLabel(id)+'</span>'+chev+'</button>').join('');
-}
 // ── Exercise Library ──────────────────────────────────────────────
 // Master list of exercises the user maintains. Defaults are derived from the program
 // (ALL_EX) and can't be deleted; customs are stored in wt_exercise_lib. Muscle group for
@@ -2821,7 +2969,7 @@ function openExerciseLibrary(){
 // There is no overlay to dismiss any more, so "close" means "back to the workout overview".
 function closeExerciseLibrary(){
   if(S.view==='log') setLogTab('today');
-  document.querySelectorAll('.ds-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===S.view));
+  setNavActive();
 }
 // Library filter pills (All + every group). Rebuilt so user-added groups show up.
 function renderMuscleFilterRow(){
@@ -3174,6 +3322,28 @@ function updateNavBadges(){
   const bb=document.getElementById('badge-budget');
   if(bb) bb.style.display=showBudget?'block':'none';
 }
+
+// ── Segmented control (.seg-tabs) ────────────────────────────────
+// Keep the ACTIVE tab visible without scrollIntoView(). scrollIntoView walks every scrollable
+// ancestor, and both Log and Stats sit inside scrollable ancestors (#view-log is a .swipe-panel
+// in the transformed #swipe-deck) — it used to shove the deck sideways and expose bare
+// background. Nudge the strip's own scrollLeft by a measured RECT offset instead: rect-based,
+// so it does not depend on offsetParent (.seg-tabs is position:static, so offsetLeft would be
+// measured from #app and be wildly wrong). The browser clamps to [0,max]; clamping by hand
+// off-by-oned it on fractional widths and left the last tab a pixel short.
+function segScrollToTab(row,btn){
+  if(!row||!btn) return;
+  const br=btn.getBoundingClientRect(), rr=row.getBoundingClientRect();
+  row.scrollLeft += (br.left+br.width/2)-(rr.left+rr.width/2);
+}
+// Selected state for a whole strip at once. `.on` is the app-wide selected class (.stats-seg,
+// .wkr-tabs and now every sub-tab strip), and aria-selected goes with it.
+function segSetOn(btn,on){
+  if(!btn) return;
+  btn.classList.toggle('on',on);
+  btn.setAttribute('aria-selected',on?'true':'false');
+}
+
 // Old sub-tab names (saved state, header-pill contexts) map onto the new structure.
 // 'overview' used to mean the Review screen; a stored value of it now lands on the new
 // Overview, which is the intended default anyway.
@@ -3197,24 +3367,10 @@ function setStatsTab(tab,force){
   statsSubTab = tab;
   Object.keys(STATS_PANES).forEach(t=>{
     const pane=document.getElementById(STATS_PANES[t]); if(pane) pane.classList.toggle('hidden',t!==tab);
-    const btn=document.getElementById(STATS_BTNS[t]); if(btn){ btn.classList.toggle('active',t===tab); btn.setAttribute('aria-selected',t===tab?'true':'false'); }
+    segSetOn(document.getElementById(STATS_BTNS[t]), t===tab);
   });
-  const activeBtn=document.getElementById(STATS_BTNS[tab]);
-  // Scroll ONLY the sub-tab strip. scrollIntoView() walks every scrollable ancestor, and
-  // #app-main is one (overflow:hidden is still programmatically scrollable, and it holds the
-  // 400%-wide swipe deck) — so it used to scroll #app-main sideways on top of the deck's
-  // transform, shoving the panel past the viewport and exposing bare deck as black. Stats is the
-  // only tab with a scrollable strip, which is why it was the only tab that broke.
-  const tabRow=document.getElementById('stats-tab-row');
-  if(activeBtn&&tabRow){
-    // Rect-based, so it does not depend on offsetParent (.stats-tab-row is position:static, so
-    // offsetLeft would be measured from #app and be wildly wrong). Nudge the strip by however far
-    // the active button is off its centre, clamped to the strip's own scroll range.
-    const br=activeBtn.getBoundingClientRect(), rr=tabRow.getBoundingClientRect();
-    const delta=(br.left+br.width/2)-(rr.left+rr.width/2);
-    tabRow.scrollLeft+=delta; // the browser clamps to [0, max] — clamping by hand off-by-oned it
-                              // on fractional widths and left the last tab a pixel short
-  }
+  segScrollToTab(document.getElementById('stats-tab-row'), document.getElementById(STATS_BTNS[tab]));
+  setNavActive();
   if(alreadyRendered&&!force){
     // Preserve the existing chart objects on an ordinary revisit. A hidden canvas may have
     // missed a responsive measurement, so resize in place after it becomes visible instead
@@ -3312,9 +3468,11 @@ function openStatsEvidence(title,html){
   const t=document.getElementById('stats-evidence-title'); if(t) t.textContent=title||'Evidence';
   const c=document.getElementById('stats-evidence-content'); if(c) c.innerHTML=html||'';
   v.style.display='block'; v.style.left=layoutIsDesktop()?'260px':'0'; v.scrollTop=0;
+  setNavActive();
 }
 function closeStatsEvidence(){
   const v=document.getElementById('view-stats-evidence'); if(v){ v.style.display='none'; v.style.left='0'; }
+  setNavActive();
 }
 function statsSourceActions(buttons){
   return '<div class="stats-source-actions">'+buttons.join('')+'</div>';
@@ -5153,10 +5311,12 @@ function openExerciseDetail(name){
   v.style.display='block';
   v.style.left=layoutIsDesktop()?'260px':'0';
   v.scrollTop=0;
+  setNavActive();
   renderExerciseDetail(name);
 }
 function closeExerciseDetail(){
   const v=document.getElementById('view-exercise-detail'); if(v){ v.style.display='none'; v.style.left='0'; }
+  setNavActive();
   if(_exDetailChart){ _exDetailChart.destroy(); _exDetailChart=null; }
 }
 function renderExerciseDetail(name){
@@ -5259,12 +5419,14 @@ function renderExerciseDetail(name){
 // ══ SETTINGS: one registry ════════════════════════════════════════
 // The Settings surface used to keep the SAME ten things in four hand-maintained lists: the
 // landing rows as literal HTML in index.html, the detail titles in SETTINGS_TITLES, the
-// hamburger shortcuts in MENU_SECTIONS and the desktop dropdown in renderQuickSettingsMenu().
+// hamburger shortcuts in MENU_SECTIONS and the desktop dropdown in renderQuickSettingsMenu()
+// (both of those lists are gone now — the app's navigation reads NAV_TREE, and the two
+// Settings shortcuts they carried were folded back into this registry's own landing page).
 // Renaming a section meant editing four places, and search had nothing to read at all.
 // Everything below — labels, icons, colours, what opens, the row summaries, the search
 // subtitles — now comes from SETTINGS_SECTIONS / SETTINGS_GROUPS / SETTINGS_SEARCH.
 //
-// Section KEYS are persisted (deep links, the hamburger, quick settings), so they never
+// Section KEYS are persisted (deep links, the hamburger), so they never
 // change; only labels do. That is why "Data & backup" still lives under the key 'export'.
 const SETTINGS_ICONS={
   user:'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
@@ -5736,41 +5898,14 @@ function openSettingsSection(key,anchor){
     overlay.scrollTop=0;
   }
   if(anchor) stgRevealCard(anchor);
+  setNavActive();
 }
-// ── Desktop quick-settings mini list ──────────────────────────────
-// Tucked under the sidebar Settings item (desktop only — it lives inside
-// #desktop-sidebar, which is display:none under 1024px), revealed via the chevron in
-// .ds-settings-row. The Settings item itself always navigates straight to the full
-// Settings screen; the chevron independently expands/collapses this list. Open/closed
-// state persists across reloads via localStorage.
-function renderQuickSettingsMenu(){
-  const menu=document.getElementById('quick-settings-menu'); if(!menu) return;
-  // Same shortcuts as the mobile hamburger's Settings group (MENU_SECTIONS + "All
-  // settings"), so the desktop dropdown reaches the same destinations. Dark mode / Day
-  // colours used to duplicate their own toggle switches here; both are one click away via
-  // the Appearance link, so the dropdown now just points there instead of maintaining a
-  // second copy of controls that already live in Settings.
-  menu.innerHTML=
-    '<button class="ds-item" onclick="openMenuSection(\'\')"><span>All settings</span></button>'+
-    MENU_SECTIONS.map(id=>'<button class="ds-item" onclick="openMenuSection(\''+id+'\')"><span>'+menuSectionLabel(id)+'</span></button>').join('');
-}
-function setQuickSettingsOpen(open){
-  const menu=document.getElementById('quick-settings-menu');
-  const btn=document.querySelector('.ds-caret-btn');
-  if(!menu||!btn) return;
-  menu.classList.toggle('open', open);
-  btn.classList.toggle('open', open);
-  btn.setAttribute('aria-expanded', open?'true':'false');
-  localStorage.setItem('daily_qs_open', open?'1':'0');
-}
-function toggleQuickSettings(e){
-  if(e) e.stopPropagation();
-  setQuickSettingsOpen(!document.getElementById('quick-settings-menu').classList.contains('open'));
-}
-function restoreQuickSettings(){
-  renderQuickSettingsMenu();
-  setQuickSettingsOpen(localStorage.getItem('daily_qs_open')==='1');
-}
+// The desktop quick-settings popover (All settings / Account & sync / Appearance, behind a
+// caret on the sidebar's Settings row) is GONE. Its three shortcuts are one tap deeper on a
+// Settings landing page that is itself searchable, and keeping it meant the sidebar had one
+// row that expanded differently from every other row. To restore it: re-add .ds-settings-row
+// and .ds-caret-btn around the Settings NAV_TREE row, and a #quick-settings-menu built from
+// SETTINGS_SECTIONS — but the nav's own accordion is the idiom now.
 
 function closeSettingsSection(){
   const overlay=document.getElementById('view-settings-detail');
@@ -5785,6 +5920,7 @@ function closeSettingsSection(){
   // Nothing selected is a state with content, not an empty pane.
   renderSettingsOverview();
   stgSyncNavActive();
+  setNavActive();
 }
 
 // Crossing the split point moves the mounted section between the inline pane and the
@@ -6391,8 +6527,10 @@ function exportAllData(){
     // Device-local keys, excluded for the same reason they are not synced: they describe
     // THIS device, not the user's data. daily_weather_cache holds precise coordinates (and a
     // backup file is routinely pasted into a chat); daily_pantry_ui is which pantry filter and
-    // collapsed categories this handset is showing, which has no meaning on another device.
-    if(key && /^(daily_weather_cache|daily_pantry_ui)/.test(key)) continue;
+    // collapsed categories this handset is showing; daily_nav_ui is which navigation group is
+    // expanded, and the sidebar it belongs to only exists on a laptop. None mean anything on
+    // another device.
+    if(key && /^(daily_weather_cache|daily_pantry_ui|daily_nav_ui)/.test(key)) continue;
     if(key && /^(daily_|wt_|kitchen_)/.test(key)) data[key]=localStorage.getItem(key);
   }
   const backup={ app:'daily', version:1, exported:new Date().toISOString(), data };
@@ -7719,16 +7857,15 @@ function openAIHub(){
   aiHidePeerOverlays('view-aihub');
   v.style.display='block';
   v.style.left=layoutIsDesktop()?'260px':'0';   // leave the desktop sidebar uncovered
-  document.querySelectorAll('.ds-item').forEach(b=>b.classList.remove('active'));
-  const di=document.getElementById('ds-aihub'); if(di) di.classList.add('active');
+  setNavActive();
   renderAIHub();
   if(typeof closeMenu==='function') closeMenu();
 }
 function closeAIHub(){
   const v=document.getElementById('view-aihub');
   if(v){ v.style.display='none'; v.style.left='0'; }
-  // Restore the sidebar highlight to whatever tab is showing underneath (mirrors closeAccounts).
-  document.querySelectorAll('.ds-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===S.view));
+  // Restore the nav highlight to whatever tab is showing underneath (mirrors closeAccounts).
+  setNavActive();
 }
 
 // ── Control handlers ──
@@ -9898,13 +10035,13 @@ function fmtMonthLabel(d){ return d.toLocaleDateString('en-AU',{month:'long',yea
 // ── Budget view toggle ────────────────────────────────────────────
 function setBudgetView(v){
   budgetView=v;
-  const setBtn=(id,active)=>{ const b=document.getElementById(id); if(!b) return;
-    b.style.background=active?'var(--card)':'transparent'; b.style.fontWeight=active?'700':'500';
-    b.style.color=active?'var(--text)':'var(--muted)'; b.style.boxShadow=active?'0 1px 3px rgba(0,0,0,0.1)':'none'; };
-  setBtn('bv-week-btn',v==='week');
-  setBtn('bv-month-btn',v==='month');
-  setBtn('bv-bills-btn',v==='bills');
-  setBtn('bv-year-btn',v==='year');
+  // The selected tab used to be four inline styles written from here, which is why this strip
+  // was the one that could not share a class with the other four. It is a .seg-tabs now.
+  segSetOn(document.getElementById('bv-week-btn'),  v==='week');
+  segSetOn(document.getElementById('bv-month-btn'), v==='month');
+  segSetOn(document.getElementById('bv-bills-btn'), v==='bills');
+  segSetOn(document.getElementById('bv-year-btn'),  v==='year');
+  setNavActive();
   document.getElementById('budget-week-view').classList.toggle('hidden',v!=='week');
   document.getElementById('budget-month-view').classList.toggle('hidden',v!=='month');
   const billsEl=document.getElementById('budget-bills-view');
@@ -18827,9 +18964,10 @@ function openSplitEditor(){
   v.style.display='block';
   v.style.left=layoutIsDesktop()?'260px':'0';
   renderSplitEditor('split-editor-wrap');
+  setNavActive();
   if(typeof closeMenu==='function') closeMenu();
 }
-function closeSplitEditor(){ const v=document.getElementById('view-split-editor'); if(v){ v.style.display='none'; v.style.left='0'; } }
+function closeSplitEditor(){ const v=document.getElementById('view-split-editor'); if(v){ v.style.display='none'; v.style.left='0'; } setNavActive(); }
 function saveSplitEditor(){
   const cfg=daysToSplit(SE.days);
   if(!cfg.types.length){ closeSplitEditor(); return; }
@@ -18889,17 +19027,17 @@ function openAccounts(){
   if(typeof aiHidePeerOverlays==='function') aiHidePeerOverlays('view-accounts');
   v.style.display='block';
   v.style.left=layoutIsDesktop()?'260px':'0'; // leave the desktop sidebar uncovered
-  // Sidebar peer highlight (mirrors openExerciseLibrary): mark Accounts active, clear the rest.
-  document.querySelectorAll('.ds-item').forEach(b=>b.classList.remove('active'));
-  const _di=document.getElementById('ds-accounts'); if(_di) _di.classList.add('active');
+  // Nav peer highlight: navCurrentRow() reads this overlay's own display state, so one call
+  // lights the Accounts row and clears whatever was lit before.
+  setNavActive();
   _acctAddOpen=false; _acctAddType='asset'; _acctAddTracks=false; _acctAddSaver=false;
   renderAccountsPage();
   if(typeof closeMenu==='function') closeMenu();
 }
 function closeAccounts(){
   const v=document.getElementById('view-accounts'); if(v){ v.style.display='none'; v.style.left='0'; }
-  // Restore the sidebar highlight to whatever tab is actually showing underneath (mirrors closeExerciseLibrary).
-  document.querySelectorAll('.ds-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===S.view));
+  // Restore the nav highlight to whatever tab is actually showing underneath.
+  setNavActive();
 }
 
 function fmtMoney(n){ const v=Math.round(Math.abs(n)).toLocaleString(); return (n<0?'-$':'$')+v; }
@@ -20206,8 +20344,9 @@ function kitSetTab(tab){
   kitState.tab=tab;
   ['recipes','shopping','pantry'].forEach(t=>{
     const pane=document.getElementById('kit-'+t); if(pane) pane.classList.toggle('hidden',t!==tab);
-    const btn=document.getElementById('kit-tab-'+t); if(btn) btn.classList.toggle('active',t===tab);
+    segSetOn(document.getElementById('kit-tab-'+t), t===tab);
   });
+  setNavActive();
   if(tab==='recipes') kitRenderList();
   if(tab==='shopping') kitShopRender();
   else if(typeof kitShopRenderAddBar==='function') kitShopRenderAddBar(false);
@@ -23218,8 +23357,7 @@ try {
   }
   applyTheme();
   applyLogoDayColour();
-  buildSideMenu();
-  restoreQuickSettings();
+  renderNav();
   applyDayColour();
   logCheckin();
   // Normalise the canonical food log before any Home/Stats consumer reads calories. Boot-safe
@@ -23231,13 +23369,8 @@ try {
   updateNavPill(S.view||'home'); // seed the nav underline before the first tab switch
   updateHeaderAvatar();
   updateDesktopSidebar();
-  // Event delegation on the stable sidebar parent — one listener, never double-binds
-  const _dsSidebar=document.getElementById('desktop-sidebar');
-  if(_dsSidebar) _dsSidebar.addEventListener('click',e=>{
-    const item=e.target.closest('.ds-item');
-    if(item&&item.dataset.tab) setView(item.dataset.tab);
-  });
-  document.querySelectorAll('.ds-item').forEach(b=>b.classList.toggle('active',b.dataset.tab==='home'));
+  // Nav rows bind their own delegated listener inside renderNav(), on each mount.
+  setNavActive();
   updateNavPill('home');
   updateStatsPill('home');
   updateNavBadges();
@@ -24500,14 +24633,14 @@ function renderPlans(){
   const programCount=(function(){ try{ return (loadPlans().plans||[]).filter(planIsWorkoutSaved).length; }catch(e){ return 0; } })();
 
   let h='<div class="lg-card">'+
-    '<div class="lg-card-hd"><span class="lg-card-lbl">Imported plans</span></div>'+
+    cardHeader('down','Imported plans')+
     '<div class="lg-help" style="margin-top:0">Plan documents you have imported as HTML — a coach’s block, a printout, anything you want to keep and read inside Daily.</div>'+
     '<button type="button" class="lg-btn primary" onclick="plansImportHTML()">Import an HTML plan</button>'+
   '</div>';
 
   if(docs.length){
     h+='<div class="lg-card">'+
-      '<div class="lg-card-hd"><span class="lg-card-lbl">Your plans</span></div>'+
+      cardHeader('note','Your plans')+
       docs.map(function(p){
         const on=p.id===(sel&&sel.id);
         return '<button type="button" class="lg-row lg-pick'+(on?' on':'')+'" onclick="plansDocSelect(\''+escAttr(p.id)+'\')">'+
@@ -24522,7 +24655,7 @@ function renderPlans(){
 
   if(sel){
     h+='<div class="lg-card">'+
-      '<div class="lg-card-hd"><span class="lg-card-lbl">'+escText(sel.name||'Plan')+'</span></div>'+
+      cardHeader('note',escText(sel.name||'Plan'))+
       '<button type="button" class="lg-btn primary" onclick="plansOpenHTML(\''+escAttr(sel.id)+'\')">Open</button>'+
       '<div class="lg-btn-row">'+
         '<button type="button" class="lg-btn" onclick="plansDocExport()">Export</button>'+
@@ -24568,19 +24701,10 @@ function setLogTab(tab, force, opts){
   }
   Object.keys(LOG_TABS).forEach(t=>{
     const pane=document.getElementById(LOG_TABS[t]); if(pane) pane.classList.toggle('hidden', t!==tab);
-    const btn=document.getElementById(LOG_TAB_BTNS[t]);
-    if(btn){ btn.classList.toggle('active', t===tab); btn.setAttribute('aria-selected', t===tab?'true':'false'); }
+    segSetOn(document.getElementById(LOG_TAB_BTNS[t]), t===tab);
   });
-  // Scroll ONLY the strip, by a measured rect offset. scrollIntoView() walks every scrollable
-  // ancestor, and #view-log is a .swipe-panel inside the transformed #swipe-deck — the exact
-  // shape of the bug that used to shove the Stats deck sideways and expose bare background.
-  // See the same treatment in setStatsTab().
-  const btn=document.getElementById(LOG_TAB_BTNS[tab]);
-  const row=document.getElementById('log-tab-row');
-  if(btn&&row){
-    const br=btn.getBoundingClientRect(), rr=row.getBoundingClientRect();
-    row.scrollLeft += (br.left+br.width/2)-(rr.left+rr.width/2);   // the browser clamps
-  }
+  segScrollToTab(document.getElementById('log-tab-row'), document.getElementById(LOG_TAB_BTNS[tab]));
+  setNavActive();
   if(tab==='today')          renderLogToday();
   else if(tab==='program')   renderLogProgram();
   else if(tab==='exercises'){ renderMuscleFilterRow(); renderExerciseLibList(); }
@@ -24671,8 +24795,8 @@ function renderLogOverview(){
     weightCard+
 
     '<div class="lg-card">'+
-      '<div class="lg-card-hd"><span class="lg-card-lbl">What have I completed?</span>'+
-        '<button type="button" class="lg-card-act" onclick="logGoto(\'history\')">All history &rarr;</button></div>'+
+      cardHeader('check','What have I completed?',
+        '<button type="button" class="card-hd-act" onclick="logGoto(\'history\')">All history &rarr;</button>')+
       recentRows+
     '</div>';
 }
@@ -24697,8 +24821,7 @@ function renderLogConsistencyCard(){
   const trained=days.filter(d=>d.saved).length;
   const sessions=days.reduce((n,d)=>n+(d.saved?d.saved.count:0),0);
   return '<div class="lg-card">'+
-    '<div class="lg-card-hd"><span class="lg-card-lbl">7-day consistency</span>'+
-      '<span class="lg-consistency-score">'+trained+' / 7 days</span></div>'+
+    cardHeader('calendar','7-day consistency','<span class="lg-consistency-score">'+trained+' / 7 days</span>')+
     '<div class="lg-consistency" aria-label="'+trained+' trained days in the last seven days">'+
       days.map(d=>'<button type="button" class="lg-consistency-day'+(d.date===getLocalDate()?' today':'')+'" '+
         'aria-label="'+escAttr(fmtDate(d.date)+(d.saved?': '+d.saved.count+' saved session'+(d.saved.count===1?'':'s'):': no saved session'))+'" '+
@@ -24722,8 +24845,8 @@ function logImprovementSuggestions(){
 function renderLogImprovementCard(){
   const suggestions=logImprovementSuggestions();
   return '<div class="lg-card">'+
-    '<div class="lg-card-hd"><span class="lg-card-lbl">What should I improve?</span>'+
-      '<button type="button" class="lg-card-act" onclick="logGoto(\'exercises\')">Exercises &rarr;</button></div>'+
+    cardHeader('trend','What should I improve?',
+      '<button type="button" class="card-hd-act" onclick="logGoto(\'exercises\')">Exercises &rarr;</button>')+
     (suggestions.length
       ? '<div class="lg-focus-list">'+suggestions.map(s=>
           '<button type="button" class="lg-focus-row" onclick="openExerciseDetail(\''+escAttr(s.name)+'\')">'+
@@ -24746,8 +24869,8 @@ function renderLogWeightCard(){
   const change=current&&previous?+(parseFloat(current.weight)-parseFloat(previous.weight)).toFixed(1):null;
   const today=getLocalDate(), todayEntry=sorted.find(w=>w.date===today);
   return '<div class="lg-card">'+
-    '<div class="lg-card-hd"><span class="lg-card-lbl">How is my weight moving?</span>'+
-      '<button type="button" class="lg-card-act" onclick="setView(\'stats\');setStatsTab(\'body\')">Full trend &rarr;</button></div>'+
+    cardHeader('scale','How is my weight moving?',
+      '<button type="button" class="card-hd-act" onclick="setView(\'stats\');setStatsTab(\'body\')">Full trend &rarr;</button>')+
     (recent.length
       ? '<div class="lg-weight-summary">'+
           '<div><span>Current weight</span><strong>'+escText(String(current.weight))+'<small>kg</small></strong></div>'+
@@ -24809,7 +24932,7 @@ function renderLogProgram(){
 
   // What the Log is actually running right now, and the way to change it.
   h+='<div class="lg-card">'+
-    '<div class="lg-card-hd"><span class="lg-card-lbl">Now training</span></div>'+
+    cardHeader('flame','Now training')+
     (types.length
       ? '<div class="lg-prog-now">'+escText(logActiveProgram()?logActiveProgram().name:'Current split')+'</div>'+
         '<div class="lg-prog-meta">'+types.length+' day'+(types.length===1?'':'s')+' · '+
@@ -24827,7 +24950,7 @@ function renderLogProgram(){
 
   // Saved snapshots.
   h+='<div class="lg-card">'+
-    '<div class="lg-card-hd"><span class="lg-card-lbl">Saved programs</span></div>'+
+    cardHeader('pin','Saved programs')+
     (list.length
       ? list.map(p=>{
           const on=p.id===(sel&&sel.id);
@@ -24846,8 +24969,7 @@ function renderLogProgram(){
   // Actions for whichever snapshot is selected.
   if(sel&&planIsProgram(sel)){
     h+='<div class="lg-card">'+
-      '<div class="lg-card-hd"><span class="lg-card-lbl">'+escText(sel.name||'Program')+'</span>'+
-        (applied?'<span class="lg-live">Training now</span>':'')+'</div>'+
+      cardHeader('pin',escText(sel.name||'Program'),(applied?'<span class="lg-live">Training now</span>':''))+
       '<div class="lg-day-list">'+((sel.cfg&&sel.cfg.types)||[]).map((t,i)=>
         '<div class="lg-day"><span class="lg-day-n">'+(i+1)+'</span>'+
         '<span class="lg-day-name">'+escText(t.name||('Day '+(i+1)))+'</span>'+
@@ -24879,7 +25001,7 @@ function renderLogProgram(){
       }).join('');
     }
     h+='<div class="lg-card">'+
-      '<div class="lg-card-hd"><span class="lg-card-lbl">'+escText(sel.name||'Legacy workout plan')+'</span></div>'+
+      cardHeader('note',escText(sel.name||'Legacy workout plan'))+
       (sel.description?'<div class="lg-help">'+escText(sel.description)+'</div>':'')+
       '<div class="lg-day-list">'+(legacyRows||'<div class="lg-blank">This older plan has no saved exercises.</div>')+'</div>'+
       '<div class="lg-help">This older format is kept unchanged for reference and export. Save your current split as a new program to use the live workout logger.</div>'+
@@ -24894,7 +25016,7 @@ function renderLogProgram(){
   // Program transfer. HTML plan documents import in the Plans tab instead — this is workout
   // data only, which is why the HTML button is not repeated here.
   h+='<div class="lg-card">'+
-    '<div class="lg-card-hd"><span class="lg-card-lbl">Import &amp; export</span></div>'+
+    cardHeader('down','Import &amp; export')+
     '<div class="lg-btn-row">'+
       '<button type="button" class="lg-btn" onclick="plansImport()">Import JSON</button>'+
       '<button type="button" class="lg-btn" onclick="logProgramExport()"'+(sel?'':' disabled')+'>Export selected</button>'+

@@ -47,23 +47,12 @@
       <img class="wordmark-img wordmark-light" src="daily-wordmark-light.png" alt="Daily">
       <img class="wordmark-img wordmark-dark" src="daily-wordmark-dark.png" alt="Daily">
     </div>
-    <div class="ds-section">Menu</div>
-    <button class="ds-item" data-tab="home"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg><span>Home</span></button>
-    <button class="ds-item" data-tab="log"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v16M18 4v16"/><path d="M3 8h3M18 8h3M3 16h3M18 16h3"/><path d="M6 12h12"/></svg><span>Log</span></button>
-    <button class="ds-item" data-tab="stats"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg><span>Stats</span></button>
-    <button class="ds-item" data-tab="nutrition"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c4.4 0 8-4.1 8-9.2C20 8.4 16.4 5 12 5s-8 3.4-8 7.8C4 17.9 7.6 22 12 22z"/><path d="M12 5c0-2 1.6-3 3.5-3"/><path d="M9 8c1.8 1 4.2 1 6 0"/></svg><span>Nutrition</span></button>
-    <button class="ds-item" data-tab="kitchen"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3zm0 0v7"/></svg><span>Kitchen</span></button>
-    <button class="ds-item" data-tab="budget"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h2M10 15h4"/></svg><span>Budget</span></button>
-    <button class="ds-item" id="ds-accounts" onclick="openAccounts()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/><path d="M16 12h.01"/><path d="M2 10h20"/></svg><span>Accounts</span></button>
-    <button class="ds-item" data-tab="plans"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>Plans</span></button>
-    <button class="ds-item" data-tab="notes"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg><span>Journal</span></button>
-    <button class="ds-item" id="ds-aihub" onclick="openAIHub()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M18 15l.8 2L21 17.8l-2.2.8L18 21l-.8-2.4L15 17.8l2.2-.8z"/></svg><span>Daily AI</span></button>
-    <button class="ds-item" id="ds-exlib" onclick="openExerciseLibrary()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>Exercise Library</span></button>
-    <div class="ds-settings-row">
-      <button class="ds-item" onclick="setView('settings')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><span>Settings</span></button>
-      <button class="ds-caret-btn" onclick="toggleQuickSettings(event)" aria-expanded="false" aria-controls="quick-settings-menu" aria-label="Show quick settings"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
-    </div>
-    <div id="quick-settings-menu" class="ds-quick-settings"></div>
+    <!-- Every nav row is rendered from NAV_TREE by renderNav() (js/app.js) into this one
+         mount, and into #side-menu-list for the phone. Twelve literal buttons used to live
+         here, a similar-but-different list lived in buildSideMenu(), and a third in
+         renderQuickSettingsMenu() - the same fault Settings fixed with SETTINGS_SECTIONS.
+         Do not add a literal row here again; add it to NAV_TREE. -->
+    <div id="ds-nav"></div>
     <div class="ds-profile"><div class="ds-av"></div><div class="ds-info"><span class="ds-name"></span><span class="ds-sync">Synced</span></div></div>
   </nav>
 
@@ -105,11 +94,11 @@
          overlays, and openExerciseLibrary()/openWorkoutHistory() now route here instead, so
          every old entry point still works against one copy. -->
     <section id="view-log" class="swipe-panel">
-      <div class="log-tab-row" id="log-tab-row" role="tablist" aria-label="Workout sections">
-        <button class="log-tab-btn active" id="lg-today-btn" role="tab" aria-selected="true" aria-controls="log-sub-today" onclick="setLogTab('today')">Today</button>
-        <button class="log-tab-btn" id="lg-prog-btn" role="tab" aria-selected="false" aria-controls="log-sub-program" onclick="setLogTab('program')">Program</button>
-        <button class="log-tab-btn" id="lg-ex-btn" role="tab" aria-selected="false" aria-controls="log-sub-exercises" onclick="setLogTab('exercises')">Exercises</button>
-        <button class="log-tab-btn" id="lg-hist-btn" role="tab" aria-selected="false" aria-controls="log-sub-history" onclick="setLogTab('history')">History</button>
+      <div class="seg-tabs seg-fill" id="log-tab-row" role="tablist" aria-label="Workout sections">
+        <button class="on" id="lg-today-btn" role="tab" aria-selected="true" aria-controls="log-sub-today" onclick="setLogTab('today')">Today</button>
+        <button id="lg-prog-btn" role="tab" aria-selected="false" aria-controls="log-sub-program" onclick="setLogTab('program')">Program</button>
+        <button id="lg-ex-btn" role="tab" aria-selected="false" aria-controls="log-sub-exercises" onclick="setLogTab('exercises')">Exercises</button>
+        <button id="lg-hist-btn" role="tab" aria-selected="false" aria-controls="log-sub-history" onclick="setLogTab('history')">History</button>
       </div>
 
       <div id="log-sub-today" role="tabpanel" aria-labelledby="lg-today-btn">
@@ -198,11 +187,11 @@
     <section id="view-budget" class="swipe-panel">
       <button id="source-return-bar" class="source-return-bar hidden" type="button" onclick="returnFromSourceView()"></button>
       <!-- Toggle pill -->
-      <div class="sub-toggle" style="display:flex;background:var(--border);border-radius:10px;padding:3px;margin-bottom:16px">
-        <button id="bv-week-btn" onclick="setBudgetView('week')" style="flex:1;padding:8px;border:none;background:var(--card);border-radius:8px;font-size:13px;font-weight:700;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,0.1)">Week</button>
-        <button id="bv-month-btn" onclick="setBudgetView('month')" style="flex:1;padding:8px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:500;color:var(--muted)">Month</button>
-        <button id="bv-bills-btn" onclick="setBudgetView('bills')" style="flex:1;padding:8px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:500;color:var(--muted)">Bills</button>
-        <button id="bv-year-btn" onclick="setBudgetView('year')" style="flex:1;padding:8px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:500;color:var(--muted)">Yearly</button>
+      <div class="seg-tabs seg-fill" id="budget-view-tabs" role="tablist" aria-label="Budget views">
+        <button id="bv-week-btn" class="on" role="tab" aria-selected="true" onclick="setBudgetView('week')">Week</button>
+        <button id="bv-month-btn" role="tab" aria-selected="false" onclick="setBudgetView('month')">Month</button>
+        <button id="bv-bills-btn" role="tab" aria-selected="false" onclick="setBudgetView('bills')">Bills</button>
+        <button id="bv-year-btn" role="tab" aria-selected="false" onclick="setBudgetView('year')">Yearly</button>
       </div>
 
       <!-- WEEK VIEW -->
@@ -216,7 +205,7 @@
           <span class="bud-compact-week" id="bud-compact-week">&mdash;</span>
           <button type="button" onclick="changeWeek(1)" id="bud-compact-next" aria-label="Next week">&#8250;</button>
         </div>
-        <div id="budget-hero-card" style="background:linear-gradient(150deg, rgba(var(--accent-rgb),.9), rgba(var(--accent-rgb),.55) 55%, rgba(var(--accent-rgb),.35));border-radius:22px;padding:20px 20px 16px;margin-bottom:16px;box-shadow:0 16px 40px rgba(var(--accent-rgb),.3)">
+        <div id="budget-hero-card" style="background:linear-gradient(150deg, var(--accent-hero), var(--accent-hero-2));border-radius:var(--radius-hero);padding:20px 20px 16px;margin-bottom:16px;box-shadow:0 16px 40px rgba(var(--accent-rgb),.3)">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
             <button onclick="changeWeek(-1)" style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer">&#8249;</button>
             <div style="text-align:center">
@@ -458,10 +447,10 @@
     </section>
 
     <section id="view-kitchen" class="swipe-panel">
-      <div class="kit-subnav">
-        <button class="kit-subnav-btn active" id="kit-tab-recipes" onclick="kitSetTab('recipes')">Recipes</button>
-        <button class="kit-subnav-btn" id="kit-tab-shopping" onclick="kitSetTab('shopping')">Shopping</button>
-        <button class="kit-subnav-btn" id="kit-tab-pantry" onclick="kitSetTab('pantry')">Pantry</button>
+      <div class="seg-tabs seg-fill" role="tablist" aria-label="Kitchen sections">
+        <button class="on" id="kit-tab-recipes" role="tab" aria-selected="true" onclick="kitSetTab('recipes')">Recipes</button>
+        <button id="kit-tab-shopping" role="tab" aria-selected="false" onclick="kitSetTab('shopping')">Shopping</button>
+        <button id="kit-tab-pantry" role="tab" aria-selected="false" onclick="kitSetTab('pantry')">Pantry</button>
       </div>
 
       <div id="kit-recipes" class="kit-pane">
@@ -508,13 +497,13 @@
     <!-- STATS VIEW — Overview (orientation) → Review (interpretation) → four domain tabs.
          Raw workout history stays in Log; it is deliberately not a Stats tab. -->
     <section id="view-stats" class="hidden">
-      <div class="stats-tab-row" id="stats-tab-row">
-        <button class="stats-tab-btn active" id="st-ov-btn" onclick="setStatsTab('overview')">Overview</button>
-        <button class="stats-tab-btn" id="st-rev-btn" onclick="setStatsTab('review')">Review</button>
-        <button class="stats-tab-btn" id="st-train-btn" onclick="setStatsTab('training')">Training</button>
-        <button class="stats-tab-btn" id="st-body-btn" onclick="setStatsTab('body')">Body</button>
-        <button class="stats-tab-btn" id="st-nut-btn" onclick="setStatsTab('nutrition')">Nutrition</button>
-        <button class="stats-tab-btn" id="st-fin-btn" onclick="setStatsTab('finance')">Finance</button>
+      <div class="seg-tabs seg-scroll" id="stats-tab-row" role="tablist" aria-label="Stats sections">
+        <button class="on" id="st-ov-btn" onclick="setStatsTab('overview')">Overview</button>
+        <button id="st-rev-btn" onclick="setStatsTab('review')">Review</button>
+        <button id="st-train-btn" onclick="setStatsTab('training')">Training</button>
+        <button id="st-body-btn" onclick="setStatsTab('body')">Body</button>
+        <button id="st-nut-btn" onclick="setStatsTab('nutrition')">Nutrition</button>
+        <button id="st-fin-btn" onclick="setStatsTab('finance')">Finance</button>
       </div>
       <div id="sub-overview">
         <div id="overview-content"></div>
@@ -748,7 +737,7 @@
         <div id="settings-homelayout-section" class="hidden"></div>
 
         <!-- "Data & backup" on the landing page; the section key stays "export" because it
-             is persisted (deep links, MENU_SECTIONS, quick settings). Only the LABEL changed. -->
+             is persisted (deep links, the hamburger). Only the LABEL changed. -->
         <div id="settings-export-section" class="hidden">
           <div class="stg-card" id="stg-card-backup">
             <div class="stg-card-head">
