@@ -222,11 +222,11 @@ the accent or the theme must go through those, not set `--accent` directly.
   fill), the savings-rate line is dashed with `rectRot` markers, and expenses are BARS while
   income is a LINE on the Stats money-flow chart. Ordinary currency totals stay `var(--text)`.
   The same mapping is used by the Stats → Finance direction charts and its fixed/variable
-  breakdown. **Budget → Month's category-composition donut is the deliberate exception:**
-  `BUD_CATEGORY_COLORS` / `budCategoryColor()` assigns a stable, ID-derived categorical colour
-  so adjacent slices remain distinguishable when rank changes. It is red/rose/plum-led, never
-  uses income green or warning amber, and the HTML list repeats every label, dollar value and
-  percentage so colour is not the only cue.
+  breakdown. `BUD_CATEGORY_COLORS` / `budCategoryColor()` assign a stable, ID-derived
+  categorical colour (red/rose/plum-led, never income green or warning amber) for anything
+  that genuinely needs per-category identity. **Budget → Month's composition view is no
+  longer a caller** — it is a ranked bar list whose colour carries no information at all; see
+  its entry below before reaching for a categorical palette there again.
   **Chart.js gotcha, learned here:** `scales.y.stacked:true` stacks LINE datasets too, not just
   bars — the money-flow chart drew a $1,023 income week at $1,856 until each line was given its
   own single-member `stack` group.
@@ -327,15 +327,40 @@ the accent or the theme must go through those, not set `--accent` directly.
   `const`s, so reusing the name is a hard parse error that takes the whole app down — the same
   class of fault as `.set-row`, `.empty` and the `wr-`/`wkr-` collision, now seen in JS as well
   as CSS. The card's own empty state uses `.is-empty`, never `.empty`, for the same reason.
-- **Budget → Month's variable-spending breakdown is one reconciled composition view.**
-  `monthSpendBreakdown()` resolves each recorded week through `statsWeekParts()` and
-  `varCatAmount()` (transaction precedence intact), then feeds both the donut and the ranked
-  list. More than six slices become top-five + Other in the canvas only; the full HTML list
-  remains visible and Other opens its component categories. Missing legacy category detail is
-  shown as `Uncategorised / archived`, never silently dropped or assigned today's label.
-  `monthCategoryChart` must be destroyed before every Month rerender. Category rows register
-  scoped evidence through the existing Stats evidence overlay; their source-week return target
-  is Budget → Month, while Stats evidence still returns to Stats → Finance.
+- **Budget → Month's variable-spending breakdown is a RANKED BAR LIST, not a donut, and the
+  donut should not come back.** `monthSpendBreakdown()` still resolves each recorded week
+  through `statsWeekParts()` and `varCatAmount()` (transaction precedence intact);
+  `renderMonthSpendBreakdown()` now draws a single composition strip plus sorted rows —
+  label / bar / amount / share — with no Chart.js at all. Why it changed, so it is not undone:
+  a donut asks the reader to compare ANGLES, the hardest visual judgement there is, and a real
+  month's tail was five categories within four percentage points of each other. No palette
+  fixes that; the shape was wrong for the data. Sorted bars make it a length comparison.
+  Three things follow, and each removed a whole class of problem:
+  - **Colour now carries NO information.** The rows are sorted, so rank is already stated by
+    position; the fill is one red shaded by rank (`budRankShade(i,n)`, derived from
+    `budExpenseHex()` so there is still a single source for the spending red) and the card
+    reads correctly in greyscale. This is why the old palette problem is GONE rather than
+    solved — do not reintroduce a categorical palette here. `BUD_CATEGORY_COLORS` /
+    `budCategoryColor()` still exist for anything that genuinely needs per-category identity,
+    but this view is no longer a caller. The ramp direction flips per theme: brightest = biggest
+    on the dark card, deepest = biggest on white.
+  - **The SVG leader lines are gone**, with `monthSpendDrawConnectors()`, the
+    `.month-spend-connectors` element and `monthSpendHighlight()`. They tied each arc to its
+    list row, which the swatch already did, and any slice whose mid-angle pointed left was
+    routed around the entire donut to a rail above or below it — that was the boxy outline that
+    appeared to be a stray border. If a mark ever needs tying to a row again, put the two next
+    to each other instead of drawing a line between them.
+  - **`monthCategoryChart` no longer exists.** The old rule here ("must be destroyed before
+    every Month rerender") is obsolete along with it; there is no canvas on this screen.
+  **A stale claim removed from this file:** it used to say "more than six slices become
+  top-five + Other in the canvas only". That was never in the code — every category went
+  straight to the donut, which is part of why eight near-identical slices were on screen. The
+  ranked list shows all categories and needs no such rule.
+  Missing legacy category detail is still shown as `Uncategorised / archived`, never silently
+  dropped or assigned today's label, and it keeps a colourless slate fill rather than a rank
+  shade because it is not a category anyone chose. Category rows still register scoped evidence
+  through the existing Stats evidence overlay; their source-week return target is Budget →
+  Month, while Stats evidence still returns to Stats → Finance.
 - **Stats → Finance has ONE range for its budget-derived cards.** `bsFinRange`
   (`12w` | `year` | `all`, default `year`) drives the Financial picture hero, the Money flow
   chart and the category breakdown together; `bsFinRangeKeys()` returns completed weeks only

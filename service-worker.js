@@ -136,7 +136,8 @@
 // v294: give Budget's Accounts link a clearer secondary-action hierarchy.
 // v295: consolidate the hero cards - one .hero-panel for Budget > Year and Accounts.
 // v296: add Budget > Week 'Day by day'; Month's summary becomes one .hero-panel too.
-const CACHE_NAME = 'daily-v296';
+// v297: Month's spending breakdown becomes a ranked bar list - donut and leader lines out.
+const CACHE_NAME = 'daily-v297';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

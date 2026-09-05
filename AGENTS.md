@@ -355,11 +355,12 @@ safety-critical parts:
 The Prompt 42 pantry work described here previously is committed and shipped.
 
 Nothing is uncommitted as of 2026-09-05 beyond documentation. Recently shipped, newest
-first: Budget › Week's Day by day card, the hero-card consolidation (one `.hero-panel` for
+first: Budget › Month's ranked spending breakdown (the donut is gone), Budget › Week's Day by
+day card, the hero-card consolidation (one `.hero-panel` for
 Budget › Month, Year and Accounts),
 Budget/Accounts hierarchy wording, Log Today weight cards, the Log training hub
 (`83f9969` then `54073ce`), the Weekly Review, and the Kitchen favourite change.
-`CACHE_NAME` is at `daily-v296`.
+`CACHE_NAME` is at `daily-v297`.
 
 The workout hub adds **no** synced store and performs **no** migration, so it does not carry
 the fresh-profile sync risk the Weekly Review does. The Weekly Review's two stores

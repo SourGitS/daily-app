@@ -651,30 +651,38 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .bud-notes-textarea{width:100%;min-height:64px;border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px;color:var(--text);background:var(--card);resize:none;line-height:1.5}
 .bud-notes-textarea:focus{outline:none;border-color:var(--blue)}
 .bud-notes-textarea::placeholder{color:var(--muted)}
-/* Month composition: a donut answers proportion; the adjacent HTML list carries the exact
-   category, amount and percentage so the chart is still useful without colour. */
+/* Month composition: a RANKED BAR LIST, not a donut. A donut asks the reader to compare
+   angles, which is the hardest visual judgement there is, and this data's tail is five
+   categories within four points of each other — no palette rescues that, the shape was wrong.
+   Sorted rows turn it into a length comparison, the easiest one.
+   Two things followed from that and should not be undone:
+   · Because the rows are sorted, colour carries NO information here. It is a single red
+     shaded by rank (budRankShade), decoration only, and the card reads correctly in
+     greyscale — every row prints its label, amount and share.
+   · The SVG leader lines are gone with the donut. They connected each arc to its list row,
+     which the swatch already did; slices pointing left were routed around the whole donut to
+     a rail above or below it, which is what drew the boxy outline around the chart. Do not
+     reintroduce them — if a mark ever needs tying to a row again, put the two next to each
+     other instead. */
 .month-spend-card{cursor:default}
 .month-spend-title{margin-bottom:14px}
-.month-spend-layout{position:relative;display:grid;grid-template-columns:minmax(210px,.72fr) minmax(0,1.28fr);gap:24px;align-items:center}
-.month-spend-connectors{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;z-index:0}
-.month-spend-connector{fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.28;transition:opacity .15s ease,stroke-width .15s ease}
-.month-spend-connector.active{opacity:.92;stroke-width:2.5}
-.month-spend-visual{position:relative;z-index:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:10px}
-.month-spend-chart{position:relative;width:min(100%,250px);aspect-ratio:1;min-width:0}
-.month-spend-chart canvas{position:absolute;inset:0;width:100%!important;height:100%!important}
-.month-spend-centre{position:absolute;inset:27%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none;line-height:1.15}
-.month-spend-centre strong{font-family:var(--font-num);font-size:22px;font-weight:800;letter-spacing:-.035em;color:var(--text);overflow-wrap:anywhere}
-.month-spend-centre span{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.075em;color:var(--muted);margin-top:4px}
-.month-spend-compare{min-height:18px;font-size:11px;font-weight:650;line-height:1.4;color:var(--text-2);text-align:center}
-.month-spend-list{position:relative;z-index:1;min-width:0;display:flex;flex-direction:column}
-.month-spend-row{display:grid;grid-template-columns:12px minmax(0,1fr) minmax(74px,auto) 48px;align-items:center;gap:10px;width:100%;min-height:47px;padding:8px 9px;border:0;border-bottom:1px solid var(--border);border-radius:9px;background:transparent;color:var(--text);font:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s ease,transform .15s ease}
-.month-spend-row:last-child{border-bottom-color:transparent}
-.month-spend-row:hover,.month-spend-row.selected,.month-spend-row.chart-active{background:var(--track)}
+.month-spend-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.month-spend-total{font-family:var(--font-num);font-size:30px;font-weight:800;letter-spacing:-.03em;color:var(--text);line-height:1.05;overflow-wrap:anywhere}
+.month-spend-compare{font-size:11.5px;font-weight:650;line-height:1.4;color:var(--text-2)}
+/* Part-to-whole, which is the one thing the donut did well — kept, as a single bar read left
+   to right. The 2px gaps are the card colour, not a stroke, so segments stay flat. */
+.month-spend-strip{display:flex;gap:2px;height:10px;margin:13px 0 7px;border-radius:5px;overflow:hidden}
+.month-spend-seg{display:block;height:100%;min-width:2px}
+.month-spend-lead{font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:14px}
+.month-spend-list{min-width:0;display:flex;flex-direction:column}
+.month-spend-row{display:grid;grid-template-columns:minmax(84px,auto) minmax(40px,1fr) minmax(74px,auto) 46px;align-items:center;gap:12px;width:100%;padding:9px 8px;border:0;border-top:1px solid var(--border);border-radius:9px;background:transparent;color:var(--text);font:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s ease,transform .15s ease}
+.month-spend-list>.month-spend-row:first-child{border-top:none}
+.month-spend-row:hover,.month-spend-row.selected{background:var(--track)}
 .month-spend-row:active{transform:scale(.995)}
 .month-spend-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px;position:relative;z-index:1}
-.month-spend-swatch{width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.18)}
-[data-theme="light"] .month-spend-swatch{box-shadow:0 0 0 1px rgba(0,0,0,.08)}
 .month-spend-name{min-width:0;font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.month-spend-track{height:8px;border-radius:4px;background:var(--track);overflow:hidden}
+.month-spend-fill{display:block;height:100%;border-radius:4px;transition:width .35s ease}
 .month-spend-amount{font-family:var(--font-num);font-size:13px;font-weight:750;text-align:right;white-space:nowrap}
 .month-spend-pct{font-family:var(--font-num);font-size:11px;font-weight:700;text-align:right;color:var(--muted);white-space:nowrap}
 .month-spend-note{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:15px;padding-top:12px;border-top:1px solid var(--border);font-size:10.5px;line-height:1.45;color:var(--muted)}
@@ -686,16 +694,14 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .month-spend-empty strong{font-size:14px;color:var(--text);margin-bottom:5px}
 .month-spend-empty span{font-size:12px;line-height:1.45}
 @media (max-width:680px){
-  .month-spend-layout{grid-template-columns:1fr;gap:15px}
-  .month-spend-connectors{display:none}
-  .month-spend-chart{width:min(72vw,230px)}
-  .month-spend-row{grid-template-columns:12px minmax(0,1fr) minmax(70px,auto) 44px;padding-left:5px;padding-right:5px}
+  .month-spend-total{font-size:26px}
+  .month-spend-row{grid-template-columns:minmax(72px,auto) minmax(28px,1fr) minmax(70px,auto) 42px;gap:9px;padding-left:5px;padding-right:5px}
   .month-spend-note{align-items:flex-start;flex-direction:column;gap:3px}
 }
 @media (max-width:390px){
-  .month-spend-chart{width:min(76vw,214px)}
-  .month-spend-centre strong{font-size:19px}
-  .month-spend-row{gap:7px;grid-template-columns:10px minmax(0,1fr) minmax(64px,auto) 40px}
+  /* The bar is the first thing to give up room — the label, amount and share are the record;
+     the bar is only the comparison, and it still works at 28px. */
+  .month-spend-row{gap:7px;grid-template-columns:minmax(62px,auto) minmax(20px,1fr) minmax(64px,auto) 38px}
   .month-spend-name,.month-spend-amount{font-size:12px}
   .month-spend-pct{font-size:10.5px}
 }

@@ -9776,7 +9776,6 @@ let habitsLog          = loadHabitsLog();
 let budChart           = null;
 let budDonutChart      = null;
 let monthWeekChart     = null;   // Month view: weekly grouped bar chart
-let monthCategoryChart = null;   // Month view: variable-spending composition donut
 let yearStackChart     = null;   // Yearly view: stacked bars + savings-rate line
 let yearCCChart        = null;   // Yearly view: monthly CC / variable spending line
 let budTrendRange      = 'monthly';
@@ -12666,70 +12665,22 @@ function openMonthSpendCategory(evidenceKey){
   document.querySelectorAll('.month-spend-row').forEach(row=>row.classList.toggle('selected',row.dataset.evidenceKey===_monthSpendSelected));
   openFinanceCategoryEvidence(evidenceKey);
 }
-function monthSpendHighlight(index,fromRow){
-  const active=Number.isInteger(index)&&index>=0;
-  if(monthCategoryChart) monthCategoryChart.$monthSpendActiveIndex=active?index:-1;
-  document.querySelectorAll('.month-spend-row').forEach(row=>row.classList.toggle('chart-active',active&&Number(row.dataset.chartIndex)===index));
-  document.querySelectorAll('.month-spend-connector').forEach(path=>path.classList.toggle('active',active&&Number(path.dataset.chartIndex)===index));
-  const centre=document.querySelector('.month-spend-centre');
-  const cats=monthCategoryChart&&monthCategoryChart.$monthSpendCats;
-  if(centre&&cats){
-    const item=active?cats[index]:null;
-    const strong=centre.querySelector('strong'), label=centre.querySelector('span');
-    if(strong) strong.textContent=item?fmtMoneyExact(item.val):monthCategoryChart.$monthSpendTotal;
-    if(label) label.textContent=item?item.label:'Variable spend';
-  }
-  if(fromRow&&monthCategoryChart){
-    monthCategoryChart.setActiveElements(active?[{datasetIndex:0,index}]:[]);
-    monthCategoryChart.update('none');
-  }
-}
-function monthSpendDrawConnectors(chart){
-  const layout=chart&&chart.canvas&&chart.canvas.closest('.month-spend-layout');
-  const svg=layout&&layout.querySelector('.month-spend-connectors');
-  const cats=chart&&chart.$monthSpendCats;
-  if(!layout||!svg||!cats) return;
-  svg.replaceChildren();
-  if(window.matchMedia&&window.matchMedia('(max-width:680px)').matches) return;
-  const layoutRect=layout.getBoundingClientRect(), canvasRect=chart.canvas.getBoundingClientRect();
-  const meta=chart.getDatasetMeta(0), ns='http://www.w3.org/2000/svg';
-  svg.setAttribute('viewBox','0 0 '+layoutRect.width+' '+layoutRect.height);
-  cats.forEach((cat,index)=>{
-    const arc=meta.data[index], row=layout.querySelector('.month-spend-row[data-chart-index="'+index+'"]');
-    if(!arc||!row) return;
-    const swatch=row.querySelector('.month-spend-swatch');
-    if(!swatch) return;
-    const swatchRect=swatch.getBoundingClientRect();
-    const angle=(arc.startAngle+arc.endAngle)/2;
-    const cos=Math.cos(angle), sin=Math.sin(angle);
-    const cx=canvasRect.left-layoutRect.left+arc.x, cy=canvasRect.top-layoutRect.top+arc.y;
-    const sx=cx+cos*(arc.outerRadius+2), sy=cy+sin*(arc.outerRadius+2);
-    const rx=cx+cos*(arc.outerRadius+14), ry=cy+sin*(arc.outerRadius+14);
-    const ex=swatchRect.left-layoutRect.left+swatchRect.width/2;
-    const ey=swatchRect.top-layoutRect.top+swatchRect.height/2;
-    const rightRail=canvasRect.right-layoutRect.left+12;
-    let d='M '+sx.toFixed(1)+' '+sy.toFixed(1)+' L '+rx.toFixed(1)+' '+ry.toFixed(1);
-    if(cos<0){
-      const leftRail=canvasRect.left-layoutRect.left-12;
-      const wrapY=(sy<cy?canvasRect.top:canvasRect.bottom)-layoutRect.top+(sy<cy?-10:10);
-      d+=' L '+leftRail.toFixed(1)+' '+ry.toFixed(1)+' Q '+leftRail.toFixed(1)+' '+wrapY.toFixed(1)+' '+(leftRail+12).toFixed(1)+' '+wrapY.toFixed(1)+
-        ' L '+(rightRail-12).toFixed(1)+' '+wrapY.toFixed(1)+' Q '+rightRail.toFixed(1)+' '+wrapY.toFixed(1)+' '+rightRail.toFixed(1)+' '+(wrapY+(ey-wrapY)*.28).toFixed(1);
-    }else{
-      d+=' Q '+rightRail.toFixed(1)+' '+ry.toFixed(1)+' '+rightRail.toFixed(1)+' '+(ry+(ey-ry)*.28).toFixed(1);
-    }
-    d+=' Q '+rightRail.toFixed(1)+' '+ey.toFixed(1)+' '+ex.toFixed(1)+' '+ey.toFixed(1);
-    const path=document.createElementNS(ns,'path');
-    path.setAttribute('d',d);
-    path.setAttribute('stroke',cat.color);
-    path.setAttribute('vector-effect','non-scaling-stroke');
-    path.classList.add('month-spend-connector');
-    if(chart.$monthSpendActiveIndex===index) path.classList.add('active');
-    path.dataset.chartIndex=String(index);
-    svg.appendChild(path);
-  });
+// One red, shaded by RANK. The rows are sorted, so colour carries no information here and is
+// free to be decoration — which is the whole reason the donut's palette problem disappears
+// rather than being solved. The shade is derived from budExpenseHex() so there is still one
+// source for the spending red (see BUD_MONEY in CLAUDE.md), and the direction flips per theme:
+// on the dark card the biggest category is the brightest and the tail recedes, on white the
+// biggest is the deepest and the tail pales. Either way "strongest = biggest".
+function budRankShade(i,n){
+  const base=budExpenseHex();
+  if(!/^#[0-9a-fA-F]{6}$/.test(base)) return base;
+  const [hu,s]=_hexToHsl(base);
+  const t=(n>1)?(i/(n-1)):0;
+  const dark=budIsDark();
+  const from=dark?0.62:0.40, to=dark?0.30:0.80;
+  return _hslToHex(hu, Math.max(0.25,s*(dark?1:0.92)), from+(to-from)*t);
 }
 function renderMonthSpendBreakdown(wrap,monthDate,keys,weekCount,isCurrent){
-  if(monthCategoryChart){ monthCategoryChart.destroy(); monthCategoryChart=null; }
   if(!weekCount){
     wrap.innerHTML='<div class="month-spend-empty">'+cardIcon('receipt')+'<strong>No saved weeks in this month</strong><span>Navigate to a month with recorded budget data.</span></div>';
     return;
@@ -12740,61 +12691,44 @@ function renderMonthSpendBreakdown(wrap,monthDate,keys,weekCount,isCurrent){
     return;
   }
   const comparison=monthSpendComparison(monthDate,keys,breakdown.total,isCurrent);
-  const list=breakdown.cats.map((c,index)=>
-    '<button type="button" class="month-spend-row'+(c.evidenceKey===_monthSpendSelected?' selected':'')+'" data-evidence-key="'+c.evidenceKey+'" data-chart-index="'+index+'" onclick="openMonthSpendCategory(\''+c.evidenceKey+'\')" onmouseenter="monthSpendHighlight('+index+',true)" onmouseleave="monthSpendHighlight(-1,true)" onfocus="monthSpendHighlight('+index+',true)" onblur="monthSpendHighlight(-1,true)" aria-label="Open '+_catEsc(c.label)+' source records">'+
-      '<span class="month-spend-swatch" style="background:'+c.color+'"></span>'+
+  const cats=breakdown.cats;
+  const n=cats.length;
+  // Legacy/archived detail keeps its own colourless tone — it is not a category that was
+  // chosen, so it should not read as one.
+  const shade=(c,i)=>c.kind==='Legacy'?(budIsDark()?'#94A3B8':'#64748B'):budRankShade(i,n);
+  const max=cats.reduce((m,c)=>Math.max(m,c.val),0)||1;
+
+  // Part-to-whole, which is the one thing the donut was genuinely good for — kept as a single
+  // bar read left to right, so it needs no leader lines to tie it to the rows.
+  const strip=cats.map((c,i)=>
+    '<span class="month-spend-seg" style="width:'+(c.val/breakdown.total*100).toFixed(2)+'%;background:'+shade(c,i)+'" title="'+escAttr(c.label+' · '+c.pctLabel)+'"></span>').join('');
+  const lead=cats.slice(0,3).reduce((s,c)=>s+c.val,0);
+  const leadNote=n>3
+    ? 'Top three cover '+monthSpendPct(lead,breakdown.total)+' of the month'
+    : n+' categor'+(n===1?'y':'ies')+' recorded';
+
+  // Sorted rows with bars: a length comparison rather than an angle one, which is what the
+  // tail of near-equal categories needed. Every row still prints its label, amount and share,
+  // so the card reads with no colour at all.
+  const rows=cats.map((c,index)=>
+    '<button type="button" class="month-spend-row'+(c.evidenceKey===_monthSpendSelected?' selected':'')+'" data-evidence-key="'+c.evidenceKey+'" data-chart-index="'+index+'" onclick="openMonthSpendCategory(\''+c.evidenceKey+'\')" aria-label="Open '+_catEsc(c.label)+' source records">'+
       '<span class="month-spend-name">'+_catEscHtml(c.label)+'</span>'+
+      '<span class="month-spend-track"><span class="month-spend-fill" style="width:'+(c.val/max*100).toFixed(1)+'%;background:'+shade(c,index)+'"></span></span>'+
       '<span class="month-spend-amount">'+fmtMoneyExact(c.val)+'</span>'+
       '<span class="month-spend-pct">'+_catEscHtml(c.pctLabel)+'</span>'+
     '</button>').join('');
-  const chartCats=breakdown.cats;
+
   const issue=breakdown.issues.length?'<div class="month-spend-quality">'+_catEscHtml(breakdown.issues.join(' '))+'</div>':'';
   wrap.innerHTML=
-    '<div class="month-spend-layout">'+
-      '<svg class="month-spend-connectors" aria-hidden="true"></svg>'+
-      '<div class="month-spend-visual">'+
-        '<div class="month-spend-chart">'+
-          '<canvas id="month-spend-chart" role="img" aria-label="Variable spending by category for '+_catEsc(breakdown.periodLabel)+'"></canvas>'+
-          '<div class="month-spend-centre"><strong>'+fmtMoneyExact(breakdown.total)+'</strong><span>Variable spend</span></div>'+
-        '</div>'+
-        '<div class="month-spend-compare '+comparison.direction+'">'+_catEscHtml(comparison.text)+'</div>'+
-      '</div>'+
-      '<div class="month-spend-list" role="list" aria-label="Variable spending categories">'+list+'</div>'+
-    '</div>'+issue+
-    '<div class="month-spend-note"><span>Transfers recorded as variable categories are included in these totals.</span><button type="button" onclick="openBudgetEditor()">Review categories →</button></div>';
-
-  const ctx=document.getElementById('month-spend-chart'); if(!ctx) return;
-  const reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  monthCategoryChart=new Chart(ctx,{
-    type:'doughnut',
-    data:{
-      labels:chartCats.map(c=>c.label),
-      datasets:[{data:chartCats.map(c=>c.val),backgroundColor:chartCats.map(c=>c.color),borderColor:budIsDark()?'#1B1B1D':'#FFFFFF',borderWidth:3,hoverOffset:4,spacing:1}]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,cutout:'68%',
-      animation:reduced?false:{duration:260},
-      onHover:(event,els)=>{
-        if(event.native&&event.native.target) event.native.target.style.cursor=els.length?'pointer':'default';
-        monthSpendHighlight(els.length?els[0].index:-1,false);
-      },
-      onClick:(event,els)=>{
-        if(!els.length) return;
-        const c=chartCats[els[0].index];
-        openMonthSpendCategory(c.evidenceKey);
-      },
-      plugins:{
-        legend:{display:false},
-        tooltip:{callbacks:{label:c=>{
-          const item=chartCats[c.dataIndex];
-          return item.label+': '+fmtMoneyExact(item.val)+' · '+monthSpendPct(item.val,breakdown.total);
-        }}}
-      }
-    },
-    plugins:[{id:'monthSpendConnectors',afterRender:chart=>requestAnimationFrame(()=>monthSpendDrawConnectors(chart))}]
-  });
-  monthCategoryChart.$monthSpendCats=chartCats;
-  monthCategoryChart.$monthSpendTotal=fmtMoneyExact(breakdown.total);
+    '<div class="month-spend-head">'+
+      '<div class="month-spend-total">'+fmtMoneyExact(breakdown.total)+'</div>'+
+      '<div class="month-spend-compare '+comparison.direction+'">'+_catEscHtml(comparison.text)+'</div>'+
+    '</div>'+
+    '<div class="month-spend-strip" role="img" aria-label="Variable spending composition for '+_catEsc(breakdown.periodLabel)+'">'+strip+'</div>'+
+    '<div class="month-spend-lead">'+_catEscHtml(leadNote)+'</div>'+
+    '<div class="month-spend-list" role="list" aria-label="Variable spending categories">'+rows+'</div>'+
+    issue+
+    '<div class="month-spend-note"><span>Transfers recorded as variable categories are included in these totals.</span><button type="button" onclick="openBudgetEditor()">Review categories &rarr;</button></div>';
 }
 
 function renderMonth(){
