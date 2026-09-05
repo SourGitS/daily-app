@@ -14,14 +14,18 @@ Four main areas plus supporting screens:
 
 - **Home** — dashboard of independently show/hideable widget cards (session hero, budget
   snapshot, calorie ring, net worth, notes, habits, etc.)
-- **Log** — workout logging: sets/reps, rest timer, session timer, exercise swap, exercise
-  library, effort rating.
+- **Log** — the workout hub: four sections behind one sub-tab strip (Today / Program /
+  Exercises / History). Today lands on an overview and opens the set logger from it; Program
+  holds the live split plus its saved snapshots; Exercises and History are the screens that
+  used to be full-screen overlays. See the Weekly Review / Workout hub notes below and
+  `CLAUDE.md` for the traps.
 - **Stats** — history/training/body/nutrition/finance sub-tabs, charts, PRs.
 - **Kitchen** — recipe book, shopping list, pantry tracker, cooking mode.
 - **Budget** — weekly income/expense tracker, CSV export, charts.
 - **Accounts** — net worth / debt payoff tracking.
 - **Plans**, **Notes**, **Settings** — secondary screens (see `CLAUDE.md` for full detail per
-  area if you need it; not reproduced here).
+  area if you need it; not reproduced here). Plans holds imported HTML plan DOCUMENTS only —
+  saved workout programs live in Log › Program.
 
 ## Tech stack, hosting, structure
 
@@ -301,6 +305,29 @@ Before pushing to `main`:
 No staging environment exists — a push to `main` is live immediately at
 `sourgits.github.io/daily-app`.
 
+## Workout hub (Log)
+
+Log holds Today / Program / Exercises / History. Three things a future change must not undo:
+
+- **No migration, and none is needed.** Programs and imported HTML plan documents share the
+  existing `wt_plans` store and are separated at render time (`planIsProgram()` vs
+  `type==='html'`). Nothing was rewritten, moved between stores or deleted. The retired Plans
+  streak's `streak` field is still stored and simply never read — removing it would BE a
+  migration. Each view's selection (`logProgSel`, `plansDocSel`) is in-memory so that merely
+  browsing a program cannot write to a synced store.
+- **Hub state is declared above `init()`** (beside `NAV_ORDER`). `init()` calls `setView()` to
+  restore a `#hash` view, and `setView` reads `logTodayView`; `let`/`const` do not hoist, so a
+  late declaration aborts boot with a TDZ error for anyone reloading on a hash.
+- **`setLogTab()` must not call `scrollIntoView()`.** Log is a `.swipe-panel` in the transformed
+  `#swipe-deck`; it nudges the strip's own `scrollLeft` by a measured rect offset, like
+  `setStatsTab()`.
+
+Exercise Library and Workout history no longer have overlay wrappers. `openExerciseLibrary()`
+and `openWorkoutHistory()` navigate to their Log section, so every existing caller — the
+sidebar, the hamburger, Home's recent-sessions card, Stats evidence, the Journal day context —
+keeps working against one copy of the markup. `Settings > Training setup` keeps its persisted
+`training` key and its visible row, and opens Log > Program.
+
 ## Weekly Review (Stats → Review)
 
 Opt-in review of one finished week against a saved weekly plan. `wkr*`/`WKR_*` in
@@ -327,12 +354,16 @@ safety-critical parts:
 
 The Prompt 42 pantry work described here previously is committed and shipped.
 
-Uncommitted on `main` as of 2026-09-03: the Weekly Review feature (new `css/review.css`, the
-`wkr*` block in `js/app.js`, the `review` AI scope, `CACHE_NAME` at `daily-v286`). Verified
-locally against a seeded multi-week budget — reconciliation against Stats → Finance, plan
-snapshotting, the per-week sync merge, backup round trip, phone/desktop and light/dark.
-**Not yet verified against a real signed-in account with existing cloud data**, which the
-sync rules above require before a push, because it adds two synced stores.
+Nothing is uncommitted as of 2026-09-05 beyond documentation. Recently shipped, newest
+first: the hero-card consolidation (one `.hero-panel` for Budget › Year and Accounts),
+Budget/Accounts hierarchy wording, Log Today weight cards, the Log training hub
+(`83f9969` then `54073ce`), the Weekly Review, and the Kitchen favourite change.
+`CACHE_NAME` is at `daily-v295`.
+
+The workout hub adds **no** synced store and performs **no** migration, so it does not carry
+the fresh-profile sync risk the Weekly Review does. The Weekly Review's two stores
+(`daily_review_plan`, `daily_reviews`) still want a check against a real signed-in account
+with existing cloud data if that has not happened yet.
 
 `.claude/settings.local.json` and untracked files under `Prompts/` are local working files and
 are unrelated to the app implementation.

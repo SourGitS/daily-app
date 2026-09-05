@@ -28,26 +28,48 @@ older summary — re-grep before assuming a fact from here is still true if it l
 - Chart.js (cdnjs), Tabler Icons (jsdelivr), Google Fonts — Manrope (UI) + Space Grotesk
   (numerals/wordmark).
 
-## Navigation (restructured many times over the project's life — this is current as of 2026-07-21)
+## Navigation (restructured many times over the project's life — this is current as of 2026-09-04)
 
-- **Mobile bottom nav** (`#bottom-nav`, 4 fixed tabs): Home, Budget, Log, Stats.
-- **Mobile hamburger menu** (`#side-menu`, list populated dynamically in JS): Kitchen, Accounts,
-  Plans, Notes, Exercise Library, Settings.
+- **Mobile bottom nav** (`#bottom-nav`, 5 fixed tabs): Home, Budget, Log, Nutrition, Kitchen.
+  These five and only these five are the swipe deck — `NAV_ORDER` in `js/app.js` IS the deck,
+  and a view named there must be a `.swipe-panel` inside `#swipe-deck` while one that isn't
+  must be a direct `<section>` child of `#app-main`. **Stats is NOT in the deck** (this file
+  said it was for a long time); it is an overlay section reached from the menu/sidebar.
+- **Mobile hamburger menu** (`#side-menu`, list populated dynamically in JS): the five tabs
+  plus Stats, Accounts, Plans, Journal, Daily AI, Exercise Library, Settings.
 - **Desktop** (`#desktop-sidebar`, ≥1024px): all of the above as one persistent left sidebar,
   plus an inline quick-settings popover instead of a separate Settings screen.
+- **Exercise Library and Workout history are no longer top-level destinations.** Their sidebar
+  and hamburger rows remain, but `openExerciseLibrary()` / `openWorkoutHistory()` now navigate
+  to Log › Exercises / Log › History — see the Log entry below.
 
 ## What's in each area
 
 - **Home** — dashboard of widget cards, each independently show/hideable via
   Settings → Home Layout. Today's session hero, weekly budget snapshot, calorie card,
   savings/CC balance, notes bubble, habits.
-- **Log** (was "Train") — workout logging. Training split type is user-editable, not hardcoded
-  to a fixed split. Log sets (weight/reps, warmup toggle, ± sign for negative-load exercises),
-  swap an exercise from the library mid-session, exercise library management (custom
-  exercises/groups, assisted/negative toggle per exercise), drag-to-reorder, done-check with
-  auto-collapse, per-day session notes, rest timer (sticky bar + fullscreen, timestamp-based so
-  it keeps correct time if the phone locks or the app backgrounds), session timer, optional
-  effort rating (Easy/Moderate/Hard/Brutal), optional hours-worked tracking.
+- **Log** (was "Train") — **the workout hub**, four sections behind one sub-tab strip
+  (`setLogTab()`, `LOG_TABS`): **Today**, **Program**, **Exercises**, **History**.
+  - **Today** lands on an OVERVIEW (`renderLogOverview()`), not the set logger: today's
+    workout hero, then question-shaped cards — weight movement (`renderLogWeightCard()`),
+    consistency (`renderLogConsistencyCard()`), improvement (`renderLogImprovementCard()`) —
+    and the recent sessions. `logOpenSession()`
+    swaps in the logger; `logBackToOverview()` and re-tapping the active Today tab come back.
+    `setView('log')` resets `logTodayView` to `'overview'` whenever you arrive from another
+    view — that reset lives in setView because it is the only place that can tell a genuine
+    tab entry from an in-tab re-render.
+  - **Program** holds the live split (with `openSplitEditor()` as a full-screen push, since it
+    is a collection editor with its own top-bar Save) AND the saved program snapshots that
+    used to be the Plans tab: switch, save-current-as, rename, delete, JSON import/export.
+  - **Exercises** and **History** are the SAME markup that used to be the
+    `#view-exercise-library` and `#view-workout-history` overlays, re-homed into Log sections.
+    Same element ids, so `renderExerciseLibList()` / `renderHistory()` are untouched. Those
+    two overlay wrappers are gone; do not re-add them.
+  - Logging itself is unchanged: sets (weight/reps, warmup toggle, ± sign for negative-load
+    exercises), swap an exercise from the library mid-session, drag-to-reorder, done-check with
+    auto-collapse, per-day session notes, rest timer (sticky bar + fullscreen, timestamp-based
+    so it keeps correct time if the phone locks or the app backgrounds), session timer,
+    optional effort rating, optional hours-worked tracking.
 - **Stats** — Overview + Review / Training / Body / Nutrition / Finance sub-tabs. Per-exercise
   history view, swap-aware personal records, progress charts, 8-week consistency grid,
   body-weight log/chart, budget charts. **Review holds two different things**: the opt-in
@@ -73,10 +95,12 @@ older summary — re-grep before assuming a fact from here is still true if it l
   weeks aren't rewritten later.
 - **Accounts** — net-worth tracking across accounts; added after Budget, migrated from the old
   savings/CC logs. An asset can be flagged `saver:true` ("Savers account"): it still counts in
-  net worth but is excluded from the **debt payoff position** card
-  (`(assets − savers) − debts`), which answers "am I covered" rather than "what am I worth".
-- **Plans** — import/export, streak tracking, plus an "HTML plan" type (import any HTML file,
-  view it in a sandboxed iframe).
+  net worth but is excluded from the **debt payoff position**
+  (`(assets − savers) − debts`, the second cell of the Accounts hero panel), which
+  answers "am I covered" rather than "what am I worth".
+- **Plans** — **imported plan DOCUMENTS only** (the `type:'html'` entries: import any HTML
+  file, view it in a sandboxed iframe). Saved workout programs moved to Log › Program, and the
+  streak that used to head this screen is gone from the UI. The nav label stays "Plans".
 - **Notes** — date-tracked notes, fullscreen view, optional home-screen bubble.
 - **Settings** — a searchable control centre, not a menu of unrelated forms. Landing page:
   profile/sync card → search field → four LABELLED groups (Personal, Planning, App experience,
@@ -204,27 +228,61 @@ the accent or the theme must go through those, not set `--accent` directly.
   **Chart.js gotcha, learned here:** `scales.y.stacked:true` stacks LINE datasets too, not just
   bars — the money-flow chart drew a $1,023 income week at $1,856 until each line was given its
   own single-member `stack` group.
-- **Budget's Month and Year summaries are hero metric cards (`.hm-card`), not flat tiles.**
-  `budHeroMetric()` + `BUD_HERO_SCENES` (js/app.js) and the `.hero-metric-grid` block in
-  `css/budget-home.css`. One treatment, four variants carrying the direction: `hm-income`
-  (green), `hm-expense` (red), `hm-accent` (the live accent) and `hm-neutral` (a cool slate,
-  for a figure that is neither in nor out — Recurring per year — kept off plain graphite
-  because the DEFAULT accent is a neutral grey and the two collided).
-  The gradient stops are **solid hexes written inline by JS, not `rgba(var(--accent-rgb),…)`**.
-  An alpha ramp blends into `--bg`, so its pale end cannot carry a 10px white label in light
-  mode — the reason `.ov-hero` and `.budget-snapshot-card` each needed a `[data-theme="light"]`
-  floor. `budHeroStops()` keeps hue and saturation and walks the lightness down until white
-  clears 4.2:1, so a pale custom accent (Appearance offers a free colour picker) produces a
-  deep olive rather than an unreadable card. Because the gradient is inline, `applyDayColour()`
-  re-renders the Month/Year view and the Finance hero on a real accent change — a
-  CSS-variable hero restyles itself, these cannot.
-  `.hm-card` is deliberately absent from the press-lift list in `budget-home.css` and from the
-  `cursor:pointer` list in `base.css`: these cards do not open anything, and the old
-  `.sum-card` inherited both and reared up under a finger that had nowhere to go. `.tstat`
-  chips on a hero are re-tinted by `.hero-metric-grid .hm-card .tstat…` — four selectors deep
-  on purpose, because `kitchen-extras.css` loads last and its `[data-theme="dark"] .tstat.pos`
-  would otherwise outrank a three-deep rule.
-  **`.summary-grid` / `.sum-card` are GONE** — they were used by nothing else.
+- **The hero SURFACE is shared; the two components that wear it are not.** `.hero-surface`
+  (`css/budget-home.css`) owns the treatment ONLY — the graphite gradient, the white text, the
+  clipped decorative circle, the top glare — held apart from any one card's geometry, and
+  deliberately not folded into `.card` (see the press-lift note below). `.hero-wide` rescales
+  the circle for a full-width surface. Two components wear it, and choosing the wrong one is
+  the mistake this split exists to prevent:
+  - **`.hm-card` — ONE figure per card, coloured BY DIRECTION.** Built by `budHeroMetric(m)`,
+    laid out in a `.hero-metric-grid`. Four variants: `hm-income` (green), `hm-expense` (red),
+    `hm-accent` (the live accent) and `hm-neutral` (a cool slate for a figure that is neither in
+    nor out — kept off plain graphite because the DEFAULT accent is a neutral grey and the two
+    collided; `hm-good`/`hm-short` are unused CSS aliases of the first two, not a fifth and
+    sixth). Used by **Budget → Month**, whose three figures genuinely differ in direction:
+    what came in, what went out, what proportion stuck.
+  - **`.hero-panel` — SEVERAL figures on ONE neutral surface.** Built by
+    `budHeroPanel(items,{cols,colsSm})`: a single `.hero-surface.hero-wide` holding a `.hp-grid`
+    of `.hp-cell`s split by hairlines, `.hp-lg` promoting a cell's figure to hero size. Used by
+    **Budget → Year** (six cells, 3-up, 2-up on a phone) and **Accounts**
+    (`renderAccountsHero()` — net worth and debt payoff position, two `hp-lg` cells side by side
+    from 561px, stacked below it because the payoff cell carries three supporting lines).
+  **The panel has NO per-cell colour variant, and adding one back is the thing it was built to
+  remove.** Both call sites used to be direction-coloured `.hm-card`s: Year opened with six
+  saturated slabs in four colours, and Accounts with two stacked full-width cards that flipped
+  the whole surface green or red with their sign — so each screen read as several unrelated
+  announcements rather than one summary. On a panel the FIGURES are what differ, not the
+  backgrounds, and any verdict rides in a `.tstat` chip inside the cell, which is the house rule
+  everywhere else. Colour by direction is for a SET of cards being compared; one card holding
+  several figures stays graphite.
+  Panel mechanics worth not rediscovering: the dividers are a `border-top` + `border-left` on
+  every cell with `.hp-grid` pulled 1px up and left so the surface's `overflow:hidden` clips the
+  outermost pair away. That holds for ANY column count, so a breakpoint changes only the column
+  variable and there is no `:nth-child` arithmetic to break silently when a figure is added.
+  Column counts arrive as `--hp-cols` / `--hp-cols-sm` set inline **on the panel** and read from
+  the stylesheet, so the media queries still win — an inline `grid-template-columns` on
+  `.hp-grid` would outrank them.
+  **The accent hero stops are CSS custom properties now, not inline hexes.** `--accent-hero` /
+  `--accent-hero-2` (defaults in `css/base.css`) are written by `applyAccent()` from
+  `heroStopsFor()`, which keeps hue and saturation and walks the lightness down until white
+  clears 4.2:1 — so a pale custom accent from the colour picker yields a deep surface rather
+  than an unreadable one, and an achromatic accent keeps its zero saturation instead of being
+  invented into a colour. They are theme-INdependent (a hero fill carries white in both themes),
+  unlike `--accent-text`. The stops stay SOLID: an `rgba()` ramp blends into `--bg` and its pale
+  end cannot carry a 9px white label in light mode — the reason `.ov-hero` and
+  `.budget-snapshot-card` each needed a `[data-theme="light"]` floor. **This inverts an older
+  rule that was in this file:** the heroes now restyle themselves the moment `applyAccent()`
+  writes the token, so `applyDayColour()` no longer force-re-renders the Month/Year view or the
+  Finance picture hero. Do not re-add that.
+  **Neither `.hm-card` nor `.hero-panel` is in the press-lift list in `budget-home.css` or the
+  `cursor:pointer` list in `base.css`, and neither should be added.** These surfaces open
+  nothing; the old `.sum-card` inherited both and reared up under a finger that had nowhere
+  to go. `.tstat` chips on a hero are re-tinted by `.hero-metric-grid .hm-card .tstat…` **and**
+  `.hero-panel .hp-cell .tstat…` — four selectors deep on purpose, because
+  `kitchen-extras.css` loads last and its
+  `[data-theme="dark"] .tstat.pos` would otherwise outrank a three-deep rule.
+  **`.summary-grid` / `.sum-card` are GONE**, as are `BUD_HERO_SCENES` and `budHeroStops()` —
+  the scene table and its inline gradients died with the custom properties above.
 - **Budget → Month's variable-spending breakdown is one reconciled composition view.**
   `monthSpendBreakdown()` resolves each recorded week through `statsWeekParts()` and
   `varCatAmount()` (transaction precedence intact), then feeds both the donut and the ranked
@@ -341,6 +399,37 @@ the accent or the theme must go through those, not set `--accent` directly.
   `.stg-nav-row`, and the Log rows render on their intended
   `28px 20px 1fr 10px 1fr 32px 22px` grid. Do not reintroduce a bare `.set-row` rule outside
   `workout.css`.
+
+- **Log's hub state must be declared ABOVE `init()`, and that is load-bearing.**
+  `LOG_TABS`, `LOG_TAB_BTNS`, `logSubTab`, `logTodayView`, `logProgSel` and `plansDocSel` are
+  declared next to `NAV_ORDER` (~line 2058), nowhere near the hub's render functions. Reason:
+  `init()` restores a `#hash` view by calling `setView()`, and `setView` touches
+  `logTodayView`. Function declarations hoist; `let`/`const` do not — so declaring them beside
+  their renderers threw `Cannot access 'logTodayView' before initialization` and aborted boot
+  for anyone reloading on a hash. It failed silently in casual testing because the restore only
+  fires when the URL actually carries one. Do not move them back down.
+
+- **The Log sub-tab strip must not use `scrollIntoView()`.** `#view-log` is a `.swipe-panel`
+  inside the transformed `#swipe-deck`. `scrollIntoView()` walks every scrollable ancestor and
+  would shove the deck sideways, exposing bare background — the same bug Stats hit. `setLogTab`
+  nudges the strip's own `scrollLeft` by a measured rect offset instead, exactly as
+  `setStatsTab` does. Verified: cycling every sub-tab leaves the deck transform and
+  `#app-main.scrollLeft` untouched.
+
+- **`.log-cols` is a GRANDCHILD of `#view-log` now**, because Log › Today wraps the overview
+  and the session (`#log-sub-today` › `#log-session` › `.log-cols`). The landscape layout in
+  `workout.css` makes `#view-log` a flex column and gives `.log-cols` `flex:1`, so both
+  wrappers carry explicit `display:flex;flex-direction:column;flex:1;min-height:0` pass-through
+  rules. Without them the columns collapse to content height and the pinned rest timer scrolls
+  away — the one thing that layout exists to prevent.
+
+- **Programs and plan documents share ONE store, split at render time.** `wt_plans` still holds
+  both; Log › Program filters with `planIsProgram()` and Plans filters on `type==='html'`.
+  There is deliberately **no migration** — verified that opening every screen and every entry
+  point leaves `wt_plans`, `wt_split` and `wt_sessions` byte-identical. The retired streak's
+  `streak` field is still stored and simply never read; deleting it would be a migration.
+  Selection in each view (`logProgSel`, `plansDocSel`) is IN-MEMORY on purpose: picking a
+  program to look at must not write to a synced store.
 
 - **Weekly Review is `wkr-`, NOT `wr-`, and that is not a typo.** `.wr-row`, `.wr-row-l`,
   `.wr-row-v`, `.wr-row-none`, `.wr-row-u` and `.wr-chip*` already belong to Home's **Week in

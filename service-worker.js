@@ -134,7 +134,8 @@
 // v292: replace the Log weight chart with the three latest recorded weights.
 // v293: show current weight and the latest recorded change above those readings.
 // v294: give Budget's Accounts link a clearer secondary-action hierarchy.
-const CACHE_NAME = 'daily-v294';
+// v295: consolidate the hero cards - one .hero-panel for Budget > Year and Accounts.
+const CACHE_NAME = 'daily-v295';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

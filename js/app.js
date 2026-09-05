@@ -10615,6 +10615,31 @@ function budHeroMetric(m){
   '</div>';
 }
 
+// ONE hero card holding several figures, against budHeroMetric's one card per figure.
+// items = [{icon,label,val,unit,sub,chip,extra,lg}] — val/sub/chip/extra are raw HTML (they
+// carry already-escaped figures and tstat markup), label is plain text, lg promotes the
+// figure to hero size. opts = {cols, colsSm}: the column count is handed to CSS as a custom
+// property on the panel so the stylesheet's breakpoints still win (an inline
+// grid-template-columns would outrank them).
+// There is deliberately NO per-cell colour variant. Six budHeroMetric cards put green, red,
+// accent and slate slabs next to each other, which is four announcements where the screen
+// only has one thing to say; here the surface is one neutral graphite and the verdict rides
+// in a .tstat chip inside the cell. Don't reintroduce a variant argument.
+function budHeroPanel(items, opts){
+  const o=opts||{};
+  return '<div class="hero-panel hero-surface hero-wide" style="--hp-cols:'+(o.cols||3)+';--hp-cols-sm:'+(o.colsSm||2)+'">'+
+    '<div class="hp-grid">'+items.map(m=>
+      '<div class="hp-cell'+(m.lg?' hp-lg':'')+'">'+
+        '<div class="hm-label">'+(m.icon?cardIcon(m.icon):'')+'<span>'+escText(m.label)+'</span></div>'+
+        '<div class="hm-val">'+m.val+(m.unit?'<span class="hm-unit">'+escText(m.unit)+'</span>':'')+'</div>'+
+        (m.sub?'<div class="hm-sub">'+m.sub+'</div>':'')+
+        (m.chip?'<div class="hm-chip">'+m.chip+'</div>':'')+
+        (m.extra||'')+
+      '</div>').join('')+
+    '</div>'+
+  '</div>';
+}
+
 // ── Tonal status chip ─────────────────────────────────────────────────────────
 // The semantic half of a figure, so the figure itself can stay neutral. kind is
 // 'pos' | 'warn' | 'neg'; dir adds a direction glyph where one is meaningful.
@@ -12851,8 +12876,7 @@ function renderYear(){
     // Best month by what was actually put away, which is the number worth chasing.
     const best=withData.slice().sort((a,b)=>b.saved-a.saved)[0];
     // The one genuine comparison on this screen — the year's average rate against a 20%
-    // target — is carried by a chip, not by recolouring the percentage itself. The CARD's
-    // colour states direction (earned / spent / saved), which is a fact, not a verdict.
+    // target — is carried by a chip, not by recolouring the percentage itself.
     const rateChip = withData.length
       ? (avgRate>=20 ? tstat('pos','On track','check',true)
         : avgRate>=10 ? tstat('warn','Below 20%','flat',true)
@@ -12861,31 +12885,37 @@ function renderYear(){
     const monthsSub=withData.length?'Across '+withData.length+' recorded month'+(withData.length===1?'':'s'):'Nothing recorded yet';
     const recurring=Math.round(loadFixCats().filter(c=>catIsRecurring(c)&&catIsCharging(c))
       .reduce((s,c)=>s+((parseFloat(catAmount(c))||0)*({weekly:52,monthly:12,yearly:1}[catCycle(c)]||0)),0));
-    sg.className='hero-metric-grid hm-two';
-    sg.innerHTML=[
-      {variant:'income', icon:'wallet', label:'Money in · '+year,
+    // ONE hero panel, not six separately-coloured hero cards. The six used to be coloured by
+    // direction — green in, red out, the accent for saved, slate for the forward-looking
+    // recurring figure — which meant the year summary opened with four different saturated
+    // slabs and no single thing to look at first. One graphite surface, six cells, dividers
+    // between them: the figures are what differ, not the backgrounds. The only verdict on the
+    // screen (the rate against 20%) still travels as a chip.
+    sg.className='';
+    sg.innerHTML=budHeroPanel([
+      {icon:'wallet', label:'Money in · '+year,
        val:'$'+Math.round(totIncome).toLocaleString(), sub:monthsSub},
-      {variant:'expense', icon:'receipt', label:'Spent in '+year,
+      {icon:'receipt', label:'Spent in '+year,
        val:'$'+Math.round(totSpent).toLocaleString(),
        sub:withData.length?'Committed + variable · savings excluded':'Nothing recorded yet'},
-      {variant:'accent', icon:'bank', label:'Saved in '+year,
+      {icon:'bank', label:'Saved in '+year,
        val:'$'+Math.round(totSaved).toLocaleString(),
        sub:withData.length?'Put away, not spent':'Nothing recorded yet'},
-      {variant:'accent', icon:'target', label:'Average savings rate',
+      {icon:'target', label:'Average savings rate',
        val:avgRate.toFixed(0)+'%',
        sub:withData.length?'Of $'+Math.round(totIncome).toLocaleString()+' earned':'No income recorded', chip:rateChip},
-      {variant:'accent', icon:'trophy', label:'Best month',
+      {icon:'trophy', label:'Best month',
        val:best?best.label:'—',
        sub:best?'$'+Math.round(best.saved).toLocaleString()+' saved':'No month recorded yet'},
       // Annual cost of every recurring charge still running. Individually a subscription reads
       // as a few dollars a week and never looks worth cancelling; the yearly figure is the one
       // that makes the case either way, and it is the number nobody ever works out by hand.
-      // Slate, not red: this is a forward-looking commitment, not money already out of the
-      // account this year, and colouring it as spending would double-count it against Spent.
-      {variant:'neutral', icon:'repeat', label:'Recurring, per year',
+      // It is a forward-looking commitment, not money already out of the account this year —
+      // hence the wording, which is now the only thing keeping it apart from Spent.
+      {icon:'repeat', label:'Recurring, per year',
        val:'$'+recurring.toLocaleString(),
        sub:recurring?'If every active charge keeps running':'No recurring charges active'},
-    ].map(budHeroMetric).join('');
+    ],{cols:3,colsSm:2});
   }
 
   // ── Month-by-month table ──
@@ -18875,13 +18905,20 @@ function acctChangeHtml(a){
   return '<div class="acct-change" style="color:'+(good?'var(--success)':'var(--danger)')+'">'+
     (delta>0?'▲':'▼')+' '+fmtMoney(Math.abs(delta))+' · 30d</div>';
 }
-// ── Debt payoff position ──────────────────────────────────────────
-// Net worth answers "what am I worth"; this answers "am I actually covered". Savers accounts
-// are held back from the sum so the interest pot isn't quietly counted as debt cover.
-function renderPayoffCard(){
-  const el=document.getElementById('accounts-payoff'); if(!el) return;
+// ── Net worth + debt payoff position ──────────────────────────────
+// Two halves of one answer: net worth is "what am I worth", the payoff position is "am I
+// actually covered". Savers accounts are held back from the second so the interest pot isn't
+// quietly counted as debt cover — they still count in the first.
+// ONE .hero-panel with the two side by side, not two stacked full-width hero cards. Those
+// flipped the whole surface green or red with their sign, which put two saturated slabs at the
+// top of the screen and made the pair read as two unrelated announcements rather than one
+// position. The verdict rides in a .tstat chip in each cell now — same rule as everywhere
+// else — and the shared graphite surface is what says these two belong together.
+function renderAccountsHero(){
+  const el=document.getElementById('accounts-hero'); if(!el) return;
   if(!accounts.length){ el.innerHTML=''; return; }
-  const debts=accountsDebtsTotal();
+  const nw=accountsNetWorth();
+  const assets=accountsAssetsTotal(), debts=accountsDebtsTotal();
   const savers=accounts.filter(acctIsSaver);
   const saverTot=accountsSaverTotal();
   const pos=accountsPayoffPosition();
@@ -18889,6 +18926,9 @@ function renderPayoffCard(){
   const headline=debts<=0
     ? 'No debts — everything here is yours'
     : (clear?'spare after clearing every debt':'still needed to clear every debt');
+  const payoffChip=debts<=0
+    ? tstat('pos','No debts','check',true)
+    : (clear?tstat('pos','Debts covered','check',true):tstat('neg','Not yet covered','alert',true));
   const saverLine=savers.length
     ? '<div class="acct-payoff-note">Holding back '+fmtMoney(saverTot)+' in '+
         savers.map(a=>_catEscHtml(a.name||'Savers')).join(', ')+' — excluded from this total, still counted in net worth.</div>'
@@ -18899,49 +18939,24 @@ function renderPayoffCard(){
   const kindLine=(debts>0&&kinds.length>1)
     ? '<div class="acct-payoff-kinds">'+kinds.map(k=>fmtMoney(k.total)+' '+k.label).join(' · ')+'</div>'
     : '';
-  el.innerHTML=
-    // THREE groups, matching the net-worth card directly above: label, figure, detail. The
-    // shared desktop rule spreads them with space-between, which is what puts the figure in
-    // the middle — a two-group version left it hard against the left edge while net worth's
-    // sat centred, and the two cards read as unrelated.
-    // The hero SURFACE carries covered-vs-short now. It was an inline colour on the figure and
-    // the icon; a whole green or red card says it from further away, and it leaves the figure
-    // white and legible either way. Semantic, never the accent, which can be any hue.
-    '<div class="acct-payoff-card hero-surface hero-wide '+(clear?'hm-good':'hm-short')+'">'+
-      '<div class="acct-payoff-label"><span style="display:inline-flex;margin-right:5px">'+
-        acctIcon(clear?'check':'alert')+'</span>Debt payoff position</div>'+
-      '<div class="acct-payoff-fig">'+
-        '<div class="acct-payoff-amt">'+fmtMoney(Math.abs(pos))+'</div>'+
-        '<div class="acct-payoff-sub">'+headline+'</div>'+
-      '</div>'+
-      '<div class="acct-payoff-aside">'+
-        (debts>0?'<div class="acct-payoff-math">'+fmtMoney(accountsAssetsTotal()-saverTot)+' spendable − '+fmtMoney(debts)+' debts</div>':'')+
-        kindLine+
-        saverLine+
-      '</div>'+
-    '</div>';
+  const mathLine=debts>0
+    ? '<div class="acct-payoff-math">'+fmtMoney(assets-saverTot)+' spendable − '+fmtMoney(debts)+' debts</div>'
+    : '';
+  el.innerHTML=budHeroPanel([
+    {icon:'scale', label:'Net worth', lg:true, val:fmtMoney(nw),
+     sub:fmtMoney(assets)+' assets · '+fmtMoney(debts)+' debts',
+     chip:nw>=0?tstat('pos','In the black','check',true):tstat('neg','Under water','down',true)},
+    {icon:'target', label:'Debt payoff position', lg:true, val:fmtMoney(Math.abs(pos)),
+     sub:headline, chip:payoffChip, extra:mathLine+kindLine+saverLine},
+  // Stacked on a phone, side by side from 561px up: the payoff cell carries three supporting
+  // lines, and two 170px columns would set them four words to a line.
+  ],{cols:2,colsSm:1});
 }
 function renderAccountsPage(){
-  // Net-worth header
-  const nwEl=document.getElementById('accounts-networth');
-  if(nwEl){
-    const nw=accountsNetWorth();
-    const assets=accountsAssetsTotal(), debts=accountsDebtsTotal();
-    // A hero surface, not a .card: this is the first thing the screen says. The SURFACE now
-    // carries the verdict that used to be an inline colour on the figure — a green card reads
-    // as covered and a red one as under water from further away than a coloured number does,
-    // and the figure itself goes white so it is legible on either.
-    // Sizing lives in .acct-nw-amt so this figure and the payoff card's are kept equal from
-    // one place. Inline font-size beats a stylesheet without !important, which is how the two
-    // silently diverged in BOTH directions — 40 vs 34 on mobile, 40 vs 52 on desktop.
-    nwEl.innerHTML=
-      '<div class="acct-nw-card hero-surface hero-wide '+(nw>=0?'hm-good':'hm-short')+'">'+
-        '<div class="acct-nw-label">Net worth</div>'+
-        '<div class="acct-nw-amt">'+fmtMoney(nw)+'</div>'+
-        '<div class="acct-nw-detail">'+fmtMoney(assets)+' assets · '+fmtMoney(debts)+' debts</div>'+
-      '</div>';
-  }
-  renderPayoffCard();
+  // Net worth and the payoff position are one card built by one function — they used to be
+  // two, with their figure sizing kept in step by a comment that had stopped being true (40 vs
+  // 34 on mobile, 40 vs 52 on desktop). One .hero-panel sizes both from .hp-lg now.
+  renderAccountsHero();
   // One card per account
   // Section header carrying the Edit toggle — same .bud-edit-btn / "Edit"→"Done" convention as
   // the Budget tab's Income, Fixed and Variable cards.
