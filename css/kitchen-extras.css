@@ -917,12 +917,43 @@
   text-align:left;font-family:var(--font-ui);color:var(--muted);
   -webkit-tap-highlight-color:transparent;position:relative}
 .nv-row:hover{background:var(--track);color:var(--text)}
-.nv-row.is-on{background:rgba(var(--accent-rgb),.13);color:var(--accent-text);font-weight:700}
-.nv-row.is-on::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:3px;
+.nv-row.is-on,.nv-qrow.is-on{background:rgba(var(--accent-rgb),.13);color:var(--accent-text);font-weight:700}
+.nv-row.is-on::before,.nv-qrow.is-on::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:3px;
   border-radius:0 3px 3px 0;background:var(--accent-text)}
 .nv-row:focus-visible,.nv-hd:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
+/* ── Quick access strip ───────────────────────────────────────────────
+   NAV_QUICK (= NAV_ORDER) pinned above the groups on both mounts, so the five destinations
+   the phone keeps under a thumb are ONE press here too. Reaching Budget or the Food log used
+   to cost two — expand a group, then pick a row — and that cost only ever existed on the
+   surfaces without a bottom nav.
+   Selection reuses .nv-row.is-on's treatment (tint + rail + weight) rather than inventing a
+   second one. .nav-btn.active's colour-and-weight was tried and is wrong HERE: the bottom nav
+   brightens a --muted label to --accent-text, but these rows are already --text, so with the
+   default neutral-grey accent the selected item came out DIMMER than its neighbours. Tint plus
+   rail plus weight is the app's accent-proof combination and it is already this component's.
+   A quick item lights by VIEW and stays lit across every sub-tab, exactly as the bottom nav
+   does, so on Budget > Month both "Budget" here and "Month" in the group below are lit. That
+   is a breadcrumb, not a duplicate — the two blocks are visibly different (icons and a hairline
+   separate them) and they answer different questions.
+   Icons are what separates this block from the group rows below it, which are text-only. */
+.nv-quick{display:flex;flex-direction:column;border-bottom:1px solid var(--border)}
+.nv-qrow{display:flex;align-items:center;gap:10px;width:100%;background:transparent;border:0;
+  cursor:pointer;text-align:left;font-family:var(--font-ui);color:var(--muted);
+  -webkit-tap-highlight-color:transparent;position:relative}
+.nv-qrow:hover{background:var(--track);color:var(--text)}
+.nv-qico{flex:0 0 auto;width:18px;height:18px;color:currentColor}
+.nv-qrow:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+
 /* Phone: the hamburger sheet keeps its 16px rows and 44px targets. */
+#side-menu-list .nv-quick{margin:0 0 4px;padding-bottom:6px}
+#side-menu-list .nv-qrow{min-height:44px;padding:12px 14px;border-radius:12px;
+  font-size:16px;font-weight:600;color:var(--text)}
+/* Restated at the same id-scoped specificity as the row above it, or the plain .nv-qrow.is-on
+   rule loses to it and the selected item never changes colour — the same reason
+   #side-menu-list .nv-row.is-on has to exist. */
+#side-menu-list .nv-qrow.is-on{color:var(--accent-text);font-weight:700}
+#side-menu-list .nv-qrow.is-on::before{left:-4px}
 #side-menu-list .nv-hd{padding:14px 14px 6px}
 #side-menu-list .nv-group:first-child .nv-hd{padding-top:6px}
 #side-menu-list .nv-row{min-height:44px;padding:12px 14px;border-radius:12px;
@@ -938,6 +969,20 @@
      hidden the same way every other strip in the app hides one (.lg-scroll-x). */
   #ds-nav{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none}
   #ds-nav::-webkit-scrollbar{display:none}
+  /* Pinned to the top of the scroller, which is the whole point of the block: with every group
+     expanded #ds-nav is ~1250px of content in a ~490px column on a short laptop, and a shortcut
+     that scrolls out of reach is not a shortcut.
+     A pinned surface has to be OPAQUE, and --card is NOT: in dark mode it is a translucent
+     rgba(255,255,255,.055) wash, so #desktop-sidebar's own background is that wash over --bg
+     and rows would scroll visibly through this block. Compositing the wash over --bg renders
+     the sidebar's exact surface and cannot be seen through — the same fix .seg-tabs uses for
+     the same reason. */
+  #ds-nav .nv-quick{margin:0 0 6px;padding:0 0 8px;position:sticky;top:0;z-index:1;
+    background:linear-gradient(var(--card),var(--card)),var(--bg)}
+  #ds-nav .nv-qrow{margin:0 10px 2px;width:auto;border-radius:12px;padding:9px 14px;
+    font-size:14px;font-weight:600;color:#555;transition:background .15s,color .15s}
+  [data-theme="dark"] #ds-nav .nv-qrow{color:rgba(255,255,255,0.7)}
+  #ds-nav .nv-qrow.is-on{color:var(--accent-text);font-weight:700}
   #ds-nav .nv-hd{padding:12px 24px 4px}
   #ds-nav .nv-row{margin:0 10px 2px;width:auto;border-radius:12px;padding:9px 14px;
     font-size:14px;font-weight:600;color:#555;transition:background .15s,color .15s}
@@ -965,7 +1010,9 @@
 .session-seg,
 .budget-snap-pill,
 .nv-row.is-on,
-.nv-row.is-on::before{
+.nv-row.is-on::before,
+.nv-qrow.is-on,
+.nv-qrow.is-on::before{
   transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 /* Preserve the sliding pill / width animations while adding a colour fade */
@@ -1533,7 +1580,7 @@
   #side-menu{width:min(300px,78vw);overflow-y:auto;-webkit-overflow-scrolling:touch;
     padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));
     padding-left:env(safe-area-inset-left,0px)}
-  #side-menu-list .nv-row{min-height:40px;padding:9px 14px;font-size:14px}
+  #side-menu-list .nv-row,#side-menu-list .nv-qrow{min-height:40px;padding:9px 14px;font-size:14px}
   #side-menu-list .nv-hd{padding:8px 14px 3px}
 
   /* ── Charts ──

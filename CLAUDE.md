@@ -36,9 +36,9 @@ older summary — re-grep before assuming a fact from here is still true if it l
 ## Navigation (restructured many times over the project's life — this is current as of 2026-09-05)
 
 - **`NAV_TREE` (`js/app.js`, beside `NAV_ORDER`) is the ONE source for the desktop sidebar and
-  the mobile hamburger.** Six labelled groups — Today, Training, Money, Kitchen, Stats, More —
-  holding 25 rows between them, reaching every real destination rather than only the twelve
-  top-level ones. `renderNav()` builds the tree ONCE and mounts the same markup into `#ds-nav`
+  the mobile hamburger**, together with the `NAV_QUICK` strip pinned above it (see below). Six
+  labelled groups — Today, Training, Money, Kitchen, Stats, More — holding 24 rows between them,
+  reaching every real destination rather than only the twelve top-level ones. `renderNav()` builds the tree ONCE and mounts the same markup into `#ds-nav`
   (sidebar) and `#side-menu-list` (hamburger); the two differ in DENSITY only (16px rows and
   44px targets on the phone, 14px pill rows on the sidebar), never in content, order or which
   destinations exist. **Adding a destination means adding a row to `NAV_TREE` — never a literal
@@ -46,6 +46,44 @@ older summary — re-grep before assuming a fact from here is still true if it l
   `SETTINGS_SECTIONS`: before it, twelve hand-written `.ds-item` buttons in `index.html`, a
   similar-but-different list in `buildSideMenu()` (from `MENU_NAV` + `MENU_SECTIONS` + four
   more literals) and a third in `renderQuickSettingsMenu()` each carried their own copy.
+- **The five phone tabs are PINNED above the groups on both nav surfaces, and that is what
+  makes them one press.** `NAV_QUICK` (`js/app.js`, beside `NAV_ORDER`) is the quick strip:
+  Home, Budget, Log, Nutrition, Kitchen, rendered by `navBuildHtml()` above the six groups into
+  both `#ds-nav` and `#side-menu-list`. Before it, the app's most-used destinations cost TWO
+  presses on every surface without a bottom nav — expand a group, then pick a row — which is
+  the complaint that produced it. **It is DERIVED from `NAV_ORDER`, never a second hand-written
+  list** (`NAV_ORDER.map()` over `NAV_QUICK_LABELS` / `NAV_QUICK_ICONS`), so the phone deck and
+  the shortcut strip cannot come to disagree about which five views matter; the icons are the
+  same paths `#bottom-nav` draws. A quick item dispatches `navGo(view)` with **no sub-tab**,
+  exactly what pressing the bottom-nav button does, so it returns you to wherever you were
+  inside that view.
+  **A quick item lights by VIEW, a tree row by ROW, and both being lit is a breadcrumb rather
+  than a bug.** `navCurrentQuick()` sits beside `navCurrentRow()` and reads the same state with
+  the same overlay rules — it is a second projection, not a second variable — and
+  `navApplyState()` writes both in ONE pass. On Budget › Month the strip's "Budget" and the
+  Money group's "Month" are both lit, which is the relationship the phone already has between
+  its bottom nav and a sub-tab strip. Exactly one element carries `aria-current="page"`: the
+  tree row when the destination has one, the quick item when it does not.
+  **There is no Home row in the Today group any more.** Home was the one destination the strip
+  duplicated exactly — same label, same view, no sub-tab — and listing it twice, lit twice, a
+  hundred pixels apart read as a bug. The other four quick items point at views whose tree rows
+  name specific sub-tabs, so those rows are genuinely different destinations and stay. Home is
+  the first pinned item and is one press from everywhere; `navCurrentRow()` still answers
+  `'home'`, which simply matches no row.
+  **Selection reuses `.nv-row.is-on` (tint + rail + weight); do not give it its own.**
+  `.nav-btn.active`'s colour-and-weight was tried and is wrong here: the bottom nav brightens a
+  `--muted` label to `--accent-text`, but these rows are already `--text`, so with the default
+  neutral-grey accent the selected item came out DIMMER than its neighbours. The `#side-menu-list`
+  and `#ds-nav` density blocks each have to RESTATE `.nv-qrow.is-on`, for the same
+  specificity reason `.nv-row.is-on` is restated there.
+  **On desktop the strip is `position:sticky` at the top of `#ds-nav`**, because with every
+  group expanded that scroller holds ~1250px of content in ~490px on a short laptop and a
+  shortcut that scrolls out of reach is not a shortcut. Its background is
+  `linear-gradient(var(--card),var(--card)),var(--bg)` — **`--card` alone is translucent in dark
+  mode**, so rows would scroll visibly through it; this is the same compositing fix `.seg-tabs`
+  uses. The phone sheet scrolls normally: it has the bottom nav as well.
+  The strip is headerless and never collapsible on purpose — a group header here would invite
+  folding away the one block that exists to be always reachable.
 - A row is DATA, not code: `{id, label, view, sub}`. `navGo(view, sub)` is the single
   dispatcher — nothing calls `setView` plus a sub-tab setter by hand any more — and inside it
   the sub-tab call must come AFTER `setView`, because `setView('log')` resets `logTodayView`

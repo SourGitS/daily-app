@@ -2070,6 +2070,27 @@ function setView(v, direction, opts){
 // without moving the markup gives you a tab you can swipe to but not tap, or the reverse.
 const NAV_ORDER=['home','budget','log','nutrition','kitchen'];
 
+// ── Quick access ────────────────────────────────────────────────
+// The phone's five bottom-nav tabs, pinned above the groups on BOTH nav surfaces so the app's
+// most-used destinations are one press instead of two (expand a group, then pick a row). That
+// two-press cost only existed on desktop and in the hamburger — the phone has always had these
+// five under its thumb — so this closes the gap rather than inventing a new idea.
+// Derived from NAV_ORDER, never a second hand-written list: adding a tab to the phone deck
+// adds it here, and the two cannot drift into saying different things about which five views
+// are the important ones. The icons are the same paths #bottom-nav draws, so the desktop
+// shortcut and the phone tab are visibly the same thing.
+// A quick item dispatches setView with NO sub-tab — exactly what pressing the bottom-nav
+// button does — so it lands you back wherever you were inside that view.
+const NAV_QUICK_ICONS={
+  home:'<path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/><path d="M9 21V12h6v9"/>',
+  budget:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h2M10 15h4"/>',
+  log:'<path d="M6 4v16M18 4v16"/><path d="M3 8h3M18 8h3M3 16h3M18 16h3"/><path d="M6 12h12"/>',
+  nutrition:'<path d="M12 22c4.4 0 8-4.1 8-9.2C20 8.4 16.4 5 12 5s-8 3.4-8 7.8C4 17.9 7.6 22 12 22z"/><path d="M12 5c0-2 1.6-3 3.5-3"/><path d="M9 8c1.8 1 4.2 1 6 0"/>',
+  kitchen:'<path d="M5 10h14v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z"/><path d="M3 10h18"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>'
+};
+const NAV_QUICK_LABELS={home:'Home', budget:'Budget', log:'Log', nutrition:'Nutrition', kitchen:'Kitchen'};
+const NAV_QUICK=NAV_ORDER.map(v=>({view:v, label:NAV_QUICK_LABELS[v]||v, icon:NAV_QUICK_ICONS[v]||''}));
+
 // ── Navigation registry ──────────────────────────────────────────
 // The ONE source for the desktop sidebar and the mobile hamburger. Six groups, one open at a
 // time. A row is DATA, not code: {id,label,view,sub} — navGo() turns view+sub into the right
@@ -2092,8 +2113,12 @@ const NAV_ORDER=['home','budget','log','nutrition','kitchen'];
 // workout History stop being top-level rows and become Training › Exercises / History, which
 // is where they have actually gone since the Log hub was built.
 const NAV_TREE=[
+  // No Home row here. Home is the ONE destination the quick strip duplicates exactly — same
+  // label, same view, no sub-tab — so listing it twice a hundred pixels apart, lit twice, read
+  // as a bug. It is the first pinned item above, always visible and one press from anywhere;
+  // the other four quick items are views whose tree rows name specific sub-tabs, so those are
+  // genuinely different rows and stay.
   {id:'today', label:'Today', rows:[
-    {id:'home',      label:'Home',             view:'home'},
     {id:'log-today', label:"Today's session",  view:'log',       sub:'today'},
     {id:'nut-today', label:'Food log',         view:'nutrition', sub:'today'},
   ]},
@@ -2161,8 +2186,9 @@ function navRowGo(id){ const r=NAV_ROW_BY_ID[id]; if(r) navGo(r.view,r.sub); }
 // The current destination as a NAV_TREE row id, or '' on a screen with no row. This reads the
 // same state the screens themselves read — there is deliberately no parallel "selected nav
 // row" variable, because that is the thing that goes stale.
+const navShown=id=>{ const el=document.getElementById(id); return !!(el&&el.style.display&&el.style.display!=='none'); };
 function navCurrentRow(){
-  const shown=id=>{ const el=document.getElementById(id); return !!(el&&el.style.display&&el.style.display!=='none'); };
+  const shown=navShown;
   if(NAV_NO_ROW_OVERLAYS.some(shown)) return '';
   if(shown('view-accounts')) return 'accounts';
   if(shown('view-aihub'))    return 'aihub';
@@ -2180,6 +2206,19 @@ function navCurrentRow(){
   if(v==='plans')    return 'plans';
   if(v==='settings') return 'settings';
   return '';
+}
+
+// Which quick item is lit, by VIEW rather than by row — the same thing the phone's bottom nav
+// says, and deliberately not the same thing as navCurrentRow(). A quick item stays lit across
+// every sub-tab of its view ("you are in Budget"), while the tree row names the exact
+// destination ("Month"). That is why the two can both be lit without reading as a duplicate,
+// and why they get different visual treatments in css/kitchen-extras.css. Same overlay rules
+// as navCurrentRow(): a pushed screen that is not a nav destination lights nothing.
+function navCurrentQuick(){
+  if(NAV_NO_ROW_OVERLAYS.some(navShown)) return '';
+  if(navShown('view-accounts')||navShown('view-aihub')) return '';
+  const v=(typeof S!=='undefined'&&S&&S.view)||'home';
+  return NAV_ORDER.indexOf(v)>=0 ? v : '';
 }
 
 const NAV_UI_KEY='daily_nav_ui';
@@ -2240,6 +2279,16 @@ function navApplyState(row){
     b.classList.toggle('is-on',on);
     if(on) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
   });
+  // The quick strip is lit here too, from the SAME pass — there is no second "where am I"
+  // variable, just a second projection of the state the screens already read. Exactly one
+  // element claims aria-current: the tree row when the destination has one, the quick item
+  // when it does not (Home, which is pinned above and deliberately not repeated in the tree).
+  const q=navCurrentQuick(), rowClaimed=!!NAV_ROW_BY_ID[row];
+  document.querySelectorAll('[data-nav-quick]').forEach(b=>{
+    const on=b.dataset.navQuick===q;
+    b.classList.toggle('is-on', on);
+    if(on&&!rowClaimed) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
+  });
   document.querySelectorAll('[data-nav-group]').forEach(g=>{
     const isOpen=open.has(g.dataset.navGroup);
     g.classList.toggle('is-open',isOpen);
@@ -2253,7 +2302,14 @@ function navApplyState(row){
 // content or in which destinations exist.
 function navBuildHtml(){
   const caret='<svg class="nv-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
-  return NAV_TREE.map(g=>
+  // Headerless and never collapsible on purpose: a group header here would invite folding away
+  // the one block that exists to be always reachable.
+  const quick='<div class="nv-quick">'+NAV_QUICK.map(q=>
+    '<button type="button" class="nv-qrow" data-nav-quick="'+q.view+'">'+
+      '<svg class="nv-qico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '+
+        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+q.icon+'</svg>'+
+      '<span>'+q.label+'</span></button>').join('')+'</div>';
+  return quick+NAV_TREE.map(g=>
     '<div class="nv-group" data-nav-group="'+g.id+'">'+
       '<button type="button" class="nv-hd" data-nav-group-hd="'+g.id+'" aria-expanded="false">'+
         '<span>'+g.label+'</span>'+caret+'</button>'+
@@ -2273,6 +2329,8 @@ function renderNav(){
       el.addEventListener('click',e=>{
         const hd=e.target.closest('[data-nav-group-hd]');
         if(hd){ navToggleGroup(hd.dataset.navGroupHd); return; }
+        const q=e.target.closest('[data-nav-quick]');
+        if(q){ navGo(q.dataset.navQuick); return; }
         const r=e.target.closest('[data-nav-row]');
         if(r) navRowGo(r.dataset.navRow);
       });
