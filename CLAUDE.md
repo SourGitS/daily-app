@@ -179,7 +179,10 @@ older summary — re-grep before assuming a fact from here is still true if it l
   opt-in review of ONE finished week against a saved weekly plan, ending in a next-week plan.
   Four sections: Money, Work and commission, General life, Reflection and next week. New users
   see a setup screen; the suggested template is visible but is only written when they press the
-  button that saves it. See "Known history" for the three rules it is built on.
+  button that saves it. Above 1180px it is a two-column workspace — a local section rail beside
+  one vertical flow of cards; below that, on the phone and in landscape, the SAME markup reflows
+  to the week bar and horizontal pill strip. See "Known history" for the three rules it is built
+  on and for the rail's geometry.
 - **Kitchen** — Recipe Book (9 preloaded + custom), pantry-aware Shopping List, multiple named
   Pantry inventories, cooking mode with per-step timers, favourites/recently cooked.
   Firebase-synced.
@@ -682,6 +685,68 @@ the accent or the theme must go through those, not set `--accent` directly.
   `wkrCurrentWeek()` PINS its choice into `wkrUI.week`, because the fallback is "the newest
   finished week still awaiting a review" — without the pin, completing a review changed what
   the function answered and the screen jumped off the week just completed.
+
+- **Stats → Review is the ONE screen with a local navigation rail, and its breakpoint is
+  1180px.** (`css/review.css`, `.wkr-workspace` / `.wkr-rail` / `.wkr-main`, `WKR_SECTIONS` in
+  `js/app.js`.) Above 1180 the enabled Weekly Review is a two-column workspace — a 206px rail
+  holding "Week to review", the week `<select>`, the status chip and the four vertical section
+  rows, then a 20px gap, then the active section in a column capped at `--wkr-measure` (900px).
+  The three numbers live as custom properties on `#review-content`. The workspace is centred
+  in the app canvas at its `206 + 20 + 900 = 1126px` cap, so a 1920px monitor gets page margin
+  rather than a 1600px-wide form. Measured: **1180** → rail 206 / gap 20 / main 631; **1440** →
+  206 / 20 / 875 (the canvas is the constraint, not the cap); **1920** → 206 / 20 / 900, centred
+  with ~228px either side. 1180 is the number Settings' master–detail split already uses and is
+  chosen for the same reason — below it the 260px sidebar plus 32px section padding leave too
+  little for a rail AND a usable form.
+  **This rail is local to one structured workflow. It is not a second app sidebar** and must
+  not be copied to Home, Budget, Accounts, Log, Kitchen, Journal, Settings, Daily AI or any
+  other Stats tab.
+  **There is ONE DOM at every width.** Below 1180 (and on the phone, and in landscape) the
+  `.wkr-workspace` and `.wkr-rail` are plain blocks, so the week bar and the horizontal
+  `.wkr-tabs` pill strip render exactly as they always did; the rail-only chrome
+  (`.wkr-rail-lbl`, `.wkr-tab-n`, `.wkr-tab-d`, `.wkr-mainhd`) is `display:none` by default and
+  revealed by the rail media query. Do NOT build a second desktop copy of these controls — that
+  duplicates the week `<select>`, the four section buttons and their accessible names.
+  `.wkr-tab-c` is `display:contents` below the breakpoint so the pill reads as one word.
+  **`WKR_SECTIONS` (beside `WKR_OPP_STATUSES`) is the single source for section id, label and
+  description**, and `wkrSectionsFor(plan)` applies the Work/Life enabled gates. Both the rail
+  rows and the `.wkr-mainhd` heading above the active section read it, so the two cannot drift
+  apart. The rail is rendered with `aria-pressed` on native buttons — one selected state, no
+  parallel attribute.
+  **`.wkr-body` is a single vertical flow at every desktop width** (`grid-template-columns:
+  minmax(0,1fr)`), NOT the two-column card grid it used to be. Review cards are variable-height
+  forms; a shared row is only as short as its tallest card, so one card was always either
+  stretched or sitting beside a hole. `.wkr-span` survives in the markup as a semantic marker
+  and deliberately carries no rule. No masonry, no `grid-auto-flow:dense`, no measured spans:
+  this screen has a meaningful reading and keyboard order. Compact grids INSIDE a card
+  (`.wkr-2col`, `.wkr-pv`, `.wkr-alloc-row`) are untouched — they express one relationship.
+  **The setup chooser, the plan editor and the switched-off state get NO rail.** They are
+  centred single-column flows at `--wkr-measure`. `renderStatsReview()` writes `rev-railed` on
+  `#review-content` by reading `.wkr-rail` back off the DOM it just wrote, so there is no second
+  copy of "is there a rail" to go stale.
+  **"What Daily noticed" is a separate feature and stays below and outside Weekly Review.** Its
+  cards now live in a `.rev-section` wrapper and `.rev-list` is one column on desktop
+  (`css/workout.css`), so three ranked insights no longer leave an empty half-row and rank
+  reads straight down. When the rail is present `.rev-section` REPEATS the workspace's grid and
+  puts its children in column 2 — that is what aligns the insights with `.wkr-main` instead of
+  the rail, and it is deliberately not a hardcoded left margin. The landscape-phone two-column
+  `.rev-list` rule is unchanged. Insight generation, ranking, thresholds, the three-item cap and
+  every action are untouched.
+  **This is presentation only.** No localStorage key, Firebase path, sync registration,
+  migration or default write was added, and none of Weekly Review's sync/freeze invariants
+  (`daily_review_plan`, `daily_reviews`, `wkrAttachSync()`, `wkrMergeReviews()`, plan/actual
+  snapshots, the explicit-only `wkrRefreshActuals()`, the "opening writes nothing" rule) were
+  touched.
+
+- **App-wide layout rule, learned here:** *use row grids for comparable cards with predictable
+  dimensions; variable-height cards use a single vertical flow or deliberately constructed
+  independent columns; compact grids inside a card remain valid when they express one coherent
+  relationship.* Home's two fixed columns, Stats → Finance's two independently stacking columns
+  and Budget's `BUD_CARDS` columns are all already on the right side of this. **This is design
+  guidance, not permission for an automatic app-wide refactor** — Prompt 48 changed Stats →
+  Review and nothing else, and every other screen's layout history above is the record of why
+  it is the way it is. Check that history before "applying the rule" to anything.
+
 - **Settings' desktop landing is master–detail, and the split point is 1180px — not 1024.**
   `.stg-workspace` is `340px minmax(0,1fr)` with a 22px gap inside a 1240px `.settings-main`;
   the profile card spans both panes above it. Below 1180 (and on mobile) the workspace is a

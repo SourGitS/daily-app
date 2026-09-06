@@ -14495,19 +14495,27 @@ function statsReviewInsights(){
 // Review holds two different things and says so: the Weekly Review the user drives, and the
 // automatic insights below it. The insights are unchanged — the review is prepended, and when
 // it is not set up its own setup card is what appears first.
+//
+// The insights live in their own .rev-section wrapper so they can be laid out against the
+// review workspace beside them: when the Weekly Review renders its desktop rail, that wrapper
+// repeats the workspace's grid and drops its content into the SAME column as .wkr-main, which
+// is what keeps the two aligned without a hardcoded left margin. `rev-railed` is read back off
+// the DOM that was just written rather than passed down, so there is no second copy of the
+// "is there a rail" answer to go stale.
 function renderStatsReview(){
   const wrap=document.getElementById('review-content'); if(!wrap) return;
   const weekly=typeof wkrWeeklyReviewHtml==='function'?wkrWeeklyReviewHtml():'';
   const heading=weekly?'<div class="wkr-sec-divider">What Daily noticed</div>':'';
   const items=statsReviewInsights();
   if(!items.length){
-    wrap.innerHTML=weekly+heading+'<div class="card stats-calm">'+cardHeader('check','Review')+
+    wrap.innerHTML=weekly+'<div class="rev-section">'+heading+'<div class="card stats-calm">'+cardHeader('check','Review')+
       '<div class="stats-conclusion">Nothing needs attention from the available data.</div>'+
       '<div class="stats-data-note">No completed-period comparison cleared its evidence threshold. Overview has the current figures and their coverage.</div>'+
-      '<button class="stats-inline-link" style="margin-top:12px" onclick="setStatsTab(\'overview\')">Back to Overview &rarr;</button></div>';
+      '<button class="stats-inline-link" style="margin-top:12px" onclick="setStatsTab(\'overview\')">Back to Overview &rarr;</button></div></div>';
+    wrap.classList.toggle('rev-railed', !!wrap.querySelector('.wkr-rail'));
     return;
   }
-  wrap.innerHTML=weekly+heading+'<div class="rev-list">'+items.map(it=>
+  wrap.innerHTML=weekly+'<div class="rev-section">'+heading+'<div class="rev-list">'+items.map(it=>
     '<div class="card rev-card">'+
       cardHeader(it.icon,it.label,it.chip||'')+
       '<div class="rev-conclusion">'+it.conclusion+'</div>'+
@@ -14515,7 +14523,8 @@ function renderStatsReview(){
       '<div class="rev-actions">'+it.actions.map((a,i)=>
         '<button type="button" class="'+(i?'rev-act':'rev-act primary')+'" onclick="'+a[0]+'">'+a[1]+' &rarr;</button>').join('')+
       '</div></div>').join('')+'</div>'+
-    '<div class="stats-data-note rev-foot">Completed periods only. Missing data is unknown, never zero, and nothing here is reconstructed from today’s settings.</div>';
+    '<div class="stats-data-note rev-foot">Completed periods only. Missing data is unknown, never zero, and nothing here is reconstructed from today’s settings.</div></div>';
+  wrap.classList.toggle('rev-railed', !!wrap.querySelector('.wkr-rail'));
 }
 // ══ Weekly Review ═══════════════════════════════════════════════
 // A money/work/life review of ONE finished week, compared against a saved weekly plan and
@@ -14579,6 +14588,19 @@ const WKR_TEMPLATE={
         defaultSalesFocus:'Aim for at least one self-generated qualifying sale per fortnight.'}
 };
 const WKR_OPP_STATUSES=[['active','Active'],['likely','Likely'],['won','Won'],['lost','Lost']];
+
+// The ONE definition of the four review sections: id, rail label and the one-line description
+// shown under it. The desktop rail buttons AND the heading above the active section are both
+// built from this, so a section cannot be called one thing in the rail and another above the
+// cards. `enabled` reads the plan, which is what keeps Work and Life omitted exactly as the
+// old inline `sections` array omitted them.
+const WKR_SECTIONS=[
+  {id:'money',      label:'Money',      desc:'Plan and actuals'},
+  {id:'work',       label:'Work',       desc:'Progress and pipeline',   enabled:p=>!!(p&&p.work&&p.work.enabled)},
+  {id:'life',       label:'Life',       desc:'Health and commitments',  enabled:p=>!!(p&&p.life&&p.life.enabled)},
+  {id:'reflection', label:'Reflection', desc:'Decisions for next week'}
+];
+function wkrSectionsFor(plan){ return WKR_SECTIONS.filter(s=>!s.enabled||s.enabled(plan)); }
 
 const wkrNum=(v,d)=>{ const n=parseFloat(v); return isFinite(n)?n:(d||0); };
 const wkrStr=v=>typeof v==='string'?v:'';
@@ -15815,10 +15837,9 @@ function wkrWeeklyReviewHtml(){
   const weeks=wkrReviewableWeeks();
   const done=rec&&rec.status==='completed';
 
-  const sections=[['money','Money'],['work','Work'],['life','Life'],['reflection','Reflection']]
-    .filter(s=>s[0]!=='work'||plan.work.enabled)
-    .filter(s=>s[0]!=='life'||plan.life.enabled);
-  if(!sections.some(s=>s[0]===wkrUI.section)) wkrUI.section='money';
+  const sections=wkrSectionsFor(plan);
+  if(!sections.some(s=>s.id===wkrUI.section)) wkrUI.section='money';
+  const active=sections.find(s=>s.id===wkrUI.section)||sections[0];
 
   const body=
     wkrUI.section==='money'      ? wkrMoneySectionHtml(week, rec, plan)
@@ -15847,32 +15868,50 @@ function wkrWeeklyReviewHtml(){
     '</div>'
     : '';
 
-  return '<div class="wkr-wrap">'+
-    '<div class="wkr-weekbar">'+
-      '<select aria-label="Week to review" onchange="wkrSetWeek(this.value)">'+
-        weeks.map(w=>'<option value="'+w+'"'+(w===week?' selected':'')+'>'+escText(wkrWeekLabel(w))+
-          (wkrReviews[w]?(wkrReviews[w].status==='completed'?' ✓':' •'):'')+'</option>').join('')+
-      '</select>'+
-      wkrStatusChip(rec)+
+  // ONE set of controls. The rail/aside and the main column are the same markup at every
+  // width — only CSS decides whether they sit side by side (≥1180, the rail in its own grid
+  // column) or stack into the phone's week bar and horizontal pill strip. Building a second
+  // desktop copy would duplicate the week <select> and the four section buttons.
+  return '<div class="wkr-wrap wkr-workspace">'+
+    '<aside class="wkr-rail">'+
+      '<div class="wkr-rail-lbl">Week to review</div>'+
+      '<div class="wkr-weekbar">'+
+        '<select aria-label="Week to review" onchange="wkrSetWeek(this.value)">'+
+          weeks.map(w=>'<option value="'+w+'"'+(w===week?' selected':'')+'>'+escText(wkrWeekLabel(w))+
+            (wkrReviews[w]?(wkrReviews[w].status==='completed'?' ✓':' •'):'')+'</option>').join('')+
+        '</select>'+
+        wkrStatusChip(rec)+
+      '</div>'+
+      '<div class="wkr-tabs" role="group" aria-label="Review sections">'+
+        sections.map((s,i)=>'<button type="button" class="'+(wkrUI.section===s.id?'on':'')+'" '+
+          'aria-pressed="'+(wkrUI.section===s.id?'true':'false')+'" '+
+          'onclick="wkrSetSection(\''+s.id+'\')">'+
+          '<span class="wkr-tab-n" aria-hidden="true">'+(i+1)+'</span>'+
+          '<span class="wkr-tab-c"><span class="wkr-tab-l">'+escText(s.label)+'</span>'+
+          '<span class="wkr-tab-d">'+escText(s.desc)+'</span></span>'+
+        '</button>').join('')+
+      '</div>'+
+    '</aside>'+
+    '<div class="wkr-main">'+
+      '<div class="wkr-mainhd">'+
+        '<div class="wkr-mainhd-eyebrow">Weekly review</div>'+
+        '<h3 class="wkr-mainhd-t">'+escText(active?active.label:'')+'</h3>'+
+        '<div class="wkr-mainhd-d">'+escText(active?active.desc:'')+'</div>'+
+      '</div>'+
+      '<div class="wkr-body">'+prompt+body+'</div>'+
+      '<div class="wkr-actions">'+
+        (done
+          ? '<button type="button" class="wkr-btn" onclick="wkrReopenReview()">Reopen this review</button>'
+          : '<button type="button" class="wkr-btn primary" onclick="wkrCompleteReview()">Complete this review</button>')+
+        '<button type="button" class="wkr-btn" onclick="wkrAskDailyAI()">Ask Daily AI about this review</button>'+
+        '<button type="button" class="wkr-btn quiet" onclick="wkrEditPlan()">Edit plan</button>'+
+        '<button type="button" class="wkr-btn quiet" onclick="wkrTurnOff()">Turn off</button>'+
+      '</div>'+
+      frozenNote+
+      '<div class="wkr-note">Completing a review saves the review only. Your budget week, its transactions, '+
+        'your accounts and your training plans are never changed by anything on this screen. Nothing is sent '+
+        'anywhere — Ask Daily AI prepares text for you to copy.</div>'+
     '</div>'+
-    '<div class="wkr-tabs" role="group" aria-label="Review sections">'+
-      sections.map(s=>'<button type="button" class="'+(wkrUI.section===s[0]?'on':'')+'" '+
-        'aria-pressed="'+(wkrUI.section===s[0]?'true':'false')+'" '+
-        'onclick="wkrSetSection(\''+s[0]+'\')">'+s[1]+'</button>').join('')+
-    '</div>'+
-    '<div class="wkr-body">'+prompt+body+'</div>'+
-    '<div class="wkr-actions">'+
-      (done
-        ? '<button type="button" class="wkr-btn" onclick="wkrReopenReview()">Reopen this review</button>'
-        : '<button type="button" class="wkr-btn primary" onclick="wkrCompleteReview()">Complete this review</button>')+
-      '<button type="button" class="wkr-btn" onclick="wkrAskDailyAI()">Ask Daily AI about this review</button>'+
-      '<button type="button" class="wkr-btn quiet" onclick="wkrEditPlan()">Edit plan</button>'+
-      '<button type="button" class="wkr-btn quiet" onclick="wkrTurnOff()">Turn off</button>'+
-    '</div>'+
-    frozenNote+
-    '<div class="wkr-note">Completing a review saves the review only. Your budget week, its transactions, '+
-      'your accounts and your training plans are never changed by anything on this screen. Nothing is sent '+
-      'anywhere — Ask Daily AI prepares text for you to copy.</div>'+
   '</div>';
 }
 

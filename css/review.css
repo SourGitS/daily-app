@@ -11,6 +11,20 @@
 
 /* ── Shell ─────────────────────────────────────────────────────── */
 .wkr-wrap{display:block;margin-bottom:18px}
+/* One measure and one rail geometry for the whole tab. The active workspace's main column,
+   the setup/off states and the "What Daily noticed" list below them all read these, so no two
+   things on the screen are measured differently. Declared on #review-content rather than
+   :root because they belong to Stats › Review alone. */
+#review-content{--wkr-rail-w:206px;--wkr-gap:20px;--wkr-measure:900px}
+/* The workspace is ONE DOM at every width — an aside and a main column — and only CSS decides
+   whether they sit side by side. Below the rail breakpoint both are plain blocks, so the phone
+   and narrower desktop render exactly the week bar and horizontal pill strip they always did.
+   The rail-only chrome (its label, the step numbers, the section descriptions and the main
+   column's section heading) is hidden here and revealed by the wide-desktop rule at the foot
+   of this file. Hidden, not omitted: a second desktop-only copy of these controls would
+   duplicate the week <select> and the four section buttons. */
+.wkr-rail-lbl,.wkr-tab-n,.wkr-tab-d,.wkr-mainhd{display:none}
+.wkr-tab-c{display:contents}
 /* Section eyebrow — step 1 of the micro-label scale (canonical: .card-label). Keeps its own
    margins and its ::after hairline; only the type is shared. */
 .wkr-sec-divider{display:flex;align-items:center;gap:10px;margin:26px 2px 14px;color:var(--text-2);
@@ -169,18 +183,29 @@
 .wkr-nudge span{margin-left:auto;color:var(--accent-text);font-weight:800;white-space:nowrap}
 
 /* ── Desktop ────────────────────────────────────────────────────
-   Two columns of independent cards, matching the Review insight grid above it. Cards keep
-   their own heights (align-items:start) — a review section is a form, and stretching a short
-   card to match a tall neighbour just pads a form with dead space. */
+   Weekly Review's cards are VARIABLE-HEIGHT — a money section is a form, and the sections
+   differ in length by hundreds of pixels depending on how much has been typed into them. They
+   were arranged in shared two-column rows, which is the wrong grid for that content: a row is
+   only as short as its tallest card, so a short card either stretched (padding a form with
+   dead space) or left a hole beside its neighbour. The body is now ONE vertical flow at every
+   desktop width and each card keeps its natural height. No masonry, no dense auto-flow, no
+   measured spans: this screen has a meaningful reading and keyboard order and visual packing
+   would reorder it. `.wkr-span` survives in the markup as a semantic marker only — with one
+   column there is nothing left for it to span, and it deliberately carries no rule.
+   Compact grids INSIDE a card (.wkr-2col, .wkr-pv, .wkr-alloc-row) are untouched: those
+   express one coherent relationship rather than packing unrelated cards. */
 @media (min-width:1024px){
-  .wkr-body{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+  .wkr-body{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
   .wkr-body>.card{margin-bottom:0}
-  .wkr-body>.wkr-span{grid-column:1/-1}
   .wkr-weekbar select{flex:0 0 320px}
 
-  /* Setup is a form, not a dashboard. Keep its controls at a readable measure even though
-     the rest of Stats deliberately uses the full wide-screen canvas for charts and grids. */
-  .wkr-setup-form{max-width:920px;margin-left:auto;margin-right:auto}
+  /* Review is a form, not a dashboard, so it takes a readable measure rather than the full
+     wide-screen canvas the rest of Stats uses for charts and grids. ONE number for the whole
+     tab: the active workspace's main column, the setup/off states and the insight list below
+     them all land on --wkr-measure, so nothing on the screen is measured differently from the
+     thing above it. The rail layout below overrides this for the workspace itself. */
+  .wkr-wrap,.rev-section{max-width:var(--wkr-measure);margin-left:auto;margin-right:auto}
+
   .wkr-setup-form .wkr-body{gap:10px}
   .wkr-setup-form .card{padding:14px}
   .wkr-setup-form .wkr-field{margin-top:10px}
@@ -192,4 +217,64 @@
   .wkr-setup-form .wkr-row{padding:7px 0}
   .wkr-setup-form .wkr-map-select{width:180px;min-width:0;font-size:12px}
   .wkr-setup-form .wkr-actions{margin-top:12px}
+}
+
+/* ── Wide desktop: the local Review rail ────────────────────────
+   1180, the same line Settings' master-detail split uses, and for the same reason: below it
+   the 260px Daily sidebar plus the section's 32px padding leave too little for a rail AND a
+   usable form. Measured: at 1180 the main column lands at 631px — still comfortably wider than
+   the phone measure these cards were drawn at — and it reaches the --wkr-measure cap by 1920.
+   This rail is a LOCAL navigation aid for one structured workflow. It is not a second app
+   sidebar and must not be copied to Home, Budget, Accounts, Log, Kitchen, Journal, Settings,
+   Daily AI or any other Stats tab.
+   .rev-railed is written by renderStatsReview() when the workspace markup is present, so the
+   setup chooser, the plan editor and the switched-off state never get an empty rail beside
+   them — they stay centred single-column flows.
+   The insight list repeats the SAME grid and puts its content in column 2, which is what
+   aligns "What Daily noticed" with the review content instead of the rail. A fixed left
+   margin would drift the moment either measure changed. */
+@media (min-width:1180px){
+  #review-content.rev-railed .wkr-workspace,
+  #review-content.rev-railed .rev-section{
+    display:grid;grid-template-columns:var(--wkr-rail-w) minmax(0,1fr);
+    column-gap:var(--wkr-gap);align-items:start;
+    max-width:calc(var(--wkr-rail-w) + var(--wkr-gap) + var(--wkr-measure));
+    margin-left:auto;margin-right:auto}
+  #review-content.rev-railed .rev-section>*{grid-column:2}
+
+  /* Sticky below the Stats segmented strip, which is itself sticky at top:0 with z-index 8.
+     No max-height and no overflow: the rail is a label, a select, a chip and four rows — far
+     shorter than any viewport this breakpoint applies to — so it can neither clip at the
+     bottom nor need a scrollbar of its own. */
+  #review-content.rev-railed .wkr-rail{position:sticky;top:58px;align-self:start;min-width:0}
+  .wkr-rail-lbl{display:block;margin:0 2px 8px;font-size:11px;font-weight:700;
+    letter-spacing:.06em;text-transform:uppercase;color:var(--text-2)}
+  #review-content.rev-railed .wkr-weekbar{flex-direction:column;align-items:flex-start;gap:9px;margin-bottom:18px}
+  /* 12.5px, not the 13px the week bar uses: a full label is "Mon, 24 Aug - Sun, 30 Aug",
+     and the current week adds "(this week)" on top of that. A native select clips rather than
+     wraps, so the type steps down here instead of the rail growing to fit the longest string
+     it can ever hold. */
+  #review-content.rev-railed .wkr-weekbar select{flex:0 0 auto;width:100%;font-size:12.5px;padding:9px 9px}
+
+  /* Vertical section list. Quiet and transparent until selected; the selected row takes the
+     neutral card surface .wkr-tabs button.on already defines, plus the accent on its step
+     number. The numbers are a scanning aid only — every section stays reachable at any time. */
+  #review-content.rev-railed .wkr-tabs{flex-direction:column;gap:2px;overflow:visible;margin:0;padding-bottom:0}
+  #review-content.rev-railed .wkr-tabs button{display:flex;width:100%;align-items:flex-start;gap:9px;
+    min-height:0;padding:9px 11px;border-radius:11px;text-align:left;white-space:normal}
+  .wkr-tab-n{display:block;flex:0 0 auto;width:12px;font-family:var(--font-num);font-size:11px;
+    font-weight:700;line-height:1.45;color:var(--text-3)}
+  .wkr-tab-c{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .wkr-tab-l{font-size:13px;font-weight:700;line-height:1.3}
+  .wkr-tab-d{display:block;font-size:11px;font-weight:550;line-height:1.35;color:var(--muted)}
+  #review-content.rev-railed .wkr-tabs button.on .wkr-tab-l{font-weight:800}
+  #review-content.rev-railed .wkr-tabs button.on .wkr-tab-n{color:var(--accent-text)}
+
+  /* Navigation context above the section, not a second data summary. Same source as the rail
+     rows (WKR_SECTIONS), so the two can never disagree about what a section is called. */
+  .wkr-mainhd{display:block;margin:0 2px 15px}
+  .wkr-mainhd-eyebrow{font-size:11px;font-weight:700;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--text-2)}
+  .wkr-mainhd-t{margin:4px 0 0;font-size:23px;font-weight:800;letter-spacing:-.02em;color:var(--text)}
+  .wkr-mainhd-d{margin-top:3px;font-size:13px;line-height:1.45;color:var(--muted)}
 }

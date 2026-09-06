@@ -155,7 +155,8 @@
 // one never touches another, and whatever is open persists across a reload.
 // v301: promote Budget > Bills calendar's summary into the shared hero panel.
 // v302: refine Home weather into 19 scenes with layered cloud banks, fine rain and line icons.
-const CACHE_NAME = 'daily-v302';
+// v303: give Stats > Review a local rail on wide desktop and flow its cards vertically.
+const CACHE_NAME = 'daily-v303';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

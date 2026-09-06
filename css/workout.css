@@ -676,7 +676,13 @@ button.ov-day{cursor:pointer}
   .stats-review-grid{grid-template-columns:1fr 1fr;gap:16px}
   .ov-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:stretch}
   .ov-block{margin-bottom:0}
-  .rev-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+  /* "What Daily noticed" is a vertical list on desktop, not a two-up grid. It holds AT MOST
+     three ranked cards of different heights, so a two-column grid always left an empty
+     half-row at three items and made rank read as a reading path across rows rather than
+     straight down. One column keeps the ranking obvious and lets each card be its own height.
+     .rev-list is used by renderStatsReview() and nowhere else, so this reaches Stats › Review
+     only; the landscape-phone rule above keeps its two columns. */
+  .rev-list{grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
   #sub-body{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
   #sub-body.hidden{display:none}
   #sub-finance{display:block}
