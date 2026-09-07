@@ -577,6 +577,13 @@ if(firebaseReady){
     // Transactions are a flat list, so they sync as one blob rather than per-week like
     // budgetData. Re-read into memory and re-render, since every variable total is derived
     // from them — a stale in-memory copy would show the wrong week total after a remote edit.
+    // The imported financial ledger. Registered through syncBlobListen like every other blob
+    // store, which is also what puts it in SYNC_BLOB_REG and therefore in restorePushToCloud();
+    // exportAllData() picks it up automatically because the key starts with daily_.
+    syncBlobListen(user.uid,'ledger','daily_ledger',()=>{
+      try{ ledgerData=loadLedger(); }catch(e){}
+      if(S.view==='budget'&&typeof renderBudgetTab==='function') renderBudgetTab();
+    });
     syncBlobListen(user.uid,'transactions','daily_transactions',()=>{
       try{ txnData=loadTxns(); }catch(e){}
       if(typeof txnAfterChange==='function') txnAfterChange();
@@ -7033,8 +7040,51 @@ function aiTransactionsScope(range){
       if(t.acctId) row.paymentAccountId=String(t.acctId);
       if(a&&a.name) row.paymentAccountName=String(a.name);
       if(t.note) row.note=String(t.note);
+      // Gross stays the amount; net is DERIVED. Both are exported so an assistant can report
+      // the real personal cost without ever being tempted to rewrite the expense.
+      const reimbursed=(typeof ledgerReimbursedTotal==='function')?ledgerReimbursedTotal(t.id):0;
+      if(reimbursed){ row.reimbursed=aiR2(reimbursed); row.netCost=aiR2((parseFloat(t.amount)||0)-reimbursed); }
+      if(t.srcKey) row.sourceKey=String(t.srcKey);
+      if(Array.isArray(t.corrections)&&t.corrections.length) row.correctionCount=t.corrections.length;
       return row;
     });
+}
+
+// The imported financial ledger, in the same shape the actions accept it back. Exported with
+// Transactions because that is what a correction or a reimbursement has to point AT: without
+// the transaction ids and the reimbursements already on file, an assistant asked to "link the
+// hotel refund" has no choice but to guess, and guessing is what produced a duplicate hotel.
+// Opaque ids only — no bank account numbers, no BSBs. `source` carries the file name and row
+// number the importer needs for duplicate detection and nothing else about the account.
+function aiLedgerScope(range){
+  const accts=loadAccounts(), incCats=loadIncCats(), fixCats=loadFixCats();
+  const nameOf=(list,id)=>{ const r=list.find(x=>x&&String(x.id)===String(id)); return r?catLabel(r):''; };
+  const rows=(Array.isArray(ledgerData)?ledgerData:[])
+    .filter(r=>r&&aiIsDate(r.date)&&r.date>=range.from&&r.date<=range.to)
+    .sort((a,b)=>a.date<b.date?-1:1)
+    .map(r=>{
+      const row={id:String(r.id||''), kind:String(r.kind||''), date:r.date, amount:aiR2(r.amount)};
+      if(r.streamId){ row.streamId=r.streamId; row.streamName=nameOf(incCats,r.streamId); }
+      if(r.incomeType) row.incomeType=r.incomeType;
+      if(r.weekKey){ row.week=r.weekKey; row.weekMode=r.weekMode||''; }
+      if(r.fromAcctId){ const a=accts.find(x=>x&&x.id===r.fromAcctId); row.fromAccountId=r.fromAcctId; if(a) row.fromAccountName=a.name; }
+      if(r.toAcctId){ const a=accts.find(x=>x&&x.id===r.toAcctId); row.toAccountId=r.toAcctId; if(a) row.toAccountName=a.name; }
+      if(r.expenseId) row.expenseId=r.expenseId;
+      if(r.fixCatId){ row.fixedCategoryId=r.fixCatId; row.fixedCategoryName=nameOf(fixCats,r.fixCatId); }
+      if(r.acctId){ const a=accts.find(x=>x&&x.id===r.acctId); row.accountId=r.acctId; if(a) row.accountName=a.name; }
+      if(r.balanceKind) row.balanceKind=r.balanceKind;
+      if(r.note) row.note=String(r.note);
+      if(r.srcKey) row.sourceKey=r.srcKey;
+      if(r.source) row.source=r.source;
+      return row;
+    });
+  // Which source rows are already on file, so the next batch can skip them without re-deriving
+  // the answer from dates. Transactions carry the same fingerprint when they were imported.
+  const importedKeys=[].concat(
+    rows.map(r=>r.sourceKey).filter(Boolean),
+    (Array.isArray(txnData)?txnData:[]).map(t=>t&&t.srcKey).filter(Boolean)
+  );
+  return {records:rows, importedSourceKeys:[...new Set(importedKeys)].sort()};
 }
 
 // Live scheduled Fixed categories are the subscription/bill/payment-plan model.
@@ -7388,7 +7438,13 @@ function buildDailyContext(options){
   const has=id=>scopes.indexOf(id)>=0;
   const data={};
   if(has('budget'))        data.budget=aiBudgetScope(range);
-  if(has('transactions'))  data.transactions=aiTransactionsScope(range);
+  if(has('transactions')){
+    data.transactions=aiTransactionsScope(range);
+    // Rides with Transactions rather than being a scope of its own: a correction or a
+    // reimbursement is meaningless without the expense it points at, so the two are only ever
+    // useful together.
+    data.ledger=aiLedgerScope(range);
+  }
   if(has('subscriptions')) data.subscriptions=aiSubscriptionsScope();
   if(has('accounts'))      data.accounts=aiAccountsScope(range);
   if(has('workouts'))      data.workouts=aiWorkoutsScope(range);
@@ -8146,11 +8202,41 @@ const AI_ACT_VERSION = 1;
 const AI_ACT_MAX     = 50;       // actions per paste
 const AI_ACT_MAXSTR  = 2000;     // any single supplied string
 const AI_ACT_MAXTEXT = 500000;   // the whole paste
-const AI_ACT_TYPES   = ['add_expense','add_subscription','archive_subscription','add_recipe','add_shopping_item','update_spending_goal'];
+// Version stays 1: every type below is ADDITIVE. A version-1 payload written before the
+// financial actions existed still validates and applies unchanged, so there is no migration —
+// an unknown type was already a per-action error, never an envelope error.
+const AI_ACT_TYPES   = ['add_expense','add_subscription','archive_subscription','add_recipe','add_shopping_item','update_spending_goal',
+                        'add_income','add_transfer','add_reimbursement','add_bill_payment',
+                        'add_balance_snapshot','update_expense','add_income_stream','add_expense_category'];
 const AI_ACT_LABELS  = {add_expense:'Expense', add_subscription:'Subscription',
                         archive_subscription:'Subscription archive · confirmation required',
                         add_recipe:'Recipe', add_shopping_item:'Shopping item',
-                        update_spending_goal:'Spending goal correction'};
+                        update_spending_goal:'Spending goal correction',
+                        add_income:'Income', add_transfer:'Internal transfer',
+                        add_reimbursement:'Reimbursement', add_bill_payment:'Bill payment',
+                        add_balance_snapshot:'Balance snapshot',
+                        update_expense:'Expense correction · confirmation required',
+                        add_income_stream:'New income stream · confirmation required',
+                        add_expense_category:'New category · confirmation required'};
+// Preview sections, in the order they are shown. `group` comes from the validator; anything
+// without one falls into 'other', so a future action type cannot silently vanish from the list.
+const AI_ACT_GROUPS=[
+  {id:'expense',       label:'Expenses'},
+  {id:'income',        label:'Income'},
+  {id:'bill',          label:'Fixed-bill payments'},
+  {id:'transfer',      label:'Internal transfers'},
+  {id:'reimbursement', label:'Reimbursements'},
+  {id:'balance',       label:'Balance snapshots'},
+  {id:'correction',    label:'Corrections'},
+  {id:'setup',         label:'Setup changes'},
+  {id:'kitchen',       label:'Kitchen'},
+  {id:'other',         label:'Other'}
+];
+const AI_ACT_GROUP_OF={add_expense:'expense', add_income:'income', add_bill_payment:'bill',
+  add_transfer:'transfer', add_reimbursement:'reimbursement', add_balance_snapshot:'balance',
+  update_expense:'correction', add_income_stream:'setup', add_expense_category:'setup',
+  add_subscription:'setup', archive_subscription:'setup', update_spending_goal:'setup',
+  add_recipe:'kitchen', add_shopping_item:'kitchen'};
 
 // ── Small shared validators ──
 // Returns the trimmed string, or null when absent. Throws nothing: length violations come back
@@ -8247,9 +8333,14 @@ function validateDailyAction(action){
   const fn={add_expense:aiValExpense, add_subscription:aiValSubscription,
             archive_subscription:aiValArchiveSubscription,
             add_recipe:aiValRecipe, add_shopping_item:aiValShoppingItem,
-            update_spending_goal:aiValSpendingGoal}[type];
+            update_spending_goal:aiValSpendingGoal,
+            add_income:aiValIncome, add_transfer:aiValTransfer,
+            add_reimbursement:aiValReimbursement, add_bill_payment:aiValBillPayment,
+            add_balance_snapshot:aiValBalanceSnapshot, update_expense:aiValUpdateExpense,
+            add_income_stream:aiValIncomeStream, add_expense_category:aiValExpenseCategory}[type];
   const res=fn(data, id);
   res.id=id; res.type=type;
+  if(!res.group) res.group=AI_ACT_GROUP_OF[type]||'other';
   return res;
 }
 
@@ -8269,14 +8360,20 @@ function aiValExpense(d,id){
   if(aiActTooLong(note)) return {ok:false, error:'"note" is too long.'};
   const acct=aiResolveAccount(d);
   if(!acct.ok) return {ok:false, error:acct.reason+'.'};
+  // A bank row's own fingerprint, so re-pasting a regenerated batch (new action ids, same
+  // statement rows) is recognised as already imported. Two identical pub rounds on one day
+  // stay two expenses: they carry different source rows, and with no source block at all this
+  // falls back to the action id exactly as before.
+  const srcInfo=aiActSource(d);
   const summary='Add '+fmtMoneyExact(amt)+(merchant?' '+merchant:'')+' expense to '+catLabel(cat.rec)+
     ' on '+aiActFmtDate(date)+(acct.rec?', paid with '+acct.rec.name:'')+'.';
-  return {ok:true, summary,
-    dupKey:txn=>txn&&txn.aiActionId===id,
+  return {ok:true, summary, group:'expense',
+    dupKey:txn=>!!txn&&((txn.aiActionId&&txn.aiActionId===id)||(!!srcInfo.key&&txn.srcKey===srcInfo.key)),
     collection:()=>txnData,
     apply:(meta)=>{
-      txnCreateRecord({date, catId:cat.rec.id, amount:amt, merchant, note,
+      const rec=txnCreateRecord({date, catId:cat.rec.id, amount:amt, merchant, note,
         acctId:acct.rec?acct.rec.id:''}, meta);
+      if(srcInfo.key){ rec.srcKey=srcInfo.key; if(srcInfo.src) rec.source=srcInfo.src; }
       saveTxns();
       return {kind:'transaction'};
     }};
@@ -8504,6 +8601,418 @@ function aiValSpendingGoal(d,id){
     }};
 }
 
+
+// ══ Financial import actions ═══════════════════════════════════════════════════
+// Everything below writes through the ledger store or through the SAME canonical writer the
+// equivalent manual action uses (saveAccounts, budSaveData, saveTxns, BUD_CAT_SAVE). None of
+// them introduces a second money reader: see the loadLedger() header for why Spent, Committed,
+// Income and Saved all still mean exactly what they meant before.
+
+// Shared: resolve a named account for a role that REQUIRES one (transfers, balances). The
+// optional-account resolver above returns {rec:null} for "not given"; here that is an error,
+// because a transfer with no destination is not a transfer.
+function aiResolveNamedAccount(id, name, role){
+  if(!aiActStr(id)&&!aiActStr(name)) return {ok:false, reason:role+' is required — give '+role+'Id or '+role+'Name'};
+  const r=aiResolveRef(loadAccounts(), id, name, a=>a.name);
+  if(!r.ok) return {ok:false, reason:role+': '+r.reason+'. Your accounts: '+
+    (loadAccounts().map(a=>a.name).join(', ')||'(none set up yet)')};
+  return r;
+}
+// A supplied source block plus the fingerprint derived from it. Every financial action accepts
+// one; it is what makes a regenerated batch safe to re-paste.
+function aiActSource(d){
+  const src=ledgerNormaliseSource(d.source);
+  const key=ledgerSrcKey(Object.assign({}, src||{},
+    {date:aiActStr(d.date), amount:aiActMoney(d.amount)}));
+  return {src:src, key:key};
+}
+function aiLedgerWrite(rec, meta, srcKey, src){
+  const out=Object.assign({id:genLedgerId(), createdAt:Date.now()}, rec);
+  if(srcKey) out.srcKey=srcKey;
+  if(src) out.source=src;
+  if(meta&&meta.aiActionId){ out.aiActionId=meta.aiActionId; out.aiSource=meta.aiSource||''; }
+  ledgerData.push(out);
+  saveLedger();
+  return out;
+}
+// The one duplicate test every financial action shares: the same action id applied before, OR
+// the same SOURCE ROW already imported under any action id. Action ids alone are not enough —
+// an assistant regenerating a batch renumbers them — and the source row alone is not enough
+// either, which is why both are checked rather than one replacing the other.
+function aiLedgerDup(id, srcKey){
+  return r=>!!r&&((r.aiActionId&&r.aiActionId===id)||(!!srcKey&&r.srcKey===srcKey));
+}
+
+// ── Income ──────────────────────────────────────────────────────
+// Two things happen and they are deliberately separable. The ITEMISED deposit always becomes a
+// ledger record (that is the audit trail the bank statement justifies). The week's canonical
+// inc_<stream> total changes only when weekMode says so:
+//   add         — increase the stored weekly total by this deposit
+//   replace     — set the weekly total to this deposit
+//   record_only — leave the weekly total completely alone
+// There is no default and no guess: a week that already reads $950 against a $536.40 deposit is
+// a reconciliation the person has to make, and silently picking one is how a salary history
+// gets quietly doubled.
+const AI_INCOME_MODES=['add','replace','record_only'];
+const AI_INCOME_TYPES=['salary','family_support','gift','reimbursement','transfer','other'];
+function aiValIncome(d,id){
+  const amt=aiActMoney(d.amount);
+  if(isNaN(amt)) return {ok:false, error:'Income needs a numeric "amount".'};
+  if(amt<=0) return {ok:false, error:'Income "amount" must be greater than zero (got '+amt+').'};
+  const date=aiActStr(d.date);
+  if(!date) return {ok:false, error:'Income needs a "date" — the date the money actually landed.'};
+  if(!aiActValidDate(date)) return {ok:false, error:'"'+date.slice(0,20)+'" is not a real date — use YYYY-MM-DD.'};
+  const streams=activeCats(loadIncCats());
+  const stream=aiResolveRef(streams, d.streamId||d.incomeStreamId, d.streamName||d.incomeStreamName, c=>catLabel(c));
+  if(!stream.ok) return {ok:false, error:'Income stream — '+stream.reason+'. Live streams: '+
+    (streams.map(c=>catLabel(c)).join(', ')||'(none set up yet)')+'. Use add_income_stream first if it is genuinely missing.'};
+  const incomeType=aiActStr(d.incomeType).toLowerCase()||'salary';
+  if(AI_INCOME_TYPES.indexOf(incomeType)<0) return {ok:false, error:'Unknown "incomeType" — use '+AI_INCOME_TYPES.join(', ')+'.'};
+  const mode=aiActStr(d.weekMode).toLowerCase();
+  if(!mode) return {ok:false, error:'Income needs "weekMode": '+AI_INCOME_MODES.join(', ')+
+    '. Daily will not guess whether an itemised deposit adds to, replaces or merely annotates an existing weekly total.'};
+  if(AI_INCOME_MODES.indexOf(mode)<0) return {ok:false, error:'Unknown "weekMode" — use '+AI_INCOME_MODES.join(', ')+'.'};
+  const note=aiActStr(d.note);
+  if(aiActTooLong(note)) return {ok:false, error:'"note" is too long.'};
+  const acct=aiResolveAccount(d);
+  if(!acct.ok) return {ok:false, error:acct.reason+'.'};
+  const srcInfo=aiActSource(d);
+
+  const wk=txnWeekOf(date);
+  const field='inc_'+stream.rec.id;
+  const existing=budgetData[wk]&&budgetData[wk][field];
+  const had=existing!==undefined&&existing!=='';
+  const before=had?(parseFloat(existing)||0):0;
+  const after=mode==='record_only'?before:(mode==='add'?before+amt:amt);
+  const weekLabel=aiActFmtDate(wk);
+
+  let summary='Record '+fmtMoneyExact(amt)+' '+incomeType.replace(/_/g,' ')+' from '+catLabel(stream.rec)+
+    ' on '+aiActFmtDate(date)+' (week of '+weekLabel+').';
+  summary += mode==='record_only'
+    ? ' The week’s stored '+catLabel(stream.rec)+' total stays at '+(had?fmtMoneyExact(before):'not set')+'.'
+    : ' Week total '+(had?fmtMoneyExact(before):'not set')+' → '+fmtMoneyExact(after)+'.';
+  // A conflict is SURFACED, never blocking: the person may well intend to add a second deposit
+  // to a week that already holds one. What they must not do is make that choice unknowingly.
+  let conflict='';
+  if(had&&mode==='add') conflict='This week already records '+fmtMoneyExact(before)+' for '+catLabel(stream.rec)+
+    '. Adding makes it '+fmtMoneyExact(after)+' — choose "replace" instead if that existing figure already includes this deposit.';
+  else if(had&&mode==='replace'&&Math.abs(before-amt)>0.005) conflict='This overwrites an existing weekly total of '+
+    fmtMoneyExact(before)+' with '+fmtMoneyExact(amt)+'. The difference is '+fmtMoneyExact(Math.abs(before-amt))+'.';
+
+  return {ok:true, summary:summary, group:'income', conflict:conflict,
+    dupKey:aiLedgerDup(id,srcInfo.key),
+    collection:()=>ledgerData,
+    apply:(meta)=>{
+      aiLedgerWrite({kind:'income', date:date, amount:amt, streamId:stream.rec.id, incomeType:incomeType,
+        acctId:acct.rec?acct.rec.id:'', note:note, weekKey:wk, weekMode:mode,
+        weekBefore:before, weekAfter:after, weekHadValue:had}, meta, srcInfo.key, srcInfo.src);
+      if(mode!=='record_only'){
+        if(!budgetData[wk]) budgetData[wk]={};
+        const w=budgetData[wk];
+        w.wk=wk;
+        w[field]=String(Math.round(after*100)/100);
+        if(!w.saved) w.draft=true;
+        w.updatedAt=Date.now();
+        budSaveData(wk);
+      }
+      return {kind:'income', undo:{ledger:true, week:wk, field:field, hadValue:had, previous:existing, mode:mode}};
+    }};
+}
+
+// ── Internal transfer ───────────────────────────────────────────
+// Moving your own money between your own accounts is neither income nor spending, so this
+// writes a ledger record and nothing else. The two mirrored statement rows (one debit, one
+// credit) are ONE transfer: give both source rows and the pair collapses on either row's
+// fingerprint, so whichever file is imported first wins and the second is recognised.
+function aiValTransfer(d,id){
+  const amt=aiActMoney(d.amount);
+  if(isNaN(amt)) return {ok:false, error:'Transfer needs a numeric "amount".'};
+  if(amt<=0) return {ok:false, error:'Transfer "amount" must be greater than zero — give the amount moved, not a signed bank figure.'};
+  const date=aiActStr(d.date);
+  if(!date) return {ok:false, error:'Transfer needs a "date".'};
+  if(!aiActValidDate(date)) return {ok:false, error:'"'+date.slice(0,20)+'" is not a real date — use YYYY-MM-DD.'};
+  const from=aiResolveNamedAccount(d.fromAccountId, d.fromAccountName, 'fromAccount');
+  if(!from.ok) return {ok:false, error:from.reason+'.'};
+  const to=aiResolveNamedAccount(d.toAccountId, d.toAccountName, 'toAccount');
+  if(!to.ok) return {ok:false, error:to.reason+'.'};
+  if(from.rec.id===to.rec.id) return {ok:false, error:'A transfer needs two different accounts — "'+from.rec.name+'" is both sides.'};
+  const note=aiActStr(d.note);
+  if(aiActTooLong(note)) return {ok:false, error:'"note" is too long.'};
+  const srcInfo=aiActSource(d);
+  // The counterpart row is the OTHER statement line for the same movement. Recorded so the
+  // second file's row is recognisable as already-imported rather than a new transfer.
+  const cpSrc=ledgerNormaliseSource(d.counterpartSource);
+  const cpKey=cpSrc?ledgerSrcKey(Object.assign({},cpSrc,{date:date, amount:amt})):'';
+
+  const summary='Move '+fmtMoneyExact(amt)+' from '+from.rec.name+' to '+to.rec.name+' on '+aiActFmtDate(date)+
+    '. This is your own money changing accounts — it adds no income and no spending.';
+  return {ok:true, summary:summary, group:'transfer',
+    dupKey:r=>!!r&&((r.aiActionId&&r.aiActionId===id)||
+      (!!srcInfo.key&&(r.srcKey===srcInfo.key||r.counterpartSrcKey===srcInfo.key))||
+      (!!cpKey&&(r.srcKey===cpKey||r.counterpartSrcKey===cpKey))),
+    collection:()=>ledgerData,
+    apply:(meta)=>{
+      const rec={kind:'transfer', date:date, amount:amt, fromAcctId:from.rec.id, toAcctId:to.rec.id, note:note};
+      if(cpKey){ rec.counterpartSrcKey=cpKey; if(cpSrc) rec.counterpartSource=cpSrc; }
+      aiLedgerWrite(rec, meta, srcInfo.key, srcInfo.src);
+      return {kind:'transfer', undo:{ledger:true}};
+    }};
+}
+
+// ── Reimbursement ───────────────────────────────────────────────
+// Money coming back that belongs to a specific expense. The expense stays at its GROSS amount
+// in every existing total; the net personal cost is derived by ledgerNetCostFor and reported.
+// Nothing here reduces the week's Spent, which is exactly what stops the same money being
+// removed twice (once by netting the expense, once by the reimbursement).
+function aiValReimbursement(d,id){
+  const amt=aiActMoney(d.amount);
+  if(isNaN(amt)) return {ok:false, error:'Reimbursement needs a numeric "amount".'};
+  if(amt<=0) return {ok:false, error:'Reimbursement "amount" must be greater than zero (got '+amt+').'};
+  const date=aiActStr(d.date);
+  if(!date) return {ok:false, error:'Reimbursement needs a "date" — when the money came back.'};
+  if(!aiActValidDate(date)) return {ok:false, error:'"'+date.slice(0,20)+'" is not a real date — use YYYY-MM-DD.'};
+  const expenseId=aiActStr(d.expenseId);
+  if(!expenseId) return {ok:false, error:'Reimbursement needs the "expenseId" of the original expense, from Daily\'s context export. Names are not accepted.'};
+  const txn=(Array.isArray(txnData)?txnData:[]).find(t=>t&&String(t.id)===expenseId);
+  if(!txn) return {ok:false, error:'No expense has id "'+expenseId.slice(0,60)+'". Use the exact transaction id from the context export.'};
+  const gross=parseFloat(txn.amount)||0;
+  const already=ledgerReimbursedTotal(expenseId);
+  if(already+amt>gross+0.005) return {ok:false, error:'That would reimburse '+fmtMoneyExact(already+amt)+
+    ' against a '+fmtMoneyExact(gross)+' expense'+(already?' (already reimbursed '+fmtMoneyExact(already)+')':'')+
+    '. A reimbursement cannot exceed the original cost.'};
+  const note=aiActStr(d.note), reason=aiActStr(d.reason);
+  if(aiActTooLong(note)||aiActTooLong(reason)) return {ok:false, error:'"note" or "reason" is too long.'};
+  const acct=aiResolveAccount(d);
+  if(!acct.ok) return {ok:false, error:acct.reason+'.'};
+  const srcInfo=aiActSource(d);
+  const net=Math.round((gross-already-amt)*100)/100;
+  const sameWeek=txnWeekOf(date)===txnWeekOf(txn.date);
+  const summary='Record '+fmtMoneyExact(amt)+' reimbursed on '+aiActFmtDate(date)+' against '+
+    (txn.merchant||'the expense')+' '+fmtMoneyExact(gross)+' of '+aiActFmtDate(txn.date)+
+    '. The expense stays at '+fmtMoneyExact(gross)+' in your spending; your net cost becomes '+fmtMoneyExact(net)+'.';
+  const conflict=sameWeek?'':'The reimbursement lands in the week of '+aiActFmtDate(txnWeekOf(date))+
+    ' while the expense sits in the week of '+aiActFmtDate(txnWeekOf(txn.date))+
+    '. Both dates are kept; weekly Spent is unchanged in both weeks and only the net cost of this expense moves.';
+  return {ok:true, summary:summary, group:'reimbursement', conflict:conflict,
+    dupKey:aiLedgerDup(id,srcInfo.key),
+    collection:()=>ledgerData,
+    apply:(meta)=>{
+      aiLedgerWrite({kind:'reimbursement', date:date, amount:amt, expenseId:expenseId, reason:reason,
+        acctId:acct.rec?acct.rec.id:'', note:note}, meta, srcInfo.key, srcInfo.src);
+      return {kind:'reimbursement', undo:{ledger:true}};
+    }};
+}
+
+// ── Actual payment of a recurring bill ──────────────────────────
+// A recurring Fixed category is a DEFINITION (what it costs, how often). This is the dated
+// payment that actually left the account. It is recorded against that definition and is
+// deliberately kept out of variable spending: the week already accrues the committed cost from
+// its frozen fixRates, so adding the payment to Spent would count the same money twice.
+function aiValBillPayment(d,id){
+  const amt=aiActMoney(d.amount);
+  if(isNaN(amt)) return {ok:false, error:'Bill payment needs a numeric "amount".'};
+  if(amt<=0) return {ok:false, error:'Bill payment "amount" must be greater than zero (got '+amt+').'};
+  const date=aiActStr(d.date);
+  if(!date) return {ok:false, error:'Bill payment needs a "date" — when the payment actually left the account.'};
+  if(!aiActValidDate(date)) return {ok:false, error:'"'+date.slice(0,20)+'" is not a real date — use YYYY-MM-DD.'};
+  const fixCats=loadFixCats();
+  const cat=aiResolveRef(fixCats, d.fixedCategoryId||d.billId, d.fixedCategoryName||d.billName, c=>catLabel(c));
+  if(!cat.ok) return {ok:false, error:'Recurring cost — '+cat.reason+'. Your recurring items: '+
+    (fixCats.map(c=>catLabel(c)).join(', ')||'(none)')+'.'};
+  const note=aiActStr(d.note);
+  if(aiActTooLong(note)) return {ok:false, error:'"note" is too long.'};
+  const acct=aiResolveAccount(d);
+  if(!acct.ok) return {ok:false, error:acct.reason+'.'};
+  const srcInfo=aiActSource(d);
+  const summary='Record the actual '+fmtMoneyExact(amt)+' payment of '+catLabel(cat.rec)+' on '+aiActFmtDate(date)+
+    '. It is kept out of variable spending — the week already accrues this as a committed cost.';
+  return {ok:true, summary:summary, group:'bill',
+    dupKey:aiLedgerDup(id,srcInfo.key),
+    collection:()=>ledgerData,
+    apply:(meta)=>{
+      aiLedgerWrite({kind:'bill_payment', date:date, amount:amt, fixCatId:cat.rec.id,
+        acctId:acct.rec?acct.rec.id:'', note:note}, meta, srcInfo.key, srcInfo.src);
+      return {kind:'bill payment', undo:{ledger:true}};
+    }};
+}
+
+// ── Balance snapshot ────────────────────────────────────────────
+// A balance is an observation, never an event: it creates no income and no expense. It goes
+// into the account's existing dated history, which is what the net-worth line already reads.
+// Two guards matter. An OLDER imported reading never replaces the account's current balance —
+// history is written in date order and `current` follows only the newest date. And `available`
+// is recorded but never becomes `current`: available money is current money minus holds, and
+// treating one as the other silently understates the account.
+const AI_BALANCE_KINDS=['opening','closing','current','available'];
+function aiValBalanceSnapshot(d,id){
+  const bal=aiActMoney(d.balance!=null?d.balance:d.amount);
+  if(isNaN(bal)) return {ok:false, error:'Balance snapshot needs a numeric "balance".'};
+  const date=aiActStr(d.date);
+  if(!date) return {ok:false, error:'Balance snapshot needs an explicit "date" — the date the balance was observed. Daily never assumes today.'};
+  if(!aiActValidDate(date)) return {ok:false, error:'"'+date.slice(0,20)+'" is not a real date — use YYYY-MM-DD.'};
+  if(date>getLocalDate()) return {ok:false, error:'That balance is dated in the future ('+aiActFmtFullDate(date)+').'};
+  const acc=aiResolveNamedAccount(d.accountId, d.accountName, 'account');
+  if(!acc.ok) return {ok:false, error:acc.reason+'.'};
+  const kind=aiActStr(d.balanceKind).toLowerCase();
+  if(!kind) return {ok:false, error:'Balance snapshot needs "balanceKind": '+AI_BALANCE_KINDS.join(', ')+
+    '. An available balance is not a current balance and Daily will not guess which one this is.'};
+  if(AI_BALANCE_KINDS.indexOf(kind)<0) return {ok:false, error:'Unknown "balanceKind" — use '+AI_BALANCE_KINDS.join(', ')+'.'};
+
+  const hist=(Array.isArray(acc.rec.history)?acc.rec.history:[]).filter(e=>e&&e.date);
+  const sameDate=hist.find(e=>e.date===date);
+  const newer=hist.filter(e=>e.date>date);
+  const isNewest=!newer.length;
+  if(sameDate&&Math.abs((parseFloat(sameDate.balance)||0)-bal)<0.005)
+    return {ok:true, group:'balance', summary:acc.rec.name+' already records '+fmtMoneyExact(bal)+' on '+aiActFmtFullDate(date)+'.',
+      already:'That balance is already on record for this date.', dupKey:()=>false, collection:()=>[], apply:()=>({kind:'balance snapshot'})};
+
+  // `available` is never allowed to move a stored balance: it is a different quantity.
+  const writesHistory=kind!=='available';
+  let summary=(writesHistory?'Record ':'Note ')+acc.rec.name+' '+kind+' balance '+fmtMoneyExact(bal)+
+    ' as at '+aiActFmtFullDate(date)+'.';
+  if(!writesHistory) summary+=' Available balance is kept as an observation only — it never replaces the current balance.';
+  else if(sameDate) summary+=' Replaces the '+fmtMoneyExact(parseFloat(sameDate.balance)||0)+' already recorded for that date.';
+  summary+=' No income or expense is created.';
+  let conflict='';
+  if(writesHistory&&!isNewest) conflict='This is older than '+newer.length+' newer reading'+(newer.length===1?'':'s')+
+    ' on this account (newest '+aiActFmtFullDate(newer.reduce((a,e)=>e.date>a?e.date:a,''))+
+    '). It will be filed in history and will NOT change the current balance.';
+
+  return {ok:true, summary:summary, group:'balance', conflict:conflict,
+    dupKey:()=>false,
+    collection:()=>[],
+    apply:(meta)=>{
+      const list=loadAccounts();
+      const a=list.find(x=>x&&String(x.id)===String(acc.rec.id));
+      if(!a) throw new Error('That account no longer exists.');
+      const undo={accountId:a.id, date:date, hadEntry:false, previous:null, prevCurrent:a.current};
+      if(writesHistory){
+        const h=(Array.isArray(a.history)?a.history:[]).filter(e=>e&&e.date);
+        const prev=h.find(e=>e.date===date);
+        if(prev){ undo.hadEntry=true; undo.previous={date:prev.date, balance:prev.balance}; }
+        const kept=h.filter(e=>e.date!==date);
+        kept.push({date:date, balance:bal, kind:kind});
+        kept.sort((x,y)=>x.date<y.date?-1:1);
+        a.history=kept;
+        // `current` follows the newest dated reading only — an older import never rewrites it.
+        if(!kept.some(e=>e.date>date)) a.current=bal;
+        saveAccounts(list);
+      }
+      aiLedgerWrite({kind:'balance_note', date:date, amount:bal, acctId:a.id, balanceKind:kind,
+        applied:writesHistory}, meta, '', ledgerNormaliseSource(d.source));
+      return {kind:'balance snapshot', undo:Object.assign({ledger:true, balance:writesHistory}, undo)};
+    }};
+}
+
+// ── Correction to an existing expense ───────────────────────────
+// A correction MUTATES the record it names. It is deliberately not "add a corrected copy":
+// that is how a hotel bill ends up on the books twice. Targets are exact transaction ids only,
+// every change is shown as before → after, and the previous values are kept on the record so
+// there is an audit trail after the in-session undo has expired.
+function aiValUpdateExpense(d,id){
+  const expenseId=aiActStr(d.expenseId);
+  if(!expenseId) return {ok:false, error:'A correction needs the exact "expenseId" from Daily\'s context export. Names are not accepted as targets.'};
+  const txn=(Array.isArray(txnData)?txnData:[]).find(t=>t&&String(t.id)===expenseId);
+  if(!txn) return {ok:false, error:'No expense has id "'+expenseId.slice(0,60)+'".'};
+  const changes=[], parts=[];
+  if(d.setCategoryId!=null||d.setCategoryName!=null||d.setCategory!=null){
+    const cats=activeCats(loadVarCats());
+    const cat=aiResolveRef(cats, d.setCategoryId, d.setCategoryName||d.setCategory, c=>catLabel(c));
+    if(!cat.ok) return {ok:false, error:'New category — '+cat.reason+'. Live categories: '+cats.map(c=>catLabel(c)).join(', ')+
+      '. Use add_expense_category first if the right one genuinely does not exist.'};
+    if(String(txn.catId)!==String(cat.rec.id)){
+      const old=loadVarCats().find(c=>c&&String(c.id)===String(txn.catId));
+      changes.push({field:'catId', to:cat.rec.id});
+      parts.push('category '+(old?catLabel(old):'(unknown)')+' → '+catLabel(cat.rec));
+    }
+  }
+  ['merchant','note'].forEach(f=>{
+    const key='set'+f.charAt(0).toUpperCase()+f.slice(1);
+    if(d[key]==null) return;
+    const v=aiActStr(d[key]);
+    if(aiActTooLong(v)) return;
+    if(String(txn[f]||'')!==v){ changes.push({field:f, to:v}); parts.push(f+' "'+(txn[f]||'')+'" → "'+v+'"'); }
+  });
+  if(d.setAmount!=null){
+    const amt=aiActMoney(d.setAmount);
+    if(isNaN(amt)||amt<=0) return {ok:false, error:'"setAmount" must be a number greater than zero.'};
+    if(Math.abs((parseFloat(txn.amount)||0)-amt)>0.005){
+      changes.push({field:'amount', to:amt});
+      parts.push('amount '+fmtMoneyExact(parseFloat(txn.amount)||0)+' → '+fmtMoneyExact(amt));
+    }
+  }
+  const reason=aiActStr(d.reason);
+  if(aiActTooLong(reason)) return {ok:false, error:'"reason" is too long.'};
+  const label=(txn.merchant||'expense')+' '+fmtMoneyExact(parseFloat(txn.amount)||0)+' of '+aiActFmtDate(txn.date);
+  if(!changes.length) return {ok:true, group:'correction',
+    summary:'No change needed to '+label+'.', already:'That expense already holds the requested values.',
+    dupKey:()=>false, collection:()=>[], apply:()=>({kind:'expense correction'})};
+  const summary='Correct '+label+': '+parts.join('; ')+'.'+(reason?' ('+reason+')':'');
+  return {ok:true, summary:summary, group:'correction', requiresConfirmation:true,
+    dupKey:()=>false, collection:()=>[],
+    apply:(meta)=>{
+      const t=(Array.isArray(txnData)?txnData:[]).find(x=>x&&String(x.id)===expenseId);
+      if(!t) throw new Error('That expense no longer exists.');
+      const before={};
+      changes.forEach(c=>{ before[c.field]=t[c.field]; t[c.field]=c.to; });
+      const trail=Array.isArray(t.corrections)?t.corrections:[];
+      trail.push({at:Date.now(), actionId:(meta&&meta.aiActionId)||'', source:(meta&&meta.aiSource)||'',
+        reason:reason, before:before});
+      t.corrections=trail.slice(-20);
+      saveTxns();
+      return {kind:'expense correction', undo:{expenseId:expenseId, before:before, actionId:(meta&&meta.aiActionId)||''}};
+    }};
+}
+
+// ── Explicitly proposed new income stream / expense category ────
+// Both are unchecked by default. Creating a category is the one import action that changes the
+// SHAPE of someone's budget rather than adding a record to it, and the whole reason "Pub &
+// social" must not silently gain a "Pub & Social" twin is that nobody was asked.
+function aiValIncomeStream(d,id){
+  const name=aiActStr(d.name);
+  if(!name) return {ok:false, error:'An income stream needs a "name".'};
+  if(aiActTooLong(name)) return {ok:false, error:'"name" is too long.'};
+  const existing=loadIncCats();
+  const clash=existing.find(c=>c&&String(catLabel(c)||'').trim().toLowerCase()===name.toLowerCase());
+  if(clash) return {ok:true, group:'setup', summary:'Income stream "'+catLabel(clash)+'" already exists.',
+    already:'Use its id '+clash.id+' instead of creating a second one.',
+    dupKey:()=>false, collection:()=>[], apply:()=>({kind:'income stream'})};
+  return {ok:true, group:'setup', requiresConfirmation:true,
+    summary:'Create a new income stream "'+name+'". Nothing is imported into it by this action.',
+    dupKey:c=>c&&c.aiActionId===id, collection:()=>loadIncCats(),
+    apply:(meta)=>{
+      const cats=BUD_CAT_LOAD.inc();
+      const item={id:genCatId('inc'), name:name};
+      if(meta&&meta.aiActionId){ item.aiActionId=meta.aiActionId; item.aiSource=meta.aiSource||''; }
+      cats.push(item);
+      BUD_CAT_SAVE.inc(cats);
+      if(typeof refreshCatBudgetUI==='function') refreshCatBudgetUI();
+      return {kind:'income stream'};
+    }};
+}
+function aiValExpenseCategory(d,id){
+  const name=aiActStr(d.name);
+  if(!name) return {ok:false, error:'An expense category needs a "name".'};
+  if(aiActTooLong(name)) return {ok:false, error:'"name" is too long.'};
+  const existing=loadVarCats();
+  const clash=existing.find(c=>c&&String(catLabel(c)||'').trim().toLowerCase()===name.toLowerCase());
+  if(clash) return {ok:true, group:'setup', summary:'Category "'+catLabel(clash)+'" already exists.',
+    already:'Use its id '+clash.id+' instead of creating a near-duplicate.',
+    dupKey:()=>false, collection:()=>[], apply:()=>({kind:'expense category'})};
+  return {ok:true, group:'setup', requiresConfirmation:true,
+    summary:'Create a new expense category "'+name+'". Existing expenses are not moved into it by this action.',
+    dupKey:c=>c&&c.aiActionId===id, collection:()=>loadVarCats(),
+    apply:(meta)=>{
+      const cats=BUD_CAT_LOAD.var();
+      const item={id:genCatId('var'), name:name};
+      if(meta&&meta.aiActionId){ item.aiActionId=meta.aiActionId; item.aiSource=meta.aiSource||''; }
+      cats.push(item);
+      BUD_CAT_SAVE.var(cats);
+      if(typeof refreshCatBudgetUI==='function') refreshCatBudgetUI();
+      return {kind:'expense category'};
+    }};
+}
+
 // ── preview ──────────────────────────────────────────────────────
 // Validates every action and works out which are new, which were already applied (by
 // aiActionId on a created record, or a bounded action-id list inside the existing settings
@@ -8511,9 +9020,14 @@ function aiValSpendingGoal(d,id){
 function previewDailyActions(parsed){
   if(!parsed||parsed.error) return {error:(parsed&&parsed.error)||'Nothing to preview.'};
   const seen={}, rows=[];
-  parsed.actions.forEach((a,i)=>{
+  parsed.actions.forEach((a0,i)=>{
+    const a=aiApplyMappings(a0);
     const res=validateDailyAction(a);
-    const row={index:i, action:a, id:res.id||'', type:res.type||'', label:AI_ACT_LABELS[res.type]||'Action'};
+    const row={index:i, action:a, id:res.id||'', type:res.type||'', label:AI_ACT_LABELS[res.type]||'Action',
+      // Set BEFORE the error return: the grouped preview renders by group, so a row without one
+      // would be dropped from the list entirely — and a rejected action is exactly the row a
+      // person most needs to see.
+      group:res.group||AI_ACT_GROUP_OF[res.type]||'other'};
     if(!res.ok){ row.state='error'; row.error=res.error; rows.push(row); return; }
     // Duplicate ids WITHIN one paste are rejected: they would defeat the idempotency check,
     // since the second would look "already applied" the moment the first landed.
@@ -8522,23 +9036,63 @@ function previewDailyActions(parsed){
     row.summary=res.summary;
     row.apply=res.apply;
     row.requiresConfirmation=!!res.requiresConfirmation;
+    // A conflict is information, not a rejection. It never blocks the row and never blocks any
+    // OTHER row: an uncertain reconciliation can be left unticked while the twenty unambiguous
+    // expenses beside it still apply.
+    row.conflict=res.conflict||'';
     if(res.already){ row.state='already'; row.note=res.already; rows.push(row); return; }
     const existing=(res.collection()||[]).some(res.dupKey);
     row.state=existing?'already':'new';
     if(existing) row.note='Already applied earlier — it will not be added twice.';
     rows.push(row);
   });
-  return {rows, source:parsed.source||'',
+  // Group order is AI_ACT_GROUPS', not paste order, so a mixed batch reads as sections rather
+  // than as one undifferentiated list.
+  const groups=AI_ACT_GROUPS.map(g=>({id:g.id, label:g.label, rows:rows.filter(r=>r.group===g.id)}))
+    .filter(g=>g.rows.length);
+  return {rows, groups, source:parsed.source||'',
     counts:{ new:rows.filter(r=>r.state==='new').length,
              already:rows.filter(r=>r.state==='already').length,
-             error:rows.filter(r=>r.state==='error').length }};
+             error:rows.filter(r=>r.state==='error').length,
+             conflict:rows.filter(r=>r.state==='new'&&r.conflict).length },
+    // What the batch covers in the source file, so the next batch can start from the right
+    // row instead of a guessed date. Read off the actions themselves; absent when no action
+    // carried a source block.
+    span:aiActBatchSpan(parsed.actions)};
+}
+
+// The source rows this batch touches: which files, which row numbers, which dates. This is the
+// continuation record, and it lives in the RESULT rather than in a transaction's note — a real
+// purchase's note is not a place to keep batch bookkeeping.
+function aiActBatchSpan(actions){
+  const files={}; let minDate='', maxDate='';
+  (actions||[]).forEach(a=>{
+    const d=(a&&a.data)||{};
+    const src=ledgerNormaliseSource(d.source);
+    const date=aiActStr(d.date);
+    if(date&&aiActValidDate(date)){
+      if(!minDate||date<minDate) minDate=date;
+      if(!maxDate||date>maxDate) maxDate=date;
+    }
+    if(!src||!src.file) return;
+    const f=files[src.file]||(files[src.file]={file:src.file, rows:[], count:0});
+    f.count++;
+    const n=parseInt(src.row,10);
+    if(!isNaN(n)) f.rows.push(n);
+  });
+  const list=Object.values(files).map(f=>({
+    file:f.file, actions:f.count,
+    firstRow:f.rows.length?Math.min.apply(null,f.rows):null,
+    lastRow:f.rows.length?Math.max.apply(null,f.rows):null
+  }));
+  return {files:list, fromDate:minDate, toDate:maxDate};
 }
 
 // ── apply ────────────────────────────────────────────────────────
 // Re-validates immediately before writing (the store can have changed since the preview was
 // built) and only then writes. Returns {applied, skipped, undo}.
 function applyDailyActions(rows, source){
-  const applied=[], skipped=[];
+  const applied=[], skipped=[], failed=[];
   (rows||[]).forEach(row=>{
     if(row.state!=='new'||typeof row.apply!=='function'){ skipped.push(row); return; }
     try{
@@ -8553,11 +9107,16 @@ function applyDailyActions(rows, source){
       const out=fresh.apply({aiActionId:row.id, aiSource:source||''});
       applied.push({id:row.id, type:row.type, kind:out&&out.kind, undo:out&&out.undo, summary:fresh.summary});
     }catch(e){
+      // A partial batch is reported exactly, never rolled back: actions 1-6 that landed are
+      // real records, and the safe retry is to re-paste — the source fingerprints recognise
+      // what already exists. `failed` is kept apart from `skipped` because the two need
+      // different action from the reader.
       row.state='error'; row.error='Could not apply: '+(e&&e.message||e);
+      failed.push({id:row.id, type:row.type, error:row.error});
       skipped.push(row);
     }
   });
-  return {applied, skipped};
+  return {applied, skipped, failed};
 }
 
 // Undo removes ONLY the records this apply created, matched by their exact aiActionId, so it
@@ -8576,6 +9135,58 @@ function aiUndoLastApply(){
   const keptCats=fixCats.filter(c=>!(c&&c.aiActionId&&ids.indexOf(c.aiActionId)>=0));
   if(keptCats.length!==fixCats.length){ removed+=fixCats.length-keptCats.length; BUD_CAT_SAVE.fix(keptCats);
     if(typeof refreshCatBudgetUI==='function') refreshCatBudgetUI(); }
+  // Income streams and expense categories created by this apply. Removed only when nothing has
+  // been filed against them since — deleting a category out from under a record would orphan it.
+  [['inc',BUD_CAT_LOAD.inc,BUD_CAT_SAVE.inc,c=>ledgerOf('income').some(r=>r.streamId===c.id)||
+      Object.keys(budgetData||{}).some(k=>budgetData[k]&&budgetData[k]['inc_'+c.id]!=null&&budgetData[k]['inc_'+c.id]!=='')],
+   ['var',BUD_CAT_LOAD.var,BUD_CAT_SAVE.var,c=>(txnData||[]).some(t=>t&&String(t.catId)===String(c.id))]
+  ].forEach(([kind,load,save,inUse])=>{
+    const list=load();
+    const kept=list.filter(c=>!(c&&c.aiActionId&&ids.indexOf(c.aiActionId)>=0&&!inUse(c)));
+    if(kept.length!==list.length){ removed+=list.length-kept.length; save(kept);
+      if(typeof refreshCatBudgetUI==='function') refreshCatBudgetUI(); }
+  });
+  // Ledger records this apply created, matched by exact aiActionId — same rule as transactions.
+  const beforeL=ledgerData.length;
+  ledgerData=ledgerData.filter(r=>!(r&&r.aiActionId&&ids.indexOf(r.aiActionId)>=0));
+  if(ledgerData.length!==beforeL){ removed+=beforeL-ledgerData.length; saveLedger(); }
+  // An income action may also have moved the week's stored total. Restore it only while the
+  // applied value is still the one on record; a manual edit afterwards always wins over Undo.
+  (last.items||[]).filter(x=>x&&x.type==='add_income'&&x.undo&&x.undo.week).forEach(x=>{
+    const u=x.undo;
+    if(u.mode==='record_only') return;
+    const w=budgetData[u.week]; if(!w) return;
+    if(u.hadValue) w[u.field]=u.previous; else delete w[u.field];
+    w.updatedAt=Date.now();
+    budSaveData(u.week);
+    restored++;
+  });
+  // Balance snapshots: put the account's history entry and current balance back as they were.
+  (last.items||[]).filter(x=>x&&x.type==='add_balance_snapshot'&&x.undo&&x.undo.balance).forEach(x=>{
+    const u=x.undo;
+    const list=loadAccounts();
+    const a=list.find(y=>y&&String(y.id)===String(u.accountId)); if(!a) return;
+    // Drop the entry Apply wrote (always at u.date), then put back whatever was there before.
+    const kept=(Array.isArray(a.history)?a.history:[]).filter(e=>e&&e.date&&e.date!==u.date);
+    a.history=u.hadEntry&&u.previous ? kept.concat([u.previous]).sort((m,n)=>m.date<n.date?-1:1) : kept;
+    a.current=u.prevCurrent;
+    saveAccounts(list);
+    restored++;
+  });
+  // Expense corrections: restore the exact fields Apply changed, and drop the audit entry it
+  // wrote. Skipped when the value has moved on since, for the same reason as the goal undo.
+  (last.items||[]).filter(x=>x&&x.type==='update_expense'&&x.undo).forEach(x=>{
+    const u=x.undo;
+    const t=(txnData||[]).find(y=>y&&String(y.id)===String(u.expenseId)); if(!t) return;
+    const trail=Array.isArray(t.corrections)?t.corrections:[];
+    const mine=trail[trail.length-1];
+    if(!mine||mine.actionId!==u.actionId) return;
+    Object.keys(u.before||{}).forEach(f=>{ t[f]=u.before[f]; });
+    t.corrections=trail.slice(0,-1);
+    if(!t.corrections.length) delete t.corrections;
+    saveTxns();
+    restored++;
+  });
   const beforeR=kitRecipes.length;
   kitRecipes=kitRecipes.filter(r=>!(r&&r.aiActionId&&ids.indexOf(r.aiActionId)>=0));
   if(kitRecipes.length!==beforeR){ removed+=beforeR-kitRecipes.length; kitSaveRecipes(); }
@@ -8651,11 +9262,78 @@ function aiInboxRefreshViews(){
 // ── Inbox UI ─────────────────────────────────────────────────────
 // In-memory for the session, same reasoning as the export builder's state: nothing here is
 // worth a new synced store, and half-pasted JSON least of all.
-const aiInboxState={ text:'', preview:null, error:'', selected:{}, result:null, lastApply:null };
+const aiInboxState={ text:'', preview:null, error:'', selected:{}, result:null, lastApply:null, map:{} };
+
+// ── Name mapping ────────────────────────────────────────────────
+// A batch that names "Daily Spending" when the account is called "Card" should not have to go
+// back to the assistant. Unresolved names are collected from the errors, offered as a
+// selector, and the chosen mapping is applied by REWRITING THE PASTED ACTION's name field
+// before re-validation — so the resolver stays the single place that turns a name into a
+// record, and a mapping can never reach a record the resolver would have refused.
+// Mappings are per-session and in-memory: they describe one paste, not a stored preference.
+const AI_MAP_KINDS={
+  account:  {label:'account',  fields:['paymentAccountName','paymentAccount','fromAccountName','toAccountName','accountName'],
+             list:()=>loadAccounts().map(a=>({id:a.id, name:a.name}))},
+  category: {label:'expense category', fields:['categoryName','category','setCategoryName','setCategory'],
+             list:()=>activeCats(loadVarCats()).map(c=>({id:c.id, name:catLabel(c)}))},
+  stream:   {label:'income stream', fields:['streamName','incomeStreamName'],
+             list:()=>activeCats(loadIncCats()).map(c=>({id:c.id, name:catLabel(c)}))},
+  bill:     {label:'recurring cost', fields:['fixedCategoryName','billName'],
+             list:()=>loadFixCats().map(c=>({id:c.id, name:catLabel(c)}))}
+};
+function aiMapKey(kind,name){ return kind+' '+String(name||'').trim().toLowerCase(); }
+// Every unresolved name in the current paste, with the kind it belongs to. Derived from the
+// raw actions rather than parsed out of error strings — an error message is prose and would
+// break the moment it was reworded.
+function aiInboxUnresolved(){
+  const pv=aiInboxState.preview; if(!pv) return [];
+  const out=[], seen={};
+  pv.rows.filter(r=>r.state==='error').forEach(r=>{
+    const d=(r.action&&r.action.data)||{};
+    Object.keys(AI_MAP_KINDS).forEach(kind=>{
+      AI_MAP_KINDS[kind].fields.forEach(f=>{
+        const raw=aiActStr(d[f]); if(!raw) return;
+        const list=AI_MAP_KINDS[kind].list();
+        if(list.some(x=>String(x.name||'').trim().toLowerCase()===raw.toLowerCase())) return;
+        const key=aiMapKey(kind,raw);
+        if(seen[key]) return;
+        seen[key]=1;
+        out.push({key, kind, name:raw, label:AI_MAP_KINDS[kind].label, options:list});
+      });
+    });
+  });
+  return out;
+}
+function aiInboxSetMap(key, id){
+  if(id) aiInboxState.map[key]=id; else delete aiInboxState.map[key];
+  aiInboxCheck();
+}
+// Rewrite one action's name fields through the chosen mappings. Returns a COPY: the pasted
+// text is never mutated, so clearing a mapping restores the original behaviour exactly.
+function aiApplyMappings(action){
+  const map=aiInboxState.map;
+  if(!map||!Object.keys(map).length) return action;
+  const d=(action&&action.data)||{};
+  let copy=null;
+  Object.keys(AI_MAP_KINDS).forEach(kind=>{
+    const spec=AI_MAP_KINDS[kind];
+    spec.fields.forEach(f=>{
+      const raw=aiActStr(d[f]); if(!raw) return;
+      const id=map[aiMapKey(kind,raw)]; if(!id) return;
+      const rec=spec.list().find(x=>String(x.id)===String(id)); if(!rec) return;
+      if(!copy) copy=Object.assign({}, action, {data:Object.assign({}, d)});
+      copy.data[f]=rec.name;
+    });
+  });
+  return copy||action;
+}
 
 function aiInboxSetText(v){ aiInboxState.text=v; }
 function aiInboxCheck(){
   const parsed=parseDailyActions(aiInboxState.text);
+  // Mappings belong to the text they were chosen for. A different paste starts clean rather
+  // than inheriting a mapping made for someone else's account names.
+  if(aiInboxState.mapFor!==aiInboxState.text){ aiInboxState.map={}; aiInboxState.mapFor=aiInboxState.text; }
   if(parsed.error){ aiInboxState.error=parsed.error; aiInboxState.preview=null; aiInboxState.result=null; renderAIHub(); return; }
   const pv=previewDailyActions(parsed);
   aiInboxState.error=pv.error||'';
@@ -8676,8 +9354,19 @@ function aiInboxApply(){
   const chosen=pv.rows.filter(r=>r.state==='new'&&aiInboxState.selected[r.index]);
   if(!chosen.length) return;
   const res=applyDailyActions(chosen, pv.source);
-  aiInboxState.result={applied:res.applied.length, skipped:res.skipped.length,
-    total:pv.rows.length, items:res.applied};
+  // Counts the reader actually needs: what landed, what was already there, what broke, and
+  // what was left unticked on purpose. "Unresolved" is the last of those — an uncertain row
+  // deliberately not selected is not a failure, and lumping the two together is how a batch
+  // gets reported as complete when a decision is still outstanding.
+  aiInboxState.result={
+    applied:res.applied.length,
+    skipped:res.skipped.length,
+    failed:(res.failed||[]).length,
+    already:pv.counts.already,
+    errors:pv.counts.error,
+    unresolved:pv.rows.filter(r=>r.state==='new'&&!aiInboxState.selected[r.index]).length,
+    total:pv.rows.length, items:res.applied, span:pv.span,
+    failures:res.failed||[]};
   if(res.applied.length){
     aiInboxState.lastApply={ids:res.applied.map(a=>a.id), items:res.applied, at:Date.now()};
     aiInboxState.text='';            // only cleared once something actually landed
@@ -8708,17 +9397,55 @@ function aiInboxCopyErrors(){
 
 const AI_INBOX_SCHEMA_HINT=
   '{\n  "schema": "daily-actions",\n  "version": 1,\n  "source": "chatgpt",\n  "actions": [\n'+
-  '    { "id": "unique-1", "type": "update_spending_goal",\n'+
-  '      "data": { "amount": 500, "applyToCurrentWeek": true } },\n'+
-  '    { "id": "archive-subscription-id-date", "type": "archive_subscription",\n'+
-  '      "data": { "subscriptionId": "exact-stable-id-from-daily", "confirmedEndDate": "2026-08-28" } }\n  ]\n}';
+  '    { "id": "exp-card-118", "type": "add_expense",\n'+
+  '      "data": { "amount": 35.86, "date": "2026-09-05", "categoryId": "pub", "merchant": "The Balmain Hotel & Pub",\n'+
+  '                "paymentAccountId": "acct_card",\n'+
+  '                "source": { "file": "277214S1.CSV", "row": 118, "description": "THE BALMAIN HOTEL" } } },\n'+
+  '    { "id": "inc-card-092", "type": "add_income",\n'+
+  '      "data": { "amount": 910.30, "date": "2026-07-14", "streamId": "inc_balmain", "incomeType": "salary",\n'+
+  '                "weekMode": "add", "paymentAccountId": "acct_card",\n'+
+  '                "source": { "file": "277214S1.CSV", "row": 92, "description": "THE BALMAIN PUB PAY" } } },\n'+
+  '    { "id": "tfr-card-101", "type": "add_transfer",\n'+
+  '      "data": { "amount": 200, "date": "2026-08-04", "fromAccountId": "acct_card", "toAccountId": "acct_savings",\n'+
+  '                "source": { "file": "277214S1.CSV", "row": 101 },\n'+
+  '                "counterpartSource": { "file": "277214S3.CSV", "row": 27 } } },\n'+
+  '    { "id": "rei-hotel-300", "type": "add_reimbursement",\n'+
+  '      "data": { "amount": 300, "date": "2026-08-30", "expenseId": "txn_exact_id_from_export",\n'+
+  '                "reason": "Share of the Newcastle hotel" } },\n'+
+  '    { "id": "bal-card-0905", "type": "add_balance_snapshot",\n'+
+  '      "data": { "accountId": "acct_card", "date": "2026-09-05", "balance": 224.95, "balanceKind": "closing" } },\n'+
+  '    { "id": "fix-hotel-cat", "type": "update_expense",\n'+
+  '      "data": { "expenseId": "txn_exact_id_from_export", "setCategoryId": "travel",\n'+
+  '                "reason": "Accommodation, not pub spending" } }\n  ]\n}';
 
+// The exact live ids the assistant must use, so it never has to invent or guess a name. Names
+// are included beside every id because a person reads this too, but the ids are what the
+// actions should carry: an id cannot be capitalised wrongly.
+function aiInboxLiveRefs(){
+  const line=(label,list)=>label+': '+(list.length?list.map(x=>'"'+x.name+'" (id '+x.id+')').join(', '):'(none set up yet)');
+  return [
+    line('Expense categories', activeCats(loadVarCats()).map(c=>({id:c.id,name:catLabel(c)}))),
+    line('Income streams',     activeCats(loadIncCats()).map(c=>({id:c.id,name:catLabel(c)}))),
+    line('Accounts',           (loadAccounts()||[]).map(a=>({id:a.id,name:a.name}))),
+    line('Recurring costs',    loadFixCats().filter(catIsRecurring).map(c=>({id:c.id,name:catLabel(c)})))
+  ].join('\n');
+}
 function aiInboxCopySchema(){
   const cats=activeCats(loadVarCats()).map(c=>catLabel(c)).join(', ');
   const text='Reply with ONLY a JSON code block in this exact envelope, nothing else:\n\n'+
     AI_INBOX_SCHEMA_HINT+'\n\n'+
     'Supported "type" values: '+AI_ACT_TYPES.join(', ')+'. Every action needs a unique "id".\n'+
-    'Max '+AI_ACT_MAX+' actions per reply.\n'+
+    'Max '+AI_ACT_MAX+' actions per reply.\n\n'+
+    '=== DATES, WEEKS AND MONEY ===\n'+
+    'All dates are YYYY-MM-DD in Australia/Sydney local time. Weeks run Monday to Sunday and a week belongs to the month containing its MONDAY.\n'+
+    'Amounts are positive numbers. Never send a signed bank figure; the action type says which direction the money went.\n'+
+    'Daily\'s meanings, which you must not blur: Spent = actual variable spending. Committed = recurring cost accrued for the week. Saved is separate from both. An account balance is a snapshot, never income.\n\n'+
+    '=== USE THESE EXACT IDS ===\n'+aiInboxLiveRefs()+'\n'+
+    'Resolve by id wherever you can. A name is accepted only when it matches exactly one live record, case-insensitively. If nothing matches, say so — do not invent a name, and do not pick the closest one.\n\n'+
+    '=== DUPLICATES: ALWAYS SEND "source" ===\n'+
+    'Every financial action accepts data.source = { "file": "<exact file name>", "account": "<account id or name>", "row": <original row number>, "description": "<original bank description>" }.\n'+
+    'Daily fingerprints that source row and refuses to import the same row twice, even if you regenerate the batch with different action ids. Without it, only the action id protects against duplicates, and a regenerated batch WILL duplicate.\n'+
+    'Two identical purchases on the same day with the same merchant and amount are TWO purchases. Give each its own row number; never collapse them.\n\n'+
     'add_expense data: amount (>0), date (YYYY-MM-DD), categoryName or categoryId, optional merchant, note, paymentAccountName.\n'+
     'add_subscription data: name, amount (>0), cycle ("weekly", "monthly" or "yearly"), optional status (active/trial/paused/cancelled), nextBillingDate, website, paymentAccountName.\n'+
     'archive_subscription data: subscriptionId (the exact stable id from Daily\'s context export) and a user-confirmed confirmedEndDate (YYYY-MM-DD, today or earlier). Use it only after the user explicitly confirms that end date. Names are descriptive only and never accepted as targets. Daily shows this action unchecked; it preserves history and never permanently deletes the item.\n'+
@@ -8728,6 +9455,26 @@ function aiInboxCopySchema(){
     '  Use unit "" for countable things like "4 salmon fillets".\n'+
     'add_shopping_item data: name, optional category ('+KITSHOP_CAT_ORDER.join('/')+'). Quantities are not stored.\n'+
     'update_spending_goal data: amount (>0) and applyToCurrentWeek (true or false). This changes the usual goal and can explicitly set the current week too; false leaves any current-week override alone. It never rewrites past weeks.\n\n'+
+    '=== FINANCIAL IMPORT ACTIONS ===\n'+
+    'add_income data: amount (>0), date (the day it landed), streamId or streamName, incomeType ('+AI_INCOME_TYPES.join('/')+'), weekMode (REQUIRED: '+AI_INCOME_MODES.join('/')+'), optional paymentAccountId/Name, note, source.\n'+
+    '  The itemised deposit is always recorded. weekMode decides what happens to the week\'s stored total for that stream: "add" increases it, "replace" sets it to this deposit, "record_only" leaves it alone. There is NO default — pick one deliberately and say why in "note" when a week already holds a figure. Daily shows the before and after and flags the conflict.\n'+
+    '  Keep salary, family support, gifts, reimbursements and internal transfers as different incomeType values. A reimbursement is NOT salary. An internal transfer is not income at all — use add_transfer.\n'+
+    'add_transfer data: amount (>0), date, fromAccountId/Name, toAccountId/Name, optional note, source, counterpartSource.\n'+
+    '  Moving your own money between your own accounts. It creates no income and no spending. ONE real transfer appears as TWO statement rows (a debit in one file, a credit in the other) — send ONE action and put the other row in counterpartSource, so the second file does not import it again.\n'+
+    'add_reimbursement data: amount (>0), date the money came back, expenseId (the exact transaction id from the context export), optional reason, paymentAccountId/Name, note, source.\n'+
+    '  The original expense stays at its full amount in your spending. Daily derives your net cost. Never also lower the expense with update_expense — that would remove the same money twice. The reimbursement may fall in a different week from the purchase; both dates are kept.\n'+
+    'add_bill_payment data: amount (>0), date the payment actually left the account, fixedCategoryId/Name, optional paymentAccountId/Name, note, source.\n'+
+    '  The dated payment of a recurring cost. Do NOT also send it as add_expense: the week already accrues that cost as Committed, and sending both counts it twice. A recurring cost DEFINITION is add_subscription; this is a payment against one.\n'+
+    'add_balance_snapshot data: accountId/Name, date (REQUIRED, explicit — Daily never assumes today), balance, balanceKind (REQUIRED: '+AI_BALANCE_KINDS.join('/')+').\n'+
+    '  A balance is an observation. It never creates income or an expense. An "available" balance is recorded but never becomes the current balance, and an older reading never overwrites a newer one.\n'+
+    'update_expense data: expenseId (exact id), plus any of setCategoryId/setCategoryName, setMerchant, setNote, setAmount, and a "reason".\n'+
+    '  This CORRECTS the existing record in place. Never fix a mis-categorised expense by adding a second corrected one. Daily shows before and after and keeps an audit trail; the row starts unticked.\n'+
+    'add_income_stream data: name. add_expense_category data: name.\n'+
+    '  Only for something that genuinely does not exist. Both start unticked and need explicit approval. Check the id list above first — "Pub & Social" is not a new category if "Pub & social" already exists.\n\n'+
+    '=== BATCHES ===\n'+
+    'Send at most '+AI_ACT_MAX+' actions per reply. After applying, Daily reports what landed, what was already present, what was left unticked and which source rows the batch covered — continue from the row after the highest one it names.\n'+
+    'Do not put batch bookkeeping in a transaction\'s note. A note describes the purchase.\n'+
+    'If you are unsure how to classify a row, send it with your best classification and explain the doubt in "note", or leave it out and list it in prose after the code block. Do not guess silently.\n\n'+
     'My live expense categories are: '+(cats||'(none set up yet)')+'.';
   const done=()=>{ if(typeof showToast==='function') showToast('Instructions copied — paste them to your AI'); };
   if(navigator.clipboard&&navigator.clipboard.writeText){
@@ -8758,19 +9505,49 @@ function aiInboxHtml(){
     if(c.new) bits.push(c.new+' ready');
     if(c.already) bits.push(c.already+' already applied');
     if(c.error) bits.push(c.error+' with errors');
+    if(c.conflict) bits.push(c.conflict+' needing a decision');
     h+='<div class="aih-inbox-step"><span>4</span><div><strong>Review the checks</strong><p>Valid, duplicate and rejected actions stay visibly separate.</p></div></div>';
+    // WHO and WHERE this lands. The importer only ever resolves against the signed-in account's
+    // own stores, so this is a statement of fact rather than a control — but it has to be
+    // visible, because "am I importing into the right person's Daily" is not answerable from a
+    // list of expenses.
+    const acctNames=(loadAccounts()||[]).map(a=>a&&a.name).filter(Boolean);
+    const who=(typeof firebaseReady!=='undefined'&&firebaseReady&&typeof auth!=='undefined'&&auth&&auth.currentUser)
+      ? (auth.currentUser.email||auth.currentUser.displayName||'the signed-in account')
+      : 'this device only (not signed in)';
+    h+='<div class="aih-target"><strong>Importing into '+esc(who)+'</strong>'+
+       '<span>Accounts: '+esc(acctNames.join(', ')||'none set up')+'</span></div>';
     h+='<div class="aih-inbox-sum">'+esc(bits.join(' · ')||'Nothing to import')+
        (pv.source?' <span class="aih-src">from '+esc(pv.source)+'</span>':'')+'</div>';
-    if(c.new) h+='<div class="aih-inbox-step"><span>5</span><div><strong>Select actions</strong><p>Untick anything you do not want to apply.</p></div></div>';
+
+    // Unresolved names get a selector rather than only a long error list.
+    const unresolved=aiInboxUnresolved();
+    if(unresolved.length){
+      h+='<div class="aih-maps"><div class="aih-maps-hd">Names Daily could not match</div>';
+      unresolved.forEach(u=>{
+        const chosen=st.map[u.key]||'';
+        h+='<label class="aih-map"><span class="aih-map-n">'+esc(u.name)+'<small> — '+esc(u.label)+'</small></span>'+
+           '<select onchange="aiInboxSetMap(this.dataset.k,this.value)" data-k="'+esc(u.key)+'">'+
+           '<option value="">Leave unmatched</option>'+
+           u.options.map(o=>'<option value="'+esc(o.id)+'"'+(String(chosen)===String(o.id)?' selected':'')+'>'+esc(o.name)+'</option>').join('')+
+           '</select></label>';
+      });
+      h+='<div class="aih-note">Mapping a name re-checks the batch. Nothing is created for you — if none of these is right, add the account or category first.</div></div>';
+    }
+
+    if(c.new) h+='<div class="aih-inbox-step"><span>5</span><div><strong>Select actions</strong><p>Untick anything you do not want to apply. Leaving one unticked never blocks the rest.</p></div></div>';
+    (pv.groups&&pv.groups.length?pv.groups:[{id:'other',label:'',rows:pv.rows}]).forEach(g=>{
+    if(pv.groups&&pv.groups.length>1) h+='<div class="aih-group-hd">'+esc(g.label)+' · '+g.rows.length+'</div>';
     h+='<div class="aih-rows">';
-    pv.rows.forEach(r=>{
+    g.rows.forEach(r=>{
       const on=!!st.selected[r.index];
       if(r.state==='new'){
-        h+='<button class="aih-row'+(on?' on':'')+'" role="checkbox" aria-checked="'+(on?'true':'false')+'" onclick="aiInboxToggle('+r.index+')">'+
+        h+='<button class="aih-row'+(on?' on':'')+(r.conflict?' aih-row-warn':'')+'" role="checkbox" aria-checked="'+(on?'true':'false')+'" onclick="aiInboxToggle('+r.index+')">'+
              '<span class="aih-box" aria-hidden="true">'+(on?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>':'')+'</span>'+
              '<span class="aih-row-t"><span class="aih-row-k">'+esc(r.label)+'</span>'+
              '<span class="aih-row-s">'+esc(r.summary)+'</span>'+
-             (r.requiresConfirmation?'<span class="aih-row-n">Select this row to confirm the archive.</span>':'')+'</span></button>';
+             (r.conflict?'<span class="aih-row-c">'+esc(r.conflict)+'</span>':'')+
+             (r.requiresConfirmation?'<span class="aih-row-n">Select this row to confirm it.</span>':'')+'</span></button>';
       } else if(r.state==='already'){
         h+='<div class="aih-row aih-row-skip"><span class="aih-row-t">'+
              '<span class="aih-row-k">'+esc(r.label)+' · already applied</span>'+
@@ -8783,6 +9560,7 @@ function aiInboxHtml(){
       }
     });
     h+='</div>';
+    });
     const sel=pv.rows.filter(r=>r.state==='new'&&st.selected[r.index]).length;
     if(c.new){
       h+='<div class="aih-inbox-step"><span>6</span><div><strong>Apply selected actions</strong><p>This is the first point where Daily writes anything.</p></div></div>';
@@ -8796,8 +9574,24 @@ function aiInboxHtml(){
   if(st.result){
     const r=st.result;
     h+='<div class="aih-inbox-step"><span>7</span><div><strong>Undo if needed</strong><p>The immediate undo only reverses this import.</p></div></div>';
-    h+='<div class="aih-result">Applied '+r.applied+' of '+r.total+' action'+(r.total===1?'':'s')+
-       (r.skipped?' · '+r.skipped+' skipped':'')+'.</div>';
+    const outBits=[r.applied+' imported'];
+    if(r.already) outBits.push(r.already+' already present');
+    if(r.unresolved) outBits.push(r.unresolved+' left unticked');
+    if(r.failed) outBits.push(r.failed+' failed');
+    if(r.errors) outBits.push(r.errors+' rejected');
+    h+='<div class="aih-result">'+esc(outBits.join(' · '))+' — of '+r.total+' action'+(r.total===1?'':'s')+'.</div>';
+    if(r.failed) h+='<div class="aih-err">'+esc(r.failures.map(f=>f.id+': '+f.error).join(' | '))+
+      ' Re-pasting the batch is safe: anything that already landed is recognised by its source row.</div>';
+    // Continuation lives HERE, not in a transaction note. A real purchase's note is not a place
+    // to keep batch bookkeeping.
+    if(r.span&&(r.span.files&&r.span.files.length||r.span.fromDate)){
+      const sp=r.span;
+      const fileBits=(sp.files||[]).map(f=>f.file+(f.firstRow!=null?' rows '+f.firstRow+'–'+f.lastRow:'')+' ('+f.actions+')');
+      h+='<div class="aih-note"><strong>Batch covered:</strong> '+
+         esc(fileBits.join('; ')||'no source rows given')+
+         (sp.fromDate?' · dates '+esc(aiActFmtFullDate(sp.fromDate))+' to '+esc(aiActFmtFullDate(sp.toDate)):'')+
+         '. Continue the next batch from the row after the highest one listed.</div>';
+    }
     if(st.lastApply&&st.lastApply.ids.length)
       h+='<button class="aih-btn aih-btn-wide" onclick="aiInboxUndo()">Undo this import</button>';
   }
@@ -10688,6 +11482,91 @@ function loadTxns(){ const a=lsLoad('daily_transactions', []); return Array.isAr
 let txnData = loadTxns();
 function saveTxns(){ lsSave('daily_transactions', txnData, 'transactions'); }
 function genTxnId(){ return 'txn_'+Date.now()+'_'+Math.floor(Math.random()*1e4); }
+
+// ── The financial ledger (imported dated events that are NOT variable spending) ───
+// ONE store, not four. Income deposits, internal transfers, reimbursements and actual bill
+// payments are all "a dated financial event with a bank-statement origin that must not be
+// counted as discretionary spending", and giving each its own localStorage key would mean four
+// sync registrations, four merge rules and four lines in every backup — four chances for one
+// of them to be forgotten (see AGENTS.md on unregistered stores silently vanishing from
+// restore). `kind` separates them; every reader below filters on it.
+//
+// What this store deliberately does NOT do: change any existing money figure. weekIncome(),
+// weekVarTotal(), weekFixedTotal(), weekSavedAmt() and weekLeftover() read exactly what they
+// read before. That is the whole safety story for importing onto live data:
+//   • income  — the ledger holds the ITEMISED deposit; the week's canonical inc_<stream> total
+//               is changed only by an explicit weekMode, shown as before → after in preview.
+//   • transfer— moving your own money is neither income nor spending, so it touches nothing.
+//   • reimbursement — the original expense stays GROSS in Spent. Net personal cost is DERIVED
+//               (ledgerNetCostFor) and reported; nothing subtracts it from the week a second
+//               time. Exactly one place nets, and it is a reader, never a writer.
+//   • bill_payment — the actual dated payment of a recurring bill. Committed cost is already
+//               accrued weekly from fixRates; adding the payment to variable spending would
+//               count the same money twice, so it is recorded here and excluded from Spent.
+function loadLedger(){ const a=lsLoad('daily_ledger', []); return Array.isArray(a)?a:[]; }
+let ledgerData = loadLedger();
+function saveLedger(){ lsSave('daily_ledger', ledgerData, 'ledger'); }
+function genLedgerId(){ return 'led_'+Date.now()+'_'+Math.floor(Math.random()*1e4); }
+const LEDGER_KINDS=['income','transfer','reimbursement','bill_payment'];
+function ledgerOf(kind){ return ledgerData.filter(r=>r&&r.kind===kind); }
+
+// A stable fingerprint for the SOURCE bank row, independent of the action id an assistant
+// happened to generate. Regenerating a batch produces new action ids for the same statement
+// rows; without this, replaying it would import every row twice. Row number wins when present
+// because it is the only truly unique handle a CSV gives us; otherwise the natural key is
+// date + amount + description, which is what a human would compare.
+// Deliberately NOT used to collapse records that merely look alike: two identical pub rounds
+// on one day are two purchases, and they differ by row number in the source file.
+function ledgerSrcKey(src){
+  if(!src||typeof src!=='object') return '';
+  const s=v=>String(v==null?'':v).trim().toLowerCase();
+  const file=s(src.file), acct=s(src.account), row=s(src.row);
+  if(file&&row) return 'src:'+file+'#'+row;
+  const date=s(src.date), amt=s(src.amount), desc=s(src.description||src.desc).replace(/\s+/g,' ');
+  if(date&&amt&&desc) return 'nat:'+acct+'|'+date+'|'+amt+'|'+desc;
+  return '';
+}
+// True when this exact source row has already been imported, as EITHER a ledger record or a
+// transaction. Both stores are checked because one bank row can legitimately land in either
+// (a purchase becomes a transaction; a transfer becomes a ledger record) and an assistant
+// re-classifying a row between batches must not create a second copy of it.
+function ledgerSrcSeen(key, ignoreId){
+  if(!key) return false;
+  return ledgerData.some(r=>r&&r.srcKey===key&&r.id!==ignoreId)
+      || (Array.isArray(txnData)&&txnData.some(t=>t&&t.srcKey===key));
+}
+function ledgerNormaliseSource(src){
+  if(!src||typeof src!=='object'||Array.isArray(src)) return null;
+  const out={};
+  ['file','account','row','description','transactionId'].forEach(k=>{
+    const v=src[k]==null?'':String(src[k]).trim().slice(0,200);
+    if(v) out[k==='description'?'description':k]=v;
+  });
+  return Object.keys(out).length?out:null;
+}
+
+// ── Derived reporting ───────────────────────────────────────────
+// Reimbursements against one expense, and the net personal cost that follows. The gross figure
+// is whatever the transaction says and is never rewritten; this is the only place the two are
+// combined, which is what stops the "netted twice" failure.
+function ledgerReimbursementsFor(txnId){
+  if(!txnId) return [];
+  return ledgerOf('reimbursement').filter(r=>String(r.expenseId||'')===String(txnId));
+}
+function ledgerReimbursedTotal(txnId){
+  return ledgerReimbursementsFor(txnId).reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
+}
+function ledgerNetCostFor(txn){
+  const gross=parseFloat(txn&&txn.amount)||0;
+  return Math.round((gross-ledgerReimbursedTotal(txn&&txn.id))*100)/100;
+}
+// Every ledger record dated inside one Monday-started week.
+function ledgerForWeek(mondayStr, kind){
+  if(!mondayStr) return [];
+  const mon=localMidnight(mondayStr);
+  const sunStr=dateStr(new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+6));
+  return ledgerData.filter(r=>r&&r.date>=mondayStr&&r.date<=sunStr&&(!kind||r.kind===kind));
+}
 // Every transaction dated inside the week starting `mondayStr`.
 function txnsForWeek(mondayStr){
   if(!mondayStr) return [];

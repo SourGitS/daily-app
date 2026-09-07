@@ -611,6 +611,66 @@ the accent or the theme must go through those, not set `--accent` directly.
   one centred line floating in it; the modifier is `.is-empty` now. Same class of fault as the
   retired `.set-row` collision below — do not use a generic word as a modifier.
 
+- **The daily-actions importer now covers financial history, and `daily_ledger` is where the
+  new record kinds live.** ONE store, not four: income deposits, internal transfers,
+  reimbursements and actual bill payments are all "a dated financial event with a bank-statement
+  origin that must not be counted as discretionary spending", and four separate keys would mean
+  four sync registrations and four chances to forget one (see AGENTS.md on unregistered stores
+  vanishing from restore). `kind` separates them. It is registered through the ordinary
+  `syncBlobListen` path, so `SYNC_BLOB_REG` → `restorePushToCloud()` and `exportAllData()` both
+  reach it automatically.
+  **Nothing in it changes an existing money figure.** `weekIncome()`, `weekVarTotal()`,
+  `weekFixedTotal()`, `weekSavedAmt()` and `weekLeftover()` read exactly what they read before —
+  that is the whole safety story for importing onto live data:
+  - **income** — the itemised deposit is always recorded in the ledger; the week's canonical
+    `inc_<stream>` total moves only under an explicit `weekMode` (`add` / `replace` /
+    `record_only`) with **no default**, shown as before → after and flagged as a conflict when
+    the week already holds a figure. A $950 week meeting a $536.40 deposit is a reconciliation
+    a person makes, not one the importer guesses.
+  - **transfer** — your own money between your own accounts touches nothing. ONE real transfer
+    is TWO statement rows; `counterpartSource` collapses the pair whichever file arrives first.
+  - **reimbursement** — the expense stays **GROSS** in Spent. Net personal cost is DERIVED by
+    `ledgerNetCostFor()` and reported (export, preview). Exactly one place nets, and it is a
+    reader, never a writer — which is what stops the same money being removed twice. A
+    reimbursement may land in a different week; both dates are kept and neither week's Spent
+    moves.
+  - **bill_payment** — the dated payment of a recurring cost, kept OUT of variable spending
+    because the week already accrues it as Committed from its frozen `fixRates`.
+  Balance snapshots write into the existing `accounts[].history` (no new store): an older
+  reading never rewrites `current`, and an `available` balance is recorded but never becomes
+  `current`. Expense corrections MUTATE the named transaction and keep an audit trail on it —
+  never "add a corrected copy", which is how a hotel bill lands twice.
+- **Import duplicate safety is the SOURCE ROW, not the action id.** Every financial action
+  accepts `data.source` `{file, account, row, description}`; `ledgerSrcKey()` fingerprints it
+  and `dupKey` checks the action id **or** that fingerprint, across the ledger AND `txnData`.
+  An assistant regenerating a batch renumbers its action ids, so ids alone would re-import
+  everything; equally, date+merchant+amount alone would collapse two genuine identical pub
+  rounds, so the row number is what separates them. Verified both ways.
+  The context export carries `ledger.importedSourceKeys` so the next batch can see exactly which
+  rows are already on file.
+- **Preview groups, conflicts and name mapping.** `AI_ACT_GROUPS` sections the preview
+  (Expenses / Income / Fixed-bill payments / Internal transfers / Reimbursements / Balance
+  snapshots / Corrections / Setup / Kitchen / Other). **A row's `group` is set BEFORE the error
+  return** — a rejected action without one would be dropped from the grouped render entirely,
+  which is the row a person most needs to see. `conflict` is amber (`--warn-*`, not
+  `--amber-*`, whose tokens are actually red) and never blocks the row or any other row.
+  Unresolved names get a `<select>` (`aiInboxUnresolved()` / `aiApplyMappings()`): the mapping
+  REWRITES the pasted action's name field and re-validates, so `aiResolveRef` stays the single
+  place a name becomes a record and a mapping can never reach something the resolver would
+  refuse. Mappings are in-memory and reset when the pasted text changes.
+- **Version stays 1 and there is no migration.** Every new action type is additive; an unknown
+  type was already a per-action error, never an envelope error, so old version-1 payloads still
+  validate and apply unchanged.
+- **`add_income_stream`, `add_expense_category` and `update_expense` start UNTICKED**
+  (`requiresConfirmation`), like `archive_subscription`. Creating a category changes the SHAPE
+  of a budget rather than adding a record to it — that is exactly how "Pub & social" would gain
+  a "Pub & Social" twin if nobody were asked.
+- **Daily has no server and no multi-user session, so an import is scoped by WHO IS SIGNED IN.**
+  Every resolver reads the signed-in device's own stores and the Firebase rules already scope
+  `users/<uid>`; there is no code path that can reference another account's records. The
+  preview states the target account and its account names out loud anyway, because "am I
+  importing into the right person's Daily" is not answerable from a list of expenses.
+
 - **Settings is registry-driven — never hardcode a settings row, title or label again.**
   `SETTINGS_SECTIONS` / `SETTINGS_GROUPS` / `SETTINGS_SEARCH` in `js/app.js` are the single
   source for every label, icon, tint, `open()` target, row summary and search subtitle.

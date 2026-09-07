@@ -157,7 +157,9 @@
 // v302: refine Home weather into 19 scenes with layered cloud banks, fine rain and line icons.
 // v303: give Stats > Review a local rail on wide desktop and flow its cards vertically.
 // v304: pin the five phone tabs above the nav groups so they are one press, not two.
-const CACHE_NAME = 'daily-v304';
+// v305: financial import - income, transfers, reimbursements, bill payments, balance
+// snapshots and expense corrections, with source-row duplicate safety and a grouped preview.
+const CACHE_NAME = 'daily-v305';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
