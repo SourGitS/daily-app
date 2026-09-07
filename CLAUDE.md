@@ -658,11 +658,66 @@ the accent or the theme must go through those, not set `--accent` directly.
   REWRITES the pasted action's name field and re-validates, so `aiResolveRef` stays the single
   place a name becomes a record and a mapping can never reach something the resolver would
   refuse. Mappings are in-memory and reset when the pasted text changes.
+- **A CONFLICT asks the reader to decide; an INFO line only tells them something.** Two fields,
+  two treatments: `row.conflict` is the amber `.aih-row-c`, `row.info` the quiet grey
+  `.aih-row-i`. They were one field, and twenty routine salary rows carrying "the pay day moved"
+  in amber read as twenty problems. Decisions (a week that already holds an income figure, a
+  possible duplicate, a bill against a week that accrued nothing, a pending charge) are amber;
+  facts (a payday weekday, a week the expense will move into, a savings direction, an
+  unattributed account) are grey. Neither ever blocks a row, or any other row.
+- **Possible duplicates are SURFACED, never skipped.** `aiNearDupTxns()` / `aiNearDupLedger()`
+  find same-day, same-amount, same-merchant records that do NOT share a source row, and
+  `aiDupWarning()` says what is already on file. It is deliberately weaker than the source-row
+  test above and must stay non-blocking: two identical pub rounds on one afternoon are two
+  purchases. It exists for the batches generated before `source` did — those have nothing but
+  the action id, so re-pasting one would silently double every row with no warning at all.
+- **Pending card authorisations are marked, not merged.** `add_expense` takes `pending:true`,
+  which sets `pendingImport` on the record, starts the row UNTICKED and says the amount and
+  date can still move. When the settled row arrives, `aiPendingMatch()` (named-vs-named on the
+  merchant, otherwise the exact amount, within 8 days and the same account) flags it and names
+  the pending record's id, and the fix is a CORRECTION — `update_expense` with `clearPending`,
+  `setAmount` and `setDate` — never a second expense. Matching on amount alone was rejected: a
+  pending $52.16 Uber Eats and an unrelated $52.16 pub round are not the same purchase.
+  `setDate` states which weeks change, because the date is what decides the week.
+- **Today's recurring settings are not evidence about the imported period.** `add_bill_payment`
+  reads `weekFixedContribution()` for the payment's own week: 0 means that week's frozen
+  `fixRates` never held the item, so it either did not exist or was not charging — flagged for
+  review rather than rejected, because the payment is real either way. A week Daily has no
+  record of at all is flagged too. When the week DOES accrue it, the info line states the
+  weekly accrual beside the actual charge, so a $9.99 monthly bill against a $2.30 weekly
+  accrual reads as arithmetic rather than as a discrepancy. `add_expense` runs the mirror check:
+  a merchant naming a live recurring cost is flagged, because that is the shape "counted as both
+  Spent and Committed" takes.
+- **Saved is a number the user types, so an import never writes it.** `weekSavedAmt()` reads
+  `d.sav_amount` and nothing else. A transfer into an account flagged `saver` is recorded with
+  `savingsMove:'contribution'` (out of one is a `'withdrawal'`) and reported by
+  `ledgerSavingsMovement()`, which is DERIVED — a reader, exactly like `ledgerNetCostFor()`.
+  When the week already holds a typed Saved figure the preview says so as a conflict, because
+  that is a reconciliation only the person can make. Do not add a writer here.
+- **The pay day is flagged, never changed.** `getPayDay(streamId)` is a weekday per income
+  stream and drives the pay-cycle forecast. A salary deposit landing on another weekday gets an
+  info line naming both days; one early payment and a permanently moved schedule look identical
+  from a single deposit, so the import states the disagreement and stops.
+- **`aiReconReport()` is the between-batches check, and it reads the STORES.** Generated JSON is
+  not evidence that anything was imported; this is. Ten checks over `txnData`, `ledgerData`,
+  `budgetData` and `accounts`, all through the canonical readers (`weekIncome`, `weekVarTotal`,
+  `weekFixedContribution`, `ledgerNetCostFor`, `weekSavedAmt`) so it cannot disagree with the
+  screens: weeks with spending but no income (the "Enter income" symptom a half-finished import
+  leaves), weeks with income but no spending, expenses that look like an already-accrued
+  recurring cost, possible duplicates, pending charges never settled, per-file source-row
+  coverage with the gaps listed, unattributed accounts, pay-day disagreements, gross/net
+  reimbursements, savings movement against the typed Saved figures, and each account's newest
+  dated reading against its stored current balance. It writes NOTHING, and `aiReconText()`
+  copies the same report out for the assistant. Its card sits BELOW the inbox in the import
+  flow: it is what you check between batches, not a step inside one.
 - **Version stays 1 and there is no migration.** Every new action type is additive; an unknown
   type was already a per-action error, never an envelope error, so old version-1 payloads still
-  validate and apply unchanged.
-- **`add_income_stream`, `add_expense_category` and `update_expense` start UNTICKED**
-  (`requiresConfirmation`), like `archive_subscription`. Creating a category changes the SHAPE
+  validate and apply unchanged. The later fields (`pending`, `setDate`, `clearPending`,
+  `source`) are optional on actions that already existed, so a batch written before them
+  behaves exactly as it did — it simply has weaker duplicate protection, which is what
+  `aiDupWarning()` exists to say out loud.
+- **`add_income_stream`, `add_expense_category`, `update_expense` and any `pending` expense
+  start UNTICKED** (`requiresConfirmation`), like `archive_subscription`. Creating a category changes the SHAPE
   of a budget rather than adding a record to it — that is exactly how "Pub & social" would gain
   a "Pub & Social" twin if nobody were asked.
 - **Daily has no server and no multi-user session, so an import is scoped by WHO IS SIGNED IN.**

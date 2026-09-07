@@ -1893,3 +1893,21 @@ button.aih-row{cursor:pointer}
   .aih-modes button{min-height:36px}
   .aih-step-card{margin-bottom:8px}
 }
+/* An informational line on an import row. Deliberately NOT the amber conflict treatment:
+   a conflict asks the reader to decide something, this only tells them something they should
+   know (a pay day that moved, a week that reflows, an unattributed account). Twenty routine
+   salary rows must not read as twenty problems. */
+.aih-row-i{font-size:11.5px;line-height:1.45;color:var(--muted)}
+/* ── Reconciliation panel ──
+   Grouped findings read from the stores, not from a paste. A "needs a decision" group carries
+   the same amber the import rows use, for the same reason: it must read identically under any
+   accent, including the neutral grey default. */
+.aih-rec-sec{margin-top:12px;padding:11px 12px;border-radius:13px;
+  border:1px solid var(--border);background:var(--bg)}
+.aih-rec-sec.is-warn{border-color:var(--warn-border);background:var(--warn-bg)}
+.aih-rec-hd{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--text-2);margin-bottom:7px}
+.aih-rec-sec.is-warn .aih-rec-hd{color:var(--warn-dark)}
+.aih-rec-list{margin:0;padding-left:18px;font-size:12.5px;line-height:1.5;color:var(--text)}
+.aih-rec-list li{margin:2px 0;overflow-wrap:anywhere}
+.aih-rec-note{margin-top:7px;font-size:11.5px;line-height:1.45;color:var(--muted)}

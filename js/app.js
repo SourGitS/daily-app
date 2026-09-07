@@ -7084,7 +7084,14 @@ function aiLedgerScope(range){
     rows.map(r=>r.sourceKey).filter(Boolean),
     (Array.isArray(txnData)?txnData:[]).map(t=>t&&t.srcKey).filter(Boolean)
   );
-  return {records:rows, importedSourceKeys:[...new Set(importedKeys)].sort()};
+  // Movement in and out of the ringfenced savers accounts, DERIVED from the transfers above.
+  // Exported beside them so an assistant can report saving without being tempted to write the
+  // week's Saved figure, which is the user's own typed number.
+  const savingsMovement=(typeof ledgerSavingsMovement==='function')
+    ? ledgerSavingsMovement(range.from, range.to) : null;
+  return {records:rows, importedSourceKeys:[...new Set(importedKeys)].sort(),
+    savingsMovement:savingsMovement,
+    savedMetricNote:'Daily’s weekly Saved figure is typed into the Budget week by the user. Imported transfers are recorded as account movement only and never write it.'};
 }
 
 // Live scheduled Fixed categories are the subscription/bill/payment-plan model.
@@ -8365,15 +8372,38 @@ function aiValExpense(d,id){
   // stay two expenses: they carry different source rows, and with no source block at all this
   // falls back to the action id exactly as before.
   const srcInfo=aiActSource(d);
+  const pending=d.pending===true||aiActStr(d.status).toLowerCase()==='pending';
+  const conflicts=[], infos=[];
+  // A pending authorisation is accepted but never assumed to be final, and never ticked for
+  // you: the settled row is the one the statement will keep.
+  if(pending) conflicts.push('This is a PENDING authorisation, not a settled charge. The amount and the date can both still '+
+    'change, and the settled row will appear in a later statement. Daily marks it as pending so the settled row is matched '+
+    'back to it rather than added beside it — settle it with update_expense { "clearPending": true } instead of a second expense.');
+  else conflicts.push(aiPendingWarning(aiPendingMatch(date, amt, merchant, acct.rec?acct.rec.id:'')));
+  // Weaker than a source-row match and deliberately non-blocking: see aiDupWarning.
+  conflicts.push(aiDupWarning(aiNearDupTxns(date, amt, merchant, srcInfo.key), 'expense', srcInfo.key));
+  // The same money must not be BOTH variable spending and an accrued committed cost. A live
+  // recurring cost whose name appears in the merchant is the shape that mistake takes.
+  const hay=(merchant+' '+note).toLowerCase();
+  const recur=activeCats(loadFixCats()).filter(catIsRecurring).find(c=>{
+    const n=catDisplayName(catLabel(c)).toLowerCase().trim();
+    return n.length>=4&&hay.indexOf(n)>=0;
+  });
+  if(recur) conflicts.push('“'+catLabel(recur)+'” is a recurring cost in Daily, and every week already accrues it as a '+
+    'committed cost. Importing this as variable spending counts the same money twice — send it as add_bill_payment unless '+
+    'this really is a separate purchase from that merchant.');
+  if(!acct.rec) infos.push('No payment account attributed.');
   const summary='Add '+fmtMoneyExact(amt)+(merchant?' '+merchant:'')+' expense to '+catLabel(cat.rec)+
-    ' on '+aiActFmtDate(date)+(acct.rec?', paid with '+acct.rec.name:'')+'.';
-  return {ok:true, summary, group:'expense',
+    ' on '+aiActFmtDate(date)+(acct.rec?', paid with '+acct.rec.name:'')+(pending?'. Held as PENDING':'')+'.';
+  return {ok:true, summary, group:'expense', requiresConfirmation:pending,
+    conflict:conflicts.filter(Boolean).join(' '), info:infos.join(' '),
     dupKey:txn=>!!txn&&((txn.aiActionId&&txn.aiActionId===id)||(!!srcInfo.key&&txn.srcKey===srcInfo.key)),
     collection:()=>txnData,
     apply:(meta)=>{
       const rec=txnCreateRecord({date, catId:cat.rec.id, amount:amt, merchant, note,
         acctId:acct.rec?acct.rec.id:''}, meta);
       if(srcInfo.key){ rec.srcKey=srcInfo.key; if(srcInfo.src) rec.source=srcInfo.src; }
+      if(pending) rec.pendingImport=true;
       saveTxns();
       return {kind:'transaction'};
     }};
@@ -8643,6 +8673,63 @@ function aiLedgerDup(id, srcKey){
   return r=>!!r&&((r.aiActionId&&r.aiActionId===id)||(!!srcKey&&r.srcKey===srcKey));
 }
 
+// ── Possible duplicates, which are NOT proof of one ─────────────
+// An exact match on the action id or the SOURCE ROW means "already imported", and that row is
+// skipped. Everything below is weaker: the same day, the same amount, the same merchant, and no
+// source row to tell the two apart. Two identical pub rounds on one afternoon are two
+// purchases, so this must never skip, reject or reorder a row — it states what Daily already
+// holds and leaves the decision where it belongs. It earns its keep on batches generated before
+// source rows existed, which have nothing else to protect them.
+function aiNearDupTxns(date, amt, merchant, srcKey){
+  const m=String(merchant||'').trim().toLowerCase();
+  return (Array.isArray(txnData)?txnData:[]).filter(t=>t&&t.date===date&&
+    Math.abs((parseFloat(t.amount)||0)-amt)<0.005&&
+    (!m||String(t.merchant||'').trim().toLowerCase()===m)&&
+    !(srcKey&&t.srcKey===srcKey));
+}
+function aiNearDupLedger(kind, date, amt, srcKey){
+  return ledgerOf(kind).filter(r=>r&&r.date===date&&Math.abs((parseFloat(r.amount)||0)-amt)<0.005&&
+    !(srcKey&&r.srcKey===srcKey));
+}
+function aiDupWarning(hits, what, srcKey){
+  if(!hits.length) return '';
+  return 'Daily already holds '+hits.length+' '+what+(hits.length===1?'':'s')+' on this date for this amount'+
+    (srcKey?'':', and this action carries no source row to tell them apart')+
+    '. If it is genuinely a separate one, tick it and Daily keeps both; if it is the same money, leave it unticked.';
+}
+
+// ── Pending card authorisations ─────────────────────────────────
+// A pending charge is not a settled one: the amount can still change, the date almost always
+// does, and the settled row turns up in a later statement. Daily accepts one so a screenshot
+// taken mid-week is not lost, but it MARKS the record, starts the row unticked, and matches the
+// settled row back to it later instead of filing a second copy beside it. Settling is a
+// CORRECTION (update_expense with clearPending), never a new expense.
+function aiPendingTxns(){ return (Array.isArray(txnData)?txnData:[]).filter(t=>t&&t.pendingImport); }
+function aiDayGap(a,b){
+  try{ return Math.abs((localMidnight(a)-localMidnight(b))/864e5); }catch(e){ return NaN; }
+}
+// Named-versus-named compares the names; anything unnamed falls back to the exact amount. A
+// blanket amount match would tie a pending $52.16 Uber Eats to an unrelated $52.16 pub round.
+function aiPendingMatch(date, amt, merchant, acctId){
+  const m=String(merchant||'').trim().toLowerCase();
+  return aiPendingTxns().filter(t=>{
+    if(acctId&&t.acctId&&String(t.acctId)!==String(acctId)) return false;
+    const gap=aiDayGap(t.date, date);
+    if(isNaN(gap)||gap>8) return false;
+    const tm=String(t.merchant||'').trim().toLowerCase();
+    if(m&&tm) return tm===m;
+    return Math.abs((parseFloat(t.amount)||0)-amt)<0.005;
+  });
+}
+function aiPendingWarning(hits){
+  if(!hits.length) return '';
+  const h=hits[0];
+  return 'This looks like the settled form of a pending charge Daily already holds ('+
+    (h.merchant||'no merchant')+' '+fmtMoneyExact(parseFloat(h.amount)||0)+' of '+aiActFmtDate(h.date)+
+    ', id '+h.id+'). Importing it as a new expense counts the purchase twice — settle the existing one instead with '+
+    'update_expense { "expenseId": "'+h.id+'", "clearPending": true, "setAmount": ..., "setDate": ... }.';
+}
+
 // ── Income ──────────────────────────────────────────────────────
 // Two things happen and they are deliberately separable. The ITEMISED deposit always becomes a
 // ledger record (that is the audit trail the bank statement justifies). The week's canonical
@@ -8693,13 +8780,26 @@ function aiValIncome(d,id){
     : ' Week total '+(had?fmtMoneyExact(before):'not set')+' → '+fmtMoneyExact(after)+'.';
   // A conflict is SURFACED, never blocking: the person may well intend to add a second deposit
   // to a week that already holds one. What they must not do is make that choice unknowingly.
-  let conflict='';
-  if(had&&mode==='add') conflict='This week already records '+fmtMoneyExact(before)+' for '+catLabel(stream.rec)+
-    '. Adding makes it '+fmtMoneyExact(after)+' — choose "replace" instead if that existing figure already includes this deposit.';
-  else if(had&&mode==='replace'&&Math.abs(before-amt)>0.005) conflict='This overwrites an existing weekly total of '+
-    fmtMoneyExact(before)+' with '+fmtMoneyExact(amt)+'. The difference is '+fmtMoneyExact(Math.abs(before-amt))+'.';
+  const conflicts=[], infos=[];
+  if(had&&mode==='add') conflicts.push('This week already records '+fmtMoneyExact(before)+' for '+catLabel(stream.rec)+
+    '. Adding makes it '+fmtMoneyExact(after)+' — choose "replace" instead if that existing figure already includes this deposit.');
+  else if(had&&mode==='replace'&&Math.abs(before-amt)>0.005) conflicts.push('This overwrites an existing weekly total of '+
+    fmtMoneyExact(before)+' with '+fmtMoneyExact(amt)+'. The difference is '+fmtMoneyExact(Math.abs(before-amt))+'.');
+  conflicts.push(aiDupWarning(aiNearDupLedger('income', date, amt, srcInfo.key), 'recorded deposit', srcInfo.key));
+  // Pay day is stored as a DAY OF WEEK per stream and drives the "until next pay" forecast. A
+  // deposit landing on another weekday is worth saying out loud and is never acted on: one
+  // early payment and a permanently moved payday look identical from a single deposit.
+  const payDow=(typeof getPayDay==='function')?getPayDay(stream.rec.id):null;
+  let gotDow=NaN;
+  try{ gotDow=localMidnight(date).getDay(); }catch(e){}
+  if(incomeType==='salary'&&payDow!=null&&!isNaN(payDow)&&!isNaN(gotDow)&&payDow!==gotDow)
+    infos.push('Daily has '+catLabel(stream.rec)+'’s pay day set to '+BUD_DAY_NAMES[payDow]+
+      ' and this deposit landed on a '+BUD_DAY_NAMES[gotDow]+'. Nothing is changed here — if the schedule really moved, change it in Budget setup.');
+  if(incomeType==='reimbursement') infos.push('Recorded as a reimbursement, not wages. If it repays a specific purchase, add_reimbursement against that expense keeps the net cost right.');
+  if(!acct.rec) infos.push('No receiving account attributed.');
 
-  return {ok:true, summary:summary, group:'income', conflict:conflict,
+  return {ok:true, summary:summary, group:'income',
+    conflict:conflicts.filter(Boolean).join(' '), info:infos.join(' '),
     dupKey:aiLedgerDup(id,srcInfo.key),
     collection:()=>ledgerData,
     apply:(meta)=>{
@@ -8744,15 +8844,36 @@ function aiValTransfer(d,id){
   const cpSrc=ledgerNormaliseSource(d.counterpartSource);
   const cpKey=cpSrc?ledgerSrcKey(Object.assign({},cpSrc,{date:date, amount:amt})):'';
 
+  // Which way the savings moved, from the account flags the user already set: an asset marked
+  // "Savers account" is the ringfenced one. Daily's Saved figure is a MANUALLY ENTERED weekly
+  // number (weekSavedAmt reads d.sav_amount and nothing else), so an imported transfer is
+  // recorded as movement and never writes it — otherwise the week would hold the same saving
+  // twice, once typed and once imported.
+  const toSaver=(typeof acctIsSaver==='function')&&acctIsSaver(to.rec);
+  const fromSaver=(typeof acctIsSaver==='function')&&acctIsSaver(from.rec);
+  const move=toSaver&&!fromSaver?'contribution':(fromSaver&&!toSaver?'withdrawal':'');
+  const wk=txnWeekOf(date);
+  const wd=budgetData&&budgetData[wk];
+  const savedHere=wd&&wd.sav_amount!==undefined&&wd.sav_amount!=='';
+  const conflicts=[], infos=[];
+  conflicts.push(aiDupWarning(aiNearDupLedger('transfer', date, amt, srcInfo.key), 'recorded transfer', srcInfo.key));
+  if(move&&savedHere) conflicts.push('The week of '+aiActFmtDate(wk)+' already records '+
+    fmtMoneyExact(parseFloat(wd.sav_amount)||0)+' saved, typed in by hand. This '+move+' is recorded as account movement only and '+
+    'Daily’s Saved figure for that week is unchanged, so the same money is not counted twice. If that typed figure was meant to be '+
+    'this transfer, it is already right — if it was meant to be something else, edit it in Budget.');
+  else if(move) infos.push('Recorded as a savings '+move+'. Daily’s Saved figure is a weekly number you type in Budget, so it is left alone.');
   const summary='Move '+fmtMoneyExact(amt)+' from '+from.rec.name+' to '+to.rec.name+' on '+aiActFmtDate(date)+
-    '. This is your own money changing accounts — it adds no income and no spending.';
+    '. This is your own money changing accounts — it adds no income and no spending'+
+    (move?', and counts as a savings '+move:'')+'.';
   return {ok:true, summary:summary, group:'transfer',
+    conflict:conflicts.filter(Boolean).join(' '), info:infos.join(' '),
     dupKey:r=>!!r&&((r.aiActionId&&r.aiActionId===id)||
       (!!srcInfo.key&&(r.srcKey===srcInfo.key||r.counterpartSrcKey===srcInfo.key))||
       (!!cpKey&&(r.srcKey===cpKey||r.counterpartSrcKey===cpKey))),
     collection:()=>ledgerData,
     apply:(meta)=>{
       const rec={kind:'transfer', date:date, amount:amt, fromAcctId:from.rec.id, toAcctId:to.rec.id, note:note};
+      if(move) rec.savingsMove=move;
       if(cpKey){ rec.counterpartSrcKey=cpKey; if(cpSrc) rec.counterpartSource=cpSrc; }
       aiLedgerWrite(rec, meta, srcInfo.key, srcInfo.src);
       return {kind:'transfer', undo:{ledger:true}};
@@ -8790,10 +8911,15 @@ function aiValReimbursement(d,id){
   const summary='Record '+fmtMoneyExact(amt)+' reimbursed on '+aiActFmtDate(date)+' against '+
     (txn.merchant||'the expense')+' '+fmtMoneyExact(gross)+' of '+aiActFmtDate(txn.date)+
     '. The expense stays at '+fmtMoneyExact(gross)+' in your spending; your net cost becomes '+fmtMoneyExact(net)+'.';
-  const conflict=sameWeek?'':'The reimbursement lands in the week of '+aiActFmtDate(txnWeekOf(date))+
+  const conflicts=[], infos=[];
+  if(!sameWeek) infos.push('The reimbursement lands in the week of '+aiActFmtDate(txnWeekOf(date))+
     ' while the expense sits in the week of '+aiActFmtDate(txnWeekOf(txn.date))+
-    '. Both dates are kept; weekly Spent is unchanged in both weeks and only the net cost of this expense moves.';
-  return {ok:true, summary:summary, group:'reimbursement', conflict:conflict,
+    '. Both dates are kept; weekly Spent is unchanged in both weeks and only the net cost of this expense moves.');
+  conflicts.push(aiDupWarning(aiNearDupLedger('reimbursement', date, amt, srcInfo.key), 'recorded reimbursement', srcInfo.key));
+  if(already) infos.push('Already reimbursed '+fmtMoneyExact(already)+' against this expense; this brings the total to '+
+    fmtMoneyExact(already+amt)+' of '+fmtMoneyExact(gross)+'.');
+  return {ok:true, summary:summary, group:'reimbursement',
+    conflict:conflicts.filter(Boolean).join(' '), info:infos.join(' '),
     dupKey:aiLedgerDup(id,srcInfo.key),
     collection:()=>ledgerData,
     apply:(meta)=>{
@@ -8824,9 +8950,29 @@ function aiValBillPayment(d,id){
   const acct=aiResolveAccount(d);
   if(!acct.ok) return {ok:false, error:acct.reason+'.'};
   const srcInfo=aiActSource(d);
+  const conflicts=[], infos=[];
+  conflicts.push(aiDupWarning(aiNearDupLedger('bill_payment', date, amt, srcInfo.key), 'recorded payment', srcInfo.key));
+  // Today's recurring settings are NOT evidence about the imported period. Every week freezes
+  // the rates that applied to it, so weekFixedContribution answers what that week actually
+  // accrued for this item — 0 means the week did not carry it, whatever the definition says
+  // now. That is a review item, not an error: the payment is real either way.
+  const wk=txnWeekOf(date);
+  const wd=budgetData&&budgetData[wk];
+  const accrued=wd?weekFixedContribution(wd, cat.rec.id):0;
+  if(!wd) conflicts.push('Daily has no budget week for '+aiActFmtDate(wk)+', so nothing was accrued for '+catLabel(cat.rec)+
+    ' then. The payment is recorded, but that week shows no committed cost to match it — review whether the week is missing.');
+  else if(!accrued) conflicts.push('The week of '+aiActFmtDate(wk)+' accrued nothing for '+catLabel(cat.rec)+
+    ': its rates were frozen without this item, so it either did not exist or was not charging then. Daily does not assume today’s '+
+    'settings applied back then — check whether it really was active before relying on this.');
+  else infos.push('That week accrues '+fmtMoneyExact(accrued)+' of '+catLabel(cat.rec)+' as a committed cost'+
+    (catCycle(cat.rec)!=='weekly'?' (the weekly share of a '+catCycle(cat.rec)+' charge)':'')+
+    '. Recording the actual payment changes neither that figure nor variable spending.');
+  if(!catIsCharging(cat.rec)) infos.push(catLabel(cat.rec)+' is currently marked '+catStatus(cat.rec)+' in Daily.');
+  if(catIsArchived(cat.rec)) infos.push(catLabel(cat.rec)+' is archived.');
   const summary='Record the actual '+fmtMoneyExact(amt)+' payment of '+catLabel(cat.rec)+' on '+aiActFmtDate(date)+
     '. It is kept out of variable spending — the week already accrues this as a committed cost.';
   return {ok:true, summary:summary, group:'bill',
+    conflict:conflicts.filter(Boolean).join(' '), info:infos.join(' '),
     dupKey:aiLedgerDup(id,srcInfo.key),
     collection:()=>ledgerData,
     apply:(meta)=>{
@@ -8933,13 +9079,40 @@ function aiValUpdateExpense(d,id){
     if(aiActTooLong(v)) return;
     if(String(txn[f]||'')!==v){ changes.push({field:f, to:v}); parts.push(f+' "'+(txn[f]||'')+'" → "'+v+'"'); }
   });
+  const infos=[];
   if(d.setAmount!=null){
     const amt=aiActMoney(d.setAmount);
     if(isNaN(amt)||amt<=0) return {ok:false, error:'"setAmount" must be a number greater than zero.'};
+    // Correcting an expense BELOW what has already been repaid against it would make the
+    // derived net cost negative — the "netted twice" failure arriving by the other door.
+    const back=ledgerReimbursedTotal(expenseId);
+    if(back&&amt<back-0.005) return {ok:false, error:'That would set the expense to '+fmtMoneyExact(amt)+
+      ' while '+fmtMoneyExact(back)+' has already been reimbursed against it. Correct or remove the reimbursement first.'};
     if(Math.abs((parseFloat(txn.amount)||0)-amt)>0.005){
       changes.push({field:'amount', to:amt});
       parts.push('amount '+fmtMoneyExact(parseFloat(txn.amount)||0)+' → '+fmtMoneyExact(amt));
+      if(back) infos.push('Net personal cost becomes '+fmtMoneyExact(Math.round((amt-back)*100)/100)+' after '+fmtMoneyExact(back)+' reimbursed.');
     }
+  }
+  // A settling charge usually moves date as well as amount, and the date decides which week
+  // holds the spend — so a week change is stated rather than left to be discovered.
+  if(d.setDate!=null){
+    const nd=aiActStr(d.setDate);
+    if(!aiActValidDate(nd)) return {ok:false, error:'"'+nd.slice(0,20)+'" is not a real date — use YYYY-MM-DD.'};
+    if(String(txn.date||'')!==nd){
+      changes.push({field:'date', to:nd});
+      parts.push('date '+aiActFmtDate(txn.date)+' → '+aiActFmtDate(nd));
+      const w0=txnWeekOf(txn.date), w1=txnWeekOf(nd);
+      if(w0!==w1) infos.push('This moves the expense out of the week of '+aiActFmtDate(w0)+
+        ' and into the week of '+aiActFmtDate(w1)+', so both weeks’ spending change.');
+    }
+  }
+  // Settling a pending authorisation in place. This is the whole reason a pending row is
+  // marked rather than merged: the settled statement row corrects the record it came from
+  // instead of landing beside it.
+  if(d.clearPending===true&&txn.pendingImport){
+    changes.push({field:'pendingImport', to:false});
+    parts.push('pending → settled');
   }
   const reason=aiActStr(d.reason);
   if(aiActTooLong(reason)) return {ok:false, error:'"reason" is too long.'};
@@ -8948,7 +9121,7 @@ function aiValUpdateExpense(d,id){
     summary:'No change needed to '+label+'.', already:'That expense already holds the requested values.',
     dupKey:()=>false, collection:()=>[], apply:()=>({kind:'expense correction'})};
   const summary='Correct '+label+': '+parts.join('; ')+'.'+(reason?' ('+reason+')':'');
-  return {ok:true, summary:summary, group:'correction', requiresConfirmation:true,
+  return {ok:true, summary:summary, group:'correction', requiresConfirmation:true, info:infos.join(' '),
     dupKey:()=>false, collection:()=>[],
     apply:(meta)=>{
       const t=(Array.isArray(txnData)?txnData:[]).find(x=>x&&String(x.id)===expenseId);
@@ -9040,6 +9213,11 @@ function previewDailyActions(parsed){
     // OTHER row: an uncertain reconciliation can be left unticked while the twenty unambiguous
     // expenses beside it still apply.
     row.conflict=res.conflict||'';
+    // Quieter than a conflict on purpose. A conflict says "decide something"; info says "know
+    // something" — a payday that moved, a week that reflows, an account nobody attributed.
+    // Sharing one amber style between the two would make twenty routine salary rows look like
+    // twenty problems.
+    row.info=res.info||'';
     if(res.already){ row.state='already'; row.note=res.already; rows.push(row); return; }
     const existing=(res.collection()||[]).some(res.dupKey);
     row.state=existing?'already':'new';
@@ -9414,9 +9592,16 @@ const AI_INBOX_SCHEMA_HINT=
   '                "reason": "Share of the Newcastle hotel" } },\n'+
   '    { "id": "bal-card-0905", "type": "add_balance_snapshot",\n'+
   '      "data": { "accountId": "acct_card", "date": "2026-09-05", "balance": 224.95, "balanceKind": "closing" } },\n'+
+  '    { "id": "bil-gym-0825", "type": "add_bill_payment",\n'+
+  '      "data": { "amount": 27, "date": "2026-08-25", "fixedCategoryId": "gym",\n'+
+  '                "source": { "file": "277214S1.CSV", "row": 110, "description": "ANYTIME FITNESS" } } },\n'+
   '    { "id": "fix-hotel-cat", "type": "update_expense",\n'+
   '      "data": { "expenseId": "txn_exact_id_from_export", "setCategoryId": "travel",\n'+
-  '                "reason": "Accommodation, not pub spending" } }\n  ]\n}';
+  '                "reason": "Accommodation, not pub spending" } },\n'+
+  '    { "id": "set-pending", "type": "update_expense",\n'+
+  '      "data": { "expenseId": "txn_pending_id", "clearPending": true, "setAmount": 52.16, "setDate": "2026-09-08" } },\n'+
+  '    { "id": "new-cat-travel", "type": "add_expense_category", "data": { "name": "Travel" } },\n'+
+  '    { "id": "new-stream-tutoring", "type": "add_income_stream", "data": { "name": "Tutoring" } }\n  ]\n}';
 
 // The exact live ids the assistant must use, so it never has to invent or guess a name. Names
 // are included beside every id because a person reads this too, but the ids are what the
@@ -9446,7 +9631,8 @@ function aiInboxCopySchema(){
     'Every financial action accepts data.source = { "file": "<exact file name>", "account": "<account id or name>", "row": <original row number>, "description": "<original bank description>" }.\n'+
     'Daily fingerprints that source row and refuses to import the same row twice, even if you regenerate the batch with different action ids. Without it, only the action id protects against duplicates, and a regenerated batch WILL duplicate.\n'+
     'Two identical purchases on the same day with the same merchant and amount are TWO purchases. Give each its own row number; never collapse them.\n\n'+
-    'add_expense data: amount (>0), date (YYYY-MM-DD), categoryName or categoryId, optional merchant, note, paymentAccountName.\n'+
+    'add_expense data: amount (>0), date (YYYY-MM-DD), categoryName or categoryId, optional merchant, note, paymentAccountName, pending, source.\n'+
+    '  Set pending: true ONLY for a charge your source shows as still pending. Daily marks it, leaves the row unticked, and matches the settled row back to it later. Everything else is treated as settled.\n'+
     'add_subscription data: name, amount (>0), cycle ("weekly", "monthly" or "yearly"), optional status (active/trial/paused/cancelled), nextBillingDate, website, paymentAccountName.\n'+
     'archive_subscription data: subscriptionId (the exact stable id from Daily\'s context export) and a user-confirmed confirmedEndDate (YYYY-MM-DD, today or earlier). Use it only after the user explicitly confirms that end date. Names are descriptive only and never accepted as targets. Daily shows this action unchecked; it preserves history and never permanently deletes the item.\n'+
     'add_recipe data: one recipe object — name, category (breakfast/lunch/dinner/dessert), servings, ingredients [{name, amount, unit}], steps [].\n'+
@@ -9461,16 +9647,28 @@ function aiInboxCopySchema(){
     '  Keep salary, family support, gifts, reimbursements and internal transfers as different incomeType values. A reimbursement is NOT salary. An internal transfer is not income at all — use add_transfer.\n'+
     'add_transfer data: amount (>0), date, fromAccountId/Name, toAccountId/Name, optional note, source, counterpartSource.\n'+
     '  Moving your own money between your own accounts. It creates no income and no spending. ONE real transfer appears as TWO statement rows (a debit in one file, a credit in the other) — send ONE action and put the other row in counterpartSource, so the second file does not import it again.\n'+
+    '  A transfer into an account marked "Savers" is reported as a savings contribution and one out of it as a withdrawal, but Daily NEVER writes the week’s Saved figure from an import: that number is typed in Budget by the user, and writing it here would record the same saving twice. Do not send savings as add_income either.\n'+
     'add_reimbursement data: amount (>0), date the money came back, expenseId (the exact transaction id from the context export), optional reason, paymentAccountId/Name, note, source.\n'+
     '  The original expense stays at its full amount in your spending. Daily derives your net cost. Never also lower the expense with update_expense — that would remove the same money twice. The reimbursement may fall in a different week from the purchase; both dates are kept.\n'+
     'add_bill_payment data: amount (>0), date the payment actually left the account, fixedCategoryId/Name, optional paymentAccountId/Name, note, source.\n'+
     '  The dated payment of a recurring cost. Do NOT also send it as add_expense: the week already accrues that cost as Committed, and sending both counts it twice. A recurring cost DEFINITION is add_subscription; this is a payment against one.\n'+
+    '  Daily checks what that week actually accrued for the item from its own frozen rates, and flags a payment against a week that accrued nothing. Today’s subscription settings are not evidence that the charge was active during the imported period — if you cannot tell, say so in "note" rather than assuming.\n'+
     'add_balance_snapshot data: accountId/Name, date (REQUIRED, explicit — Daily never assumes today), balance, balanceKind (REQUIRED: '+AI_BALANCE_KINDS.join('/')+').\n'+
     '  A balance is an observation. It never creates income or an expense. An "available" balance is recorded but never becomes the current balance, and an older reading never overwrites a newer one.\n'+
-    'update_expense data: expenseId (exact id), plus any of setCategoryId/setCategoryName, setMerchant, setNote, setAmount, and a "reason".\n'+
+    'update_expense data: expenseId (exact id), plus any of setCategoryId/setCategoryName, setMerchant, setNote, setAmount, setDate, clearPending, and a "reason".\n'+
     '  This CORRECTS the existing record in place. Never fix a mis-categorised expense by adding a second corrected one. Daily shows before and after and keeps an audit trail; the row starts unticked.\n'+
     'add_income_stream data: name. add_expense_category data: name.\n'+
     '  Only for something that genuinely does not exist. Both start unticked and need explicit approval. Check the id list above first — "Pub & Social" is not a new category if "Pub & social" already exists.\n\n'+
+    '=== PENDING AND SETTLED ===\n'+
+    'A pending authorisation is not a settled charge: the amount can change, the date usually does, and the settled row appears later in the statement. Do not assume a charge that was pending in a screenshot is still pending today — check the newer statement first.\n'+
+    'If it has settled, send it as an ordinary add_expense with the SETTLED date and amount. If it genuinely is still pending, send add_expense with pending: true and Daily will hold it as pending.\n'+
+    'When a pending row you already imported settles, do NOT send a second expense. Correct the one on file: update_expense { expenseId, clearPending: true, setAmount, setDate }. Daily flags a settled expense that looks like an existing pending one and names its id.\n'+
+    'A pending charge and a settled charge for the same amount are not automatically the same purchase — a $8.08 pending pub round is a different round from an $8.08 one that already settled. Use the source row and the date, and say so in "note" when you are unsure.\n'+
+    '\n'+
+    '=== WHERE THE IDS COME FROM ===\n'+
+    'Account, category, income-stream and recurring-cost ids are listed above. Transaction ids (needed by add_reimbursement and update_expense) are in Daily’s context export under transactions[].id, and what is already imported is in ledger.importedSourceKeys — check that list before re-sending a row. Never invent an id, and never reuse an id from anyone else’s export.\n'+
+    'paymentAccount is optional everywhere. If you do not know which account a row belongs to, leave it out rather than guessing — Daily shows unattributed rows so they can be fixed later.\n'+
+    '\n'+
     '=== BATCHES ===\n'+
     'Send at most '+AI_ACT_MAX+' actions per reply. After applying, Daily reports what landed, what was already present, what was left unticked and which source rows the batch covered — continue from the row after the highest one it names.\n'+
     'Do not put batch bookkeeping in a transaction\'s note. A note describes the purchase.\n'+
@@ -9480,6 +9678,238 @@ function aiInboxCopySchema(){
   if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done));
   } else fallbackCopy(text,done);
+}
+
+// ── Reconciliation: what is actually on file ─────────────────────
+// The importer can only report on the batch in front of it. This reads the STORES — every
+// transaction, ledger record, budget week and account — and answers the question a
+// half-finished import actually raises: what landed, what is missing, what disagrees and what
+// nobody has decided yet. Generated JSON is not evidence that anything was imported; this is.
+// It writes nothing. Every check is derived from the canonical readers (weekIncome,
+// weekVarTotal, weekFixedContribution, ledgerNetCostFor), so it cannot disagree with the
+// screens — if a figure here looks wrong, the screen shows the same wrong figure.
+const AI_RECON_SEV={warn:'Needs a decision', info:'For information'};
+function aiReconRange(){
+  const dates=[];
+  (Array.isArray(txnData)?txnData:[]).forEach(t=>{ if(t&&t.date) dates.push(t.date); });
+  (Array.isArray(ledgerData)?ledgerData:[]).forEach(r=>{ if(r&&r.date) dates.push(r.date); });
+  Object.keys(budgetData||{}).forEach(k=>{ if(aiIsDate(k)) dates.push(k); });
+  dates.sort();
+  return {from:dates[0]||'', to:dates[dates.length-1]||''};
+}
+function aiReconReport(){
+  const secs=[];
+  const add=(id,label,severity,lines,note)=>{ if(lines.length) secs.push({id,label,severity,lines,note:note||''}); };
+  const txns=(Array.isArray(txnData)?txnData:[]).filter(t=>t&&t.date);
+  const range=aiReconRange();
+
+  // 1. The symptom a half-imported history actually produces: a week showing spending with no
+  //    income against it. Weekly result and savings rate are both meaningless until it is fixed.
+  const spentNoIncome=[], incomeNoSpend=[];
+  Object.keys(budgetData||{}).filter(aiIsDate).sort().forEach(k=>{
+    const d=budgetData[k]||{};
+    const inc=weekIncome(d), spent=weekVarTotal(d,k);
+    if(spent>0.005&&inc<=0.005) spentNoIncome.push(aiActFmtFullDate(k)+' — '+fmtMoneyExact(spent)+' spent, no income recorded');
+    if(inc>0.005&&spent<=0.005&&!txnsForWeek(k).length) incomeNoSpend.push(aiActFmtFullDate(k)+' — '+fmtMoneyExact(inc)+' income, no spending recorded');
+  });
+  add('weeks_no_income','Weeks with spending but no income','warn',spentNoIncome,
+    'Import the salary deposits for these weeks with add_income. Until then the weekly result and the savings rate are wrong for them.');
+  add('weeks_no_spend','Weeks with income but no spending','info',incomeNoSpend,
+    'Expected for a week you have not imported expenses for yet; worth checking if you thought it was done.');
+
+  // 2. Money that may be counted twice: an expense whose merchant names a live recurring cost,
+  //    which the week already accrues as Committed. Named, not deleted — only the person can
+  //    tell a duplicated bill from a genuine separate purchase at the same merchant.
+  const recur=activeCats(loadFixCats()).filter(catIsRecurring);
+  const dbl=[];
+  txns.forEach(t=>{
+    const hay=((t.merchant||'')+' '+(t.note||'')).toLowerCase();
+    const hit=recur.find(c=>{ const n=catDisplayName(catLabel(c)).toLowerCase().trim(); return n.length>=4&&hay.indexOf(n)>=0; });
+    if(hit) dbl.push(aiActFmtDate(t.date)+' '+(t.merchant||'(no merchant)')+' '+fmtMoneyExact(parseFloat(t.amount)||0)+
+      ' looks like the recurring cost “'+catLabel(hit)+'” (id '+t.id+')');
+  });
+  add('double_counted','Variable spending that may already be a committed cost','warn',dbl,
+    'A recurring cost is accrued every week from the week’s own frozen rates. If one of these is that same bill, move it with update_expense or delete it in Budget, then record the payment with add_bill_payment.');
+
+  // 3. Possible duplicates. Rows that differ by SOURCE ROW are two purchases and are not listed;
+  //    everything else with the same day, merchant and amount is shown for a human to judge.
+  const groups={};
+  txns.forEach(t=>{
+    const key=t.date+'|'+(Math.round((parseFloat(t.amount)||0)*100))+'|'+String(t.merchant||'').trim().toLowerCase();
+    (groups[key]=groups[key]||[]).push(t);
+  });
+  const dupes=[];
+  Object.keys(groups).forEach(k=>{
+    const g=groups[k];
+    if(g.length<2) return;
+    const keys=new Set(g.map(t=>t.srcKey||''));
+    if(!keys.has('')&&keys.size===g.length) return;      // every row has its own source row
+    const t=g[0];
+    dupes.push(g.length+'× '+aiActFmtDate(t.date)+' '+(t.merchant||'(no merchant)')+' '+
+      fmtMoneyExact(parseFloat(t.amount)||0)+' — ids '+g.map(x=>x.id).join(', '));
+  });
+  add('possible_dupes','Possible duplicate expenses','warn',dupes,
+    'Same day, merchant and amount, without distinct source rows to separate them. Repeated purchases are real and common — check the statement before deleting anything.');
+
+  // 4. Pending charges still open. A pending row that was never settled quietly misstates the
+  //    week it sits in, because the settled amount is usually not the authorised one.
+  const pend=aiPendingTxns().map(t=>aiActFmtDate(t.date)+' '+(t.merchant||'(no merchant)')+' '+
+    fmtMoneyExact(parseFloat(t.amount)||0)+' (id '+t.id+')');
+  add('pending_open','Pending charges not yet settled','warn',pend,
+    'Check the newer statement and settle each with update_expense { clearPending: true, setAmount, setDate } — never by adding a second expense.');
+
+  // 5. Source-row coverage per file. Which rows of each statement are on file in ANY form, so a
+  //    continuation batch starts from a fact rather than from a remembered date. Gaps are
+  //    normal (ignored rows, declined charges), which is why they are listed rather than judged.
+  const files={};
+  const noteSrc=src=>{
+    if(!src||!src.file) return;
+    const f=files[src.file]||(files[src.file]={rows:[], n:0});
+    f.n++;
+    const r=parseInt(src.row,10);
+    if(!isNaN(r)) f.rows.push(r);
+  };
+  txns.forEach(t=>noteSrc(t.source));
+  (Array.isArray(ledgerData)?ledgerData:[]).forEach(r=>{ noteSrc(r.source); noteSrc(r.counterpartSource); });
+  const cover=[];
+  Object.keys(files).sort().forEach(name=>{
+    const f=files[name];
+    const rows=[...new Set(f.rows)].sort((a,b)=>a-b);
+    if(!rows.length){ cover.push(name+' — '+f.n+' records, no row numbers given'); return; }
+    const lo=rows[0], hi=rows[rows.length-1];
+    const gaps=[]; let prev=null;
+    rows.forEach(r=>{ if(prev!=null&&r>prev+1) gaps.push((prev+1)===(r-1)?String(prev+1):(prev+1)+'–'+(r-1)); prev=r; });
+    cover.push(name+' — '+rows.length+' rows on file between '+lo+' and '+hi+
+      (gaps.length?'; not recorded: '+gaps.slice(0,8).join(', ')+(gaps.length>8?' …':''):'; no gaps'));
+  });
+  add('coverage','Statement rows on file','info',cover,
+    'Counts every row imported as an expense, income, transfer, bill payment or reimbursement. Gaps are normal — a declined charge or an ignored row is never imported — but a long run of them is where an unfinished batch stopped.');
+
+  // 6. Unattributed accounts. Never guessed at import time, so they have to be visible here.
+  const noAcct=txns.filter(t=>!t.acctId).length;
+  const ledNoAcct=(Array.isArray(ledgerData)?ledgerData:[])
+    .filter(r=>r&&(r.kind==='income'||r.kind==='bill_payment'||r.kind==='reimbursement')&&!r.acctId).length;
+  add('unattributed','Records with no account','info',
+    (noAcct?[noAcct+' expense'+(noAcct===1?'':'s')+' with no payment account']:[])
+      .concat(ledNoAcct?[ledNoAcct+' ledger record'+(ledNoAcct===1?'':'s')+' with no account']:[]),
+    'Daily never guesses which account a row belongs to. Send paymentAccountId on future batches, or leave these as they are — no figure depends on it.');
+
+  // 7. Pay day. Stored as a weekday per stream and used by the pay-cycle forecast; a run of
+  //    deposits on another weekday is a setup question, never something an import may change.
+  const byStream={};
+  ledgerOf('income').forEach(r=>{
+    if(!r.streamId||r.incomeType&&r.incomeType!=='salary') return;
+    let dow=NaN; try{ dow=localMidnight(r.date).getDay(); }catch(e){}
+    if(isNaN(dow)) return;
+    const b=byStream[r.streamId]||(byStream[r.streamId]={days:{}, n:0});
+    b.days[dow]=(b.days[dow]||0)+1; b.n++;
+  });
+  const payLines=[];
+  Object.keys(byStream).forEach(sid=>{
+    const b=byStream[sid];
+    const cat=loadIncCats().find(c=>c&&String(c.id)===String(sid));
+    const set=(typeof getPayDay==='function')?getPayDay(sid):null;
+    const top=Object.keys(b.days).sort((x,y)=>b.days[y]-b.days[x])[0];
+    if(top==null||set==null||parseInt(top,10)===set) return;
+    payLines.push((cat?catLabel(cat):sid)+' — Daily says '+BUD_DAY_NAMES[set]+', but '+b.days[top]+' of '+b.n+
+      ' imported deposits landed on a '+BUD_DAY_NAMES[parseInt(top,10)]);
+  });
+  add('payday','Pay day disagrees with the deposits','warn',payLines,
+    'Only the “until next pay” forecast uses this. Change it in Budget setup if the schedule really moved — an import never touches it.');
+
+  // 8. Reimbursements: gross stays, net is derived. Stated together so the pair is legible.
+  const reiLines=[];
+  const byExp={};
+  ledgerOf('reimbursement').forEach(r=>{ (byExp[r.expenseId]=byExp[r.expenseId]||[]).push(r); });
+  Object.keys(byExp).forEach(eid=>{
+    const t=txns.find(x=>String(x.id)===String(eid));
+    const back=ledgerReimbursedTotal(eid);
+    if(!t){ reiLines.push(fmtMoneyExact(back)+' reimbursed against an expense that is no longer on file (id '+eid+')'); return; }
+    reiLines.push((t.merchant||'expense')+' '+aiActFmtDate(t.date)+': gross '+fmtMoneyExact(parseFloat(t.amount)||0)+
+      ' − '+fmtMoneyExact(back)+' reimbursed = '+fmtMoneyExact(ledgerNetCostFor(t))+' net personal cost');
+  });
+  add('reimbursements','Reimbursed expenses','info',reiLines,
+    'The expense stays at its gross amount in Spent for the week it happened. Net cost is derived and never subtracted from a week.');
+
+  // 9. Savings movement against the typed Saved figures. Two different quantities, deliberately
+  //    never reconciled automatically: one is what the accounts did, the other is what the user
+  //    decided the week saved.
+  const mv=ledgerSavingsMovement(range.from, range.to);
+  const typed=Object.keys(budgetData||{}).filter(aiIsDate)
+    .reduce((sum,k)=>sum+(weekSavedAmt(budgetData[k])||0),0);
+  const savLines=[];
+  if(mv.transfers) savLines.push('Imported transfers: '+fmtMoneyExact(mv.contributions)+' into savers, '+
+    fmtMoneyExact(mv.withdrawals)+' out, net '+fmtMoneyExact(mv.net)+' across '+mv.transfers+' transfer'+(mv.transfers===1?'':'s'));
+  if(typed) savLines.push('Saved figures typed into Budget weeks: '+fmtMoneyExact(Math.round(typed*100)/100));
+  add('savings','Savings movement','info',savLines,
+    'Daily’s Saved metric is the typed weekly figure. Imported transfers are account movement and never write it, so these two numbers are allowed to differ.');
+
+  // 10. Balances. The stored current balance follows the newest dated reading; an older import
+  //     never moves it. Worth stating plainly next to how old that reading is.
+  const balLines=[];
+  (loadAccounts()||[]).forEach(a=>{
+    const h=(Array.isArray(a.history)?a.history:[]).filter(e=>e&&e.date).sort((x,y)=>x.date<y.date?-1:1);
+    const last=h[h.length-1];
+    balLines.push(a.name+' — Daily holds '+fmtMoneyExact(parseFloat(a.current)||0)+
+      (last?'; newest reading '+fmtMoneyExact(parseFloat(last.balance)||0)+' on '+aiActFmtFullDate(last.date):'; no dated readings')+
+      (last&&Math.abs((parseFloat(last.balance)||0)-(parseFloat(a.current)||0))>0.005?' — these differ':''));
+  });
+  add('balances','Account balances','info',balLines,
+    'A snapshot is an observation, never income or spending. Record one with add_balance_snapshot and an explicit date; an available balance is kept separately and never becomes the current balance.');
+
+  return {generatedAt:Date.now(), range:range, sections:secs,
+    totals:{transactions:txns.length, ledger:(ledgerData||[]).length,
+            weeks:Object.keys(budgetData||{}).filter(aiIsDate).length,
+            needsDecision:secs.filter(x=>x.severity==='warn').reduce((n,x)=>n+x.lines.length,0)}};
+}
+
+const aiReconState={report:null};
+function aiReconRun(){ aiReconState.report=aiReconReport(); renderAIHub(); }
+function aiReconClear(){ aiReconState.report=null; renderAIHub(); }
+function aiReconText(){
+  const r=aiReconState.report||aiReconReport();
+  const L=[];
+  L.push('Daily import reconciliation — '+new Date(r.generatedAt).toLocaleString('en-AU'));
+  L.push('Records on file: '+r.totals.transactions+' expenses, '+r.totals.ledger+' ledger records, '+
+    r.totals.weeks+' budget weeks'+(r.range.from?', '+r.range.from+' to '+r.range.to:'')+'.');
+  L.push('');
+  if(!r.sections.length) L.push('Nothing to reconcile — no gaps, duplicates or disagreements found.');
+  r.sections.forEach(sec=>{
+    L.push('## '+sec.label+' ('+AI_RECON_SEV[sec.severity]+')');
+    sec.lines.forEach(x=>L.push('- '+x));
+    if(sec.note) L.push('  '+sec.note);
+    L.push('');
+  });
+  L.push('Send only actions for the items above that you can support with a source row. Do not set any budget, cap or savings goal.');
+  return L.join('\n');
+}
+function aiReconCopy(){
+  const text=aiReconText();
+  const done=()=>{ if(typeof showToast==='function') showToast('Reconciliation copied'); };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done));
+  } else fallbackCopy(text,done);
+}
+function aiReconHtml(){
+  const esc=_catEscHtml;
+  let h=cardHeader('check','Reconcile what is imported');
+  h+='<div class="aih-note">Reads your own records — every expense, ledger entry, budget week and account — and reports what is missing, duplicated or undecided. It writes nothing.</div>';
+  const r=aiReconState.report;
+  h+='<button class="aih-btn '+(r?'':'aih-btn-primary ')+'aih-btn-wide" onclick="aiReconRun()">'+(r?'Run again':'Run reconciliation')+'</button>';
+  if(!r) return h;
+  h+='<div class="aih-result">'+r.totals.transactions+' expenses · '+r.totals.ledger+' ledger records · '+
+     r.totals.weeks+' weeks'+(r.totals.needsDecision?' · '+r.totals.needsDecision+' needing a decision':' · nothing outstanding')+'</div>';
+  if(!r.sections.length) h+='<div class="aih-note">No gaps, duplicates or disagreements found.</div>';
+  r.sections.forEach(sec=>{
+    h+='<div class="aih-rec-sec'+(sec.severity==='warn'?' is-warn':'')+'">'+
+       '<div class="aih-rec-hd">'+esc(sec.label)+' · '+sec.lines.length+'</div>';
+    h+='<ul class="aih-rec-list">'+sec.lines.slice(0,40).map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>';
+    if(sec.lines.length>40) h+='<div class="aih-rec-note">'+(sec.lines.length-40)+' more — copy the report to see them all.</div>';
+    if(sec.note) h+='<div class="aih-rec-note">'+esc(sec.note)+'</div>';
+    h+='</div>';
+  });
+  h+='<button class="aih-btn aih-btn-wide" onclick="aiReconCopy()">Copy reconciliation report</button>';
+  return h;
 }
 
 // Every string below that came from the paste goes through esc(). The row identity travels as
@@ -9547,6 +9977,7 @@ function aiInboxHtml(){
              '<span class="aih-row-t"><span class="aih-row-k">'+esc(r.label)+'</span>'+
              '<span class="aih-row-s">'+esc(r.summary)+'</span>'+
              (r.conflict?'<span class="aih-row-c">'+esc(r.conflict)+'</span>':'')+
+             (r.info?'<span class="aih-row-i">'+esc(r.info)+'</span>':'')+
              (r.requiresConfirmation?'<span class="aih-row-n">Select this row to confirm it.</span>':'')+'</span></button>';
       } else if(r.state==='already'){
         h+='<div class="aih-row aih-row-skip"><span class="aih-row-t">'+
@@ -9694,6 +10125,9 @@ function renderAIHub(){
       '<div class="aih-import-intro"><h2>Bring AI suggestions back into Daily</h2>'+
         '<p>Paste structured actions created by your AI. Daily checks every action and shows exactly what would change. Nothing is written until you review it and press Apply.</p></div>'+
       '<section class="card aih-card aih-inbox-card">'+aiInboxHtml()+'</section>'+
+      // Reconciliation reads the stores rather than the paste, so it sits BELOW the inbox: it is
+      // what you check between batches, not a step inside one.
+      '<section class="card aih-card aih-inbox-card">'+aiReconHtml()+'</section>'+
     '</div>';
   }
   wrap.innerHTML='<div class="aih-shell">'+hero+modes+workflow+'</div>';
@@ -11559,6 +11993,32 @@ function ledgerReimbursedTotal(txnId){
 function ledgerNetCostFor(txn){
   const gross=parseFloat(txn&&txn.amount)||0;
   return Math.round((gross-ledgerReimbursedTotal(txn&&txn.id))*100)/100;
+}
+// Savings movement between the user's OWN accounts, split by direction. Daily's Saved figure
+// is a number typed into the Budget week (weekSavedAmt reads d.sav_amount and nothing else), so
+// this is deliberately a separate, DERIVED view rather than a second writer of that field —
+// importing a transfer must never add to a saving the user already recorded by hand.
+// "Savers" is the flag the Accounts screen already uses (acctIsSaver): an asset ringfenced from
+// the debt payoff position. Anything moving in either direction between two ordinary accounts
+// is movement, not saving, and is counted in neither total.
+function ledgerSavingsMovement(fromDate, toDate){
+  const isSaver=id=>{
+    const a=(loadAccounts()||[]).find(x=>x&&String(x.id)===String(id));
+    return !!(a&&typeof acctIsSaver==='function'&&acctIsSaver(a));
+  };
+  let contributions=0, withdrawals=0, count=0;
+  ledgerOf('transfer').forEach(r=>{
+    if(fromDate&&r.date<fromDate) return;
+    if(toDate&&r.date>toDate) return;
+    const amt=parseFloat(r.amount)||0;
+    const dir=r.savingsMove||(isSaver(r.toAcctId)&&!isSaver(r.fromAcctId)?'contribution':
+      (isSaver(r.fromAcctId)&&!isSaver(r.toAcctId)?'withdrawal':''));
+    if(dir==='contribution'){ contributions+=amt; count++; }
+    else if(dir==='withdrawal'){ withdrawals+=amt; count++; }
+  });
+  const r2=n=>Math.round(n*100)/100;
+  return {contributions:r2(contributions), withdrawals:r2(withdrawals),
+          net:r2(contributions-withdrawals), transfers:count};
 }
 // Every ledger record dated inside one Monday-started week.
 function ledgerForWeek(mondayStr, kind){

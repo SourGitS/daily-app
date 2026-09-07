@@ -159,7 +159,7 @@
 // v304: pin the five phone tabs above the nav groups so they are one press, not two.
 // v305: financial import - income, transfers, reimbursements, bill payments, balance
 // snapshots and expense corrections, with source-row duplicate safety and a grouped preview.
-const CACHE_NAME = 'daily-v305';
+const CACHE_NAME = 'daily-v306';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
