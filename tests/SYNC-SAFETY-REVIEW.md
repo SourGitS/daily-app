@@ -1,8 +1,11 @@
 # Daily data-safety review — 2026-09-07
 
-Status: local fixes and isolated verification complete; **not deployed, and not verified against
-a real signed-in account**. This is not a blanket certification of every data store or of older
-app versions still running on other devices.
+Status: **released as `daily-v308` on 2026-09-07**, on isolated verification only. The
+real-account check below was offered and **deliberately waived by the user for this release**,
+with the remaining risks accepted knowingly. Nothing here has been exercised against real cloud
+data, and this is not a blanket certification of every data store or of older app versions still
+running on other devices. Keep that distinction when reading the results: 32 isolated tests and
+a synthetic browser fixture passed; a live account was never touched.
 
 Two passes are recorded here. Pass 1 covered workout history, weights, generic timestamped blobs
 and setup timing. Pass 2 audited that work and continued into the write paths it had explicitly
@@ -92,7 +95,11 @@ does not replace testing the real Firebase SDK, authorization rules, network and
 Firebase documents transaction retries and an initially null client cache at
 https://firebase.google.com/docs/database/web/read-and-write#save_data_as_transactions .
 
-## Required before release
+## The real-account check — offered, waived, still worth doing
+
+This was the recommended gate before release. The user chose to ship without it and to accept
+the risk. It is kept here verbatim because it is still the check that would confirm the fixes
+work on real data, and it can be run at any time after release:
 
 1. Preserve a full backup from the trusted device. Do not clear that device's local data.
 2. Use a separate fresh profile for the candidate build and sign in to the same account with
@@ -104,7 +111,14 @@ https://firebase.google.com/docs/database/web/read-and-write#save_data_as_transa
 5. Verify explicit restore in a disposable account/isolated fixture before trying it on real
    data. Refresh or close old app versions before testing mixed-device behavior.
 
-No real account was used, no user data was cleared, and no push/deployment was performed.
+During this work no real account was used and no user data was read, written or cleared.
+
+## The window that is open right now
+
+Releasing without every device updated is the one risk that is time-limited and gets smaller by
+itself. Until a device loads v308 it is still running code that writes whole stores, and it can
+undo these fixes from the other side. Opening Daily once on each device closes it; taking a
+backup from the trusted device first costs nothing and is the cheap insurance if it does not.
 
 ## Boundaries still relevant
 

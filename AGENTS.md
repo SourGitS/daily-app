@@ -355,7 +355,7 @@ safety-critical parts:
 
 ## Current unfinished work
 
-### Local sync hardening — 2026-09-07 (not deployed)
+### Local sync hardening — 2026-09-07 (RELEASED as daily-v308, isolated tests only)
 
 - `syncBlobPush` and `lsSaveTS` suppress uploads during `_bootPhase` and cloud-apply callbacks.
   `syncBlobCommit` compares timestamps in a Firebase transaction, so a stale initial read
@@ -390,10 +390,12 @@ safety-critical parts:
   first `node tests/build-sync-browser.cjs`, serve the repo, then open `/tests/sync-browser.html`.
   It replaces Firebase and localStorage with synthetic in-memory stores and never contacts the
   real database. The generated HTML is not a production asset.
-- Local browser and isolated fresh-profile checks pass. A real signed-in fresh-profile check
-  against an existing account is STILL REQUIRED before release; no production account was
-  modified or cleared. See `tests/SYNC-SAFETY-REVIEW.md` for limits, remaining boundaries and
-  release checks — in particular that an un-updated older device can still overwrite.
+- Local browser and isolated fresh-profile checks pass. The real signed-in fresh-profile check
+  was offered as the release gate and **deliberately waived by the user**, who accepted the
+  remaining risks; it was never run, and no production account was read, modified or cleared.
+  Do not describe this work as verified against real data. See `tests/SYNC-SAFETY-REVIEW.md`
+  for what was and was not tested — in particular that an un-updated older device can still
+  issue whole-store writes until it is refreshed.
 - Cache version prepared as `daily-v308`, now covering the logo integration as well: the
   wordmark is a CSS mask inked with `--accent-text` (`css/brand.css`, appended last) and the
   runtime brand assets live in `assets/brand/`; `assets/brand/refined/` is source only and is
