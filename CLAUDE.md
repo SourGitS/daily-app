@@ -1044,6 +1044,34 @@ the accent or the theme must go through those, not set `--accent` directly.
   list cards (habits/notes/recent) at a flat 280px `max-height` with a "Show all" toggle, so one
   very long list can't blow out its whole row. That is unrelated to the column/height history
   above and was never in question.
+- **Home desktop card composition (v309, 2026-09-07).** The existing two-column grid,
+  stretching, gaps, page cap, saved ordering/visibility/widths and mobile layout remain intact.
+  Only budget, weight, balance, habits, prs, review and finance are named query containers,
+  and only inside the existing 1024px desktop media condition. The named query activates at
+  a card content-box width of 460px; unsupported browsers keep the stacked composition.
+  All new shape rules are scoped to Home in kitchen-extras.css.
+  - Budget, Weight and Accounts use transparent .card-cols wrappers below the threshold.
+    Above it the figure and supporting region use wrapping flex, a 28px column gap and a
+    620px group cap. The support has a 240px preferred basis and moves below the figure
+    when both cannot fit. This prevents a negative net worth with three account totals
+    from squeezing labels and numbers at the threshold. Do not restore the auto/zero-minimum
+    grid: its supporting cells overflowed with -$14,320 and three ordinary account totals.
+  - Habits alone uses two columns in DOM/keyboard row-major order. The final row's borders
+    are transparent for both odd and even counts, overriding the original inline separators.
+  - PR, Review and Finance remain single-column with a 520px reading measure.
+    Budget and Finance actions use content width, capped at 240px. Recent sessions stays
+    unchanged because two columns squeeze its metadata; Journal retains its full-width
+    populated composer. Other cards already compose across their width or gain no benefit.
+  - The Weight wrapper needs the scoped centring exception under the shape defaults:
+    otherwise it matches the existing single-body-block selector and floats vertically.
+    display:contents does not remove wrappers from structural selector matching.
+  Settings layout thumbnails and the saved layout schema are unchanged. Shorter content
+  does not always make a rendered card shorter: its row still stretches to its neighbour.
+  No calculations, storage, Firebase, boot or migration paths change in this release.
+  Final checks: isolated browser at 1024/1180/1273/1440/1920/2560px, with no metric
+  overflow in the three-account fixture; mobile geometry compared with HEAD at 375/414px
+  in both themes and 932px landscape (excluding the animated weather decoration). Habit
+  toggling, account disclosure and expense modal verified; 32 sync tests and JS syntax pass.
 - **One width cap for every view**, `max-width:2200px` on `#app-main>section,#app-main
   .swipe-panel` (see the note above about those being disjoint selector halves). Do not add a
   per-view override — a 1180/1760 split existed briefly and letterboxed every tab except Home.

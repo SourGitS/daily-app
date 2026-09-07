@@ -484,6 +484,113 @@
 .card-split-l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px}
 .card-split-v{font-family:var(--font-num);font-size:17px;font-weight:800;color:var(--text)}
 
+/* ── Home desktop card composition (opt-in) ─────────────────────────────────
+   Three shapes a Home card can opt into so a wide desktop column carries CONTENT instead of
+   becoming a gap: a figure beside the information that qualifies it, a checklist in two
+   columns, and an action sized to its label rather than to the card.
+   HOME ONLY, and gated on TWO independent conditions, because neither answers on its own:
+     · the app's existing desktop condition (min-width:1024px — LAYOUT_DESKTOP_MIN in
+       js/app.js) decides whether this enhancement exists at all. A landscape phone runs the
+       same .home-grid-cols two-column grid, and its cards can pass 460px, but it keeps the
+       phone composition on purpose — this is a desktop affordance, not a width trick.
+     · a named container query decides whether THIS card is wide enough. Viewport width cannot
+       answer that: at a 1024px viewport a half-width card is 343px and a full-width one is
+       700px, so the same screen holds cards on both sides of the threshold.
+   460px is the container's CONTENT-BOX width (.home-card carries no padding, so it is the
+   grid track). Measured: a half-width card is 343px at 1024, 414px at 1180, 544px at 1440 and
+   784px at 1920 — so half-width cards reflow from ~1273px up, and a full-width card reflows
+   at every desktop width.
+   Containment is declared per card id below, never on .home-card as a class. The session
+   hero, weather, the calorie card, the streak split, the money tiles and Kitchen already
+   compose across their width and gain nothing from being query containers; Journal and Recent
+   sessions are deliberately absent too, for the reasons recorded in CLAUDE.md — a card that
+   takes no reflow rule must not carry containment, which changes intrinsic sizing and makes
+   the element a containing block for its positioned descendants.
+   Where container queries are unsupported the @container block never matches, so every card
+   keeps the composition it has today — there is deliberately no viewport-width fallback,
+   because a viewport query cannot tell a 343px card from a 700px one. */
+@media (min-width:1024px){
+  #view-home .home-grid-cols > .home-card[data-card-id="budget"],
+  #view-home .home-grid-cols > .home-card[data-card-id="weight"],
+  #view-home .home-grid-cols > .home-card[data-card-id="balance"],
+  #view-home .home-grid-cols > .home-card[data-card-id="habits"],
+  #view-home .home-grid-cols > .home-card[data-card-id="prs"],
+  #view-home .home-grid-cols > .home-card[data-card-id="review"],
+  #view-home .home-grid-cols > .home-card[data-card-id="finance"]{
+    container-type:inline-size;
+    container-name:daily-home-card;
+  }
+}
+/* Below the threshold every one of these wrappers generates NO box, so the elements inside
+   them are laid out exactly as they were before the wrapper existed — in the phone's block
+   flow and in the desktop card's flex column alike. display:block would have been close but
+   not identical (a wrapper introduces its own margin edges); display:contents removes the
+   question. What a wrapper DOES still change is :nth-child matching on the card's children,
+   which is why the centring exception below exists. */
+#view-home .card-cols,#view-home .card-cols-b{display:contents}
+/* .home-grid-cols centres a card BODY that is a single block under the header
+   (`> * > *:nth-child(2):last-child{margin:auto 0}` in budget-home.css). A .card-cols wrapper
+   makes a two-part body look like that single block, so the Weight card with no caption would
+   start floating in its stretched box — a change nobody asked for, and one that would apply
+   below the reflow threshold too. Scoped to the new structure rather than by weakening the
+   shared rule: the reflowed body stays anchored under its header. */
+#view-home .home-grid-cols > .home-card > * > .card-cols:nth-child(2):last-child{margin-top:0;margin-bottom:0}
+
+@container daily-home-card (min-width:460px){
+  /* A figure beside its supporting data, with a readable group measure. Flex wrapping
+     preserves space for the support at narrow widths or with larger financial figures. */
+  #view-home .card-cols{display:flex;flex-wrap:wrap;gap:14px 28px;
+    align-items:center;max-width:620px}
+  /* Keep complete figures readable: if both regions cannot fit, the support wraps below. */
+  #view-home .card-cols > :first-child{flex:0 1 auto;min-width:0;max-width:100%;overflow-wrap:anywhere}
+  #view-home .card-cols > :last-child{flex:1 1 240px;min-width:0;max-width:100%}
+  #view-home .card-cols > .card-split > div:not(.card-split-div){min-width:min-content}
+  #view-home .card-cols-b{display:block;min-width:0}
+  /* The regions are placed by flex now, so the stacking margins the same elements carry in
+     the single-column composition (.card-split's 14px, .card-bar's 12px) would only push one
+     column down against the other. */
+  #view-home .card-cols > *{margin-top:0}
+  #view-home .card-cols-b > .card-bar:first-child{margin-top:0}
+
+  /* Independent list items in two columns. Ordinary row-major placement, so the visual order
+     stays left-to-right then top-to-bottom — identical to DOM and keyboard order. Only for
+     items that are genuinely independent of each other: a comparison list or a chronological
+     one loses its reading order when it is split down the middle. */
+  #view-home .card-rows-2col{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    column-gap:24px}
+  /* The habits list writes its rules inline, one per row, and skips the last item
+     (buildTodayHabitsList). "Last item" stops meaning "last row" the moment the list is two
+     columns wide: with an even number of habits the left cell of the final row kept a rule
+     under it and the right cell did not, which reads as a broken row rather than as the end of
+     a list. Restate the rule on every item, then clear it for the final ROW — :last-child, plus
+     its neighbour when the count is even (the second-to-last item sits at an odd 1-based
+     position exactly when the total is even). Cleared to transparent, not removed, so both
+     cells of that row keep the same height. !important is unavoidable: the per-row value is an
+     inline style, and it has to stay inline for the phone. */
+  #view-home [data-card-id="habits"] #habits-today-list > *{border-bottom:1px solid var(--border) !important}
+  #view-home [data-card-id="habits"] #habits-today-list > *:last-child,
+  #view-home [data-card-id="habits"] #habits-today-list > *:nth-last-child(2):nth-child(odd){
+    border-bottom-color:transparent !important}
+
+  /* Comparison and chronological lists stay in ONE column — splitting a ranked or dated list
+     down the middle destroys the order that is the point of it. What a very wide card does to
+     them instead is strand the label at one edge and the figure at the other, so the row gets
+     a reading measure and the slack stays outside it as page space. 520px is measured against
+     the longest strings these lists actually produce ("Incline Dumbbell Bench Press" +
+     "38.5kg × 8", "Westpac Low Rate Visa statement" + "$684.20"), with room to spare before
+     any of them wraps. */
+  #view-home [data-card-id="prs"] .pr-row,
+  #view-home [data-card-id="review"] .wr-row,
+  #view-home [data-card-id="finance"] .fin-line{max-width:520px}
+
+  /* A full-width, single-line action sized to its label. Content width so a short label is a
+     button and not a banner, capped at 240px so a longer one wraps inside a sane measure
+     instead of clipping, and pinned to the start edge so it lines up with everything above it.
+     Never for a text field — an input is not made better by being narrower. */
+  #view-home .card-act-inline{width:fit-content;max-width:240px;align-self:flex-start;
+    padding-left:20px;padding-right:20px}
+}
+
 /* ── Tonal status components ────────────────────────────────────────────────
    A judgement, not a decoration: "Under goal", "$62 over", "Improving". These carry the
    semantic colour so the MONEY beside them doesn't have to — an income figure is not a

@@ -13358,7 +13358,7 @@ function buildFinanceCheckinCard(){
   return '<div class="card fin-card" onclick="openBudgetWeek()" style="cursor:pointer">'+
     cardHeader('calendar','Finance check-in')+
     lines.slice(0,3).join('')+
-    '<button type="button" class="fin-act" onclick="event.stopPropagation();openBudgetWeek()">Open Budget →</button>'+
+    '<button type="button" class="fin-act card-act-inline" onclick="event.stopPropagation();openBudgetWeek()">Open Budget →</button>'+
   '</div>';
 }
 // Home's Finance check-in and the Upcoming card both need "take me to Budget's Week view",
@@ -18160,10 +18160,16 @@ function buildWeightGoalCard(){
       }
     }
   }
+  // .card-cols puts today's weight beside the readings that lead up to it on a wide desktop
+  // card, and generates no box at all below that (see css/kitchen-extras.css). The caption
+  // stays OUTSIDE it: it is about the goal ("6.4 kg to go · target 16 Nov"), not about the
+  // readings, so it keeps the full card width to read across.
   return '<div class="card" '+open+' style="cursor:pointer">'+
     cardHeader('scale','Weight',pillHtml||(hasGoal?'':'<span class="card-hd-act">Set a goal →</span>'))+
-    '<div><span class="card-fig">'+cur.weight+'</span><span class="card-fig-u">kg</span></div>'+
-    readings+
+    '<div class="card-cols">'+
+      '<div><span class="card-fig">'+cur.weight+'</span><span class="card-fig-u">kg</span></div>'+
+      readings+
+    '</div>'+
     (capParts.length?'<div class="card-cap">'+capParts.join(' · ')+'</div>':'')+
   '</div>';
 }
@@ -18296,7 +18302,10 @@ function buildTodayHabitsCard(){
     +'</div>'
     +'</div>'
     +'<div style="padding:14px 16px">'
-    +'<div id="habits-today-list">'+buildTodayHabitsList()+'</div>'
+    // Two columns on a wide desktop card (see .card-rows-2col). These are independent
+    // toggles, not a ranked or chronological list, so splitting them costs no reading order —
+    // and it is the single biggest height saving on Home.
+    +'<div id="habits-today-list" class="card-rows-2col">'+buildTodayHabitsList()+'</div>'
     // The week stats + 7-day grid moved here from the Week in Review card, where they were
     // the habits half of a card that also duplicated three other cards. A habits card showing
     // only today has no memory — the grid is what turns "3/5 today" into "and here's the week",
@@ -19448,18 +19457,25 @@ function renderHome(){
     '<div class="card budget-snapshot-card" onclick="setView(\'budget\')" style="cursor:pointer">'+
       cardHeader('wallet','Weekly budget',
         '<span class="budget-snap-pill'+budPillCls2+'" id="home-bud-status">'+budPillTxt2+'</span>')+
-      '<div><span class="card-fig" id="home-bud-remaining" style="color:'+(mBudOver?'var(--danger)':'var(--text)')+'">'+
-        (mBudRem>=0?'':'-')+fmtMoney(Math.abs(Math.round(mBudRem)))+'</span>'+
-        '<span class="card-fig-u" id="home-bud-label">left of '+fmtMoney(Math.round(mBudIncome))+'</span></div>'+
-      '<div class="card-bar">'+
-        '<div class="card-bar-fill" id="home-bud-bar" style="width:'+budBarPct+'%;background:'+budBarCol+'"></div>'+
-        (budPacePct!==null?'<div class="card-bar-pace" style="left:calc('+budPacePct+'% - 1px)" title="Where you should be today"></div>':'')+
+      // What is left, beside how the week is pacing. .card-cols is transparent below the
+      // reflow threshold, so the phone keeps figure → bar → caption stacked; .card-cols-b
+      // groups the bar with the caption that describes it, since the two are one region.
+      '<div class="card-cols">'+
+        '<div><span class="card-fig" id="home-bud-remaining" style="color:'+(mBudOver?'var(--danger)':'var(--text)')+'">'+
+          (mBudRem>=0?'':'-')+fmtMoney(Math.abs(Math.round(mBudRem)))+'</span>'+
+          '<span class="card-fig-u" id="home-bud-label">left of '+fmtMoney(Math.round(mBudIncome))+'</span></div>'+
+        '<div class="card-cols-b">'+
+          '<div class="card-bar">'+
+            '<div class="card-bar-fill" id="home-bud-bar" style="width:'+budBarPct+'%;background:'+budBarCol+'"></div>'+
+            (budPacePct!==null?'<div class="card-bar-pace" style="left:calc('+budPacePct+'% - 1px)" title="Where you should be today"></div>':'')+
+          '</div>'+
+          (budCaption?'<div class="card-cap">'+budCaption+'</div>':'')+
+        '</div>'+
       '</div>'+
-      (budCaption?'<div class="card-cap">'+budCaption+'</div>':'')+
       // Capture from Home as well as Budget. A spending tracker is only as good as how fast a
       // purchase can be logged, and Home is the screen that is actually open when you walk out
       // of a shop. stopPropagation because the card itself navigates to the Budget tab.
-      '<button class="txn-quick" onclick="event.stopPropagation();openTxnModal()">+ Add expense</button>'+
+      '<button class="txn-quick card-act-inline" onclick="event.stopPropagation();openTxnModal()">+ Add expense</button>'+
     '</div>';
 
   // Calorie / overview card
@@ -19526,10 +19542,12 @@ function renderHome(){
       cardHeader('bank','Accounts',
         '<span class="card-hd-act" onclick="event.stopPropagation();openAccounts()">Manage →</span>')+
       (accounts.length
-        ? '<div><span class="card-fig"'+(_nw<0?' style="color:var(--danger)"':'')+'>'+
-            (_nw<0?'-':'')+fmtMoney(Math.abs(_nw))+'</span>'+
-            '<span class="card-fig-u">net worth</span></div>'+
-          '<div class="card-split">'+_splitHtml+'</div>'+
+        ? '<div class="card-cols">'+
+            '<div><span class="card-fig"'+(_nw<0?' style="color:var(--danger)"':'')+'>'+
+              (_nw<0?'-':'')+fmtMoney(Math.abs(_nw))+'</span>'+
+              '<span class="card-fig-u">net worth</span></div>'+
+            '<div class="card-split">'+_splitHtml+'</div>'+
+          '</div>'+
           // The statement alert moved ABOVE the account list: it is the actionable part of the
           // card and it was sitting below a collapsed section, i.e. last.
           _stmtRows+

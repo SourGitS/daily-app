@@ -164,7 +164,12 @@
 // entries and budget weeks, listeners released on an account change, and setup waits for the
 // restored data. Brand: the borderless DAILY wordmark as a CSS mask inked with the live accent,
 // and the static DA app icon for the manifest, favicon and Apple touch icon.
-const CACHE_NAME = 'daily-v308';
+// v309: Home cards compose across a wide desktop column - a figure beside its supporting
+// information (Weekly budget, Weight, Accounts), the habits checklist in two columns, a
+// reading measure on the comparison lists, and single-line actions sized to their label.
+// Opt-in per card, behind the existing 1024px desktop condition plus a 460px container query,
+// preserving the phone layout; metric regions wrap when their content needs more room.
+const CACHE_NAME = 'daily-v309';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

@@ -997,11 +997,13 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   #view-home .home-card-wide[data-card-id="weather"] .weather-temp{font-size:38px}
   #view-home .home-card-wide[data-card-id="weather"] .weather-icon{font-size:34px}
   /* This whole block used to up-size the ring (168px), its text, and the meal/remaining figures
-     for desktop, on the premise that the card was being STRETCHED to match a taller row
-     partner and needed bigger content to avoid looking lost in that space. Cards no longer
-     stretch — every card sizes to its own content now — so there is no extra space to fill and
-     this was just making the calorie card the biggest thing on the page for no reason. Removed;
-     the ring and its text use the same size as mobile, on every screen. */
+     for desktop, on the premise that a card stretched to match a taller row partner needs bigger
+     content to avoid looking lost in that space. Cards DO still stretch — align-items:stretch
+     above is what keeps the rows flush — but up-sizing the type is the wrong answer to it: it
+     made the calorie card the biggest thing on the page, and the slack it was chasing belongs to
+     whichever card happens to be shorter that render, not to this one. Removed; the ring and its
+     text use the same size as mobile, on every screen. Where a card genuinely has width to spend,
+     the answer is the opt-in composition shapes in kitchen-extras.css, not a bigger font. */
 
 
   #view-log .log-cols{display:flex;gap:20px;height:100%}
