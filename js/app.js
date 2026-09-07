@@ -2082,10 +2082,15 @@ const NAV_ORDER=['home','budget','log','nutrition','kitchen'];
 // most-used destinations are one press instead of two (expand a group, then pick a row). That
 // two-press cost only existed on desktop and in the hamburger — the phone has always had these
 // five under its thumb — so this closes the gap rather than inventing a new idea.
-// Derived from NAV_ORDER, never a second hand-written list: adding a tab to the phone deck
-// adds it here, and the two cannot drift into saying different things about which five views
-// are the important ones. The icons are the same paths #bottom-nav draws, so the desktop
-// shortcut and the phone tab are visibly the same thing.
+// The five deck tabs are DERIVED from NAV_ORDER, never re-typed: adding a tab to the phone
+// deck adds it here, and the two cannot drift into disagreeing about which views the deck
+// holds. Their icons are the same paths #bottom-nav draws, so the desktop shortcut and the
+// phone tab are visibly the same thing.
+// NAV_QUICK_EXTRA is the deliberate exception. Stats and Settings are not deck tabs — there is
+// no sixth or seventh bottom-nav button and there is not going to be — but they are used often
+// enough that reaching them through "expand a group, then pick a row" was the complaint that
+// produced this strip in the first place. Naming them in their own list keeps the derivation
+// honest: NAV_ORDER still means "the phone deck", and this means "also worth pinning".
 // A quick item dispatches setView with NO sub-tab — exactly what pressing the bottom-nav
 // button does — so it lands you back wherever you were inside that view.
 const NAV_QUICK_ICONS={
@@ -2093,10 +2098,19 @@ const NAV_QUICK_ICONS={
   budget:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h2M10 15h4"/>',
   log:'<path d="M6 4v16M18 4v16"/><path d="M3 8h3M18 8h3M3 16h3M18 16h3"/><path d="M6 12h12"/>',
   nutrition:'<path d="M12 22c4.4 0 8-4.1 8-9.2C20 8.4 16.4 5 12 5s-8 3.4-8 7.8C4 17.9 7.6 22 12 22z"/><path d="M12 5c0-2 1.6-3 3.5-3"/><path d="M9 8c1.8 1 4.2 1 6 0"/>',
-  kitchen:'<path d="M5 10h14v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z"/><path d="M3 10h18"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>'
+  kitchen:'<path d="M5 10h14v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z"/><path d="M3 10h18"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+  // Stats and Settings have no bottom-nav button to borrow from, so these are written out —
+  // the chart is CARD_ICONS.trend and the control is SETTINGS_ICONS.sliders, copied rather
+  // than referenced because both of those are declared thousands of lines below this and
+  // `const` does not hoist. Keep them in step by eye if either is ever redrawn.
+  stats:'<path d="M3 17l6-6 4 4 7-7"/><path d="M20 8v5h-5"/>',
+  settings:'<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2.1"/><circle cx="15" cy="12" r="2.1"/><circle cx="8" cy="18" r="2.1"/>'
 };
-const NAV_QUICK_LABELS={home:'Home', budget:'Budget', log:'Log', nutrition:'Nutrition', kitchen:'Kitchen'};
-const NAV_QUICK=NAV_ORDER.map(v=>({view:v, label:NAV_QUICK_LABELS[v]||v, icon:NAV_QUICK_ICONS[v]||''}));
+const NAV_QUICK_LABELS={home:'Home', budget:'Budget', log:'Log', nutrition:'Nutrition', kitchen:'Kitchen',
+                        stats:'Stats', settings:'Settings'};
+const NAV_QUICK_EXTRA=['stats','settings'];
+const NAV_QUICK_VIEWS=NAV_ORDER.concat(NAV_QUICK_EXTRA);
+const NAV_QUICK=NAV_QUICK_VIEWS.map(v=>({view:v, label:NAV_QUICK_LABELS[v]||v, icon:NAV_QUICK_ICONS[v]||''}));
 
 // ── Navigation registry ──────────────────────────────────────────
 // The ONE source for the desktop sidebar and the mobile hamburger. Six groups, one open at a
@@ -2120,11 +2134,13 @@ const NAV_QUICK=NAV_ORDER.map(v=>({view:v, label:NAV_QUICK_LABELS[v]||v, icon:NA
 // workout History stop being top-level rows and become Training › Exercises / History, which
 // is where they have actually gone since the Log hub was built.
 const NAV_TREE=[
-  // No Home row here. Home is the ONE destination the quick strip duplicates exactly — same
-  // label, same view, no sub-tab — so listing it twice a hundred pixels apart, lit twice, read
-  // as a bug. It is the first pinned item above, always visible and one press from anywhere;
-  // the other four quick items are views whose tree rows name specific sub-tabs, so those are
-  // genuinely different rows and stay.
+  // No Home row here, and no Settings row in More below. Those are the two destinations the
+  // quick strip duplicates EXACTLY — same label, same view, no sub-tab — so listing either
+  // twice a hundred pixels apart, lit twice, read as a bug. Both are pinned above, always
+  // visible and one press from anywhere. The other pinned items (Budget, Log, Nutrition,
+  // Kitchen, Stats) point at views whose tree rows name specific SUB-TABS, so those rows are
+  // genuinely different destinations and stay — landing on Budget is not the same as landing
+  // on Budget › Month.
   {id:'today', label:'Today', rows:[
     {id:'log-today', label:"Today's session",  view:'log',       sub:'today'},
     {id:'nut-today', label:'Food log',         view:'nutrition', sub:'today'},
@@ -2159,14 +2175,17 @@ const NAV_TREE=[
     {id:'journal',  label:'Journal',  view:'notes'},
     {id:'plans',    label:'Plans',    view:'plans'},
     {id:'aihub',    label:'Daily AI', view:'aihub'},
-    // Settings pushes its own screen and stops there. That screen is already registry-driven
-    // and searchable, so mirroring its ten destinations here would rebuild the duplication
-    // this registry exists to remove.
-    {id:'settings', label:'Settings', view:'settings'},
+    // No Settings row: it is pinned in the quick strip now, and it was the second destination
+    // the strip duplicates EXACTLY — same label, same view, no sub-tab. Same reasoning as Home
+    // above. Settings still pushes its own screen and stops there; that screen is already
+    // registry-driven and searchable, so mirroring its ten destinations here would rebuild the
+    // duplication this registry exists to remove.
   ]},
 ];
-const NAV_ROW_BY_ID={}, NAV_GROUP_OF_ROW={};
-NAV_TREE.forEach(g=>g.rows.forEach(r=>{ NAV_ROW_BY_ID[r.id]=r; NAV_GROUP_OF_ROW[r.id]=g.id; }));
+// Row id → row. There is deliberately no row → group index any more: the only thing that ever
+// read one was the navigate-and-expand behaviour, and a group is now opened by pressing it.
+const NAV_ROW_BY_ID={};
+NAV_TREE.forEach(g=>g.rows.forEach(r=>{ NAV_ROW_BY_ID[r.id]=r; }));
 // Pushed screens that are not nav destinations: a collection editor with its own top-bar
 // Save, the Stats evidence overlay, an exercise detail, a mounted Settings section. They are
 // inset past the desktop sidebar rather than covering it, so the nav is visible beside them —
@@ -2225,18 +2244,21 @@ function navCurrentQuick(){
   if(NAV_NO_ROW_OVERLAYS.some(navShown)) return '';
   if(navShown('view-accounts')||navShown('view-aihub')) return '';
   const v=(typeof S!=='undefined'&&S&&S.view)||'home';
-  return NAV_ORDER.indexOf(v)>=0 ? v : '';
+  return NAV_QUICK_VIEWS.indexOf(v)>=0 ? v : '';
 }
 
 const NAV_UI_KEY='daily_nav_ui';
 // WHICH groups are expanded — a set, not one id. Any number can be open at once, and closing
 // one never opens or closes another. It was one-at-a-time until 2026-09-05 and that was wrong:
 // an accordion is a space-saving device, and the sidebar has room, so all it actually did was
-// take away a choice. The only automatic move left is ADDITIVE — navigating expands the group
-// that owns where you just went, so the lit row is never hidden inside a collapsed group. It
-// never collapses anything, which is the difference that matters.
-// Whatever is expanded when you leave is expanded when you come back, so this persists on
-// every change, not only on a header press. Plain localStorage, never lsSave(key,value,sync):
+// take away a choice.
+// NOTHING opens a group except a press on its header. Navigating used to expand the group that
+// owned the destination — additively, so it never collapsed anything — and it was still wrong:
+// opening a tab rearranged the menu underneath you, which is the one thing a menu must not do.
+// The quick strip already guarantees the important destinations are reachable without any group
+// being open, so the reason that behaviour existed is gone. Do not reintroduce it.
+// Whatever is expanded when you leave is expanded when you come back. Plain localStorage,
+// never lsSave(key,value,sync):
 // the three-argument form is the synced path and the sidebar is desktop-only, so a phone must
 // not write a preference only the laptop reads. Excluded from exportAllData() for the same
 // reason. Nothing is written during _bootPhase — the key stays absent until a real interaction.
@@ -2250,9 +2272,11 @@ function navResolveOpen(){
   // The one-at-a-time era stored a single id (or '' for none). Read it, don't rewrite it:
   // this is device-local UI state, and the next toggle saves the new shape anyway.
   else if(rec&&typeof rec.open==='string')    navOpenGroups=new Set(rec.open&&known(rec.open)?[rec.open]:[]);
-  // No record at all — first run on this device. Open whichever group owns wherever the app
-  // started, so something is expanded and the current row is visible.
-  else                                        navOpenGroups=new Set([NAV_GROUP_OF_ROW[navCurrentRow()]||NAV_TREE[0].id]);
+  // No record at all — first run on this device, and everything starts collapsed. It used to
+  // open whichever group owned wherever the app happened to have started, which is the same
+  // "the menu opened itself" behaviour removed above, only harder to notice. The strip above
+  // the groups is not empty on first run: it holds the seven pinned destinations.
+  else                                        navOpenGroups=new Set();
   return navOpenGroups;
 }
 function navSaveOpen(){
@@ -2266,17 +2290,12 @@ function navToggleGroup(id){
   navApplyState();
 }
 
-// The ONLY place a nav row's selected state is written, for BOTH surfaces.
+// The ONLY place a nav row's selected state is written, for BOTH surfaces. It writes the
+// selected state and NOTHING else — no group is expanded, collapsed or saved from here. A lit
+// row inside a collapsed group is simply not visible until that group is opened, which is what
+// a collapsed group means.
 function setNavActive(){
-  const row=navCurrentRow();
-  const open=navResolveOpen();
-  // Additive only: expand the group you have just navigated into, never collapse the others.
-  // Skipped during boot so a stored state is restored exactly as it was left.
-  if(!_bootPhase){
-    const g=NAV_GROUP_OF_ROW[row];
-    if(g&&!open.has(g)){ open.add(g); navSaveOpen(); }
-  }
-  navApplyState(row);
+  navApplyState(navCurrentRow());
 }
 function navApplyState(row){
   if(row===undefined) row=navCurrentRow();

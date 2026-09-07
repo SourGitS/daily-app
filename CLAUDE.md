@@ -33,11 +33,11 @@ older summary — re-grep before assuming a fact from here is still true if it l
 - Chart.js (cdnjs), Tabler Icons (jsdelivr), Google Fonts — Manrope (UI) + Space Grotesk
   (numerals/wordmark).
 
-## Navigation (restructured many times over the project's life — this is current as of 2026-09-05)
+## Navigation (restructured many times over the project's life — this is current as of 2026-09-07)
 
 - **`NAV_TREE` (`js/app.js`, beside `NAV_ORDER`) is the ONE source for the desktop sidebar and
   the mobile hamburger**, together with the `NAV_QUICK` strip pinned above it (see below). Six
-  labelled groups — Today, Training, Money, Kitchen, Stats, More — holding 24 rows between them,
+  labelled groups — Today, Training, Money, Kitchen, Stats, More — holding 23 rows between them,
   reaching every real destination rather than only the twelve top-level ones. `renderNav()` builds the tree ONCE and mounts the same markup into `#ds-nav`
   (sidebar) and `#side-menu-list` (hamburger); the two differ in DENSITY only (16px rows and
   44px targets on the phone, 14px pill rows on the sidebar), never in content, order or which
@@ -46,17 +46,26 @@ older summary — re-grep before assuming a fact from here is still true if it l
   `SETTINGS_SECTIONS`: before it, twelve hand-written `.ds-item` buttons in `index.html`, a
   similar-but-different list in `buildSideMenu()` (from `MENU_NAV` + `MENU_SECTIONS` + four
   more literals) and a third in `renderQuickSettingsMenu()` each carried their own copy.
-- **The five phone tabs are PINNED above the groups on both nav surfaces, and that is what
-  makes them one press.** `NAV_QUICK` (`js/app.js`, beside `NAV_ORDER`) is the quick strip:
-  Home, Budget, Log, Nutrition, Kitchen, rendered by `navBuildHtml()` above the six groups into
-  both `#ds-nav` and `#side-menu-list`. Before it, the app's most-used destinations cost TWO
-  presses on every surface without a bottom nav — expand a group, then pick a row — which is
-  the complaint that produced it. **It is DERIVED from `NAV_ORDER`, never a second hand-written
-  list** (`NAV_ORDER.map()` over `NAV_QUICK_LABELS` / `NAV_QUICK_ICONS`), so the phone deck and
-  the shortcut strip cannot come to disagree about which five views matter; the icons are the
-  same paths `#bottom-nav` draws. A quick item dispatches `navGo(view)` with **no sub-tab**,
-  exactly what pressing the bottom-nav button does, so it returns you to wherever you were
-  inside that view.
+- **SEVEN destinations are PINNED above the groups on both nav surfaces, and that is what makes
+  them one press.** `NAV_QUICK` (`js/app.js`, beside `NAV_ORDER`) is the quick strip: Home,
+  Budget, Log, Nutrition, Kitchen, **Stats, Settings**, rendered by `navBuildHtml()` above the
+  six groups into both `#ds-nav` and `#side-menu-list`. Before it, the app's most-used
+  destinations cost TWO presses on every surface without a bottom nav — expand a group, then
+  pick a row — which is the complaint that produced it, and the same complaint later brought
+  Stats and Settings in (2026-09-07).
+  **The five deck tabs are DERIVED from `NAV_ORDER`, never re-typed**
+  (`NAV_QUICK_VIEWS = NAV_ORDER.concat(NAV_QUICK_EXTRA)`, mapped over `NAV_QUICK_LABELS` /
+  `NAV_QUICK_ICONS`), so the phone deck and the shortcut strip cannot come to disagree about
+  what the deck holds; their icons are the same paths `#bottom-nav` draws.
+  **`NAV_QUICK_EXTRA` (`['stats','settings']`) is the deliberate exception** — those two are NOT
+  deck tabs, there is no sixth or seventh bottom-nav button and there is not going to be, and
+  keeping them in their own list is what stops `NAV_ORDER` quietly coming to mean "pinned"
+  instead of "the phone deck". Their icons are written out inline beside the others, copied from
+  `CARD_ICONS.trend` and `SETTINGS_ICONS.sliders` rather than referenced, because both of those
+  are declared thousands of lines lower and `const` does not hoist — the same trap the registry
+  itself is placed to avoid. A quick item dispatches `navGo(view)` with **no sub-tab**, exactly
+  what pressing the bottom-nav button does, so it returns you to wherever you were inside that
+  view.
   **A quick item lights by VIEW, a tree row by ROW, and both being lit is a breadcrumb rather
   than a bug.** `navCurrentQuick()` sits beside `navCurrentRow()` and reads the same state with
   the same overlay rules — it is a second projection, not a second variable — and
@@ -64,12 +73,13 @@ older summary — re-grep before assuming a fact from here is still true if it l
   Money group's "Month" are both lit, which is the relationship the phone already has between
   its bottom nav and a sub-tab strip. Exactly one element carries `aria-current="page"`: the
   tree row when the destination has one, the quick item when it does not.
-  **There is no Home row in the Today group any more.** Home was the one destination the strip
-  duplicated exactly — same label, same view, no sub-tab — and listing it twice, lit twice, a
-  hundred pixels apart read as a bug. The other four quick items point at views whose tree rows
-  name specific sub-tabs, so those rows are genuinely different destinations and stay. Home is
-  the first pinned item and is one press from everywhere; `navCurrentRow()` still answers
-  `'home'`, which simply matches no row.
+  **There is no Home row in Today and no Settings row in More any more.** Those are the two
+  destinations the strip duplicates exactly — same label, same view, no sub-tab — and listing
+  either twice, lit twice, a hundred pixels apart read as a bug. The other five pinned items
+  point at views whose tree rows name specific SUB-TABS (Budget › Month, Stats › Overview …),
+  so those rows are genuinely different destinations and stay. Both are one press from
+  everywhere; `navCurrentRow()` still answers `'home'` and `'settings'`, which simply match no
+  row, and `navCurrentQuick()` lights the pinned item instead.
   **Selection reuses `.nv-row.is-on` (tint + rail + weight); do not give it its own.**
   `.nav-btn.active`'s colour-and-weight was tried and is wrong here: the bottom nav brightens a
   `--muted` label to `--accent-text`, but these rows are already `--text`, so with the default
@@ -108,20 +118,26 @@ older summary — re-grep before assuming a fact from here is still true if it l
   toggles that group and nothing else; all-closed and all-open are both valid. It was
   one-at-a-time for a day (2026-09-04 → 09-05) and that was wrong — an accordion is a
   space-saving device, the sidebar has room, and all the restriction did was take away a
-  choice. **The one automatic move is ADDITIVE**: navigating expands the group that owns the
-  destination, so the lit row is never hidden inside a collapsed group. It never collapses
-  anything, which is the whole difference. Do not reintroduce the close-the-others behaviour.
+  choice. **NOTHING opens a group except a press on its header** (2026-09-07). Navigating used
+  to expand the group owning the destination — additively, so it never collapsed anything — and
+  that was still wrong: opening a tab rearranged the menu underneath you, which is the one thing
+  a menu must not do. The quick strip already puts the seven most-used destinations one press
+  away with every group shut, so the reason that behaviour existed is gone. `setNavActive()`
+  now writes the selected state and nothing else, and `NAV_GROUP_OF_ROW` was deleted with it —
+  it had no other reader. Do not reintroduce either that or the close-the-others behaviour.
 - **Expansion state is device-local, in `daily_nav_ui`** as `{open:[groupId, …]}`, written with
   a plain `localStorage.setItem` and **never** `lsSave(key, value, syncName)` — the
   three-argument form is the synced path and the sidebar is desktop-only, so a phone must not
   write a preference only the laptop reads. `daily_pantry_ui` is the precedent, and like it,
   `daily_nav_ui` is excluded from `exportAllData()`. **Whatever is expanded when you leave is
-  expanded when you come back**, so every change persists — a header press and the additive
-  open on navigation alike — not just deliberate toggles. **Nothing is written during
-  `_bootPhase`**, so restoring a stored state cannot rewrite it, and a fresh device with no
-  record simply opens the group owning wherever the app started. `navResolveOpen()` also reads
-  the one-at-a-time era's `{open:"money"}` string shape without rewriting it; the next toggle
-  saves the array form. Deleting the key resets to that first-run default.
+  expanded when you come back**; a header press is now the only thing that writes it. **Nothing
+  is written during `_bootPhase`**, so restoring a stored state cannot rewrite it, and **a fresh
+  device with no record starts with every group COLLAPSED** — it used to open whichever group
+  owned wherever the app happened to have started, which is the same "the menu opened itself"
+  behaviour, only harder to notice. The sidebar is not empty in that state: the seven pinned
+  items sit above the six headers. `navResolveOpen()` also reads the one-at-a-time era's
+  `{open:"money"}` string shape without rewriting it; the next toggle saves the array form.
+  Deleting the key resets to all-collapsed.
 - **`#ds-nav` scrolls independently of `.ds-profile`.** `#desktop-sidebar` is
   `height:100vh; position:sticky` with `.ds-profile{margin-top:auto}`; twelve flat rows just
   fitted, and the moment a group expanded past the viewport the profile would have been pushed
@@ -142,9 +158,10 @@ older summary — re-grep before assuming a fact from here is still true if it l
   top-level rows and are **Training › Exercises / History**, which is where they have actually
   gone since the Log hub was built; `openExerciseLibrary()` / `openWorkoutHistory()` stay
   exported for their other callers, but the nav rows dispatch through `navGo` directly.
-  *Settings* pushes its own screen and stops there — that screen is already registry-driven and
-  searchable, and mirroring its ten destinations here would rebuild the duplication this
-  registry removes. A second nesting level anywhere in this component is out of scope.
+  *Settings* is pinned in the quick strip and has no tree row (see above); the screen it pushes
+  is already registry-driven and searchable, so mirroring its ten destinations here would
+  rebuild the duplication this registry removes. A second nesting level anywhere in this
+  component is out of scope.
 - **Retired, do not bring back:** `MENU_NAV`, `MENU_SECTIONS`, `menuSectionLabel()`,
   `menuNav()`, `buildSideMenu()`, `renderQuickSettingsMenu()`, `setQuickSettingsOpen()`,
   `toggleQuickSettings()`, `restoreQuickSettings()`, the `daily_qs_open` key, `.ds-item`,
