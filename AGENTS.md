@@ -33,7 +33,7 @@ Four main areas plus supporting screens:
 - Entry point `index.html`, loads NINE CSS files in a fixed cascade order (do not reorder the
   `<link>` tags; new ones are appended, never inserted) and TWO scripts: `js/nutrition.js`
   (~340 lines — the food catalogue, the day log and the Nutrition tab) then `js/app.js`
-  (~25,400 lines, everything else). Both are plain `<script defer>` in one global scope. The
+  (~27,600 lines, everything else). Both are plain `<script defer>` in one global scope. The
   "all app logic in one file" claim in this doc was stale for a long time after nutrition.js
   was split out, and both line counts have gone stale before — `wc -l` and
   `grep rel="stylesheet" index.html` rather than trusting them.
@@ -354,6 +354,58 @@ safety-critical parts:
   the user still has to press Copy there. No API, no key, no automatic transmission.
 
 ## Current unfinished work
+
+### Home desktop Dashboard + the rebuilt Home Layout editor — 2026-09-07 (UNCOMMITTED, `daily-v310`)
+
+Presentation plus one additive change to an existing synced store. Not committed or pushed.
+
+- **Home gains a second DESKTOP composition.** `composition:'dashboard'` renders two
+  independent vertical stacks (`dashboard.main` / `dashboard.summary`) instead of the row
+  grid, so a tall card stops stretching the card beside it. Grid is unchanged, is still the
+  default, and is what a profile carrying neither field means — **there is no migration and
+  nothing is switched on at boot**. Full design rationale, the resolver rules and the CSS
+  decisions are in `CLAUDE.md`; the safety-critical parts are here.
+- **The synced store `daily_home_layout` gains two fields on its DESKTOP profile only:**
+  `composition` (`'grid'|'dashboard'`) and `dashboard` (`{main:[ids],summary:[ids]}`). No new
+  localStorage key, no new Firebase path, no new sync registration, no `schemaVersion` change,
+  no boot migration. `homeLayoutProfileNormalise()` is the one place they are defaulted, and
+  it defaults to Grid.
+- **Boot is still stamp-safe.** Reading the store canonicalises it (adding the two fields) and
+  writes back through `lsSave`, which respects `_bootPhase` — verified against a pre-v310
+  layout with a fixed `updatedAt`: both per-profile `updatedAt` values and
+  `daily_home_layout_ts` came back unchanged and Home rendered Grid. Never restore a raw
+  `Date.now()` here.
+- **Settings > Home Layout now edits DRAFTS.** `saveHomeLayout()` is still the only write path
+  and still stamps one profile; nothing else in the editor writes. Cancel, preview, switching
+  the profile tab, resizing, opening Home or Settings, and an incoming cloud snapshot all write
+  nothing. Applying the desktop profile cannot stamp the iPhone one or the reverse — the
+  per-profile `updatedAt` that `homeLayoutsMerge()` compares depends on that.
+- **A cloud update arriving under an open draft is surfaced, never resolved silently.**
+  `hlStale()` compares the saved profile's `updatedAt` against the value the draft was forked
+  from; Apply refuses while it differs and the user picks *Keep my changes* or *Use the updated
+  layout*.
+- **Old-client limit, documented rather than assumed.** A device still on a pre-v310 build
+  strips both new fields when it normalises the store. It will not write the stripped copy back
+  on its own, but editing the Home layout there uploads a desktop profile without them, and the
+  updated device then reads Grid (Grid order and widths intact, column arrays lost). Refresh
+  the old device; there is no client-side fix.
+- **Backup/restore round-trips.** `exportAllData()` copies the key verbatim and the restore
+  path's re-stamp block goes through `homeLayoutsNormalise()`, which preserves both fields —
+  checked end to end on an isolated fixture.
+- **Testing, and what was NOT tested.** `node --test tests/sync-safety.test.cjs
+  tests/sync-extra.test.cjs` — 32/32 pass, unchanged. A 50-check behavioural suite
+  (`temp-analysis/layout-tests.js`, a working file, not a repo asset) passes against an
+  isolated localhost fixture in a disposable headless-Chrome profile: partition order, apply /
+  cancel / revert, per-profile isolation, hide-show position, unknown and duplicate ids,
+  normalise round trips, merge, stale-draft detection, and the copy directions. Home was
+  pixel-diffed against the same commit's Grid build at 375, 414 and 932-landscape — identical
+  apart from the weather card's time-driven moon, which also differs between two runs of the
+  same build. **No real signed-in account was used, read, written or cleared, and no
+  production data was touched**; the fixture is the user's own already-taken export, seeded
+  into a throwaway browser profile on `localhost` and never signed in. The signed-in
+  fresh-profile check has therefore NOT been run for this change either — same limitation as
+  v308, and it should not be described as verified against real cloud data.
+- `CACHE_NAME` is prepared as `daily-v310`.
 
 ### Local sync hardening — 2026-09-07 (RELEASED as daily-v308, isolated tests only)
 

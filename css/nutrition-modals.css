@@ -149,15 +149,78 @@
 .hl-layout-count span{font-size:10px;color:var(--muted);margin-top:3px;white-space:nowrap}
 .hl-layout-note{font-size:11px;line-height:1.45;color:var(--muted);background:rgba(var(--accent-rgb),.07);border:1px solid rgba(var(--accent-rgb),.13);border-radius:11px;padding:9px 11px;margin-bottom:12px}
 .hl-layout-list{display:flex;flex-direction:column;gap:10px}
-.hl-profile-tabs{display:flex;gap:3px;padding:3px;margin:2px 0 12px;border-radius:11px;background:var(--border)}
-.hl-profile-tabs button{flex:1;min-height:40px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:700 12px var(--font-ui);cursor:pointer}
-.hl-profile-tabs button.active{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.12)}
-.hl-profile-preview{display:grid;grid-template-columns:1fr;gap:4px;margin-top:11px;padding:9px;border:1px solid var(--border);border-radius:11px;background:var(--bg)}
-.hl-profile-preview.is-desktop{grid-template-columns:1fr 1fr}
-.hl-profile-preview span{min-width:0;padding:5px 7px;border-radius:6px;background:var(--surface-card,var(--card));border:1px solid var(--border);font-size:8px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hl-profile-preview span.is-wide{grid-column:1/-1}
-.hl-profile-preview span.is-hidden{opacity:.32;text-decoration:line-through}
-.hl-copy-btn{width:100%;margin-top:10px;font-size:13px}
+/* The profile switch is the app's ONE segmented control (.seg-tabs in css/workout.css), not
+   a fourth private pill row. It is static here: .seg-tabs is position:sticky for the strips
+   that head a scrolling screen, and this one sits inside a settings card. */
+.hl-seg{position:static;margin:2px 0 10px}
+.hl-editing{font-size:12px;line-height:1.45;color:var(--muted);margin:0 0 4px}
+.hl-editing strong{color:var(--text)}
+/* Composition chooser: two selectable cards with a diagram of the arrangement each makes,
+   because "Grid" and "Dashboard" are not words that describe themselves. */
+.hl-comp-row{display:grid;grid-template-columns:1fr;gap:8px;margin-top:12px}
+.hl-comp{display:block;text-align:left;padding:11px 12px;border:1px solid var(--border);
+  border-radius:12px;background:transparent;font-family:inherit;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.hl-comp strong{display:block;font-size:13px;color:var(--text);margin-top:8px}
+.hl-comp small{display:block;font-size:11px;line-height:1.4;color:var(--muted);margin-top:2px}
+.hl-comp.is-on{border-color:rgba(var(--accent-rgb),.45);background:rgba(var(--accent-rgb),.08)}
+.hl-comp:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hl-comp-fig{display:grid;gap:3px;width:74px;height:38px;padding:4px;border-radius:7px;
+  background:var(--bg);border:1px solid var(--border);box-sizing:border-box}
+.hl-comp-fig i{display:block;border-radius:2px;background:var(--border)}
+.hl-comp-grid{grid-template-columns:1fr 1fr;grid-template-rows:auto 1fr 1fr}
+.hl-comp-grid i.w{grid-column:1/-1}
+.hl-comp-dashboard{grid-template-columns:1.5fr 1fr}
+.hl-comp.is-on .hl-comp-fig i{background:var(--accent)}
+/* Preview: real card identity, real order, real placement, inert. The tiles carry the card's
+   own name — a scaled screenshot of fifteen cards is unreadable at this size, and a labelled
+   tile in the actual composition answers the question the preview is for. */
+.hl-pv{margin-top:11px;padding:10px;border:1px solid var(--border);border-radius:12px;
+  background:var(--bg)}
+.hl-pv-tile{display:block;min-width:0;padding:7px 8px;border-radius:7px;
+  background:var(--surface-card,var(--card));border:1px solid var(--border);
+  font-size:9px;font-weight:700;color:var(--text);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hl-pv-tile.is-hero{background:linear-gradient(150deg,var(--accent-hero),var(--accent-hero-2));
+  border-color:transparent;color:#fff;padding-block:11px}
+.hl-pv-none{display:block;padding:8px 2px;font-size:10px;color:var(--muted)}
+.hl-pv-phone{max-width:210px;margin-inline:auto;border-radius:20px;padding:8px;
+  border-width:3px}
+.hl-pv-bar{display:block;width:52px;height:4px;border-radius:3px;background:var(--border);
+  margin:1px auto 8px}
+.hl-pv-stack{display:flex;flex-direction:column;gap:5px}
+.hl-pv-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.hl-pv-grid .is-wide{grid-column:1/-1}
+/* Two independent stacks with their own headings — the same two groups Home renders, so the
+   preview cannot describe an arrangement Home does not have. */
+.hl-pv-dash{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:8px;
+  align-items:start}
+.hl-pv-col{display:flex;flex-direction:column;gap:5px;min-width:0}
+.hl-pv-h{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--text-2)}
+/* Column groups in the editor list below the preview. */
+.hl-col-group{margin-top:16px}
+.hl-col-h{display:flex;align-items:baseline;gap:8px;margin:0 2px 9px;
+  font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2)}
+.hl-col-h span{font-size:10px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--muted)}
+.hl-col-btn{display:flex;flex-direction:column;justify-content:center;gap:1px;min-height:40px;
+  padding:0 10px;border:1px solid var(--border);border-radius:9px;background:transparent;
+  color:var(--muted);font-family:inherit;cursor:pointer;text-align:left}
+.hl-col-btn span{font-size:10px}
+.hl-col-btn strong{font-size:11px;color:var(--text)}
+/* A conflict is a decision, so it uses the warning family (--warn-*, NOT --amber-*, whose
+   tokens are red) and it never resolves itself. */
+.hl-conflict{border-color:var(--warn-border) !important;background:var(--warn-bg) !important}
+.hl-conflict strong{display:block;font-size:14px;color:var(--warn-dark)}
+.hl-conflict p{margin:6px 0 0;font-size:12px;line-height:1.45;color:var(--warn-dark);opacity:.92}
+/* Unsaved is a STATE, not a confirmation: .stg-save-state is the app's green tick and
+   means the write happened, so it would be a lie here. */
+.hl-state{display:inline-flex;align-items:center;flex-shrink:0;margin-right:auto;
+  padding:4px 9px;border-radius:999px;font-size:12px;font-weight:700;
+  color:var(--warn-dark);background:var(--warn-bg);border:1px solid var(--warn-border)}
+.hl-actions{justify-content:space-between}
+.hl-actions-2{justify-content:flex-start;margin-top:10px;padding-top:12px;
+  border-top:1px solid var(--border)}
 .hl-widget{background:var(--card);border:1px solid var(--card-border);border-radius:14px;padding:12px;transition:opacity .18s,border-color .18s}
 .hl-widget.is-hidden{opacity:.58}
 .hl-widget-head{display:flex;align-items:center;gap:9px;min-height:30px}
@@ -172,12 +235,16 @@
 .hl-order-actions{display:flex;gap:6px}
 .hl-order-actions button{width:42px;height:40px;border:1px solid var(--border);border-radius:9px;background:transparent;color:var(--text);font-size:15px;font-weight:800;cursor:pointer}
 .hl-order-actions button:disabled{opacity:.25;cursor:default}
+/* Every placement control is keyboard-operable, so every one has to show focus. */
+.hl-order-actions button:focus-visible,.hl-width-btn:focus-visible,
+.hl-col-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .hl-width-btn{display:flex;align-items:center;gap:8px;min-height:40px;padding:0 10px;border:1px solid var(--border);border-radius:9px;background:transparent;color:var(--muted);font-family:inherit;cursor:pointer}
 .hl-width-btn span{font-size:10px}
 .hl-width-btn strong{font-size:11px;color:var(--text)}
 .hl-width-btn.is-wide{border-color:rgba(var(--accent-rgb),.45);background:rgba(var(--accent-rgb),.08)}
 [data-theme="dark"] .hl-widget{background:var(--surface-card)}
 @media(min-width:700px){
+  .hl-comp-row{grid-template-columns:1fr 1fr}
   .hl-widget{display:grid;grid-template-columns:minmax(0,1fr) 210px;grid-template-areas:"head preview" "actions preview";column-gap:16px;align-items:center;padding:14px}
   .hl-widget-head{grid-area:head;align-self:end}
   .hl-widget-preview{grid-area:preview}

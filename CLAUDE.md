@@ -19,7 +19,7 @@ older summary — re-grep before assuming a fact from here is still true if it l
   first six were split from one `style.css` partway through the project (commit `52f32d0`);
   journal, settings and review were added later and load last *so they win ties* — that is the
   point of their position. New files are APPENDED, never inserted.
-- Nearly all logic in one `js/app.js` (~25,400 lines), plus a second script `js/nutrition.js`
+- Nearly all logic in one `js/app.js` (~27,600 lines), plus a second script `js/nutrition.js`
   (~340 lines: the food catalogue, the day log and the Nutrition tab), loaded BEFORE `app.js`
   at the bottom of `index.html`. Both are plain `<script defer>` in one global scope, so
   `app.js` can read `nutrition.js`'s top-level `let`s (`nutTab`) and `nutrition.js` guards its
@@ -225,9 +225,14 @@ older summary — re-grep before assuming a fact from here is still true if it l
 
 ## What's in each area
 
-- **Home** — dashboard of widget cards, each independently show/hideable via
+- **Home** — dashboard of widget cards, each independently show/hideable and reorderable via
   Settings → Home Layout. Today's session hero, weekly budget snapshot, calorie card,
   savings/CC balance, notes bubble, habits.
+  On DESKTOP it has two compositions, **Grid** (the long-standing two-column row grid, still
+  the default and still what every existing layout renders as) and **Dashboard** (two
+  independent vertical stacks: *Today & activity* beside *At a glance*). The phone feed and the
+  landscape-phone grid are unchanged and have no composition choice. See the Home layout
+  history below before touching either.
   - The weather card has **19 derived presentation scenes** and no scene state of its own:
     `clear-*` and `partly-*` each use dawn/noon/day/dusk/night; cloudy, fog, rain and snow each
     use day/night; storm is one deliberately dark scene. Fog must keep distinct pale-day and
@@ -1072,6 +1077,114 @@ the accent or the theme must go through those, not set `--accent` directly.
   overflow in the three-account fixture; mobile geometry compared with HEAD at 375/414px
   in both themes and 932px landscape (excluding the animated weather decoration). Habit
   toggling, account disclosure and expense modal verified; 32 sync tests and JS syntax pass.
+- **Home has TWO desktop compositions now (v310, 2026-09-07): Grid and Dashboard.** Everything
+  above about the Grid still describes the Grid, which is unchanged and is still what every
+  saved layout renders as until the user applies Dashboard themselves. There is no migration
+  and nothing is switched on at boot.
+  **Dashboard is two INDEPENDENT vertical stacks**, not a row grid: a ~60% main column headed
+  *Today & activity* beside a ~40% supporting column headed *At a glance*, each a flex column
+  of content-sized cards at a 14px gap, 18px between the columns, the pair capped at 1600px
+  and centred. `align-items:start`, no `flex:1`, no shared row height, no spacers, no JS height
+  measurement. A tall card can only move the cards below it **in its own column** — measured:
+  expanding Accounts from 212px to 353px moved nothing in the main column, and every card in
+  it kept its exact height. Unequal column bottoms are expected and are left alone; padding a
+  column out to match its neighbour would put back the space this removes. At 1440 with the
+  real 13-card fixture the Grid distributes 286px of dead space inside five cards (weather +50,
+  Accounts +68, Habits +68, Weight +45, Kitchen +55) and the Dashboard distributes none.
+  **This is NOT the retired column-major layout, and the difference is the whole design.** That
+  one DERIVED placement (deal the cards alternately, or into the shorter column), so the DOM
+  said one thing and the screen said another and a dragged card could not land where it was
+  dropped. Here the column and the index are **saved** — `dashboard.main` / `dashboard.summary`
+  in the desktop profile — the DOM is written in that order, and a drag or a Move button writes
+  the same two arrays back. No packing, dense flow, masonry, measured spans or shortest-column
+  placement; do not reintroduce any of them.
+  - `HOME_DASH_COLS` (id + label) and `HOME_DASH_DEFAULT` (`js/app.js`, beside
+    `HOME_DEFAULT_WIDE`) are the only place a column is named or a default membership is
+    written. `homeDashColumns(layout)` is the render-time resolver: every registered widget
+    exactly once, unknown stored ids dropped, duplicates collapsed to their first occurrence,
+    anything unmentioned appended in its default column's own order. **It writes nothing** — a
+    widget added in a future release gets a stable position without a boot-time default write
+    (the `_bootPhase` trap in AGENTS.md). An id neither default list names falls to `summary`.
+  - **Applying Dashboard for the first time PARTITIONS the profile's own saved order**
+    (`homeDashPartition`), keeping relative order inside each column and carrying hidden cards
+    along at their existing positions. It does not impose `HOME_DASH_DEFAULT`'s order on an
+    existing layout. With the real saved desktop order this reproduces the accepted preview
+    exactly: main = session, review, notes, habits, recent, prs, kitchen; summary = budget,
+    weather, balance, calories, weight, finance (+ the hidden streak, tiles).
+  - **Dashboard never writes `order`/`wide`, and Grid never writes `dashboard`.** That is what
+    makes the switch reversible: going back to Grid recovers the exact order and full-row
+    choices it had. `saveHomeOrder()` branches on the composition and re-inserts the ids that
+    were not in the DOM (hidden, or rendering empty) at the position they held
+    (`homeDashMergeAbsent`), so toggling one back on does not strand it at the end.
+  - **No full-width cards in Dashboard**, deliberately: two independent columns have no row to
+    span. `wide` is left untouched and the editor says so rather than showing a dead control.
+  - CSS lives in `css/budget-home.css` inside the existing `@media (min-width:1024px)` block
+    (`.home-dash-wrap` / `.home-dash` / `.home-dash-col` / `.home-dash-h`). **The two-column
+    switch is a CONTAINER query on the dashboard's own available width (660px), not a viewport
+    query** — the 260px sidebar plus 32px section padding mean the viewport is a poor proxy for
+    what is left for the cards. Below that it stacks the two groups in semantic order; verified
+    at 640px available (one column) and 700px (402 / 280). At a 1024px viewport the columns are
+    402 / 280 and every summary card stays readable, including a negative net worth beside
+    three seven-figure account totals.
+  - **v309's composition shapes are reused, not re-implemented.** The Dashboard's MAIN column
+    declares the same `daily-home-card` container on the same seven card ids at the same 460px
+    threshold, so `@container daily-home-card` in `css/kitchen-extras.css` has exactly one copy.
+    The SUPPORTING column is named `daily-home-aside` and takes **only** the
+    `.card-act-inline` action treatment: it sits between 280px and ~520px, which is inside the
+    figure-beside-support threshold but not enough for it — a negative net worth beside three
+    account totals, or a two-column habit list, squeezes at exactly those widths. A summary
+    card stacks its figure above its support there, which is what the accepted composition
+    shows. The `.home-grid-cols`-scoped centring exception stays scoped to the Grid: the
+    Dashboard does not stretch, so it has nothing to counteract.
+  - **Home's mobile portrait and landscape rendering is byte-identical.** Verified by pixel
+    diff against the same commit's Grid build at 375, 414 and 932-landscape: the only differing
+    pixels are a 48×27 box in the weather card, which is the time-driven moon decoration and
+    differs between two runs of the SAME build. The drag heuristic keeps its exact previous
+    behaviour outside a Dashboard column — the X-axis "same row" rule is disabled only inside
+    `.home-dash-col`, where cards are a vertical stack and X carries no meaning.
+- **Settings → Home Layout is TWO editors behind one segmented control, and every control is a
+  DRAFT until Apply (v310).** `.seg-tabs.seg-fill.hl-seg` picks the profile — the app's one
+  segmented control, not a fourth private pill row.
+  - The target is **pinned when the screen opens** (`homeLayoutEnter()`), so a window resize
+    can never move the edit out from under the user; an explicit tab press pins it too. If
+    exactly one profile holds an unsaved draft the editor opens on that one. Home's
+    *Edit layout* strip gains a **Layout settings →** button (`openHomeLayoutEditor()`) that
+    opens on the device's own profile and its active composition.
+  - `_hlDraft` / `_hlBase` hold one draft per profile plus the `updatedAt` it was forked from.
+    Only `homeLayoutCommit()` writes, through the existing `saveHomeLayout()` — so applying a
+    desktop arrangement can never stamp the iPhone one or the reverse, which is what the
+    per-profile `updatedAt` in `homeLayoutsMerge()` depends on. Cancel, preview, tab switching,
+    resize, opening Home or Settings, and an incoming cloud snapshot all write nothing.
+    Drafts are in-memory and the editor says so out loud rather than pretending otherwise.
+  - **`hlStale()` is the cloud-conflict gate.** If the saved profile's `updatedAt` moves while
+    a draft is open (another device, another tab, or a drag on Home), Apply refuses and an
+    amber `.hl-conflict` card offers *Keep my changes* / *Use the updated layout*. Nothing is
+    resolved silently in either direction.
+  - Copy is explicit and directional and states what moves before it moves. Dashboard → iPhone
+    flattens to main-then-supporting; iPhone → Dashboard partitions by the columns the
+    destination ALREADY uses, falling back to the default membership only for an id neither
+    column knows. It writes only the composition that is selected on the destination, so the
+    inactive Grid/Dashboard arrangement is untouched, and it is a draft like everything else.
+    Reset is scoped the same way and never changes visibility.
+  - The preview is labelled tiles in the REAL composition — a phone frame, the Grid's two
+    columns with full-row spans, or the Dashboard's two named columns — and is inert. Hidden
+    cards are left out of the preview (it is what Home will look like) and stay in the editor
+    list below, marked. The per-widget miniatures (`hlPrev*`) are unchanged and still carry the
+    card identity in the list.
+  - **Retired with this change, do not bring back:** `.hl-profile-tabs`, `.hl-profile-preview`,
+    `.hl-copy-btn` and `homeLayoutProfilePreview()`. `.hl-layout-intro`, `.hl-layout-count` and
+    `.hl-layout-note` were already dead before it and were left alone.
+- **Old-client compatibility limit, stated rather than assumed.** `composition` and `dashboard`
+  are additive fields on the existing `daily_home_layout` desktop profile; `schemaVersion` is
+  unchanged and a profile carrying neither field means Grid. A device still running a
+  pre-v310 build **strips both fields** when it normalises the store: it will not write them
+  back on its own (its merge sees no difference, so it stays quiet), but the moment someone
+  edits their Home layout on that old device it uploads a desktop profile without them, and the
+  updated device then reads Grid — with its Grid order and widths intact and only the column
+  arrays lost. There is no way around this from the new client; the fix is to refresh the old
+  one. Everything else round-trips: `exportAllData()` copies the key verbatim, and the
+  restore path's re-stamp block goes through `homeLayoutsNormalise()`, which preserves both
+  fields (verified end to end).
 - **One width cap for every view**, `max-width:2200px` on `#app-main>section,#app-main
   .swipe-panel` (see the note above about those being disjoint selector halves). Do not add a
   per-view override — a 1180/1760 split existed briefly and letterboxed every tab except Home.

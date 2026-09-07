@@ -520,6 +520,32 @@
     container-type:inline-size;
     container-name:daily-home-card;
   }
+  /* The Dashboard's MAIN column is the wide one, so its cards opt into exactly the same
+     shapes on exactly the same 460px threshold — same container name, same @container block,
+     no second copy of the rules. */
+  #view-home .home-dash-col[data-dash-col="main"] > .home-card[data-card-id="budget"],
+  #view-home .home-dash-col[data-dash-col="main"] > .home-card[data-card-id="weight"],
+  #view-home .home-dash-col[data-dash-col="main"] > .home-card[data-card-id="balance"],
+  #view-home .home-dash-col[data-dash-col="main"] > .home-card[data-card-id="habits"],
+  #view-home .home-dash-col[data-dash-col="main"] > .home-card[data-card-id="prs"],
+  #view-home .home-dash-col[data-dash-col="main"] > .home-card[data-card-id="review"],
+  #view-home .home-dash-col[data-dash-col="main"] > .home-card[data-card-id="finance"]{
+    container-type:inline-size;
+    container-name:daily-home-card;
+  }
+  /* The SUPPORTING column is a different question, and it is named separately so it cannot
+     accidentally inherit the wide shapes. It sits between 280px and ~520px, which is inside
+     the figure-beside-support threshold but NOT enough for it: a negative net worth beside
+     three account totals, or a two-column habit list, squeezes labels and digits at exactly
+     the widths this column actually takes. A summary card stacks its figure above its
+     support here — deliberately, and it is what the accepted composition shows. What the
+     column DOES get is the action treatment: a single-line button sized to its label rather
+     than stretched into a banner across the card. */
+  #view-home .home-dash-col[data-dash-col="summary"] > .home-card[data-card-id="budget"],
+  #view-home .home-dash-col[data-dash-col="summary"] > .home-card[data-card-id="finance"]{
+    container-type:inline-size;
+    container-name:daily-home-aside;
+  }
 }
 /* Below the threshold every one of these wrappers generates NO box, so the elements inside
    them are laid out exactly as they were before the wrapper existed — in the phone's block
@@ -587,6 +613,15 @@
      button and not a banner, capped at 240px so a longer one wraps inside a sane measure
      instead of clipping, and pinned to the start edge so it lines up with everything above it.
      Never for a text field — an input is not made better by being narrower. */
+  #view-home .card-act-inline{width:fit-content;max-width:240px;align-self:flex-start;
+    padding-left:20px;padding-right:20px}
+}
+
+/* The supporting column takes ONLY the action rule (see the container declaration above).
+   280px is the column's own floor, so this is on wherever the column exists. align-self is
+   inert here — a Dashboard card is a plain block, not a flex column — and width:fit-content
+   is what does the work; it is kept so the one declaration reads the same in both places. */
+@container daily-home-aside (min-width:280px){
   #view-home .card-act-inline{width:fit-content;max-width:240px;align-self:flex-start;
     padding-left:20px;padding-right:20px}
 }

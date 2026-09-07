@@ -169,7 +169,14 @@
 // reading measure on the comparison lists, and single-line actions sized to their label.
 // Opt-in per card, behind the existing 1024px desktop condition plus a 460px container query,
 // preserving the phone layout; metric regions wrap when their content needs more room.
-const CACHE_NAME = 'daily-v309';
+// v310: Home gains a second DESKTOP composition. Dashboard lays the cards out as two
+// independent vertical stacks - a ~60% "Today & activity" column beside a ~40% "At a
+// glance" one - so a tall card no longer stretches the card beside it. The existing Grid
+// is unchanged and still the default; every saved layout keeps rendering as Grid until the
+// user applies Dashboard themselves. Settings > Home Layout is now two real editors
+// (iPhone / Desktop) with per-profile drafts, an explicit Apply, a composition chooser and
+// keyboard placement controls. Phone and landscape layouts are untouched.
+const CACHE_NAME = 'daily-v310';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

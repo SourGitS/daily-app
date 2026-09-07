@@ -996,6 +996,53 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   #view-home .home-card-wide[data-card-id="weather"] .weather-day{font-size:24px}
   #view-home .home-card-wide[data-card-id="weather"] .weather-temp{font-size:38px}
   #view-home .home-card-wide[data-card-id="weather"] .weather-icon{font-size:34px}
+
+  /* ── Home Dashboard: two INDEPENDENT vertical stacks ──────────────────────────────────
+     The Grid above stretches both cards in a row to the taller one's height, which is what
+     keeps its rows flush and what puts the leftover space INSIDE the shorter card. This
+     composition removes the row entirely: each column is its own flex stack, every card is
+     its own content height, and a tall card can only move the cards below it in ITS OWN
+     column. Weekly budget no longer grows to match Habits, because they are no longer in a
+     row together.
+     It is NOT the retired column-major layout. That one DERIVED placement (deal the cards
+     alternately, or into the shorter column), so the DOM said one thing and the screen said
+     another and a dragged card could not land where it was dropped. Here the column and the
+     index are SAVED (dashboard.main / dashboard.summary), the DOM is written in that order,
+     and a drag or a Move button writes the same two arrays back. No packing, no dense flow,
+     no masonry, no measured spans, no spacer elements, no JS height measurement.
+     Unequal column bottoms are expected and are left alone: padding a column out to match
+     its neighbour would put back the space this exists to remove. */
+  #view-home .home-dash-wrap{max-width:1600px;margin-inline:auto;
+    container-type:inline-size;container-name:daily-home}
+  /* One column until the dashboard's own AVAILABLE width can carry two — not until some
+     viewport width. The sidebar is 260px and the section pads 32px a side, so the viewport
+     is a poor proxy: what matters is what is left for the cards. */
+  #view-home .home-dash{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;
+    align-items:start}
+  #view-home .home-dash-col{display:flex;flex-direction:column;gap:14px;min-width:0}
+  /* An author `display` beats the UA's [hidden] rule, so homeDashSyncEmpty()'s hidden
+     flag needs restating here or a column emptied by a drag keeps its heading. */
+  #view-home .home-dash-col[hidden]{display:none}
+  /* Step-1 eyebrow (see the micro-label scale in CLAUDE.md) — these label a GROUP of cards,
+     which is exactly what .sec-label does elsewhere. */
+  #view-home .home-dash-h{margin:0;font-size:11px;font-weight:700;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--text-2)}
+  /* Deliberately NOT the grid's `flex:1 1 auto; display:flex` treatment: nothing here may
+     grow a card past its content. The margin reset is still needed because several cards
+     carry an inline margin-bottom written by renderHome for the phone stack, and an inline
+     style outranks any selector — the column gap does that job here. */
+  #view-home .home-dash-col > .home-card{min-width:0}
+  #view-home .home-dash-col > .home-card > *{margin-bottom:0 !important}
+
+  @container daily-home (min-width:660px){
+    /* ~60/40. minmax(280px,1fr) is the floor the supporting column is allowed to reach
+       before the whole thing goes back to one stack; below 660px of available width two
+       columns cannot hold a readable money card and a readable list at once. */
+    #view-home .home-dash{grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr)}
+    /* One group left (everything in the other one is hidden) — one full-width column, not a
+       column beside an empty track. */
+    #view-home .home-dash.home-dash-1col{grid-template-columns:minmax(0,1fr)}
+  }
   /* This whole block used to up-size the ring (168px), its text, and the meal/remaining figures
      for desktop, on the premise that a card stretched to match a taller row partner needs bigger
      content to avoid looking lost in that space. Cards DO still stretch — align-items:stretch

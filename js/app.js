@@ -6177,7 +6177,7 @@ function openSettingsSection(key,anchor){
   if(key==='habits') renderHabitsEditModal();
   if(key==='appearance'){ const th=document.getElementById('theme-toggle'); if(th) th.checked=S.theme==='dark'; renderAccentModeRow(); renderDayColorPickers(); }
   if(key==='weather'){ weatherPermissionState(function(s){ _weatherPerm=s; renderWeatherSection(); }); renderWeatherSection(); }
-  if(key==='homelayout') renderHomeLayoutSection();
+  if(key==='homelayout'){ homeLayoutEnter(); renderHomeLayoutSection(); }
   if(split){
     // No overlay and no back button: the nav column never leaves, so moving between
     // sections is one click instead of Back-then-forward. "Done" returns to the overview.
@@ -19607,9 +19607,33 @@ function renderHome(){
   // Cards that span both desktop columns are a saved per-card preference now, not a hardcoded
   // list. The class is emitted on every layout but only means anything inside the desktop
   // media query, where the grid lives.
-  const _wide=new Set(_homeMode==='desktop'?_homeLayout.wide:[]);
+  // The Dashboard is a DESKTOP composition only: the phone stack and the landscape-phone grid
+  // are untouched by it, and a desktop profile still set to Grid renders exactly as before.
+  const _dash=layoutIsDesktop() && homeDashOn(_homeLayout);
+  const _wide=new Set(_homeMode==='desktop'&&!_dash?_homeLayout.wide:[]);
   const _cardHtml=k=>'<div class="home-card'+(_wide.has(k)?' home-card-wide':'')+'" data-card-id="'+k+'">'+homeCards[k]+'</div>';
-  if(layoutIsDesktop() || isLandscapePhone()){
+  if(_dash){
+    // TWO independent vertical stacks, each sized by its own content. A tall card can only
+    // push the cards BELOW IT IN ITS OWN COLUMN — which is the whole point, and the reason
+    // this is not the retired column-major layout: placement here is explicit and saved
+    // (dashboard.main / dashboard.summary), never derived from "whichever column is shorter",
+    // so what you see is what the editor shows and what a drag writes back.
+    // Reading order is main top-to-bottom, then supporting top-to-bottom; there is no implied
+    // left-right pairing between the two groups, which is why each is a labelled region
+    // rather than a row.
+    const _cols=homeDashColumns(_homeLayout);
+    const _has=new Set(_homeIds);
+    // An empty group is left out entirely rather than rendered as a heading over nothing.
+    const _sections=HOME_DASH_COLS.map(c=>({c,ids:_cols[c.id].filter(id=>_has.has(id))}))
+      .filter(x=>x.ids.length);
+    wrap.innerHTML='<div class="home-dash-wrap"><div class="home-dash'+
+      (_sections.length<2?' home-dash-1col':'')+'">'+
+      _sections.map(x=>'<section class="home-dash-col" data-dash-col="'+x.c.id+'" '+
+        'aria-labelledby="home-dash-h-'+x.c.id+'">'+
+        '<h2 class="home-dash-h" id="home-dash-h-'+x.c.id+'">'+x.c.label+'</h2>'+
+        x.ids.map(_cardHtml).join('')+'</section>').join('')+
+    '</div></div>';
+  } else if(layoutIsDesktop() || isLandscapePhone()){
     // Desktop AND landscape phone: ONE grid holding every card in saved order, so visual order
     // == DOM order. This replaced a column-major layout (cards dealt alternately into two flex
     // columns) that packed more tightly but made the visual order unreadable from the DOM —
@@ -19854,13 +19878,100 @@ const HOME_DEFAULT_ORDER=['session','weather','streak','prs','calories','weight'
 // time a card is dragged. So this reaches new and untouched installs; anyone who has already
 // reordered their Home keeps the old three and has to change it in Settings.
 const HOME_DEFAULT_WIDE=['session'];
+
+// ── Desktop Dashboard composition ─────────────────────────────────
+// The desktop profile can hold TWO arrangements and switch between them without losing
+// either: `composition:'grid'` is the long-standing two-column row grid (order + wide) and
+// `composition:'dashboard'` is two independent vertical stacks (dashboard.main /
+// dashboard.summary). They sit side by side on purpose — switching back to Grid has to
+// recover the exact order and wide choices it had, so Dashboard never writes `order` and
+// Grid never writes `dashboard`.
+// A profile carrying neither field means Grid, which is what every layout saved before this
+// existed says. There is no migration and nothing is switched on during boot.
+const HOME_DASH_COLS=[
+  {id:'main',    label:'Today & activity'},
+  {id:'summary', label:'At a glance'}
+];
+// Default column membership, and the fallback ORDER within a column for a layout that has
+// never been arranged. An existing layout is partitioned from its own saved order instead
+// (homeDashPartition), so applying Dashboard rearranges nothing the user chose.
+const HOME_DASH_DEFAULT={
+  main:   ['session','habits','notes','kitchen','recent','prs','review'],
+  summary:['weather','calories','streak','budget','balance','weight','finance','tiles']
+};
+// A card this table has never heard of (a widget added after this release) lands in the
+// supporting column: it is the neutral bucket, and a new arrival cannot push its way into
+// the middle of the main column's reading order uninvited.
+function homeDashDefaultCol(id){ return HOME_DASH_DEFAULT.main.indexOf(id)>=0?'main':'summary'; }
+function homeDashNormalise(value){
+  const v=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+  return {main:Array.isArray(v.main)?v.main.slice():[],
+          summary:Array.isArray(v.summary)?v.summary.slice():[]};
+}
+// The render-time resolver: every registered widget, exactly once, in a deterministic place.
+// Unknown stored ids are dropped, a duplicate keeps its first occurrence, and anything the
+// stored columns never mention is appended in its default column's own order. It WRITES
+// NOTHING, so a widget added in a future release gets a stable position without a boot-time
+// default write (the _bootPhase trap in AGENTS.md).
+function homeDashColumns(layout){
+  const l=layout||homeLayout('desktop');
+  const stored=homeDashNormalise(l&&l.dashboard);
+  const valid=new Set(HOME_WIDGETS.map(w=>w.id));
+  const seen=new Set(), out={main:[],summary:[]};
+  HOME_DASH_COLS.forEach(c=>stored[c.id].forEach(id=>{
+    if(!valid.has(id)||seen.has(id)) return; seen.add(id); out[c.id].push(id); }));
+  HOME_DASH_COLS.forEach(c=>HOME_DASH_DEFAULT[c.id].forEach(id=>{
+    if(!valid.has(id)||seen.has(id)) return; seen.add(id); out[c.id].push(id); }));
+  HOME_WIDGETS.forEach(w=>{
+    if(seen.has(w.id)) return; seen.add(w.id); out[homeDashDefaultCol(w.id)].push(w.id); });
+  return out;
+}
+function homeDashPlaced(layout){
+  const d=homeDashNormalise(layout&&layout.dashboard);
+  return d.main.length+d.summary.length>0;
+}
+function homeDashOn(layout){
+  const l=layout||homeLayout('desktop');
+  return l.composition==='dashboard';
+}
+// First switch to Dashboard: partition the profile's OWN effective order, keeping relative
+// order inside each column and carrying hidden cards along at their existing positions.
+// Replacing it with HOME_DASH_DEFAULT's order would throw away an arrangement built card by
+// card, which is the one thing applying a new composition must not do.
+function homeDashPartition(order){
+  const out={main:[],summary:[]};
+  (order||[]).forEach(id=>{ out[homeDashDefaultCol(id)].push(id); });
+  return out;
+}
+// Re-insert the ids that were not in the DOM (hidden, or rendering empty right now) at the
+// position they held before, so toggling one back on does not strand it at the end of its
+// column — the same guarantee saveHomeOrder already gives the Grid order. Anything the DOM
+// pass found in the OTHER column has moved and is skipped here.
+function homeDashMergeAbsent(prev,present,elsewhere){
+  const has=new Set(present), out=present.slice();
+  let anchor=null;
+  prev.forEach(id=>{
+    if(has.has(id)){ anchor=id; return; }
+    if(elsewhere.has(id)) return;
+    const at=anchor===null?0:out.indexOf(anchor)+1;
+    out.splice(at,0,id);
+    anchor=id;
+  });
+  return out;
+}
 function loadHomeOrder(){ return lsLoad('daily_home_order', null, Array.isArray); } // legacy (seed only)
 function homeLayoutProfileNormalise(value,mode,sourceT){
   const v=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
   return {
     order:Array.isArray(v.order)?v.order.slice():[],
     hidden:Array.isArray(v.hidden)?v.hidden.slice():[],
-    ...(mode==='desktop'?{wide:Array.isArray(v.wide)?v.wide.slice():HOME_DEFAULT_WIDE.slice()}:{}),
+    ...(mode==='desktop'?{
+      wide:Array.isArray(v.wide)?v.wide.slice():HOME_DEFAULT_WIDE.slice(),
+      // Absent means Grid: that is every desktop profile saved before the Dashboard existed,
+      // and reading it as Grid is what makes this additive rather than a migration.
+      composition:v.composition==='dashboard'?'dashboard':'grid',
+      dashboard:homeDashNormalise(v.dashboard)
+    }:{}),
     updatedAt:Number.isFinite(Number(v.updatedAt))?Number(v.updatedAt):(sourceT||0)
   };
 }
@@ -19946,115 +20057,432 @@ function saveHomeOrder(){
   // Both layouts now put every card in one container in visual order (desktop is a single
   // CSS grid, mobile a plain stack), so DOM order is the saved order on either. The old
   // desktop bail-out is gone with the column-major layout that made it necessary.
-  const order=[...document.querySelectorAll('#home-content [data-card-id]')].map(c=>c.dataset.cardId);
-  if(!order.length) return;
   const mode=layoutMode();
   const l=homeLayout(mode);
+  // Dashboard: the same rule, per column. A drag resolves to a NAMED column and an explicit
+  // index — never to a packing heuristic — and it writes `dashboard` only, so the Grid order
+  // and wide choices it is not showing stay exactly as they were.
+  if(mode==='desktop' && homeDashOn(l) && document.querySelector('#home-content .home-dash')){
+    const prev=homeDashColumns(l), present={}, everywhere=new Set();
+    HOME_DASH_COLS.forEach(c=>{
+      const el=document.querySelector('#home-content .home-dash-col[data-dash-col="'+c.id+'"]');
+      present[c.id]=el?[...el.querySelectorAll(':scope > [data-card-id]')].map(n=>n.dataset.cardId):[];
+      present[c.id].forEach(id=>everywhere.add(id));
+    });
+    if(!everywhere.size) return;
+    const next={};
+    HOME_DASH_COLS.forEach(c=>{ next[c.id]=homeDashMergeAbsent(prev[c.id],present[c.id],everywhere); });
+    l.dashboard=next;
+    saveHomeLayout(l,mode);
+    homeDashSyncEmpty();
+    return;
+  }
+  const order=[...document.querySelectorAll('#home-content [data-card-id]')].map(c=>c.dataset.cardId);
+  if(!order.length) return;
   // Hidden widgets aren't in the DOM — keep them in the order list (after the visible ones)
   // so toggling one back on doesn't strand it outside the saved order.
   l.order=order.concat(HOME_DEFAULT_ORDER.filter(k=>order.indexOf(k)<0));
   saveHomeLayout(l,mode);
 }
-// Settings → Home Layout: one ordered list matching the dashboard, with each widget's source
-// area kept as a small label rather than splitting the order into unrelated groups.
-let _homeLayoutEditorMode=null;
+// A drag can empty a column. Nothing re-renders Home on drop (that would restart the entry
+// animation under the finger), so drop the stray heading and fall back to one column until
+// the next real render.
+function homeDashSyncEmpty(){
+  const dash=document.querySelector('#home-content .home-dash'); if(!dash) return;
+  let live=0;
+  dash.querySelectorAll(':scope > .home-dash-col').forEach(col=>{
+    const empty=!col.querySelector(':scope > [data-card-id]');
+    col.hidden=empty;
+    if(!empty) live++;
+  });
+  dash.classList.toggle('home-dash-1col',live<2);
+}
+// ── Settings → Home Layout ────────────────────────────────────────
+// Two independent editors behind one segmented control. iPhone edits the phone feed;
+// Desktop edits whichever desktop COMPOSITION is selected — the long-standing Grid (row
+// order + full-row widths) or the Dashboard (two named columns). They are separate editors,
+// not one list with a different label: a Grid row and a Dashboard column placement are
+// different questions, and a control that answers neither would be a lie.
+//
+// Everything here is a DRAFT until the selected profile's own Apply button is pressed.
+// That is the change from the save-on-touch version: switching composition has to be
+// previewable, and once one control needs Apply, leaving the others to save behind your
+// back is worse than making them all wait. Only Apply writes, and it writes ONE profile —
+// so applying a desktop arrangement can never stamp the iPhone one or the reverse, which is
+// exactly what the independent per-profile updatedAt in homeLayoutsMerge depends on.
+const HL_PROFILE_LABEL={mobile:'iPhone',desktop:'Desktop'};
+const HL_APPLY_LABEL={mobile:'Apply iPhone layout',desktop:'Apply desktop layout'};
+let _homeLayoutEditorMode=null;               // the profile being edited (pinned on entry)
+let _hlEnterAs=null;                          // one-shot target from Home's Edit layout
+let _hlFocus=null;                            // control to refocus after a re-render
+const _hlDraft={mobile:null,desktop:null};
+const _hlBase={mobile:0,desktop:0};           // the updatedAt each draft was forked from
 function homeLayoutEditorMode(){ return _homeLayoutEditorMode||layoutMode(); }
+// Pin the target when the screen opens, so a later window resize cannot move the edit out
+// from under the user's hands. If exactly one profile is holding an unsaved draft, open on
+// THAT one — silently showing the other profile is how a draft gets forgotten.
+function homeLayoutEnter(){
+  if(_hlEnterAs){ _homeLayoutEditorMode=_hlEnterAs; _hlEnterAs=null; return; }
+  const drafted=['mobile','desktop'].filter(m=>_hlDraft[m]);
+  _homeLayoutEditorMode=drafted.length===1?drafted[0]:layoutMode();
+}
+// Home's "Edit layout" strip. Opens on the profile and composition of the device you are
+// actually on, whatever was last edited in Settings.
+function openHomeLayoutEditor(){ _hlEnterAs=layoutMode(); openSettingsSection('homelayout'); }
 function homeLayoutChooseProfile(mode){
   _homeLayoutEditorMode=mode==='desktop'?'desktop':'mobile';
   renderHomeLayoutSection();
 }
-function homeLayoutProfilePreview(order,hidden,wide,mode){
-  return '<div class="hl-profile-preview is-'+mode+'" aria-label="'+(mode==='mobile'?'iPhone':'Desktop')+' Home preview">'+
-    order.map(id=>{const w=HOME_WIDGETS.find(x=>x.id===id),off=w&&!w.fixed&&hidden.has(id);return '<span class="'+(off?'is-hidden ':'')+(mode==='desktop'&&wide.has(id)?'is-wide':'')+'">'+(w?w.label:id)+'</span>';}).join('')+
-  '</div>';
+function hlView(mode){ return _hlDraft[mode]||homeLayout(mode); }
+function hlDraftOf(mode){
+  if(!_hlDraft[mode]){
+    const p=homeLayout(mode);
+    _hlDraft[mode]=JSON.parse(JSON.stringify(p));
+    _hlBase[mode]=p.updatedAt||0;
+  }
+  return _hlDraft[mode];
 }
-function renderHomeLayoutSection(){
-  const wrap=document.getElementById('settings-homelayout-section'); if(!wrap) return;
-  const mode=homeLayoutEditorMode();
-  const layout=homeLayout(mode);
-  const hidden=new Set(layout.hidden);
-  const wide=new Set(mode==='desktop'?layout.wide:[]);
-  const order=homeLayoutOrderIds(layout);
-  const visibleCount=HOME_WIDGETS.filter(w=>w.fixed||!hidden.has(w.id)).length;
-  const wideCount=HOME_WIDGETS.filter(w=>wide.has(w.id)).length;
-  // The dashboard editor keeps its own specialised list, but its intro now uses the shared
-  // settings card head so the screen opens the same way every other section does. Every
-  // control below saves the moment you touch it — there is nothing to press at the end.
-  wrap.innerHTML=
-    '<div class="stg-card" id="stg-card-homelayout">'+
-      stgCardHead('grid','Your dashboards','iPhone and desktop keep independent presentation choices while every Daily record remains shared.')+
-      '<div class="hl-profile-tabs" role="tablist" aria-label="Home layout profile">'+
-        '<button type="button" role="tab" aria-selected="'+(mode==='mobile')+'" class="'+(mode==='mobile'?'active':'')+'" onclick="homeLayoutChooseProfile(\'mobile\')">iPhone layout</button>'+
-        '<button type="button" role="tab" aria-selected="'+(mode==='desktop')+'" class="'+(mode==='desktop'?'active':'')+'" onclick="homeLayoutChooseProfile(\'desktop\')">Desktop layout</button>'+
-      '</div>'+
-      '<div class="stg-row"><span class="stg-row-txt"><span class="stg-row-label">Cards shown</span></span>'+
-        '<span class="stg-row-val"><strong>'+visibleCount+'</strong> of '+HOME_WIDGETS.length+'</span></div>'+
-      '<p class="stg-help">'+(mode==='mobile'
-        ? 'This profile is a one-column phone layout. Desktop row widths do not apply here.'
-        : 'This profile uses Daily’s fixed two-column desktop grid; '+wideCount+' card'+(wideCount===1?'':'s')+' span'+(wideCount===1?'s':'')+' both columns.')+'</p>'+
-      homeLayoutProfilePreview(order,hidden,wide,mode)+
-      '<button type="button" class="stg-btn hl-copy-btn" onclick="homeLayoutCopy(\''+(mode==='mobile'?'desktop':'mobile')+'\',\''+mode+'\')">Copy '+(mode==='mobile'?'Desktop':'iPhone')+' order and visibility here</button>'+
-    '</div>'+
-    '<div class="hl-layout-list is-'+mode+'">'+order.map((id,index)=>{
-      const w=HOME_WIDGETS.find(x=>x.id===id);
-      const off=!w.fixed&&hidden.has(id);
-      const isWide=wide.has(id);
-      return '<article class="hl-widget'+(off?' is-hidden':'')+'" data-hl-widget="'+id+'">'+
-        '<div class="hl-widget-head">'+
-          '<span class="hl-widget-order">'+(index+1)+'</span>'+
-          '<span class="hl-widget-name"><strong>'+w.label+'</strong><small>'+w.tab+'</small></span>'+
-          (w.fixed?'<span class="hl-always">Always shown</span>':'<label class="hl-show"><span>Show</span><span class="toggle-switch"><input type="checkbox"'+(off?'':' checked')+' onchange="homeWidgetToggle(\''+id+'\',this.checked,\''+mode+'\')"><span class="toggle-slider"></span></span></label>')+
-        '</div>'+
-        '<div class="hl-widget-preview">'+(w.preview?w.preview():'')+'</div>'+
-        '<div class="hl-widget-actions">'+
-          '<div class="hl-order-actions"><button type="button" aria-label="Move '+w.label+' up" onclick="homeWidgetMove(\''+id+'\',-1,\''+mode+'\')"'+(index===0?' disabled':'')+'>↑</button><button type="button" aria-label="Move '+w.label+' down" onclick="homeWidgetMove(\''+id+'\',1,\''+mode+'\')"'+(index===order.length-1?' disabled':'')+'>↓</button></div>'+
-          (mode==='desktop'?'<button type="button" class="hl-width-btn'+(isWide?' is-wide':'')+'" aria-pressed="'+(isWide?'true':'false')+'" onclick="homeWidgetWidth(\''+id+'\','+(!isWide)+',\'desktop\')"><span>Desktop</span><strong>'+(isWide?'Full row':'Half row')+'</strong></button>':'')+
-        '</div>'+
-      '</article>';
-    }).join('')+'</div>';
+function hlDirty(mode){ return !!_hlDraft[mode]; }
+// The saved profile moved while a draft was open — a cloud update, another tab, or a drag
+// on Home. Committing the draft over it would silently drop whatever arrived, so the
+// editor asks instead of guessing.
+function hlStale(mode){ return hlDirty(mode) && (homeLayout(mode).updatedAt||0)!==_hlBase[mode]; }
+function homeLayoutApply(mode){
+  mode=mode||homeLayoutEditorMode();
+  const d=_hlDraft[mode]; if(!d) return;
+  if(hlStale(mode)){ renderHomeLayoutSection(); return; }   // the banner owns this decision
+  homeLayoutCommit(mode);
 }
-function homeLayoutCopy(from,to){
-  const fromLabel=from==='mobile'?'iPhone':'Desktop';
-  const toLabel=to==='mobile'?'iPhone':'Desktop';
-  if(!confirm('Copy '+fromLabel+' order and visibility to '+toLabel+'?\n\n'+toLabel+' row-width choices will stay unchanged.')) return;
-  const source=homeLayout(from), target=homeLayout(to);
-  target.order=source.order.slice();
-  target.hidden=source.hidden.slice();
-  saveHomeLayout(target,to);
-  if(typeof renderHome==='function'&&layoutMode()===to) renderHome();
-  renderHomeLayoutSection();
-}
-// Half-width (one grid column) vs full-width (both) on the desktop Home grid.
-function homeWidgetWidth(id,on,mode){
-  mode=mode||'desktop';
-  const l=homeLayout(mode);
-  l.wide=l.wide.filter(x=>x!==id);
-  if(on) l.wide.push(id);
-  saveHomeLayout(l,mode);
+function homeLayoutCommit(mode){
+  const d=_hlDraft[mode]; if(!d) return;
+  saveHomeLayout(d,mode);                 // the one and only write path, stamp rules intact
+  _hlDraft[mode]=null; _hlBase[mode]=0;
   if(typeof renderHome==='function'&&layoutMode()===mode) renderHome();
   renderHomeLayoutSection();
+  stgSaved('hl-saved');
 }
+function homeLayoutCancel(mode,silent){
+  mode=mode||homeLayoutEditorMode();
+  if(!_hlDraft[mode]) return;
+  if(!silent&&!confirm('Discard the unsaved '+HL_PROFILE_LABEL[mode]+' changes?\n\nYour saved '+
+    HL_PROFILE_LABEL[mode]+' layout is not affected.')) return;
+  _hlDraft[mode]=null; _hlBase[mode]=0;
+  renderHomeLayoutSection();
+}
+// ── Draft edits ──
 function homeWidgetToggle(id,on,mode){
   mode=mode||homeLayoutEditorMode();
-  const l=homeLayout(mode);
-  l.hidden=l.hidden.filter(x=>x!==id);
+  const l=hlDraftOf(mode);
+  l.hidden=(l.hidden||[]).filter(x=>x!==id);
   if(!on) l.hidden.push(id);
-  saveHomeLayout(l,mode);
-  if(typeof renderHome==='function'&&layoutMode()===mode) renderHome();
+  _hlFocus=id+':show';
+  renderHomeLayoutSection();
+}
+// Full-row placement is a GRID choice and exists nowhere else: the Dashboard's two columns
+// are independent stacks, so "spans both columns" is not a shape it has.
+function homeWidgetWidth(id,on,mode){
+  mode=mode||'desktop';
+  const l=hlDraftOf(mode);
+  l.wide=(l.wide||[]).filter(x=>x!==id);
+  if(on) l.wide.push(id);
+  _hlFocus=id+':width';
   renderHomeLayoutSection();
 }
 function homeWidgetMove(id,direction,mode){
   mode=mode||homeLayoutEditorMode();
-  const l=homeLayout(mode);
+  const l=hlDraftOf(mode);
   const order=homeLayoutOrderIds(l);
   const from=order.indexOf(id);
   const to=from+direction;
   if(from<0||to<0||to>=order.length) return;
-  [order[from],order[to]]=[order[to],order[from]];
+  const moved=order[to]; order[to]=order[from]; order[from]=moved;
   l.order=order;
-  saveHomeLayout(l,mode);
-  if(typeof renderHome==='function'&&layoutMode()===mode) renderHome();
+  _hlFocus=id+':'+(direction<0?'up':'down');
   renderHomeLayoutSection();
+}
+// Dashboard placement. Both controls resolve to a NAMED column and an explicit index, and
+// both are ordinary buttons — nothing here needs a pointer, let alone a drag.
+function homeDashMove(id,direction){
+  const l=hlDraftOf('desktop');
+  const cols=homeDashColumns(l);
+  const col=HOME_DASH_COLS.filter(c=>cols[c.id].indexOf(id)>=0)[0]; if(!col) return;
+  const arr=cols[col.id];
+  const from=arr.indexOf(id), to=from+direction;
+  if(to<0||to>=arr.length) return;
+  arr[from]=arr[to]; arr[to]=id;
+  l.dashboard=cols;
+  _hlFocus=id+':'+(direction<0?'up':'down');
+  renderHomeLayoutSection();
+}
+function homeDashSwitchCol(id){
+  const l=hlDraftOf('desktop');
+  const cols=homeDashColumns(l);
+  const from=HOME_DASH_COLS.filter(c=>cols[c.id].indexOf(id)>=0)[0]; if(!from) return;
+  const to=HOME_DASH_COLS.filter(c=>c.id!==from.id)[0];
+  cols[from.id]=cols[from.id].filter(x=>x!==id);
+  cols[to.id].push(id);
+  l.dashboard=cols;
+  _hlFocus=id+':col';
+  renderHomeLayoutSection();
+}
+function homeCompositionChoose(kind){
+  const l=hlDraftOf('desktop');
+  const next=kind==='dashboard'?'dashboard':'grid';
+  if(l.composition!==next){
+    l.composition=next;
+    // The FIRST time Dashboard is chosen, seed the columns from this profile's own saved
+    // order, so the arrangement built card by card survives — split into the two groups,
+    // relative order intact, hidden cards carried along. Replacing it with the recommended
+    // order would be the redesign overwriting the user's work.
+    if(next==='dashboard' && !homeDashPlaced(l)) l.dashboard=homeDashPartition(homeLayoutOrderIds(l));
+  }
+  _hlFocus='comp:'+next;
+  renderHomeLayoutSection();
+}
+// Reset is scoped to the SELECTED profile and, on desktop, to the selected composition —
+// it can never touch the arrangement it is not showing, and it never changes visibility.
+function homeLayoutReset(){
+  const mode=homeLayoutEditorMode();
+  const view=hlView(mode);
+  const dash=mode==='desktop'&&homeDashOn(view);
+  const msg=dash
+    ? 'Reset the Dashboard to Daily’s recommended columns?\n\nCard order and column placement change. Which cards are shown, and your desktop Grid arrangement, stay as they are.'
+    : mode==='desktop'
+      ? 'Reset the desktop Grid to Daily’s recommended order and full-row widths?\n\nWhich cards are shown, and your Dashboard columns, stay as they are.'
+      : 'Reset the iPhone feed to Daily’s recommended order?\n\nWhich cards are shown stays as it is.';
+  if(!confirm(msg+'\n\nThis is a draft — press Apply to keep it.')) return;
+  const l=hlDraftOf(mode);
+  if(dash) l.dashboard={main:HOME_DASH_DEFAULT.main.slice(),summary:HOME_DASH_DEFAULT.summary.slice()};
+  else { l.order=HOME_DEFAULT_ORDER.slice(); if(mode==='desktop') l.wide=HOME_DEFAULT_WIDE.slice(); }
+  renderHomeLayoutSection();
+}
+// Cross-profile copy. Explicit, directional, and stated in full before anything moves.
+// It writes ONE arrangement on the destination — the composition selected there — so
+// copying into a Dashboard cannot disturb the Grid order sitting behind it, or the reverse.
+function homeLayoutCopy(from,to){
+  const src=hlView(from), fromLabel=HL_PROFILE_LABEL[from], toLabel=HL_PROFILE_LABEL[to];
+  const fixed=new Set(HOME_WIDGETS.filter(w=>w.fixed).map(w=>w.id));
+  const hidden=(src.hidden||[]).filter(id=>!fixed.has(id));
+  const srcDash=from==='desktop'&&homeDashOn(src);
+  const dstView=hlView(to), dstDash=to==='desktop'&&homeDashOn(dstView);
+  let apply, what;
+  if(to==='mobile'){
+    // A phone has one column, so a Dashboard flattens to main-then-supporting: that is the
+    // reading order Home already gives those two groups.
+    const order=srcDash
+      ? (function(){ const c=homeDashColumns(src); return c.main.concat(c.summary); })()
+      : homeLayoutOrderIds(src);
+    what='Order: '+(srcDash?'Today & activity, then At a glance':'your desktop Grid order')+
+      '\nShown / hidden: copied (always-shown cards stay shown)'+
+      '\nNot copied: full-row widths and column placement — the iPhone feed has neither.';
+    apply=function(){ const l=hlDraftOf('mobile'); l.order=order; l.hidden=hidden; };
+  } else if(dstDash){
+    // iPhone → Dashboard. Partition the phone order by the columns this Dashboard ALREADY
+    // uses, so a card deliberately moved to the supporting column stays there; only an id
+    // neither column has heard of falls back to the recommended membership.
+    const cur=homeDashColumns(dstView), where={};
+    HOME_DASH_COLS.forEach(c=>cur[c.id].forEach(id=>{ where[id]=c.id; }));
+    const order=homeLayoutOrderIds(src), next={main:[],summary:[]};
+    order.forEach(id=>{ next[where[id]||homeDashDefaultCol(id)].push(id); });
+    what='Order: your iPhone order, split into the two columns this Dashboard already uses'+
+      '\nShown / hidden: copied (always-shown cards stay shown)'+
+      '\nNot copied: which column a card sits in — that stays as you set it here.'+
+      '\nYour desktop Grid order and full-row widths are not touched.';
+    apply=function(){ const l=hlDraftOf('desktop'); l.dashboard=next; l.hidden=hidden; };
+  } else {
+    const order=homeLayoutOrderIds(src);
+    what='Order: your iPhone order'+
+      '\nShown / hidden: copied (always-shown cards stay shown)'+
+      '\nNot copied: full-row widths — they stay as you set them here.'+
+      '\nYour Dashboard columns are not touched.';
+    apply=function(){ const l=hlDraftOf('desktop'); l.order=order; l.hidden=hidden; };
+  }
+  if(!confirm('Copy '+fromLabel+' to '+toLabel+'?\n\n'+what+
+    (hlDirty(from)?'\n\nNote: '+fromLabel+' has unsaved changes, and those are what will be copied.':'')+
+    '\n\nThis is a draft — press "'+HL_APPLY_LABEL[to]+'" to keep it.')) return;
+  apply();
+  renderHomeLayoutSection();
+}
+// ── Preview ──
+// Real identity, real order, real column placement, inert content. Hidden cards are left
+// OUT — this is what Home will look like — while their entries stay in the editor list
+// below, clearly marked, which is where you turn them back on.
+function hlPvTile(id,extra){
+  const w=HOME_WIDGETS.filter(x=>x.id===id)[0];
+  return '<span class="hl-pv-tile'+(extra||'')+'">'+(w?w.label:id)+'</span>';
+}
+function hlPvShown(layout){
+  const hidden=new Set(layout.hidden);
+  return function(id){ const w=HOME_WIDGETS.filter(x=>x.id===id)[0]; return (w&&w.fixed)||!hidden.has(id); };
+}
+function hlPreview(mode,layout){
+  const shown=hlPvShown(layout);
+  if(mode==='mobile'){
+    const ids=homeLayoutOrderIds(layout).filter(shown);
+    return '<div class="hl-pv hl-pv-phone" role="group" aria-label="iPhone Home preview">'+
+      '<span class="hl-pv-bar"></span>'+
+      '<div class="hl-pv-stack">'+ids.map(id=>hlPvTile(id,id==='session'?' is-hero':'')).join('')+'</div>'+
+    '</div>';
+  }
+  if(homeDashOn(layout)){
+    const cols=homeDashColumns(layout);
+    return '<div class="hl-pv hl-pv-dash" role="group" aria-label="Desktop Dashboard preview">'+
+      HOME_DASH_COLS.map(function(c){
+        const ids=cols[c.id].filter(shown);
+        return '<div class="hl-pv-col hl-pv-'+c.id+'"><span class="hl-pv-h">'+c.label+'</span>'+
+          (ids.length?ids.map(id=>hlPvTile(id,id==='session'?' is-hero':'')).join('')
+                     :'<span class="hl-pv-none">No cards shown</span>')+'</div>';
+      }).join('')+
+    '</div>';
+  }
+  const ids=homeLayoutOrderIds(layout).filter(shown);
+  const wide=new Set(layout.wide);
+  return '<div class="hl-pv hl-pv-grid" role="group" aria-label="Desktop Grid preview">'+
+    ids.map(id=>hlPvTile(id,(wide.has(id)?' is-wide':'')+(id==='session'?' is-hero':''))).join('')+
+  '</div>';
+}
+// ── Editor rows ──
+function hlWidgetRow(id,index,count,mode,ctx){
+  const w=HOME_WIDGETS.filter(x=>x.id===id)[0]; if(!w) return '';
+  const off=!w.fixed&&ctx.hidden.has(id);
+  const isWide=ctx.wide.has(id);
+  const other=ctx.dash?HOME_DASH_COLS.filter(c=>c.id!==ctx.col)[0]:null;
+  const mv=ctx.dash?'homeDashMove(\''+id+'\',':'homeWidgetMove(\''+id+'\',';
+  const mvEnd=ctx.dash?')':',\''+mode+'\')';
+  return '<article class="hl-widget'+(off?' is-hidden':'')+'" data-hl-widget="'+id+'">'+
+    '<div class="hl-widget-head">'+
+      '<span class="hl-widget-order">'+(index+1)+'</span>'+
+      '<span class="hl-widget-name"><strong>'+w.label+'</strong><small>'+w.tab+'</small></span>'+
+      (w.fixed?'<span class="hl-always">Always shown</span>'
+        :'<label class="hl-show"><span>Show</span><span class="toggle-switch">'+
+          '<input type="checkbox" data-hl-focus="'+id+':show"'+(off?'':' checked')+
+          ' onchange="homeWidgetToggle(\''+id+'\',this.checked,\''+mode+'\')">'+
+          '<span class="toggle-slider"></span></span></label>')+
+    '</div>'+
+    '<div class="hl-widget-preview">'+(w.preview?w.preview():'')+'</div>'+
+    '<div class="hl-widget-actions">'+
+      '<div class="hl-order-actions">'+
+        '<button type="button" data-hl-focus="'+id+':up" aria-label="Move '+w.label+' up" '+
+          'onclick="'+mv+'-1'+mvEnd+'"'+(index===0?' disabled':'')+'>↑</button>'+
+        '<button type="button" data-hl-focus="'+id+':down" aria-label="Move '+w.label+' down" '+
+          'onclick="'+mv+'1'+mvEnd+'"'+(index===count-1?' disabled':'')+'>↓</button>'+
+      '</div>'+
+      (ctx.dash
+        ? '<button type="button" class="hl-col-btn" data-hl-focus="'+id+':col" '+
+            'aria-label="Move '+w.label+' to '+other.label+'" onclick="homeDashSwitchCol(\''+id+'\')">'+
+            '<span>Move to</span><strong>'+other.label+'</strong></button>'
+        : mode==='desktop'
+          ? '<button type="button" class="hl-width-btn'+(isWide?' is-wide':'')+'" data-hl-focus="'+id+':width" '+
+              'aria-pressed="'+(isWide?'true':'false')+'" onclick="homeWidgetWidth(\''+id+'\','+(!isWide)+',\'desktop\')">'+
+              '<span>Desktop</span><strong>'+(isWide?'Full row':'Half row')+'</strong></button>'
+          : '')+
+    '</div>'+
+  '</article>';
+}
+function renderHomeLayoutSection(){
+  const wrap=document.getElementById('settings-homelayout-section'); if(!wrap) return;
+  const mode=homeLayoutEditorMode();
+  const layout=hlView(mode);
+  const dash=mode==='desktop'&&homeDashOn(layout);
+  const ctx={hidden:new Set(layout.hidden),
+             wide:new Set(mode==='desktop'?layout.wide:[]),
+             dash:dash, col:null};
+  const visibleCount=HOME_WIDGETS.filter(w=>w.fixed||!ctx.hidden.has(w.id)).length;
+  const wideCount=HOME_WIDGETS.filter(w=>ctx.wide.has(w.id)).length;
+  const dirty=hlDirty(mode), stale=hlStale(mode);
+  const label=HL_PROFILE_LABEL[mode], otherMode=mode==='mobile'?'desktop':'mobile';
+  const tab=function(m,text){
+    return '<button type="button" role="tab" id="hl-tab-'+m+'" aria-selected="'+(mode===m)+'"'+
+      (mode===m?' class="on"':'')+' onclick="homeLayoutChooseProfile(\''+m+'\')">'+text+
+      (hlDirty(m)&&mode!==m?' •':'')+'</button>';
+  };
+  const comp=function(kind,name,desc){
+    const on=dash===(kind==='dashboard');
+    return '<button type="button" class="hl-comp'+(on?' is-on':'')+'" data-hl-focus="comp:'+kind+'" '+
+      'aria-pressed="'+on+'" onclick="homeCompositionChoose(\''+kind+'\')">'+
+      '<span class="hl-comp-fig hl-comp-'+kind+'">'+
+      (kind==='grid'?'<i class="w"></i><i></i><i></i><i></i><i></i>':'<i class="m"></i><i class="s"></i>')+
+      '</span><strong>'+name+'</strong><small>'+desc+'</small></button>';
+  };
+  const lists=dash
+    ? (function(){
+        const cols=homeDashColumns(layout);
+        return HOME_DASH_COLS.map(function(c){
+          const ids=cols[c.id];
+          return '<div class="hl-col-group">'+
+            '<h3 class="hl-col-h">'+c.label+' <span>'+ids.length+' card'+(ids.length===1?'':'s')+'</span></h3>'+
+            '<div class="hl-layout-list is-desktop">'+
+              (ids.length?ids.map(function(id,i){
+                return hlWidgetRow(id,i,ids.length,mode,{hidden:ctx.hidden,wide:ctx.wide,dash:true,col:c.id});
+              }).join(''):'<p class="stg-help">Nothing is placed here yet.</p>')+
+            '</div></div>';
+        }).join('');
+      })()
+    : (function(){
+        const ids=homeLayoutOrderIds(layout);
+        return '<div class="hl-layout-list is-'+mode+'">'+
+          ids.map(function(id,i){ return hlWidgetRow(id,i,ids.length,mode,ctx); }).join('')+'</div>';
+      })();
+
+  wrap.innerHTML=
+    '<div class="stg-card" id="stg-card-homelayout">'+
+      stgCardHead('grid','Your dashboards','iPhone and desktop keep independent presentation choices while every Daily record remains shared. Changes are previewed here and saved when you apply them.')+
+      '<div class="seg-tabs seg-fill hl-seg" role="tablist" aria-label="Home layout profile">'+
+        tab('mobile','iPhone')+tab('desktop','Desktop')+
+      '</div>'+
+      '<p class="hl-editing">You are editing the <strong>'+label+'</strong> layout'+
+        (mode===layoutMode()?' — the device you are on now.':'. It applies when Daily is opened on '+
+          (mode==='mobile'?'a phone.':'a desktop or laptop.'))+'</p>'+
+      '<div class="stg-row"><span class="stg-row-txt"><span class="stg-row-label">Cards shown</span></span>'+
+        '<span class="stg-row-val"><strong>'+visibleCount+'</strong> of '+HOME_WIDGETS.length+'</span></div>'+
+      (mode==='desktop'
+        ? '<div class="hl-comp-row" role="group" aria-label="Desktop composition">'+
+            comp('grid','Grid','Two equal columns in one order. Cards in a row share a height, and a card can span the full row.')+
+            comp('dashboard','Dashboard','A wide main column beside a narrower summary. Each column is its own stack, so a tall card never stretches its neighbour.')+
+          '</div>'+
+          '<p class="stg-help">'+(dash
+            ? 'Dashboard has no full-row cards — the two columns are independent, so there is no row to span. Switch to Grid if you want a card across the whole width; your Grid order and widths are kept either way.'
+            : 'This is Daily’s fixed two-column desktop grid; '+wideCount+' card'+(wideCount===1?'':'s')+' span'+(wideCount===1?'s':'')+' both columns.')+'</p>'
+        : '<p class="stg-help">One column, top to bottom. Desktop row widths and columns do not apply here.</p>')+
+    '</div>'+
+    '<div class="stg-card">'+
+      stgCardHead(mode==='mobile'?'phone':'grid','Preview','What Home will look like on '+(mode==='mobile'?'your phone':'a desktop')+
+        '. Hidden cards are left out; their controls are below.')+
+      hlPreview(mode,layout)+
+    '</div>'+
+    (stale
+      ? '<div class="stg-card hl-conflict">'+
+        '<strong>Your saved '+label+' layout changed while you were editing.</strong>'+
+        '<p>It was updated from another device, another tab, or by rearranging Home directly. '+
+        'Choose which one to keep — nothing has been overwritten yet.</p>'+
+        '<div class="stg-actions">'+
+          '<button type="button" class="stg-btn primary" onclick="homeLayoutCommit(\''+mode+'\')">Keep my changes</button>'+
+          '<button type="button" class="stg-btn quiet" onclick="homeLayoutCancel(\''+mode+'\',true)">Use the updated layout</button>'+
+        '</div></div>'
+      : '')+
+    '<div class="stg-card">'+
+      stgCardHead('sliders','Cards','Reorder, '+(dash?'move between columns, ':'')+'and show or hide. '+
+        (dash?'Every card sits in exactly one column.':'Hidden cards keep their place for when you turn them back on.'))+
+      '<div class="stg-actions hl-actions">'+
+        (dirty?'<span class="hl-state">Unsaved changes</span>':stgSaveState('hl-saved'))+
+        '<button type="button" class="stg-btn quiet" onclick="homeLayoutCancel(\''+mode+'\')"'+
+          (dirty?'':' disabled')+'>Cancel</button>'+
+        '<button type="button" class="stg-btn primary" onclick="homeLayoutApply(\''+mode+'\')"'+
+          (dirty&&!stale?'':' disabled')+'>'+HL_APPLY_LABEL[mode]+'</button>'+
+      '</div>'+
+      (dirty?'<p class="stg-help">These changes are held here until you apply or cancel them. Home still shows your saved layout, and they are not kept if Daily is reloaded.</p>':'')+
+      '<div class="stg-actions hl-actions-2">'+
+        '<button type="button" class="stg-btn" onclick="homeLayoutCopy(\''+otherMode+'\',\''+mode+'\')">Copy '+HL_PROFILE_LABEL[otherMode]+' here</button>'+
+        '<button type="button" class="stg-btn quiet" onclick="homeLayoutReset()">Reset to recommended</button>'+
+      '</div>'+
+    '</div>'+
+    lists;
+
+  if(_hlFocus){
+    const el=wrap.querySelector('[data-hl-focus="'+_hlFocus+'"]');
+    _hlFocus=null;
+    if(el&&!el.disabled){ try{ el.focus({preventScroll:true}); }catch(e){ el.focus(); } }
+  }
 }
 // ── Height cap for cards that grow with your data ──────────────────
 // Cards on the desktop grid size to their own content (align-items:start in CSS) — nothing
@@ -20133,6 +20561,8 @@ function toggleHomeEdit(){
 function applyHomeEditMode(){
   const hc=document.getElementById('home-content');
   if(hc) hc.classList.toggle('home-editing',homeEditMode);
+  const stg=document.getElementById('home-layout-btn');
+  if(stg) stg.style.display=homeEditMode?'':'none';
   document.querySelectorAll('#home-content [data-card-id]').forEach(c=>c.classList.toggle('home-card-jiggle',homeEditMode));
 }
 // Drag-to-reorder with a floating clone. Active only in Home edit mode.
@@ -20205,16 +20635,25 @@ function applyHomeEditMode(){
     const el=document.elementFromPoint(e.clientX,e.clientY);
     clone.style.display='';
     const target=(el&&el.closest)?el.closest('#home-content [data-card-id]'):null;
-    if(!target||target===card||target.parentElement!==card.parentElement) return;
-    // Desktop is a two-column grid, so "past the midpoint" has to consider X as well as Y:
-    // within the same row the decision is horizontal, across rows it's vertical.
+    if(!target||target===card) return;
+    // The Dashboard's two named columns are one reorder root, so a card can be dragged
+    // across them; every other layout keeps its single container.
+    const dashRoot=card.closest('.home-dash');
+    const sameParent=target.parentElement===card.parentElement;
+    if(!sameParent && !(dashRoot && target.closest('.home-dash')===dashRoot
+        && target.parentElement.classList.contains('home-dash-col'))) return;
+    // Desktop's Grid is a two-column grid, so "past the midpoint" has to consider X as well
+    // as Y: within the same row the decision is horizontal, across rows it's vertical. A
+    // Dashboard column is a vertical stack of full-width cards, where the X rule would be
+    // meaningless — there, only Y decides.
     const r=target.getBoundingClientRect();
     const cx=r.left+r.width/2, cy=r.top+r.height/2;
-    const sameRow=Math.abs(e.clientY-cy)<r.height/2;
+    const inColumn=!!card.closest('.home-dash-col');
+    const sameRow=!inColumn && sameParent && Math.abs(e.clientY-cy)<r.height/2;
     const after=sameRow ? e.clientX>cx : e.clientY>cy;
     const ref=after?target.nextSibling:target;
-    if(ref===card||(after&&target.nextSibling===card)) return;
-    flip(()=>card.parentElement.insertBefore(card,ref));
+    if(sameParent && (ref===card||(after&&target.nextSibling===card))) return;
+    flip(()=>target.parentElement.insertBefore(card,ref));
   },{passive:false});
 
   function endDrag(e){

@@ -85,6 +85,10 @@
       <div id="home-recent-card"></div>
       <div style="padding:18px 16px 6px;text-align:center">
         <button id="home-edit-btn" onclick="toggleHomeEdit()" class="home-edit-btn">Edit layout</button>
+        <!-- Shown only while rearranging: drag covers order, but choosing a composition,
+             moving a card between the Dashboard's columns, or hiding one lives in Settings.
+             It opens on THIS device's profile and composition. -->
+        <button id="home-layout-btn" onclick="openHomeLayoutEditor()" class="home-edit-btn" style="display:none">Layout settings →</button>
       </div>
     </section>
 
