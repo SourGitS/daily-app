@@ -159,7 +159,12 @@
 // v304: pin the five phone tabs above the nav groups so they are one press, not two.
 // v305: financial import - income, transfers, reimbursements, bill payments, balance
 // snapshots and expense corrections, with source-row duplicate safety and a grouped preview.
-const CACHE_NAME = 'daily-v307';
+// v308: data safety plus the new identity. Sync: no boot/default uploads, no stale-window
+// replacement of workout history, per-record reconciliation for sessions, weights, savings
+// entries and budget weeks, listeners released on an account change, and setup waits for the
+// restored data. Brand: the borderless DAILY wordmark as a CSS mask inked with the live accent,
+// and the static DA app icon for the manifest, favicon and Apple touch icon.
+const CACHE_NAME = 'daily-v308';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
@@ -176,8 +181,19 @@ const ASSETS = [
   './css/journal.css',
   './css/settings.css',
   './css/review.css',
+  './css/brand.css',
   './js/app.js',
   './js/nutrition.js',
+  // Runtime brand assets only. The masters, the export script and the ZIP under
+  // assets/brand/refined/ are sources, not application assets, and are never precached.
+  './assets/brand/daily-wordmark-mask.png',
+  './assets/brand/daily-wordmark-light.png',
+  './assets/brand/daily-wordmark-dark.png',
+  './assets/brand/daily-app-icon-192.png',
+  './assets/brand/daily-app-icon-512.png',
+  './assets/brand/daily-app-icon-180.png',
+  // The retired root icons stay cached: an installed home-screen app can still be pointing at
+  // them until the platform refreshes its own copy.
   './icon-192.png',
   './icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js',

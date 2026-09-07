@@ -894,13 +894,12 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      kitchen-extras.css declared it again at 260px with 14px pill rows — the second won on load
      order, so half of what was written here never rendered. These are the values that won. */
   #desktop-sidebar{width:260px;flex-shrink:0;background:var(--card);border-right:0.5px solid var(--border);color:var(--text);display:flex;flex-direction:column;padding:16px 0;height:100vh;position:sticky;top:0}
-  /* Real wordmark image (see layout.css) — theme-paired, same as the header/side-menu.
-     Flush left at 14px, matching the sidebar's own left edge. Previously inset to 54px to
-     align with the nav ITEM LABELS rather than the
-     sidebar edge — moved back to the edge on request. Only one of the two theme wordmarks is
-     display:block at a time, so this positions whichever is showing. */
+  /* The wordmark (see css/brand.css) — one span, inked with the live accent, the same mark
+     the header and side menu show. Flush left at 14px, matching the sidebar's own left edge.
+     Previously inset to 54px to align with the nav ITEM LABELS rather than the sidebar edge —
+     moved back to the edge on request. */
   .ds-logo{display:flex;justify-content:flex-start;padding:0 14px 18px}
-  .ds-logo .wordmark-img{height:28px}
+  .ds-logo .wordmark{height:28px}
   .ds-profile{margin-top:auto;padding:10px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px}
   .ds-av{width:24px;height:24px;border-radius:50%;background:rgba(var(--accent-rgb),0.25);color:var(--accent-text);font-size:9px;font-weight:600;display:flex;align-items:center;justify-content:center}
   .ds-av.has-photo{background:transparent}
@@ -1104,7 +1103,7 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .ob-topbar{display:flex;align-items:center;min-height:24px;margin-bottom:14px}
 .ob-back{background:none;border:none;color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;padding:4px 2px;-webkit-tap-highlight-color:transparent}
 .ob-center{text-align:center;padding-top:8px}
-.ob-center .wordmark-img{width:100%;max-width:260px;margin:0 auto 18px}
+.ob-center .wordmark{width:100%;max-width:260px;height:auto;margin:0 auto 18px}
 .ob-tagline{font-size:16px;color:var(--muted);line-height:1.6;margin-bottom:26px}
 .ob-head{margin-bottom:15px}
 .ob-title{font-size:24px;font-weight:800;margin-bottom:4px;color:var(--text)}
@@ -1213,7 +1212,7 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 /* Welcome: a compact piece of the real Home, not an illustration placed above a form. */
 .ob-welcome{text-align:left;padding-top:0}
 .ob-welcome-brand{height:30px;margin:0 0 14px;display:flex;align-items:center}
-.ob-welcome .wordmark-img{width:auto;max-width:112px;max-height:30px;margin:0}
+.ob-welcome .wordmark{width:112px;max-width:112px;height:auto;max-height:30px;margin:0}
 .ob-welcome-kicker{
   font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;
   color:var(--accent-text);margin-bottom:7px

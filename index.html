@@ -11,8 +11,8 @@
 <meta name="theme-color" content="#080808">
 <link rel="manifest" href="manifest.json">
 <title>Daily</title>
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=88">
-<link rel="apple-touch-icon" sizes="180x180" href="icon-192.png?v=88">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/brand/daily-app-icon-192.png?v=308">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/brand/daily-app-icon-180.png?v=308">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -38,14 +38,16 @@
      shared card helpers, so it has to be able to win a tie against anything above. Appended,
      never inserted — the order of every link before this one is load-bearing. -->
 <link rel="stylesheet" href="css/review.css">
+<!-- Brand last: it sizes and inks the wordmark, so it has to win a tie against the placement
+     rules above. Appended, never inserted. -->
+<link rel="stylesheet" href="css/brand.css">
 </head>
 <body>
 <div id="app">
 
   <nav id="desktop-sidebar">
     <div class="ds-logo">
-      <img class="wordmark-img wordmark-light" src="daily-wordmark-light.png" alt="Daily">
-      <img class="wordmark-img wordmark-dark" src="daily-wordmark-dark.png" alt="Daily">
+      <span class="wordmark" role="img" aria-label="Daily"></span>
     </div>
     <!-- Every nav row is rendered from NAV_TREE by renderNav() (js/app.js) into this one
          mount, and into #side-menu-list for the phone. Twelve literal buttons used to live
@@ -60,8 +62,7 @@
     <div id="header-row">
       <div id="header-left">
         <div id="header-title">
-          <img class="wordmark-img wordmark-light" src="daily-wordmark-light.png" alt="Daily">
-          <img class="wordmark-img wordmark-dark" src="daily-wordmark-dark.png" alt="Daily">
+          <span class="wordmark" role="img" aria-label="Daily"></span>
         </div>
         <button id="header-stats-pill" onclick="openStatsFromChip()">Stats</button>
       </div>
@@ -1209,8 +1210,7 @@
 <aside id="side-menu" aria-label="Menu">
   <div id="side-menu-head">
     <div id="side-menu-title">
-      <img class="wordmark-img wordmark-light" src="daily-wordmark-light.png" alt="Daily">
-      <img class="wordmark-img wordmark-dark" src="daily-wordmark-dark.png" alt="Daily">
+      <span class="wordmark" role="img" aria-label="Daily"></span>
     </div>
     <button class="side-menu-close" onclick="closeMenu()" aria-label="Close menu">&times;</button>
   </div>

@@ -1439,7 +1439,7 @@
 #side-menu{position:fixed;top:0;right:0;bottom:0;width:80%;max-width:330px;background:var(--bg);z-index:51;transform:translateX(100%);transition:transform .28s cubic-bezier(0.4,0,0.2,1);display:flex;flex-direction:column;box-shadow:-8px 0 30px rgba(0,0,0,0.3);padding-top:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
 #side-menu.open{transform:translateX(0)}
 #side-menu-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
-#side-menu-title .wordmark-img{height:18px}
+#side-menu-title .wordmark{height:18px}
 .side-menu-close{background:transparent;border:none;color:var(--muted);font-size:24px;line-height:1;cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;padding:0}
 #side-menu-list{display:flex;flex-direction:column;padding:10px;gap:2px}
 /* The hamburger's rows are the shared .nv-* nav tree now (see above); .side-menu-item,

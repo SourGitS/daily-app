@@ -15,6 +15,17 @@ let firebaseReady = !firebaseConfig.apiKey.startsWith('REPLACE');
 let auth = null, db = null;
 let dbRef       = null;
 let weightDbRef = null;
+let _cloudWorkoutReady = false;
+// Distinct from "not ready yet": the initial reads actually FAILED (offline, permission, a
+// dropped socket). Without this, a failed read left the readiness flag false forever and the
+// onboarding Finish button became permanently unusable. A failure is not evidence that the
+// account is empty either, so it does not unblock the gate on its own — it changes the gate
+// from "wait" to "ask".
+let _cloudReadFailed = false;
+// Which cloud collections have actually been APPLIED to local state, as opposed to merely
+// read. The gate below waits for the workout listeners themselves, not just for a parallel
+// once() to resolve.
+let _cloudApplied = {};
 let deferredInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstallPrompt = e; });
 
@@ -79,16 +90,33 @@ function updateHeaderAvatar(){
     btn.style.background='#2a2a2a';
   }
 }
-function syncProfileToFirebase(){ const r=fbRef('profile'); if(r) r.set(profileData); }
-function syncPersonalInfoToFirebase(){ const r=fbRef('personalInfo'); if(r) r.set(S.personalInfo); }
-function syncBudDefaultsToFirebase(){ const r=fbRef('budgetDefaults'); if(r) r.set(budDefaults); }
+// Boot AND cloud-apply are both suppressed: a render triggered by an incoming snapshot must
+// not write the value it has just received straight back up as if the user had edited it.
+function syncProfileToFirebase(){ if(_bootPhase||_syncApplying) return; const r=fbRef('profile'); if(r) r.set(profileData); }
+function syncPersonalInfoToFirebase(){ if(_bootPhase||_syncApplying) return; const r=fbRef('personalInfo'); if(r) r.set(S.personalInfo); }
+function syncBudDefaultsToFirebase(){ if(_bootPhase||_syncApplying) return; const r=fbRef('budgetDefaults'); if(r) r.set(budDefaults); }
 // When the caller knows which week changed, write ONLY that week's node — a device
 // holding a stale copy of other weeks then can't clobber them, whatever it does.
 // The whole-blob set survives only as the fallback for calls with no key.
 function syncBudgetDataToFirebase(changedKey){
   const r=fbRef('budgetData'); if(!r) return;
-  if(changedKey && budgetData[changedKey]) r.child(changedKey).set(budgetData[changedKey]);
-  else r.set(budgetData);
+  if(changedKey && budgetData[changedKey]) return r.child(changedKey).set(budgetData[changedKey]);
+  // No key given: write every week INDIVIDUALLY rather than replacing the node. The whole-node
+  // form could only ever say "these are all the weeks that exist", which a device holding a
+  // stale copy has no standing to claim — a week added elsewhere since this device last synced
+  // was erased by it.
+  return budPushWeeks(r, Object.keys(budgetData||{}));
+}
+// Write the named weeks as separate children, newest-updatedAt wins per week.
+function budPushWeeks(ref, keys){
+  if(!ref||!keys||!keys.length) return Promise.resolve();
+  return Promise.all(keys.filter(k=>budgetData&&budgetData[k]).map(k=>{
+    const week=budgetData[k];
+    return ref.child(k).transaction(cloud=>{
+      if(cloud && ((cloud.updatedAt||0) > (week.updatedAt||0))) return;
+      return week;
+    },undefined,false);
+  }));
 }
 // Merge cloud and local budget data per week instead of letting the cloud blob replace
 // local wholesale — the replace is how a device with a stale copy used to wipe another
@@ -96,28 +124,49 @@ function syncBudgetDataToFirebase(changedKey){
 // the app, so a union is safe; a week present on both sides goes to the newer updatedAt
 // stamp (legacy weeks without one count as 0; ties keep the cloud copy, matching the old
 // behaviour for never-stamped data).
+// budgetConfig is ONE object with its own updatedAt, so it converges by age rather than per
+// child. Compared inside the transaction: the snapshot that decided we were newer may already
+// be out of date by the time the write lands.
+function budPushConfig(ref, cfg){
+  if(!ref||!cfg) return Promise.resolve();
+  return ref.transaction(cloud=>{
+    if(cloud && ((cloud.updatedAt||0) >= (cfg.updatedAt||0))) return;
+    return cfg;
+  },undefined,false);
+}
 function mergeBudgetWeeks(localData, cloudData){
-  const merged={}; let cloudNeedsUpdate=false;
+  const merged={}; let cloudNeedsUpdate=false; const cloudNeedsKeys=[];
   new Set([...Object.keys(localData||{}), ...Object.keys(cloudData||{})]).forEach(k=>{
     const l=(localData||{})[k], c=(cloudData||{})[k];
-    if(c===undefined){ merged[k]=l; cloudNeedsUpdate=true; return; }
+    if(c===undefined){ merged[k]=l; cloudNeedsUpdate=true; cloudNeedsKeys.push(k); return; }
     if(l===undefined){ merged[k]=c; return; }
-    if(((l&&l.updatedAt)||0) > ((c&&c.updatedAt)||0)){ merged[k]=l; cloudNeedsUpdate=true; }
+    if(((l&&l.updatedAt)||0) > ((c&&c.updatedAt)||0)){ merged[k]=l; cloudNeedsUpdate=true; cloudNeedsKeys.push(k); }
     else merged[k]=c;
   });
-  return {data:merged, cloudNeedsUpdate};
+  return {data:merged, cloudNeedsUpdate, cloudNeedsKeys};
 }
 // ── Generic blob sync (Realtime Database) for simple localStorage keys ──
 // Stores the raw localStorage string under users/<uid>/<path>. Used for data added
 // after the original sync was built (budget categories, credit card, weight log).
 function syncBlobPush(path, lsKey){
+  if(_bootPhase || _syncApplying) return;
   const r=fbRef(path); if(!r) return;
   setSyncStatus('Syncing…');
   // {v,t} envelope so the receiving device can compare ages. Reading side still accepts a
   // bare value for anything written by an older build (treated as age 0, i.e. beatable).
-  const t=parseInt(localStorage.getItem(lsKey+'_ts')||'0',10)||Date.now();
-  r.set({v:localStorage.getItem(lsKey)||'', t})
+  const t=parseInt(localStorage.getItem(lsKey+'_ts')||'0',10)||0;
+  syncBlobCommit(r, localStorage.getItem(lsKey), t)
     .then(()=>setSyncStatus('Synced ✓')).catch(()=>setSyncStatus('Sync failed'));
+}
+// Compare against the server at commit time, not an earlier snapshot. A delayed/offline
+// upload must not replace a newer edit, and timestamp 0 must stay 0.
+function syncBlobCommit(ref, v, t){
+  if(v==null || v==='') return Promise.resolve();
+  return ref.transaction(raw=>{
+    const cloudT=raw&&typeof raw==='object'?(Number(raw.t)||0):0;
+    if(raw!=null && raw!=='' && t<=cloudT) return;
+    return {v,t};
+  }, undefined, false);
 }
 // Every blob-synced store is timestamped. This used to be an untimestamped listener that
 // treated ANY local/cloud difference as an unsynced offline edit and pushed local over cloud
@@ -140,13 +189,14 @@ function syncBlobListen(uid, path, lsKey, onUpdate){
 function lsSaveTS(key, value, tsKey, syncPath){
   // Same boot rule as lsSave: a migration or default written during init must not outrank a
   // real edit sitting in the cloud.
-  const now=_bootPhase ? (parseInt(localStorage.getItem(tsKey)||'0',10)||0) : Date.now();
+  const now=(_bootPhase || _syncApplying) ? (parseInt(localStorage.getItem(tsKey)||'0',10)||0) : Date.now();
   try{
     localStorage.setItem(key, typeof value==='string'?value:JSON.stringify(value));
     localStorage.setItem(tsKey, String(now));
   }catch(e){ console.warn('localStorage save failed for '+key, e); return; }
-  if(syncPath && firebaseReady && auth && auth.currentUser && db){
-    db.ref('users/'+auth.currentUser.uid+'/'+syncPath).set({v:localStorage.getItem(key), t:now});
+  if(!_bootPhase && !_syncApplying && syncPath && firebaseReady && auth && auth.currentUser && db){
+    syncBlobCommit(db.ref('users/'+auth.currentUser.uid+'/'+syncPath),localStorage.getItem(key),now)
+      .catch(()=>setSyncStatus('Sync failed'));
   }
 }
 // Every blob store that has registered a listener this session, as {path, lsKey, tsKey}.
@@ -164,7 +214,7 @@ function syncBlobListenTS(uid, path, lsKey, tsKey, onUpdate){
   ref.once('value').then(snap=>{
     if(snap.exists()) return;
     const local=localStorage.getItem(lsKey);
-    if(local!=null&&local!=='') ref.set({v:local, t:localT()});
+    if(local!=null&&local!=='') return syncBlobCommit(ref,local,localT());
   }).catch(()=>{});
   ref.on('value', snap=>{
     const raw=snap.val();
@@ -174,13 +224,17 @@ function syncBlobListenTS(uid, path, lsKey, tsKey, onUpdate){
     const cloudT = isEnvelope ? (raw.t||0) : 0;
     if(cloudV==null || cloudV==='') return;
     if(localT() > cloudT){
-      ref.set({v:localStorage.getItem(lsKey), t:localT()}); // local newer — converge cloud
+      syncBlobCommit(ref,localStorage.getItem(lsKey),localT()).catch(()=>setSyncStatus('Sync failed'));
       return;
     }
-    if(localStorage.getItem(lsKey)===cloudV) return; // unchanged
+    if(localStorage.getItem(lsKey)===cloudV){
+      localStorage.setItem(tsKey,String(cloudT));
+      return;
+    }
     localStorage.setItem(lsKey, cloudV);
     localStorage.setItem(tsKey, String(cloudT));
-    try{ onUpdate&&onUpdate(); }catch(e){}
+    _syncApplying++;
+    try{ onUpdate&&onUpdate(); }catch(e){} finally{ _syncApplying--; }
   });
   return ref;
 }
@@ -195,7 +249,7 @@ function syncHomeLayoutListen(uid,onUpdate){
   ref.once('value').then(snap=>{
     if(snap.exists()) return;
     const model=localModel();
-    ref.set({v:JSON.stringify(model),t:homeLayoutsTimestamp(model)});
+    return fbSeedIfEmpty(ref,{v:JSON.stringify(model),t:homeLayoutsTimestamp(model)});
   }).catch(()=>{});
   ref.on('value',snap=>{
     const raw=snap.val(); if(raw==null||raw==='') return;
@@ -223,10 +277,31 @@ function syncHomeLayoutListen(uid,onUpdate){
       localStorage.setItem(tsKey,String(mergedT));
       changed=true;
     }
-    if(JSON.stringify(cloud)!==mergedRaw || cloudT!==mergedT) ref.set({v:mergedRaw,t:mergedT});
-    if(changed){ try{ onUpdate&&onUpdate(); }catch(e){} }
+    // Converge the cloud, but never over a copy that is strictly NEWER than the merge we just
+    // computed — that would be a stale device winning. Equal ages still write, because the two
+    // sides can legitimately differ at the same age (a legacy pick) and would otherwise stay
+    // divergent forever.
+    if(JSON.stringify(cloud)!==mergedRaw || cloudT!==mergedT){
+      ref.transaction(raw=>{
+        const t=raw&&typeof raw==='object'?(Number(raw.t)||0):0;
+        if(raw!=null&&raw!==''&&t>mergedT) return;
+        return {v:mergedRaw,t:mergedT};
+      },undefined,false).catch(()=>setSyncStatus('Sync failed'));
+    }
+    if(changed) syncApply(()=>{ onUpdate&&onUpdate(); });
   });
   return ref;
+}
+// Every live listener attached for the SIGNED-IN account, so all of them can be detached when
+// that account changes. The old sign-out branch could only reach dbRef and weightDbRef: piRef,
+// savRef, habitsRef, budDataRef and the category refs were declared with `let` INSIDE the
+// onAuthStateChanged callback, so the sign-out invocation saw a fresh set of undefined
+// variables and left the previous account's listeners running — still writing that account's
+// data into this device's localStorage after a switch.
+const _syncRefs=[];
+function syncTrack(ref){ if(ref&&typeof ref.off==='function') _syncRefs.push(ref); return ref; }
+function syncDetachAll(){
+  _syncRefs.splice(0).forEach(r=>{ try{ r.off(); }catch(e){} });
 }
 function setSyncStatus(txt){
   const el=document.getElementById('sync-status');
@@ -257,8 +332,9 @@ function lsLoad(key, fallback, validate){
 // whatever timestamp the store already had (0 if it has never been edited here), so they can
 // never beat a genuine edit made on another device.
 let _bootPhase = true;
+let _syncApplying = 0;
 function stampFor(key){
-  if(!_bootPhase) return Date.now();
+  if(!_bootPhase && !_syncApplying) return Date.now();
   return parseInt(localStorage.getItem(key+'_ts')||'0',10)||0;
 }
 function lsSave(key, value, syncPath){
@@ -303,17 +379,38 @@ function fbRef(path){
 // value, pull it into memory (`set`) + localStorage and refresh the UI (`render`);
 // otherwise seed the cloud from the local value when it's worth it (`seedWhen`, default
 // "non-empty"). get()/set() bridge the module-scoped variable the store lives in.
+// Seed a node ONLY while it is still empty, re-checked at commit time. `if(!snap.exists())
+// … ref.set(v)` was checking a value read earlier: another device signing in at the same
+// moment could write in the gap and have its data replaced by this device's copy.
+// Run a cloud-apply block with _syncApplying raised. Anything it writes — directly, or through
+// a re-render that calls a save function — keeps the age it already had instead of being
+// stamped as a fresh local edit and echoed back up. Counted, not boolean, so nesting is safe.
+function syncApply(fn){
+  _syncApplying++;
+  try{ return fn(); }
+  catch(e){ console.warn('sync apply failed',e); }
+  finally{ _syncApplying--; }
+}
+function fbSeedIfEmpty(ref, value){
+  if(!ref||value==null||value==='') return Promise.resolve();
+  return ref.transaction(raw=>{
+    if(raw!=null&&raw!=='') return;    // someone got there first — leave it alone
+    return value;
+  },undefined,false);
+}
 function fbReconcile(path, lsKey, get, set, render, seedWhen){
   const ref=fbRef(path); if(!ref) return;
   ref.once('value').then(snap=>{
     if(snap.exists()){
-      set(snap.val());
-      localStorage.setItem(lsKey, JSON.stringify(get()));
-      if(render) render();
+      syncApply(()=>{
+        set(snap.val());
+        localStorage.setItem(lsKey, JSON.stringify(get()));
+        if(render) render();
+      });
     } else {
       const v=get();
       const worth = seedWhen ? seedWhen() : (Array.isArray(v) ? v.length>0 : !!(v&&Object.keys(v).length>0));
-      if(worth) ref.set(v);
+      if(worth) fbSeedIfEmpty(ref, v);
     }
   });
 }
@@ -325,51 +422,25 @@ if(firebaseReady){
     db   = firebase.database();
     auth.getRedirectResult().catch(()=>{});
     auth.onAuthStateChanged(user=>{
+  _cloudWorkoutReady=false; _cloudReadFailed=false; _cloudApplied={};
+  // Detach FIRST, before anything for the new account is attached. This runs on sign-out and
+  // on an account switch alike, so no listener can outlive the account it was opened for.
+  syncDetachAll();
   let piRef, savRef, habitsRef, budDataRef, incCatRef, fixCatRef, varCatRef, ccRef;
   if(user){
 
-    dbRef = db.ref('users/'+user.uid+'/sessions');
-    dbRef.once('value').then(snap=>{
-      if(!snap.exists() && S.sessions.length>0){
-        const data={};
-        S.sessions.forEach(s=>{ data[s.id]=s; });
-        dbRef.set(data);
-      }
-    });
-    dbRef.on('value', snap=>{
-      const cloudMap = snap.val() || {};
-      // Union by id instead of adopting the cloud snapshot wholesale — a stale/empty cloud
-      // read (e.g. right after sign-in, before the seed-check above finishes) used to wipe
-      // every locally-logged session outright. Sessions are effectively create-once, so a
-      // straight union recovers anything the old wholesale-replace could drop; local wins on
-      // the rare same-id collision since it's the actively-open device's copy.
-      const localMap = {}; S.sessions.forEach(s=>{ localMap[s.id]=s; });
-      const mergedMap = {...cloudMap, ...localMap};
-      S.sessions = Object.values(mergedMap).sort((a,b)=>a.date<b.date?-1:1);
-      localStorage.setItem('wt_sessions', JSON.stringify(S.sessions));
-      // Local had sessions the cloud didn't (the exact gap that used to cause data loss) —
-      // converge the cloud so the next pull, on any device, sees them too.
-      const cloudMissingSome = Object.keys(localMap).some(id=>!(id in cloudMap));
-      if(cloudMissingSome) dbRef.set(mergedMap);
+    dbRef = syncTrack(db.ref('users/'+user.uid+'/sessions'));
+    wtAttachRecords(dbRef,'wt_sessions','id',records=>{
+      _cloudApplied.sessions=true;
+      S.sessions=records;
       if(S.view==='log'&&logSubTab==='history') renderHistory();
       if(S.view==='stats') refreshStatsForData(['overview','review','training']);
     });
 
-    weightDbRef = db.ref('users/'+user.uid+'/weights');
-    weightDbRef.once('value').then(snap=>{
-      if(!snap.exists() && S.weights.length>0){
-        const data={};
-        S.weights.forEach(w=>{ data[w.date.replace(/-/g,'')]=w; });
-        weightDbRef.set(data);
-      }
-    });
-    weightDbRef.on('value', snap=>{
-      const data=snap.val();
-      S.weights = data ? Object.values(data).sort((a,b)=>a.date<b.date?-1:1) : [];
-      // The cloud copy replaces S.weights wholesale, so legacy daily_weight_log entries
-      // merged while signed out must be re-applied here and pushed back up.
-      if(mergeLegacyWeightEntries()) persistWeights();
-      else localStorage.setItem('wt_weight', JSON.stringify(S.weights));
+    weightDbRef = syncTrack(db.ref('users/'+user.uid+'/weights'));
+    wtAttachRecords(weightDbRef,'wt_weight','date',records=>{
+      _cloudApplied.weights=true;
+      S.weights=records;
       if(S.view==='log'&&logSubTab==='today'&&logTodayView==='overview') renderLogOverview();
       if(S.view==='stats') refreshStatsForData(['overview','review','body']);
     });
@@ -380,57 +451,74 @@ if(firebaseReady){
     db.ref('users/'+user.uid+'/weightLog').once('value').then(snap=>{
       const v=snap.val();
       if(v){ try{ const arr=JSON.parse(v); if(Array.isArray(arr)) _wtLegacyCloud=arr; }catch(e){} }
-      if(mergeLegacyWeightEntries()) persistWeights();
-      localStorage.removeItem('daily_weight_log');
-      db.ref('users/'+user.uid+'/weightLog').remove().catch(()=>{});
-    });
+      mergeLegacyWeightEntries();
+      // Keep the legacy source until its replacement has actually reached the server.
+      persistWeights().then(()=>{
+        localStorage.removeItem('daily_weight_log');
+        return db.ref('users/'+user.uid+'/weightLog').remove();
+      }).catch(()=>setSyncStatus('Sync failed'));
+    }).catch(()=>setSyncStatus('Sync failed'));
 
     // ── Sync personal info (calorie goal) ──
-    piRef = db.ref('users/'+user.uid+'/personalInfo');
+    piRef = syncTrack(db.ref('users/'+user.uid+'/personalInfo'));
     piRef.once('value').then(snap=>{
       if(!snap.exists() && Object.keys(S.personalInfo||{}).length>0){
-        piRef.set(S.personalInfo);
+        fbSeedIfEmpty(piRef, S.personalInfo);
       }
     });
     piRef.on('value', snap=>{
       if(!snap.val()) return;
-      S.personalInfo = snap.val();
-      localStorage.setItem('wt_personalinfo', JSON.stringify(S.personalInfo));
-      renderSettings();
+      syncApply(()=>{
+        S.personalInfo = snap.val();
+        localStorage.setItem('wt_personalinfo', JSON.stringify(S.personalInfo));
+        renderSettings();
+      });
     });
 
     // ── Sync savings balance log ──
-    savRef = db.ref('users/'+user.uid+'/savingsLog');
+    savRef = syncTrack(db.ref('users/'+user.uid+'/savingsLog'));
     // Initial sync: MERGE local + cloud (newest-per-date wins) and push the union back, so a
     // local-only/newer update is never lost and the cloud catches up.
     savRef.once('value').then(snap=>{
       const cloud = snap.exists() ? Object.values(snap.val()||{}) : [];
       savingsLog = mergeSavings(savingsLog, cloud);
       localStorage.setItem('daily_savings_log', JSON.stringify(savingsLog));
-      savRef.set(Object.fromEntries(savingsLog.filter(e=>e&&e.date).map(e=>[String(e.date).replace(/-/g,''),e])));
+      // Converge the cloud with the entries it is MISSING or holds an older copy of, one child
+      // at a time. Writing the whole node here meant an entry added elsewhere between this read
+      // and this write was erased by a device that had never seen it.
+      const cloudByDate=new Map(cloud.filter(e=>e&&e.date).map(e=>[wtRecordKey(e,'date'),e]));
+      const behind=savingsLog.filter(e=>{
+        const c=cloudByDate.get(wtRecordKey(e,'date'));
+        return !c||savingsTime(e)>savingsTime(c);
+      });
+      if(behind.length) wtPushRecords(savRef,behind,'date',savingsTime).catch(()=>setSyncStatus('Sync failed'));
       if(typeof renderHome==='function') renderHome();
-    });
+    }).catch(()=>setSyncStatus('Sync failed'));
     // Live updates: merge (don't blindly overwrite) so a fresh local entry survives.
     savRef.on('value', snap=>{
       const data=snap.val();
       if(!data) return;
-      savingsLog = mergeSavings(savingsLog, Object.values(data));
-      localStorage.setItem('daily_savings_log', JSON.stringify(savingsLog));
-      if(typeof renderHome==='function') renderHome();
+      syncApply(()=>{
+        savingsLog = mergeSavings(savingsLog, Object.values(data));
+        localStorage.setItem('daily_savings_log', JSON.stringify(savingsLog));
+        if(typeof renderHome==='function') renderHome();
+      });
     });
 
     // ── Sync daily habits ──
-    habitsRef = db.ref('users/'+user.uid+'/habits');
+    habitsRef = syncTrack(db.ref('users/'+user.uid+'/habits'));
     habitsRef.once('value').then(snap=>{
       try{
         const local = JSON.parse(localStorage.getItem('daily_habits')||'null');
-        if(!snap.exists() && local) habitsRef.set(local);
+        if(!snap.exists() && local) fbSeedIfEmpty(habitsRef, local);
       }catch(e){ console.warn('habits seed failed',e); }
     }).catch(e=>console.warn('habits sync error',e));
     habitsRef.on('value', snap=>{
       if(!snap.val()) return;
-      localStorage.setItem('daily_habits', JSON.stringify(snap.val()));
-      if(typeof renderHome==='function') renderHome();
+      syncApply(()=>{
+        localStorage.setItem('daily_habits', JSON.stringify(snap.val()));
+        if(typeof renderHome==='function') renderHome();
+      });
     });
 
     // Sync profile
@@ -446,16 +534,20 @@ if(firebaseReady){
     // Sync weekly budget data (real-time, both directions)
     db.ref('users/'+user.uid+'/budgetData').once('value').then(snap=>{
       if(!snap.exists() && Object.keys(budgetData).length>0){
-        db.ref('users/'+user.uid+'/budgetData').set(budgetData);
+        // Per week, and only where the cloud is genuinely behind: between this read and this
+        // write another device may already have seeded the node.
+        budPushWeeks(db.ref('users/'+user.uid+'/budgetData'),Object.keys(budgetData))
+          .catch(()=>setSyncStatus('Sync failed'));
       }
-    });
-    budDataRef = db.ref('users/'+user.uid+'/budgetData');
+    }).catch(()=>setSyncStatus('Sync failed'));
+    budDataRef = syncTrack(db.ref('users/'+user.uid+'/budgetData'));
     budDataRef.on('value', snap=>{
       const data=snap.val();
       if(data){
         const active=document.activeElement;
         const editing=active&&(active.tagName==='INPUT'||active.tagName==='TEXTAREA');
         if(editing) return; // never overwrite budgetData while user has focus in an input
+        syncApply(()=>{
         const scrubbed=scrubSavingsTarget(data); // strip the removed savings target from incoming cloud data
         // Merge per week (newer updatedAt wins) rather than adopting the cloud blob
         // wholesale — see mergeBudgetWeeks. If local had newer weeks, push the merge
@@ -464,10 +556,14 @@ if(firebaseReady){
         const merged=mergeBudgetWeeks(budgetData, data);
         budgetData=merged.data;
         localStorage.setItem('daily_budget',JSON.stringify(budgetData));
-        if(scrubbed||merged.cloudNeedsUpdate) budDataRef.set(budgetData);
+        // Converge per WEEK. `budDataRef.set(budgetData)` replaced the whole node, so a week
+        // written by another device in the gap between this snapshot and this write was lost.
+        const push=scrubbed?Object.keys(budgetData):merged.cloudNeedsKeys;
+        if(push.length) budPushWeeks(budDataRef,push).catch(()=>setSyncStatus('Sync failed'));
         if(S.view==='budget') renderBudgetTab();
         if(S.view==='home') renderHome();
         if(S.view==='stats') refreshStatsForData(['overview','review','finance']);
+        });
       }
     });
 
@@ -487,25 +583,27 @@ if(firebaseReady){
           // copy outright — a stale snapshot used to silently overwrite fresher local edits,
           // including dropping them to empty and then to the hardcoded factory defaults.
           if((budgetConfig.updatedAt||0) > cloudCfg.updatedAt){
-            db.ref('users/'+user.uid+'/budgetConfig').set(budgetConfig); // converge cloud
+            budPushConfig(db.ref('users/'+user.uid+'/budgetConfig'), budgetConfig); // converge cloud
           } else {
-            budgetConfig=cloudCfg;
-            if(!budgetConfig.incomeStreams.length||!budgetConfig.fixedExpenses.length||!budgetConfig.variableExpenses.length){
-              const def=loadBudgetConfig();
-              if(!budgetConfig.incomeStreams.length) budgetConfig.incomeStreams=def.incomeStreams;
-              if(!budgetConfig.fixedExpenses.length) budgetConfig.fixedExpenses=def.fixedExpenses;
-              if(!budgetConfig.variableExpenses.length) budgetConfig.variableExpenses=def.variableExpenses;
-            }
-            incomeStreams=budgetConfig.incomeStreams;
-            localStorage.setItem('daily_budget_config',JSON.stringify(budgetConfig));
-            if(S.view==='budget') renderBudgetTab();
-            if(S.view==='home') renderHome();
+            syncApply(()=>{
+              budgetConfig=cloudCfg;
+              if(!budgetConfig.incomeStreams.length||!budgetConfig.fixedExpenses.length||!budgetConfig.variableExpenses.length){
+                const def=loadBudgetConfig();
+                if(!budgetConfig.incomeStreams.length) budgetConfig.incomeStreams=def.incomeStreams;
+                if(!budgetConfig.fixedExpenses.length) budgetConfig.fixedExpenses=def.fixedExpenses;
+                if(!budgetConfig.variableExpenses.length) budgetConfig.variableExpenses=def.variableExpenses;
+              }
+              incomeStreams=budgetConfig.incomeStreams;
+              localStorage.setItem('daily_budget_config',JSON.stringify(budgetConfig));
+              if(S.view==='budget') renderBudgetTab();
+              if(S.view==='home') renderHome();
+            });
           }
         }
       } else {
-        db.ref('users/'+user.uid+'/budgetConfig').set(budgetConfig);
+        fbSeedIfEmpty(db.ref('users/'+user.uid+'/budgetConfig'), budgetConfig);
       }
-    });
+    }).catch(()=>setSyncStatus('Sync failed'));
 
     // Sync weight goal
     fbReconcile('weightGoal','daily_weight_goal',
@@ -523,15 +621,15 @@ if(firebaseReady){
     // union merge, replacing the one-shot fbReconcile + whole-array set(): that pair had no way
     // to tell two devices apart, so whichever saved second pushed its own stale copy of every
     // other record and the first device's edit vanished with no conflict and no error.
-    jrnAttachSync(user.uid);
+    syncTrack(jrnAttachSync(user.uid));
 
     // ── Sync data added after the original sync was built ──
     const budEditing=()=>{ const a=document.activeElement; return a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'); };
-    incCatRef = syncBlobListenTS(user.uid,'budgetIncCats','daily_budget_inc_cats','daily_budget_inc_cats_ts',()=>{ if(S.view==='budget'&&!budEditing()) renderBudgetTab(); });
-    fixCatRef = syncBlobListenTS(user.uid,'budgetFixCats','daily_budget_fix_cats','daily_budget_fix_cats_ts',()=>{ if(S.view==='budget'&&!budEditing()) renderBudgetTab(); });
-    varCatRef = syncBlobListenTS(user.uid,'budgetVarCats','daily_budget_var_cats','daily_budget_var_cats_ts',()=>{ if(S.view==='budget'&&!budEditing()) renderBudgetTab(); });
-    ccRef     = syncBlobListen(user.uid,'creditCard','daily_cc',()=>{ if(S.view==='home'&&typeof renderHome==='function') renderHome(); });
-    syncBlobListen(user.uid,'ccLog','daily_cc_log',()=>{ ccLog=loadCCLog(); if(S.view==='stats'&&statsSubTab==='finance') renderBSBalance(); });
+    incCatRef = syncTrack(syncBlobListenTS(user.uid,'budgetIncCats','daily_budget_inc_cats','daily_budget_inc_cats_ts',()=>{ if(S.view==='budget'&&!budEditing()) renderBudgetTab(); }));
+    fixCatRef = syncTrack(syncBlobListenTS(user.uid,'budgetFixCats','daily_budget_fix_cats','daily_budget_fix_cats_ts',()=>{ if(S.view==='budget'&&!budEditing()) renderBudgetTab(); }));
+    varCatRef = syncTrack(syncBlobListenTS(user.uid,'budgetVarCats','daily_budget_var_cats','daily_budget_var_cats_ts',()=>{ if(S.view==='budget'&&!budEditing()) renderBudgetTab(); }));
+    ccRef     = syncTrack(syncBlobListen(user.uid,'creditCard','daily_cc',()=>{ if(S.view==='home'&&typeof renderHome==='function') renderHome(); }));
+    syncTrack(syncBlobListen(user.uid,'ccLog','daily_cc_log',()=>{ ccLog=loadCCLog(); if(S.view==='stats'&&statsSubTab==='finance') renderBSBalance(); }));
     // Accounts (assets/debts). ensureAccountsMigrated() can pre-populate daily_accounts at boot
     // from legacy savings/CC logs — a GUESS, flagged with daily_accounts_migrated. On such a
     // device, syncBlobListen's offline-edit-wins race branch (its .on first-fire runs before the
@@ -547,7 +645,7 @@ if(firebaseReady){
       if(S.view==='stats') refreshStatsForData(['overview','review','finance']);
       if(typeof renderAccountsPage==='function'&&document.getElementById('view-accounts')&&document.getElementById('view-accounts').style.display!=='none') renderAccountsPage();
     };
-    const _acctListen=()=>syncBlobListen(user.uid,'accounts','daily_accounts',_acctRerender);
+    const _acctListen=()=>syncTrack(syncBlobListen(user.uid,'accounts','daily_accounts',_acctRerender));
     db.ref('users/'+user.uid+'/accounts').once('value').then(snap=>{
       if(snap.exists() && localStorage.getItem('daily_accounts_migrated')==='1'){
         const v=snap.val();
@@ -566,8 +664,8 @@ if(firebaseReady){
     // (this is exactly what happened: a new split saved on desktop got wiped by an untouched
     // phone's default reconnecting, which then clobbered the desktop right back). Both use the
     // timestamped sync instead — same fix as Prompt 26 applied to the budget category lists.
-    syncBlobListen(user.uid,'homeOrder','daily_home_order',()=>{ if(S.view==='home'&&typeof renderHome==='function') renderHome(); }); // legacy order (seed source)
-    syncHomeLayoutListen(user.uid,()=>{ if(S.view==='home'&&typeof renderHome==='function') renderHome(); if(_activeSettingsKey==='homelayout'&&typeof renderHomeLayoutSection==='function') renderHomeLayoutSection(); });
+    syncTrack(syncBlobListen(user.uid,'homeOrder','daily_home_order',()=>{ if(S.view==='home'&&typeof renderHome==='function') renderHome(); })); // legacy order (seed source)
+    syncTrack(syncHomeLayoutListen(user.uid,()=>{ if(S.view==='home'&&typeof renderHome==='function') renderHome(); if(_activeSettingsKey==='homelayout'&&typeof renderHomeLayoutSection==='function') renderHomeLayoutSection(); }));
     syncBlobListen(user.uid,'habitsLog','daily_habits_log',()=>{ try{ habitsLog=loadHabitsLog(); }catch(e){} if(typeof refreshHabitsUI==='function') refreshHabitsUI(); });
     syncBlobListen(user.uid,'dynamicColours','daily_dynamic_colours',()=>{ if(typeof applyDayColour==='function') applyDayColour(); });
     syncBlobListen(user.uid,'dayColors','daily_day_colors',()=>{ if(typeof applyDayColour==='function') applyDayColour(); if(S.view==='settings'&&typeof renderDayColorPickers==='function') renderDayColorPickers(); });
@@ -640,30 +738,42 @@ if(firebaseReady){
     // PLAN COUNTS and let the longer list win, so deleting a plan was undone on the next
     // sign-in — the shorter local list always lost to the stale cloud copy. A legacy raw
     // value in the cloud reads as timestamp 0, so any real local edit beats it.
-    syncBlobListenTS(user.uid,'plans','wt_plans','wt_plans_ts',()=>{
+    syncTrack(syncBlobListenTS(user.uid,'plans','wt_plans','wt_plans_ts',()=>{
       if(typeof plansRefreshViews==='function') plansRefreshViews();
-    });
+    }));
     // Weekly Review. The PLAN is one config blob and resolves by timestamp like any other
     // setting; the weekly RECORDS are a keyed collection, merged per week by wkrAttachSync so a
     // device that has only ever reviewed one week cannot replace the others.
-    syncBlobListen(user.uid,'reviewPlan','daily_review_plan',()=>{
+    syncTrack(syncBlobListen(user.uid,'reviewPlan','daily_review_plan',()=>{
       try{ wkrPlan=wkrLoadPlan(); }catch(e){}
       if(typeof wkrRerender==='function') wkrRerender();
-    });
-    wkrAttachSync(user.uid);
-    setSyncStatus('Synced ✓');
+    }));
+    syncTrack(wkrAttachSync(user.uid));
+    // Authentication alone does not mean restored data has arrived. In particular, the
+    // onboarding Finish button must not save a draft over a still-loading training split.
+    const restorePaths=new Set(['sessions','weights','profile',...SYNC_BLOB_REG.map(b=>b.path)]);
+    Promise.all([...restorePaths].map(path=>db.ref('users/'+user.uid+'/'+path).once('value'))).then(()=>{
+      // Still the right account? An account switch mid-read must not mark the NEW account ready
+      // on the strength of the old one's data.
+      if(!(auth.currentUser&&auth.currentUser.uid===user.uid)) return;
+      // The reads finishing is necessary but not sufficient: the workout listeners are separate
+      // subscriptions, and readiness is a claim about applied state. wtAttachRecords sets these
+      // as soon as it has merged a snapshot into localStorage.
+      const ready=()=>{
+        if(!(auth.currentUser&&auth.currentUser.uid===user.uid)) return;
+        if(_cloudApplied.sessions&&_cloudApplied.weights){
+          _cloudWorkoutReady=true;
+          setSyncStatus('Synced ✓');
+        } else setTimeout(ready,150);
+      };
+      ready();
+    }).catch(()=>{ _cloudReadFailed=true; setSyncStatus('Sync failed'); });
 
   } else {
-    if(dbRef){ dbRef.off(); dbRef=null; }
-    if(weightDbRef){ weightDbRef.off(); weightDbRef=null; }
-    if(piRef){ piRef.off(); piRef=null; }
-    if(savRef){ savRef.off(); savRef=null; }
-    if(habitsRef){ habitsRef.off(); habitsRef=null; }
-    if(budDataRef){ budDataRef.off(); budDataRef=null; }
-    if(incCatRef){ incCatRef.off(); incCatRef=null; }
-    if(fixCatRef){ fixCatRef.off(); fixCatRef=null; }
-    if(varCatRef){ varCatRef.off(); varCatRef=null; }
-    if(ccRef){ ccRef.off(); ccRef=null; }
+    // syncDetachAll() above already released every tracked listener, including the ones the
+    // old per-callback `let` variables could never reach. Only the module-level handles used
+    // by persist()/persistWeights() still need clearing.
+    dbRef=null; weightDbRef=null;
     setSyncStatus('Not signed in');
   }
   updateHeaderAvatar();
@@ -786,8 +896,8 @@ function typeForDayIdx(i){ const ts=splitTypes(); return ts[typeIdxForDay(i)] ||
 function allExerciseNames(){ return [...new Set(splitTypes().flatMap(t=>(t.exercises||[]).map(e=>e.name)))]; }
 
 // ── Storage helpers ──────────────────────────────────────────────
-function load(){ return lsLoad('wt_sessions', []); }
-function loadWeights(){ return lsLoad('wt_weight', []); }
+function load(){ return wtReadRecords('wt_sessions').filter(r=>!r.deletedAt); }
+function loadWeights(){ return wtReadRecords('wt_weight').filter(r=>!r.deletedAt); }
 function loadSwaps(){ return lsLoad('wt_swaps', {}); }
 function loadTheme(){
   // Default dark (the momentum look). Users opt into light via Settings.
@@ -1026,14 +1136,20 @@ function saveSavingsLog(){
 // savRef is let-scoped to the auth callback, so referencing it from this global function threw
 // a ReferenceError that the old try/catch swallowed — the cloud write silently never ran, so
 // edits never synced to other devices. Write to the ref by uid instead (same fix as pushHabits).
-function pushSavings(){
+// The age of one savings entry. Its own field, not updatedAt/deletedAt — this collection
+// predates those and stamps `t`.
+function savingsTime(e){ return Number(e&&e.t)||0; }
+// Per-DATE writes. This used to `.set()` the whole savingsLog node on every save, which is the
+// same shape as the session bug: a window holding a stale copy erased any entry another device
+// had added since. Entries are never deleted here, so a per-record union is complete.
+function pushSavings(records){
   try{
-    if(firebaseReady && auth && auth.currentUser && db){
-      db.ref('users/'+auth.currentUser.uid+'/savingsLog').set(Object.fromEntries(
-        savingsLog.filter(e=>e&&e.date).map(e=>[String(e.date).replace(/-/g,''),e])
-      ));
-    }
-  }catch(err){ console.error('savings cloud sync failed', err); }
+    if(!(firebaseReady && auth && auth.currentUser && db)) return Promise.resolve();
+    const list=(records||savingsLog).filter(e=>e&&e.date);
+    if(!list.length) return Promise.resolve();
+    return wtPushRecords(db.ref('users/'+auth.currentUser.uid+'/savingsLog'),list,'date',savingsTime)
+      .catch(err=>{ console.error('savings cloud sync failed', err); });
+  }catch(err){ console.error('savings cloud sync failed', err); return Promise.resolve(); }
 }
 function logCheckin(){
   const today=getLocalDate();
@@ -1092,22 +1208,93 @@ const S = {
 
 let exCollapsed = new Set(); // session-only exercise card collapse state
 
+window.addEventListener('storage',e=>{
+  if(e.key!=='wt_sessions'&&e.key!=='wt_weight') return;
+  S.sessions=load();
+  S.weights=loadWeights();
+  if(S.view==='home') renderHome();
+  if(S.view==='log'&&logSubTab==='history') renderHistory();
+  if(S.view==='log'&&logSubTab==='today'&&logTodayView==='overview') renderLogOverview();
+  if(S.view==='stats') refreshStatsForData(['overview','review','training','body']);
+});
+
 // ── Persist ──────────────────────────────────────────────────────
-function persist(){
-  try{ localStorage.setItem('wt_sessions', JSON.stringify(S.sessions)); }catch(e){ console.warn('localStorage full',e); }
-  if(dbRef){
-    const data={};
-    S.sessions.forEach(s=>{ data[s.id]=s; });
-    dbRef.set(data).catch(e=>console.error('Firebase sync error:',e));
-  }
+function wtReadRecords(key){
+  return lsLoad(key,[],Array.isArray).filter(r=>r&&typeof r==='object');
 }
-function persistWeights(){
-  try{ localStorage.setItem('wt_weight', JSON.stringify(S.weights)); }catch(e){ console.warn('localStorage full',e); }
-  if(weightDbRef){
-    const data={};
-    S.weights.forEach(w=>{ data[w.date.replace(/-/g,'')]=w; });
-    weightDbRef.set(data).catch(e=>console.error('Firebase weight sync error:',e));
+function wtRecordTime(r){ return Math.max(Number(r&&r.updatedAt)||0,Number(r&&r.deletedAt)||0); }
+function wtRecordKey(r,field){ const key=String(r[field]||''); return field==='date'?key.replace(/-/g,''):key; }
+function wtMergeRecords(local,remote,field){
+  const map=new Map();
+  [...local,...remote].forEach(r=>{
+    if(!r||!r[field]) return;
+    const key=wtRecordKey(r,field),prev=map.get(key);
+    if(!prev||wtRecordTime(r)>=wtRecordTime(prev)) map.set(key,r);
+  });
+  return [...map.values()].sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
+}
+// One child transaction per record. `timeOf` lets a collection with its own age field reuse
+// this (the savings log stamps `t`); it defaults to the session/weight rule. Cloud wins ties,
+// so a stale device replaying an unchanged copy is a no-op rather than a rewrite.
+function wtPushRecords(ref,records,field,timeOf){
+  if(!ref) return Promise.resolve();
+  const age=timeOf||wtRecordTime;
+  return Promise.all(records.map(r=>ref.child(wtRecordKey(r,field)).transaction(cloud=>{
+    if(cloud && age(cloud)>=age(r)) return;
+    return r;
+  },undefined,false)));
+}
+function wtAttachRecords(ref,key,field,onUpdate){
+  ref.on('value',snap=>{
+    const cloud=Object.values(snap.val()||{});
+    const local=wtReadRecords(key);
+    const merged=wtMergeRecords(local,cloud,field);
+    try{ localStorage.setItem(key,JSON.stringify(merged)); }catch(e){ setSyncStatus('Local save failed'); return; }
+    onUpdate(merged.filter(r=>!r.deletedAt));
+    const cloudMap=new Map(cloud.filter(r=>r&&r[field]).map(r=>[wtRecordKey(r,field),r]));
+    const pending=merged.filter(r=>{
+      const c=cloudMap.get(wtRecordKey(r,field));
+      return !c||wtRecordTime(r)>wtRecordTime(c);
+    });
+    if(pending.length) wtPushRecords(ref,pending,field).catch(()=>setSyncStatus('Sync failed'));
+  },()=>setSyncStatus('Sync failed'));
+}
+// Persist only intentional record changes. Re-read shared storage first: another window
+// may have saved since this window last rendered. Deletions remain timestamped records in
+// the SAME stores, so a stale device cannot resurrect them by reconnecting.
+function wtPersistRecords(key,field,records,changed,deleted,ref){
+  const disk=wtReadRecords(key);
+  let merged=wtMergeRecords(records,disk,field);
+  if(!_bootPhase){
+    const edits=records.filter(r=>changed.includes(String(r[field]))).map(r=>{
+      const old=merged.find(x=>String(x[field])===String(r[field]));
+      return {...r,updatedAt:Math.max(Date.now(),wtRecordTime(old)+1),deletedAt:null};
+    });
+    deleted.forEach(id=>{
+      const old=merged.find(r=>String(r[field])===String(id));
+      const t=Math.max(Date.now(),wtRecordTime(old)+1);
+      edits.push({...old,[field]:id,updatedAt:t,deletedAt:t});
+    });
+    merged=wtMergeRecords(merged,edits,field);
   }
+  localStorage.setItem(key,JSON.stringify(merged));
+  return {records:merged.filter(r=>!r.deletedAt), upload:_bootPhase?Promise.resolve():wtPushRecords(ref,merged,field)};
+}
+function persist(changed=[],deleted=[]){
+  try{
+    const result=wtPersistRecords('wt_sessions','id',S.sessions,changed,deleted,dbRef);
+    S.sessions=result.records;
+    result.upload.catch(()=>setSyncStatus('Sync failed'));
+    return true;
+  }catch(e){ setSyncStatus('Local save failed'); showToast('Workout could not be saved. Keep this window open and try again.'); console.warn('Workout save failed',e); return false; }
+}
+function persistWeights(changed=[],deleted=[]){
+  try{
+    const result=wtPersistRecords('wt_weight','date',S.weights,changed,deleted,weightDbRef);
+    S.weights=result.records;
+    result.upload.catch(()=>setSyncStatus('Sync failed'));
+    return result.upload;
+  }catch(e){ setSyncStatus('Local save failed'); return Promise.reject(e); }
 }
 function saveSwaps(){ lsSave('wt_swaps', S.swaps, 'swaps'); }
 function persistDailyLog(){ lsSave('wt_calories', S.dailyLog, 'calorieLog'); recordCalorieHistory(); }
@@ -2908,13 +3095,14 @@ window.addEventListener('resize',function(){ if(typeof S!=='undefined'&&S.view) 
   window.addEventListener('resize',schedule);
   window.addEventListener('orientationchange',()=>setTimeout(schedule,180));
 })();
-// ── Weekday wordmark tint ─────────────────────────────────────────
+// ── Day colour publication ────────────────────────────────────────
 // Publishes --day-color (one colour per weekday when dynamic colours are on, else the static
-// accent). The wordmark is a real logo image now, so this only drives the active Stats pill
-// (#header-stats-pill.active). Name/call sites kept though "Logo" is no longer strictly apt.
+// accent). It has NOTHING to do with the wordmark any more: the mark is a CSS mask inked with
+// --accent-text (css/brand.css), which applyAccent()/applyTheme() already re-derive, so it
+// re-colours itself with no JavaScript. The only remaining consumer is the active Stats pill
+// (#header-stats-pill.active) — that is real behaviour this function owns, so it stays.
+// The Logo in the name is historical; the four call sites are left alone rather than churned.
 function applyLogoDayColour(){
-  // Same colour the rest of the UI is using, whichever mode is active — the wordmark used to
-  // read the dynamic flag itself and so ignored the weather mode entirely.
   document.documentElement.style.setProperty('--day-color', currentAccentHex());
 }
 // Stats pill shows on Home (and stays visible+active on the Stats view so it doubles
@@ -3214,9 +3402,10 @@ function confirmNewExercise(){
 // in-memory set data. Carry every reference over on rename so past logs follow the new
 // name instead of being stranded (and hidden from PRs/stats) under the old one.
 function renameExerciseRefs(oldName,newName){
+  const changed=[];
   let touched=false;
-  S.sessions.forEach(s=>(s.exercises||[]).forEach(ex=>{ if(ex.name===oldName){ ex.name=newName; touched=true; } }));
-  if(touched) persist();
+  S.sessions.forEach(s=>(s.exercises||[]).forEach(ex=>{ if(ex.name===oldName){ ex.name=newName; changed.push(String(s.id)); } }));
+  if(changed.length) persist(changed);
   touched=false;
   Object.values(dayCustom||{}).forEach(c=>{
     (c.added||[]).forEach(a=>{ if(a.name===oldName){ a.name=newName; touched=true; } });
@@ -4184,7 +4373,7 @@ function saveSession(){
   if(note) sessionObj.note = note;
 
   S.sessions.push(sessionObj);
-  persist();
+  if(!persist([String(sessionObj.id)])) return;
   updateNavBadges();
 
   // Progressive overload check
@@ -4596,7 +4785,7 @@ function toggleExpand(id, btn){
 function deleteSession(id){
   if(!confirm('Delete this session?')) return;
   S.sessions = S.sessions.filter(s=>s.id!==id);
-  persist(); renderHistory();
+  persist([],[id]); renderHistory();
 }
 
 // ── WEIGHT tracking ──────────────────────────────────────────────
@@ -4605,7 +4794,7 @@ function addWeightEntry(date, weight){
   S.weights = S.weights.filter(w=>w.date!==date);
   S.weights.push({date, weight});
   S.weights.sort((a,b)=>a.date<b.date?-1:1);
-  persistWeights();
+  persistWeights([date]);
   if(S.view==='log'&&logSubTab==='today'&&logTodayView==='overview') renderLogOverview();
 }
 function logWeight(){
@@ -4653,7 +4842,7 @@ function dismissPostSaveWeight(){
 // Same card idiom as the weight prompt above, in its own container so both can show.
 // Fully optional and non-blocking: the session is already saved by the time this appears —
 // picking a level back-fills s.effort on the saved record; Skip (or ignoring it) changes
-// nothing. Synced automatically via persist() (sessions sync wholesale by id).
+// nothing. Synced automatically via persist() (only newer records can replace a session).
 // `color` is a semantic scale (easy→brutal), deliberately independent of --accent, which can
 // be any hue at runtime. The emoji stay for the existing rating buttons and session pills;
 // chrome that needs the rating as a coloured chip uses `color` instead.
@@ -4677,7 +4866,7 @@ function showPostSaveEffortPrompt(sessionId){
 }
 function setSessionEffort(sessionId,level){
   const s=S.sessions.find(x=>x.id===sessionId);
-  if(s){ s.effort=level; persist(); }
+  if(s){ s.effort=level; persist([String(sessionId)]); }
   const wrap=document.getElementById('post-save-effort');
   if(wrap){
     const m=effortMeta(level);
@@ -4691,7 +4880,7 @@ function dismissPostSaveEffort(){
 }
 function deleteWeight(date){
   S.weights = S.weights.filter(w=>w.date!==date);
-  persistWeights();
+  persistWeights([],[date]);
   renderWeightSection();
 }
 function renderWeightSection(){
@@ -6681,6 +6870,13 @@ function restoreFromText(text, report){
   // first sync after reload reads the cloud as "newer" and wipes the restore. Stamping now
   // is what makes the restored copy win.
   const now=Date.now();
+  // Record conflict timestamps must also reflect this explicit restore, not the age of
+  // the backup. Otherwise a newer cloud record could undo the restored workout/weight.
+  ['wt_sessions','wt_weight'].forEach(key=>{
+    if(!keys.includes(key)) return;
+    const records=wtReadRecords(key).map(r=>({...r,updatedAt:now,...(r.deletedAt?{deletedAt:now}:{})}));
+    localStorage.setItem(key,JSON.stringify(records));
+  });
   if(keys.indexOf('daily_home_layout')>=0){
     const layouts=homeLayoutsNormalise(localStorage.getItem('daily_home_layout'),now);
     layouts.mobile.updatedAt=now;
@@ -10213,13 +10409,18 @@ function loadBudgetConfig(){
 let budgetConfig = loadBudgetConfig();
 let incomeStreams = budgetConfig.incomeStreams; // legacy alias kept in sync
 function saveBudgetConfig(cfg){
-  cfg.updatedAt = Date.now(); // stamp so the cloud pull can tell "older" from "newer" (Prompt 26)
+  // Stamp so the cloud pull can tell "older" from "newer" (Prompt 26) — but a boot migration or
+  // a write made while applying a cloud snapshot is not a new edit and must keep the age it
+  // already had, or an untouched device would outrank a real edit made elsewhere. Same rule as
+  // stampFor().
+  cfg.updatedAt = (_bootPhase || _syncApplying) ? (cfg.updatedAt || budgetConfig.updatedAt || 0) : Date.now();
   budgetConfig = cfg;
   incomeStreams = cfg.incomeStreams;
   localStorage.setItem('daily_budget_config', JSON.stringify(cfg));
   localStorage.removeItem('daily_income_streams'); // consolidate — no separate key
-  if(firebaseReady&&auth&&auth.currentUser&&db){
-    db.ref('users/'+auth.currentUser.uid+'/budgetConfig').set(cfg);
+  if(!_bootPhase && !_syncApplying && firebaseReady&&auth&&auth.currentUser&&db){
+    budPushConfig(db.ref('users/'+auth.currentUser.uid+'/budgetConfig'), cfg)
+      .catch(()=>setSyncStatus('Sync failed'));
   }
 }
 // Legacy shims (older code paths still reference these names)
@@ -11214,7 +11415,7 @@ function mergeLegacyWeightEntries(){
   if(Array.isArray(local)) srcs.push(...local);
   if(Array.isArray(_wtLegacyCloud)) srcs.push(..._wtLegacyCloud);
   if(!srcs.length) return false;
-  const have=new Set(S.weights.map(w=>w&&w.date));
+  const have=new Set([...S.weights,...wtReadRecords('wt_weight')].map(w=>w&&w.date));
   let added=false;
   srcs.forEach(e=>{
     if(!e||!e.date||have.has(e.date)) return;
@@ -21260,8 +21461,7 @@ function obHomePreviewHTML(){
 function obWelcomeHTML(){
   return '<div class="ob-center ob-welcome">'+
     '<div class="ob-welcome-brand">'+
-      '<img class="wordmark-img wordmark-light" src="daily-wordmark-light.png" alt="Daily">'+
-      '<img class="wordmark-img wordmark-dark" src="daily-wordmark-dark.png" alt="Daily">'+
+      '<span class="wordmark" role="img" aria-label="Daily"></span>'+
     '</div>'+
     '<div class="ob-welcome-kicker">Everything that shapes today</div>'+
     '<div class="ob-welcome-title">Your whole day,<br>in one place.</div>'+
@@ -21330,7 +21530,7 @@ function obSignInExisting(){
         setTimeout(obDismiss,600);
       } else if(Date.now()-startedAt>=6000){
         clearInterval(_obRestoreTimer);
-        say('Signed in, but this account has no saved data yet — continuing setup. Anything you enter now will sync.');
+        say(_cloudWorkoutReady?'Signed in. If you already use Daily, check your restored data before finishing setup.':'Signed in, but your cloud data is still loading. Keep this window open; your existing data has not been declared empty.');
       }
     },400);
   });
@@ -21613,6 +21813,16 @@ function seedBudgetCategoriesFromConfig(){
 }
 
 function finishOnboarding(){
+  if(auth&&auth.currentUser&&!_cloudWorkoutReady){
+    // A read that FAILED is not the same as one still in flight. Waiting forever would make
+    // setup impossible offline, and continuing silently is how a still-loading account gets
+    // overwritten — so the choice is handed to the person, stated plainly.
+    if(!_cloudReadFailed){
+      showToast('Your saved data is still loading. Please wait before finishing setup.');
+      return;
+    }
+    if(!confirm('Daily could not reach your saved data (you may be offline). '+'If this account already has workouts, finishing setup now could overwrite them once you reconnect. Continue anyway?')) return;
+  }
   obCaptureCurrent();
   const name=(obData.name||'').trim()||profileData.name||'';
 

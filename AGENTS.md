@@ -355,6 +355,50 @@ safety-critical parts:
 
 ## Current unfinished work
 
+### Local sync hardening — 2026-09-07 (not deployed)
+
+- `syncBlobPush` and `lsSaveTS` suppress uploads during `_bootPhase` and cloud-apply callbacks.
+  `syncBlobCommit` compares timestamps in a Firebase transaction, so a stale initial read
+  cannot authorize a later overwrite. Never turn timestamp 0 into `Date.now()` on upload.
+  Equal content still adopts the cloud timestamp; read-time normalisation keeps that age.
+- Sessions and weights use `wtAttachRecords` / `wtPersistRecords` / `wtPushRecords` and
+  transactions on individual children. Do not reintroduce whole-collection `.set()` for
+  ordinary saves or sign-in. Actual edited records receive `updatedAt`; explicit deletions
+  retain `deletedAt` markers in the EXISTING `wt_sessions` / `wt_weight` arrays and cloud
+  paths. `load()` / `loadWeights()` expose only live records. Backups retain the markers.
+  There is no new synced store or boot migration. Explicit restore remains authoritative
+  and re-stamps record timestamps as well as blob timestamps.
+- A legacy weight source is removed only after the canonical upload resolves successfully.
+- `_cloudWorkoutReady` gates onboarding completion after sign-in. Auth success or a six-second
+  timer is not evidence that the user's cloud data is empty.
+- Second pass, same day: the paths pass 1 had left out. The savings log and budget weeks were
+  still whole-node writes (`pushSavings`, `syncBudgetDataToFirebase`, the budgetData listener) —
+  now per child through `wtPushRecords` / `budPushWeeks`. `budgetConfig` converges through
+  `budPushConfig` by its own `updatedAt`, and `saveBudgetConfig` no longer stamps `Date.now()`
+  during boot or a cloud apply. Every `if(!snap.exists()) set(...)` seed goes through
+  `fbSeedIfEmpty`, which re-checks emptiness inside the transaction. `syncApply()` wraps every
+  cloud-apply block so a render triggered by an incoming snapshot cannot echo it back as a
+  fresh edit. `syncTrack()`/`syncDetachAll()` release EVERY listener on an account change —
+  the old per-callback `let` refs meant sign-out detached nothing but sessions and weights.
+  The nutrition log's convergence is a transaction rather than a set of an earlier merge.
+- `_cloudReadFailed` distinguishes "still loading" from "the read failed". A failure asks the
+  user before finishing setup rather than blocking forever; it is still never read as proof
+  that the account is empty. `_cloudApplied` makes the gate wait for the workout listeners to
+  have applied a snapshot, not just for a parallel `once()` to resolve.
+- Tests: `node --test tests/sync-safety.test.cjs tests/sync-extra.test.cjs` (32 checks; the
+  shared VM fixture is `tests/harness.cjs`). To run the isolated complete-app browser fixture,
+  first `node tests/build-sync-browser.cjs`, serve the repo, then open `/tests/sync-browser.html`.
+  It replaces Firebase and localStorage with synthetic in-memory stores and never contacts the
+  real database. The generated HTML is not a production asset.
+- Local browser and isolated fresh-profile checks pass. A real signed-in fresh-profile check
+  against an existing account is STILL REQUIRED before release; no production account was
+  modified or cleared. See `tests/SYNC-SAFETY-REVIEW.md` for limits, remaining boundaries and
+  release checks — in particular that an un-updated older device can still overwrite.
+- Cache version prepared as `daily-v308`, now covering the logo integration as well: the
+  wordmark is a CSS mask inked with `--accent-text` (`css/brand.css`, appended last) and the
+  runtime brand assets live in `assets/brand/`; `assets/brand/refined/` is source only and is
+  never precached.
+
 The Prompt 42 pantry work described here previously is committed and shipped.
 
 Nothing is uncommitted as of 2026-09-05 beyond documentation. Recently shipped, newest

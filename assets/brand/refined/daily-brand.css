@@ -1,0 +1,18 @@
+/* Optional integration stylesheet; not yet loaded by Daily. */
+.daily-brand-logo {
+  display: inline-block;
+  width: auto;
+  height: 22px;
+  aspect-ratio: 1877 / 412;
+  flex-shrink: 0;
+  vertical-align: middle;
+  color: var(--accent-text, var(--text, #171719));
+  background-color: currentColor;
+  -webkit-mask: url("./daily-wordmark-mask.png") center / contain no-repeat;
+  mask: url("./daily-wordmark-mask.png") center / contain no-repeat;
+  mask-mode: alpha;
+}
+
+.daily-brand-logo--neutral {
+  color: var(--text, #171719);
+}

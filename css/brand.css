@@ -1,0 +1,41 @@
+/* ── Brand: the DAILY wordmark ──────────────────────────────────────────────
+   Appended last, like every stylesheet before it, so it can win a tie against the placement
+   rules that size the mark. Do not reorder any of the links in index.html.
+
+   ONE element per placement, not a light/dark pair of <img>s. The artwork is painted as a
+   background colour through the PNG's own alpha channel, so the mark takes the app's colour
+   instead of shipping two baked-in copies of itself — which is what lets it follow the accent
+   the user actually chose, preset, custom, per-training-day or weather, with no second palette
+   and nothing new to store.
+
+   The ink is --accent-text, never --accent. Every accent value the app can hold is tuned to
+   CARRY white text, so using it AS text on the app background is the one place it fails: the
+   night weather scenes measure 1.7:1 against dark --bg. --accent-text is derived at runtime by
+   accentTextHex() to clear 5:1 against the current theme, which is exactly what a logo sitting
+   on --bg needs. It is theme-dependent and re-derived by applyTheme()/applyAccent(), so the
+   mark re-inks itself with no JavaScript of its own.
+
+   aspect-ratio comes from the artwork (1877 x 412). Every placement sets a height and lets the
+   width follow, so a span can neither collapse to zero nor stretch the letters. */
+.wordmark{
+  display:block;
+  aspect-ratio:1877 / 412;
+  flex-shrink:0;
+  background-color:var(--accent-text,var(--text));
+  -webkit-mask:url("../assets/brand/daily-wordmark-mask.png") center / contain no-repeat;
+  mask:url("../assets/brand/daily-wordmark-mask.png") center / contain no-repeat;
+  -webkit-mask-mode:alpha;
+  mask-mode:alpha;
+}
+/* Without mask support the rule above would paint a solid accent RECTANGLE — the failure has
+   to be the artwork in plain black or white, not a coloured block where the logo should be.
+   The two PNGs are the same geometry as the mask, so nothing moves. */
+@supports not ((-webkit-mask-image:url("x")) or (mask-image:url("x"))){
+  .wordmark{
+    background-color:transparent;
+    background:url("../assets/brand/daily-wordmark-dark.png") center / contain no-repeat;
+  }
+  [data-theme="light"] .wordmark{
+    background:url("../assets/brand/daily-wordmark-light.png") center / contain no-repeat;
+  }
+}

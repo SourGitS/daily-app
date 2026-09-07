@@ -186,7 +186,7 @@ function nutSavePrefs(){ if(typeof lsSave==='function')lsSave(NUT_PREFS_KEY,nutP
 function nutPushLog(){
   if(!(typeof fbRef==='function')) return; const ref=fbRef('nutritionLog'); if(!ref)return;
   const local=nutLog, now=Date.now();
-  ref.transaction(raw=>{let cloud={};try{cloud=raw&&raw.v?JSON.parse(raw.v):raw||{};}catch(e){}const merged=nutMergeLogs(cloud,local);return {v:JSON.stringify(merged),t:now};});
+  ref.transaction(raw=>{let cloud={};try{cloud=raw&&raw.v?JSON.parse(raw.v):raw||{};}catch(e){}const merged=nutMergeLogs(cloud,local);return {v:JSON.stringify(merged),t:now};},undefined,false);
 }
 function nutSyncListen(uid){
   if(!(typeof db!=='undefined'&&db))return;
@@ -195,8 +195,20 @@ function nutSyncListen(uid){
   ref.on('value',snap=>{
     const raw=snap.val(); let cloud={}; try{cloud=raw&&raw.v?JSON.parse(raw.v):raw||{};}catch(e){}
     const merged=nutMergeLogs(nutLog,cloud); const before=JSON.stringify(nutLog), after=JSON.stringify(merged); nutLog=merged;
-    if(before!==after){localStorage.setItem(NUT_LOG_KEY,after);nutRefreshConsumers();}
-    const cloudNorm=JSON.stringify(nutNormalLog(cloud)); if(cloudNorm!==after)ref.set({v:after,t:Date.now()});
+    // Applying a cloud snapshot is not a local edit: anything the refresh saves must keep the
+    // age it already had rather than being stamped fresh and echoed back up.
+    if(before!==after){localStorage.setItem(NUT_LOG_KEY,after);
+      if(typeof syncApply==='function') syncApply(()=>nutRefreshConsumers()); else nutRefreshConsumers();}
+    // Converge the cloud inside a TRANSACTION, re-merging against whatever is there at commit
+    // time. A plain set() of this merge would erase an entry a third device wrote in the gap
+    // between the snapshot above and this write.
+    const cloudNorm=JSON.stringify(nutNormalLog(cloud));
+    if(cloudNorm!==after) ref.transaction(raw=>{
+      let now={}; try{ now=raw&&raw.v?JSON.parse(raw.v):raw||{}; }catch(e){}
+      const out=nutMergeLogs(now,merged), outStr=JSON.stringify(out);
+      if(outStr===JSON.stringify(nutNormalLog(now))) return;   // cloud already holds it all
+      return {v:outStr,t:Date.now()};
+    },undefined,false);
   });
 }
 function nutMigrateLegacy(){

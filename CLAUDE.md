@@ -12,10 +12,10 @@ older summary — re-grep before assuming a fact from here is still true if it l
 ## Stack
 
 - Vanilla HTML/CSS/JS — no framework, no bundler, no npm build step.
-- Entry point `index.html`. Styles split into **nine** files, loaded in this order (cascade
+- Entry point `index.html`. Styles split into **ten** files, loaded in this order (cascade
   order matters, don't reorder the `<link>` tags): `css/base.css`, `css/layout.css`,
   `css/workout.css`, `css/nutrition-modals.css`, `css/budget-home.css`,
-  `css/kitchen-extras.css`, `css/journal.css`, `css/settings.css`, `css/review.css`. The
+  `css/kitchen-extras.css`, `css/journal.css`, `css/settings.css`, `css/review.css`, `css/brand.css`. The
   first six were split from one `style.css` partway through the project (commit `52f32d0`);
   journal, settings and review were added later and load last *so they win ties* — that is the
   point of their position. New files are APPENDED, never inserted.
@@ -32,6 +32,51 @@ older summary — re-grep before assuming a fact from here is still true if it l
   source of truth; Firebase mirrors it when signed in.
 - Chart.js (cdnjs), Tabler Icons (jsdelivr), Google Fonts — Manrope (UI) + Space Grotesk
   (numerals/wordmark).
+
+
+## Brand: the wordmark and the app icon (2026-09-07)
+
+- **The wordmark is ONE `<span class="wordmark" role="img" aria-label="Daily">` per placement,
+  not a light/dark pair of `<img>`s.** `css/brand.css` (appended LAST, after review.css — do
+  not reorder) paints `assets/brand/daily-wordmark-mask.png` as a CSS mask filled with
+  `background-color`, so the artwork takes the app's colour instead of shipping two baked
+  copies of itself. That is what lets it follow the accent the user actually chose — preset,
+  custom, per-training-day or weather — with **no second palette, no geolocation, no timer, no
+  setting and no stored key**. There are four placements: `#header-title` (22px, 16px in
+  landscape), `.ds-logo` (28px), `#side-menu-title` (18px) and onboarding (`.ob-center`,
+  `.ob-welcome`). Every one sets a height and lets `aspect-ratio:1877/412` supply the width, so
+  a span can neither collapse nor stretch the letters.
+- **The ink is `--accent-text`, never `--accent`.** Every accent the app can hold is tuned to
+  CARRY white text, which makes it the wrong colour to use AS ink on `--bg` — the night weather
+  scenes measure 1.7:1 there. `accentTextHex()` moves lightness until it clears 5:1 against the
+  current theme, and `applyAccent()`/`applyTheme()` already re-derive it, so the mark re-inks
+  itself with no JavaScript. Measured across neutral, pale (`#FFE082`), near-black (`#101010`)
+  and a night-scene blue, in both themes: 5.07–15.48:1.
+  **Consequence worth knowing:** with the default neutral-grey accent the mark renders grey
+  (#808080 on dark), not white. That is the accent system working, not a bug. Making it
+  full-contrast again is a one-token change in `css/brand.css` — but it would stop following
+  the accent, which is the thing that was asked for.
+- **`.wordmark-img`, `.wordmark-light` and `.wordmark-dark` are RETIRED**, along with the
+  `[data-theme]` display pairing in `layout.css`. The root `daily-wordmark-*.png` files are
+  kept for one release only, because the currently deployed `index.html` still asks for them;
+  delete them once a build carrying `assets/brand/` has shipped.
+- **A mask failure must not paint a coloured rectangle.** `@supports not ((-webkit-mask-image)
+  or (mask-image))` swaps to the black/white PNGs as a background image — identical geometry,
+  so nothing moves.
+- **`applyLogoDayColour()` no longer has anything to do with the logo.** It publishes
+  `--day-color` for the active Stats pill and nothing else; the name and its four call sites
+  are left alone rather than churned. Do not stack a filter or tint on the mask — the colour
+  arrives through `--accent-text` alone.
+- **The app icon is STATIC**: white DA/star on charcoal, `assets/brand/daily-app-icon-{192,512,
+  180}.png`, used by the manifest (192 any, 512 any, 512 maskable), the favicon and the Apple
+  touch icon. No weather variants, and nothing rewrites an installed app's icon URL at runtime.
+  The mark sits at 68% of canvas width, inside the maskable safe zone, and the background runs
+  to the square corners on purpose — the platform applies its own outer shape.
+  **An already-installed home-screen icon does not refresh on deploy**: iOS and Android cache
+  it, so an existing install keeps the old icon until it is removed and re-added.
+- `assets/brand/` is the RUNTIME location and the only one the service worker precaches.
+  `assets/brand/refined/` holds the masters, the export script and the ZIP — sources, never
+  application assets, never precached.
 
 ## Navigation (restructured many times over the project's life — this is current as of 2026-09-07)
 
