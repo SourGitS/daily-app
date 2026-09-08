@@ -922,7 +922,7 @@
 .wfx-rain{position:absolute;inset:58px 0 0;--wfx-rain-speed:1;--wfx-rain-opacity:.72}
 .wfx-drop{position:absolute;top:var(--drop-top);width:1px;height:var(--drop-len);border-radius:1px;
   background:rgba(235,246,255,var(--drop-alpha));
-  animation:wfx-fall calc(var(--drop-dur) / var(--wfx-rain-speed)) linear infinite;
+  animation:wfx-fall calc(var(--drop-dur) / var(--wfx-rain-speed) * var(--wfx-fall-n,1)) linear infinite;
   animation-delay:var(--drop-delay)}
 .wfx-drop-1{left:5%;--drop-top:3px;--drop-len:8px;--drop-dur:1.08s;--drop-delay:-.22s;--drop-alpha:.52}
 .wfx-drop-2{left:12%;--drop-top:17px;--drop-len:11px;--drop-dur:.91s;--drop-delay:-.68s;--drop-alpha:.68}
@@ -964,7 +964,11 @@
 /* The horizontal drift is the live wind (set by applyWeatherMotion), so rain leans the way
    it is actually blowing instead of always slanting left. -14px is the old fixed value, kept
    as the fallback for a reading with no wind data. */
-@keyframes wfx-fall{0%{transform:translate(0,0);opacity:0}12%{opacity:1}100%{transform:translate(var(--wfx-rain-x,-14px),92px);opacity:0}}
+/* --wfx-fall-n scales the TRAVEL and the duration together, so a taller card gets rain all
+   the way down at the same falling speed rather than a band that stops in mid-air. It is a
+   unitless multiplier because CSS cannot divide a length by a length to recover the number
+   a duration would need. Default 1 — every existing card behaves exactly as before. */
+@keyframes wfx-fall{0%{transform:translate(0,0);opacity:0}12%{opacity:1}100%{transform:translate(var(--wfx-rain-x,-14px),calc(92px * var(--wfx-fall-n,1)));opacity:0}}
 
 /* Storm — an occasional double-flash rather than a steady pulse, closer to real lightning */
 .home-weather-card[data-scene="storm"] .wfx-flash{display:block}
@@ -976,7 +980,7 @@
 .home-weather-card[data-scene="snow-day"] .wfx-snow,
 .home-weather-card[data-scene="snow-night"] .wfx-snow{display:block}
 .wfx-snow{position:absolute;inset:0;--wfx-snow-speed:1;--wfx-snow-opacity:.82;opacity:var(--wfx-snow-opacity)}
-.wfx-flake{position:absolute;top:var(--flake-top,-8%);width:var(--flake-size,5px);height:var(--flake-size,5px);border-radius:50%;background:rgba(255,255,255,.9);animation:wfx-snowfall calc(var(--flake-dur,6s) / var(--wfx-snow-speed)) linear infinite;animation-delay:var(--flake-delay,0s)}
+.wfx-flake{position:absolute;top:var(--flake-top,-8%);width:var(--flake-size,5px);height:var(--flake-size,5px);border-radius:50%;background:rgba(255,255,255,.9);animation:wfx-snowfall calc(var(--flake-dur,6s) / var(--wfx-snow-speed) * var(--wfx-snow-n,1)) linear infinite;animation-delay:var(--flake-delay,0s)}
 .wfx-flake-1{left:6%;--flake-size:4px;--flake-dur:5.5s;--flake-delay:-1.2s}
 .wfx-flake-2{left:15%;--flake-size:6px;--flake-dur:7.2s;--flake-delay:-4.8s}
 .wfx-flake-3{left:25%;--flake-size:3px;--flake-dur:6.1s;--flake-delay:-2.6s}
@@ -1001,8 +1005,8 @@
 @keyframes wfx-snowfall{
   0%{transform:translate(0,0);opacity:0}
   10%{opacity:1}
-  50%{transform:translate(10px,70px)}
-  100%{transform:translate(-6px,150px);opacity:0}
+  50%{transform:translate(10px,calc(70px * var(--wfx-snow-n,1)))}
+  100%{transform:translate(-6px,calc(150px * var(--wfx-snow-n,1)));opacity:0}
 }
 @media (prefers-reduced-motion:reduce){
   .wfx-sun,.wfx-moon,.wfx-star,.wfx-cloud-1,.wfx-cloud-2,.wfx-cloud-3,.wfx-fog-1,.wfx-fog-2,

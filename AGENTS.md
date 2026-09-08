@@ -355,9 +355,9 @@ safety-critical parts:
 
 ## Current unfinished work
 
-### Home desktop Dashboard + the rebuilt Home Layout editor — 2026-09-07 (UNCOMMITTED, `daily-v310`)
+### Home desktop Dashboard + the rebuilt Home Layout editor — 2026-09-07 (RELEASED as `daily-v310`, `7192075`)
 
-Presentation plus one additive change to an existing synced store. Not committed or pushed.
+Presentation plus one additive change to an existing synced store. Live on `main`.
 
 - **Home gains a second DESKTOP composition.** `composition:'dashboard'` renders two
   independent vertical stacks (`dashboard.main` / `dashboard.summary`) instead of the row
@@ -405,7 +405,25 @@ Presentation plus one additive change to an existing synced store. Not committed
   into a throwaway browser profile on `localhost` and never signed in. The signed-in
   fresh-profile check has therefore NOT been run for this change either — same limitation as
   v308, and it should not be described as verified against real cloud data.
-- `CACHE_NAME` is prepared as `daily-v310`.
+- `CACHE_NAME` is `daily-v310`.
+
+**Follow-up, same day, `daily-v311`: the Dashboard weather card's height.** Sized to its own
+content the card is a 5:1 letterbox — in the Grid it never showed, because a row partner
+happened to stretch it. It now takes `min-height:clamp(150px, 42cqw, 230px)` in a Dashboard
+column, from a container declared on its own wrapper. Two things learned here and worth not
+rediscovering:
+
+- **`aspect-ratio` with a min/max-height transfers those limits back into min/max-WIDTH.** The
+  first attempt (`aspect-ratio:12/5;min-height:150px;max-height:210px`) made the card 360px
+  wide inside a 280px column at 1024 and only 504px inside a 631px one at 1920. Container
+  units ask the wrapper how wide it is and leave the width alone.
+- **Rain and snow travel a fixed pixel distance** tuned when this card was ~100px tall, so a
+  taller one left a dry band under them. `--wfx-fall-n` / `--wfx-snow-n` scale the travel AND
+  the animation duration together, so the precipitation reaches the bottom edge at the same
+  falling speed. They are unitless because CSS cannot divide a length by a length to recover
+  the number a duration needs, and they **default to 1** — the Grid, the phone and landscape
+  are byte-identical, verified by a same-minute pixel diff at 375, 414, 932-landscape and
+  desktop Grid 1024 / 1440 / 1920 (0 differing pixels at every one).
 
 ### Local sync hardening — 2026-09-07 (RELEASED as daily-v308, isolated tests only)
 

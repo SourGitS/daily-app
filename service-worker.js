@@ -176,7 +176,11 @@
 // user applies Dashboard themselves. Settings > Home Layout is now two real editors
 // (iPhone / Desktop) with per-profile drafts, an explicit Apply, a composition chooser and
 // keyboard placement controls. Phone and landscape layouts are untouched.
-const CACHE_NAME = 'daily-v310';
+// v311: the Dashboard weather card gets a proportional height (clamp(150px, 42cqw, 230px))
+// instead of sizing to its own text, and the rain and snow fields scale their travel and
+// duration with it so precipitation reaches the bottom edge at the same falling speed.
+// Dashboard only - the Grid, the phone and landscape are pixel-identical.
+const CACHE_NAME = 'daily-v311';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

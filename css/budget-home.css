@@ -1033,6 +1033,33 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      style outranks any selector — the column gap does that job here. */
   #view-home .home-dash-col > .home-card{min-width:0}
   #view-home .home-dash-col > .home-card > *{margin-bottom:0 !important}
+  /* Weather is the one card whose SUBJECT is the space, not the text in it. Every other card
+     sizing to its own content is the point of this composition; this one sized to its content
+     is a 5:1 letterbox with the sky squeezed out of it, and the scene decorations (the star
+     field is positioned in %, the cloud bank in depth planes) have nowhere to resolve. In the
+     Grid it never showed, because a row partner happened to stretch it.
+     A RATIO rather than a fixed height, so it stays in proportion as the column grows, with a
+     floor for the 280px column and a cap so a 630px one does not become a banner that
+     outweighs the cards under it — and stays under the session hero's own height.
+     Sized with CONTAINER units, not `aspect-ratio`: aspect-ratio with a min/max-height
+     transfers those limits back through the ratio into min/max-WIDTH, which made the card
+     360px wide inside a 280px column at 1024 and only 504px inside 631 at 1920. cqw asks the
+     card's own wrapper how wide it is and leaves the width alone. The plain 150px declaration
+     is the floor for a browser without container queries, where the clamp is dropped as
+     invalid. Height only — no padding, type or scene change — and nothing here reaches the
+     Grid, the phone or landscape. */
+  #view-home .home-dash-col > .home-card[data-card-id="weather"]{container-type:inline-size}
+  #view-home .home-dash-col > .home-card[data-card-id="weather"] .home-weather-card{
+    min-height:150px}
+  #view-home .home-dash-col > .home-card[data-card-id="weather"] .home-weather-card{
+    min-height:clamp(150px, 42cqw, 230px)}
+  /* Rain and snow travel a fixed distance, tuned when this card was ~100px tall — in a 230px
+     one they stop in mid-air with a dry band under them. These multipliers scale the travel
+     AND the duration together (see wfx-fall / wfx-snowfall), so the precipitation reaches the
+     bottom edge at the same falling speed. Over-travel is free: a drop past the bottom is
+     clipped, which is already what happens in the short card. */
+  #view-home .home-dash-col > .home-card[data-card-id="weather"] .home-weather-card{
+    --wfx-fall-n:1.9;--wfx-snow-n:1.7}
 
   @container daily-home (min-width:660px){
     /* ~60/40. minmax(280px,1fr) is the floor the supporting column is allowed to reach

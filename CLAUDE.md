@@ -1136,6 +1136,26 @@ the accent or the theme must go through those, not set `--accent` directly.
     card stacks its figure above its support there, which is what the accepted composition
     shows. The `.home-grid-cols`-scoped centring exception stays scoped to the Grid: the
     Dashboard does not stretch, so it has nothing to counteract.
+  - **Weather is the ONE card given a height, and it needs one.** Every other card sizing to
+    its own content is the point of this composition; weather sized to its content is a 5:1
+    letterbox with the sky squeezed out of it, and the scene decorations have nowhere to
+    resolve. In the Grid it never showed, because a row partner happened to stretch it. It
+    takes `min-height:clamp(150px, 42cqw, 230px)` in a Dashboard column — a ratio, so it stays
+    in proportion as the column grows, floored for the 280px column and capped below the
+    session hero's own height. Two traps, both hit:
+    **`aspect-ratio` with a min/max-height transfers those limits back into min/max-WIDTH.**
+    `aspect-ratio:12/5;min-height:150px;max-height:210px` made the card 360px wide inside a
+    280px column at 1024 and only 504px inside a 631px one at 1920. Container units ask the
+    card's own wrapper how wide it is and leave the width alone; the plain `min-height:150px`
+    above the clamp is the floor where container queries are unsupported and the clamp is
+    dropped as invalid.
+    **Rain and snow travel a fixed pixel distance** (92px and 150px), tuned when this card was
+    ~100px tall, so a taller one leaves a dry band under them. `--wfx-fall-n` / `--wfx-snow-n`
+    (`css/kitchen-extras.css`) scale the travel AND the animation duration together, so the
+    precipitation reaches the bottom edge at the same falling speed — unitless, because CSS
+    cannot divide a length by a length to recover the number a duration needs, and defaulting
+    to **1** so every other surface is untouched. Height only: no padding, type, scene or
+    `--wfx-drift` change.
   - **Home's mobile portrait and landscape rendering is byte-identical.** Verified by pixel
     diff against the same commit's Grid build at 375, 414 and 932-landscape: the only differing
     pixels are a 48×27 box in the weather card, which is the time-driven moon decoration and
