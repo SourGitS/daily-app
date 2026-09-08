@@ -1197,44 +1197,55 @@
 @media (min-width:1024px){
   .kitshop-addbar{left:260px}
   .screen-title{font-size:34px}
-  /* ── Desktop session hero ──────────────────────────────────────────────────────────────
-     The old composition spent its height on a label row that reserved 48px for a bare round
-     button, a 40px title, and then a progress block — 241px at 1440 with this content. The
-     parts are the same; only their placement and the space between them changed. The action
-     is now a labelled pill grouped WITH the workout it acts on, which is both what removes
-     the 48px label row and what stops the button reading as an unrelated corner control.
-     Nothing is clipped, nothing is given a fixed height, and body text is untouched: the
-     title is display type and steps 40 → 36 as part of the same recomposition. */
-  .hero-workout-card{padding:24px;column-gap:20px;
-    grid-template-areas:'label label' 'title title' 'meta meta' 'action action' 'prog prog' 'track track'}
-  .hero-workout-title{font-size:36px;line-height:1.12}
-  .hero-label{margin-bottom:10px}
-  .hero-meta{margin-bottom:12px}
-  /* A white pill with the DARKENED accent as ink. Not var(--accent): every accent is tuned to
-     carry white text, so on a white pill a pale one would vanish — --accent-hero is the stop
-     that already clears 4.2:1 against white (see heroStopsFor). */
-  .hero-play-btn{width:auto;height:auto;min-height:44px;border-radius:999px;padding:0 18px;gap:9px;
-    margin-bottom:12px;justify-self:start;color:var(--accent-hero);
-    font:800 14px var(--font-ui);letter-spacing:-.005em;white-space:nowrap}
-  .hero-act-txt{display:inline}
+  /* Restore the original desktop hero: plain gradient, large title, round play action. */
+  .hero-workout-card{padding:28px}
+  .hero-workout-title{font-size:40px}
   .metric-num{font-size:44px}
   .desktop-grid{display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start}
 }
-/* Beside the workout once the CARD is wide enough — not once the window is. The hero can sit
-   in either Dashboard column or span the Grid, so the viewport cannot answer this; below the
-   threshold the action stacks under the meta line at the start edge, which is the useful
-   fallback rather than a squeezed two-column row. 460px is the threshold the other Home
-   composition shapes already use. */
-@media (min-width:1024px){
-  #view-home .home-grid-cols > .home-card[data-card-id="session"],
-  #view-home .home-dash-col > .home-card[data-card-id="session"]{
-    container-type:inline-size;container-name:daily-home-hero}
+/* Dashboard-only scenery; the compact phone and Grid sky banner stay unchanged. */
+.weather-neighbourhood{display:none}
+@media(min-width:1024px){
+  #view-home .home-dash .home-weather-card{min-height:300px;min-height:clamp(300px,65cqw,380px);
+    padding:24px;--wfx-fall-n:3.4;--wfx-snow-n:3;
+    --village-ridge:#31445c;--village-city:#24354b;--village-house:#16263b;
+    --village-tree:#0d1b2d;--village-roof:#3e536b;--village-window:#f3c482}
+  #view-home .home-dash .weather-content{display:flex;flex-direction:column;align-items:flex-start;
+    justify-content:flex-start;gap:18px;text-shadow:0 2px 6px rgba(0,0,0,.5)}
+  #view-home .home-dash .weather-right{text-align:left}
+  #view-home .home-dash .weather-temp-row{justify-content:flex-start;gap:10px}
+  #view-home .home-dash .weather-temp{font-size:48px;line-height:1}
+  #view-home .home-dash .weather-day{font-size:20px}
+  #view-home .home-dash .weather-date{font-size:12px}
+  #view-home .home-dash .weather-condition{margin-top:6px}
+  #view-home .home-dash .weather-meta{margin-top:5px;max-width:220px}
+  #view-home .home-dash .weather-neighbourhood{display:block;position:absolute;bottom:0;left:0;
+    width:100%;height:60%;pointer-events:none}
+  .weather-ridge{fill:var(--village-ridge);opacity:.6}
+  .weather-cityscape{fill:var(--village-city);opacity:.85}
+  .weather-houses{fill:var(--village-house)}
+  .weather-roofs{fill:none;stroke:var(--village-roof);stroke-width:3;stroke-linejoin:round}
+  .weather-windows{fill:var(--village-window);opacity:.8}
+  .weather-trees{fill:var(--village-tree)}
+  #view-home .home-dash .home-weather-card:not([data-scene$="night"]){
+    --village-ridge:#78929d;--village-city:#607c89;--village-house:#3c5867;
+    --village-tree:#213f49;--village-roof:#8caaaf;--village-window:#a6c5cc}
+  #view-home .home-dash .home-weather-card[data-scene$="dusk"],
+  #view-home .home-dash .home-weather-card[data-scene$="dawn"]{
+    --village-ridge:#82627f;--village-city:#584861;--village-house:#353447;
+    --village-tree:#242b38;--village-roof:#987087;--village-window:#ffd097}
+  #view-home .home-dash .home-weather-card[data-scene^="snow"]{--village-roof:#dde9ec}
+  #view-home .home-dash .weather-legibility-left{display:block;width:80%;
+    background:linear-gradient(90deg,rgba(7,17,32,.55),transparent)}
+  #view-home .home-dash .weather-legibility-right{display:none}
+  /* Keep the celestial focal point in open sky, away from text. The banner's astronomical
+     arc intentionally crops its disc; that composition is inappropriate for this scene. */
+  #view-home .home-dash .wfx-moon,#view-home .home-dash .wfx-sun{left:74%;top:18%;}
+  #view-home .home-dash .wfx-moon{width:38px;height:38px;background:
+    radial-gradient(circle at 35% 35%,#fff9e8,#c9d5ea);box-shadow:0 0 32px 10px rgba(204,220,255,.14)}
+  #view-home .home-dash .wfx-sun{width:46px;height:46px;background:#fff0ba;
+    box-shadow:0 0 36px 14px rgba(255,221,143,.3)}
 }
-@container daily-home-hero (min-width:460px){
-  .hero-workout-card{grid-template-areas:'label label' 'title action' 'meta action' 'prog prog' 'track track'}
-  .hero-play-btn{justify-self:end;margin-bottom:0}
-}
-
 /* ── Dynamic day colours: animate the accent-driven properties smoothly (0.3s) ── */
 /* CSS custom properties can't transition natively, so we transition the properties
    that USE var(--accent) on each element instead. */

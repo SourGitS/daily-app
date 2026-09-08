@@ -19013,6 +19013,14 @@ function buildWeatherCard(){
       '<div class="wfx-moon"></div>'+
       '<div class="wfx-stars">'+stars+'</div>'+
       clouds+
+      '<svg class="weather-neighbourhood" viewBox="0 0 640 240" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">'+
+        '<path class="weather-ridge" d="M0 115Q90 55 180 110T360 95T540 100T720 85V240H0Z"/>'+
+        '<path class="weather-cityscape" d="M0 155V118H30V95H54V145H80V109H110V73H132V60H140V73H155V135H184V100H218V143H250V112H269V84H290V65H298V84H316V120H350V98H376V131H400V80H428V110H449V58H473V45H480V58H502V130H527V93H554V119H587V72H620V135H640V240H0Z"/>'+
+        '<path class="weather-houses" d="M0 191V157L47 128L93 157V187H115V152L162 119L210 152V180H243V161L292 131L340 161V191H364V155L413 122L462 155V182H490V165L539 130L590 165V187H640V240H0Z"/>'+
+        '<path class="weather-roofs" d="M-5 158L47 125L98 158M110 154L162 116L215 154M238 163L292 128L345 163M359 157L413 119L467 157M485 167L539 127L595 167"/>'+
+        '<path class="weather-windows" d="M34 163h9v14h-9zM51 163h9v14h-9zM147 157h10v15h-10zM167 157h10v15h-10zM279 167h10v14h-10zM299 167h10v14h-10zM399 159h10v15h-10zM419 159h10v15h-10zM525 170h10v14h-10zM545 170h10v14h-10zM119 90h5v8h-5zM281 103h5v8h-5zM460 78h5v8h-5zM485 97h5v8h-5z"/>'+
+        '<path class="weather-trees" d="M0 218Q8 175 27 195Q24 162 44 174Q54 139 68 174Q91 160 87 196Q110 176 118 216L118 240H0ZM557 240V217Q560 190 579 202Q574 162 594 176Q603 146 617 177Q638 159 640 190V240Z"/>'+
+      '</svg>'+
       '<div class="wfx-fog wfx-fog-1"></div>'+
       '<div class="wfx-fog wfx-fog-2"></div>'+
       '<div class="wfx-rain">'+drops+'</div>'+
@@ -19468,11 +19476,8 @@ function renderHome(){
   // workout logic: three words chosen from numbers this card already has.
   const heroActLabel=(mExCount&&mDone>=mExCount)?'Review workout'
                     :mDone>0?'Continue workout':'Open workout';
-  // Flat children rather than a .hero-top wrapper: the card is a grid now, and the phone and
-  // desktop place the same five parts differently (see .hero-workout-card in
-  // kitchen-extras.css). The phone keeps the round icon it has always had; desktop turns the
-  // same button into a labelled pill sitting BESIDE the workout it acts on instead of a bare
-  // circle stranded in the far corner. .hero-act-txt is that label, hidden at phone width.
+  // Flat grid children preserve the original top-row round play action on both layouts.
+  // Its accessible name still reflects workout progress even though the visible label is hidden.
   const heroCard=
     '<div class="hero-workout-card">'+
       '<span class="hero-label">TODAY\'S SESSION · '+heroDateLabel+'</span>'+

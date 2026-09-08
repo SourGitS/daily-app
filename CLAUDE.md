@@ -1,5 +1,24 @@
 # Daily — Project Reference
 
+## Home feature-card correction — v313, 2026-09-08
+
+The user chose to restore the original workout hero: plain gradient, 40px desktop title,
+round play button in the top row, no decorative arcs or forced minimum height. This supersedes
+both v312's labelled-pill treatment and the subsequent enlarged illustrated proposal.
+Phone composition is unchanged. Dashboard column names are visually hidden during ordinary
+use and shown while #home-content has .home-editing; the headings remain accessible region labels.
+
+Dashboard Weather now has its own layered SVG neighbourhood (ridge, skyline, rooftops,
+windows and trees), with palettes derived from the existing scene attribute. The scenery is
+decorative, not a claim to show actual local buildings. Text is grouped upper-left; the sun
+or moon is composed in the open sky at right. This Dashboard scene intentionally uses a fixed
+celestial placement rather than the compact banner's edge-cropped astronomical arc. Existing
+weather selection, data and wind/precipitation remain canonical. Height scales 300–380px;
+precipitation travel/duration scales with it. Scene and height rules live together in
+kitchen-extras.css; the old higher-specificity height overrides in budget-home.css are gone.
+The SVG is hidden outside desktop Dashboard, preserving phone, landscape and Grid's banner.
+No store, migration, calculation, sync path or layout preference changes.
+
 Personal lifestyle web app for Francois: workout tracking, kitchen/recipes, budget, and
 habit/notes tracking. No build step, deployed via GitHub Pages from `main` at
 sourgits.github.io/daily-app (repo renamed from workout-tracker on 2026-08-09; the old

@@ -189,7 +189,9 @@
 // meals - reads its state from nutDaySummary so an unlogged day says so instead of showing
 // its untouched target in green, and shows snacks. Journal's empty composer is a compact
 // action on desktop. No storage, sync, calculation or review-record change.
-const CACHE_NAME = 'daily-v312';
+// v313: restore the original plain-gradient workout hero and give Dashboard weather a layered
+// neighbourhood scene. Column labels appear only in edit mode. Phone layout stays unchanged.
+const CACHE_NAME = 'daily-v313';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
