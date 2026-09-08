@@ -17538,8 +17538,13 @@ function wkrWeeklyReviewHtml(){
 // must not restate what another card says.
 function wkrHomeNudgeHtml(){
   const week=wkrPendingWeek(); if(!week) return '';
+  // Names the week it will open, and says WHY it is here — this is the older finished week
+  // still awaiting a review, not the one the figures above describe. wkrPendingWeek() and
+  // wkrOpenWeek() are unchanged; only the wording is.
+  const range=typeof homeWeekRangeLabel==='function'?homeWeekRangeLabel(week):'';
   return '<button type="button" class="wkr-nudge" onclick="wkrOpenWeek(\''+week+'\')">'+
-    'Review the week of '+escText(fmtDate(week))+'<span>Start →</span></button>';
+    '<span class="wkr-nudge-l">Outstanding review'+(range?' · '+escText(range):'')+'</span>'+
+    '<span>Start →</span></button>';
 }
 function wkrOpenWeek(week){
   wkrUI.week=week;
@@ -18027,9 +18032,13 @@ function refreshHabitsUI(){
     const today=getLocalDate();
     const n=habitsData.length;
     const doneN=(habitsLog[today]||[]).length;
+    // The class, not inline styles: the counter is .hb-count now, and an inline colour here
+    // outranked it. It was also hardcoded to #fff, which is invisible on the light theme —
+    // the completed state is --positive in both themes.
     c.textContent=doneN+'/'+n;
-    c.style.color='#fff';
-    c.style.opacity=(doneN===n&&n>0)?'1':'0.75';
+    c.classList.toggle('is-done',doneN===n&&n>0);
+    c.style.removeProperty('color');
+    c.style.removeProperty('opacity');
   }
 }
 // ── Week in review ────────────────────────────────────────────────
@@ -18042,6 +18051,18 @@ function refreshHabitsUI(){
 // A delta is not a duplicate: "4 workouts" is already on screen, "+1 vs last week" is not.
 // The habits stats and 7-day grid moved to the habits card, where they describe the thing
 // they belong to.
+// "8–14 Sept", or "30 Aug – 5 Sept" when the week crosses a month. Home's review card states
+// the bounds its figures actually cover, so "this week" and "the week still awaiting a review"
+// can never be read as the same seven days. Presentation only — it takes the Monday the card
+// has already resolved and derives nothing.
+function homeWeekRangeLabel(mondayStr){
+  const a=localMidnight(mondayStr); if(!a||isNaN(a)) return '';
+  const b=new Date(a); b.setDate(a.getDate()+6);
+  const fmt={day:'numeric',month:'short'};
+  return a.getMonth()===b.getMonth()
+    ? a.getDate()+'–'+b.toLocaleDateString('en-AU',fmt)
+    : a.toLocaleDateString('en-AU',fmt)+' – '+b.toLocaleDateString('en-AU',fmt);
+}
 function buildWeekSummaryCard(){
   const {mondayStr,sundayStr}=getWeekBounds();
   const prevMon=getMondayOf(-1);
@@ -18088,6 +18109,11 @@ function buildWeekSummaryCard(){
   return '<div class="card">'
     +cardHeader('calendar','Week in review',
        '<button class="card-hd-act" onclick="event.stopPropagation();openWeekReviewModal()">Full review →</button>')
+    // The figures are THIS week so far, compared with the whole of last week. Saying which
+    // seven days they cover is the difference between a summary and a claim: without it a
+    // partial Tuesday reads as a finished week's result, and it is indistinguishable from the
+    // older week the prompt below is still waiting on.
+    +'<p class="wr-range">This week · '+homeWeekRangeLabel(mondayStr)+'</p>'
     +row('Workouts', wNow+'<span class="wr-row-u">days</span>', chip(wNow,wPrev))
     +row('Spending', sNow==null?dash:fmtMoney(Math.round(sNow)), chip(sNow==null?null:Math.round(sNow), sPrev==null?null:Math.round(sPrev), {money:true,lowerIsBetter:true}))
     // Whether eating more is better depends entirely on the goal, so read it rather than
@@ -18294,12 +18320,16 @@ function buildTodayHabitsCard(){
   const n=habitsData.length;
   const allDone=doneCount===n&&n>0;
   return '<div class="card" style="padding:0;overflow:hidden">'
-    +'<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center">'
-    +'<span>Daily habits</span>'
-    +'<div style="display:flex;align-items:center;gap:10px">'
-    +'<span id="habits-today-count" style="font-size:13px;font-weight:700;color:var(--text);opacity:'+(allDone?'1':'0.75')+'">'+doneCount+'/'+n+'</span>'
-    +'<button onclick="openHabitsEditModal()" style="background:transparent;border:1px solid var(--border);border-radius:8px;padding:4px 11px;cursor:pointer;color:var(--muted);font-size:12px;font-weight:600;line-height:1;-webkit-tap-highlight-color:transparent" title="Edit habits">Edit</button>'
-    +'</div>'
+    // The shared header, not a sixth hand-rolled uppercase label. This one was 11px/600/0.5px
+    // /--muted against .card-label's 11px/700/.06em/--text-2, which is the kind of near-miss
+    // that makes a page of cards read as several pages. The card keeps padding:0 (its body and
+    // week grid manage their own), so the header carries the top inset itself.
+    +'<div class="hb-hd">'
+    +cardHeader('check','Daily habits',
+        '<span class="card-hd-r">'
+        +'<span id="habits-today-count" class="hb-count'+(allDone?' is-done':'')+'">'+doneCount+'/'+n+'</span>'
+        +'<button type="button" class="card-hd-btn" onclick="openHabitsEditModal()" aria-label="Edit habits">Edit</button>'
+        +'</span>')
     +'</div>'
     +'<div style="padding:14px 16px">'
     // Two columns on a wide desktop card (see .card-rows-2col). These are independent
@@ -18438,7 +18468,7 @@ function refreshTodayHabits(){
   const doneCount=(habitsLog[today]||[]).length;
   const n=habitsData.length;
   const counter=document.getElementById('habits-today-count');
-  if(counter){ counter.textContent=doneCount+'/'+n; counter.style.opacity=(doneCount===n&&n>0)?'1':'0.75'; }
+  if(counter){ counter.textContent=doneCount+'/'+n; counter.classList.toggle('is-done',doneCount===n&&n>0); counter.style.removeProperty('opacity'); }
 }
 
 // Time-of-day greeting + saved profile name (source of truth: profileData.name).
@@ -19228,41 +19258,62 @@ function calorieWeekStrip(goalCals,todayTotal){
     '</div>'+
     '<div class="card-cap">7-day avg '+avg.toLocaleString()+(goalCals?' · target '+goalCals.toLocaleString():'')+'</div>';
 }
-function homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt,unknownCount){
+// Home's nutrition summary. ONE group: the ring and the figure it explains sit together, with
+// the per-meal detail as a connected supporting region beside them (or under them on a narrow
+// card — see .nut-home in css/budget-home.css). It used to be three regions spread across the
+// card by a three-column flex with the ring dead centre, so the meals, the ring and the
+// remaining figure read as three unrelated facts.
+// nutStatus is the CANONICAL day state (nutDaySummary): missing / partial / complete / legacy.
+// It is passed in rather than inferred, because total === 0 is true both for a day with
+// nothing logged and for a day genuinely logged at zero, and painting an untouched day's full
+// target as green "kcal remaining" turns not eating into an achievement.
+function homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt,unknownCount,nutStatus,mealTotals){
   if(goalCals){
-    const pct=Math.min(100,Math.round(kcalTotal/goalCals*100));
+    const logged=nutStatus&&nutStatus!=='missing';
+    const pct=logged?Math.min(100,Math.round(kcalTotal/goalCals*100)):0;
     const rem=goalCals-kcalTotal;
-    const ringCol=rem<0?'var(--danger)':pct>80?'var(--warn)':'var(--success)';
+    // An unlogged day has no progress to colour, so the ring stays the empty track: the state
+    // is "nothing recorded", not "0 of 3062 achieved".
+    const ringCol=!logged?'var(--border)':rem<0?'var(--danger)':pct>80?'var(--warn)':'var(--success)';
     const R=44,circ=+(2*Math.PI*R).toFixed(1),offset=+(circ*(1-pct/100)).toFixed(1);
-    // Breakfast / lunch / dinner totals, replacing the greeting that used to sit above the
-    // ring. The per-meal category is already recorded on every canonical nutrition entry; it just
-    // was never surfaced here — so this is a read, not new tracking.
-    const byMeal={breakfast:0,lunch:0,dinner:0};
-    ((S.dailyLog&&S.dailyLog.entries)||[]).forEach(e=>{
-      if(byMeal[e.category]!==undefined) byMeal[e.category]+=parseFloat(e.kcal)||0;
-    });
-    const mealRows=[['B','breakfast'],['L','lunch'],['D','dinner']].map(([initial,id])=>{
-      const v=Math.round(byMeal[id]);
+    // Every meal the app records, from NUT_MEALS, so the list cannot drift from the tab that
+    // owns it. Snacks were counted in the total but missing from this breakdown before.
+    const meals=(typeof NUT_MEALS!=='undefined'?NUT_MEALS:[['breakfast','Breakfast'],['lunch','Lunch'],['dinner','Dinner'],['snacks','Snacks']]);
+    // Two key forms, and exactly ONE is in the DOM's accessibility tree at any width, because
+    // the other is display:none. The phone keeps the single letters it has always had — beside
+    // a 92px ring there is no room for "Breakfast" — while the desktop's connected region has
+    // the width to name the meal properly.
+    const mealRows=meals.map(function(m){
+      const v=Math.round((mealTotals&&mealTotals[m[0]])||0);
       return '<div class="hh-meal">'+
-        '<span class="hh-meal-key">'+initial+'</span>'+
+        '<span class="hh-meal-key"><i class="hh-key-s">'+m[1].charAt(0)+'</i>'+
+          '<i class="hh-key-f">'+m[1]+'</i></span>'+
         '<span class="hh-meal-val'+(v?'':' hh-meal-empty')+'">'+(v?v:'—')+'</span>'+
       '</div>';
     }).join('');
+    const summary=!logged
+      ? '<div class="nut-home-none">No food logged today</div>'
+      : unknownCount
+        ? '<div class="nut-home-fig" style="color:var(--warn)">Partial</div>'+
+          '<div class="nut-home-fig-l">'+unknownCount+' unknown item'+(unknownCount===1?'':'s')+'</div>'
+        : '<div class="nut-home-fig" style="color:'+ringCol+'">'+(rem>=0?rem:Math.abs(rem))+'</div>'+
+          '<div class="nut-home-fig-l">'+(rem>=0?'kcal remaining':'kcal over target')+'</div>';
     return (
-      '<div class="hh-row">'+
-      '<div class="hh-meals">'+mealRows+'</div>'+
-      '<svg width="110" height="110" viewBox="0 0 110 110" style="flex-shrink:0">'+
-        '<circle cx="55" cy="55" r="'+R+'" fill="none" stroke="var(--border)" stroke-width="9"/>'+
-        '<circle cx="55" cy="55" r="'+R+'" fill="none" stroke="'+ringCol+'" stroke-width="9"'+
-        ' stroke-dasharray="'+circ+'" stroke-dashoffset="'+offset+'"'+
-        ' stroke-linecap="round" transform="rotate(-90 55 55)"/>'+
-        '<text x="55" y="52" text-anchor="middle" dominant-baseline="middle" font-size="19" font-weight="800" fill="var(--text)">'+kcalTotal+'</text>'+
-        '<text x="55" y="67" text-anchor="middle" font-size="10" fill="var(--muted)">eaten</text>'+
-      '</svg>'+
-      '<div class="hh-remain">'+
-        (unknownCount?'<div style="font-size:20px;font-weight:800;color:var(--warn);line-height:1.2">Partial</div><div style="font-size:12px;color:var(--muted);margin-bottom:6px">'+unknownCount+' unknown item'+(unknownCount===1?'':'s')+'</div>':'<div style="font-size:30px;font-weight:700;letter-spacing:-1px;color:'+ringCol+';line-height:1">'+(rem>=0?rem:Math.abs(rem))+'</div><div style="font-size:12px;color:var(--muted);margin-bottom:6px">'+(rem>=0?'kcal remaining':'kcal over target')+'</div>')+
-        '<div style="font-size:11px;font-weight:600;color:var(--muted)">Goal: '+goalCals+' kcal</div>'+
-      '</div>'+
+      '<div class="nut-home">'+
+        '<div class="nut-home-top">'+
+          '<svg class="nut-home-ring" width="110" height="110" viewBox="0 0 110 110" aria-hidden="true">'+
+            '<circle cx="55" cy="55" r="'+R+'" fill="none" stroke="var(--border)" stroke-width="9"/>'+
+            (logged?'<circle cx="55" cy="55" r="'+R+'" fill="none" stroke="'+ringCol+'" stroke-width="9"'+
+              ' stroke-dasharray="'+circ+'" stroke-dashoffset="'+offset+'"'+
+              ' stroke-linecap="round" transform="rotate(-90 55 55)"/>':'')+
+            '<text x="55" y="52" text-anchor="middle" dominant-baseline="middle" font-size="19" font-weight="800" fill="var(--text)">'+(logged?kcalTotal:'—')+'</text>'+
+            '<text x="55" y="67" text-anchor="middle" font-size="10" fill="var(--muted)">eaten</text>'+
+          '</svg>'+
+          '<div class="nut-home-sum">'+summary+
+            '<div class="nut-home-goal">Goal: '+goalCals+' kcal'+(nutStatus==='legacy'?' · legacy total':'')+'</div>'+
+          '</div>'+
+        '</div>'+
+        '<div class="nut-home-meals">'+mealRows+'</div>'+
       '</div>'+
       calorieWeekStrip(goalCals,kcalTotal));
   } else if(kcalTotal>0||unknownCount){
@@ -19278,7 +19329,10 @@ function homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt,unknow
         tstat(kind,budPillTxt,ico)+
       '</div>');
   } else {
-    return '<div style="text-align:center;padding:14px 0;font-size:13px;color:var(--muted)">Set up your profile to see calorie targets</div>';
+    // No target and nothing logged. Both facts, in that order, and a way to change the second
+    // one — logging works with no target at all, so the profile hint must not read as a gate.
+    return '<div class="nut-home-none" style="padding-top:2px">No food logged today</div>'+
+      '<div class="card-cap" style="margin-top:6px">Add Health details if you want a calorie target. Food logging works without one.</div>';
   }
 }
 function homeSavingsInner(){
@@ -19340,7 +19394,19 @@ function renderHome(){
     budPillTxt=budLeft>=50?'On track':budLeft>=0?'Tight':'Over';
   }
 
-  const heroContent=homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt,nutToday&&nutToday.status==='partial'?nutToday.unknown:0);
+  // Per-meal totals for the summary's supporting region. nutRefreshLegacyViews() (called
+  // above) mirrors the canonical nutLog into S.dailyLog with category === the entry's meal, so
+  // this is the same data the Nutrition tab shows — keyed dynamically rather than against a
+  // hardcoded B/L/D, which is why snacks were being counted in the total and left out of the
+  // breakdown.
+  const mealTotals={};
+  ((S.dailyLog&&S.dailyLog.entries)||[]).forEach(e=>{
+    if(!e||!e.category) return;
+    mealTotals[e.category]=(mealTotals[e.category]||0)+(parseFloat(e.kcal)||0);
+  });
+  const heroContent=homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt,
+    nutToday&&nutToday.status==='partial'?nutToday.unknown:0,
+    nutToday?nutToday.status:'missing', mealTotals);
 
   // Workout streak (consecutive days with logged sessions)
   const sessDates=[...new Set(S.sessions.map(s=>s.date))].sort();
@@ -19395,16 +19461,27 @@ function renderHome(){
   const mBudOver=mBudRem<0;
   const mBudCol=mBudOver?'var(--danger)':'var(--positive)';
   const heroDateLabel=localMidnight(today).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
+  // The button goes to Log > Today, which is the workout OVERVIEW — it does not start or
+  // resume a set, so "Start workout" would be a lie. The label says what pressing it
+  // actually does, and reads the live set state (mDone/mExCount, already computed above) so
+  // a half-finished or finished session says so. No new session state, no change to the
+  // workout logic: three words chosen from numbers this card already has.
+  const heroActLabel=(mExCount&&mDone>=mExCount)?'Review workout'
+                    :mDone>0?'Continue workout':'Open workout';
+  // Flat children rather than a .hero-top wrapper: the card is a grid now, and the phone and
+  // desktop place the same five parts differently (see .hero-workout-card in
+  // kitchen-extras.css). The phone keeps the round icon it has always had; desktop turns the
+  // same button into a labelled pill sitting BESIDE the workout it acts on instead of a bare
+  // circle stranded in the far corner. .hero-act-txt is that label, hidden at phone width.
   const heroCard=
     '<div class="hero-workout-card">'+
-      '<div class="hero-top">'+
-        '<span class="hero-label">TODAY\'S SESSION · '+heroDateLabel+'</span>'+
-        '<button class="hero-play-btn" aria-label="Go to workout" onclick="setView(\'log\')">'+
-          '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M5 3.5l10 5.5-10 5.5V3.5z" fill="currentColor"/></svg>'+
-        '</button>'+
-      '</div>'+
+      '<span class="hero-label">TODAY\'S SESSION · '+heroDateLabel+'</span>'+
       '<p class="hero-workout-title" id="hero-day-name">'+mCurType.name+'</p>'+
       '<p class="hero-meta" id="hero-meta">'+mExCount+' exercise'+(mExCount!==1?'s':'')+'</p>'+
+      '<button class="hero-play-btn" aria-label="'+heroActLabel+'" onclick="setView(\'log\')">'+
+        '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M5 3.5l10 5.5-10 5.5V3.5z" fill="currentColor"/></svg>'+
+        '<span class="hero-act-txt">'+heroActLabel+'</span>'+
+      '</button>'+
       '<div class="hero-progress-row">'+
         '<span class="hero-progress-text" id="hero-progress-text">'+mDone+' of '+mExCount+' done</span>'+
         '<span class="hero-progress-pct" id="hero-progress-pct">'+mPct+'%</span>'+
@@ -19479,15 +19556,24 @@ function renderHome(){
     '</div>';
 
   // Calorie / overview card
+  // An ordinary card: .card's own 16px padding and .card-hd's 10px margin, the same anatomy
+  // every other Home card has. It used to be padding:0 with two inner padded wrappers — a
+  // leftover from when the header was a tinted band — which put 30px between the heading and
+  // the content where every neighbour has 10, and was most of why this card sat differently
+  // in the column. The .overview-content class carried no CSS (the id of the same name on
+  // Stats is a different element) and is gone with the wrapper.
+  // "Log food" GOES to the Nutrition tab, so it takes the header's navigation treatment
+  // (.card-hd-act, the same as Manage → and History →) rather than Budget's footer button —
+  // that one opens a MODAL and captures a purchase without leaving Home, which is a different
+  // kind of action. In the header it also costs the card no height, which is what keeps the
+  // phone composition the size it was. Omitted on the budget-leftover fallback, where this
+  // card is not showing food at all.
+  const heroFoodAct=(goalCals||kcalTotal>0||(nutToday&&nutToday.unknown)||budLeft===null)
+    ? '<button type="button" class="card-hd-act" onclick="event.stopPropagation();nutOpen()">Log food →</button>' : '';
   const overviewCard=
-    '<div class="card hero-card" onclick="setView(\'nutrition\')" style="margin-bottom:12px;padding:0;overflow:hidden;cursor:pointer">'+
-      // Shared header, replacing another inline copy of the 11px/600/uppercase declaration.
-      '<div style="padding:16px 16px 0">'+cardHeader(heroHdrIcon,heroHdrTxt)+'</div>'+
-      // Greeting removed: it repeated the time of day the app already shows and pushed the
-      // figures down. The meal totals now occupy that side of the card instead.
-      '<div class="overview-content" style="padding:14px 16px">'+
-        heroContent+
-      '</div>'+
+    '<div class="card hero-card" onclick="setView(\'nutrition\')" style="margin-bottom:12px;cursor:pointer">'+
+      cardHeader(heroHdrIcon,heroHdrTxt,heroFoodAct)+
+      heroContent+
     '</div>';
 
   // Net Worth & Accounts widget (daily_accounts): total balance, per-account list
@@ -26766,8 +26852,12 @@ function buildHomeNotesCard(){
   const latest=mine[0];
   const L=jrnOpenLoops();
   const rows=L.pinned.concat(L.due).slice(0,3);
-  let h='<div class="card">';
-  h+='<div style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Journal</div>';
+  let h='<div class="card jrn-home-card">';
+  // The shared card header, not a fourth private copy of the uppercase-label declaration.
+  // This one was 13px/.05em/--muted while every other Home card is 11px/.06em/--text-2, which
+  // is most of why Journal read as a different family from the cards above and below it.
+  h+=cardHeader('note','Journal',
+      '<button class="card-hd-act" data-jrn-home="all">Open →</button>');
   if(latest){
     const line=String(latest.title||'').trim()||String(latest.body||'').trim().split('\n')[0]||'Untitled';
     h+='<button class="jrn-composer" data-jrn-home="open" data-id="'+escAttr(latest.id)+'" style="margin-bottom:'+(rows.length?'10px':'0')+'">'+
@@ -26776,7 +26866,10 @@ function buildHomeNotesCard(){
       (mine.length>1?'<div class="jrn-comp-meta">'+mine.length+' entries today</div>':'')+
     '</button>';
   } else {
-    h+='<button class="jrn-composer" data-jrn-home="new" style="margin-bottom:'+(rows.length?'10px':'0')+'">'+
+    // is-new is what lets desktop shrink this to a button. On the phone it stays the familiar
+    // full-width tinted composer; on a desktop card the same element was a 60px pseudo-input
+    // spanning 780px to hold five words, which read as a text field that cannot be typed in.
+    h+='<button class="jrn-composer is-new" data-jrn-home="new" style="margin-bottom:'+(rows.length?'10px':'0')+'">'+
       '<div class="jrn-comp-line is-empty">Write about today →</div>'+
     '</button>';
   }

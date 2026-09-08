@@ -180,7 +180,16 @@
 // instead of sizing to its own text, and the rain and snow fields scale their travel and
 // duration with it so precipitation reaches the bottom edge at the same falling speed.
 // Dashboard only - the Grid, the phone and landscape are pixel-identical.
-const CACHE_NAME = 'daily-v311';
+// v312: Home's cards become one family. Every card uses the shared header (Journal and
+// Habits had their own near-miss label styles); header actions split into a navigation link
+// and a quiet in-place button. The session hero is recomposed as a grid with its action
+// labelled and grouped with the workout - 241px to 187px at 1440, phone hero unchanged.
+// Week in review names the week its figures cover and the older week still awaiting a
+// review, and its rows align in fixed columns. Nutrition is one group - ring, figure and
+// meals - reads its state from nutDaySummary so an unlogged day says so instead of showing
+// its untouched target in green, and shows snacks. Journal's empty composer is a compact
+// action on desktop. No storage, sync, calculation or review-record change.
+const CACHE_NAME = 'daily-v312';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

@@ -51,6 +51,18 @@
    generic word as a modifier. */
 .jrn-comp-line.is-empty{color:var(--text-2);font-weight:500}
 .jrn-comp-meta{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px}
+/* ── Home's empty composer on a desktop card ──
+   On the phone this is the familiar full-width tinted box and stays exactly that. On a desktop
+   Home card it was the same box stretched across 780px to hold five words — a pseudo-input the
+   width of a paragraph that cannot be typed into. Only the EMPTY state shrinks: a populated
+   entry keeps its full width, because its title and preview are content, not a label.
+   Scoped to #view-home so the Journal screen's own composer is untouched. */
+@media (min-width:1024px){
+  #view-home .jrn-composer.is-new{width:fit-content;max-width:100%;padding:10px 16px;
+    border-radius:999px;align-self:flex-start}
+  #view-home .jrn-composer.is-new .jrn-comp-line{-webkit-line-clamp:1;font-size:14px;
+    font-weight:700;color:var(--accent-text)}
+}
 
 /* Sunday exposes the same on-demand reflection behind the header icon. It is an invitation,
    not a completion state, so it stays neutral and carries no score/progress colour. */

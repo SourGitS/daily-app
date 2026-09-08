@@ -407,6 +407,27 @@ Presentation plus one additive change to an existing synced store. Live on `main
   v308, and it should not be described as verified against real cloud data.
 - `CACHE_NAME` is `daily-v310`.
 
+**Follow-up, `daily-v312`: Home's card family.** Presentation only — the diff touches no
+storage, sync, timestamp, calculation or review-record path (audited). Every Home card now uses
+`cardHeader()`; the session hero is recomposed as a grid (241px → 187px at 1440, phone hero
+pixel-identical) with its action labelled from the live set state; Week in review names the
+week its figures cover and the older week still awaiting a review; Nutrition reads its state
+from `nutDaySummary` so an unlogged day says so instead of showing its untouched target as a
+green remaining figure, and shows snacks. Full design notes in `CLAUDE.md`. Two things a future
+change should not undo:
+
+- **`#view-home .home-grid-cols > .home-card > .hero-workout-card{display:grid}`** — the legacy
+  Grid's stretch rule sets `display:flex` on every card's inner element and would otherwise
+  flatten the hero back into one column.
+- **The phone's nutrition composition is restored deliberately** (`display:contents` + `order`).
+  A first attempt let the desktop grouping reach the phone and grew that card by 121px. Portrait
+  Home is now 19px taller in total, landscape 28px, and the hero is unchanged.
+
+Verified in an isolated headless profile against an existing export: 1024/1440/1920/2560,
+375/390/414, landscape 932, 200% zoom, both themes, both compositions, and the empty, partial,
+complete, legacy, over-target and missing-goal nutrition states. 32/32 sync tests unchanged. No
+real device and no signed-in account were used.
+
 **Follow-up, same day, `daily-v311`: the Dashboard weather card's height.** Sized to its own
 content the card is a 5:1 letterbox — in the Grid it never showed, because a row partner
 happened to stretch it. It now takes `min-height:clamp(150px, 42cqw, 230px)` in a Dashboard

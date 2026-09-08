@@ -1063,7 +1063,9 @@ the accent or the theme must go through those, not set `--accent` directly.
     grid: its supporting cells overflowed with -$14,320 and three ordinary account totals.
   - Habits alone uses two columns in DOM/keyboard row-major order. The final row's borders
     are transparent for both odd and even counts, overriding the original inline separators.
-  - PR, Review and Finance remain single-column with a 520px reading measure.
+  - PR, Review and Finance remain single-column. (SUPERSEDED in v312: the 520px cap was on
+    the ROWS alone and left the header action running past them; it is now a 760px measure
+    on the whole card body, shared with Journal and Recent — see the v312 entry below.)
     Budget and Finance actions use content width, capped at 240px. Recent sessions stays
     unchanged because two columns squeeze its metadata; Journal retains its full-width
     populated composer. Other cards already compose across their width or gain no benefit.
@@ -1205,6 +1207,104 @@ the accent or the theme must go through those, not set `--accent` directly.
   one. Everything else round-trips: `exportAllData()` copies the key verbatim, and the
   restore path's re-stamp block goes through `homeLayoutsNormalise()`, which preserves both
   fields (verified end to end).
+- **Home's card family, hero and card compositions (v312, 2026-09-08).** A consistency pass over
+  the cards themselves, on top of the Dashboard's two columns. Nothing about the composition,
+  saved order, column membership, editor, storage or sync changed.
+  - **Every Home card now uses `cardHeader()`.** Journal was a hand-rolled
+    `13px/700/.05em/--muted` label and Habits an `11px/600/0.5px/--muted` one, against
+    `.card-label`'s `11px/700/.06em/--text-2` — near-misses, which is what made a column of
+    cards read as several unrelated pages. There are no hand-rolled uppercase headers left on
+    Home; a new card gets `cardHeader(icon,label,rightHtml)` or it will not match.
+  - **TWO header affordances, and the difference is the point.** `.card-hd-act` is accent TEXT
+    and means *this goes somewhere* (Manage →, Full review →, History →, Open →, Log food →);
+    `.card-hd-btn` is a quiet bordered control and means *this changes something here* (Habits'
+    Edit). A card may carry both when the purposes genuinely differ. Do not give every header an
+    accent link.
+  - **`.txn-quick` and `.nut-home-act` share ONE footer-action treatment** (`css/budget-home.css`)
+    and differ only in width: Budget's is the full-width capture bar it has always been, and a
+    content-width variant exists for a short label. That is also the rule for which treatment a
+    Home action takes — Budget's *+ Add expense* opens a MODAL and captures without leaving Home,
+    so it is a footer button; *Log food* NAVIGATES to Nutrition, so it is a header link. There is
+    no universal 240px cap: an action is sized to its label.
+  - **The session hero is a GRID of five flat parts** (label, title, meta, action, progress) —
+    `.hero-top` is retired with the wrapper it described. One DOM, two placements:
+    the phone keeps `'label action' 'title title' 'meta meta' …` (the round icon top-right,
+    exactly as before, verified pixel-identical), and desktop uses
+    `'label label' 'title action' 'meta action' …` so the action sits BESIDE the workout it acts
+    on. `.hero-workout-card::before` is `position:absolute`, so it takes no grid cell.
+    **Measured at 1440 with a real card set: 241px → 187px, a 22.4% reduction**, from
+    composition and spacing only — the 48px label row that existed to hold a bare circle is
+    gone, the title steps 40 → 36 as display type, and padding goes 28 → 24. Nothing is clipped
+    and no height is fixed. At 1024, where the main column is 402px, it is 296 → 243 (17.9%):
+    the action stacks under the meta there rather than being squeezed.
+    **The beside-vs-stacked switch is a CONTAINER query at 460px** (`daily-home-hero`), because
+    the hero can sit in either Dashboard column or span the Grid — the viewport cannot answer
+    it. **`#view-home .home-grid-cols > .home-card > .hero-workout-card{display:grid}` is
+    load-bearing**: the Grid's stretch rule sets `display:flex` on every card's inner element
+    and would otherwise flatten the hero back into a single column.
+    **The action's label is read from the session state and says what pressing it does.** It
+    goes to Log › Today, the workout OVERVIEW, so it is never "Start workout": *Open workout*,
+    *Continue workout* once any set is checked, *Review workout* when all are. `aria-label`
+    is the same string as the visible label, and `.hero-act-txt` (the label) is `display:none`
+    on the phone, so exactly one name is ever in the accessibility tree. The pill's ink is
+    `--accent-hero`, not `--accent`: this is accent-coloured text on a WHITE pill, and every
+    accent is tuned to carry white text rather than to be readable on it.
+  - **Week in review states the week it is describing.** `homeWeekRangeLabel(mondayStr)` gives
+    "8–14 Sept" (or "30 Aug – 5 Sept" across a month), and the card carries `THIS WEEK · …`
+    under its header while the pending-review prompt reads `Outstanding review · 24–30 Aug`
+    from its own week. Without them a partial Tuesday read as a finished week's result and was
+    indistinguishable from the older week the prompt still opens. Labelling only:
+    `wkrPendingWeek()`, `wkrOpenWeek()`, the comparisons and the snapshots are untouched.
+  - **`.wr-row` is a three-column GRID with FIXED column widths**, not a flex row. Each row is
+    its own grid, so an `auto` column is sized per row and the figures still land wherever
+    their own text ends — the trap Budget › Month's ranked rows hit. `--wr-val-w` / `--wr-chip-w`
+    are set from the card's container width (120/104 above 460px, 110/96 above 360px), so
+    labels, figures and verdicts each line up down the card.
+  - **ONE reading measure, applied to the whole card body.** v309 capped the ROWS of PRs,
+    Review and Finance at 520px, which left the header action and the review prompt running to
+    the card's right edge while the table stopped ~130px short — one card that looked like two.
+    The 760px measure is on `[data-card-id] > .card > *` for **review, prs, finance, notes and
+    recent** together, so header, rows and prompt end on the same line and those five cards
+    agree with each other. It does not engage at ordinary widths (a 659px column at 1440 leaves
+    a 627px body); Habits and Kitchen are deliberately not in the list — they are not
+    label-at-one-edge lists.
+  - **Nutrition is ONE group.** `.nut-home-top` is the ring and the figure that explains it,
+    side by side; `.nut-home-meals` is the per-meal detail, attached by a divider. Beside or
+    below is a container query at **520px** (`daily-home-nut`) — below that the ring, its figure
+    and four meal rows cannot share a line without squeezing the labels.
+    **The state comes from `nutDaySummary`, never from `total === 0`.** `homeHeroContent` takes
+    `nutStatus` (missing / partial / complete / legacy): an unlogged day says
+    **"No food logged today"** with an empty ring and an em-dash centre, because rendering the
+    untouched target as a big green "3062 kcal remaining" turns not eating into an achievement.
+    Partial, over-target and legacy all keep their own wording. **Snacks is shown** — it was
+    counted in the total and missing from the breakdown, because the old code hardcoded B/L/D;
+    the rows come from `NUT_MEALS` now. The per-meal figures read the canonical day through the
+    `S.dailyLog` mirror `nutRefreshLegacyViews()` writes.
+    **The PHONE keeps its composition**: `.nut-home-top{display:contents}` plus `order` restores
+    meals | ring | summary in one row, where the three parts are ~8px apart and the problem this
+    fixes does not exist. The meal key has two forms (`.hh-key-s` "B" / `.hh-key-f` "Breakfast")
+    and exactly one is in the DOM at any width — the other is `display:none`, so the
+    accessibility tree never carries both.
+    The card is an ordinary `.card` now: it was `padding:0` with two inner padded wrappers, a
+    leftover from a tinted header band, which put 30px between heading and content where every
+    neighbour has 10. `.overview-content` carried no CSS and is gone (the `#overview-content`
+    ID on Stats is a different element).
+  - **Journal**: shared header plus an `Open →` action, and the empty composer becomes a
+    compact `width:fit-content` pill on desktop (`.jrn-composer.is-new`, scoped to `#view-home`
+    so the Journal screen is untouched). Only the EMPTY state shrinks — a populated entry keeps
+    its full width, its title, its preview and its "N entries today", because that is content
+    rather than a label. Due and pinned rows are unchanged.
+  - **Habits' counter is `.hb-count` and toggles `.is-done`**, not inline styles. Both refresh
+    paths used to write `style.opacity` — and one wrote `style.color='#fff'`, which is invisible
+    on the light theme. They now toggle the class and clear the inline properties.
+  - **Phone impact, measured and intentional.** Portrait Home is 19px taller in total (375, 390
+    and 414 alike) and landscape 28px: the hero is pixel-identical, and the difference is the
+    review card's week line, Habits' shared header, and Nutrition's fourth meal row, less the
+    Journal composer's saving. Copy changes that also reach the phone, deliberately: the review
+    week range and `Outstanding review · …`, `No food logged today` in place of a green
+    remaining figure on an unlogged day, `Log food →` in the nutrition header, `Open →` on
+    Journal, and the hero action's accessible name (`Open/Continue/Review workout` rather than
+    "Go to workout").
 - **One width cap for every view**, `max-width:2200px` on `#app-main>section,#app-main
   .swipe-panel` (see the note above about those being disjoint selector halves). Do not add a
   per-view override — a 1180/1760 split existed briefly and letterboxed every tab except Home.

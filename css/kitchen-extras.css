@@ -373,6 +373,21 @@
 /* The right-hand affordance ("Manage →"). --accent-text, not --accent: this is accent-coloured
    TEXT on the card surface, which is the case --accent is not tuned for. */
 .card-hd-act,.stats-inline-link{font-size:12px;font-weight:700;color:var(--accent-text);cursor:pointer;white-space:nowrap;text-transform:none;letter-spacing:0;background:none;border:none;padding:0;font-family:inherit}
+/* TWO header affordances, and the difference is deliberate rather than decorative:
+   .card-hd-act is accent TEXT and means "this goes somewhere" (Manage →, Full review →);
+   .card-hd-btn is a quiet bordered control and means "this changes something here"
+   (Habits' Edit). A card may carry both when their purposes genuinely differ. */
+.card-hd-btn{font-size:12px;font-weight:600;line-height:1;color:var(--muted);background:transparent;
+  border:1px solid var(--border);border-radius:8px;padding:5px 11px;cursor:pointer;
+  font-family:inherit;white-space:nowrap;-webkit-tap-highlight-color:transparent}
+.card-hd-btn:hover{color:var(--text);border-color:var(--card-border)}
+.card-hd-act:focus-visible,.card-hd-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+.card-hd-r{display:flex;align-items:center;gap:10px;flex-shrink:0}
+/* The habits card manages its own padding (its week grid runs wider than the body), so its
+   header carries the inset the .card would normally give it. */
+.hb-hd{padding:16px 16px 0}
+.hb-count{font-size:13px;font-weight:700;color:var(--text);opacity:.75;font-family:var(--font-num)}
+.hb-count.is-done{opacity:1;color:var(--positive)}
 /* The one primary number. One per card — a card with two competing figures has no hierarchy. */
 .card-fig{font-family:var(--font-num);font-size:32px;font-weight:800;line-height:1;letter-spacing:-.02em;color:var(--text);margin:0}
 .card-fig-sm{font-size:24px}
@@ -388,7 +403,15 @@
 /* ── Week in review rows ──
    label · value · delta chip. The value is font-num so the three figures align optically down
    the card even though they are different magnitudes. */
-.wr-row{display:flex;align-items:baseline;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+/* Three columns, not a flex row: the value column ends at one x and the chip column starts at
+   one x, so labels, figures and verdicts each line up down the card. As a flex row the value
+   and the chip were pushed around by each other's width, which is why "0 days · same" and
+   "$372 · −$364" never lined up. --wr-chip-w is the chip column; it collapses to auto on a
+   card too narrow to spend 104px on it. */
+.wr-row{display:grid;grid-template-columns:minmax(0,1fr) var(--wr-val-w,auto) var(--wr-chip-w,auto);
+  align-items:baseline;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+.wr-row-v{text-align:right}
+.wr-row>.wr-chip,.wr-row>.wr-row-none{justify-self:end}
 .wr-row:last-child{border-bottom:none;padding-bottom:0}
 .wr-row-l{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text-2)}
 .wr-row-v{font-family:var(--font-num);font-size:17px;font-weight:800;color:var(--text)}
@@ -546,6 +569,27 @@
     container-type:inline-size;
     container-name:daily-home-aside;
   }
+  /* The nutrition summary decides for itself whether the meal detail sits beside the ring or
+     under it, from the width the CARD actually has — it can be in either Dashboard column or
+     span the Grid. */
+  #view-home .home-grid-cols > .home-card[data-card-id="calories"],
+  #view-home .home-dash-col > .home-card[data-card-id="calories"]{
+    container-type:inline-size;
+    container-name:daily-home-nut;
+  }
+}
+/* 520px, not the 460 the other shapes use: below it the ring, the figure that explains it and
+   four meal rows cannot all sit on one line without squeezing the meal labels, and a 2×2 grid
+   under a divider is the better use of a 439px column than three cramped columns. */
+/* The same alignment, one size down, so a 402px main column at 1024 does not fall back to
+   ragged per-row widths. */
+@container daily-home-card (min-width:360px){
+  #view-home [data-card-id="review"] .wr-row{--wr-val-w:110px;--wr-chip-w:96px}
+}
+@container daily-home-nut (min-width:520px){
+  .nut-home{grid-template-columns:auto minmax(0,1fr);align-items:center;gap:20px}
+  .nut-home-meals{grid-template-columns:minmax(0,1fr);gap:6px;
+    padding-top:0;border-top:none;padding-left:20px;border-left:1px solid var(--border)}
 }
 /* Below the threshold every one of these wrappers generates NO box, so the elements inside
    them are laid out exactly as they were before the wrapper existed — in the phone's block
@@ -605,9 +649,10 @@
      the longest strings these lists actually produce ("Incline Dumbbell Bench Press" +
      "38.5kg × 8", "Westpac Low Rate Visa statement" + "$684.20"), with room to spare before
      any of them wraps. */
-  #view-home [data-card-id="prs"] .pr-row,
-  #view-home [data-card-id="review"] .wr-row,
-  #view-home [data-card-id="finance"] .fin-line{max-width:520px}
+  /* FIXED, not auto: every row is its own grid, so an `auto` column is sized per row and the
+     figures would still land wherever their own text ended — the same trap Budget › Month's
+     ranked rows hit. 120px clears "3062 kcal/day" and 104px clears "no last week". */
+  #view-home [data-card-id="review"] .wr-row{--wr-val-w:120px;--wr-chip-w:104px}
 
   /* A full-width, single-line action sized to its label. Content width so a short label is a
      button and not a banner, capped at 240px so a longer one wraps inside a sane measure
@@ -666,22 +711,33 @@
 /* Step 5 — Orange hero workout card */
 /* Rich crimson card with a vignette to black at the edges (depth) — tracks --accent-rgb
    so it follows the day theme. The ::before adds a soft, centred inner glow. */
-.hero-workout-card{background:linear-gradient(150deg, var(--accent-hero), var(--accent-hero-2));border-radius:var(--radius-hero);padding:22px;margin-bottom:12px;box-shadow:0 16px 40px rgba(var(--accent-rgb),.3);position:relative;overflow:hidden}
+.hero-workout-card{background:linear-gradient(150deg, var(--accent-hero), var(--accent-hero-2));border-radius:var(--radius-hero);padding:22px;margin-bottom:12px;box-shadow:0 16px 40px rgba(var(--accent-rgb),.3);position:relative;overflow:hidden;
+  display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:12px;
+  grid-template-areas:'label action' 'title title' 'meta meta' 'prog prog' 'track track'}
 .hero-workout-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% -10%, rgba(255,255,255,.12), transparent 55%);pointer-events:none}
-.hero-label{font-size:11px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.75)}
-.hero-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+/* The hero is a GRID of five flat parts (label, title, meta, action, progress) so the phone
+   and desktop can place the same DOM differently without a second markup branch. .hero-top is
+   retired with the wrapper it described: the action is now a grid item, which is what lets it
+   sit beside the workout on desktop instead of alone in the corner.
+   ::before is position:absolute, so it is out of grid flow and does not claim a cell. */
+.hero-label{font-size:11px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.75);grid-area:label;margin-bottom:10px}
 /* The play triangle is fill="currentColor" (js/app.js, heroCard), so the colour lives here.
    Plain --accent, NOT --accent-text: this glyph sits on the button's own WHITE circle, which
    is the background --accent was tuned against in the first place. Until this existed the
    triangle was a hardcoded #e8541f — the last of the retired orange — which meant it never
    followed the accent, and the accent transition listing .hero-play-btn below animated
    nothing. */
-.hero-play-btn{width:48px;height:48px;border-radius:50%;background:#fff;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.2);flex-shrink:0;color:var(--accent)}
-.hero-workout-title{font-size:30px;font-weight:800;letter-spacing:-.025em;color:#fff;margin:0 0 4px}
-.hero-meta{font-size:14px;font-weight:600;color:rgba(255,255,255,.75);margin:0 0 16px}
-.hero-progress-row{display:flex;justify-content:space-between;margin-bottom:8px}
+.hero-play-btn{width:48px;height:48px;border-radius:50%;background:#fff;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.2);flex-shrink:0;color:var(--accent);grid-area:action;margin-bottom:10px}
+/* The label exists in the DOM at every width so the button's accessible name and its visible
+   name are the same string; the phone simply does not show it. */
+.hero-act-txt{display:none}
+.hero-play-btn:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.hero-workout-title{font-size:30px;font-weight:800;letter-spacing:-.025em;color:#fff;margin:0 0 4px;grid-area:title}
+.hero-meta{font-size:14px;font-weight:600;color:rgba(255,255,255,.75);margin:0 0 16px;grid-area:meta}
+.hero-progress-row{display:flex;justify-content:space-between;margin-bottom:8px;grid-area:prog}
+@media (min-width:1024px){.hero-progress-row{margin-bottom:6px}}
 .hero-progress-text,.hero-progress-pct{font-size:13px;font-weight:700;color:rgba(255,255,255,.85)}
-.hero-progress-track{height:7px;background:rgba(0,0,0,.18);border-radius:var(--radius-bar);overflow:hidden}
+.hero-progress-track{height:7px;background:rgba(0,0,0,.18);border-radius:var(--radius-bar);overflow:hidden;grid-area:track}
 .hero-progress-fill{height:100%;background:rgba(255,255,255,.9);border-radius:var(--radius-bar);transition:width .3s ease}
 
 /* Step 6 — Split stats card */
@@ -1141,10 +1197,42 @@
 @media (min-width:1024px){
   .kitshop-addbar{left:260px}
   .screen-title{font-size:34px}
-  .hero-workout-card{padding:28px}
-  .hero-workout-title{font-size:40px}
+  /* ── Desktop session hero ──────────────────────────────────────────────────────────────
+     The old composition spent its height on a label row that reserved 48px for a bare round
+     button, a 40px title, and then a progress block — 241px at 1440 with this content. The
+     parts are the same; only their placement and the space between them changed. The action
+     is now a labelled pill grouped WITH the workout it acts on, which is both what removes
+     the 48px label row and what stops the button reading as an unrelated corner control.
+     Nothing is clipped, nothing is given a fixed height, and body text is untouched: the
+     title is display type and steps 40 → 36 as part of the same recomposition. */
+  .hero-workout-card{padding:24px;column-gap:20px;
+    grid-template-areas:'label label' 'title title' 'meta meta' 'action action' 'prog prog' 'track track'}
+  .hero-workout-title{font-size:36px;line-height:1.12}
+  .hero-label{margin-bottom:10px}
+  .hero-meta{margin-bottom:12px}
+  /* A white pill with the DARKENED accent as ink. Not var(--accent): every accent is tuned to
+     carry white text, so on a white pill a pale one would vanish — --accent-hero is the stop
+     that already clears 4.2:1 against white (see heroStopsFor). */
+  .hero-play-btn{width:auto;height:auto;min-height:44px;border-radius:999px;padding:0 18px;gap:9px;
+    margin-bottom:12px;justify-self:start;color:var(--accent-hero);
+    font:800 14px var(--font-ui);letter-spacing:-.005em;white-space:nowrap}
+  .hero-act-txt{display:inline}
   .metric-num{font-size:44px}
   .desktop-grid{display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start}
+}
+/* Beside the workout once the CARD is wide enough — not once the window is. The hero can sit
+   in either Dashboard column or span the Grid, so the viewport cannot answer this; below the
+   threshold the action stacks under the meta line at the start edge, which is the useful
+   fallback rather than a squeezed two-column row. 460px is the threshold the other Home
+   composition shapes already use. */
+@media (min-width:1024px){
+  #view-home .home-grid-cols > .home-card[data-card-id="session"],
+  #view-home .home-dash-col > .home-card[data-card-id="session"]{
+    container-type:inline-size;container-name:daily-home-hero}
+}
+@container daily-home-hero (min-width:460px){
+  .hero-workout-card{grid-template-areas:'label label' 'title action' 'meta action' 'prog prog' 'track track'}
+  .hero-play-btn{justify-self:end;margin-bottom:0}
 }
 
 /* ── Dynamic day colours: animate the accent-driven properties smoothly (0.3s) ── */

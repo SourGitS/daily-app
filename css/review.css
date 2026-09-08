@@ -180,7 +180,10 @@
 .wkr-nudge{display:flex;align-items:center;gap:10px;width:100%;margin-top:12px;padding:11px 12px;
   border-radius:12px;border:1px solid rgba(var(--accent-rgb),.3);background:rgba(var(--accent-rgb),.09);
   color:var(--text);font:inherit;font-size:13px;font-weight:700;text-align:left;cursor:pointer}
-.wkr-nudge span{margin-left:auto;color:var(--accent-text);font-weight:800;white-space:nowrap}
+/* :last-child, not every span: the label is a span now too, and margin-left:auto on it
+   pushed the whole row to the right. */
+.wkr-nudge>span:last-child{margin-left:auto;color:var(--accent-text);font-weight:800;white-space:nowrap}
+.wkr-nudge-l{min-width:0;overflow:hidden;text-overflow:ellipsis}
 
 /* ── Desktop ────────────────────────────────────────────────────
    Weekly Review's cards are VARIABLE-HEIGHT — a money section is a form, and the sections
