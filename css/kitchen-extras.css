@@ -1185,7 +1185,8 @@
     font-size:14px;font-weight:600;color:#555;transition:background .15s,color .15s}
   [data-theme="dark"] #ds-nav .nv-qrow{color:rgba(255,255,255,0.7)}
   #ds-nav .nv-qrow.is-on{color:var(--accent-text);font-weight:700}
-  #ds-nav .nv-hd{padding:12px 24px 4px}
+  #ds-nav .nv-hd{padding:12px 24px 4px;font-size:14px;font-weight:600;
+    letter-spacing:normal;text-transform:none}
   #ds-nav .nv-row{margin:0 10px 2px;width:auto;border-radius:12px;padding:9px 14px;
     font-size:14px;font-weight:600;color:#555;transition:background .15s,color .15s}
   [data-theme="dark"] #ds-nav .nv-row{color:rgba(255,255,255,0.7)}

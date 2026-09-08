@@ -192,7 +192,8 @@
 // v313: restore the original plain-gradient workout hero and give Dashboard weather a layered
 // neighbourhood scene. Column labels appear only in edit mode. Phone layout stays unchanged.
 // v314: Dashboard's workout and weather feature cards share a 300px resting height.
-const CACHE_NAME = 'daily-v314';
+// v315: desktop navigation group controls use the same 14px type scale as destination links.
+const CACHE_NAME = 'daily-v315';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
