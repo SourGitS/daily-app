@@ -13,7 +13,10 @@ windows and trees), with palettes derived from the existing scene attribute. The
 decorative, not a claim to show actual local buildings. Text is grouped upper-left; the sun
 or moon is composed in the open sky at right. This Dashboard scene intentionally uses a fixed
 celestial placement rather than the compact banner's edge-cropped astronomical arc. Existing
-weather selection, data and wind/precipitation remain canonical. Height scales 300–380px;
+weather selection, data and wind/precipitation remain canonical. As of v314, Dashboard's
+weather and session share a 300px minimum height via --home-feature-height. This restores
+some hero presence and reduces the larger weather card to match, without linking the columns.
+Unusually long content can still grow; never clip it to enforce equal height. Weather's
 precipitation travel/duration scales with it. Scene and height rules live together in
 kitchen-extras.css; the old higher-specificity height overrides in budget-home.css are gone.
 The SVG is hidden outside desktop Dashboard, preserving phone, landscape and Grid's banner.

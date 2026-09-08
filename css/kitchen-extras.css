@@ -1206,7 +1206,12 @@
 /* Dashboard-only scenery; the compact phone and Grid sky banner stay unchanged. */
 .weather-neighbourhood{display:none}
 @media(min-width:1024px){
-  #view-home .home-dash .home-weather-card{min-height:300px;min-height:clamp(300px,65cqw,380px);
+  /* These two feature cards share a resting height without coupling the independent
+     columns. Allow unusually long text or zoomed content to grow rather than clipping it. */
+  #view-home .home-dash{--home-feature-height:300px}
+  #view-home .home-dash .hero-workout-card,
+  #view-home .home-dash .home-weather-card{min-height:var(--home-feature-height)}
+  #view-home .home-dash .home-weather-card{
     padding:24px;--wfx-fall-n:3.4;--wfx-snow-n:3;
     --village-ridge:#31445c;--village-city:#24354b;--village-house:#16263b;
     --village-tree:#0d1b2d;--village-roof:#3e536b;--village-window:#f3c482}
