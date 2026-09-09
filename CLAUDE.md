@@ -921,8 +921,8 @@ the accent or the theme must go through those, not set `--accent` directly.
      explicit `wkrRefreshActuals()` — which re-takes the ACTUALS ONLY and deliberately leaves
      `planSnapshot` alone. Nothing is ever rewritten silently.
   3. It is opt-in and writes nothing at boot. `daily_review_plan` and `daily_reviews` stay
-     absent until the user presses a button in setup — the suggested template (Francois's real
-     numbers) is rendered as visible, editable text and is NOT a default. Never seed it from
+     absent until explicit setup/save or a meaningful review edit. Setup contains no personal
+     starter template; each user supplies their own baseline. Never seed it from
      onboarding or a migration; that is the `_bootPhase` trap in AGENTS.md.
      `reviewStartWeek` lives in that existing plan blob and is the Monday from which Daily may
      prompt for a completed review. An older plan without it resolves to the current Monday in
@@ -971,7 +971,7 @@ the accent or the theme must go through those, not set `--accent` directly.
   centred single-column flows at `--wkr-measure`. `renderStatsReview()` writes `rev-railed` on
   `#review-content` by reading `.wkr-rail` back off the DOM it just wrote, so there is no second
   copy of "is there a rail" to go stale.
-  **"What Daily noticed" is a separate feature and stays below and outside Weekly Review.** Its
+  **The following describes the pre-v317 layout, superseded by Weekly reset below.** Its
   cards now live in a `.rev-section` wrapper and `.rev-list` is one column on desktop
   (`css/workout.css`), so three ranked insights no longer leave an empty half-row and rank
   reads straight down. When the rail is present `.rev-section` REPEATS the workspace's grid and
@@ -984,6 +984,45 @@ the accent or the theme must go through those, not set `--accent` directly.
   (`daily_review_plan`, `daily_reviews`, `wkrAttachSync()`, `wkrMergeReviews()`, plan/actual
   snapshots, the explicit-only `wkrRefreshActuals()`, the "opening writes nothing" rule) were
   touched.
+
+- **Weekly reset (v317): Money + Next Week are the core.** The landing now leads with a dated
+  next-week allocation, What Daily noticed, a selected-week money summary, and changes to
+  consider. Insights retain their own recent date ranges/ranking rather than pretending to
+  describe the selected historical week. Money retains canonical comparisons. Next Week edits
+  planned income, optional in-week pay date, allocations, savings, buffer, a note and three
+  priorities. Unallocated income is visible; over-allocation blocks Save. Suggestions are
+  deterministic, evidence-based prompts; missing/ambiguous data and partial weeks are labelled.
+  `catOccurrencesBetween` supplies every scheduled charge for the following Monday–Sunday.
+  Saved allocations keep their captured bill list. No Budget/Accounts/Journal/workout/nutrition
+  data is written. Plans remains imported HTML documents, and Training links to Log > Program.
+
+  `pages` is additive to the EXISTING `daily_review_plan` blob: ordered stable id, title,
+  enabled, prompts (id, label, text/number/check, optional numeric target). New setups enable
+  no optional pages. Existing explicit Work/Life choices remain; Training, Health, detailed
+  reflection and custom pages can be enabled and reordered. The baseline/page editor is a
+  draft until Save. Hiding a page keeps its answers. Completed snapshots preserve definitions.
+  `pageAnswers` and `nextWeek` are additive to each EXISTING `daily_reviews` record. No new
+  synced key/path/registration or schemaVersion. Unknown top-level fields survive normalisation;
+  export/restore retain additions through the existing consumers. Pre-v317 clients can strip
+  these fields when editing: refresh other devices before using the new editor.
+
+  `nextWeek` stores the following week key, captured money settings (including mappings/labels),
+  payDate, note, priorities, upcoming charges and acceptedAt. Drafting/cancelling writes nothing;
+  Save writes only the source review. `wkrEffectivePlan` uses the previous review's accepted
+  allocation for a week, otherwise the baseline. Completion freezes this effective plan, actuals
+  and training-day count. Current weeks can be planned but not completed early; completed
+  answers require Reopen. Next-week/baseline editors detect changed revisions, including other
+  windows sharing storage. Next-week conflicts require reloading; baseline conflicts ask before
+  replacing a newer baseline. Per-week Firebase transactions compare timestamps (cloud wins
+  ties), suppress boot/cloud-apply uploads and cannot replace unrelated weeks. Delayed answer
+  edits flush before changing weeks/sections or leaving. Ask Daily AI's existing manual export
+  includes accepted allocations and enabled page answers; nothing is sent automatically.
+
+  One Review DOM retains the 1180px rail boundary and 900px body cap. Next-week amounts/fields
+  use two columns only when the available main container is at least 580px. Phone controls
+  remain full size. CSS is scoped to Review. Isolated tests cover the new model, stale drafts,
+  round trips and per-week conflicts; browser checks use synthetic local data. Production
+  accounts and deployed Firebase rules have not been tested by this change.
 
 - **App-wide layout rule, learned here:** *use row grids for comparable cards with predictable
   dimensions; variable-height cards use a single vertical flow or deliberately constructed

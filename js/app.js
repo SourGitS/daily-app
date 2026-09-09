@@ -7591,7 +7591,7 @@ function aiReviewScope(range){
         defaultSalesFocus:plan.work.defaultSalesFocus}:null}:null,
     reviews:weeks.map(w=>{
       const rec=wkrReviews[w];
-      const used=wkrEffectivePlan(rec);
+      const used=wkrEffectivePlan(rec,w);
       const frozen=rec.status==='completed'&&rec.actualSnapshot;
       return {
         week:w, status:rec.status,
@@ -7623,6 +7623,8 @@ function aiReviewScope(range){
         }:null,
         life:used.life.enabled?rec.life:null,
         reflection:rec.reflection,
+        optionalPages:used.pages.filter(p=>p.enabled).map(p=>({title:p.title,prompts:p.prompts,
+          answers:(rec.pageAnswers||{})[p.id]||{}})),
         nextWeekPlan:wkrNextWeekPlan(w, rec, used)
       };
     })
@@ -16109,30 +16111,32 @@ function statsReviewInsights(){
 
   return out.sort((a,b)=>b.score-a.score).slice(0,3);
 }
-// Review holds two different things and says so: the Weekly Review the user drives, and the
-// automatic insights below it. The insights are unchanged — the review is prepended, and when
-// it is not set up its own setup card is what appears first.
-//
-// The insights live in their own .rev-section wrapper so they can be laid out against the
-// review workspace beside them: when the Weekly Review renders its desktop rail, that wrapper
-// repeats the workspace's grid and drops its content into the SAME column as .wkr-main, which
-// is what keeps the two aligned without a hardcoded left margin. `rev-railed` is read back off
-// the DOM that was just written rather than passed down, so there is no second copy of the
-// "is there a rail" answer to go stale.
+// The landing combines the dated next-week plan with recent insights. Insights keep their
+// own labelled date ranges; they are not silently reinterpreted as the selected review week.
 function renderStatsReview(){
   const wrap=document.getElementById('review-content'); if(!wrap) return;
+  const openDetails=[...wrap.querySelectorAll('details[open][id]')].map(el=>el.id);
+  const focused=wrap.contains(document.activeElement)?document.activeElement:null;
+  const focusId=focused&&focused.id,focusAction=focused&&focused.getAttribute('onclick');
   const weekly=typeof wkrWeeklyReviewHtml==='function'?wkrWeeklyReviewHtml():'';
-  const heading=weekly?'<div class="wkr-sec-divider">What Daily noticed</div>':'';
+  wrap.innerHTML=weekly+(!wkrPlan.enabled&&!wkrDraft()?'<div class="rev-section">'+wkrInsightsHtml()+'</div>':'');
+  wrap.classList.toggle('rev-railed', !!wrap.querySelector('.wkr-rail'));
+  wrap.querySelectorAll('[data-wkr-frozen="true"] input,[data-wkr-frozen="true"] textarea,[data-wkr-frozen="true"] select').forEach(el=>el.disabled=true);
+  openDetails.forEach(id=>{const el=document.getElementById(id);if(el)el.open=true;});
+  wkrUI.openPage=null;
+  const restoreFocus=focusId?document.getElementById(focusId):focusAction?[...wrap.querySelectorAll('button[onclick]')].find(el=>el.getAttribute('onclick')===focusAction):null;
+  if(restoreFocus)restoreFocus.focus({preventScroll:true});
+}
+function wkrInsightsHtml(){
+  const heading='<div class="wkr-insights-heading"><h3>What Daily noticed</h3><p>Recent trends across Daily · each observation shows its own dates.</p></div>';
   const items=statsReviewInsights();
   if(!items.length){
-    wrap.innerHTML=weekly+'<div class="rev-section">'+heading+'<div class="card stats-calm">'+cardHeader('check','Review')+
+    return heading+'<div class="card stats-calm">'+cardHeader('check','Review')+
       '<div class="stats-conclusion">Nothing needs attention from the available data.</div>'+
       '<div class="stats-data-note">No completed-period comparison cleared its evidence threshold. Overview has the current figures and their coverage.</div>'+
-      '<button class="stats-inline-link" style="margin-top:12px" onclick="setStatsTab(\'overview\')">Back to Overview &rarr;</button></div></div>';
-    wrap.classList.toggle('rev-railed', !!wrap.querySelector('.wkr-rail'));
-    return;
+      '<button class="stats-inline-link" style="margin-top:12px" onclick="setStatsTab(\'overview\')">Open Stats overview &rarr;</button></div>';
   }
-  wrap.innerHTML=weekly+'<div class="rev-section">'+heading+'<div class="rev-list">'+items.map(it=>
+  return heading+'<div class="rev-list">'+items.map(it=>
     '<div class="card rev-card">'+
       cardHeader(it.icon,it.label,it.chip||'')+
       '<div class="rev-conclusion">'+it.conclusion+'</div>'+
@@ -16140,8 +16144,7 @@ function renderStatsReview(){
       '<div class="rev-actions">'+it.actions.map((a,i)=>
         '<button type="button" class="'+(i?'rev-act':'rev-act primary')+'" onclick="'+a[0]+'">'+a[1]+' &rarr;</button>').join('')+
       '</div></div>').join('')+'</div>'+
-    '<div class="stats-data-note rev-foot">Completed periods only. Missing data is unknown, never zero, and nothing here is reconstructed from today’s settings.</div></div>';
-  wrap.classList.toggle('rev-railed', !!wrap.querySelector('.wkr-rail'));
+    '<div class="stats-data-note rev-foot">Missing data stays unknown. Observations guide a decision; they do not change your plan.</div>';
 }
 // ══ Weekly Review ═══════════════════════════════════════════════
 // A money/work/life review of ONE finished week, compared against a saved weekly plan and
@@ -16155,9 +16158,8 @@ function renderStatsReview(){
 //      that one of those already answers.
 //   2. A completed review keeps the plan values it was completed against (planSnapshot), so
 //      editing the plan later cannot rewrite history.
-//   3. It is opt-in. A new user has no plan and sees a setup screen; the suggested template
-//      is visible but is only written when the user presses the button that saves it. Nothing
-//      here writes during boot — see the _bootPhase note in AGENTS.md.
+//   3. It is opt-in. A new user supplies a private baseline in setup and explicitly saves it.
+//      Nothing here writes during boot — see the _bootPhase note in AGENTS.md.
 
 const WKR_SCHEMA        = 1;
 const WKR_PLAN_KEY      = 'daily_review_plan';
@@ -16175,7 +16177,7 @@ const WKR_GROUPS=[
   {id:'fixedBills',             label:'Fixed bills',                   kind:'fixed'},
   {id:'transport',              label:'Transport',                     kind:'variable'},
   {id:'foodGroceries',          label:'Food and groceries',            kind:'variable'},
-  {id:'socialPersonalGambling', label:'Social, personal and gambling', kind:'variable'},
+  {id:'socialPersonalGambling', label:'Leisure and personal',          kind:'variable'},
   {id:'other',                  label:'Other spending',                kind:'rest'}
 ];
 const WKR_VAR_GROUPS=WKR_GROUPS.filter(g=>g.kind==='variable');
@@ -16191,33 +16193,41 @@ const WKR_MAP_HINTS={
   socialPersonalGambling:['social','personal','gambling','bet','entertain','misc','going out']
 };
 
-// The suggested starting plan. Shown in full during setup and editable before it is saved;
-// it is never written without an explicit press. Deliberately NOT seeded at boot or during
-// onboarding — these are one person's real numbers, not a sensible default for anyone else.
-const WKR_TEMPLATE={
-  name:'Weekly Money and Life Plan',
-  regularWeeklyTakeHome:788.17,
-  allocations:{fixedBills:202, transport:140, foodGroceries:180,
-               socialPersonalGambling:117, other:0, savings:100, buffer:49.17},
-  creditCardRule:'Use the credit card only for fixed recurring payments and necessary one-off purchases that are already funded. Record the original purchase as spending and the card repayment as a transfer.',
-  irregularIncomeRule:'Do not rely on reimbursements, gambling winnings, or irregular miscellaneous income when planning normal weekly spending.',
-  work:{enabled:true, qualifyingTarget:20, startingQualifiedProgress:2,
-        defaultSalesFocus:'Aim for at least one self-generated qualifying sale per fortnight.'}
-};
+// Public assets contain no personal template. Private baselines are entered during setup.
 const WKR_OPP_STATUSES=[['active','Active'],['likely','Likely'],['won','Won'],['lost','Lost']];
 
-// The ONE definition of the four review sections: id, rail label and the one-line description
-// shown under it. The desktop rail buttons AND the heading above the active section are both
-// built from this, so a section cannot be called one thing in the rail and another above the
-// cards. `enabled` reads the plan, which is what keeps Work and Life omitted exactly as the
-// old inline `sections` array omitted them.
+// Core destinations plus the user's enabled pages drive both rail and phone navigation.
 const WKR_SECTIONS=[
+  {id:'overview',   label:'Weekly reset', desc:'What happened · what to change'},
   {id:'money',      label:'Money',      desc:'Plan and actuals'},
-  {id:'work',       label:'Work',       desc:'Progress and pipeline',   enabled:p=>!!(p&&p.work&&p.work.enabled)},
-  {id:'life',       label:'Life',       desc:'Health and commitments',  enabled:p=>!!(p&&p.life&&p.life.enabled)},
-  {id:'reflection', label:'Reflection', desc:'Decisions for next week'}
+  {id:'next',       label:'Next week',  desc:'Give your next pay a purpose'}
 ];
-function wkrSectionsFor(plan){ return WKR_SECTIONS.filter(s=>!s.enabled||s.enabled(plan)); }
+function wkrSectionsFor(plan){
+  return WKR_SECTIONS.concat((plan.pages||[]).filter(p=>p.enabled).map(p=>({id:p.id,label:p.title,desc:'Your optional review page'})));
+}
+
+function wkrNormalisePages(value, legacy){
+  const defaults=[
+    {id:'training',title:'Training',enabled:false,prompts:[{id:'sessions',label:'Training days to aim for next week',type:'number',target:null},{id:'focus',label:'What would make training easier?',type:'text'}]},
+    {id:'health',title:'Health & habits',enabled:false,prompts:[{id:'focus',label:'One health or habit change for next week',type:'text'}]},
+    {id:'work',title:'Work & commission',enabled:!!(legacy&&legacy.work&&legacy.work.enabled),prompts:[]},
+    {id:'life',title:'Personal reflection',enabled:!!(legacy&&legacy.life&&legacy.life.enabled),prompts:[]},
+    {id:'reflection',title:'Detailed reflection',enabled:false,prompts:[]}
+  ];
+  const seen=new Set(['overview','money','next']);
+  const clean=(Array.isArray(value)?value:defaults).filter(p=>{
+    if(!p||!/^([a-z][a-z0-9_-]{0,79})$/.test(p.id)||seen.has(p.id)||['constructor','prototype','__proto__'].includes(p.id)) return false;
+    seen.add(p.id);return true;
+  }).map(p=>{
+    const ids=new Set();
+    return {...p,title:wkrStr(p.title).trim()||'My page',enabled:!!p.enabled,prompts:(Array.isArray(p.prompts)?p.prompts:[]).filter(q=>{
+      if(!q||!/^([a-z][a-z0-9_-]{0,79})$/.test(q.id)||ids.has(q.id)||['constructor','prototype','__proto__'].includes(q.id))return false;
+      ids.add(q.id);return true;
+    }).map(q=>({...q,label:wkrStr(q.label)||'My prompt',type:['text','number','check'].includes(q.type)?q.type:'text',target:q.target==null?null:wkrNum(q.target,0)}))};
+  });
+  defaults.forEach(p=>{if(!seen.has(p.id))clean.push({...p,enabled:false});});
+  return clean;
+}
 
 const wkrNum=(v,d)=>{ const n=parseFloat(v); return isFinite(n)?n:(d||0); };
 const wkrStr=v=>typeof v==='string'?v:'';
@@ -16250,9 +16260,10 @@ function wkrNormalisePlan(v){
   ['fixedBills','transport','foodGroceries','socialPersonalGambling','other','savings','buffer']
     .forEach(k=>{ alloc[k]=wkrNum(a[k],0); });
   return {
+    ...o,
     schemaVersion:WKR_SCHEMA,
     enabled:!!o.enabled,
-    name:wkrStr(o.name)||WKR_TEMPLATE.name,
+    name:wkrStr(o.name)||'My weekly plan',
     reviewStartWeek:wkrNormaliseStartWeek(o.reviewStartWeek),
     money:{
       regularWeeklyTakeHome:wkrNum(m.regularWeeklyTakeHome,0),
@@ -16264,12 +16275,13 @@ function wkrNormalisePlan(v){
       irregularIncomeRule:wkrStr(m.irregularIncomeRule)
     },
     work:{
-      enabled:w.enabled!==false,
+      enabled:!!w.enabled,
       qualifyingTarget:Math.max(0,Math.round(wkrNum(w.qualifyingTarget,0))),
       startingQualifiedProgress:Math.max(0,Math.round(wkrNum(w.startingQualifiedProgress,0))),
       defaultSalesFocus:wkrStr(w.defaultSalesFocus)
     },
-    life:{enabled:l.enabled!==false},
+    life:{enabled:!!l.enabled},
+    pages:wkrNormalisePages(o.pages,o),
     updatedAt:wkrNum(o.updatedAt,0)
   };
 }
@@ -16279,6 +16291,7 @@ let wkrPlan = wkrLoadPlan();
 function wkrSavePlan(){
   wkrPlan.updatedAt=Date.now();
   lsSave(WKR_PLAN_KEY, wkrPlan, WKR_PLAN_PATH);
+  return JSON.stringify(lsLoad(WKR_PLAN_KEY,null))===JSON.stringify(wkrPlan);
 }
 function wkrAllocationTotal(plan){
   const a=(plan||wkrPlan).money.allocations;
@@ -16292,6 +16305,7 @@ function wkrNormaliseRecord(v,week){
   const obj=k=>(o[k]&&typeof o[k]==='object'&&!Array.isArray(o[k]))?o[k]:{};
   const work=obj('work');
   return {
+    ...o,
     schemaVersion:WKR_SCHEMA,
     week:wkrStr(o.week)||week,
     status:o.status==='completed'?'completed':'draft',
@@ -16300,6 +16314,8 @@ function wkrNormaliseRecord(v,week){
     completedAt:wkrNum(o.completedAt,0)||null,
     planSnapshot:(o.planSnapshot&&typeof o.planSnapshot==='object')?o.planSnapshot:null,
     actualSnapshot:(o.actualSnapshot&&typeof o.actualSnapshot==='object')?o.actualSnapshot:null,
+    nextWeek:wkrNormaliseNext(o.nextWeek,week),
+    pageAnswers:JSON.parse(JSON.stringify(obj('pageAnswers'))),
     moneyChecks:{ccFundedChecked:!!obj('moneyChecks').ccFundedChecked,
                  unusualExpenses:wkrStr(obj('moneyChecks').unusualExpenses)},
     work:{
@@ -16351,18 +16367,42 @@ function wkrReview(week){ return wkrReviews[week]||null; }
 function wkrBlankRecord(week){
   return wkrNormaliseRecord({week, status:'draft', createdAt:Date.now(), updatedAt:Date.now()}, week);
 }
-// Local write only — the cloud write is a per-week child set, so a device holding a stale copy
+// Local write only — the cloud write is a per-week transaction, so a device holding a stale copy
 // of another week can never replace it. Same reasoning as syncBudgetDataToFirebase(changedKey).
-function wkrSaveLocalReviews(){ lsSave(WKR_REVIEWS_KEY, wkrReviews, null); }
+function wkrSaveLocalReviews(){
+  lsSave(WKR_REVIEWS_KEY, wkrReviews, null);
+  return JSON.stringify(lsLoad(WKR_REVIEWS_KEY,null))===JSON.stringify(wkrReviews);
+}
 function wkrPushReview(week){
+  if(_bootPhase||_syncApplying) return;
   const r=fbRef(WKR_REVIEWS_PATH); if(!r) return;
-  if(wkrReviews[week]) r.child(week).set(wkrReviews[week]);
+  const local=wkrReviews[week]; if(!local||!local.updatedAt) return;
+  const uid=auth&&auth.currentUser&&auth.currentUser.uid;
+  const outgoing=JSON.parse(JSON.stringify(local));
+  r.child(week).transaction(cloud=>{
+    if(cloud&&(cloud.updatedAt||0)>=outgoing.updatedAt)return;
+    return outgoing;
+  },undefined,false).then(result=>{
+    if(uid!==(auth&&auth.currentUser&&auth.currentUser.uid))return;
+    const cloud=result.snapshot.val();
+    if(!cloud||result.committed)return;
+    const merged=wkrMergeReviews(wkrReviews,{[week]:wkrNormaliseRecord(cloud,week)});
+    wkrReviews=merged.merged;wkrSaveLocalReviews();wkrRerender();
+    showToast('A newer review from another device was kept. Please check it before editing.');
+  }).catch(()=>setSyncStatus('error'));
 }
 function wkrSaveReview(week){
-  const rec=wkrReviews[week]; if(!rec) return;
+  const rec=wkrReviews[week]; if(!rec) return false;
+  const persisted=wkrLoadReviews();
+  if(persisted[week]&&(persisted[week].updatedAt||0)>(rec.updatedAt||0)){
+    wkrReviews=wkrMergeReviews(wkrReviews,persisted).merged;wkrRerender();
+    showToast('Another window updated this review. Its newer version was kept.');return false;
+  }
   rec.updatedAt=Date.now();
-  wkrSaveLocalReviews();
+  wkrReviews=wkrMergeReviews(persisted,wkrReviews).merged;
+  if(!wkrSaveLocalReviews()){showToast('This review could not be saved on this device. Keep this page open and try again.');return false;}
   wkrPushReview(week);
+  return true;
 }
 // Per-week union merge, mirroring mergeBudgetWeeks: a week present on both sides goes to the
 // newer updatedAt (ties keep the cloud copy), a week present on only ONE side survives.
@@ -16392,7 +16432,7 @@ function wkrAttachSync(uid){
     if(changed) wkrSaveLocalReviews();
     // Only the weeks this device actually holds a newer copy of are written back, one child
     // node each — never the whole collection, so an unrelated week cannot be overwritten.
-    localNewer.forEach(k=>{ try{ ref.child(k).set(merged[k]); }catch(e){} });
+    localNewer.forEach(k=>wkrPushReview(k));
     if(changed) wkrRerender();
   });
   return ref;
@@ -16523,8 +16563,14 @@ function wkrPlannedFor(plan){
 }
 // The plan a given review is measured against. Completed reviews are frozen against the plan
 // they were completed with — this is the whole reason planSnapshot exists.
-function wkrEffectivePlan(rec){
+function wkrEffectivePlan(rec,selectedWeek){
   if(rec&&rec.status==='completed'&&rec.planSnapshot) return wkrNormalisePlan(rec.planSnapshot);
+  const week=selectedWeek||(rec&&rec.week)||wkrCurrentWeek();
+  const previous=week&&wkrReview(wkrShiftWeek(week,-1));
+  const accepted=previous&&previous.nextWeek;
+  if(accepted&&accepted.acceptedAt&&accepted.week===week){
+    return wkrNormalisePlan({...wkrPlan,money:JSON.parse(JSON.stringify(accepted.money))});
+  }
   return wkrPlan;
 }
 
@@ -16555,10 +16601,10 @@ function wkrCardTxns(week){
     })
     .sort((a,b)=>a.date<b.date?-1:1);
 }
-// Recurring charges due in the fortnight after the reviewed week ends — "what is coming".
-// upcomingCharges() is anchored on today, which is the right anchor for the current week and
-// the only honest one for a past week (a bill that already fell is history, not a warning).
-function wkrUpcomingCharges(){
+// A supplied review week anchors every occurrence to the following calendar week. The
+// no-argument form remains available for older callers asking about today's next fortnight.
+function wkrUpcomingCharges(week){
+  if(week)return wkrChargesForWeek(wkrShiftWeek(week,1));
   return (typeof upcomingCharges==='function'?upcomingCharges(14):[]).map(u=>({
     name:catLabel(u.cat), days:u.days, date:u.date?dateStr(u.date):'', amount:u.amount
   }));
@@ -16599,8 +16645,18 @@ function wkrForecast(week, rec, plan){
 // ── UI state ────────────────────────────────────────────────────
 // In-memory for the same reason aiHubState is: it is which tab is open and which week is
 // selected, not user data. No new synced key, and nothing that can race the sync listeners.
-const wkrUI={week:null, section:'money', mode:'review', setup:null, planDraft:null};
+const wkrUI={week:null, section:'overview', mode:'review', setup:null, planDraft:null, nextDraft:null, nextBase:null, setupBase:null};
 let _wrSaveTimer=null;
+let _wrSaveWeek=null;
+function wkrFlushPending(){
+  clearTimeout(_wrSaveTimer);
+  if(_wrSaveWeek){const week=_wrSaveWeek;_wrSaveWeek=null;wkrSaveReview(week);}
+}
+window.addEventListener('pagehide',wkrFlushPending);
+window.addEventListener('beforeunload',e=>{
+  wkrFlushPending();
+  if(wkrUI.nextDraft||wkrUI.setup||wkrUI.planDraft){e.preventDefault();e.returnValue='';}
+});
 
 // Resolves the selected week AND pins it. Pinning matters: the fallback is "the newest
 // finished week still waiting for a review", so without it, completing a review would change
@@ -16620,6 +16676,9 @@ function wkrCurrentWeek(){
 }
 function wkrSetWeek(week){
   if(wkrVisibleWeeks().indexOf(week)<0) return;
+  if(wkrUI.nextDraft&&!confirm('Discard the unsaved next-week plan and change weeks?')) return;
+  wkrUI.nextDraft=null;
+  wkrFlushPending();
   wkrUI.week=week; renderStatsReview();
 }
 function wkrHowItWorksHtml(){
@@ -16630,14 +16689,16 @@ function wkrHowItWorksHtml(){
     : 'It only prompts you about weeks from '+fmtDate(start)+' onward.';
   return '<details class="wkr-how"><summary>How Weekly Review works</summary>'+
     '<div class="wkr-how-body">'+
-      '<p>Weekly Review is a private check-in for this Daily profile. It compares the Budget figures '+
-        'already recorded for one week with the plan you set, plus any optional work and life notes you add here.</p>'+
+      '<p>Start with the weekly reset: next week’s money plan, what Daily noticed, and the changes worth considering. '+
+        'Money compares the selected week’s Budget figures with your accepted allocation, or your baseline when no allocation exists.</p>'+
+      '<p>Next Week lets you allocate income, savings and a buffer for a dated week. Save explicitly; Cancel discards the draft. '+
+        'The following review uses that allocation. Optional pages save answers as you type; configure them in Edit baseline & pages.</p>'+
       '<p>'+escText(timing)+' Earlier Budget history remains in Budget and Stats; it is not a list of overdue reviews.</p>'+
       '<p>Completing a review saves a frozen copy of that week’s plan and figures. It never changes '+
         'your Budget, accounts, workouts, nutrition or Journal. Ask Daily AI only prepares text for you to copy.</p>'+
     '</div></details>';
 }
-function wkrSetSection(sec){ wkrUI.section=sec; renderStatsReview(); }
+function wkrSetSection(sec){ wkrFlushPending();wkrUI.section=sec; renderStatsReview(); }
 
 // A record is created on the first MEANINGFUL edit, never by opening the screen. Same rule as
 // the Journal editor: merely looking at a week must not leave a blank review behind.
@@ -16650,6 +16711,9 @@ function wkrEnsureRecord(week){
 // opportunity status) re-render; free text does not until it is left.
 function wkrPatch(path, value, quiet){
   const week=wkrCurrentWeek(); if(!week) return;
+  if(wkrReview(week)&&wkrReview(week).status==='completed'){
+    showToast('Reopen this review before editing it.');return;
+  }
   const rec=wkrEnsureRecord(week);
   const parts=path.split('.');
   let node=rec;
@@ -16657,7 +16721,8 @@ function wkrPatch(path, value, quiet){
   node[parts[parts.length-1]]=value;
   if(quiet){
     clearTimeout(_wrSaveTimer);
-    _wrSaveTimer=setTimeout(()=>wkrSaveReview(week),500);
+    _wrSaveWeek=week;
+    _wrSaveTimer=setTimeout(wkrFlushPending,500);
   } else {
     wkrSaveReview(week);
     renderStatsReview();
@@ -16706,9 +16771,12 @@ function wkrOppRemove(id){
 // the budget week's own saved/finished state, its transactions and its figures are untouched.
 function wkrCompleteReview(){
   const week=wkrCurrentWeek(); if(!week) return;
+  if(week>=weekKey(getMondayOf(0))){showToast('This week is still in progress. You can plan next week now and complete the review once this week ends.');return;}
+  if(wkrUI.nextDraft){showToast('Save or cancel your next-week draft first.');return;}
   const rec=wkrEnsureRecord(week);
-  rec.planSnapshot=JSON.parse(JSON.stringify(wkrPlan));
-  rec.actualSnapshot=wkrSnapshotActuals(week, wkrPlan, rec);
+  const effective=wkrEffectivePlan(rec);
+  rec.planSnapshot=JSON.parse(JSON.stringify(effective));
+  rec.actualSnapshot=wkrSnapshotActuals(week, effective, rec);
   rec.status='completed';
   rec.completedAt=Date.now();
   if(!rec.createdAt) rec.createdAt=Date.now();
@@ -16749,7 +16817,8 @@ function wkrSnapshotActuals(week, plan, rec){
     takenAt:Date.now(),
     money:m,
     cardTxns:wkrCardTxns(week),
-    upcoming:wkrUpcomingCharges(),
+    upcoming:wkrUpcomingCharges(week),
+    trainingDays:wkrTrainingDays(week),
     income:{total:m.incomeTotal, regular:m.regularIncome, irregular:m.irregularIncome, known:m.incomeKnown},
     spending:{fixed:m.fixed, variable:m.variable, total:m.spendTotal, groups:Object.assign({},m.groups)},
     saved:m.saved, leftover:m.leftover,
@@ -16792,35 +16861,32 @@ function wkrSuggestMappings(){
 }
 function wkrBlankSetup(){
   return wkrNormalisePlan({enabled:true, money:{categoryMappings:wkrSuggestMappings()},
-    work:{enabled:false}, life:{enabled:true}});
-}
-function wkrTemplateSetup(){
-  return wkrNormalisePlan({
-    enabled:true, name:WKR_TEMPLATE.name,
-    money:{regularWeeklyTakeHome:WKR_TEMPLATE.regularWeeklyTakeHome,
-      allocations:WKR_TEMPLATE.allocations,
-      categoryMappings:wkrSuggestMappings(),
-      creditCardRule:WKR_TEMPLATE.creditCardRule,
-      irregularIncomeRule:WKR_TEMPLATE.irregularIncomeRule},
-    work:WKR_TEMPLATE.work, life:{enabled:true}});
+    work:{enabled:false}, life:{enabled:false}});
 }
 function wkrStartSetup(kind){
-  wkrUI.setup = kind==='template' ? wkrTemplateSetup() : wkrBlankSetup();
+  wkrUI.setup = wkrBlankSetup();
+  wkrUI.setupBase=JSON.stringify(wkrPlan);
   wkrUI.mode='setup';
   renderStatsReview();
 }
 function wkrCancelSetup(){ wkrUI.setup=null; wkrUI.planDraft=null; wkrUI.mode='review'; renderStatsReview(); }
 function wkrSetupSave(){
   const draft=wkrUI.setup||wkrUI.planDraft; if(!draft) return;
+  const saved=wkrLoadPlan();if(saved.updatedAt>wkrPlan.updatedAt)wkrPlan=saved;
+  if(wkrUI.setupBase!==JSON.stringify(wkrPlan)){
+    if(!confirm('Your saved plan changed while this editor was open. Replace it with these changes? Cancel keeps this draft open.'))return;
+  }
   draft.enabled=true;
+  const previous=wkrPlan;
   wkrPlan=wkrNormalisePlan(draft);
-  wkrSavePlan();
+  if(!wkrSavePlan()){wkrPlan=previous;showToast('Your plan could not be saved. This draft is still open.');return;}
   wkrUI.setup=null; wkrUI.planDraft=null; wkrUI.mode='review';
   renderStatsReview();
   if(typeof showToast==='function') showToast('Weekly review plan saved');
 }
 function wkrEditPlan(){
   wkrUI.planDraft=wkrNormalisePlan(JSON.parse(JSON.stringify(wkrPlan)));
+  wkrUI.setupBase=JSON.stringify(wkrPlan);
   wkrUI.mode='setup';
   renderStatsReview();
 }
@@ -16847,7 +16913,13 @@ function wkrSetupSet(path, value, quiet){
 function wkrSetupMoney(path,value){ wkrSetupSet(path, wkrNum(value,0), true); wkrSetupRefreshTotal(); }
 function wkrSetupText(path,value){ wkrSetupSet(path, String(value==null?'':value), true); }
 function wkrSetupInt(path,value){ wkrSetupSet(path, Math.max(0,Math.round(wkrNum(value,0))), true); }
-function wkrSetupToggle(path,on){ wkrSetupSet(path, !!on, false); }
+function wkrSetupToggle(path,on){
+  const d=wkrDraft();
+  if(d&&(path==='work.enabled'||path==='life.enabled')){
+    const p=d.pages.find(p=>p.id===path.split('.')[0]);if(p)p.enabled=!!on;
+  }
+  wkrSetupSet(path, !!on, false);
+}
 function wkrSetupMapToggle(groupId, catId, on){
   const d=wkrDraft(); if(!d) return;
   const maps=d.money.categoryMappings;
@@ -16881,6 +16953,8 @@ function wkrSetupRefreshTotal(){
 // ── Rendering: shared bits ──────────────────────────────────────
 const wkrAttr=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function wkrField(label, controlHtml, help){
+  controlHtml=controlHtml.replace(/<(input|textarea|select)\b([^>]*)>/, (all,tag,attrs)=>
+    /aria-label=/.test(attrs)?all:'<'+tag+' aria-label="'+wkrAttr(label)+'"'+attrs+'>');
   return '<div class="wkr-field"><label class="wkr-label">'+escText(label)+'</label>'+controlHtml+
     (help?'<div class="wkr-help">'+escText(help)+'</div>':'')+'</div>';
 }
@@ -16935,33 +17009,16 @@ function wkrRow(name, value, meta){
 
 // ── Setup / plan editor ─────────────────────────────────────────
 function wkrSetupChooserHtml(){
-  const t=WKR_TEMPLATE;
-  const rows=[['Weekly take-home pay',t.regularWeeklyTakeHome],['Fixed bills',t.allocations.fixedBills],
-    ['Transport',t.allocations.transport],['Food and groceries',t.allocations.foodGroceries],
-    ['Social, personal and gambling',t.allocations.socialPersonalGambling],
-    ['Savings',t.allocations.savings],['Safety buffer',t.allocations.buffer]];
-  const allocTotal=t.allocations.fixedBills+t.allocations.transport+t.allocations.foodGroceries+
-    t.allocations.socialPersonalGambling+t.allocations.savings+t.allocations.buffer;
   return '<div class="wkr-wrap"><div class="card">'+
-    cardHeader('check','Weekly review')+
-    '<div class="card-fig" style="font-size:22px">Set up your weekly review</div>'+
-    '<div class="wkr-setup-lead">Review one week of real money, work and life against a plan you '+
-      'set, then leave with a short plan for next week. Nothing is saved until you choose a '+
-      'starting point below, and you can change every figure afterwards.</div>'+
-    '<div class="wkr-template">'+
-      '<div class="wkr-template-hd">Suggested starting template — not saved yet</div>'+
-      rows.map(r=>'<div class="wkr-tpl-row"><span>'+escText(r[0])+'</span><b>'+fmtMoneyExact(r[1])+'</b></div>').join('')+
-      '<div class="wkr-tpl-sum"><span>Allocations total</span><span>'+fmtMoneyExact(allocTotal)+'</span></div>'+
-      '<div class="wkr-help" style="margin-top:10px">Includes an optional work and commission '+
-        'tracker: a target of '+t.work.qualifyingTarget+' qualifying devices, '+
-        t.work.startingQualifiedProgress+' already counted. You can switch that off.</div>'+
-    '</div>'+
+    cardHeader('check','Weekly reset')+
+    '<h3 class="wkr-reset-title">A clearer plan for the week ahead</h3>'+
+    '<div class="wkr-setup-lead">See what happened, choose what to change, and give next week’s money a purpose. '+
+      'Start with your own income and allocations. Money and Next Week are included; Training, Health, Work '+
+      'and your own review pages are optional.</div>'+
     '<div class="wkr-actions">'+
-      '<button type="button" class="wkr-btn primary" onclick="wkrStartSetup(\'template\')">Use this template</button>'+
-      '<button type="button" class="wkr-btn" onclick="wkrStartSetup(\'blank\')">Start with a blank plan</button>'+
+      '<button type="button" class="wkr-btn primary" onclick="wkrStartSetup(\'blank\')">Set up my weekly plan</button>'+
     '</div>'+
-    '<div class="wkr-note">Both options open an editable form. Your budget, transactions and '+
-      'training plans are not touched either way.</div>'+
+    '<div class="wkr-note">Your plan and answers belong to this profile. Setup is a draft until you save.</div>'+
   '</div></div>';
 }
 function wkrSetupFormHtml(){
@@ -16992,7 +17049,7 @@ function wkrSetupFormHtml(){
     '<div class="wkr-field"><label class="wkr-label">Weekly allocations</label>'+
       ['fixedBills','transport','foodGroceries','socialPersonalGambling','other','savings','buffer'].map(k=>{
         const label={fixedBills:'Fixed bills',transport:'Transport',foodGroceries:'Food and groceries',
-          socialPersonalGambling:'Social, personal and gambling',other:'Other spending',
+          socialPersonalGambling:'Leisure and personal',other:'Other spending',
           savings:'Savings',buffer:'Safety buffer'}[k];
         // Only the five spending groups carry a renameable label — savings and the buffer are
         // fixed concepts the review reasons about by name, not user-defined buckets.
@@ -17063,15 +17120,11 @@ function wkrSetupFormHtml(){
       : '')+
   '</div>';
 
-  const life='<div class="card">'+cardHeader('note','General life')+
-    wkrCheckRow('wr-su-life', d.life.enabled, 'Include the general life section',
-      'Short notes on appointments, the car, training, social plans and anything on your mind. Kept collapsed by default.',
-      'wkrSetupToggle(\'life.enabled\',this.checked)')+
-  '</div>';
-
   return '<div class="wkr-wrap wkr-setup-form">'+
     '<div class="wkr-weekbar"><div class="wkr-status">'+(isNew?'Setting up':'Editing your plan')+'</div></div>'+
-    '<div class="wkr-body">'+timing+money+mapping+income+work+life+'</div>'+
+    '<div class="wkr-body">'+timing+money+
+      '<details class="wkr-details"><summary>Spending groups and income rules</summary>'+mapping+income+'</details>'+
+      wkrPagesEditorHtml(d)+(d.pages.some(p=>p.id==='work'&&p.enabled)?work:'')+'</div>'+
     '<div class="wkr-actions">'+
       '<button type="button" class="wkr-btn primary" onclick="wkrSetupSave()">'+(isNew?'Save and start reviewing':'Save plan')+'</button>'+
       '<button type="button" class="wkr-btn quiet" onclick="wkrCancelSetup()">Cancel</button>'+
@@ -17079,6 +17132,90 @@ function wkrSetupFormHtml(){
     (isNew?'':'<div class="wkr-note">Changing these figures affects future reviews only. Every review you '+
       'have already completed keeps the plan it was completed against.</div>')+
   '</div>';
+}
+
+function wkrPageSet(index,key,value){
+  const d=wkrDraft(),p=d&&d.pages[index];if(!p)return;
+  if(key==='enabled'){
+    p.enabled=!!value;
+    if(p.id==='work')d.work.enabled=p.enabled;
+    if(p.id==='life')d.life.enabled=p.enabled;
+  }else if(key==='title')p.title=String(value);
+  if(key!=='title')renderStatsReview();
+}
+function wkrPageMove(index,delta){
+  const d=wkrDraft();if(!d||!d.pages[index]||!d.pages[index+delta])return;
+  const p=d.pages.splice(index,1)[0];d.pages.splice(index+delta,0,p);renderStatsReview();
+}
+function wkrPageAdd(){
+  const d=wkrDraft();if(!d)return;
+  const id='page_'+Date.now().toString(36);
+  d.pages.push({id,title:'My review page',enabled:true,prompts:[]});wkrUI.openPage=id;renderStatsReview();
+}
+function wkrPromptAdd(index){
+  const d=wkrDraft(),p=d&&d.pages[index];if(!p)return;
+  p.prompts.push({id:'prompt_'+Date.now().toString(36),label:'What should change next week?',type:'text',target:null});renderStatsReview();
+}
+function wkrPromptSet(index,qi,key,value){
+  const d=wkrDraft(),p=d&&d.pages[index],q=p&&p.prompts[qi];if(!q)return;
+  q[key]=key==='target'?(value===''?null:wkrNum(value,0)):value;
+  if(key==='type')renderStatsReview();
+}
+function wkrPromptRemove(index,qi){
+  const d=wkrDraft(),p=d&&d.pages[index];if(!p)return;
+  if(!confirm('Remove this prompt from future reviews? Saved answers remain in review history.'))return;
+  p.prompts.splice(qi,1);renderStatsReview();
+}
+function wkrPagesEditorHtml(d){
+  return '<div class="card">'+cardHeader('note','Your review pages')+
+    '<p class="wkr-help">Money and Next Week are always available. Add only what helps you make a decision. '+
+    'Changes apply when you save this plan. Switching a page off keeps its saved answers.</p>'+
+    d.pages.map((p,i)=>'<details class="wkr-page-editor" id="wkr-page-editor-'+p.id+'"'+(wkrUI.openPage===p.id?' open':'')+'><summary>'+escText(p.title)+(p.enabled?' · On':' · Off')+'</summary>'+
+      wkrCheckRow('wkr-page-'+i,p.enabled,'Include this page','','wkrPageSet('+i+',\'enabled\',this.checked)')+
+      wkrField('Page name','<input class="wkr-input" value="'+wkrAttr(p.title)+'" oninput="wkrPageSet('+i+',\'title\',this.value)">')+
+      '<div class="wkr-actions"><button class="wkr-btn" onclick="wkrPageMove('+i+',-1)"'+(!i?' disabled':'')+'>Move up</button><button class="wkr-btn" onclick="wkrPageMove('+i+',1)"'+(i===d.pages.length-1?' disabled':'')+'>Move down</button></div>'+
+      (['work','life','reflection'].includes(p.id)?'<p class="wkr-help">Includes the existing '+escText(p.title)+' fields. Your additional prompts appear below them.</p>':'')+
+      p.prompts.map((q,j)=>'<div class="wkr-prompt-editor">'+
+        wkrField('Prompt','<input class="wkr-input" value="'+wkrAttr(q.label)+'" oninput="wkrPromptSet('+i+','+j+',\'label\',this.value)">')+
+        wkrField('Answer type','<select class="wkr-select" onchange="wkrPromptSet('+i+','+j+',\'type\',this.value)">'+[['text','Short reflection'],['number','Number / target'],['check','Checkbox']].map(([v,label])=>'<option value="'+v+'"'+(q.type===v?' selected':'')+'>'+label+'</option>').join('')+'</select>')+
+        (q.type==='number'?wkrField('Target (optional)','<input class="wkr-input" type="number" value="'+wkrAttr(q.target==null?'':q.target)+'" oninput="wkrPromptSet('+i+','+j+',\'target\',this.value)">'):'')+
+        '<button class="wkr-btn quiet" onclick="wkrPromptRemove('+i+','+j+')">Remove prompt</button></div>').join('')+
+      '<button class="wkr-btn" onclick="wkrPromptAdd('+i+')">Add prompt</button></details>').join('')+
+    '<div class="wkr-actions"><button class="wkr-btn" onclick="wkrPageAdd()">Add my own page</button><button class="wkr-btn quiet" onclick="wkrCorePages()">Use Money & Next Week only</button></div></div>';
+}
+function wkrCorePages(){
+  const d=wkrDraft();if(!d)return;
+  d.pages.forEach(p=>p.enabled=false);d.work.enabled=false;d.life.enabled=false;renderStatsReview();
+}
+function wkrPageAnswer(pageId,promptId,type,value){
+  if(!/^[a-z][a-z0-9_-]*$/.test(pageId)||!/^[a-z][a-z0-9_-]*$/.test(promptId))return;
+  const rec=wkrReview(wkrCurrentWeek()),plan=wkrEffectivePlan(rec);
+  const p=plan.pages.find(p=>p.id===pageId),q=p&&p.prompts.find(q=>q.id===promptId);if(!q)return;
+  wkrPatch('pageAnswers.'+pageId+'.'+promptId,type==='number'?(value===''?null:wkrNum(value,0)):type==='check'?!!value:String(value),type!=='check');
+}
+function wkrTrainingDays(week){
+  const end=wkrShiftWeek(week,1);
+  return new Set((S.sessions||[]).filter(s=>s.date>=week&&s.date<end).map(s=>s.date)).size;
+}
+function wkrOptionalPageHtml(week,rec,plan){
+  const p=plan.pages.find(p=>p.id===wkrUI.section);if(!p)return '';
+  const answers=(rec&&rec.pageAnswers&&rec.pageAnswers[p.id])||{};
+  let built='';
+  if(p.id==='work')built=wkrWorkSectionHtml(week,rec,{...plan,work:{...plan.work,enabled:true}});
+  if(p.id==='life')built=wkrLifeSectionHtml(week,rec,{...plan,life:{enabled:true}});
+  if(p.id==='reflection')built=wkrReflectionSectionHtml(week,rec,plan);
+  if(p.id==='training'){
+    const days=rec&&rec.status==='completed'&&rec.actualSnapshot&&rec.actualSnapshot.trainingDays!=null?rec.actualSnapshot.trainingDays:wkrTrainingDays(week);
+    built='<div class="card">'+cardHeader('calendar','Training this week')+'<p>'+days+' logged training day'+(days===1?'':'s')+' · '+escText(wkrWeekLabel(week))+'</p><div class="wkr-actions"><button class="wkr-btn" onclick="logGoto(\'program\')">Open workout program</button><button class="wkr-btn" onclick="setStatsTab(\'training\')">View training history</button></div></div>';
+  }
+  if(p.id==='health')built='<div class="card">'+cardHeader('flame','Health & habits')+'<p class="wkr-help">Use your recorded health information to choose one sustainable change.</p><div class="wkr-actions"><button class="wkr-btn" onclick="setStatsTab(\'nutrition\')">View nutrition</button><button class="wkr-btn" onclick="setStatsTab(\'body\')">View body trends</button></div></div>';
+  const prompts=p.prompts.map(q=>{
+    const id='wkr-answer-'+p.id+'-'+q.id,v=answers[q.id],call='wkrPageAnswer(\''+p.id+'\',\''+q.id+'\',\''+q.type+'\',';
+    const content=q.type==='check'?wkrCheckRow(id,!!v,q.label,'',call+'this.checked)'):
+      wkrField(q.label,q.type==='number'?'<input id="'+id+'" class="wkr-input" type="number" value="'+wkrAttr(v==null?'':v)+'" oninput="'+call+'this.value)">':wkrArea(id,v||'',call+'this.value)',''),q.type==='number'&&q.target!=null?'Your target: '+q.target:'');
+    return '<div class="card">'+content+'</div>';
+  }).join('');
+  return built+prompts+(!built&&!prompts?'<div class="card"><p>Add prompts to this page in Edit baseline & pages.</p></div>':'');
 }
 
 // ── Section 1: Money ────────────────────────────────────────────
@@ -17171,12 +17308,12 @@ function wkrMoneySectionHtml(week, rec, plan){
   // What is coming. Read straight from the recurring-charge schedule; creates nothing. Frozen
   // with the review, so a review completed a month ago still shows what was coming THEN rather
   // than silently re-answering the question for today.
-  const upcoming=(snap&&snap.upcoming)||wkrUpcomingCharges();
-  const upCard='<div class="card">'+cardHeader('calendar','Coming up')+
+  const upcoming=(snap&&snap.upcoming)||wkrUpcomingCharges(week);
+  const upCard='<div class="card">'+cardHeader('calendar','Following week’s commitments')+
     (upcoming.length
       ? upcoming.map(u=>wkrRow(u.name, fmtMoneyExact(u.amount),
-          u.days===0?'Due today':u.days===1?'Due tomorrow':'In '+u.days+' days')).join('')
-      : '<div class="wkr-blank">No recurring charge falls in the next fortnight. Charges only appear here '+
+          u.date?fmtDate(u.date):'Date not captured')).join('')
+      : '<div class="wkr-blank">No dated recurring charge is recorded for the following week. Charges only appear here '+
         'once they have a billing date in Settings › Budget setup.</div>')+
     wkrField('Unusual expenses you know about',
       wkrArea('wr-unusual', rec?rec.moneyChecks.unusualExpenses:'',
@@ -17196,8 +17333,8 @@ function wkrMoneySectionHtml(week, rec, plan){
 
   const live=week===cur
     ? '<div class="card wkr-span">'+cardHeader('alert','This week is still running')+
-      '<div class="wkr-blank">These figures will keep moving until the week ends. You can review it now, '+
-      'but the numbers you complete against are the ones showing at that moment.</div></div>'
+      '<div class="wkr-blank">These figures keep moving until the week ends. Check them and plan ahead now; '+
+      'complete the review after the week finishes.</div></div>'
     : '';
 
   return stale+live+incomeCard+spendCard+savedCard+ccCard+upCard;
@@ -17411,45 +17548,165 @@ function wkrReflectionSectionHtml(week, rec, plan){
       (i===0?'The one that matters most':'')+'" oninput="wkrPatchPriority('+i+',this.value)">')).join('')+
   '</div>';
 
-  return questions+openText+priorities+wkrNextWeekHtml(week, rec, plan);
+  return questions+openText+priorities;
 }
 
 // The handoff between this week and next: the allocations that will apply, what is already
 // known to be coming, the sales focus, and the three priorities. Assembled from what is saved,
 // never invented — an empty review produces an honestly empty summary.
 function wkrNextWeekPlan(week, rec, plan){
-  const a=plan.money.allocations, labels=plan.money.groupLabels;
+  const next=wkrNextSeed(week,rec,plan);
+  const a=next.money.allocations, labels=next.money.groupLabels;
   const allocations=WKR_GROUPS.filter(g=>a[g.id]>0).map(g=>({label:labels[g.id], amount:a[g.id]}));
-  const upcoming=wkrUpcomingCharges();
+  const upcoming=next.upcoming;
   const unusual=(rec&&rec.moneyChecks.unusualExpenses)||'';
   const focus=(rec&&rec.work.salesFocus)||plan.work.defaultSalesFocus||'';
-  const priorities=((rec&&rec.reflection.priorities)||[]).map(s=>String(s||'').trim()).filter(Boolean);
+  const priorities=next.priorities.map(s=>String(s||'').trim()).filter(Boolean);
   return {
-    week, takeHome:plan.money.regularWeeklyTakeHome, allocations,
+    week:next.week, status:next.acceptedAt?'saved':'baseline only — not accepted',
+    payDate:next.payDate,note:next.note,takeHome:next.money.regularWeeklyTakeHome, allocations,
     savings:a.savings, buffer:a.buffer,
     upcoming, unusual, focus:plan.work.enabled?focus:'', priorities
   };
 }
-function wkrNextWeekHtml(week, rec, plan){
-  const n=wkrNextWeekPlan(week, rec, plan);
-  const lines=[];
-  if(n.takeHome>0) lines.push('Plan on <b>'+fmtMoneyExact(n.takeHome)+'</b> of regular pay.');
-  if(n.allocations.length) lines.push('Allocations: '+n.allocations
-    .map(x=>escText(x.label)+' <b>'+fmtMoneyExact(x.amount)+'</b>').join(' · ')+'.');
-  if(n.savings>0) lines.push('Put <b>'+fmtMoneyExact(n.savings)+'</b> away, and keep <b>'+
-    fmtMoneyExact(n.buffer)+'</b> as buffer.');
-  if(n.upcoming.length) lines.push('Already scheduled: '+n.upcoming
-    .map(u=>escText(u.name)+' <b>'+fmtMoneyExact(u.amount)+'</b>').join(' · ')+'.');
-  if(n.unusual) lines.push('You noted coming up: '+escText(n.unusual));
-  if(n.focus) lines.push('Sales focus: '+escText(n.focus));
-  n.priorities.forEach((p,i)=>lines.push('Priority '+(i+1)+': '+escText(p)));
-  return '<div class="card wkr-span">'+cardHeader('trophy','Next week’s plan')+
-    (lines.length
-      ? '<div class="wkr-plan-out"><h4>Carry this into next week</h4>'+
-        lines.map(l=>'<div class="wkr-plan-line">'+l+'</div>').join('')+'</div>'
-      : '<div class="wkr-blank">This fills in as you work through the review — your allocations, what is '+
-        'already scheduled, your sales focus and your three priorities.</div>')+
-  '</div>';
+// Week-specific intentions stay in the existing review record. Neither a preview nor a read
+// creates a record; accepting one is explicit and does not modify Budget's source data.
+function wkrShiftWeek(week,offset){
+  const d=localMidnight(week);d.setDate(d.getDate()+7*offset);return dateStr(d);
+}
+function wkrNormaliseNext(value,week){
+  if(!value||typeof value!=='object'||Array.isArray(value)||value.week!==wkrShiftWeek(week,1))return null;
+  return {...value,week:value.week,money:wkrNormalisePlan({money:value.money}).money,
+    payDate:aiIsDate(value.payDate)?value.payDate:'',note:wkrStr(value.note),
+    priorities:(Array.isArray(value.priorities)?value.priorities:[]).slice(0,3).map(wkrStr),
+    upcoming:Array.isArray(value.upcoming)?value.upcoming:[],acceptedAt:wkrNum(value.acceptedAt,0)};
+}
+function wkrChargesForWeek(week){
+  const from=localMidnight(week),to=localMidnight(wkrShiftWeek(week,1));to.setDate(to.getDate()-1);
+  const out=[];
+  loadFixCats().filter(c=>catIsRecurring(c)&&catIsCharging(c)).forEach(c=>{
+    catOccurrencesBetween(c,from,to).forEach(d=>out.push({name:catLabel(c),date:dateStr(d),amount:wkrNum(catAmount(c),0)}));
+  });
+  return out.sort((a,b)=>a.date.localeCompare(b.date));
+}
+function wkrNextSeed(week,rec,plan){
+  if(rec&&rec.nextWeek)return JSON.parse(JSON.stringify(rec.nextWeek));
+  const next=wkrShiftWeek(week,1);
+  return {week:next,money:JSON.parse(JSON.stringify(plan.money)),payDate:'',note:'',
+    priorities:((rec&&rec.reflection.priorities)||[]).slice(),
+    upcoming:rec&&rec.status==='completed'?((rec.actualSnapshot&&rec.actualSnapshot.upcoming)||[]).filter(b=>b.date>=next&&b.date<wkrShiftWeek(next,1)):wkrChargesForWeek(next),acceptedAt:0};
+}
+function wkrNextRevision(week){
+  const persisted=wkrLoadReviews();
+  wkrReviews=wkrMergeReviews(persisted,wkrReviews).merged;
+  const saved=wkrLoadPlan();if(saved.updatedAt>wkrPlan.updatedAt)wkrPlan=saved;
+  return JSON.stringify([wkrReview(week),wkrReview(wkrShiftWeek(week,1)),wkrPlan]);
+}
+function wkrEditNext(){
+  wkrFlushPending();
+  const base=wkrNextRevision(wkrCurrentWeek());
+  const week=wkrCurrentWeek(),rec=wkrReview(week);
+  if(rec&&rec.status==='completed'){showToast('Reopen this review before changing its next-week plan.');return;}
+  if(!wkrUI.nextDraft){
+    wkrUI.nextDraft=wkrNextSeed(week,rec,wkrEffectivePlan(rec));
+    wkrUI.nextBase=base;
+  }
+  wkrUI.section='next';renderStatsReview();
+}
+function wkrNextSet(path,value){
+  const d=wkrUI.nextDraft;if(!d)return;
+  if(path==='income')d.money.regularWeeklyTakeHome=value===''?null:Math.max(0,wkrNum(value,0));
+  else if(Object.prototype.hasOwnProperty.call(d.money.allocations,path))d.money.allocations[path]=value===''?null:Math.max(0,wkrNum(value,0));
+  else if(path==='payDate'||path==='note')d[path]=value;
+  else if(/^priority[0-2]$/.test(path))d.priorities[Number(path.slice(-1))]=value;
+  const el=document.getElementById('wkr-next-balance');if(el)el.innerHTML=wkrNextBalanceHtml(d);
+}
+function wkrCancelNext(){wkrUI.nextDraft=null;renderStatsReview();}
+function wkrSaveNext(){
+  const week=wkrCurrentWeek(),d=wkrUI.nextDraft;if(!week||!d)return;
+  if(wkrUI.nextBase!==wkrNextRevision(week)){
+    renderStatsReview();showToast('The review or baseline changed. Your draft is still here. Reload the saved plan before applying.');return;
+  }
+  const destination=wkrReview(d.week);
+  if(destination&&destination.status==='completed'){showToast('The following week is already completed. Its plan is frozen.');return;}
+  if(!Number.isFinite(d.money.regularWeeklyTakeHome)||d.money.regularWeeklyTakeHome<=0){showToast('Enter the income you plan to allocate for that week.');return;}
+  if(Object.values(d.money.allocations).some(v=>v==null||!Number.isFinite(v)||v<0)){showToast('Enter every allocation, using 0 where none is planned.');return;}
+  if(d.payDate&&(d.payDate<d.week||d.payDate>=wkrShiftWeek(d.week,1))){showToast('Choose a pay date inside the plan’s week, or leave it blank.');return;}
+  if(wkrAllocationTotal({money:d.money})>d.money.regularWeeklyTakeHome+0.005){showToast('Allocations exceed planned income. Adjust them before saving.');return;}
+  d.acceptedAt=Date.now();d.upcoming=wkrChargesForWeek(d.week);
+  const rec=wkrEnsureRecord(week);rec.nextWeek=wkrNormaliseNext(d,week);
+  if(!wkrSaveReview(week))return;
+  wkrUI.nextDraft=null;renderStatsReview();showToast('Next week’s plan saved');
+}
+function wkrReloadNext(){
+  if(!confirm('Discard your unsaved next-week draft and reload the saved plan?'))return;
+  wkrUI.nextDraft=null;wkrEditNext();
+}
+function wkrNextBalanceHtml(n){
+  const balance=Math.round((wkrNum(n.money.regularWeeklyTakeHome,0)-wkrAllocationTotal({money:n.money}))*100)/100;
+  return '<span class="'+(balance<0?'wkr-over':'')+'">'+fmtMoneyExact(Math.abs(balance))+' '+(balance<0?'over planned income':'still unallocated')+'</span>';
+}
+function wkrNextCardHtml(week,rec,plan){
+  const n=wkrNextSeed(week,rec,plan),saved=!!n.acceptedAt;
+  const rows=WKR_GROUPS.map(g=>[n.money.groupLabels[g.id],n.money.allocations[g.id]])
+    .concat([['Savings',n.money.allocations.savings],['Buffer',n.money.allocations.buffer]]).filter(r=>r[1]>0);
+  return '<div class="card wkr-next-card">'+cardHeader('target','Next week’s plan',statsChip('neutral',saved?'Saved plan':'Not saved yet'))+
+    '<h3 class="wkr-reset-title">'+escText(wkrWeekLabel(n.week))+'</h3>'+
+    '<div class="wkr-help">'+(saved?'Your allocation for this week.':'Start with your baseline, then decide where next week’s money goes.')+'</div>'+
+    '<div class="wkr-next-income">'+fmtMoneyExact(n.money.regularWeeklyTakeHome)+'<span> planned income'+(n.payDate?' · pay day '+escText(fmtDate(n.payDate)):'')+'</span></div>'+
+    '<div class="wkr-next-allocations">'+rows.map(r=>'<div class="wkr-row"><span>'+escText(r[0])+'</span><b>'+fmtMoneyExact(r[1])+'</b></div>').join('')+'</div>'+
+    '<div class="wkr-help">'+wkrNextBalanceHtml(n)+'</div>'+
+    (n.note?'<p class="wkr-reset-note">'+escText(n.note)+'</p>':'')+
+    (n.priorities.some(Boolean)?'<ul class="wkr-priorities">'+n.priorities.filter(Boolean).map(p=>'<li>'+escText(p)+'</li>').join('')+'</ul>':'')+
+    '<div class="wkr-actions"><button type="button" class="wkr-btn primary" onclick="'+(rec&&rec.status==='completed'?'wkrReopenReview()':'wkrEditNext()')+'">'+(rec&&rec.status==='completed'?'Reopen to edit this plan':saved?'Edit this allocation':'Plan next week')+'</button></div></div>';
+}
+function wkrNextEditorHtml(week,rec,plan){
+  const d=wkrUI.nextDraft;
+  if(!d)return wkrNextCardHtml(week,rec,plan)+wkrSuggestionsHtml(week,rec,plan);
+  const input=(key,val)=>'<input class="wkr-input" type="number" min="0" step="0.01" inputmode="decimal" value="'+wkrAttr(val==null?'':val)+'" oninput="wkrNextSet(\''+key+'\',this.value)">';
+  const fields=WKR_GROUPS.map(g=>[g.id,d.money.groupLabels[g.id]]).concat([['savings','Savings'],['buffer','Buffer']]);
+  const stale=wkrUI.nextBase!==wkrNextRevision(week);
+  return '<div class="card">'+cardHeader('target','Allocate next week’s money')+
+    '<h3 class="wkr-reset-title">'+escText(wkrWeekLabel(d.week))+'</h3>'+
+    '<p class="wkr-help">Use the income available for this week. For a fortnightly pay, allocate only the portion you intend to use this week. Saving keeps this plan in Review; Budget entries stay separate.</p>'+
+    (stale?'<div class="wkr-warning" role="alert">Your saved review or baseline changed. This draft has not been applied. <button class="wkr-btn" onclick="wkrReloadNext()">Reload saved plan</button></div>':'')+
+    wkrField('Planned income',input('income',d.money.regularWeeklyTakeHome))+
+    wkrField('Pay date (optional)','<input class="wkr-input" type="date" value="'+wkrAttr(d.payDate)+'" min="'+d.week+'" max="'+dateStr(new Date(localMidnight(d.week).getFullYear(),localMidnight(d.week).getMonth(),localMidnight(d.week).getDate()+6))+'" onchange="wkrNextSet(\'payDate\',this.value)">')+
+    '<div class="wkr-next-fields">'+fields.map(([key,label])=>wkrField(label,input(key,d.money.allocations[key]))).join('')+'</div>'+
+    '<div id="wkr-next-balance" class="wkr-total" aria-live="polite">'+wkrNextBalanceHtml(d)+'</div>'+
+    wkrField('What changes next week?',wkrArea('wkr-next-note',d.note,'wkrNextSet(\'note\',this.value)','A practical adjustment, or a milestone you want to protect'))+
+    [0,1,2].map(i=>wkrField('Priority '+(i+1)+' (optional)','<input class="wkr-input" value="'+wkrAttr(d.priorities[i]||'')+'" oninput="wkrNextSet(\'priority'+i+'\',this.value)">')).join('')+
+    '<div class="wkr-actions"><button class="wkr-btn primary" onclick="wkrSaveNext()"'+(stale?' disabled':'')+'>Save next week’s plan</button><button class="wkr-btn" onclick="wkrCancelNext()">Cancel</button></div></div>'+wkrSuggestionsHtml(week,rec,plan);
+}
+function wkrSuggestionsHtml(week,rec,plan){
+  const m=wkrDisplayActuals(week,rec,plan),n=wkrUI.nextDraft||wkrNextSeed(week,rec,plan);
+  const suggestions=[];
+  const completed=week<weekKey(getMondayOf(0));
+  if(!m.hasData)suggestions.push('No Budget record for the reviewed week yet. Check the source figures before deciding what to change.');
+  else if(!completed)suggestions.push('This week is still in progress. Treat spending so far as a check-in, not a full-week result.');
+  else if((m.quality&&m.quality.ambiguousLegacyVariable)||Math.abs(m.spendTotal-WKR_GROUPS.reduce((sum,g)=>sum+m.groups[g.id],0))>0.5)suggestions.push('Some older spending detail is missing. Check Budget before adjusting category goals from this week.');
+  else if(!WKR_GROUPS.some(g=>plan.money.allocations[g.id]>0))suggestions.push('No spending allocations were set for comparison. Choose realistic amounts for next week before judging spending against a goal.');
+  else {
+    WKR_GROUPS.filter(g=>plan.money.allocations[g.id]>0&&m.groups[g.id]>plan.money.allocations[g.id]+0.5).slice(0,2).forEach(g=>{
+      suggestions.push(plan.money.groupLabels[g.id]+' finished '+fmtMoneyExact(m.groups[g.id]-plan.money.allocations[g.id])+' over its allocation. Decide whether next week needs a realistic higher cap or one specific spending change; cover any increase from another allocation.');
+    });
+    if(plan.money.allocations.savings>m.saved)suggestions.push('Recorded savings were '+fmtMoneyExact(plan.money.allocations.savings-m.saved)+' below your target. Check that transfers were recorded, then choose an affordable savings allocation for next week.');
+    if(!suggestions.length)suggestions.push('No allocation overrun in the available figures. Keep the plan steady unless next week’s commitments have changed.');
+  }
+  const bills=n.upcoming||[];
+  return '<div class="card">'+cardHeader('pin','Changes to consider')+
+    '<ul class="wkr-priorities">'+suggestions.map(s=>'<li>'+escText(s)+'</li>').join('')+'</ul>'+
+    '<div class="wkr-sec-divider">Scheduled in '+escText(wkrWeekLabel(n.week))+'</div>'+
+    (bills.length?bills.map(b=>'<div class="wkr-row"><span class="wkr-row-l"><span>'+escText(b.name)+'</span><span class="wkr-row-meta">'+escText(fmtDate(b.date))+'</span></span><b>'+fmtMoneyExact(b.amount)+'</b></div>').join('')+
+    '<p class="wkr-help">These charges may already be covered by your allocations. Check timing and funding; do not add them twice.</p>':'<p class="wkr-help">No dated recurring charges found for this week. Check for one-off expenses and bills without a schedule.</p>')+'</div>';
+}
+function wkrOverviewHtml(week,rec,plan){
+  const m=wkrDisplayActuals(week,rec,plan);
+  return wkrNextCardHtml(week,rec,plan)+wkrInsightsHtml()+
+    '<div class="card">'+cardHeader('wallet',week>=weekKey(getMondayOf(0))?'This week so far':'The reviewed week')+
+    '<div class="wkr-help">'+escText(wkrWeekLabel(week))+'</div>'+
+    (m.hasData?'<div class="wkr-reset-metrics">'+[['Income',m.incomeKnown?fmtMoneyExact(m.incomeTotal):'Not recorded'],['Spending',fmtMoneyExact(m.spendTotal)],['Saved',fmtMoneyExact(m.saved)]].map(([label,value])=>'<div><span>'+label+'</span><b>'+value+'</b></div>').join('')+'</div>':'<p class="wkr-help">No Budget record for this week.</p>')+
+    '<div class="wkr-actions"><button class="wkr-btn" onclick="wkrSetSection(\'money\')">Review money details</button></div></div>'+wkrSuggestionsHtml(week,rec,plan);
 }
 
 // ── Daily AI handoff ────────────────────────────────────────────
@@ -17512,14 +17769,14 @@ function wkrWeeklyReviewHtml(){
   const done=rec&&rec.status==='completed';
 
   const sections=wkrSectionsFor(plan);
-  if(!sections.some(s=>s.id===wkrUI.section)) wkrUI.section='money';
+  if(!sections.some(s=>s.id===wkrUI.section)) wkrUI.section='overview';
   const active=sections.find(s=>s.id===wkrUI.section)||sections[0];
 
   const body=
-    wkrUI.section==='money'      ? wkrMoneySectionHtml(week, rec, plan)
-    : wkrUI.section==='work'     ? wkrWorkSectionHtml(week, rec, plan)
-    : wkrUI.section==='life'     ? wkrLifeSectionHtml(week, rec, plan)
-    :                             wkrReflectionSectionHtml(week, rec, plan);
+    wkrUI.section==='overview' ? wkrOverviewHtml(week,rec,plan)
+    : wkrUI.section==='money' ? wkrMoneySectionHtml(week,rec,plan)
+    : wkrUI.section==='next' ? wkrNextEditorHtml(week,rec,plan)
+    : wkrOptionalPageHtml(week,rec,plan);
 
   const frozenNote=done
     ? '<div class="wkr-note">Completed on '+(rec.completedAt?fmtDate(dateStr(new Date(rec.completedAt))):'an earlier date')+
@@ -17531,11 +17788,11 @@ function wkrWeeklyReviewHtml(){
   // only there would be invisible midweek. Shown only when a FINISHED week is genuinely
   // waiting — never as a standing message.
   const pending=wkrPendingWeek();
-  const prompt=(pending&&!done)
+  const prompt=(pending&&!done&&wkrUI.section==='money')
     ? '<div class="card wkr-span">'+cardHeader('calendar','The week of '+fmtDate(pending)+' is finished',
         statsChip('neutral', pending===week?'Ready to review':'Waiting'))+
       '<div class="wkr-blank">'+(pending===week
-        ? 'This week has ended and has no completed review yet. Work through the sections below and press Complete when you are done.'
+        ? 'This week has ended. Check the figures you need, choose next week’s plan, and complete when ready. Optional pages do not need filling in.'
         : 'You are looking at a different week. '+escText(fmtDate(pending))+' finished without a review.')+'</div>'+
       (pending===week?''
         : '<div class="wkr-actions"><button type="button" class="wkr-btn primary" onclick="wkrSetWeek(\''+pending+'\')">Review that week instead</button></div>')+
@@ -17568,21 +17825,21 @@ function wkrWeeklyReviewHtml(){
     '</aside>'+
     '<div class="wkr-main">'+
       '<div class="wkr-mainhd">'+
-        '<div class="wkr-mainhd-eyebrow">Weekly review</div>'+
+        '<div class="wkr-mainhd-eyebrow">Weekly review · '+escText(wkrWeekLabel(week))+'</div>'+
         '<h3 class="wkr-mainhd-t">'+escText(active?active.label:'')+'</h3>'+
         '<div class="wkr-mainhd-d">'+escText(active?active.desc:'')+'</div>'+
       '</div>'+
-      wkrHowItWorksHtml()+
-      '<div class="wkr-body">'+prompt+body+'</div>'+
+      (wkrUI.nextDraft&&wkrUI.section!=='next'?'<div class="wkr-warning">You have an unsaved next-week plan. <button class="wkr-btn" onclick="wkrSetSection(\'next\')">Continue editing</button></div>':'')+
+      '<div class="wkr-body" data-wkr-frozen="'+!!done+'">'+prompt+body+'</div>'+
       '<div class="wkr-actions">'+
         (done
           ? '<button type="button" class="wkr-btn" onclick="wkrReopenReview()">Reopen this review</button>'
-          : '<button type="button" class="wkr-btn primary" onclick="wkrCompleteReview()">Complete this review</button>')+
+          : week<weekKey(getMondayOf(0))?'<button type="button" class="wkr-btn primary" onclick="wkrCompleteReview()">Complete this review</button>':'<span class="wkr-help">This week is in progress. You can save next week’s plan now.</span>')+
         '<button type="button" class="wkr-btn" onclick="wkrAskDailyAI()">Ask Daily AI about this review</button>'+
-        '<button type="button" class="wkr-btn quiet" onclick="wkrEditPlan()">Edit plan</button>'+
+        '<button type="button" class="wkr-btn quiet" onclick="wkrEditPlan()">Edit baseline & pages</button>'+
         '<button type="button" class="wkr-btn quiet" onclick="wkrTurnOff()">Turn off</button>'+
       '</div>'+
-      frozenNote+
+      frozenNote+wkrHowItWorksHtml()+
       '<div class="wkr-note">Completing a review saves the review only. Your budget week, its transactions, '+
         'your accounts and your training plans are never changed by anything on this screen. Nothing is sent '+
         'anywhere — Ask Daily AI prepares text for you to copy.</div>'+
@@ -17605,8 +17862,13 @@ function wkrHomeNudgeHtml(){
     '<span>Start →</span></button>';
 }
 function wkrOpenWeek(week){
+  if(wkrUI.nextDraft&&week!==wkrUI.week){
+    if(!confirm('Discard the unsaved next-week plan and open another week?'))return;
+    wkrUI.nextDraft=null;
+  }
+  wkrFlushPending();
   wkrUI.week=week;
-  wkrUI.section='money';
+  wkrUI.section='overview';
   wkrUI.mode='review';
   if(typeof setView==='function') setView('stats');
   setStatsTab('review', true);

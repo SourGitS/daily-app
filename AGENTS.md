@@ -281,8 +281,8 @@ list — auth work so far has all been client-side error handling and sync-timin
 
 ## Testing / release checklist
 
-**There is no automated test suite, no linter config, and no CI pipeline in this repo.**
-Verification is manual, against the live-reloaded static files, before every push to `main`
+**Isolated Node tests live in `tests/`; there is no linter config or CI pipeline.**
+Run `node --test tests/*.test.cjs` plus local browser verification before every push to `main`
 (which is the deploy).
 
 Before pushing to `main`:
@@ -354,6 +354,23 @@ safety-critical parts:
   the user still has to press Copy there. No API, no key, no automatic transmission.
 
 ## Current unfinished work
+
+### Weekly reset — v317
+
+- Personal public starter template removed. Fresh setup has Money and Next Week as core;
+  optional/custom pages are configured in the private baseline editor. The landing leads
+  with the dated next-week allocation and What Daily noticed.
+- Additive fields: `daily_review_plan.pages`; each `daily_reviews` record's `pageAnswers`
+  and `nextWeek`. Same stores, paths, registration and schemaVersion. See CLAUDE.md for field
+  shapes, snapshot protection, old-client limits and responsive boundaries.
+- Next-week drafts save explicitly and detect changed local/cloud revisions. Following-week
+  comparisons use the accepted allocation; completed snapshots stay frozen. No Budget,
+  Accounts, workout, Journal or nutrition mutation occurs.
+- Review uploads use per-week timestamp transactions, cloud winning ties. Boot/cloud-apply
+  uploads are suppressed; local saves preserve newer same-week records and unrelated weeks.
+- Verification uses synthetic local browser data and mocked Firebase. No production account
+  or deployed Firebase rules were inspected. Source rules require auth.uid to match the
+  user subtree; source inspection does not verify which rules are currently deployed.
 
 ### Home desktop Dashboard + the rebuilt Home Layout editor — 2026-09-07 (RELEASED as `daily-v310`, `7192075`)
 

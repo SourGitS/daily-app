@@ -11,7 +11,6 @@ function reviewApp(plan, budgetData, reviews) {
   const today = new Date(2026, 8, 16); // Wednesday; the current review week starts 14 Sept.
   const ctx = vm.createContext({
     WKR_SCHEMA: 1,
-    WKR_TEMPLATE: { name: 'Weekly plan' },
     WKR_GROUPS: [
       { id: 'fixedBills', kind: 'fixed' }, { id: 'transport', kind: 'variable' },
       { id: 'foodGroceries', kind: 'variable' }, { id: 'socialPersonalGambling', kind: 'variable' },
@@ -32,7 +31,7 @@ function reviewApp(plan, budgetData, reviews) {
     wkrUI: { week: null },
     renderStatsReview: () => {}
   });
-  const names = ['wkrNormaliseStartWeek', 'wkrNormalisePlan', 'statsCompletedWeeks', 'wkrReview',
+  const names = ['wkrNormaliseStartWeek', 'wkrNormalisePages', 'wkrNormalisePlan', 'statsCompletedWeeks', 'wkrReview',
     'wkrReviewableWeeks', 'wkrPlanStartWeek', 'wkrVisibleWeeks', 'wkrPendingWeek', 'wkrCurrentWeek'];
   vm.runInContext(names.map(extract).join('\n'), ctx);
   ctx.wkrPlan = ctx.wkrNormalisePlan(plan || {});

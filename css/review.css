@@ -16,13 +16,46 @@
    things on the screen are measured differently. Declared on #review-content rather than
    :root because they belong to Stats › Review alone. */
 #review-content{--wkr-rail-w:206px;--wkr-gap:20px;--wkr-measure:900px}
+#review-content .wkr-reset-title{font-size:21px;line-height:1.35;margin:8px 0;color:var(--text);overflow-wrap:anywhere}
+#review-content .wkr-next-card{border-color:rgba(var(--accent-rgb),.4)}
+#review-content .wkr-next-income{font:700 28px var(--font-num);margin:18px 0 10px;overflow-wrap:anywhere}
+#review-content .wkr-next-income span{display:block;font-family:var(--font-ui);font-size:13px;font-weight:500;color:var(--text-2);margin-top:5px}
+#review-content .wkr-next-allocations{display:grid;grid-template-columns:minmax(0,1fr);gap:0 24px}
+#review-content .wkr-next-allocations .wkr-row{min-width:0;align-items:baseline}
+#review-content .wkr-next-allocations b{font-family:var(--font-num);text-align:right;overflow-wrap:anywhere}
+#review-content .wkr-priorities{padding-left:22px;margin:12px 0;color:var(--text);font-size:14px;line-height:1.65}
+#review-content .wkr-priorities li+li{margin-top:8px}
+#review-content .wkr-reset-note{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.6}
+#review-content .wkr-insights-heading h3{font-size:18px;margin:12px 0 5px}
+#review-content .wkr-insights-heading p{font-size:13px;line-height:1.5;color:var(--text-2);margin:0 0 8px}
+#review-content .wkr-reset-metrics{display:flex;flex-wrap:wrap;gap:20px;margin:18px 0}
+#review-content .wkr-reset-metrics div{flex:1 1 120px;min-width:0}
+#review-content .wkr-reset-metrics span{display:block;font-size:12px;color:var(--text-2);margin-bottom:5px}
+#review-content .wkr-reset-metrics b{font:700 22px var(--font-num);overflow-wrap:anywhere}
+#review-content .wkr-next-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:0 20px}
+#review-content .wkr-next-fields>.wkr-field{margin-top:14px}
+#review-content .wkr-over{color:var(--danger,var(--text))}
+#review-content .wkr-warning{padding:14px;border:1px solid var(--border);border-radius:var(--radius-card);line-height:1.5;margin-bottom:14px}
+#review-content .wkr-details>summary,#review-content .wkr-page-editor>summary{cursor:pointer;min-height:44px;padding:12px 0;font-weight:700;font-size:14px}
+#review-content .wkr-page-editor{border-top:1px solid var(--border);padding-bottom:8px}
+#review-content .wkr-prompt-editor{border:1px solid var(--border);border-radius:12px;padding:12px;margin:12px 0}
+#review-content .wkr-btn{min-height:44px;white-space:normal}
+#review-content .wkr-btn:disabled{opacity:.5;cursor:default}
+#review-content summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+#review-content .wkr-main{min-width:0;container-type:inline-size}
+#review-content .wkr-body>.rev-list{display:flex;flex-direction:column;gap:14px}
+#review-content .wkr-body>.stats-calm{max-width:none;width:auto}
+#review-content .wkr-next-allocations .wkr-row{border-top:0;border-bottom:1px solid var(--border)}
+@container (min-width:580px){
+  #review-content .wkr-next-allocations,#review-content .wkr-next-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 /* The workspace is ONE DOM at every width — an aside and a main column — and only CSS decides
    whether they sit side by side. Below the rail breakpoint both are plain blocks, so the phone
    and narrower desktop render exactly the week bar and horizontal pill strip they always did.
    The rail-only chrome (its label, the step numbers, the section descriptions and the main
    column's section heading) is hidden here and revealed by the wide-desktop rule at the foot
    of this file. Hidden, not omitted: a second desktop-only copy of these controls would
-   duplicate the week <select> and the four section buttons. */
+   duplicate the week <select> and the section buttons. */
 .wkr-rail-lbl,.wkr-tab-n,.wkr-tab-d,.wkr-mainhd{display:none}
 .wkr-tab-c{display:contents}
 /* Section eyebrow — step 1 of the micro-label scale (canonical: .card-label). Keeps its own
@@ -43,7 +76,7 @@
 .wkr-status.is-done{border-color:rgba(82,183,136,.4);background:rgba(82,183,136,.12);color:var(--success)}
 .wkr-status.is-draft{border-color:rgba(var(--accent-rgb),.35);background:rgba(var(--accent-rgb),.10);color:var(--accent-text)}
 
-/* ── Section switcher (Money / Work / Life / Reflection) ────────── */
+/* ── Core destinations and optional review pages ──────────────── */
 .wkr-tabs{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;
   scrollbar-width:none;margin:0 0 14px;padding-bottom:2px}
 .wkr-tabs::-webkit-scrollbar{display:none}
@@ -134,16 +167,6 @@
 
 /* ── Setup / empty state ────────────────────────────────────────── */
 .wkr-setup-lead{font-size:14.5px;line-height:1.55;color:var(--text-2);margin-top:4px}
-.wkr-template{margin-top:14px;padding:14px;border-radius:var(--radius);
-  border:1px solid var(--border);background:var(--card)}
-.wkr-template-hd{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
-  color:var(--text-3);margin-bottom:10px}
-.wkr-tpl-row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;
-  border-top:1px solid var(--border);font-size:13px}
-.wkr-tpl-row:first-of-type{border-top:0}
-.wkr-tpl-row b{font-family:var(--font-num);font-weight:700}
-.wkr-tpl-sum{display:flex;justify-content:space-between;gap:10px;margin-top:9px;padding-top:9px;
-  border-top:1.5px solid var(--border);font-size:13px;font-weight:800}
 .wkr-note{font-size:11.5px;line-height:1.55;color:var(--muted);margin-top:12px;
   padding:11px 12px;border-radius:12px;background:var(--card)}
 .wkr-how{margin:0 0 12px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
@@ -173,14 +196,6 @@
 
 /* ── Empty / calm states inside a section ───────────────────────── */
 .wkr-blank{font-size:13px;line-height:1.55;color:var(--muted);padding:10px 0}
-
-/* ── Next-week summary ──────────────────────────────────────────── */
-.wkr-plan-out{margin-top:12px;padding:14px;border-radius:var(--radius);
-  border:1px solid rgba(var(--accent-rgb),.28);background:rgba(var(--accent-rgb),.07)}
-.wkr-plan-out h4{margin:0 0 8px;font-size:12px;font-weight:800;letter-spacing:.05em;
-  text-transform:uppercase;color:var(--accent-text)}
-.wkr-plan-line{font-size:13px;line-height:1.6;color:var(--text);padding:4px 0}
-.wkr-plan-line b{font-family:var(--font-num)}
 
 /* ── Home nudge ─────────────────────────────────────────────────── */
 .wkr-nudge{display:flex;align-items:center;gap:10px;width:100%;margin-top:12px;padding:11px 12px;
@@ -251,10 +266,8 @@
     margin-left:auto;margin-right:auto}
   #review-content.rev-railed .rev-section>*{grid-column:2}
 
-  /* Sticky below the Stats segmented strip, which is itself sticky at top:0 with z-index 8.
-     No max-height and no overflow: the rail is a label, a select, a chip and four rows — far
-     shorter than any viewport this breakpoint applies to — so it can neither clip at the
-     bottom nor need a scrollbar of its own. */
+  /* Sticky below the Stats segmented strip. The rail has no height cap; additional enabled
+     pages remain part of normal page scrolling rather than creating a separate scroller. */
   #review-content.rev-railed .wkr-rail{position:sticky;top:58px;align-self:start;min-width:0}
   .wkr-rail-lbl{display:block;margin:0 2px 8px;font-size:11px;font-weight:700;
     letter-spacing:.06em;text-transform:uppercase;color:var(--text-2)}
