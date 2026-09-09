@@ -146,6 +146,12 @@
   border-top:1.5px solid var(--border);font-size:13px;font-weight:800}
 .wkr-note{font-size:11.5px;line-height:1.55;color:var(--muted);margin-top:12px;
   padding:11px 12px;border-radius:12px;background:var(--card)}
+.wkr-how{margin:0 0 12px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.wkr-how summary{min-height:42px;display:flex;align-items:center;padding:9px 12px;cursor:pointer;
+  font-size:12px;font-weight:800;color:var(--text-2)}
+.wkr-how summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:10px}
+.wkr-how-body{padding:0 12px 12px;font-size:12px;line-height:1.55;color:var(--muted)}
+.wkr-how-body p{margin:0 0 9px}.wkr-how-body p:last-child{margin-bottom:0}
 
 /* ── Opportunities ──────────────────────────────────────────────── */
 .wkr-opp{margin-top:10px;padding:12px;border-radius:var(--radius);

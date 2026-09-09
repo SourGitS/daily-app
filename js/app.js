@@ -16223,6 +16223,16 @@ const wkrNum=(v,d)=>{ const n=parseFloat(v); return isFinite(n)?n:(d||0); };
 const wkrStr=v=>typeof v==='string'?v:'';
 const wkrIds=v=>Array.isArray(v)?v.filter(x=>typeof x==='string'&&x):[];
 
+// A plan starts its review rhythm on a Monday the person chose. Older plans did not carry
+// this field, so they begin this week in memory until the next explicit plan save — never a
+// boot-time write that could create a historical review backlog.
+function wkrNormaliseStartWeek(value){
+  const current=weekKey(getMondayOf(0));
+  if(!aiIsDate(value)) return current;
+  const date=localMidnight(value);
+  return date.getDay()===1&&value<=current?value:current;
+}
+
 // ── Plan configuration ──────────────────────────────────────────
 function wkrNormalisePlan(v){
   const o=(v&&typeof v==='object'&&!Array.isArray(v))?v:{};
@@ -16243,6 +16253,7 @@ function wkrNormalisePlan(v){
     schemaVersion:WKR_SCHEMA,
     enabled:!!o.enabled,
     name:wkrStr(o.name)||WKR_TEMPLATE.name,
+    reviewStartWeek:wkrNormaliseStartWeek(o.reviewStartWeek),
     money:{
       regularWeeklyTakeHome:wkrNum(m.regularWeeklyTakeHome,0),
       allocations:alloc,
@@ -16401,6 +16412,20 @@ function wkrReviewableWeeks(){
   Object.keys(wkrReviews).forEach(k=>keys.add(k));
   return [...keys].sort().reverse();
 }
+function wkrPlanStartWeek(plan){
+  return wkrNormaliseStartWeek((plan||wkrPlan).reviewStartWeek);
+}
+function wkrReviewStartOptions(value){
+  const current=weekKey(getMondayOf(0));
+  return [...new Set([wkrNormaliseStartWeek(value),current,...statsCompletedWeeks()])]
+    .filter(week=>week<=current).sort().reverse();
+}
+// A completed or in-progress review remains accessible even if it predates the current plan's
+// start. Unreviewed Budget history before that point is not a task and stays out of the picker.
+function wkrVisibleWeeks(){
+  const start=wkrPlanStartWeek();
+  return wkrReviewableWeeks().filter(week=>week>=start||!!wkrReview(week));
+}
 function wkrWeekLabel(week){
   const mon=localMidnight(week);
   const sun=new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+6);
@@ -16410,7 +16435,8 @@ function wkrWeekLabel(week){
 // The most recent FINISHED week that has no completed review — what the nudge points at.
 function wkrPendingWeek(){
   if(!wkrPlan.enabled) return null;
-  const done=statsCompletedWeeks();
+  const start=wkrPlanStartWeek();
+  const done=statsCompletedWeeks().filter(week=>week>=start);
   for(let i=done.length-1;i>=0;i--){
     const r=wkrReview(done[i]);
     if(!r||r.status!=='completed') return done[i];
@@ -16581,16 +16607,36 @@ let _wrSaveTimer=null;
 // what this function answers and the screen would jump off the week just completed. The
 // automatic choice therefore happens once, when nothing is selected yet.
 function wkrCurrentWeek(){
-  const weeks=wkrReviewableWeeks();
+  const weeks=wkrVisibleWeeks();
   if(wkrUI.week&&weeks.indexOf(wkrUI.week)>=0) return wkrUI.week;
   // Open on the newest finished week without a completed review, else the newest finished
-  // week, else this week. Opening does not create anything — see wkrEnsureRecord.
+  // week inside this plan's review period, else this week. Opening does not create anything —
+  // see wkrEnsureRecord.
   const pending=wkrPendingWeek();
-  const done=statsCompletedWeeks();
+  const start=wkrPlanStartWeek();
+  const done=statsCompletedWeeks().filter(week=>week>=start);
   wkrUI.week = pending || (done.length?done[done.length-1]:weeks[0]) || null;
   return wkrUI.week;
 }
-function wkrSetWeek(week){ wkrUI.week=week; renderStatsReview(); }
+function wkrSetWeek(week){
+  if(wkrVisibleWeeks().indexOf(week)<0) return;
+  wkrUI.week=week; renderStatsReview();
+}
+function wkrHowItWorksHtml(){
+  const start=wkrPlanStartWeek();
+  const current=weekKey(getMondayOf(0));
+  const timing=start===current
+    ? 'It will first prompt you when this week finishes.'
+    : 'It only prompts you about weeks from '+fmtDate(start)+' onward.';
+  return '<details class="wkr-how"><summary>How Weekly Review works</summary>'+
+    '<div class="wkr-how-body">'+
+      '<p>Weekly Review is a private check-in for this Daily profile. It compares the Budget figures '+
+        'already recorded for one week with the plan you set, plus any optional work and life notes you add here.</p>'+
+      '<p>'+escText(timing)+' Earlier Budget history remains in Budget and Stats; it is not a list of overdue reviews.</p>'+
+      '<p>Completing a review saves a frozen copy of that week’s plan and figures. It never changes '+
+        'your Budget, accounts, workouts, nutrition or Journal. Ask Daily AI only prepares text for you to copy.</p>'+
+    '</div></details>';
+}
 function wkrSetSection(sec){ wkrUI.section=sec; renderStatsReview(); }
 
 // A record is created on the first MEANINGFUL edit, never by opening the screen. Same rule as
@@ -16924,7 +16970,18 @@ function wkrSetupFormHtml(){
   const varCats=activeCats(loadVarCats()).filter(c=>c&&c.id);
   const incCats=activeCats(loadIncCats()).filter(c=>c&&c.id);
   const maps=d.money.categoryMappings;
+  const reviewStarts=wkrReviewStartOptions(d.reviewStartWeek);
   const groupOf=id=>{ const g=WKR_VAR_GROUPS.find(x=>(maps[x.id]||[]).indexOf(id)>=0); return g?g.id:'other'; };
+
+  const timing='<div class="card">'+cardHeader('calendar','Review timing')+
+    wkrField('Start weekly reviews from',
+      '<select class="wkr-select" aria-label="Start weekly reviews from" '+
+        'onchange="wkrSetupSet(\'reviewStartWeek\',this.value,false)">'+
+        reviewStarts.map(week=>'<option value="'+week+'"'+(week===d.reviewStartWeek?' selected':'')+'>'+
+          escText(wkrWeekLabel(week))+'</option>').join('')+
+      '</select>',
+      'Daily only prompts you about completed weeks from this point. Earlier Budget history stays unchanged and is not a review backlog.')+
+  '</div>';
 
   const money='<div class="card">'+cardHeader('wallet','Money plan')+
     wkrField('What do you call this plan?',
@@ -17014,7 +17071,7 @@ function wkrSetupFormHtml(){
 
   return '<div class="wkr-wrap wkr-setup-form">'+
     '<div class="wkr-weekbar"><div class="wkr-status">'+(isNew?'Setting up':'Editing your plan')+'</div></div>'+
-    '<div class="wkr-body">'+money+mapping+income+work+life+'</div>'+
+    '<div class="wkr-body">'+timing+money+mapping+income+work+life+'</div>'+
     '<div class="wkr-actions">'+
       '<button type="button" class="wkr-btn primary" onclick="wkrSetupSave()">'+(isNew?'Save and start reviewing':'Save plan')+'</button>'+
       '<button type="button" class="wkr-btn quiet" onclick="wkrCancelSetup()">Cancel</button>'+
@@ -17451,7 +17508,7 @@ function wkrWeeklyReviewHtml(){
   if(!week) return '';
   const rec=wkrReview(week);
   const plan=wkrEffectivePlan(rec);
-  const weeks=wkrReviewableWeeks();
+  const weeks=wkrVisibleWeeks();
   const done=rec&&rec.status==='completed';
 
   const sections=wkrSectionsFor(plan);
@@ -17515,6 +17572,7 @@ function wkrWeeklyReviewHtml(){
         '<h3 class="wkr-mainhd-t">'+escText(active?active.label:'')+'</h3>'+
         '<div class="wkr-mainhd-d">'+escText(active?active.desc:'')+'</div>'+
       '</div>'+
+      wkrHowItWorksHtml()+
       '<div class="wkr-body">'+prompt+body+'</div>'+
       '<div class="wkr-actions">'+
         (done

@@ -924,9 +924,14 @@ the accent or the theme must go through those, not set `--accent` directly.
      absent until the user presses a button in setup — the suggested template (Francois's real
      numbers) is rendered as visible, editable text and is NOT a default. Never seed it from
      onboarding or a migration; that is the `_bootPhase` trap in AGENTS.md.
+     `reviewStartWeek` lives in that existing plan blob and is the Monday from which Daily may
+     prompt for a completed review. An older plan without it resolves to the current Monday in
+     memory, so upgrading cannot manufacture a backlog; it is written only by an explicit plan
+     save. Unreviewed Budget history before the boundary stays out of the picker and Home nudge,
+     while any review record already saved there remains available as history.
   `wkrCurrentWeek()` PINS its choice into `wkrUI.week`, because the fallback is "the newest
-  finished week still awaiting a review" — without the pin, completing a review changed what
-  the function answered and the screen jumped off the week just completed.
+  finished week still awaiting a review within that boundary" — without the pin, completing a
+  review changed what the function answered and the screen jumped off the week just completed.
 
 - **Stats → Review is the ONE screen with a local navigation rail, and its breakpoint is
   1180px.** (`css/review.css`, `.wkr-workspace` / `.wkr-rail` / `.wkr-main`, `WKR_SECTIONS` in
