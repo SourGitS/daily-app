@@ -19321,7 +19321,7 @@ function buildWeatherCard(){
   const d=localMidnight(getLocalDate());
   const dayLabel=d.toLocaleDateString('en-AU',{weekday:'long'});
   const dateLabel=d.toLocaleDateString('en-AU',{day:'numeric',month:'long'});
-  const stars=Array.from({length:5},(_,i)=>'<div class="wfx-star wfx-star-'+(i+1)+'"></div>').join('');
+  const stars=Array.from({length:16},(_,i)=>'<div class="wfx-star wfx-star-'+(i+1)+'"></div>').join('');
   const flakes=Array.from({length:12},(_,i)=>'<div class="wfx-flake wfx-flake-'+(i+1)+'"></div>').join('');
   const drops=Array.from({length:16},(_,i)=>'<div class="wfx-drop wfx-drop-'+(i+1)+'"></div>').join('');
   const clouds=Array.from({length:3},(_,i)=>'<div class="wfx-cloud wfx-cloud-'+(i+1)+'"><span class="wfx-cloud-body"></span></div>').join('');

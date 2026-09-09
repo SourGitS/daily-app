@@ -266,10 +266,18 @@ older summary — re-grep before assuming a fact from here is still true if it l
     `clear-*` and `partly-*` each use dawn/noon/day/dusk/night; cloudy, fog, rain and snow each
     use day/night; storm is one deliberately dark scene. Fog must keep distinct pale-day and
     cool-dark-night treatments. Clear/partly night may show stars; cloudy night must not.
-  - Partly, cloudy, rain and storm all use the same layered cloud-bank grammar: a broad
-    asymmetric body with a flat underside, unequal merged lobes, an upper highlight and a
-    darker base. Scene modifiers change its scale, tone, coverage and depth planes; wind still
-    drives the shared slow CSS drift. Do not replace it with blurred ovals or separate drawings.
+  - As of v319, partly, cloudy, rain and storm use connected cloud banks. Each `.wfx-cloud-body`
+    masks one continuous gradient with the same asymmetric SVG silhouette, so overlapping
+    lobes share their lighting without visible seams. Broad banks overhang the card through
+    their entire ±4% parallax, whose duration still follows `--wfx-wind`. The old full-card
+    travel and `--wfx-drift` overrides are retired. Heavy-weather banks stay above the unchanged
+    58px rain origin; partly banks sit low (above the neighbourhood on Dashboard). Reduced
+    motion removes drift and leaves the complete banks in place.
+  - Clear night has 16 varied stars; partly night shows 14. The compact layout places them in
+    the top margin and between the text blocks; Dashboard distributes them in the open sky
+    beside the text and above the ridge. A radial mask keeps them out of the moon's glow and
+    follows the existing arc variables, with a Dashboard override for its fixed moon. Stars
+    have a visible static opacity under reduced motion. Other scenes remain star-free.
   - Rain is one fixed **fine single-layer** field of 1px, short, uneven drops beginning below
     the bank. Explicit WMO-derived `data-rain` modifiers change the visible count, opacity,
     length and pace for drizzle/rain/showers/storm; `data-snow` similarly refines the two snow

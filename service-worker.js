@@ -198,7 +198,8 @@
 // v317: private weekly reset, optional pages, dated next-week allocations and guarded drafts;
 // remove the personal public starter template.
 // v318: rounded, slanted wordmark frame follows the live accent; app icons stay borderless.
-const CACHE_NAME = 'daily-v318';
+// v319: connected weather fronts and a brighter, varied night-sky star field on Home.
+const CACHE_NAME = 'daily-v319';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

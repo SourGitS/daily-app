@@ -773,14 +773,11 @@
 /* .card.home-weather-card (not just .home-weather-card) to match [data-theme="dark"] .card's
    specificity (budget-home.css) — same fix as .card.budget-snapshot-card above; a plain
    single-class rule here would lose to that dark-theme override regardless of file order. */
-/* --wfx-drift is how far the clouds travel before looping; it must out-span the card or they
-   stall mid-card and snap back. Desktop overrides it (budget-home.css) for the wide banner. */
 /* Borderless made it the only Home card without an edge. Beside a bordered card at half width
    that read as a rendering fault rather than as "special" — the scene gradient is what makes
    this card distinct, the missing edge was just inconsistency. The sky lives inside the frame
    now, same --card-border and radius as everything else. */
 .card.home-weather-card{position:relative;overflow:hidden;border:0.5px solid var(--card-border);padding:16px;
-  --wfx-drift:320px;
   background:linear-gradient(160deg,#7C93A8 0%,#4A5C70 100%);
   transition:background 0.6s ease}
 .weather-fx{position:absolute;z-index:0;inset:0;overflow:hidden;pointer-events:none}
@@ -816,6 +813,13 @@
 .home-weather-card[data-scene="cloudy-day"] .weather-legibility,
 .home-weather-card[data-scene="fog-day"] .weather-legibility,
 .home-weather-card[data-scene="snow-day"] .weather-legibility{display:block}
+/* The connected daytime banks need continuous contrast support for the small labels;
+   two strong side scrims would split the sky into panels with a bright stripe between. */
+.home-weather-card[data-scene^="partly-"]:not([data-scene$="-night"]) .weather-legibility-left,
+.home-weather-card[data-scene="cloudy-day"] .weather-legibility-left{
+  display:block;width:100%;background:linear-gradient(rgba(18,31,45,.46),rgba(18,31,45,.56))}
+.home-weather-card[data-scene^="partly-"]:not([data-scene$="-night"]) .weather-legibility-right,
+.home-weather-card[data-scene="cloudy-day"] .weather-legibility-right{display:none}
 
 /* ── Scene backgrounds ──
    Clear and partly skies carry the full dawn→noon→day→dusk→night progression: "noon" is the
@@ -900,65 +904,76 @@
 .home-weather-card[data-scene="partly-night"] .wfx-moon{display:block}
 @keyframes wfx-moon-glow{0%,100%{opacity:.75}50%{opacity:.95}}
 
-/* Stars — reserved for skies with genuine open space. Cloudy night deliberately omits them. */
-.wfx-stars{position:absolute;inset:0}
+/* Keep the compact banner's stars in the top margin and the gap between its text columns.
+   The moon cutout follows the existing arc variables, including its uncropped fallback. */
+.wfx-stars{position:absolute;inset:0;
+  --star-moon-x:var(--wfx-moon-x,92%);--star-moon-y:calc(var(--wfx-moon-y,-11px) + 23px);
+  -webkit-mask-image:radial-gradient(circle at var(--star-moon-x) var(--star-moon-y),transparent 29px,#000 43px);
+  mask-image:radial-gradient(circle at var(--star-moon-x) var(--star-moon-y),transparent 29px,#000 43px)}
 .home-weather-card[data-scene="clear-night"] .wfx-stars,
 .home-weather-card[data-scene="partly-night"] .wfx-stars{display:block}
-.wfx-star{position:absolute;width:3px;height:3px;border-radius:50%;background:#fff;animation:wfx-twinkle 2.6s ease-in-out infinite}
-.wfx-star-1{top:18%;left:12%;animation-delay:0s}
-.wfx-star-2{top:32%;left:30%;animation-delay:.5s}
-.wfx-star-3{top:14%;left:52%;animation-delay:1s}
-.wfx-star-4{top:40%;left:68%;animation-delay:1.5s}
-.wfx-star-5{top:22%;left:82%;animation-delay:2s}
-@keyframes wfx-twinkle{0%,100%{opacity:.25}50%{opacity:1}}
+.wfx-star{position:absolute;width:var(--star-size,2px);height:var(--star-size,2px);
+  border-radius:50%;background:#f3f6ff;opacity:.85;box-shadow:0 0 4px rgba(211,225,255,.5);
+  animation:wfx-twinkle var(--star-time,5s) ease-in-out infinite;animation-delay:var(--star-delay,-2s)}
+.wfx-star-1{left:7%;top:10px;--star-size:2px;--star-dx:.05;--star-dy:8%}
+.wfx-star-2{left:19%;top:6px;--star-size:1.5px;--star-delay:-4s;--star-dx:.26;--star-dy:5%}
+.wfx-star-3{left:31%;top:17px;--star-size:2.5px;--star-time:6.2s;--star-dx:.51;--star-dy:10%}
+.wfx-star-4{left:43%;top:7px;--star-delay:-1.3s;--star-dx:.8;--star-dy:6%}
+.wfx-star-5{left:57%;top:17px;--star-size:1.5px;--star-dx:.97;--star-dy:13%}
+.wfx-star-6{left:69%;top:6px;--star-size:2.5px;--star-delay:-3.6s;--star-dx:.15;--star-dy:21%}
+.wfx-star-7{left:81%;top:8px;--star-time:6.8s;--star-dx:.38;--star-dy:17%}
+.wfx-star-8{left:95%;top:8px;--star-size:1.5px;--star-delay:-5s;--star-dx:.88;--star-dy:27%}
+.wfx-star-9{left:47%;top:27%;--star-size:2.5px;--star-dx:.28;--star-dy:32%}
+.wfx-star-10{left:55%;top:39%;--star-size:1.5px;--star-delay:-3.2s;--star-dx:.62;--star-dy:30%}
+.wfx-star-11{left:43%;top:51%;--star-time:7s;--star-dx:.98;--star-dy:39%}
+.wfx-star-12{left:51%;top:65%;--star-size:2.5px;--star-delay:-.7s;--star-dx:.72;--star-dy:40%}
+.wfx-star-13{left:60%;top:20%;--star-size:1.5px;--star-dx:.02;--star-dy:39%}
+.wfx-star-14{left:37%;top:8px;--star-delay:-4.4s;--star-dx:.47;--star-dy:44%}
+.wfx-star-15{left:12%;bottom:7px;--star-size:1.5px;--star-dx:.67;--star-dy:4%}
+.wfx-star-16{left:89%;bottom:9px;--star-delay:-2.7s;--star-dx:.93;--star-dy:5%}
+.home-weather-card[data-scene="partly-night"] .wfx-star:nth-child(n+15){display:none}
+@keyframes wfx-twinkle{0%,100%{opacity:.6}50%{opacity:1}}
 
-/* Layered cloud bank (direction 1.B). Each instance uses one broad, flat-bottomed body plus
-   two unequal overlapping lobes. Scene modifiers change scale, tone and coverage while the
-   silhouette and slow wind-driven parallax stay one shared grammar. */
+/* One merged silhouette per depth plane gives every lobe the SAME lighting, without seams
+   where translucent pieces overlap. Banks overhang both edges through their whole drift. */
 .home-weather-card[data-scene^="partly-"] .wfx-cloud,
 .home-weather-card[data-scene^="cloudy-"] .wfx-cloud,
 .home-weather-card[data-scene^="rain-"] .wfx-cloud,
 .home-weather-card[data-scene="storm"] .wfx-cloud{display:block}
-.wfx-cloud{position:absolute;width:142px;height:46px;left:8%;top:8%;
-  --cloud-top:rgba(245,249,252,.88);--cloud-mid:rgba(220,229,236,.82);--cloud-low:rgba(121,139,154,.62);
-  filter:drop-shadow(0 3px 3px rgba(24,39,52,.14));animation:wfx-cloud-drift 26s linear infinite}
-.wfx-cloud::before,.wfx-cloud::after{content:"";position:absolute;z-index:0;bottom:13px;
-  background:linear-gradient(155deg,var(--cloud-top),var(--cloud-mid) 72%)}
-.wfx-cloud::before{width:62px;height:38px;left:22px;border-radius:52% 61% 40% 44% / 66% 72% 32% 30%;transform:rotate(-3deg)}
-.wfx-cloud::after{width:48px;height:29px;right:20px;border-radius:58% 45% 48% 38% / 70% 60% 34% 30%;transform:rotate(4deg)}
-.wfx-cloud-body{position:absolute;z-index:1;left:3px;right:1px;bottom:3px;height:25px;
-  border-radius:45% 52% 13px 10px / 58% 68% 9px 8px;
-  background:linear-gradient(to bottom,var(--cloud-top) 0%,var(--cloud-mid) 48%,var(--cloud-low) 100%);
-  box-shadow:inset 0 2px 0 rgba(255,255,255,.16),inset 0 -5px 7px rgba(39,57,72,.11)}
-.wfx-cloud-1{left:7%;top:6%;animation-duration:calc(24s / var(--wfx-wind,1));animation-delay:-9s}
-.wfx-cloud-2{width:176px;height:52px;left:18%;top:20%;opacity:.72;
-  animation-duration:calc(34s / var(--wfx-wind,1));animation-delay:-23s}
-.wfx-cloud-2::before{width:74px;height:44px;left:31px}.wfx-cloud-2::after{width:53px;height:32px;right:27px}
-.wfx-cloud-2 .wfx-cloud-body{height:28px}
-.wfx-cloud-3{width:112px;height:38px;left:56%;top:11%;opacity:.54;
-  animation-duration:calc(29s / var(--wfx-wind,1));animation-delay:-16s}
-.wfx-cloud-3::before{width:48px;height:31px;left:18px;bottom:11px}.wfx-cloud-3::after{width:38px;height:24px;right:15px;bottom:11px}
-.wfx-cloud-3 .wfx-cloud-body{height:21px}
-/* Partly skies need open air around the disc, so only the two lighter depth planes show. */
+.wfx-cloud{position:absolute;width:150%;height:72px;left:-25%;top:-22px;
+  --cloud-top:#dce6ec;--cloud-mid:#a7bac8;--cloud-low:#657e90;
+  --cloud-shape:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 100' preserveAspectRatio='none'%3E%3Cpath d='M0 51C28 30 56 28 85 40C100 16 151 8 181 31C211 18 255 25 269 43C292 34 326 37 342 45C360 11 416 3 447 28C477 14 526 20 543 41C572 26 610 31 632 45C655 12 704 17 728 36C754 28 785 32 800 46C831 23 878 28 900 47V87C799 96 735 85 646 91S480 96 391 91S207 96 121 90S43 94 0 89Z'/%3E%3C/svg%3E");
+  -webkit-mask-image:linear-gradient(#000 76%,transparent 100%);
+  mask-image:linear-gradient(#000 76%,transparent 100%);
+  opacity:.62;animation:wfx-cloud-drift calc(30s / var(--wfx-wind,1)) ease-in-out infinite alternate}
+.wfx-cloud-body{position:absolute;inset:0;
+  background:linear-gradient(174deg,var(--cloud-top) 10%,var(--cloud-mid) 54%,var(--cloud-low) 100%);
+  -webkit-mask:var(--cloud-shape) center / 100% 100% no-repeat;
+  mask:var(--cloud-shape) center / 100% 100% no-repeat}
+.wfx-cloud-1{animation-delay:-11s}
+.wfx-cloud-2{width:160%;left:-30%;top:-10px;height:67px;opacity:.48;
+  animation-duration:calc(42s / var(--wfx-wind,1));animation-delay:-29s}
+.wfx-cloud-2 .wfx-cloud-body{transform:scaleX(-1)}
+.wfx-cloud-3{width:140%;left:-20%;top:4px;height:52px;opacity:.38;
+  animation-duration:calc(36s / var(--wfx-wind,1));animation-delay:-7s}
+/* The fair-weather bank sits low, leaving the disc and the star field in open sky. */
 .home-weather-card[data-scene^="partly-"] .wfx-cloud-2{display:none}
-.home-weather-card[data-scene^="partly-"] .wfx-cloud-1{width:116px;height:39px;top:19%;opacity:.68}
-.home-weather-card[data-scene^="partly-"] .wfx-cloud-3{top:53%;opacity:.34}
-/* Cloudy scenes overlap broader banks in two perceptible planes, without blur doing the work. */
-.home-weather-card[data-scene^="cloudy-"] .wfx-cloud{--cloud-top:rgba(236,241,245,.82);--cloud-mid:rgba(194,205,214,.78);--cloud-low:rgba(102,119,132,.64)}
-.home-weather-card[data-scene="cloudy-night"] .wfx-cloud{--cloud-top:rgba(137,151,163,.68);--cloud-mid:rgba(91,107,120,.68);--cloud-low:rgba(37,50,61,.76)}
-/* Rain and storm keep the lowest cloud edge above the field's 58px origin. */
-.home-weather-card[data-scene^="rain-"] .wfx-cloud{--cloud-top:rgba(143,160,174,.76);--cloud-mid:rgba(91,111,127,.82);--cloud-low:rgba(40,57,70,.88);top:3%}
-.home-weather-card[data-scene^="rain-"] .wfx-cloud-2{display:none}
-.home-weather-card[data-scene^="rain-"] .wfx-cloud-3{top:13%;opacity:.72}
-.home-weather-card[data-scene="storm"] .wfx-cloud{--cloud-top:rgba(104,100,121,.82);--cloud-mid:rgba(66,65,82,.90);--cloud-low:rgba(25,25,35,.96);top:1%;filter:drop-shadow(0 4px 4px rgba(8,8,13,.30))}
-.home-weather-card[data-scene="storm"] .wfx-cloud-1{width:172px;height:54px}
-.home-weather-card[data-scene="storm"] .wfx-cloud-2{width:198px;top:3%;opacity:.86}
-.home-weather-card[data-scene="storm"] .wfx-cloud-3{top:4%;opacity:.70}
-/* Live wind divides the drift time: ~0.6 on a still day stretches these out, ~2.2 in a gale
-   roughly halves them. Both ends of the loop sit outside the card, so the reset is invisible. */
+.home-weather-card[data-scene^="partly-"] .wfx-cloud-1{width:115%;left:-40%;top:calc(100% - 38px);height:62px;opacity:.6}
+.home-weather-card[data-scene^="partly-"] .wfx-cloud-3{width:130%;left:8%;top:calc(100% - 23px);height:48px;opacity:.38}
+.home-weather-card[data-scene="partly-night"] .wfx-cloud{--cloud-top:#71879f;--cloud-mid:#415a74;--cloud-low:#243c55}
+.home-weather-card[data-scene="partly-dawn"] .wfx-cloud{--cloud-top:#e2b9b4;--cloud-mid:#a085a0;--cloud-low:#69657f}
+.home-weather-card[data-scene="partly-dusk"] .wfx-cloud{--cloud-top:#dbabc9;--cloud-mid:#9d7f9f;--cloud-low:#665e83}
+.home-weather-card[data-scene="cloudy-night"] .wfx-cloud{--cloud-top:#788c9d;--cloud-mid:#4b6174;--cloud-low:#2b3d4e}
+/* All heavy-weather banks end above 58px, the unchanged rain-field origin, at every width. */
+.home-weather-card[data-scene^="rain-"] .wfx-cloud{--cloud-top:#849bac;--cloud-mid:#506b80;--cloud-low:#273e51}
+.home-weather-card[data-scene="rain-night"] .wfx-cloud{--cloud-top:#536d83;--cloud-mid:#30485c;--cloud-low:#162b3e}
+.home-weather-card[data-scene="storm"] .wfx-cloud{--cloud-top:#797589;--cloud-mid:#474759;--cloud-low:#232635;opacity:.72}
+.home-weather-card[data-scene="storm"] .wfx-cloud-2{opacity:.64}
+.home-weather-card[data-scene="storm"] .wfx-cloud-3{opacity:.56}
+/* Small, continuous parallax keeps the ceiling connected throughout the animation. */
 @keyframes wfx-cloud-drift{
-  from{transform:translateX(calc(-100% - 52px))}
-  to{transform:translateX(calc(var(--wfx-drift) + 100% + 52px))}
+  from{transform:translateX(-4%)}
+  to{transform:translateX(4%)}
 }
 
 /* Fog — wide translucent bars drifting very slowly, layered for depth */
@@ -1067,9 +1082,7 @@
 @media (prefers-reduced-motion:reduce){
   .wfx-sun,.wfx-moon,.wfx-star,.wfx-cloud-1,.wfx-cloud-2,.wfx-cloud-3,.wfx-fog-1,.wfx-fog-2,
   .wfx-drop,.wfx-flake,.wfx-flash{animation:none}
-  .wfx-cloud-1{transform:translateX(10%)}
-  .wfx-cloud-2{transform:translateX(118%)}
-  .wfx-cloud-3{transform:translateX(-24%)}
+  .wfx-cloud{transform:none}
   /* The sun/moon glide between arc positions is motion too — they still get placed correctly,
      they just snap there rather than sliding. */
   .wfx-sun,.wfx-moon{transition:none}
@@ -1244,6 +1257,11 @@
   #view-home .home-dash .weather-legibility-left{display:block;width:80%;
     background:linear-gradient(90deg,rgba(7,17,32,.55),transparent)}
   #view-home .home-dash .weather-legibility-right{display:none}
+  /* The taller scene has open sky at right and scenery below; keep stars above the ridge. */
+  #view-home .home-dash .wfx-stars{--star-moon-x:calc(74% + 19px);--star-moon-y:calc(18% + 19px)}
+  #view-home .home-dash .wfx-star{left:calc(150px + (100% - 170px) * var(--star-dx));top:var(--star-dy);bottom:auto}
+  #view-home .home-dash .home-weather-card[data-scene^="partly-"] .wfx-cloud-1{top:43%;height:82px}
+  #view-home .home-dash .home-weather-card[data-scene^="partly-"] .wfx-cloud-3{top:51%;height:65px}
   /* Keep the celestial focal point in open sky, away from text. The banner's astronomical
      arc intentionally crops its disc; that composition is inappropriate for this scene. */
   #view-home .home-dash .wfx-moon,#view-home .home-dash .wfx-sun{left:74%;top:18%;}

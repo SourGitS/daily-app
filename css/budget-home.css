@@ -1043,11 +1043,6 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      item to fit (195px), rather than centring a 560px block as it did when the card was a
      plain block. An explicit width keeps the two ends spread across the banner. */
   #view-home .home-card-wide[data-card-id="weather"] .weather-content{width:72%;max-width:none;margin:0 auto}
-  /* Clouds drift by a fixed px distance (see --wfx-drift in kitchen-extras.css) that only
-     spans a phone-width card; on a wider card they stalled partway and snapped back. Scale
-     the travel to the viewport — more for the full-width banner than the half-width box. */
-  #view-home .home-card[data-card-id="weather"] .home-weather-card{--wfx-drift:60vw}
-  #view-home .home-card-wide[data-card-id="weather"] .home-weather-card{--wfx-drift:100vw}
   #view-home .home-card-wide[data-card-id="weather"] .weather-day{font-size:24px}
   #view-home .home-card-wide[data-card-id="weather"] .weather-temp{font-size:38px}
   #view-home .home-card-wide[data-card-id="weather"] .weather-icon{font-size:34px}
