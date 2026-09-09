@@ -211,7 +211,15 @@
 // five-item mobile bottom nav as a full swipe-deck destination: Home · Budget · Log · Food · Stats.
 // Navigation and presentation only — no store, sync path, calculation or migration changed. Old
 // #nutrition and #kitchen links resolve through one central mapping (navResolve).
-const CACHE_NAME = 'daily-v321';
+// v322: make Stats → Review look native to Daily. The numbered local sidebar and its
+// table-of-contents descriptions are gone, replaced by one compact header (title, week, review
+// status, section row) aligned with the Stats content edge; the landing leads with the selected
+// week’s figures beside a compact dated next-week summary; insights gain a prominent figure,
+// visible dates and a methodology disclosure, with limitations never hidden; and the .rev-list
+// flex/align-items contradiction that shrank insight cards to their own text is removed at
+// source. Presentation and copy only — no calculation, record, draft rule, storage, sync or
+// migration changed.
+const CACHE_NAME = 'daily-v322';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

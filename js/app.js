@@ -16288,6 +16288,17 @@ function renderStatsOverview(){
 // Review is not a second Overview. It only holds items that cleared an evidence threshold,
 // ranked by how much they could change a decision. Fewer, stronger cards — and a calm state
 // when the data genuinely says nothing.
+// An insight is: a short FINDING, one prominent FIGURE that carries the comparison, the DATES
+// it applies to, anything about missing data or uncertainty that changes how it should be read,
+// and an ACTION. Everything else — how the figure was derived, which rule produced it — is
+// METHOD and goes behind a disclosure.
+//   figure {value, caption} — the comparison, stated once and prominently
+//   dates                   — always visible; these are RECENT windows, never the selected
+//                             review week, which is why every card states its own
+//   note                    — a limitation that changes the reading. NEVER hidden.
+//   method                  — how it was worked out. Disclosure only.
+// score, the conditions that raise each card, the ranking, the thresholds and `actions` are
+// untouched: this is a presentation split of what these objects already said.
 function statsReviewInsights(){
   const out=[], P=statsPeriod(4);
 
@@ -16298,7 +16309,9 @@ function statsReviewInsights(){
     out.push({score:Math.abs(now-prev)*9,icon:'calendar',label:'Training frequency',
       chip:statsChip('neutral',(up?'+':'−')+Math.abs(now-prev)+' days'),
       conclusion:'You trained on '+now+' day'+(now===1?'':'s')+' in the last 4 completed weeks, '+(up?'up':'down')+' from '+prev+'.',
-      meta:P.label+' vs the 4 weeks before it · distinct calendar days · '+sessionsIn(P.from,P.to)+' saved sessions in the period',
+      figure:{value:prev+' → '+now,caption:'trained days per 4 weeks'},
+      dates:P.label+' · compared with the 4 weeks before it',
+      method:'Counts distinct calendar days with at least one saved session. '+sessionsIn(P.from,P.to)+' sessions were saved in the period; two on one day still count as one day.',
       actions:[['setStatsTab(\'training\')','Open Training']]});
   }
 
@@ -16308,7 +16321,10 @@ function statsReviewInsights(){
     if(wa.staleDays>21){
       out.push({score:48,icon:'scale',label:'Body goal',chip:statsChip('warn','Stale'),
         conclusion:'Goal pace cannot be assessed — the newest check-in is '+wa.staleDays+' days old.',
-        meta:'Goal episode since '+fmtDate(wa.startedAt)+' · target '+wa.target+' kg · no forecast is made from stale readings',
+        figure:{value:wa.staleDays+' days',caption:'since your last weigh-in'},
+        dates:'Goal running since '+fmtDate(wa.startedAt)+' · target '+wa.target+' kg',
+        note:'No pace or forecast is calculated from readings this old. Weigh in to get one.',
+        method:'A goal needs a recent reading to measure a rate against. Past that point Daily reports the gap rather than estimating through it.',
         actions:[['openWeightEvidence(\''+wa.cur.date+'\')','See the check-in'],['setStatsTab(\'body\')','Open Body']]});
     }else if(wa.pace&&wa.rateReady){
       const cutting=wa.mode==='cut', maintaining=wa.mode==='maintain';
@@ -16321,7 +16337,10 @@ function statsReviewInsights(){
       out.push({score:wa.pace.onPace?34:72,icon:'scale',label:'Body goal',
         chip:statsChip(wa.pace.onPace?'good':'warn',wa.pace.label),
         conclusion,
-        meta:wa.goalReadings.length+' readings since '+fmtDate(wa.startedAt)+' · target '+wa.target+' kg'+(weightGoal.date?' by '+fmtDate(String(weightGoal.date).slice(0,10)):'')+' · rate is measured, not projected',
+        figure:{value:(wa.rate>0?'+':'−')+rate+' kg',caption:'measured change per week'},
+        dates:wa.goalReadings.length+' readings since '+fmtDate(wa.startedAt)+' · target '+wa.target+' kg'+(weightGoal.date?' by '+fmtDate(String(weightGoal.date).slice(0,10)):''),
+        note:'This rate is measured from the readings you logged. It is not a projection of what will happen next.',
+        method:'The rate is fitted across the readings saved since this goal started, then compared with the path the goal needs. Days without a reading are skipped, never counted as no change.',
         actions:[['openWeightEvidence(\''+wa.cur.date+'\')','See the check-in'],['setStatsTab(\'body\')','Open Body']]});
     }
   }
@@ -16331,7 +16350,10 @@ function statsReviewInsights(){
   if(Object.keys(calorieHistory||{}).length&&cal.logged.length<4){
     out.push({score:40,icon:'receipt',label:'Calorie record',chip:statsChip('warn','Sparse'),
       conclusion:'Only '+cal.logged.length+' of the last 7 completed days has a calorie record, so period comparisons are not meaningful yet.',
-      meta:fmtDate(cal.from)+' – '+fmtDate(cal.to)+' · unlogged days stay unknown and are never counted as zero',
+      figure:{value:cal.logged.length+' of 7',caption:'days with a calorie record'},
+      dates:fmtDate(cal.from)+' – '+fmtDate(cal.to),
+      note:'A day you did not log stays unknown. Daily never treats it as zero calories, so averages would be misleading until more days are recorded.',
+      method:'Counts completed days with at least one calorie entry. Four is the minimum before Daily will compare one period with another.',
       actions:[['openNutritionEvidence()','See dated coverage'],['setStatsTab(\'nutrition\')','Open Nutrition']]});
   }
 
@@ -16348,7 +16370,9 @@ function statsReviewInsights(){
         out.push({score:Math.min(88,pct*2.5),icon:'wallet',label:'Weekly plan',
           chip:statsChip(over?'warn':'good',(over?'+':'−')+pct+'%'),
           conclusion:'The week of '+fmtDate(k)+' finished '+fmtMoney(Math.abs(diff))+' '+(over?'over':'under')+' the plan saved for that week.',
-          meta:'Spent '+fmtMoney(Math.round(spent))+' against a saved plan of '+fmtMoney(target)+' · transactions override manual category figures',
+          figure:{value:fmtMoney(Math.round(spent))+' vs '+fmtMoney(target),caption:'spent against the plan saved for that week'},
+          dates:'Week of '+fmtDate(k)+' · the most recent completed budget week',
+          method:'Compared against the plan saved with that week, not today’s plan. Where a category has logged transactions they are used in place of any typed weekly figure.',
           actions:[['closeStatsEvidence();openBudgetWeekFromStats(\''+k+'\')','Open that budget week'],['setStatsTab(\'finance\')','Open Finance']]});
       }
     }
@@ -16376,16 +16400,28 @@ function statsReviewInsights(){
           return {key:wk,val:varCatAmount(budgetData[wk],wk,bestCat.def.id),label:savedDef&&savedDef.snapshot?savedDef.label:null};
         });
         const savedLabels=[...new Set(compared.map(w=>w.label).filter(Boolean))];
-        const labelNote=savedLabels.length>1
-          ? 'The saved label changed across these weeks; each source row keeps its historical name'
-          : compared.every(w=>w.label)?'The category label was saved with every compared week'
-          : 'Some weeks lack a saved label; the archived category ID is retained without borrowing today’s name';
+        // Plain language, same limitation. The old wording named the stored identifier and the
+        // fact that today's label is not borrowed — a description of the mechanism for someone
+        // who already understood it. What a reader needs is what it means for the comparison.
+        // A caveat that changes how the finding should be read stays VISIBLE (note); the
+        // reassuring case is methodology and goes in the disclosure.
+        const renamed=savedLabels.length>1;
+        const missingLabel=!compared.every(w=>w.label);
+        const labelNote=renamed
+          ? 'This category was renamed during the weeks being compared. Each week keeps the name it was saved under, so the amounts still line up.'
+          : missingLabel
+          ? 'Some of these weeks did not save a category name. Daily matched them on the category itself rather than reusing today’s name, so a rename cannot distort the comparison.'
+          : '';
         const evKey=statsRegisterFinanceEvidence({id:bestCat.def.id,label:bestCat.def.label,kind:'Variable',
           weeks:compared});
         out.push({score:Math.min(80,bestCat.pct),icon:'receipt',label:'Category shift',
           chip:statsChip(up?'warn':'good',(up?'+':'−')+bestCat.pct+'%'),
           conclusion:_catEscHtml(bestCat.def.label)+' was '+fmtMoney(Math.round(bestCat.nowVal))+' in the week of '+fmtDate(k)+', against a '+fmtMoney(Math.round(bestCat.avg))+' average over the '+base.length+' weeks before it.',
-          meta:labelNote+' · transaction-backed where transactions exist',
+          figure:{value:fmtMoney(Math.round(bestCat.nowVal))+' vs '+fmtMoney(Math.round(bestCat.avg)),caption:'that week against its recent average'},
+          dates:'Week of '+fmtDate(k)+' · averaged over the '+base.length+' completed weeks before it',
+          note:labelNote,
+          method:(labelNote?'':'The category name was saved with every week compared. ')+
+            'Where a category has logged transactions they are used in place of any typed weekly figure.',
           actions:[['openFinanceCategoryEvidence(\''+evKey+'\')','See the transactions'],['setStatsTab(\'finance\')','Open Finance']]});
       }
     }
@@ -16397,7 +16433,10 @@ function statsReviewInsights(){
   if(nw&&nw.covered&&nw.stale>21){
     out.push({score:52,icon:'bank',label:'Account coverage',chip:statsChip('warn',nw.stale+'d stale'),
       conclusion:'Net worth is resting on a balance that has not been updated for '+nw.stale+' days.',
-      meta:'Latest comparable date '+fmtDate(nw.latest)+' · balances carry forward between updates, so the figure is as old as its oldest input',
+      figure:{value:nw.stale+' days',caption:'since the oldest balance was updated'},
+      dates:'Latest date every account has a reading for: '+fmtDate(nw.latest),
+      note:'A balance carries forward until you update it, so your net worth is only as current as its oldest input.',
+      method:'Net worth is compared on dates where every tracked account has a recorded balance, so one account updated today does not make the whole figure look fresh.',
       actions:[['openNetWorthEvidence(\''+nw.latest+'\')','See each balance'],['setStatsTab(\'finance\')','Open Finance']]});
   }
 
@@ -16412,7 +16451,8 @@ function renderStatsReview(){
   const focusId=focused&&focused.id,focusAction=focused&&focused.getAttribute('onclick');
   const weekly=typeof wkrWeeklyReviewHtml==='function'?wkrWeeklyReviewHtml():'';
   wrap.innerHTML=weekly+(!wkrPlan.enabled&&!wkrDraft()?'<div class="rev-section">'+wkrInsightsHtml()+'</div>':'');
-  wrap.classList.toggle('rev-railed', !!wrap.querySelector('.wkr-rail'));
+  // .rev-railed is gone with the rail it gated: Review is laid out from the section it is
+  // showing (data-wkr-section on .wkr-body), not from whether a sidebar happens to be present.
   wrap.querySelectorAll('[data-wkr-frozen="true"] input,[data-wkr-frozen="true"] textarea,[data-wkr-frozen="true"] select').forEach(el=>el.disabled=true);
   openDetails.forEach(id=>{const el=document.getElementById(id);if(el)el.open=true;});
   wkrUI.openPage=null;
@@ -16420,22 +16460,34 @@ function renderStatsReview(){
   if(restoreFocus)restoreFocus.focus({preventScroll:true});
 }
 function wkrInsightsHtml(){
-  const heading='<div class="wkr-insights-heading"><h3>What Daily noticed</h3><p>Recent trends across Daily · each observation shows its own dates.</p></div>';
+  // The subtitle earns its place: these windows are RECENT and are not the selected review
+  // week, and each card repeats its own dates so the distinction survives being read alone.
+  const heading='<div class="wkr-insights-heading"><h3>What Daily noticed</h3>'+
+    '<p>Recent trends across Daily. These cover their own date ranges, not the week you are reviewing.</p></div>';
   const items=statsReviewInsights();
   if(!items.length){
-    return heading+'<div class="card stats-calm">'+cardHeader('check','Review')+
+    return heading+'<div class="card rev-calm">'+cardHeader('check','Nothing to flag')+
       '<div class="stats-conclusion">Nothing needs attention from the available data.</div>'+
       '<div class="stats-data-note">No completed-period comparison cleared its evidence threshold. Overview has the current figures and their coverage.</div>'+
       '<button class="stats-inline-link" style="margin-top:12px" onclick="setStatsTab(\'overview\')">Open Stats overview &rarr;</button></div>';
   }
-  return heading+'<div class="rev-list">'+items.map(it=>
+  return heading+'<div class="rev-list">'+items.map((it,idx)=>
     '<div class="card rev-card">'+
       cardHeader(it.icon,it.label,it.chip||'')+
       '<div class="rev-conclusion">'+it.conclusion+'</div>'+
-      '<div class="rev-meta">'+it.meta+'</div>'+
+      // The comparison, once and prominently. It repeats a number the sentence above already
+      // contains, deliberately: the sentence is what happened, this is the size of it.
+      (it.figure?'<div class="rev-figure"><b>'+escText(it.figure.value)+'</b><span>'+escText(it.figure.caption)+'</span></div>':'')+
+      (it.dates?'<div class="rev-dates">'+escText(it.dates)+'</div>':'')+
+      // A limitation that changes how the finding should be read is NEVER behind the
+      // disclosure — that is the difference between this and `method` below it.
+      (it.note?'<p class="rev-note">'+escText(it.note)+'</p>':'')+
       '<div class="rev-actions">'+it.actions.map((a,i)=>
         '<button type="button" class="'+(i?'rev-act':'rev-act primary')+'" onclick="'+a[0]+'">'+a[1]+' &rarr;</button>').join('')+
-      '</div></div>').join('')+'</div>'+
+      '</div>'+
+      (it.method?'<details class="rev-method" id="rev-method-'+idx+'"><summary>How this was worked out</summary>'+
+        '<div class="rev-method-body">'+escText(it.method)+'</div></details>':'')+
+    '</div>').join('')+'</div>'+
     '<div class="stats-data-note rev-foot">Missing data stays unknown. Observations guide a decision; they do not change your plan.</div>';
 }
 // ══ Weekly Review ═══════════════════════════════════════════════
@@ -16488,14 +16540,17 @@ const WKR_MAP_HINTS={
 // Public assets contain no personal template. Private baselines are entered during setup.
 const WKR_OPP_STATUSES=[['active','Active'],['likely','Likely'],['won','Won'],['lost','Lost']];
 
-// Core destinations plus the user's enabled pages drive both rail and phone navigation.
+// Core destinations plus the user's enabled pages. ONE list drives the section row at every
+// width. The `desc` field is gone with the numbered rail that displayed it: a table of contents
+// describing each section is what made this screen read as a document rather than a Daily tab,
+// and the labels are self-explanatory beside each other in a row.
 const WKR_SECTIONS=[
-  {id:'overview',   label:'Weekly reset', desc:'What happened · what to change'},
-  {id:'money',      label:'Money',      desc:'Plan and actuals'},
-  {id:'next',       label:'Next week',  desc:'Give your next pay a purpose'}
+  {id:'overview', label:'Weekly reset'},
+  {id:'money',    label:'Money'},
+  {id:'next',     label:'Next week'}
 ];
 function wkrSectionsFor(plan){
-  return WKR_SECTIONS.concat((plan.pages||[]).filter(p=>p.enabled).map(p=>({id:p.id,label:p.title,desc:'Your optional review page'})));
+  return WKR_SECTIONS.concat((plan.pages||[]).filter(p=>p.enabled).map(p=>({id:p.id,label:p.title})));
 }
 
 function wkrNormalisePages(value, legacy){
@@ -16990,7 +17045,20 @@ function wkrHowItWorksHtml(){
         'your Budget, accounts, workouts, nutrition or Journal. Ask Daily AI only prepares text for you to copy.</p>'+
     '</div></details>';
 }
-function wkrSetSection(sec){ wkrFlushPending();wkrUI.section=sec; renderStatsReview(); }
+function wkrSetSection(sec){
+  wkrFlushPending();          // pending answer edits are written before the section changes
+  wkrUI.section=sec;
+  renderStatsReview();
+  // With several optional pages the row scrolls, and a selected pill off its right edge is
+  // invisible. NEVER scrollIntoView(): #view-stats is a .swipe-panel inside the transformed
+  // #swipe-deck, so that would walk up and shove the deck sideways. segScrollToTab is the
+  // app's measured-rect nudge, the same one Log and the Stats strip itself use.
+  // Guarded on the METHOD, not on `document`: the Review regression suite runs these helpers
+  // against a stub document that has no querySelector.
+  const row=(typeof document!=='undefined'&&typeof document.querySelector==='function')
+    ? document.querySelector('#review-content .wkr-tabs') : null;
+  if(row&&typeof segScrollToTab==='function') segScrollToTab(row, row.querySelector('button.on'));
+}
 
 // A record is created on the first MEANINGFUL edit, never by opening the screen. Same rule as
 // the Journal editor: merely looking at a week must not leave a blank review behind.
@@ -17938,19 +18006,46 @@ function wkrNextBalanceHtml(n){
   const balance=Math.round((wkrNum(n.money.regularWeeklyTakeHome,0)-wkrAllocationTotal({money:n.money}))*100)/100;
   return '<span class="'+(balance<0?'wkr-over':'')+'">'+fmtMoneyExact(Math.abs(balance))+' '+(balance<0?'over planned income':'still unallocated')+'</span>';
 }
-function wkrNextCardHtml(week,rec,plan){
+// Two forms of one card, from one function. COMPACT is what the landing shows: the dated week,
+// the planned income, whether the money is allocated, and the action — the allocation table is
+// summarised in a line rather than printed, because seven rows of it was the entire first
+// screen and answered a question nobody had asked yet. FULL is the Next week section's
+// read-only state, with the table, the note and the priorities.
+// Its chip is the PLAN's status ("Saved plan" / "Not saved yet"), which is deliberately not
+// the review status in the header above it.
+function wkrNextCardHtml(week,rec,plan,opts){
+  const compact=!!(opts&&opts.compact);
   const n=wkrNextSeed(week,rec,plan),saved=!!n.acceptedAt;
   const rows=WKR_GROUPS.map(g=>[n.money.groupLabels[g.id],n.money.allocations[g.id]])
     .concat([['Savings',n.money.allocations.savings],['Buffer',n.money.allocations.buffer]]).filter(r=>r[1]>0);
-  return '<div class="card wkr-next-card">'+cardHeader('target','Next week’s plan',statsChip('neutral',saved?'Saved plan':'Not saved yet'))+
-    '<h3 class="wkr-reset-title">'+escText(wkrWeekLabel(n.week))+'</h3>'+
+  const allocated=rows.reduce((s,r)=>s+r[1],0);
+  const done=!!(rec&&rec.status==='completed');
+  const action='<div class="wkr-actions"><button type="button" class="wkr-btn primary" onclick="'+
+    (done?'wkrReopenReview()':'wkrEditNext()')+'">'+
+    (done?'Reopen to edit this plan':saved?'Edit this allocation':'Plan next week')+'</button></div>';
+  const head='<div class="card wkr-next-card">'+
+    cardHeader('target','Next week’s plan',statsChip('neutral',saved?'Saved plan':'Not saved yet'))+
+    '<div class="wkr-sum-week">'+escText(wkrWeekLabel(n.week))+'</div>'+
+    '<div class="wkr-next-income">'+fmtMoneyExact(n.money.regularWeeklyTakeHome)+
+      '<span> planned income'+(n.payDate?' · pay day '+escText(fmtDate(n.payDate)):'')+'</span></div>';
+  if(compact){
+    return head+
+      '<div class="wkr-next-state">'+
+        '<div class="wkr-next-state-l">'+(rows.length
+          ? fmtMoneyExact(allocated)+' allocated across '+rows.length+' line'+(rows.length===1?'':'s')
+          : 'Nothing allocated yet')+'</div>'+
+        '<div class="wkr-next-state-r">'+wkrNextBalanceHtml(n)+'</div>'+
+      '</div>'+
+      (saved?'':'<p class="wkr-cov">Your baseline is filled in below. Nothing is saved for this week until you plan it.</p>')+
+      action+'</div>';
+  }
+  return head+
     '<div class="wkr-help">'+(saved?'Your allocation for this week.':'Start with your baseline, then decide where next week’s money goes.')+'</div>'+
-    '<div class="wkr-next-income">'+fmtMoneyExact(n.money.regularWeeklyTakeHome)+'<span> planned income'+(n.payDate?' · pay day '+escText(fmtDate(n.payDate)):'')+'</span></div>'+
     '<div class="wkr-next-allocations">'+rows.map(r=>'<div class="wkr-row"><span>'+escText(r[0])+'</span><b>'+fmtMoneyExact(r[1])+'</b></div>').join('')+'</div>'+
     '<div class="wkr-help">'+wkrNextBalanceHtml(n)+'</div>'+
     (n.note?'<p class="wkr-reset-note">'+escText(n.note)+'</p>':'')+
     (n.priorities.some(Boolean)?'<ul class="wkr-priorities">'+n.priorities.filter(Boolean).map(p=>'<li>'+escText(p)+'</li>').join('')+'</ul>':'')+
-    '<div class="wkr-actions"><button type="button" class="wkr-btn primary" onclick="'+(rec&&rec.status==='completed'?'wkrReopenReview()':'wkrEditNext()')+'">'+(rec&&rec.status==='completed'?'Reopen to edit this plan':saved?'Edit this allocation':'Plan next week')+'</button></div></div>';
+    action+'</div>';
 }
 function wkrNextEditorHtml(week,rec,plan){
   const d=wkrUI.nextDraft;
@@ -17992,13 +18087,58 @@ function wkrSuggestionsHtml(week,rec,plan){
     (bills.length?bills.map(b=>'<div class="wkr-row"><span class="wkr-row-l"><span>'+escText(b.name)+'</span><span class="wkr-row-meta">'+escText(fmtDate(b.date))+'</span></span><b>'+fmtMoneyExact(b.amount)+'</b></div>').join('')+
     '<p class="wkr-help">These charges may already be covered by your allocations. Check timing and funding; do not add them twice.</p>':'<p class="wkr-help">No dated recurring charges found for this week. Check for one-off expenses and bills without a schedule.</p>')+'</div>';
 }
+// ── The landing ─────────────────────────────────────────────────
+// Three questions in order: what happened in the selected week, what deserves attention, what
+// to do next. The two SUMMARIES lead — the week that was, and the week being planned — and sit
+// side by side on a wide screen because they are the same size and answer adjacent questions;
+// everything below them is a single reading column. The next-week card here is the COMPACT
+// form: its full allocation editor belongs to the Next week section, and a seven-row table was
+// the whole first screen before this.
 function wkrOverviewHtml(week,rec,plan){
+  return '<div class="wkr-landing">'+
+      wkrWeekSummaryHtml(week,rec,plan)+
+      wkrNextCardHtml(week,rec,plan,{compact:true})+
+    '</div>'+
+    wkrInsightsHtml()+
+    wkrSuggestionsHtml(week,rec,plan);
+}
+// What happened in the selected week, from the canonical readers only (wkrDisplayActuals →
+// wkrMoneyActuals → statsWeekParts / weekIncome / weekSavedAmt / weekLeftover). Nothing here
+// recomputes a figure one of those already answers.
+// An unfinished week is marked as such rather than being presented as a result: spending so
+// far in a week still running is a check-in, and the chip, the caption and the note all say so.
+function wkrWeekSummaryHtml(week,rec,plan){
   const m=wkrDisplayActuals(week,rec,plan);
-  return wkrNextCardHtml(week,rec,plan)+wkrInsightsHtml()+
-    '<div class="card">'+cardHeader('wallet',week>=weekKey(getMondayOf(0))?'This week so far':'The reviewed week')+
-    '<div class="wkr-help">'+escText(wkrWeekLabel(week))+'</div>'+
-    (m.hasData?'<div class="wkr-reset-metrics">'+[['Income',m.incomeKnown?fmtMoneyExact(m.incomeTotal):'Not recorded'],['Spending',fmtMoneyExact(m.spendTotal)],['Saved',fmtMoneyExact(m.saved)]].map(([label,value])=>'<div><span>'+label+'</span><b>'+value+'</b></div>').join('')+'</div>':'<p class="wkr-help">No Budget record for this week.</p>')+
-    '<div class="wkr-actions"><button class="wkr-btn" onclick="wkrSetSection(\'money\')">Review money details</button></div></div>'+wkrSuggestionsHtml(week,rec,plan);
+  const inProgress=week>=weekKey(getMondayOf(0));
+  const done=!!(rec&&rec.status==='completed');
+  const chip=inProgress?statsChip('warn','Week in progress')
+           : done?statsChip('good','Figures frozen')
+           : statsChip('neutral','Week finished');
+  // Coverage, stated where it changes how the figures read. Never suppressed.
+  const cov=[];
+  if(!m.hasData) cov.push('No Budget record for this week yet, so there is nothing to compare.');
+  else {
+    if(inProgress) cov.push('This week has not finished. Treat these as a check-in rather than a result.');
+    if(!m.incomeKnown) cov.push('No income was recorded for this week, so anything left over cannot be worked out.');
+    if(m.quality&&m.quality.ambiguousLegacyVariable) cov.push('This week only kept a single spending total, so the category split below it is incomplete.');
+    if(done) cov.push('These are the figures this review was completed against, not today’s.');
+  }
+  const figs=m.hasData
+    ? [['Income', m.incomeKnown?fmtMoneyExact(m.incomeTotal):'Not recorded'],
+       ['Spending', fmtMoneyExact(m.spendTotal)],
+       ['Saved', fmtMoneyExact(m.saved)],
+       ['Left over', m.incomeKnown?fmtMoneyExact(m.leftover):'—']]
+    : [];
+  return '<div class="card wkr-sum-card">'+
+    cardHeader('wallet','Selected week',chip)+
+    '<div class="wkr-sum-week">'+escText(wkrWeekLabel(week))+'</div>'+
+    (figs.length
+      ? '<div class="wkr-reset-metrics">'+figs.map(([label,value])=>
+          '<div><span>'+label+'</span><b>'+value+'</b></div>').join('')+'</div>'
+      : '')+
+    cov.map(c=>'<p class="wkr-cov">'+escText(c)+'</p>').join('')+
+    '<div class="wkr-actions"><button class="wkr-btn" onclick="wkrSetSection(\'money\')">See the money detail</button></div>'+
+  '</div>';
 }
 
 // ── Daily AI handoff ────────────────────────────────────────────
@@ -18033,11 +18173,15 @@ function wkrAskDailyAI(){
 }
 
 // ── Main render ─────────────────────────────────────────────────
+// The REVIEW's status, and it says so in as many words. It sits beside the page title while
+// the next-week card carries its own "Saved plan / Not saved yet" chip, because the two are
+// different things: a review can be untouched while next week is fully planned, and a bare
+// "Not started" beside a saved allocation read as though the plan had not been saved either.
 function wkrStatusChip(rec){
-  if(!rec) return '<span class="wkr-status">Not started</span>';
+  if(!rec) return '<span class="wkr-status">Review not started</span>';
   if(rec.status==='completed')
-    return '<span class="wkr-status is-done">Completed'+(rec.completedAt?' '+fmtDate(dateStr(new Date(rec.completedAt))):'')+'</span>';
-  return '<span class="wkr-status is-draft">Draft — saving as you type</span>';
+    return '<span class="wkr-status is-done">Review completed'+(rec.completedAt?' '+fmtDate(dateStr(new Date(rec.completedAt))):'')+'</span>';
+  return '<span class="wkr-status is-draft">Review in progress</span>';
 }
 function wkrWeeklyReviewHtml(){
   if(!wkrPlan.enabled&&!wkrUI.setup&&!wkrUI.planDraft){
@@ -18091,44 +18235,45 @@ function wkrWeeklyReviewHtml(){
     '</div>'
     : '';
 
-  // ONE set of controls. The rail/aside and the main column are the same markup at every
-  // width — only CSS decides whether they sit side by side (≥1180, the rail in its own grid
-  // column) or stack into the phone's week bar and horizontal pill strip. Building a second
-  // desktop copy would duplicate the week <select> and the four section buttons.
+  // ONE compact header, at every width, sitting on the Stats content line beneath the tab
+  // strip: the page title, the week being reviewed, the REVIEW's own status, and a horizontal
+  // section row. It replaces a numbered local sidebar plus a repeated eyebrow/title/subtitle
+  // block — three layers that between them said the same three things and left nothing above
+  // the fold about what actually happened in the week.
+  // The section row is built from the SAME registry at every width (wkrSectionsFor), so there
+  // is no second mobile list and no duplicate week <select> for the two to drift apart.
   return '<div class="wkr-wrap wkr-workspace">'+
-    '<aside class="wkr-rail">'+
-      '<div class="wkr-rail-lbl">Week to review</div>'+
+    '<div class="wkr-head">'+
+      '<div class="wkr-head-row">'+
+        '<h3 class="wkr-head-t">Weekly review</h3>'+
+        wkrStatusChip(rec)+
+      '</div>'+
       '<div class="wkr-weekbar">'+
-        '<select aria-label="Week to review" onchange="wkrSetWeek(this.value)">'+
+        '<label class="wkr-week-lbl" for="wkr-week-select">Week reviewed</label>'+
+        '<select id="wkr-week-select" onchange="wkrSetWeek(this.value)">'+
           weeks.map(w=>'<option value="'+w+'"'+(w===week?' selected':'')+'>'+escText(wkrWeekLabel(w))+
             (wkrReviews[w]?(wkrReviews[w].status==='completed'?' ✓':' •'):'')+'</option>').join('')+
         '</select>'+
-        wkrStatusChip(rec)+
       '</div>'+
       '<div class="wkr-tabs" role="group" aria-label="Review sections">'+
-        sections.map((s,i)=>'<button type="button" class="'+(wkrUI.section===s.id?'on':'')+'" '+
+        sections.map(s=>'<button type="button" class="'+(wkrUI.section===s.id?'on':'')+'" '+
           'aria-pressed="'+(wkrUI.section===s.id?'true':'false')+'" '+
-          'onclick="wkrSetSection(\''+s.id+'\')">'+
-          '<span class="wkr-tab-n" aria-hidden="true">'+(i+1)+'</span>'+
-          '<span class="wkr-tab-c"><span class="wkr-tab-l">'+escText(s.label)+'</span>'+
-          '<span class="wkr-tab-d">'+escText(s.desc)+'</span></span>'+
-        '</button>').join('')+
+          'onclick="wkrSetSection(\''+s.id+'\')">'+escText(s.label)+'</button>').join('')+
       '</div>'+
-    '</aside>'+
+    '</div>'+
     '<div class="wkr-main">'+
-      '<div class="wkr-mainhd">'+
-        '<div class="wkr-mainhd-eyebrow">Weekly review · '+escText(wkrWeekLabel(week))+'</div>'+
-        '<h3 class="wkr-mainhd-t">'+escText(active?active.label:'')+'</h3>'+
-        '<div class="wkr-mainhd-d">'+escText(active?active.desc:'')+'</div>'+
-      '</div>'+
       (wkrUI.nextDraft&&wkrUI.section!=='next'?'<div class="wkr-warning">You have an unsaved next-week plan. <button class="wkr-btn" onclick="wkrSetSection(\'next\')">Continue editing</button></div>':'')+
-      '<div class="wkr-body" data-wkr-frozen="'+!!done+'">'+prompt+body+'</div>'+
+      // The landing composes its own two summaries; every other section is a form or a
+      // comparison and keeps a reading measure. One attribute decides, so the stylesheet needs
+      // no copy of the section list.
+      '<div class="wkr-body'+(wkrUI.section==='overview'?' is-landing':' is-form')+'" '+
+        'data-wkr-section="'+escAttr(wkrUI.section)+'" data-wkr-frozen="'+!!done+'">'+prompt+body+'</div>'+
       '<div class="wkr-actions">'+
         (done
           ? '<button type="button" class="wkr-btn" onclick="wkrReopenReview()">Reopen this review</button>'
           : week<weekKey(getMondayOf(0))?'<button type="button" class="wkr-btn primary" onclick="wkrCompleteReview()">Complete this review</button>':'<span class="wkr-help">This week is in progress. You can save next week’s plan now.</span>')+
         '<button type="button" class="wkr-btn" onclick="wkrAskDailyAI()">Ask Daily AI about this review</button>'+
-        '<button type="button" class="wkr-btn quiet" onclick="wkrEditPlan()">Edit baseline & pages</button>'+
+        '<button type="button" class="wkr-btn quiet" onclick="wkrEditPlan()">Edit baseline &amp; pages</button>'+
         '<button type="button" class="wkr-btn quiet" onclick="wkrTurnOff()">Turn off</button>'+
       '</div>'+
       frozenNote+wkrHowItWorksHtml()+

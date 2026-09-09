@@ -333,12 +333,13 @@ older summary — re-grep before assuming a fact from here is still true if it l
   Stats › Nutrition; they did not move into Food › Today, which is the day log only.
 - **Weekly Review** (Stats → Review, `css/review.css`, `wkr*`/`WKR_*` in `js/app.js`) — an
   opt-in review of ONE finished week against a saved weekly plan, ending in a next-week plan.
-  Four sections: Money, Work and commission, General life, Reflection and next week. New users
-  see a setup screen; the suggested template is visible but is only written when they press the
-  button that saves it. Above 1180px it is a two-column workspace — a local section rail beside
-  one vertical flow of cards; below that, on the phone and in landscape, the SAME markup reflows
-  to the week bar and horizontal pill strip. See "Known history" for the three rules it is built
-  on and for the rail's geometry.
+  Core sections are Weekly reset, Money and Next week, plus whichever optional/custom pages the
+  user has enabled. New users see a setup screen; the suggested template is visible but is only
+  written when they press the button that saves it. **As of v322 there is no local rail**: one
+  compact header (title, week, review status, horizontal section row) at every width, a landing
+  that leads with the selected week beside a compact next-week summary, and everything else at a
+  reading measure on the Stats canvas. See "Known history" for the three rules it is built on
+  and for the layout decisions.
 - **Food** (v321) — Kitchen and Nutrition merged into ONE top-level destination, because they
   were two tabs answering one question between them: what is eaten, cooked, bought and held.
   One section strip, four sections, and never a Food strip stacked on a Nutrition strip:
@@ -982,52 +983,84 @@ the accent or the theme must go through those, not set `--accent` directly.
   finished week still awaiting a review within that boundary" — without the pin, completing a
   review changed what the function answered and the screen jumped off the week just completed.
 
-- **Stats → Review is the ONE screen with a local navigation rail, and its breakpoint is
-  1180px.** (`css/review.css`, `.wkr-workspace` / `.wkr-rail` / `.wkr-main`, `WKR_SECTIONS` in
-  `js/app.js`.) Above 1180 the enabled Weekly Review is a two-column workspace — a 206px rail
-  holding "Week to review", the week `<select>`, the status chip and the four vertical section
-  rows, then a 20px gap, then the active section in a column capped at `--wkr-measure` (900px).
-  The three numbers live as custom properties on `#review-content`. The workspace is centred
-  in the app canvas at its `206 + 20 + 900 = 1126px` cap, so a 1920px monitor gets page margin
-  rather than a 1600px-wide form. Measured: **1180** → rail 206 / gap 20 / main 631; **1440** →
-  206 / 20 / 875 (the canvas is the constraint, not the cap); **1920** → 206 / 20 / 900, centred
-  with ~228px either side. 1180 is the number Settings' master–detail split already uses and is
-  chosen for the same reason — below it the 260px sidebar plus 32px section padding leave too
-  little for a rail AND a usable form.
-  **This rail is local to one structured workflow. It is not a second app sidebar** and must
-  not be copied to Home, Budget, Accounts, Log, Kitchen, Journal, Settings, Daily AI or any
-  other Stats tab.
-  **There is ONE DOM at every width.** Below 1180 (and on the phone, and in landscape) the
-  `.wkr-workspace` and `.wkr-rail` are plain blocks, so the week bar and the horizontal
-  `.wkr-tabs` pill strip render exactly as they always did; the rail-only chrome
-  (`.wkr-rail-lbl`, `.wkr-tab-n`, `.wkr-tab-d`, `.wkr-mainhd`) is `display:none` by default and
-  revealed by the rail media query. Do NOT build a second desktop copy of these controls — that
-  duplicates the week `<select>`, the four section buttons and their accessible names.
-  `.wkr-tab-c` is `display:contents` below the breakpoint so the pill reads as one word.
-  **`WKR_SECTIONS` (beside `WKR_OPP_STATUSES`) is the single source for section id, label and
-  description**, and `wkrSectionsFor(plan)` applies the Work/Life enabled gates. Both the rail
-  rows and the `.wkr-mainhd` heading above the active section read it, so the two cannot drift
-  apart. The rail is rendered with `aria-pressed` on native buttons — one selected state, no
-  parallel attribute.
-  **`.wkr-body` is a single vertical flow at every desktop width** (`grid-template-columns:
-  minmax(0,1fr)`), NOT the two-column card grid it used to be. Review cards are variable-height
-  forms; a shared row is only as short as its tallest card, so one card was always either
-  stretched or sitting beside a hole. `.wkr-span` survives in the markup as a semantic marker
-  and deliberately carries no rule. No masonry, no `grid-auto-flow:dense`, no measured spans:
-  this screen has a meaningful reading and keyboard order. Compact grids INSIDE a card
-  (`.wkr-2col`, `.wkr-pv`, `.wkr-alloc-row`) are untouched — they express one relationship.
-  **The setup chooser, the plan editor and the switched-off state get NO rail.** They are
-  centred single-column flows at `--wkr-measure`. `renderStatsReview()` writes `rev-railed` on
-  `#review-content` by reading `.wkr-rail` back off the DOM it just wrote, so there is no second
-  copy of "is there a rail" to go stale.
-  **The following describes the pre-v317 layout, superseded by Weekly reset below.** Its
-  cards now live in a `.rev-section` wrapper and `.rev-list` is one column on desktop
-  (`css/workout.css`), so three ranked insights no longer leave an empty half-row and rank
-  reads straight down. When the rail is present `.rev-section` REPEATS the workspace's grid and
-  puts its children in column 2 — that is what aligns the insights with `.wkr-main` instead of
-  the rail, and it is deliberately not a hardcoded left margin. The landscape-phone two-column
-  `.rev-list` rule is unchanged. Insight generation, ranking, thresholds, the three-item cap and
-  every action are untouched.
+- **Stats → Review has NO local navigation rail any more (v322), and it must not come back.**
+  (`css/review.css`, `.wkr-workspace` / `.wkr-head` / `.wkr-main`, `WKR_SECTIONS` in
+  `js/app.js`.) It had one from Prompt 48 until v322: a 206px sidebar at ≥1180px holding
+  "Week to review", the week `<select>`, the status chip and four NUMBERED section rows with a
+  description under each, plus a `.wkr-mainhd` block above the section repeating the page name,
+  the week and that same description. Between them those two layers stated the same three
+  things two or three times and pushed the week's actual figures below the fold, which is what
+  made the screen read as an imported planning document rather than a Daily tab.
+  **What replaced it is ONE compact header** (`.wkr-head`): the page title, the review status
+  chip beside it, a labelled full-width week `<select>`, and a horizontal `.wkr-tabs` row — the
+  same control the phone always had, now used at every width. Retired with the rail:
+  `.wkr-rail`, `.wkr-rail-lbl`, `.wkr-tab-n` (the step numbers), `.wkr-tab-d` (the
+  descriptions), `.wkr-tab-c`, `.wkr-mainhd*`, the `rev-railed` class and the `--wkr-rail-w` /
+  `--wkr-gap` tokens. `WKR_SECTIONS` lost its `desc` field with them.
+  **Review now sits on the Stats canvas, LEFT-aligned, not centred.** Two measures do the work,
+  both on `#review-content`: `--wkr-measure` (880px) is the reading width every form,
+  comparison, reflection and insight list keeps however wide the screen gets, and
+  `--wkr-canvas` (1240px) is what the LANDING may spread to. `margin-left:0;margin-right:auto`
+  — the same alignment `.seg-tabs` takes on desktop, so Review starts on the line the Stats tab
+  strip above it starts on. Measured at 1920: landing 1240, everything else 880.
+  **The landing composes exactly two summaries and nothing else.** `.wkr-landing` is a
+  two-column grid from 1024 holding the Selected week card and the COMPACT next-week card, at
+  `align-items:start` so each keeps its own height. It is not a dashboard grid: no third card,
+  no masonry, no dense flow, no minimum heights, no stretching, and nothing below it is
+  columned. On a phone it is one vertical flow with the week's figures first.
+  **`wkrNextCardHtml(week,rec,plan,{compact:true})` is the landing's form.** It shows the dated
+  week, the planned income, an allocation state LINE ("$1,050 allocated across 7 lines · $100
+  still unallocated") and the action. The full seven-row allocation table stays in the Next
+  week section, where the editor is — that table was the entire first screen before v322.
+  **Review status and next-week plan status are separate statements and must stay so.**
+  `wkrStatusChip()` says "Review not started / Review in progress / Review completed <date>"
+  beside the page title; the next-week card carries its own "Saved plan / Not saved yet". A
+  review can be untouched while next week is fully planned, and a bare "Not started" next to a
+  saved allocation read as though the plan had not been saved either.
+  **`wkrSetSection()` flushes pending edits, then reveals the selected pill with
+  `segScrollToTab`.** Never `scrollIntoView()`: `#view-stats` is a `.swipe-panel` inside the
+  transformed `#swipe-deck` (since v321), so it would walk up and shove the deck sideways. The
+  DOM lookup is guarded on `document.querySelector` being a FUNCTION, not on `document` being
+  defined — the Review regression suite runs these helpers against a stub document.
+  **`.wkr-body` carries `data-wkr-section` and one of `is-landing` / `is-form`**, so the
+  stylesheet needs no second copy of the section list to know which layout to use. It is still
+  a single vertical flow inside a section: Review cards are variable-height forms, and a shared
+  row is only as short as its tallest card. `.wkr-span` survives as a semantic marker with no
+  rule. Compact grids INSIDE a card (`.wkr-2col`, `.wkr-pv`, `.wkr-alloc-row`,
+  `.wkr-next-allocations`) are untouched — they express one relationship.
+  **`.rev-list` is a GRID, and the `align-items` that used to sit on it is gone from both
+  files.** This was a real, measurable bug: `css/workout.css` gave `.rev-list`
+  `align-items:start` (a no-op in a single-column grid, where each card is its own auto row),
+  then `css/review.css` overrode `.rev-list` to `display:flex;flex-direction:column` — and in a
+  flex column that same declaration becomes the CROSS axis, so every insight card shrank to the
+  width of its own text: 802 / 620 / 584px inside an 875px list. Both halves are removed rather
+  than a third override stacked on top. `tests/review-presentation.test.cjs` asserts neither
+  comes back. The landscape-phone two-column `.rev-list` rule is unchanged and still gives
+  three equal cards.
+  **An insight card is: finding → figure → dates → limitation → action → methodology.**
+  `statsReviewInsights()` gained `figure {value, caption}`, `dates`, `note` and `method` beside
+  the existing `conclusion`, `chip` and `actions`; `meta` is gone. Every score, condition,
+  threshold, ranking rule, the three-item cap and every action target is UNCHANGED — this is a
+  presentation split of what those objects already said. The rule the split encodes:
+  **anything that changes how a finding should be read stays visible** (`note` — stale
+  readings making pace unassessable, unlogged days that are not zero, a balance carrying
+  forward, a category renamed mid-comparison), while HOW it was worked out goes in the
+  `.rev-method` disclosure. Each disclosure has a stable `id="rev-method-N"` so
+  `renderStatsReview()`'s `details[open][id]` restore keeps it open across a re-render.
+  Insights keep their OWN recent date ranges and say so in the subtitle — they never describe
+  the selected review week.
+  **"The archived category ID is retained without borrowing today's name" is retired**, along
+  with the rest of that card's mechanism-first wording. The limitation is unchanged and still
+  stated; it now says what it means for the comparison. A test asserts the phrase does not
+  return.
+  **No new accent-dependent colour was introduced.** The only accent reference among the new
+  Review rules is a focus ring, like every other one in the app, so weather, training-day and
+  custom accents behave exactly as before in both themes.
+  **This was presentation and copy only.** No canonical money reader, review record, optional
+  page answer, saved allocation, draft rule, stale-draft guard, completed-review snapshot,
+  reopen rule, current-week restriction, storage key, Firebase path, sync registration or
+  migration was touched. Opening Review and navigating every section, every week and every
+  disclosure twice produced zero localStorage writes (verified by before/after diff).
   **This is presentation only.** No localStorage key, Firebase path, sync registration,
   migration or default write was added, and none of Weekly Review's sync/freeze invariants
   (`daily_review_plan`, `daily_reviews`, `wkrAttachSync()`, `wkrMergeReviews()`, plan/actual
@@ -1067,8 +1100,9 @@ the accent or the theme must go through those, not set `--accent` directly.
   edits flush before changing weeks/sections or leaving. Ask Daily AI's existing manual export
   includes accepted allocations and enabled page answers; nothing is sent automatically.
 
-  One Review DOM retains the 1180px rail boundary and 900px body cap. Next-week amounts/fields
-  use two columns only when the available main container is at least 580px. Phone controls
+  One Review DOM at every width. (The 1180px rail boundary and 900px body cap this described
+  are gone as of v322 — see the Review entry in "Known history" for what replaced them.)
+  Next-week amounts/fields use two columns only when the available main container is at least 580px. Phone controls
   remain full size. CSS is scoped to Review. Isolated tests cover the new model, stale drafts,
   round trips and per-week conflicts; browser checks use synthetic local data. Production
   accounts and deployed Firebase rules have not been tested by this change.

@@ -407,10 +407,53 @@ safety-critical parts:
 - **Daily AI handoff sends nothing.** `wkrAskDailyAI()` seeds `aiHubState` (a `review` scope,
   the week as a custom range, a review-specific request) and opens the existing Ask AI screen;
   the user still has to press Copy there. No API, no key, no automatic transmission.
+- **The presentation was rebuilt in v322 and the numbered local rail is gone.** One compact
+  header (title / week `<select>` / review-status chip / horizontal section row) at every width,
+  a landing that leads with the selected week's figures beside a COMPACT dated next-week
+  summary, insights with a prominent figure and a methodology disclosure, and everything
+  left-aligned on the Stats canvas at `--wkr-measure` (880px) except the landing
+  (`--wkr-canvas`, 1240px). Retired: `.wkr-rail*`, `.wkr-tab-n`, `.wkr-tab-d`, `.wkr-tab-c`,
+  `.wkr-mainhd*`, `rev-railed`, `--wkr-rail-w`, `--wkr-gap` and `WKR_SECTIONS[].desc`.
+  Design rationale and the traps are in `CLAUDE.md`; the ones that bite here:
+  `wkrSetSection()` must keep flushing pending edits and must never call `scrollIntoView()`
+  (`#view-stats` is a `.swipe-panel` in the transformed deck — use `segScrollToTab`), and its
+  DOM lookup is guarded on `document.querySelector` being a FUNCTION because the Review
+  regression suite runs these helpers against a stub document. `tests/review-presentation.test.cjs`
+  guards the retired rail, the `.rev-list` cascade and the visible/disclosed split.
 
 ## Current unfinished work
 
-### Food hub + Stats in the deck — v321 (LOCAL ONLY, not pushed)
+### Weekly Review presentation — v322 (LOCAL ONLY, not committed, not pushed)
+
+Presentation and copy. No canonical money reader, review record, optional page answer, saved
+allocation, draft rule, stale-draft guard, completed snapshot, reopen rule, current-week
+restriction, storage key, Firebase path, sync registration or migration was touched — audited,
+and verified by a before/after localStorage diff across every section, every selectable week
+and every disclosure, twice: zero writes. Full rationale in `CLAUDE.md`.
+
+**Verified locally in an isolated browser profile on `localhost` against a synthetic fixture:**
+the rail is gone and Review left-aligns with the Stats tab strip (header, landing and insights
+all start at the same x); the week `<select>` shows the full label without clipping at 320–1920;
+the landing's two summaries sit side by side from 1024 and stack on a phone; insight cards fill
+their column at every width (the shrink bug measured 802/620/584px in an 875px list before, 880
+/880/880 after, and 367×3 equal in landscape); the review-status chip and the plan chip are
+separate statements; not-started, draft, completed, reopened, in-progress-week, no-insight,
+switched-off, never-set-up and eight-optional-pages states all render; draft save/cancel and the
+stale-draft guard (warning, Save disabled, Reload offered) still work; pending page answers flush
+before a section change; a disclosure stays open across a re-render. Widths 320/390/414/720
+(≈200% zoom of 1440)/844-landscape/1024/1440/1920 in both themes, no overflow anywhere.
+`node --test tests/*.test.cjs` → 66/66, including a new `tests/review-presentation.test.cjs`.
+`CACHE_NAME` is `daily-v322`.
+
+**NOT verified:** no real signed-in account was used, read, written or cleared; no production
+Firebase data or deployed rules were touched. No physical device — phone and 200%-zoom layouts
+were checked at the equivalent CSS-pixel viewport in a desktop browser, so safe-area insets and
+the standalone status bar are inferred from the existing CSS rather than observed. At 200% zoom
+on a desktop the viewport matches the landscape-phone media query, so insights show two-up
+there; that is pre-existing behaviour for all of Stats, not new. **Nothing has been committed
+or pushed.**
+
+### Food hub + Stats in the deck — v321 (released; see git log)
 
 Navigation and presentation. No localStorage key, Firebase path, sync registration, timestamp,
 calculation, migration or security rule was added or changed — audited, and verified by a

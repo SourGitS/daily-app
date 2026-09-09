@@ -681,8 +681,15 @@ button.ov-day{cursor:pointer}
      half-row at three items and made rank read as a reading path across rows rather than
      straight down. One column keeps the ranking obvious and lets each card be its own height.
      .rev-list is used by renderStatsReview() and nowhere else, so this reaches Stats › Review
-     only; the landscape-phone rule above keeps its two columns. */
-  .rev-list{grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+     only; the landscape-phone rule above keeps its two columns.
+     `align-items:start` used to be here and has been removed. In a single-column grid it did
+     nothing — grid's align-items is the BLOCK axis and each card is already its own auto row —
+     but Review then overrode .rev-list to a flex COLUMN, where the same declaration became the
+     cross (horizontal) axis and shrank every insight card to the width of its own text: a
+     875px list holding cards 802, 620 and 584px wide. Both halves of that contradiction are
+     gone rather than a third override being stacked on top; the list is a grid at every width
+     and its cards fill the column. */
+  .rev-list{grid-template-columns:minmax(0,1fr);gap:16px}
   #sub-body{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
   #sub-body.hidden{display:none}
   #sub-finance{display:block}
