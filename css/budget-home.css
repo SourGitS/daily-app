@@ -1091,19 +1091,15 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      grow a card past its content. The margin reset is still needed because several cards
      carry an inline margin-bottom written by renderHome for the phone stack, and an inline
      style outranks any selector — the column gap does that job here. */
-  /* ── One reading measure for the row-list cards ────────────────────────────────────────
-     These five cards are all "label at one edge, figure at the other" lists. Left to a very
-     wide column they strand the two ends ~900px apart, which is unreadable; the v309 answer
-     capped the ROWS alone, and that left the header action and the review prompt running to
-     the card's right edge while the table stopped 130px short — one card that looked like two.
-     The measure belongs to the whole card body, so header, rows and prompt all end on the same
-     line, and it is the SAME measure on every one of them so the column reads as one page.
-     At ordinary widths it does not engage at all: a 659px column at 1440 gives a 627px body. */
-  #view-home [data-card-id="review"] > .card > *,
-  #view-home [data-card-id="prs"] > .card > *,
-  #view-home [data-card-id="finance"] > .card > *,
-  #view-home [data-card-id="notes"] > .card > *,
-  #view-home [data-card-id="recent"] > .card > *{max-width:760px}
+  /* ── One reading measure for full-width Grid cards ─────────────────────────────────────
+     Dashboard's main stack already has a bounded 60% column. Applying this cap there leaves
+     a blank strip once the dashboard reaches a larger desktop width, so Dashboard cards use
+     their complete card body while the legacy Grid keeps its established reading measure. */
+  #view-home .home-grid-cols > .home-card[data-card-id="review"] > .card > *,
+  #view-home .home-grid-cols > .home-card[data-card-id="prs"] > .card > *,
+  #view-home .home-grid-cols > .home-card[data-card-id="finance"] > .card > *,
+  #view-home .home-grid-cols > .home-card[data-card-id="notes"] > .card > *,
+  #view-home .home-grid-cols > .home-card[data-card-id="recent"] > .card > *{max-width:760px}
   #view-home .home-dash-col > .home-card{min-width:0}
   #view-home .home-dash-col > .home-card > *{margin-bottom:0 !important}
   /* The scene's width container is desktop Dashboard-only. Artwork and height live together
