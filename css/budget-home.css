@@ -194,24 +194,28 @@
 .bud-setup-x{border:none;background:transparent;color:var(--muted);font-size:20px;line-height:1;
   cursor:pointer;padding:0 2px;-webkit-tap-highlight-color:transparent}
 
-/* Secondary navigation within the Budget hero. The soft grey fill gives Accounts a real
-   place in the hierarchy without competing with the primary figures and week controls. */
-.bud-accounts-link{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
-  min-height:40px;margin-top:12px;padding:9px 13px;border:1px solid rgba(255,255,255,.18);
-  border-radius:11px;background:rgba(20,20,22,.22);color:rgba(255,255,255,.9);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.07);font:inherit;font-size:12px;font-weight:750;
-  cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s ease,transform .15s ease}
-.bud-accounts-link span:last-child{font-size:15px;color:rgba(255,255,255,.68)}
-.bud-accounts-link:hover{background:rgba(20,20,22,.3)}
-.bud-accounts-link:active{transform:scale(.99)}
-.bud-accounts-link:focus-visible{outline:2px solid #fff;outline-offset:2px}
-.rec-spend-cap{font-size:13px;line-height:1.45;color:var(--muted);margin-bottom:12px}
-.rec-add-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;
-  padding:13px;border-radius:14px;border:none;background:var(--accent);color:#fff;
-  font-family:var(--font-ui);font-size:15px;font-weight:800;cursor:pointer;
-  box-shadow:0 6px 18px rgba(var(--accent-rgb),.28);-webkit-tap-highlight-color:transparent}
-.rec-add-btn:active{transform:translateY(1px);box-shadow:0 3px 10px rgba(var(--accent-rgb),.24)}
-.rec-add-plus{font-size:19px;font-weight:700;line-height:1}
+/* The hero's primary action. It replaces .bud-accounts-link (Accounts & net worth moved to
+   History & tools, where a destination that leaves the Budget tab belongs) and the whole
+   "Record spending" card that used to hold it — logging a purchase is the thing done most
+   often on this tab, so it sits on the surface that says what is left to spend.
+   A WHITE pill on the accent hero, and its ink is --accent-hero rather than --accent: this is
+   accent-coloured text ON white, and every accent the app can hold is tuned to CARRY white
+   text rather than to be legible against it. --accent-hero is contrast-checked at 4.2:1 with
+   white on top, which is the same guarantee read the other way round. */
+.bud-hero-add{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;
+  min-height:44px;margin-top:14px;padding:12px;border-radius:13px;border:none;
+  background:#fff;color:var(--accent-hero);font-family:var(--font-ui);font-size:15px;
+  font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  box-shadow:0 6px 18px rgba(20,20,22,.18);transition:transform .15s ease,box-shadow .15s ease}
+.bud-hero-add:active{transform:translateY(1px);box-shadow:0 3px 10px rgba(20,20,22,.16)}
+.bud-hero-add:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.bud-hero-add-plus{font-size:19px;font-weight:700;line-height:1}
+/* A past week gets the explanation and NO control: a new purchase is always dated today, so
+   offering capture here would file it into the current week while the user believes they are
+   editing this one. Not a button, so it carries no press affordance either. */
+.bud-hero-note{margin-top:14px;padding:10px 12px;border-radius:11px;
+  border:1px solid rgba(255,255,255,.18);background:rgba(20,20,22,.22);
+  color:rgba(255,255,255,.85);font-size:11.5px;font-weight:600;line-height:1.5}
 /* The category's weekly figure once purchases back it — a button, because it opens the list. */
 .txn-total{display:inline-flex;align-items:center;gap:7px;border:none;background:transparent;
   font-family:var(--font-num);font-weight:800;color:var(--text) !important;cursor:pointer;padding:4px 2px;
@@ -340,9 +344,9 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .up-trial{font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:2px 6px;
   border-radius:999px;background:rgba(99,102,241,.16);color:var(--purple)}
 .up-amt{font-family:var(--font-num);font-size:14px;font-weight:800;color:var(--text);flex-shrink:0}
-.up-total{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;
-  border-top:1px solid var(--border);font-size:13px;font-weight:700;color:var(--text)}
-.up-total span:last-child{font-family:var(--font-num);font-weight:800}
+/* .up-total held the "Next 30 days · $x" footer of the upcoming-charges card. It lost its
+   only caller when that card merged into Outlook until next pay, which counts the bills
+   before PAYDAY — a 30-day total on the weekly page was answering the Bills tab's question. */
 .up-warn{font-size:12px;font-weight:700;color:var(--warn);background:rgba(var(--warn-rgb),.12);
   border-radius:9px;padding:8px 10px;margin-bottom:8px}
 .up-none{font-size:13px;color:var(--muted);padding:6px 0}
@@ -434,6 +438,102 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 /* Edit belongs to an open card — there is nothing to edit while it's shut, and it competed
    with the figure for the same corner. */
 .bud-collapsed .bud-edit-btn{display:none}
+
+/* ── .bud-sec: a section INSIDE a Budget card ──────────────────────
+   Week plan's Income / Fixed / Savings and History & tools' calculator. This is a SECOND
+   disclosure, one level below .bud-collapsed, and deliberately not the same mechanism: card
+   collapse persists to daily_budget_collapse, a section's open set is in memory (budSecApply
+   in js/app.js). Know which one a surface is using before changing either — the app already
+   carries three unrelated collapse systems and this is not a fourth, it is one card's
+   internal composition.
+   The header is the AT-A-GLANCE row: label, this week's figure, chevron. That is what lets
+   the Week plan card state Income / Fixed / Savings / Available with nothing expanded. */
+.bud-sec{border-bottom:1px solid var(--border)}
+.bud-sec-head{display:flex;align-items:center;gap:8px}
+.bud-sec-hd{flex:1;min-width:0;display:flex;align-items:center;justify-content:space-between;
+  gap:10px;min-height:46px;padding:0;border:none;background:transparent;color:var(--text);
+  font:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.bud-sec-hd:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:8px}
+.bud-sec-t{display:flex;align-items:center;gap:8px;min-width:0;
+  font-size:13.5px;font-weight:700;color:var(--text)}
+.bud-sec-t .card-hd-ico{width:15px;height:15px;color:var(--muted);flex-shrink:0}
+.bud-sec-t>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bud-sec-r{display:flex;align-items:center;gap:9px;flex-shrink:0}
+.bud-sec-v{font-family:var(--font-num);font-size:15px;font-weight:800;letter-spacing:-.01em;
+  color:var(--text)}
+.bud-sec-chip:empty{display:none}
+.bud-sec-chev{color:var(--muted);transition:transform .2s ease;flex-shrink:0}
+.bud-sec.is-open .bud-sec-chev{transform:rotate(180deg)}
+/* The UA already hides [hidden]; stated so a later display rule cannot quietly outrank it. */
+.bud-sec-body[hidden]{display:none}
+.bud-sec-body{padding-bottom:6px}
+/* Same rule as the card headers: Edit belongs to an OPEN section — there is nothing to edit
+   while it is shut, and a row of Edit buttons beside four collapsed figures reads as chrome. */
+.bud-sec:not(.is-open) .bud-edit-btn{display:none}
+.bud-sec-none.is-empty{font-size:12.5px;font-weight:600;color:var(--muted);line-height:1.55;
+  padding:4px 2px 10px}
+
+/* Week plan's closing row. Not a section — there is nothing to expand, it is the arithmetic
+   of the three sections above it, and it is the ceiling the Spending card is measured
+   against. Heavier than a section header, because it is the conclusion. */
+.bud-plan-avail{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:13px 0 2px}
+.bud-plan-avail-l{font-size:13px;font-weight:700;color:var(--text);min-width:0}
+.bud-plan-avail-v{font-family:var(--font-num);font-size:22px;font-weight:800;
+  letter-spacing:-.02em;color:var(--text);flex-shrink:0}
+
+/* ── Spending: the goal block and the two-breakdown switch ─────────
+   The goal was its own card directly above Variable expenses. Inside the merged card it is a
+   plain block, so the card border it used to carry is gone; .vg-card.vg-over's bar tint still
+   applies and is the state signal that matters. */
+.vg-block{padding-bottom:2px}
+/* The app's ONE segmented control, inside a card. #view-budget gives .seg-tabs a sticky,
+   bleeding, fixed-height treatment for the strip pinned at the top of the screen; this one
+   scrolls with its card, so every part of that is undone here. Specificity (one id + two
+   classes) beats the landscape overrides wherever they sit in the file. */
+.seg-tabs.bud-seg{position:static;z-index:auto;box-shadow:none;max-width:none;
+  margin:12px 0 12px}
+#view-budget .seg-tabs.bud-seg{height:auto;padding:3px;margin-left:0;margin-right:0}
+#view-budget .seg-tabs.bud-seg::before{content:none}
+#view-budget .seg-tabs.bud-seg>button{padding:8px 13px;font-size:12.5px}
+/* Two small controls, not one Edit: they change different things — the week's goal, and
+   which categories exist — and folding them together would mean opening the category
+   rename/delete controls just to change a number. */
+.bud-spend-tools{display:flex;flex-wrap:wrap;gap:8px;padding:10px 0 0}
+.bud-spend-panel{min-width:0}
+/* Only one breakdown is ever in the page, so the panel carries the list's own top rule
+   rather than the card doing it. */
+.bud-spend-panel>.bud-row:first-child,.bud-spend-panel>.bud-day-list{margin-top:0}
+
+/* ── Close out week ────────────────────────────────────────────────
+   Quieter than the hero and the Spending card on purpose — it was the "Weekly result" card
+   and led with Money left over and an On track / Over budget pill, both of which the hero
+   already states. What it still has to say clearly is whether the week has been closed. */
+.bud-closeout-state{padding:2px 0 10px}
+.bud-closeout-state:empty{display:none}
+.bud-closeout.is-done{border-color:rgba(var(--accent-rgb),.3)}
+
+/* ── History & tools ───────────────────────────────────────────────
+   Previous weeks was eight rows permanently open in the middle of the weekly workflow. One
+   recent-week snapshot, then the two views that do the historical analysis properly. */
+.bud-hist-lbl{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);padding:2px 0 2px}
+.bud-hist-none.is-empty{font-size:12.5px;font-weight:600;color:var(--muted);line-height:1.55;
+  padding:2px 0 8px}
+.bud-tools-acts{display:flex;flex-wrap:wrap;gap:8px;padding:10px 0 4px;
+  border-top:1px solid var(--border);margin-top:8px}
+/* Sized to their labels, like every other secondary action in the app — there is no fixed cap. */
+.bud-tool-btn{display:inline-flex;align-items:center;gap:7px;min-height:38px;
+  padding:8px 13px;border-radius:10px;border:1px solid var(--card-border);
+  background:var(--card);color:var(--accent-text);font:inherit;font-size:12px;font-weight:700;
+  cursor:pointer;-webkit-tap-highlight-color:transparent}
+.bud-tool-btn:active{background:var(--track)}
+.bud-tool-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.bud-tool-btn>span{color:var(--muted);font-size:13px}
+/* The calculator is a section here, so its keypad gets the section body's breathing room
+   rather than a card's padding. */
+#bud-calc-sec{border-bottom:none}
+#bud-calc-sec .bud-sec-body{padding-top:4px}
 
 /* Home: savings + credit card side-by-side row */
 .home-balance-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
@@ -1801,8 +1901,16 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
    Lives directly beneath Variable expenses in the planning/spending stack. Neutral by
    default; amber when the projection is thin, red when the bills exceed what is available.
    Semantic, not accent — the accent can be any hue at runtime, so it cannot carry good/bad. */
-#bud-forecast-card:empty{display:none}
+#bud-outlook-card:empty{display:none}
 .fc-card{border-left:3px solid var(--positive);padding-top:14px}
+/* No projection to be positive ABOUT. Without a named income source there is no pay day and
+   payCycleForecast() returns null, so the card names what is scheduled instead — and a green
+   rail beside it would be a verdict on a week nothing has been judged about. */
+.fc-card.is-plain{border-left-color:var(--border)}
+.fc-card.is-plain .fc-fig{color:var(--text)}
+.fc-card.is-plain .bud-head-sum{color:var(--text)}
+/* The three charges shown here are a preview of the Bills calendar, not the calendar. */
+.fc-card .up-list{margin-top:10px;padding-top:4px;border-top:1px solid var(--border)}
 .fc-card.is-tight{border-left-color:var(--warn)}
 .fc-card.is-over{border-left-color:var(--danger)}
 .fc-fig{font-family:var(--font-num);font-size:30px;font-weight:800;letter-spacing:-.02em;

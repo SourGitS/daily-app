@@ -199,7 +199,14 @@
 // remove the personal public starter template.
 // v318: rounded, slanted wordmark frame follows the live accent; app icons stay borderless.
 // v319: connected weather fronts and a brighter, varied night-sky star field on Home.
-const CACHE_NAME = 'daily-v319';
+// v320: rebuild Budget → Week around six groups. The hero is the one authoritative weekly
+// result and carries Add expense; Spending goal + Variable expenses + Day by day merge into one
+// Spending card with a By category / By day switch; Income + Fixed + Savings merge into Week
+// plan; Upcoming charges + Until next pay merge into Outlook until next pay; Weekly result loses
+// the headline the hero repeats and becomes Close out week; Previous weeks, the calculator and
+// Accounts move into a compact History & tools section. Presentation only — no calculation,
+// store, sync path or migration changed.
+const CACHE_NAME = 'daily-v320';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

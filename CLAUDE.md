@@ -331,14 +331,18 @@ older summary — re-grep before assuming a fact from here is still true if it l
 - **Budget** — weekly tracker. Income sources, savings target, and fixed/variable categories are
   all user-configurable now — see "Known history" below, these used to be hardcoded to
   Francois's specific numbers and were deliberately made dynamic. Credit-card balance tracking,
-  comprehensive 8-section CSV export, collapsible sections, monthly/yearly charts. A weekly
-  **spending goal** card sits between Fixed and Variable (a self-imposed cap on variable
-  spending, distinct from "money left over"): the goal input is behind the card's Edit button
-  (`budEditMode.vargoal`, same convention as the other budget cards), the usual goal is
-  `budDefaults.varGoal`, and each week stores the goal that applied to it as `var_goal` so past
-  weeks aren't rewritten later. A **Day by day** card under Variable expenses breaks the same
-  week down by date instead of by category, expanding each day into its purchases — see the
-  reconciliation rule below before touching it.
+  comprehensive 8-section CSV export, collapsible sections, monthly/yearly charts.
+  **Week is SIX groups as of v320** (see the `BUD_CARDS` entry below for the full history):
+  the weekly hero, Spending, Week plan, Outlook until next pay, Close out week, History &
+  tools. The weekly **spending goal** is the first block INSIDE the Spending card, above the
+  breakdown it caps (a self-imposed cap on variable spending, distinct from "money left
+  over"): the goal input is behind that card's *Edit goal* button (`budEditMode.vargoal`, same
+  convention as everywhere else on the tab), the usual goal is `budDefaults.varGoal`, and each
+  week stores the goal that applied to it as `var_goal` so past weeks aren't rewritten later.
+  **By category** and **By day** are two views of the same money inside that one card, chosen
+  by a `.seg-tabs` switch — the day breakdown reads the week by date instead of by category
+  and expands each day into its purchases. See the reconciliation rule below before touching
+  either.
 - **Accounts** — net-worth tracking across accounts; added after Budget, migrated from the old
   savings/CC logs. An asset can be flagged `saver:true` ("Savers account"): it still counts in
   net worth but is excluded from the **debt payoff position** (`(assets − savers) − debts`),
@@ -1410,14 +1414,55 @@ the accent or the theme must go through those, not set `--accent` directly.
   it is given and appending MOVES a node, so every other card was appended past the setup card
   and it was stranded first in the left column, above Income. Invisible in normal use, because
   `renderBudgetSetupCard()` returns `''` once the week has any income.
-  Current order (2026-09-05): **mobile** is action-first — Setup, Record spending, Weekly
-  result, Until next pay, Income, Savings, Fixed, Upcoming, Spending goal, Variable, Day by day,
-  Previous weeks, Calculator, Stranded data. **Desktop** is plan-left / action-right: left is
-  Setup → Income → Savings → Fixed → Upcoming → Spending goal → Variable → Day by day (the long
-  Variable card lives here and is what makes the page tall), right is Record spending → Weekly
-  result → Until next pay → Previous weeks → Calculator → Stranded data. Two things this
-  restored: the two verdict cards are adjacent again, and the spending goal sits directly above
-  the card it caps. **Source order in `index.html` is NOT render order** — read `BUD_CARDS`.
+  **Fourteen entries became seven in v320 (2026-09-10), and the merges are the point.** The
+  tab had come to answer the same question in several places at once, so:
+  *Spending goal + Variable expenses + Day by day* → **one Spending card** (goal at the top, a
+  `.seg-tabs` By category / By day switch, exactly ONE breakdown in the page flow);
+  *Income + Savings + Fixed expenses* → **one Week plan card** (four scannable rows — Income,
+  Fixed / committed, Savings, Available for variable spending — the first three expanding to
+  the rows and Edit controls they always had);
+  *Upcoming charges + Until next pay* → **one Outlook until next pay card** (the projection,
+  the payday, and the next THREE bills; the 30-day list belonged to the Bills tab, which is
+  still the authoritative calendar);
+  *Record spending* → the **hero's** Add expense action;
+  *Weekly result* → **Close out week**, having lost the Money-left-over headline and On track
+  pill the hero already states;
+  *Previous weeks + Calculator + Accounts & net worth* → **History & tools**, where the
+  eight-week list is one recent-week snapshot and the keypad is a disclosure.
+  Current order: **mobile** is the priority reading — Setup, Spending, Week plan, Outlook,
+  Close out, History & tools, Stranded data. **Desktop** keeps that reading across the two
+  columns rather than becoming two unrelated stacks: left is Setup → Spending → Close out (the
+  long Spending card lives here and is what makes the page tall), right is Week plan → Outlook
+  → History & tools → Stranded data. **Source order in `index.html` is NOT render order** —
+  read `BUD_CARDS`.
+  **Nothing about the money changed.** Every figure still comes from the canonical readers
+  (`weekIncome`, `weekFixedTotal`, `weekVarTotal`, `weekSavedAmt`, `weekLeftover`,
+  `statsWeekParts`, `payCycleForecast`, `budDaySpend`); no localStorage key, Firebase path,
+  sync registration, category id or migration was added or touched. The one storage addition
+  is `daily_budget_ui` — device-local, plain `setItem`, never `lsSave(key,value,syncName)`,
+  excluded from `exportAllData()` like `daily_pantry_ui` — holding only which spending
+  breakdown this handset is showing.
+  **`budCardHead()` is GONE** with its six callers; the Edit/Done toggle lives on
+  `budPlanSection()` and the Spending card's two-control tools row, and the
+  `data-action="bud-edit-toggle"` contract with the delegated listener is unchanged. The
+  removed element ids — `calc-income`, `calc-fixed`, `calc-saved`, `calc-leftover`,
+  `week-status-pill`, `sum-vargoal`, `sum-days` — were each a figure now stated once
+  elsewhere; `sum-inc`, `sum-fix`, `sav-head-sum`, `sum-var`, `calc-variable`, `sav-status`,
+  `sav-goal-label` and every `vargoal-*` id are unchanged and still written live by
+  `budRecalc`.
+  **`.bud-sec` is a section INSIDE a card and is NOT the card collapse.** `.bud-toggle` shuts a
+  whole card and persists to `daily_budget_collapse`; `.bud-sec`'s open set (`_budSecOpen` /
+  `budSecApply()`) is in memory, so a re-render restores it and a reload starts from the
+  summary — which is the point of the Week plan card. `budSecApply()` writes both the
+  JS-rendered sections and the STATIC ones from one place, because Savings and the calculator
+  are never rebuilt and a second copy of "is this open" is what goes stale between them.
+  **`#sav-amount` and `#week-notes` are still STATIC markup** inside the new cards, which is why
+  Week plan's Savings section and Close out week are hand-written in `index.html` rather than
+  rendered: see the note above `budWriteFields` — a save firing while another tab is showing
+  reads a missing input as an empty value and wipes the week's saved amount everywhere.
+  **The hero's Add expense is gated on `budIsCurrentWeek()`, never on `editable`.** Unlocking a
+  past week with *Edit week* makes it editable; a new purchase is still dated today, so that
+  week gets the explanation and no control at all.
   `budApplyLayout()`'s no-op guard is load-bearing: it compares the column's current children
   against the wanted list and returns early when they match, because re-appending a node that is
   already in place still detaches and re-inserts it, which drops focus out of a budget input
@@ -1430,7 +1475,13 @@ the accent or the theme must go through those, not set `--accent` directly.
   `.card-collapse-header/body`, `.ex-card.collapsed` (a fully separate ruleset in
   `workout.css`), and `.bud-collapsed`/`.bud-toggle` (budget-only, different naming
   entirely). Know which one a given screen uses — they don't share logic, and merging them
-  is a bigger job than it looks.
+  is a bigger job than it looks. The GENERIC one lost its last markup consumer in v320
+  (Budget's Previous weeks list); `toggleCard()` / `_applyCardCollapse()` /
+  `restoreCardCollapse()` and the `.card-collapse-*` CSS are deliberately left in place —
+  deleting an app-wide component as a side effect of a Budget redesign is a bigger decision
+  than that change was making. `.bud-sec` (the section INSIDE a Budget card, v320) is not a
+  fourth system in the same sense: it is one card's internal composition, in memory, and it
+  is documented with `BUD_CARDS` above.
 - **`js/app.js` builds some class names via string concatenation** (e.g. the Kitchen
   recipe-tile card: `` `kit-card kit-c-${category}${sel}` ``). Grep for both the literal class
   name and for concatenation patterns before renaming or removing any CSS class — a plain

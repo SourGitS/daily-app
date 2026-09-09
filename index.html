@@ -200,6 +200,11 @@
       </div>
 
       <!-- WEEK VIEW -->
+      <!-- Six groups, in the order the tab is meant to be read: the weekly hero (the one
+           authoritative result, and the primary Add expense action), Spending, Week plan,
+           Outlook until next pay, Close out week, then History &amp; tools. BUD_CARDS in
+           js/app.js is the single source for where each of the six actually sits — source
+           order below is the MOBILE order only. -->
       <div id="budget-week-view">
         <!-- Compact week navigation. Hidden everywhere except short landscape, where the
              weekly hero is far too tall to pin — this strip is what stays reachable while the
@@ -225,7 +230,9 @@
                already know — and then stacked saved / left over / status / debts / net worth
                under it, which is five competing figures answering four different questions.
                Debts and net worth moved out entirely: they belong to Accounts and don't help
-               answer "what can I spend today". -->
+               answer "what can I spend today". The hero is now the ONE place the weekly
+               result is stated — the old Weekly result card repeated the same verdict a
+               screen further down, so it lost its headline and became "Close out week". -->
           <div id="bud-hero-avail" style="font-family:var(--font-num);font-size:42px;font-weight:800;color:#fff;letter-spacing:-.02em;line-height:1;margin-bottom:2px">$0</div>
           <div id="bud-hero-avail-lbl" style="font-size:10px;font-weight:700;letter-spacing:.12em;color:rgba(255,255,255,.6);margin-bottom:4px;text-transform:uppercase">Available to spend</div>
           <!-- Safe daily pace: the available figure divided by the days left. This is the
@@ -262,8 +269,12 @@
             <span id="budget-bar-label-l"></span>
             <span id="budget-bar-label-r"></span>
           </div>
-          <!-- A secondary filled action: visible, but subordinate to the budget figures above. -->
-          <button class="bud-accounts-link" onclick="openAccounts()"><span>Accounts &amp; net worth</span><span aria-hidden="true">→</span></button>
+          <!-- The primary capture action for the whole spending system, on the surface that
+               states what is left to spend. Filled by renderHeroAction(): on a past week it is
+               NOT a button — a new purchase is always dated today, so offering capture there
+               would file it into this week while the user believes they are editing that one.
+               Accounts &amp; net worth moved off the hero into History &amp; tools. -->
+          <div id="bud-hero-act"></div>
         </div>
 
         <div id="bud-due-banner"></div>
@@ -281,75 +292,75 @@
              safe and preserves data-bud-key collapse state. -->
         <div id="bud-col-left">
 
-        <div id="bud-income-card"></div>
+        <!-- Dismissible onboarding banner; empty once the week carries a real income figure. -->
+        <div id="bud-setup-card"></div>
 
-        <div class="card" id="bud-savings-card" data-bud-key="sav">
-          <!-- Same head structure as budCardHead() so the collapsed summary has a slot to sit
-               in. #sav-head-sum is filled by budRecalc and only shows while collapsed. -->
-          <div class="sec-label bud-toggle"><span class="bud-head-label"><svg class="card-hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 10v11M19 10v11M9.5 10v11M14.5 10v11M4 10h16L12 4z"/></svg><span>Savings</span></span><span class="bud-head-right"><span class="bud-head-sum" id="sav-head-sum"></span><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span></div>
-          <div class="bud-row">
-            <div class="bud-row-left">
-              <div class="bud-row-name">This week's savings</div>
-              <!-- Filled by budRecalc() from the user's saved goal; the text here is only a
-                   pre-paint placeholder, not the value. -->
-              <div class="bud-row-budget" id="sav-goal-label">Goal: $200 minimum</div>
-            </div>
-            <input class="bud-row-input" type="number" inputmode="decimal" placeholder="$0" id="sav-amount" oninput="budRecalc();budSaveDraft()">
-          </div>
-          <div class="bud-row">
-            <div class="bud-row-left"><div class="bud-row-name" style="font-weight:700">Total saved</div>
+        <!-- SPENDING — the goal, the categories and the days in ONE card. They were three
+             (Spending goal, Variable expenses, Day by day), all answering "where is spending
+             going", two of them long lists rendered at once. The segmented switch inside it
+             means only one breakdown is ever in the normal page flow. -->
+        <div id="bud-spend-card" class="bud-span-2"></div>
+
+        <!-- WEEK PLAN — Income, Fixed/committed and Savings, which were three separate cards
+             saying one thing: how this week's money is allocated. The four rows are the
+             at-a-glance; each of the first three expands to the detail and editing it always
+             had. Fixed/committed also stays in the hero — this card is its explanation, not
+             the only place it appears.
+             The savings section is STATIC markup on purpose: #sav-amount must never leave the
+             DOM (see the note above budWriteFields — a save firing while another tab is showing
+             would otherwise read a missing input as an empty value and wipe the week's saved
+             amount locally and on every device). -->
+        <div class="card" id="bud-plan-card" data-bud-key="plan">
+          <div class="sec-label bud-toggle"><span class="bud-head-label"><svg class="card-hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h14a3 3 0 013 3v7a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/><path d="M3 7l1.5-3H16l1 3"/><path d="M17 13h.01"/></svg><span>Week plan</span></span><span class="bud-head-right"><span class="bud-head-sum" id="sum-plan"></span><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span></div>
+          <div id="bud-plan-inc" class="bud-sec" data-sec="inc"></div>
+          <div id="bud-plan-fix" class="bud-sec" data-sec="fix"></div>
+          <div class="bud-sec" id="bud-plan-sav" data-sec="sav">
+            <button type="button" class="bud-sec-hd" onclick="budSecToggle('sav')" aria-expanded="false" aria-controls="bud-plan-sav-body">
+              <span class="bud-sec-t"><svg class="card-hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 10v11M19 10v11M9.5 10v11M14.5 10v11M4 10h16L12 4z"/></svg><span>Savings</span></span>
               <!-- Whether the week's savings cleared the goal is a real judgement, so it is
-                   stated as a tonal chip (budRecalc fills it) and the amount stays neutral. -->
-              <span id="sav-status"></span></div>
-            <div class="bud-row-calc" id="calc-saved" style="color:var(--text)">$0</div>
+                   stated as a tonal chip (budRecalc fills it) beside a figure that stays
+                   neutral. The chip and the amount are in the HEADER because sav_amount IS
+                   the week's total saved — the old card printed the same number twice, once
+                   as the input and once as a "Total saved" row under it. -->
+              <span class="bud-sec-r"><span class="bud-sec-chip" id="sav-status"></span><span class="bud-sec-v" id="sav-head-sum">$0</span><svg class="bud-sec-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></span>
+            </button>
+            <div class="bud-sec-body" id="bud-plan-sav-body" hidden>
+              <div class="bud-row">
+                <div class="bud-row-left">
+                  <div class="bud-row-name">This week's savings</div>
+                  <!-- Filled by budRecalc() from the user's saved goal; the text here is only a
+                       pre-paint placeholder, not the value. -->
+                  <div class="bud-row-budget" id="sav-goal-label">Goal: $200 minimum</div>
+                </div>
+                <input class="bud-row-input" type="number" inputmode="decimal" placeholder="$0" id="sav-amount" oninput="budRecalc();budSaveDraft()">
+              </div>
+              <div id="cc-card-block"></div>
+            </div>
           </div>
-          <div id="cc-card-block"></div>
+          <!-- Not a section: there is nothing to expand, it is the arithmetic of the three
+               above it. Income − fixed/committed − savings = what this week leaves for variable
+               spending, which is the ceiling the Spending card is measured against. -->
+          <div class="bud-plan-avail">
+            <span class="bud-plan-avail-l">Available for variable spending</span>
+            <span class="bud-plan-avail-v" id="plan-avail">—</span>
+          </div>
         </div>
 
-        <div id="bud-fixed-card"></div>
-        <div id="bud-upcoming-card"></div>
+        <!-- OUTLOOK UNTIL NEXT PAY — the pay-cycle forecast and the charges that land before
+             payday, merged. Filled by renderOutlookCard() from budRecalc's own `available`
+             figure so it can never disagree with the hero, and empty when there is neither an
+             honest forecast nor a dated charge. The full schedule lives in the Bills tab. -->
+        <div id="bud-outlook-card"></div>
 
-        <!-- NOTE: source order here is NOT render order. BUD_CARDS in js/app.js is the single
-             source for both, and budApplyLayout() moves these nodes into place on every layout
-             change — so read that constant, not this file, to know where a card actually sits.
-             Weekly variable-spend goal: it renders directly above the Variable expenses card,
-             because it is the ceiling that card has to stay under. -->
-        <div id="bud-vargoal-card"></div>
-
-        <!-- Record spending: the primary capture action for the whole spending system, and the
-             thing done most often, so BUD_CARDS puts it first on a phone and at the top of the
-             right-hand column on desktop. It used to be a dashed button INSIDE the Variable
-             expenses card, where it read as a configuration control belonging to that one
-             category list rather than the one place you log any purchase, to any category, on
-             any account. -->
-        <div id="bud-setup-card"></div>
-        <div id="bud-record-card"></div>
-
-        <div id="bud-variable-card"></div>
-
-        <!-- The same variable spending the card above breaks down by category, read by
-             DAY instead. Only money with a date can appear here, so it states its own
-             undated remainder rather than quietly disagreeing with the card above. -->
-        <div id="bud-days-card"></div>
-
-        <!-- Pay-cycle forecast. Filled by renderForecastCard() from budRecalc's own
-             `available` figure so it can never disagree with the hero. It follows Variable
-             expenses in both BUD_LAYOUT modes and stays empty when no honest forecast exists. -->
-        <div id="bud-forecast-card"></div>
-
-        <!-- Only rendered when a deleted category still has saved amounts in past weeks. -->
-        <div id="bud-stranded-card"></div>
-
-        <div class="card" id="bud-result-card" data-bud-key="result">
-          <div class="sec-label bud-toggle"><span class="bud-head-label"><svg class="card-hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 7-7"/><path d="M20 8v5h-5"/></svg><span>Weekly result</span></span><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-            <div><div style="font-size:13px;color:var(--muted);margin-bottom:2px">Money left over</div><div style="font-size:28px;font-weight:800;line-height:1" id="calc-leftover">&#8212;</div></div>
-            <!-- Filled by budRecalc() with a tonal status chip; the markup here is only a pre-paint
-                 placeholder. -->
-            <div id="week-status-pill"></div>
-          </div>
+        <!-- CLOSE OUT WEEK — notes plus the Finish action. It was the "Weekly result" card and
+             led with Money left over and an On track / Over budget pill, both of which the hero
+             already states. Quieter than the hero and the Spending card, but it says out loud
+             whether the week has been finished. -->
+        <div class="card bud-closeout" id="bud-closeout-card" data-bud-key="closeout">
+          <div class="sec-label bud-toggle"><span class="bud-head-label"><svg class="card-hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg><span>Close out week</span></span><span class="bud-head-right"><span class="bud-head-sum" id="closeout-sum"></span><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span></div>
+          <div class="bud-closeout-state" id="closeout-state"></div>
           <div style="margin-bottom:10px">
-            <div class="sec-label" style="margin-bottom:6px">&#128221; Notes</div>
+            <div class="sec-label" style="margin-bottom:6px">Notes</div>
             <textarea class="bud-notes-textarea" id="week-notes" placeholder="What happened this week?" oninput="budSaveCurrentWeek()"></textarea>
           </div>
           <!-- Was "Save week", beside a week that already autosaves every keystroke — so the
@@ -363,40 +374,59 @@
           <div id="save-week-msg" style="display:none;text-align:center;color:var(--green);font-size:13px;font-weight:500;padding:8px 0">Week finished &#10003;</div>
         </div>
 
-        <div id="prev-weeks-section" class="bud-span-2"></div>
-
-        <!-- Standalone calculator. Deliberately NOT wired into the budget inputs: the previous
-             version hijacked field taps and stole focus, so a sync refresh could overwrite an
-             in-progress entry (see commit 05e1cd1). This one is self-contained. -->
-        <div class="card bud-span-2" id="bud-calc-card" data-bud-key="calc">
-          <div class="sec-label bud-toggle">&#129518; Calculator<svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
-          <div class="bud-collapse-body">
-            <div id="bcalc-expr" class="bcalc-expr">&nbsp;</div>
-            <div id="bcalc-display" class="bcalc-display">0</div>
-            <div class="bcalc-pad">
-              <button class="bcalc-key fn" onclick="bcalcClear()">C</button>
-              <button class="bcalc-key fn" onclick="bcalcSign()">±</button>
-              <button class="bcalc-key fn" onclick="bcalcPercent()">%</button>
-              <button class="bcalc-key op" onclick="bcalcOp('/')">÷</button>
-              <button class="bcalc-key" onclick="bcalcDigit('7')">7</button>
-              <button class="bcalc-key" onclick="bcalcDigit('8')">8</button>
-              <button class="bcalc-key" onclick="bcalcDigit('9')">9</button>
-              <button class="bcalc-key op" onclick="bcalcOp('*')">×</button>
-              <button class="bcalc-key" onclick="bcalcDigit('4')">4</button>
-              <button class="bcalc-key" onclick="bcalcDigit('5')">5</button>
-              <button class="bcalc-key" onclick="bcalcDigit('6')">6</button>
-              <button class="bcalc-key op" onclick="bcalcOp('-')">&#8722;</button>
-              <button class="bcalc-key" onclick="bcalcDigit('1')">1</button>
-              <button class="bcalc-key" onclick="bcalcDigit('2')">2</button>
-              <button class="bcalc-key" onclick="bcalcDigit('3')">3</button>
-              <button class="bcalc-key op" onclick="bcalcOp('+')">+</button>
-              <button class="bcalc-key" onclick="bcalcDigit('0')">0</button>
-              <button class="bcalc-key" onclick="bcalcDot()">.</button>
-              <button class="bcalc-key fn" onclick="bcalcBack()" aria-label="Backspace">&#9003;</button>
-              <button class="bcalc-key eq" onclick="bcalcEquals()">=</button>
+        <!-- HISTORY &amp; TOOLS — everything that used to sit at full size in the weekly
+             workflow without being part of it. Previous weeks was eight rows always open; it is
+             one recent-week snapshot now, with Month and Yearly — the real historical analysis
+             — one press away. The calculator is a disclosure rather than a permanent keypad,
+             and Accounts &amp; net worth moved down here off the hero. -->
+        <div class="card bud-span-2" id="bud-tools-card" data-bud-key="tools">
+          <div class="sec-label bud-toggle"><span class="bud-head-label"><svg class="card-hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/></svg><span>History &amp; tools</span></span><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div id="prev-weeks-section"></div>
+          <div class="bud-tools-acts">
+            <button type="button" class="bud-tool-btn" onclick="setBudgetView('month')">Month<span aria-hidden="true">→</span></button>
+            <button type="button" class="bud-tool-btn" onclick="setBudgetView('year')">Yearly<span aria-hidden="true">→</span></button>
+            <button type="button" class="bud-tool-btn" onclick="openAccounts()">Accounts &amp; net worth<span aria-hidden="true">→</span></button>
+          </div>
+          <!-- Standalone calculator. Deliberately NOT wired into the budget inputs: the previous
+               version hijacked field taps and stole focus, so a sync refresh could overwrite an
+               in-progress entry (see commit 05e1cd1). This one is self-contained, and behind a
+               disclosure — a 4×5 keypad is not part of the weekly workflow. -->
+          <div class="bud-sec" id="bud-calc-sec" data-sec="calc">
+            <button type="button" class="bud-sec-hd" onclick="budSecToggle('calc')" aria-expanded="false" aria-controls="bud-calc-body">
+              <span class="bud-sec-t"><svg class="card-hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/></svg><span>Calculator</span></span>
+              <span class="bud-sec-r"><svg class="bud-sec-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></span>
+            </button>
+            <div class="bud-sec-body" id="bud-calc-body" hidden>
+              <div id="bcalc-expr" class="bcalc-expr">&nbsp;</div>
+              <div id="bcalc-display" class="bcalc-display">0</div>
+              <div class="bcalc-pad">
+                <button class="bcalc-key fn" onclick="bcalcClear()">C</button>
+                <button class="bcalc-key fn" onclick="bcalcSign()">±</button>
+                <button class="bcalc-key fn" onclick="bcalcPercent()">%</button>
+                <button class="bcalc-key op" onclick="bcalcOp('/')">÷</button>
+                <button class="bcalc-key" onclick="bcalcDigit('7')">7</button>
+                <button class="bcalc-key" onclick="bcalcDigit('8')">8</button>
+                <button class="bcalc-key" onclick="bcalcDigit('9')">9</button>
+                <button class="bcalc-key op" onclick="bcalcOp('*')">×</button>
+                <button class="bcalc-key" onclick="bcalcDigit('4')">4</button>
+                <button class="bcalc-key" onclick="bcalcDigit('5')">5</button>
+                <button class="bcalc-key" onclick="bcalcDigit('6')">6</button>
+                <button class="bcalc-key op" onclick="bcalcOp('-')">&#8722;</button>
+                <button class="bcalc-key" onclick="bcalcDigit('1')">1</button>
+                <button class="bcalc-key" onclick="bcalcDigit('2')">2</button>
+                <button class="bcalc-key" onclick="bcalcDigit('3')">3</button>
+                <button class="bcalc-key op" onclick="bcalcOp('+')">+</button>
+                <button class="bcalc-key" onclick="bcalcDigit('0')">0</button>
+                <button class="bcalc-key" onclick="bcalcDot()">.</button>
+                <button class="bcalc-key fn" onclick="bcalcBack()" aria-label="Backspace">&#9003;</button>
+                <button class="bcalc-key eq" onclick="bcalcEquals()">=</button>
+              </div>
             </div>
           </div>
         </div>
+
+        <!-- Only rendered when a deleted category still has saved amounts in past weeks. -->
+        <div id="bud-stranded-card"></div>
 
         </div><!-- /#bud-col-left: on desktop budApplyLayout() splits these across the two columns -->
         <div id="bud-col-right"></div>

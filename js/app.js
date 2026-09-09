@@ -6820,9 +6820,10 @@ function exportAllData(){
     // THIS device, not the user's data. daily_weather_cache holds precise coordinates (and a
     // backup file is routinely pasted into a chat); daily_pantry_ui is which pantry filter and
     // collapsed categories this handset is showing; daily_nav_ui is which navigation group is
-    // expanded, and the sidebar it belongs to only exists on a laptop. None mean anything on
-    // another device.
-    if(key && /^(daily_weather_cache|daily_pantry_ui|daily_nav_ui)/.test(key)) continue;
+    // expanded, and the sidebar it belongs to only exists on a laptop; daily_budget_ui is
+    // which spending breakdown the Budget week is showing. None mean anything on another
+    // device.
+    if(key && /^(daily_weather_cache|daily_pantry_ui|daily_nav_ui|daily_budget_ui)/.test(key)) continue;
     if(key && /^(daily_|wt_|kitchen_)/.test(key)) data[key]=localStorage.getItem(key);
   }
   const backup={ app:'daily', version:1, exported:new Date().toISOString(), data };
@@ -10835,7 +10836,7 @@ function payCycleForecast(available, week){
   const wk=week||budgetData[weekKey(monday)]||{};
   const inThisWeek=d=>d>=monday&&d<=sunday;
   // "Already recorded as paid this week." A recurring charge normally has no weekly input at
-  // all (renderFixedCard says so: counted automatically from its cycle), but an explicit
+  // all (renderPlanFixSection says so: counted automatically from its cycle), but an explicit
   // fix_<id> entry on the current week means a real figure was recorded against it, and
   // weekFixedTotal already treats that entry as the week's actual cost. Subtracting the bill
   // on top of it would charge for it twice.
@@ -12464,31 +12465,46 @@ const escAttr=s=>escText(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 // Collapsible section header (shared markup) — collapse handled by the delegated
 // .bud-toggle listener + restoreBudgetCollapseState (data-bud-key persistence).
 const BUD_CHEVRON='<svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>';
+// A SECOND disclosure, one level down, and deliberately not the same thing as the card
+// collapse above. .bud-toggle shuts a whole card and persists to daily_budget_collapse;
+// .bud-sec is a section INSIDE a card (Week plan's Income / Fixed / Savings, History &
+// tools' calculator) whose open set is in memory, so a card re-render can restore it but a
+// reload starts from the summary — which is the point of the Week plan card. Do not merge
+// the two: the third collapse system in this app is exactly what CLAUDE.md warns about, and
+// this one is one card's internal composition rather than a saved preference.
+const BUD_SEC_CHEVRON='<svg class="bud-sec-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
+const _budSecOpen=new Set();
+function budSecToggle(id){
+  if(_budSecOpen.has(id)) _budSecOpen.delete(id); else _budSecOpen.add(id);
+  budSecApply();
+}
+// Written from ONE place for every section on the tab, after each render — the Income and
+// Fixed sections are rebuilt by renderBudgetTab while Savings and the calculator are static
+// markup that is never rebuilt, and a second copy of "is this section open" is the thing
+// that goes stale between them.
+function budSecApply(){
+  document.querySelectorAll('#budget-week-view .bud-sec').forEach(sec=>{
+    const id=sec.dataset.sec; if(!id) return;
+    const open=_budSecOpen.has(id);
+    sec.classList.toggle('is-open',open);
+    const hd=sec.querySelector('.bud-sec-hd');
+    if(hd) hd.setAttribute('aria-expanded',open?'true':'false');
+    const body=sec.querySelector('.bud-sec-body');
+    if(body) body.hidden=!open;
+  });
+}
 // Per-card edit mode (current week only). When off, add/delete/rename controls are not
 // rendered at all — so a stray tap can't delete a category; amounts stay editable always.
 const budEditMode = {inc:false, fix:false, var:false, vargoal:false};
 // A past week temporarily unlocked for backfill editing (e.g. fixing last week's income).
 // Reset whenever the viewed week changes so history stays read-only by default.
 let budPastEdit = false;
-// Collapsible card header with an Edit/Done toggle (current week only). The toggle lives
-// inside .bud-toggle but the collapse listener ignores taps on it (see that handler).
-// icon is a CARD_ICONS name. It used to be an emoji baked into the label string ("📌 Fixed
-// expenses"), which put four uncontrollable hues across the Budget tab's chrome — and those
-// emoji sat in the same strings as the user's own stored category names, so nothing could be
-// changed here without risking their content. The icon is now a separate argument, and the
-// label is plain text.
-function budCardHead(type, label, isCur, icon){
-  const editing=budEditMode[type];
-  const editBtn = isCur
-    ? '<button class="bud-edit-btn'+(editing?' active':'')+'" data-type="'+type+'" data-action="bud-edit-toggle">'+(editing?'Done':'Edit')+'</button>'
-    : '';
-  const ico = icon ? cardIcon(icon) : '';
-  // bud-head-sum carries the card's total so a collapsed card still states its figure; it is
-  // shown only while collapsed (the row below says the same thing when open). Filled by
-  // budRecalc, which already computes every one of these totals.
-  return '<div class="sec-label bud-toggle"><span class="bud-head-label">'+ico+'<span>'+label+'</span></span>'+
-    '<span class="bud-head-right"><span class="bud-head-sum" id="sum-'+type+'"></span>'+editBtn+BUD_CHEVRON+'</span></div>';
-}
+// budCardHead(type,label,isCur,icon) lived here and built the collapsible header with an
+// Edit/Done toggle for the six per-category cards. It lost every caller when those cards were
+// merged into Spending and Week plan: the two remaining card headers are written out where
+// they are used, and the Edit toggle moved onto budPlanSection() and the Spending card's
+// two-control tools row. The `data-action="bud-edit-toggle"` contract with the delegated
+// listener is unchanged, so restoring it would be copying that one button back.
 // In edit mode (current week) category names are editable inputs; otherwise plain labels.
 // A brand-new unnamed row also gets an input so it can be named without window.prompt().
 function budCatNameHtml(type,c,isCur,editMode){
@@ -12502,10 +12518,38 @@ function budCatNameHtml(type,c,isCur,editMode){
     '<div class="bud-row-name">'+_catEscHtml(type==='fix'?catDisplayName(c.name):c.name)+'</div></div>';
   return '<input class="bud-cat-name-input" id="catname-'+type+'-'+c.id+'" value="" placeholder="Name this category…" oninput="budRenameCat(\''+type+'\',\''+c.id+'\',this.value)" onchange="renderBudgetTab()"'+(isCur?'':' disabled')+'>';
 }
+// ── Week plan: one expandable section ─────────────────────────────
+// Income, Fixed/committed and Savings were three separate cards saying one thing between
+// them — how this week's money is allocated. Each is a section now, and the section HEADER is
+// the at-a-glance row: label, this week's figure, chevron. So the four figures of the weekly
+// allocation read without expanding anything, and the detail (and the editing each card
+// always had) is one press away.
+// `sumId` is the element budRecalc ALREADY writes that total into, so the header cannot
+// disagree with the rows underneath it — there is no second total computed here.
+// The Edit button is a SIBLING of the toggle, not a child: a button inside a button is
+// invalid, and the delegated [data-action="bud-edit-toggle"] handler has to reach it.
+function budPlanSection(id, icon, label, sumId, bodyHtml, editType, isCur){
+  const editing=editType && budEditMode[editType] && isCur;
+  const editBtn=(editType && isCur)
+    ? '<button class="bud-edit-btn'+(editing?' active':'')+'" data-type="'+editType+'" '+
+        'data-action="bud-edit-toggle" aria-label="'+(editing?'Done editing ':'Edit ')+escAttr(label.toLowerCase())+'">'+
+        (editing?'Done':'Edit')+'</button>'
+    : '';
+  return '<div class="bud-sec-head">'+
+      '<button type="button" class="bud-sec-hd" onclick="budSecToggle(\''+id+'\')" '+
+        'aria-expanded="false" aria-controls="bud-plan-'+id+'-body">'+
+        '<span class="bud-sec-t">'+cardIcon(icon)+'<span>'+label+'</span></span>'+
+        '<span class="bud-sec-r"><span class="bud-sec-v" id="'+sumId+'"></span>'+BUD_SEC_CHEVRON+'</span>'+
+      '</button>'+editBtn+
+    '</div>'+
+    '<div class="bud-sec-body" id="bud-plan-'+id+'-body" hidden>'+bodyHtml+'</div>';
+}
 // A scheduled subscription, bill or payment plan accrues its prorated share automatically —
 // typing into it would double-count what's already been counted. Other weekly commitments
 // keep their editable weekly input.
-function renderFixedCard(data,isCur){
+// The card wrapper and its own total row are gone: this is the Fixed section of the Week plan
+// card, whose header already carries the figure budRecalc writes into #sum-fix.
+function renderPlanFixSection(data,isCur){
   const editing=budEditMode.fix && isCur;
   const cats=activeCats(loadFixCats()); // archived keep counting in totals, just no row
   const weeklyCats=cats.filter(c=>!catIsRecurring(c));
@@ -12547,13 +12591,14 @@ function renderFixedCard(data,isCur){
       '</div>';
   }
 
-  return '<div class="card" data-bud-key="fix">'+budCardHead('fix','Fixed expenses',isCur,'pin')+rows+recurBlock+
-    '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total fixed</div><div class="bud-row-calc" id="calc-fixed" style="color:var(--text)">—</div></div>'+
-    (editing?'<button class="add-cat-btn" data-type="fix">+ Add fixed expense</button>':'')+
-  '</div>';
+  const body=(rows||recurBlock ? rows+recurBlock
+      : '<div class="bud-sec-none is-empty">No fixed costs yet. Add the bills that come out every week, or set up subscriptions and scheduled charges in Settings → Budget setup.</div>')+
+    (editing?'<button class="add-cat-btn" data-type="fix">+ Add fixed expense</button>':'');
+  return budPlanSection('fix','pin','Fixed / committed','sum-fix',body,'fix',isCur);
 }
 // ── Weekly variable-spend goal ────────────────────────────────────
-// A self-imposed ceiling on the Variable card below, separate from "money left over":
+// A self-imposed ceiling on the breakdown below it in the Spending card, separate from
+// "money left over":
 // leftover is whatever income happens to leave behind, this is a number Francois picks and
 // tries to stay under. Per-week, so a week with things on can carry a bigger goal without
 // rewriting the usual one. The usual goal lives in budDefaults.varGoal; each week stores the
@@ -12571,12 +12616,17 @@ function varGoalDaysLeft(){
   const dow=(new Date().getDay()+6)%7; // 0 = Monday … 6 = Sunday
   return 7-dow;
 }
-function renderVarGoalCard(data,editable){
+// The goal block at the top of the Spending card. It was its own card directly above
+// Variable expenses — same question, same money, one card apart — so it is the first thing
+// inside the merged card instead, above the breakdown it is the ceiling for.
+// Every id here is unchanged, because updateVarGoalCard() drives all of them live from
+// budRecalc rather than re-rendering (which would drop focus out of the goal input).
+function budVarGoalBlockHtml(data,editable){
   const goal=getWeekVarGoal(data);
   const editing=budEditMode.vargoal && editable;
-  // Read-only by default (same Edit-button convention as the Income/Fixed/Variable cards):
+  // Read-only by default (same Edit-button convention as the income/fixed/category rows):
   // the goal is already spelled out in "left of your $250 goal", so an always-visible input
-  // was just clutter on a card you only change occasionally.
+  // was just clutter on something you only change occasionally.
   const goalRow=editing
     ? '<div class="bud-row">'+
         '<div class="bud-row-left"><div class="bud-row-name">Goal for this week</div></div>'+
@@ -12585,8 +12635,7 @@ function renderVarGoalCard(data,editable){
       '</div>'
     : '';
   // The goal has to survive the input disappearing — updateVarGoalCard falls back to this.
-  return '<div class="card vg-card" data-bud-key="vargoal" data-vg-goal="'+(goal===null?'':goal)+'">'+
-    budCardHead('vargoal','Spending goal',editable,'target')+
+  return '<div class="vg-card vg-block" data-vg-goal="'+(goal===null?'':goal)+'">'+
     goalRow+
     '<div class="vg-body">'+
       '<div class="vg-head"><span class="vg-amt" id="vargoal-amt">—</span><span id="vargoal-status"></span></div>'+
@@ -12602,13 +12651,13 @@ function renderVarGoalCard(data,editable){
 function currentVarGoal(){
   const inputEl=document.getElementById('vargoal-input');
   const raw=inputEl ? inputEl.value
-                    : (document.querySelector('#bud-vargoal-card .vg-card')||{dataset:{}}).dataset.vgGoal;
+                    : (document.querySelector('#bud-spend-card .vg-card')||{dataset:{}}).dataset.vgGoal;
   if(raw===undefined||raw===null||raw==='') return null;
   const n=parseFloat(raw);
   return isNaN(n)?null:n;
 }
 function updateVarGoalCard(totalVar){
-  const cardEl=document.querySelector('#bud-vargoal-card .vg-card'); if(!cardEl) return;
+  const cardEl=document.querySelector('#bud-spend-card .vg-card'); if(!cardEl) return;
   const goal=currentVarGoal();
   const $=(id,t)=>{ const el=document.getElementById(id); if(el) el.textContent=t; };
   const amtEl=document.getElementById('vargoal-amt');
@@ -13051,7 +13100,12 @@ function budDayDateLabel(dt){
   try{ return dt.toLocaleDateString('en-AU',{day:'numeric',month:'short'}); }
   catch(e){ return ''; }
 }
-function renderDaysCard(wk){
+// The "By day" panel of the Spending card. It was its own card sitting under Variable
+// expenses, so both long lists were in the page at once; the segmented switch above this
+// means only one of them ever is. Nothing about the reconciliation changed — budDaySpend()
+// still builds the same category-id set weekVarTotal() builds, and the undated remainder is
+// still stated in words rather than rounded away.
+function budDayBodyHtml(wk){
   const m=budDaySpend(wk);
   const today=getLocalDate();   // already a 'YYYY-MM-DD' string, not a Date
   const cats=loadVarCats();
@@ -13123,53 +13177,7 @@ function renderDaysCard(wk){
         busiest+noteHtml+
       '</div>';
   }
-  return '<div class="card" data-bud-key="days">'+
-    budCardHead('days','Day by day',false,'calendar')+
-    body+
-  '</div>';
-}
-// ── Upcoming charges ──────────────────────────────────────────────
-// "$3.23/week" tells you how to budget for Spotify; it does not tell you that $13.99 leaves
-// your account on Thursday. This is the forward-looking half of recurring costs, and the only
-// place in the app that answers "what is about to be charged?" before it happens.
-// Only renders when at least one charge has a date set — with none, it would be an empty card
-// asking to be configured, which is worse than not being there.
-function renderUpcomingCard(){
-  const list=upcomingCharges(30);
-  const recur=loadFixCats().filter(c=>catIsRecurring(c)&&catIsCharging(c));
-  if(!recur.length) return '';
-  const dated=recur.filter(c=>c.dueDate).length;
-  if(!dated) return '';
-  const total=list.reduce((s,x)=>s+x.amount,0);
-  // A cluster of charges landing together is the thing that actually catches people out, so
-  // it gets called out rather than left to be inferred from the list.
-  const within7=list.filter(x=>x.days<=7);
-  const cluster=within7.length>=2
-    ? '<div class="up-warn">'+within7.length+' charges land within 7 days — '+fmtMoney(within7.reduce((s,x)=>s+x.amount,0))+' total</div>'
-    : '';
-  const rows=list.length
-      ? list.map(x=>{
-        const soon=x.days<=3;
-        const when=x.days===0?'today':x.days===1?'tomorrow':'in '+x.days+' days';
-        const account=catPaymentAccount(x.cat);
-        return '<div class="up-row'+(soon?' soon':'')+'">'+
-          '<span class="up-when">'+when+'</span>'+
-          '<span class="up-name"><span class="up-title">'+_catEscHtml(catLabel(x.cat))+
-            (catStatus(x.cat)==='trial'?'<span class="up-trial">trial</span>':'')+'</span>'+
-            (account?'<span class="up-account">'+_catEscHtml(account.name||'Linked account')+'</span>':'')+'</span>'+
-          '<span class="up-amt">'+fmtMoneyExact(x.amount)+'</span>'+
-        '</div>';
-      }).join('')
-    : '<div class="up-none">Nothing due in the next 30 days.</div>';
-  const undated=recur.length-dated;
-  return '<div class="card" data-bud-key="upcoming">'+
-    budCardHead('upcoming','Upcoming charges',false,'calendar')+
-    cluster+rows+
-    (list.length?'<div class="up-total"><span>Next 30 days</span><span>'+fmtMoney(total)+'</span></div>':'')+
-    (undated?'<div class="up-hint">'+undated+' recurring charge'+(undated===1?'':'s')+' without a billing date — add one in Settings → Budget setup to see '+(undated===1?'it':'them')+' here.</div>':'')+
-    // 30 days is the horizon this card is for; anything further out belongs to the calendar.
-    '<button type="button" class="up-cal-link" onclick="openBillsCalendar()">View bills calendar →</button>'+
-  '</div>';
+  return body;
 }
 // ── Bills calendar view ───────────────────────────────────────────
 // Forward planning for scheduled charges, not a history of what was spent. Three months is
@@ -13263,48 +13271,79 @@ function renderBillsView(){
   wrap.innerHTML=summary+chart+lists;
 }
 
-// ── Until next pay ────────────────────────────────────────────────
+// ── Outlook until next pay ────────────────────────────────────────
 // One question: after the bills due before my next pay, what will I have available?
 // A projection, never a balance — the wording says "projected" everywhere, and it creates
 // nothing: no transactions, no changes to the week, no date is rolled forward.
-// Hidden entirely when no income source is named, rather than inventing a pay day.
-function renderForecastCard(available, week){
-  const el=document.getElementById('bud-forecast-card'); if(!el) return;
+//
+// This is the old "Until next pay" card and the old "Upcoming charges" card merged. They were
+// two cards leading with the same schedule from opposite ends: the forecast said what would
+// be left after the bills before payday, the upcoming card listed thirty days of charges — so
+// the same bill was named twice, a screen apart, and the second list duplicated the Bills tab
+// that is the authoritative calendar for it. Only the next few charges appear here now; the
+// full schedule is one press away.
+//
+// `available` is passed in rather than recomputed, and `week` is the object it was derived
+// FROM, so this can never disagree with the hero directly above it. Nothing here invents a
+// projection: with no named income source payCycleForecast() returns null and the card falls
+// back to naming the charges, exactly as the upcoming card did.
+function budUpcomingRowHtml(x){
+  const soon=x.days<=3;
+  const when=x.days===0?'today':x.days===1?'tomorrow':'in '+x.days+' days';
+  const account=catPaymentAccount(x.cat);
+  return '<div class="up-row'+(soon?' soon':'')+'">'+
+    '<span class="up-when">'+when+'</span>'+
+    '<span class="up-name"><span class="up-title">'+_catEscHtml(catLabel(x.cat))+
+      (catStatus(x.cat)==='trial'?'<span class="up-trial">trial</span>':'')+'</span>'+
+      (account?'<span class="up-account">'+_catEscHtml(account.name||'Linked account')+'</span>':'')+'</span>'+
+    '<span class="up-amt">'+fmtMoneyExact(x.amount)+'</span>'+
+  '</div>';
+}
+function renderOutlookCard(available, week){
+  const el=document.getElementById('bud-outlook-card'); if(!el) return;
+  const recur=loadFixCats().filter(c=>catIsRecurring(c)&&catIsCharging(c));
+  const dated=recur.filter(c=>c.dueDate).length;
+  const undated=recur.length-dated;
   // Forecasting only makes sense from the current week — a past week has no future to project.
-  if(!budIsCurrentWeek()){ el.innerHTML=''; return; }
-  const f=payCycleForecast(available, week);
-  if(!f){ el.innerHTML=''; return; }
-  const payTxt='Payday '+f.pay.date.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+
-    ' · '+(f.pay.inDays===1?'tomorrow':f.pay.inDays+' days away');
-  const tone=(f.projected==null) ? '' : (f.projected<0 ? ' is-over' : (f.projected<50 ? ' is-tight' : ''));
-
-  let figure, unit;
-  if(f.projected==null){
-    // No income entered yet — state the bills, don't invent a projection.
-    figure=fmtMoneyExact(f.scheduled);
-    unit='in scheduled bills before then · enter this week’s income to project what’s left';
-  } else {
-    figure=(f.projected<0?'-':'')+fmtMoney(Math.abs(f.projected)).replace('-','');
-    unit=f.projected<0
-      ? 'projected shortfall after planned bills'
-      : 'projected after planned bills';
-  }
-
-  const billLines=f.bills.length
-    ? '<div class="fc-bills">'+f.bills.slice(0,4).map(b=>
-        '<div class="fc-bill"><span class="fc-bill-when">'+_billDayLabel(b.date)+'</span>'+
-        '<span class="fc-bill-name">'+_catEscHtml(b.name)+
-          (b.kind==='statement'?'<em>statement</em>':'')+'</span>'+
-        '<span class="fc-bill-amt">'+fmtMoneyExact(b.amount)+'</span></div>').join('')+
-      (f.bills.length>4?'<div class="fc-more">+'+(f.bills.length-4)+' more before payday</div>':'')+
-      '</div>'
+  const f=budIsCurrentWeek()?payCycleForecast(available, week):null;
+  // With neither a forecast nor a single dated charge this would be an empty card asking to
+  // be configured, which is worse than not being there.
+  if(!f && !dated){ el.innerHTML=''; return; }
+  const hint=undated
+    ? '<div class="up-hint">'+undated+' recurring charge'+(undated===1?'':'s')+' without a billing date — add one in Settings → Budget setup to see '+(undated===1?'it':'them')+' here.</div>'
     : '';
+  const calLink='<button type="button" class="up-cal-link" onclick="openBillsCalendar()">View bills calendar →</button>';
 
-  el.innerHTML='<div class="card fc-card'+tone+'" data-bud-key="forecast">'+
-    '<div class="sec-label bud-toggle"><span class="bud-head-label">'+cardIcon('calendar')+'<span>Until next pay</span></span>'+
-      '<span class="bud-head-right"><span class="bud-head-sum">'+figure+'</span>'+BUD_CHEVRON+'</span></div>'+
-    '<div class="bud-collapse-body">'+
-      '<div class="fc-fig">'+figure+'</div>'+
+  let label, sum, body, tone='';
+
+  if(f){
+    tone=(f.projected==null) ? '' : (f.projected<0 ? ' is-over' : (f.projected<50 ? ' is-tight' : ''));
+    let figure, unit;
+    if(f.projected==null){
+      // No income entered yet — state the bills, don't invent a projection.
+      figure=fmtMoneyExact(f.scheduled);
+      unit='in scheduled bills before then · enter this week’s income to project what’s left';
+    } else {
+      figure=(f.projected<0?'-':'')+fmtMoney(Math.abs(f.projected)).replace('-','');
+      unit=f.projected<0 ? 'projected shortfall after planned bills' : 'projected after planned bills';
+    }
+    const payTxt='Payday '+f.pay.date.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+
+      ' · '+(f.pay.inDays===1?'tomorrow':f.pay.inDays+' days away');
+    // Three, not the whole run-up: the point is what is about to land, and the calendar holds
+    // the rest. The remainder is counted out loud so the total above it still reconciles.
+    const shown=f.bills.slice(0,3);
+    const billLines=f.bills.length
+      ? '<div class="fc-bills">'+shown.map(b=>
+          '<div class="fc-bill"><span class="fc-bill-when">'+_billDayLabel(b.date)+'</span>'+
+          '<span class="fc-bill-name">'+_catEscHtml(b.name)+
+            (b.kind==='statement'?'<em>statement</em>':'')+'</span>'+
+          '<span class="fc-bill-amt">'+fmtMoneyExact(b.amount)+'</span></div>').join('')+
+        (f.bills.length>shown.length?'<div class="fc-more">+'+(f.bills.length-shown.length)+' more before payday</div>':'')+
+        '</div>'
+      : '';
+    label='Outlook until next pay';
+    sum=figure;
+    body='<div class="fc-fig">'+figure+'</div>'+
       '<div class="fc-unit">'+unit+'</div>'+
       '<div class="fc-line">'+payTxt+'</div>'+
       (f.bills.length
@@ -13313,10 +13352,43 @@ function renderForecastCard(available, week){
         // summarised as $14 directly above the row that says $13.99).
         ? '<div class="fc-line fc-line-2">'+fmtMoneyExact(f.scheduled)+' in scheduled bills before then</div>'+billLines
         : '<div class="fc-line fc-ok">No scheduled bills before your next pay.</div>')+
-    '</div>'+
+      hint+calLink;
+  } else {
+    // No pay day named, or a past week: there is no honest projection, so the card states
+    // what is scheduled instead — which is what the upcoming-charges card always did.
+    const list=upcomingCharges(30);
+    const next=list[0]||null;
+    // A cluster of charges landing together is the thing that actually catches people out, so
+    // it gets called out rather than left to be inferred from the list.
+    const within7=list.filter(x=>x.days<=7);
+    const cluster=within7.length>=2
+      ? '<div class="up-warn">'+within7.length+' charges land within 7 days — '+fmtMoney(within7.reduce((s,x)=>s+x.amount,0))+' total</div>'
+      : '';
+    label='Upcoming charges';
+    sum=next?fmtMoneyExact(next.amount):'—';
+    // .fc-card's default rail is --positive, and there is no projection here to be positive
+    // about: a green edge beside a list of charges would be a verdict on nothing.
+    tone=' is-plain';
+    body=(next
+        ? '<div class="fc-fig">'+fmtMoneyExact(next.amount)+'</div>'+
+          '<div class="fc-unit">next scheduled charge · '+
+            (next.days===0?'today':next.days===1?'tomorrow':'in '+next.days+' days')+'</div>'
+        : '')+
+      cluster+
+      (list.length
+        ? '<div class="up-list">'+list.slice(0,3).map(budUpcomingRowHtml).join('')+'</div>'+
+          (list.length>3?'<div class="fc-more">+'+(list.length-3)+' more in the next 30 days</div>':'')
+        : '<div class="up-none">Nothing due in the next 30 days.</div>')+
+      hint+calLink;
+  }
+
+  el.innerHTML='<div class="card fc-card'+tone+'" data-bud-key="outlook">'+
+    '<div class="sec-label bud-toggle"><span class="bud-head-label">'+cardIcon('calendar')+'<span>'+label+'</span></span>'+
+      '<span class="bud-head-right"><span class="bud-head-sum">'+sum+'</span>'+BUD_CHEVRON+'</span></div>'+
+    '<div class="bud-collapse-body">'+body+'</div>'+
   '</div>';
   // budRecalc replaces this markup after every edited amount. Reapply the keyed saved state so
-  // recalculating the projection cannot silently reopen a forecast the user minimised.
+  // recalculating the projection cannot silently reopen a card the user minimised.
   restoreBudgetCollapseState();
 }
 
@@ -13401,7 +13473,9 @@ function openBudgetSetup(){
   budEditMode.inc=true;
   budEditMode.fix=true;
   if(typeof renderBudgetTab==='function') renderBudgetTab();
-  const el=document.getElementById('bud-income-card');
+  // Week plan, where those two sections now live — renderBudgetTab opens the section that
+  // owns each edit mode, so both are already expanded by the time this scrolls to them.
+  const el=document.getElementById('bud-plan-card');
   if(el && typeof safeScrollIntoView==='function') safeScrollIntoView(el,{behavior:'smooth',block:'start'});
 }
 function renderBudgetSetupCard(){
@@ -13417,23 +13491,26 @@ function renderBudgetSetupCard(){
   return '<div class="card bud-setup" data-bud-key="setup">'+
     cardHeader('wallet','Finish setting up Budget',
       '<button type="button" class="bud-setup-x" onclick="budSetupDismiss()" aria-label="Dismiss setup card">\u00d7</button>')+
-    '<p class="bud-setup-body">The categories below are starters. Add your income and your fixed weekly bills and every figure on this page becomes yours \u2014 the weekly hero, the spending goal and Stats all read from them.</p>'+
+    // "The categories below" until the redesign, which is no longer true on desktop \u2014 Week
+    // plan sits in the right-hand column. Named rather than pointed at.
+    '<p class="bud-setup-body">The categories in Week plan and Spending are starters. Add your income and your fixed weekly bills and every figure on this page becomes yours \u2014 the weekly hero, the spending goal and Stats all read from them.</p>'+
     '<div class="bud-setup-actions">'+
       '<button type="button" class="bud-setup-btn primary" onclick="openBudgetSetup()">Add income &amp; bills</button>'+
       '<button type="button" class="bud-setup-btn" onclick="budSetupDismiss()">Not now</button>'+
     '</div>'+
   '</div>';
 }
-function renderRecordCard(){
-  const cur=budIsCurrentWeek();
-  return '<div class="card">'+
-    cardHeader('receipt','Record spending')+
-    (cur
-      ? '<div class="rec-spend-cap">Log a purchase and Daily will update the category totals below.</div>'+
-        '<button type="button" class="rec-add-btn" onclick="openTxnModal()">'+
-          '<span class="rec-add-plus" aria-hidden="true">+</span>Add expense</button>'
-      : '<div class="rec-spend-cap">You’re looking at a past week. New purchases are always dated today, so they’d land in the current week — switch back to this week to log one.</div>')+
-  '</div>';
+// It used to be its own card ("Record spending"), first on the phone and at the top of the
+// right-hand desktop column. It is on the HERO now: the surface that says what is left to
+// spend is where the action that spends it belongs, and it costs no scrolling at all.
+// The current-week gate is unchanged and is the whole reason this is a render rather than a
+// static button — a past week gets the explanation, never the control.
+function renderHeroAction(){
+  const el=document.getElementById('bud-hero-act'); if(!el) return;
+  el.innerHTML = budIsCurrentWeek()
+    ? '<button type="button" class="bud-hero-add" onclick="openTxnModal()">'+
+        '<span class="bud-hero-add-plus" aria-hidden="true">+</span>Add expense</button>'
+    : '<div class="bud-hero-note">You’re looking at a past week. New purchases are always dated today, so they’d land in the current week — switch back to this week to log one.</div>';
 }
 // Desktop splits the one mobile stack into two columns of roughly equal workload. The cards are
 // MOVED, so the DOM (and therefore tab order and screen-reader order) always matches what is on
@@ -13450,31 +13527,34 @@ function renderRecordCard(){
 // (renderBudgetSetupCard() returns '' once the week has any income), which is why it survived.
 // Adding a Budget card now means adding ONE line here.
 //
-// Mobile reads action-first: record a purchase, see what it did to the week, then the plan the
-// week is measured against, then reference. Setup is a dismissible onboarding banner so it
-// leads; Stranded data is a maintenance state so it trails.
-// Desktop keeps the plan and the entry work on the left — the long Variable card lives there
-// and is what makes the page tall — and puts the action, the verdict and the tools on the
-// right, which is what keeps that tall column from dwarfing a short one.
+// Fourteen entries became seven, because the tab had come to answer the same question in
+// several places at once. Spending goal + Variable expenses + Day by day are ONE Spending
+// card; Income + Savings + Fixed are ONE Week plan card; Upcoming charges + Until next pay
+// are ONE Outlook card; Record spending moved onto the hero; Weekly result lost the headline
+// the hero already carried and became Close out week; Previous weeks and the calculator are
+// compact sections of History & tools.
+//
+// MOBILE is this order top to bottom, and it is the order the tab is meant to be read in:
+// what can I spend today (hero) → where is it going (Spending) → what is committed (Week
+// plan) → what needs attention before payday (Outlook) → close the week → reference. Setup is
+// a dismissible onboarding banner so it leads; Stranded data is a maintenance state so it
+// trails.
+// DESKTOP keeps that same priority reading across the two columns — Spending beside Week
+// plan, then Outlook, then Close out, then the tools — rather than becoming two unrelated
+// stacks. Spending is the long card and lives on the left, which is what stops the right
+// column running out of content a screen early.
 const BUD_CARDS=[
   {id:'bud-setup-card',      col:'left' },
-  {id:'bud-record-card',     col:'right'},
-  {id:'bud-result-card',     col:'right'},
-  {id:'bud-forecast-card',   col:'right'},
-  {id:'bud-income-card',     col:'left' },
-  {id:'bud-savings-card',    col:'left' },
-  {id:'bud-fixed-card',      col:'left' },
-  {id:'bud-upcoming-card',   col:'left' },
-  {id:'bud-vargoal-card',    col:'left' },
-  {id:'bud-variable-card',   col:'left' },
-  {id:'bud-days-card',       col:'left' },
-  {id:'prev-weeks-section',  col:'right'},
-  {id:'bud-calc-card',       col:'right'},
+  {id:'bud-spend-card',      col:'left' },
+  {id:'bud-plan-card',       col:'right'},
+  {id:'bud-outlook-card',    col:'right'},
+  {id:'bud-closeout-card',   col:'left' },
+  {id:'bud-tools-card',      col:'right'},
   {id:'bud-stranded-card',   col:'right'},
 ];
 // Derived, so the two modes cannot drift apart. Mobile keeps the constant's single column
 // because #bud-col-left is the only column the phone layout renders (and in the landscape
-// block it is itself a grid, where prev-weeks-section and bud-calc-card span both tracks via
+// block it is itself a grid, where the Spending card and History & tools span both tracks via
 // .bud-span-2). The name stays BUD_LAYOUT so budApplyLayout() and anything else reading it
 // keeps working.
 const BUD_LAYOUT={
@@ -13574,7 +13654,11 @@ function renderVarConflict(c,conf,isCur){
   return '<div class="bud-conflict" role="status"><div class="bud-conflict-text">'+text+'</div>'+
     (actions?'<div class="bud-conflict-actions">'+actions+'</div>':'')+'</div>';
 }
-function renderVariableCard(data,isCur){
+// The "By category" panel of the Spending card. Unchanged in every respect that matters:
+// the same rows, the same typed-weekly-total inputs, the same itemised disclosure, the same
+// transaction-conflict handling and the same Edit/Done category controls. Only the card
+// wrapper and its header moved out, into the merged card above it.
+function budVarRowsHtml(data,isCur){
   const editing=budEditMode.var && isCur;
   const cats=activeCats(loadVarCats()); // archived keep counting in totals, just no row
   const wk=weekKey(getMondayOf(currentWeekIdx));
@@ -13627,13 +13711,85 @@ function renderVariableCard(data,isCur){
     }
     return row;
   }).join('');
-  return '<div class="card" data-bud-key="var">'+budCardHead('var','Variable expenses',isCur,'cart')+
-    rows+
+  return (rows||'<div class="bud-sec-none is-empty">No variable categories yet. Add one, or log a purchase and Daily will total it here.</div>')+
     '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total variable</div><div class="bud-row-calc" id="calc-variable" style="color:var(--text)">$0</div></div>'+
-    (editing?'<button class="add-cat-btn" data-type="var">+ Add variable expense</button>':'')+
+    (editing?'<button class="add-cat-btn" data-type="var">+ Add variable expense</button>':'');
+}
+// ── Spending: one card, two breakdowns ────────────────────────────
+// Spending goal, Variable expenses and Day by day were three cards answering one question —
+// "where is spending going" — with two long lists open at once and the ceiling for both a
+// card away from them. This is the goal, then a switch, then exactly ONE breakdown.
+// The two views read the SAME records through the same canonical helpers (varCatAmount /
+// weekVarTotal for categories, budDaySpend for days, which builds the same category-id set
+// weekVarTotal builds), so switching cannot change a total.
+const BUD_SPEND_VIEWS=['cat','day'];
+let _budSpendView=null;
+// Device-local, like daily_budget_collapse beside it and for the same reason: which
+// breakdown this handset is showing is not the user's data, so it is a plain setItem and
+// never lsSave(key,value,syncName). No new synced store, no migration — an absent or
+// unrecognised value simply reads as the default.
+function budSpendView(){
+  if(_budSpendView) return _budSpendView;
+  let v=null;
+  try{ v=(JSON.parse(localStorage.getItem('daily_budget_ui')||'{}')||{}).spendView; }catch(e){}
+  _budSpendView=BUD_SPEND_VIEWS.indexOf(v)>=0?v:'cat';
+  return _budSpendView;
+}
+function budSetSpendView(v){
+  if(BUD_SPEND_VIEWS.indexOf(v)<0 || budSpendView()===v) return;
+  // Flush before the panel is rebuilt: the category view holds typed weekly totals, and
+  // rebuilding the list without capturing them first would throw away what was just entered.
+  budSaveDraft();
+  _budSpendView=v;
+  try{ localStorage.setItem('daily_budget_ui', JSON.stringify({spendView:v})); }catch(e){}
+  renderBudgetTab();
+}
+function renderSpendCard(data,isCur){
+  const view=budSpendView();
+  const wk=weekKey(getMondayOf(currentWeekIdx));
+  const editingGoal=budEditMode.vargoal && isCur;
+  const editingCats=budEditMode.var && isCur;
+  // Two small edit controls rather than one: they change different things (the week's goal,
+  // and which categories exist), and folding them into a single Edit would mean opening the
+  // category rename/delete controls just to change a number.
+  const tools=isCur
+    ? '<div class="bud-spend-tools">'+
+        '<button class="bud-edit-btn'+(editingGoal?' active':'')+'" data-type="vargoal" '+
+          'data-action="bud-edit-toggle" aria-label="'+(editingGoal?'Done editing the weekly goal':'Edit the weekly goal')+'">'+
+          (editingGoal?'Done':'Edit goal')+'</button>'+
+        (view==='cat'
+          ? '<button class="bud-edit-btn'+(editingCats?' active':'')+'" data-type="var" '+
+            'data-action="bud-edit-toggle" aria-label="'+(editingCats?'Done editing categories':'Edit categories')+'">'+
+            (editingCats?'Done':'Edit categories')+'</button>'
+          : '')+
+      '</div>'
+    : '';
+  // The app's ONE segmented control (.seg-tabs), not a sixth private pill row. .bud-seg
+  // undoes the sticky/bleed treatment #view-budget gives the tab strip at the top of the
+  // screen — this one lives inside a card and must scroll with it.
+  const seg='<div class="seg-tabs seg-fill bud-seg" role="tablist" aria-label="Spending breakdown">'+
+      '<button type="button" role="tab" id="bud-spend-cat-btn" aria-controls="bud-spend-panel" '+
+        'aria-selected="'+(view==='cat')+'"'+(view==='cat'?' class="on"':'')+
+        ' onclick="budSetSpendView(\'cat\')">By category</button>'+
+      '<button type="button" role="tab" id="bud-spend-day-btn" aria-controls="bud-spend-panel" '+
+        'aria-selected="'+(view==='day')+'"'+(view==='day'?' class="on"':'')+
+        ' onclick="budSetSpendView(\'day\')">By day</button>'+
+    '</div>';
+  const panel='<div class="bud-spend-panel" id="bud-spend-panel" role="tabpanel" '+
+      'aria-labelledby="bud-spend-'+view+'-btn">'+
+      (view==='day' ? budDayBodyHtml(wk) : budVarRowsHtml(data,isCur))+
+    '</div>';
+  return '<div class="card" data-bud-key="spend">'+
+    '<div class="sec-label bud-toggle"><span class="bud-head-label">'+cardIcon('cart')+'<span>Spending</span></span>'+
+      '<span class="bud-head-right"><span class="bud-head-sum" id="sum-var"></span>'+BUD_CHEVRON+'</span></div>'+
+    budVarGoalBlockHtml(data,isCur)+
+    tools+seg+panel+
   '</div>';
 }
-function renderIncomeCard(data,isCur){
+// The Income section of the Week plan card. Same rows, same ids, same hours-worked companion
+// inputs it always had; the card wrapper and its own "Total income" row are gone because the
+// section header already carries the figure budRecalc writes into #sum-inc.
+function renderPlanIncSection(data,isCur){
   const editing=budEditMode.inc && isCur;
   const counted=new Set(weekIncomeKeys(data));
   // Keep genuine archived history visible on a past week. It still counts and can be edited
@@ -13656,12 +13812,12 @@ function renderIncomeCard(data,isCur){
       (editing?'<button class="delete-cat-btn" data-type="inc" data-id="'+c.id+'" aria-label="Remove income source">×</button>':'')+
     '</div>';
   }).join('');
-  return '<div class="card" data-bud-key="inc">'+budCardHead('inc','Income',isCur,'wallet')+rows+
-    // Neutral, like every other total on this tab: green here asserted that earning is a good
-    // outcome, which is a judgement the app has not made and cannot make from one figure.
-    '<div class="bud-row"><div class="bud-row-name" style="font-weight:700">Total income</div><div class="bud-row-calc" id="calc-income" style="color:var(--text)">$0</div></div>'+
-    (editing?'<button class="add-cat-btn" data-type="inc">+ Add income source</button>':'')+
-  '</div>';
+  // The total is neutral, like every other total on this tab: green here asserted that
+  // earning is a good outcome, which is a judgement the app has not made and cannot make
+  // from one figure. It lives in the section header (#sum-inc) rather than as a last row.
+  const body=(rows||'<div class="bud-sec-none is-empty">No income sources yet. Add one and every figure on this page becomes yours.</div>')+
+    (editing?'<button class="add-cat-btn" data-type="inc">+ Add income source</button>':'');
+  return budPlanSection('inc','wallet','Income','sum-inc',body,'inc',isCur);
 }
 // Hours-worked companion input. If the source has an hourly rate configured, entering hours
 // pre-fills the dollar field with hours × rate as a starting ESTIMATE — only while the dollar
@@ -13803,26 +13959,27 @@ function renderBudgetTab(){
     savEl.disabled=!editable; savEl.style.opacity=editable?'1':'0.7';
   }
 
-  // Dynamic income + fixed + variable category cards
-  const incWrap=document.getElementById('bud-income-card');
-  if(incWrap) incWrap.innerHTML=renderIncomeCard(data,editable);
-  const fixWrap=document.getElementById('bud-fixed-card');
-  if(fixWrap) fixWrap.innerHTML=renderFixedCard(data,editable);
-  const upWrap=document.getElementById('bud-upcoming-card');
-  if(upWrap) upWrap.innerHTML=renderUpcomingCard();
-  const goalWrap=document.getElementById('bud-vargoal-card');
-  if(goalWrap) goalWrap.innerHTML=renderVarGoalCard(data,editable);
+  // Week plan's two dynamic sections (Savings is static markup — #sav-amount must never
+  // leave the DOM, see budWriteFields) and the merged Spending card.
+  const incWrap=document.getElementById('bud-plan-inc');
+  if(incWrap) incWrap.innerHTML=renderPlanIncSection(data,editable);
+  const fixWrap=document.getElementById('bud-plan-fix');
+  if(fixWrap) fixWrap.innerHTML=renderPlanFixSection(data,editable);
   const setupWrap=document.getElementById('bud-setup-card');
   if(setupWrap) setupWrap.innerHTML=renderBudgetSetupCard();
-  const recWrap=document.getElementById('bud-record-card');
-  if(recWrap) recWrap.innerHTML=renderRecordCard();
-  const varWrap=document.getElementById('bud-variable-card');
-  if(varWrap) varWrap.innerHTML=renderVariableCard(data,editable);
-  const daysWrap=document.getElementById('bud-days-card');
-  if(daysWrap) daysWrap.innerHTML=renderDaysCard(weekKey(getMondayOf(currentWeekIdx)));
+  const spendWrap=document.getElementById('bud-spend-card');
+  if(spendWrap) spendWrap.innerHTML=renderSpendCard(data,editable);
   // Empty string when nothing is stranded, so this slot collapses to nothing in normal use.
   const strandedWrap=document.getElementById('bud-stranded-card');
   if(strandedWrap) strandedWrap.innerHTML=renderStrandedCard();
+
+  renderHeroAction();
+  // Opening a card's Edit mode has to open the section that holds it, or "Add income & bills"
+  // from the setup banner would unlock controls nobody can see. Only ever ADDITIVE — nothing
+  // here closes a section the user opened.
+  if(budEditMode.inc) _budSecOpen.add('inc');
+  if(budEditMode.fix) _budSecOpen.add('fix');
+  budSecApply();
 
   const notesEl=document.getElementById('week-notes');
   if(notesEl){ notesEl.value=data.notes||''; notesEl.disabled=!editable; }
@@ -13830,15 +13987,26 @@ function renderBudgetTab(){
   const saveBtn=document.getElementById('save-week-btn');
   const saveMsg=document.getElementById('save-week-msg');
   const saveHint=document.getElementById('save-week-hint');
+  const done=!!(data&&data.saved);
   if(saveBtn){
     saveBtn.style.display=editable?'block':'none';
     // A week already marked reviewed says so, rather than offering the same button again as
     // though nothing had happened.
-    const done=!!(data&&data.saved);
     saveBtn.textContent=done?'✓ Week finished — tap to update':'Finish week';
   }
   if(saveHint) saveHint.style.display=editable?'block':'none';
   if(saveMsg) saveMsg.style.display='none';
+  // The card is quieter than the hero, so whether the week is closed has to be said in words
+  // rather than left to the button's label. It is NOT the weekly result — the hero owns that.
+  const coState=document.getElementById('closeout-state');
+  if(coState) coState.innerHTML = done
+    ? tstat('pos','Week finished','check',true)
+    : (isCur ? tstat('warn','Not finished yet','flat',true)
+             : tstat('warn','This week was never finished','flat',true));
+  const coSum=document.getElementById('closeout-sum');
+  if(coSum) coSum.textContent = done?'Finished':'Open';
+  const coCard=document.getElementById('bud-closeout-card');
+  if(coCard) coCard.classList.toggle('is-done',done);
 
   budRecalc(true);
   renderPrevWeeks();
@@ -14048,7 +14216,7 @@ function budRecalc(animate){
   // them is how the on-screen total ends up disagreeing with the saved week.
   const _wkKey=weekKey(getMondayOf(currentWeekIdx));
   const _live=Object.assign({}, _wk);
-  // Only ACTIVE NON-RECURRING categories have inputs (renderFixedCard gives recurring charges
+  // Only ACTIVE NON-RECURRING categories have inputs (renderPlanFixSection gives recurring charges
   // a read-only block instead), so merging the live values below stamps fix_ keys for just
   // those — and weekFixedTotal treats any week carrying fix_ fields as defining its own
   // category list. Recurring charges therefore dropped straight out of the total: a brand-new
@@ -14074,30 +14242,30 @@ function budRecalc(animate){
   const leftover    = totalIncome>0?totalIncome-totalOut:null;
 
   const $ = (id,t) => { const el=document.getElementById(id); if(el) el.textContent=t; };
-  $('calc-income',  totalIncome>0?'$'+totalIncome.toFixed(0):'—');
-  $('calc-saved',   '$'+totalSaved.toFixed(0));
-  $('calc-fixed',   '$'+totalFixed.toFixed(0));
   // Exact, not rounded: the rows above it are per-cent transaction figures, so a toFixed(0)
   // total disagreed with its own visible arithmetic ($1,388.94 of rows summarised as $1,389).
   $('calc-variable',totalVar>0?fmtMoneyExact(totalVar):'—');
-  $('calc-leftover',leftover!==null?(leftover>=0?'+$':'-$')+Math.abs(leftover).toFixed(0):'—');
   updateVarGoalCard(totalVar);
 
   // The goal label was hardcoded as "Goal: $200 minimum" in index.html, so it kept showing
   // $200 no matter what the user set in Pay days & savings goal. Drive it from the saved value.
   $('sav-goal-label','Goal: $'+getSavingsGoal().toLocaleString()+' minimum');
-  // Header summary: this week's savings stays readable once the card is collapsed. The
-  // generic rule keeps only the LAST .bud-row, which here is "Total saved" — not the figure
-  // that matters week to week.
-  $('sav-head-sum','$'+totalSaved.toFixed(0));
-  // Collapsed-card totals, so minimising a card never hides its figure.
-  $('sum-inc','$'+totalIncome.toFixed(0));
+  // ── Week plan: the four figures of the weekly allocation ──
+  // Each is a SECTION HEADER now rather than a collapsed-card summary, so all four read
+  // without expanding anything. Same totals, same canonical readers, one place each.
+  $('sum-inc',totalIncome>0?'$'+totalIncome.toFixed(0):'—');
   $('sum-fix','$'+totalFixed.toFixed(0));
-  $('sum-var',fmtMoneyExact(totalVar));
+  // Header summary: this week's savings, which is the figure that matters week to week.
+  $('sav-head-sum','$'+totalSaved.toFixed(0));
+  // What the week leaves for variable spending — the ceiling the Spending card is measured
+  // against. Arithmetic on the three totals above it, not a fourth reading of the week.
+  const planAvail = totalIncome>0 ? (totalIncome-totalFixed-totalSaved) : null;
+  $('plan-avail', planAvail===null?'—':(planAvail>=0?'':'-')+'$'+Math.abs(planAvail).toFixed(0));
+  $('sum-plan',   planAvail===null?'—':(planAvail>=0?'':'-')+'$'+Math.abs(planAvail).toFixed(0));
+  // The Spending card's collapsed summary: spent against the goal when there is one, because
+  // that is the pair the card exists to compare.
   const _vg=currentVarGoal&&currentVarGoal();
-  $('sum-vargoal',_vg?(fmtMoneyExact(totalVar)+' / '+fmtMoney(_vg)):'—');
-  // Only the itemised half has days, so that is what the collapsed Day by day card states.
-  $('sum-days',fmtMoneyExact(budDaySpend(_wkKey).dated));
+  $('sum-var',_vg?(fmtMoneyExact(totalVar)+' / '+fmtMoney(_vg)):fmtMoneyExact(totalVar));
   const savSum=document.getElementById('sav-head-sum');
   if(savSum) savSum.style.color='var(--text)';
 
@@ -14105,8 +14273,6 @@ function budRecalc(animate){
   // the amount — blue when met, red when not — which meant the figure changed meaning with no
   // label attached to it, and red on a number that is simply "less than a target you set
   // yourself" reads as an error rather than as information.
-  const calcSavedEl=document.getElementById('calc-saved');
-  if(calcSavedEl) calcSavedEl.style.color='var(--text)';
   const savStatus=document.getElementById('sav-status');
   if(savStatus){
     const goal=getSavingsGoal();
@@ -14114,18 +14280,6 @@ function budRecalc(animate){
       : totalSaved>=goal ? tstat('pos','Goal met','check',true)
       : totalSaved>=goal*0.6 ? tstat('warn','Under goal','flat',true)
       : tstat('neg','Well under','down',true);
-  }
-
-  // Was a coloured circle emoji plus a word. The emoji ignores currentColor, so the dot and the
-  // pill it sat in could never be the same hue, and it rendered differently on every OS. The
-  // tonal chip carries the tint, a stroke icon and the word together.
-  const pill=document.getElementById('week-status-pill');
-  if(pill){
-    pill.className='';
-    pill.innerHTML = leftover===null ? tstat('warn','Enter income','flat')
-      : leftover>=50 ? tstat('pos','On track','check')
-      : leftover>=0  ? tstat('warn','Tight week','flat')
-      :                tstat('neg','Over budget','alert');
   }
 
   // ── Hero: SPENT vs COMMITTED vs AVAILABLE ──
@@ -14161,7 +14315,7 @@ function budRecalc(animate){
   if(availLbl) availLbl.textContent = (available!==null&&available<0) ? 'Over budget' : 'Available to spend';
   // The forecast starts from this exact figure AND the exact object it was derived from, so
   // it can never disagree with the hero directly above it.
-  if(typeof renderForecastCard==='function') renderForecastCard(available, _live);
+  if(typeof renderOutlookCard==='function') renderOutlookCard(available, _live);
   if(animate){
     const _el=id=>document.getElementById(id);
     if(available!==null&&available>0) countUp(_el('bud-hero-avail'), available);
@@ -14277,6 +14431,13 @@ function budSaveWeekExplicit(){
 }
 
 
+// The generic .card.collapsed + .card-collapse-header/body system (one of the three the app
+// carries — see CLAUDE.md). Its last MARKUP consumer was Budget's Previous weeks list, which
+// is now a two-line snapshot inside History & tools, so nothing currently renders a
+// .card-collapse-header. Kept rather than deleted: the CSS is still in kitchen-extras.css and
+// this is a general-purpose helper, not Budget's — removing an app-wide component as a side
+// effect of a Budget redesign is a bigger decision than this change is making.
+// restoreCardCollapse() already had no caller before that.
 function _applyCardCollapse(id, collapse){
   const card=document.getElementById(id); if(!card) return;
   const body=document.getElementById(id+'-body');
@@ -14316,29 +14477,37 @@ function restoreCardCollapse(){
   });
 }
 
+// ONE recent week, not eight. This was a permanently-open list of the last eight weeks
+// sitting in the middle of the weekly workflow — a screen of history on the page you use to
+// run the week you are in, and the shallowest possible version of an analysis that Month and
+// Yearly already do properly. The snapshot answers "how did the last one go"; the two buttons
+// beside it are where the actual history lives.
+// Same canonical readers as before (weekIncome / weekSavedAmt / weekLeftover) and the same
+// row and pill markup, so nothing about what a week's figures mean changed.
 function renderPrevWeeks(){
   const wrap=document.getElementById('prev-weeks-section'); if(!wrap) return;
   const curKey=weekKey(getMondayOf(currentWeekIdx));
-  const keys=Object.keys(budgetData).filter(k=>k<curKey).sort((a,b)=>b.localeCompare(a)).slice(0,8);
-  if(!keys.length){wrap.innerHTML=emptyState('📋','No previous weeks','Your saved weeks will appear here');return;}
-  const chevron='<svg class="card-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
-  let html='<div class="card" id="bud-card-prev"><div class="card-collapse-header" onclick="toggleCard(\'bud-card-prev\')"><div class="sec-label" style="margin-bottom:0">Previous weeks</div><div class="card-collapse-right">'+chevron+'</div></div><div class="card-collapse-body" id="bud-card-prev-body" style="padding-top:6px">';
-  keys.forEach(k=>{
-    const d=budgetData[k];
-    const inc=weekIncome(d);
-    const saved=weekSavedAmt(d);
-    const left=inc>0?weekLeftover(d):null;
-    const mon=new Date(k+'T12:00:00');
-    const fri=new Date(mon); fri.setDate(mon.getDate()+4);
-    const lbl=mon.toLocaleDateString('en-AU',{day:'numeric',month:'short'})+' – '+fri.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
-    html+='<div class="prev-week-row"><div class="prev-week-date">'+lbl+'</div><div class="prev-week-pills">';
-    if(inc>0) html+='<span class="prev-pill in">$'+inc.toFixed(0)+' in</span>';
-    html+='<span class="prev-pill saved">$'+saved.toFixed(0)+' saved</span>';
-    if(left!==null) html+='<span class="prev-pill '+(left>=0?'left':'over')+'">'+(left>=0?'+':'-')+'$'+Math.abs(left).toFixed(0)+'</span>';
-    html+='</div></div>';
-  });
-  html+='</div></div></div>';
-  wrap.innerHTML=html;
+  const key=Object.keys(budgetData).filter(k=>k<curKey).sort((a,b)=>b.localeCompare(a))[0];
+  if(!key){
+    // .is-empty, never .empty — that one is a live bare class in workout.css and would
+    // centre this line inside 48px of padding.
+    wrap.innerHTML='<div class="bud-hist-none is-empty">No earlier weeks recorded yet. Once you have finished a week it will be summarised here.</div>';
+    return;
+  }
+  const d=budgetData[key];
+  const inc=weekIncome(d);
+  const saved=weekSavedAmt(d);
+  const left=inc>0?weekLeftover(d):null;
+  const mon=new Date(key+'T12:00:00');
+  const fri=new Date(mon); fri.setDate(mon.getDate()+4);
+  const lbl=mon.toLocaleDateString('en-AU',{day:'numeric',month:'short'})+' – '+fri.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
+  let pills='';
+  if(inc>0) pills+='<span class="prev-pill in">$'+inc.toFixed(0)+' in</span>';
+  pills+='<span class="prev-pill saved">$'+saved.toFixed(0)+' saved</span>';
+  if(left!==null) pills+='<span class="prev-pill '+(left>=0?'left':'over')+'">'+(left>=0?'+':'-')+'$'+Math.abs(left).toFixed(0)+'</span>';
+  wrap.innerHTML='<div class="bud-hist-lbl">Most recent week</div>'+
+    '<div class="prev-week-row"><div class="prev-week-date">'+lbl+'</div>'+
+      '<div class="prev-week-pills">'+pills+'</div></div>';
 }
 
 let _monthSpendSelected='';
