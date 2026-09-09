@@ -197,7 +197,8 @@
 // becomes an automatic review backlog; its timing and private-data behaviour are explained in-app.
 // v317: private weekly reset, optional pages, dated next-week allocations and guarded drafts;
 // remove the personal public starter template.
-const CACHE_NAME = 'daily-v317';
+// v318: rounded, slanted wordmark frame follows the live accent; app icons stay borderless.
+const CACHE_NAME = 'daily-v318';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

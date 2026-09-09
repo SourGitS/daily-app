@@ -2,7 +2,7 @@
    Appended last, like every stylesheet before it, so it can win a tie against the placement
    rules that size the mark. Do not reorder any of the links in index.html.
 
-   ONE element per placement, not a light/dark pair of <img>s. The artwork is painted as a
+   ONE element per placement, not a light/dark pair of <img>s. Its ::before artwork is painted as a
    background colour through the PNG's own alpha channel, so the mark takes the app's colour
    instead of shipping two baked-in copies of itself — which is what lets it follow the accent
    the user actually chose, preset, custom, per-training-day or weather, with no second palette
@@ -16,26 +16,79 @@
    mark re-inks itself with no JavaScript of its own.
 
    aspect-ratio comes from the artwork (1877 x 412). Every placement sets a height and lets the
-   width follow, so a span can neither collapse to zero nor stretch the letters. */
+   width follow, so a span can neither collapse to zero nor stretch the letters. Padding adds
+   room for the frame without shrinking that artwork. The mask belongs on ::before only:
+   masking the outer span would clip away the frame as well. */
 .wordmark{
+  --wordmark-pad-y:9px;
+  --wordmark-pad-x:12px;
+  --wordmark-stroke:2.1px;
+  --wordmark-radius:7px;
+  position:relative;
   display:block;
+  box-sizing:content-box;
   aspect-ratio:1877 / 412;
   flex-shrink:0;
-  background-color:var(--accent-text,var(--text));
+  padding:var(--wordmark-pad-y) var(--wordmark-pad-x);
+  margin-inline:6px;
+  color:var(--accent-text,var(--text));
+}
+.wordmark::before{
+  content:"";
+  position:absolute;
+  inset:var(--wordmark-pad-y) var(--wordmark-pad-x);
+  background-color:currentColor;
   -webkit-mask:url("../assets/brand/daily-wordmark-mask.png") center / contain no-repeat;
   mask:url("../assets/brand/daily-wordmark-mask.png") center / contain no-repeat;
   -webkit-mask-mode:alpha;
   mask-mode:alpha;
+  pointer-events:none;
+}
+.wordmark::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border:var(--wordmark-stroke) solid currentColor;
+  border-radius:var(--wordmark-radius);
+  transform:skewX(-14deg);
+  pointer-events:none;
+}
+.ds-logo .wordmark{
+  --wordmark-pad-y:11px;
+  --wordmark-pad-x:15px;
+  --wordmark-stroke:2.5px;
+  --wordmark-radius:9px;
+  margin-inline:7px;
+}
+#side-menu-title .wordmark{
+  --wordmark-pad-y:7px;
+  --wordmark-pad-x:10px;
+  --wordmark-stroke:1.8px;
+  --wordmark-radius:6px;
+  margin-inline:5px;
+}
+.ob-center .wordmark{width:calc(100% - 48px)}
+.ob-welcome-brand{height:auto;min-height:44px;padding-inline:6px}
+@media (max-width:1023px) and (orientation:landscape) and (max-height:600px){
+  #header-title .wordmark{
+    --wordmark-pad-y:6px;
+    --wordmark-pad-x:9px;
+    --wordmark-stroke:1.7px;
+    --wordmark-radius:5px;
+    margin-inline:4px;
+  }
 }
 /* Without mask support the rule above would paint a solid accent RECTANGLE — the failure has
    to be the artwork in plain black or white, not a coloured block where the logo should be.
    The two PNGs are the same geometry as the mask, so nothing moves. */
 @supports not ((-webkit-mask-image:url("x")) or (mask-image:url("x"))){
-  .wordmark{
+  .wordmark{color:#fff}
+  [data-theme="light"] .wordmark{color:#000}
+  .wordmark::before{
     background-color:transparent;
     background:url("../assets/brand/daily-wordmark-dark.png") center / contain no-repeat;
   }
-  [data-theme="light"] .wordmark{
+  [data-theme="light"] .wordmark::before{
     background:url("../assets/brand/daily-wordmark-light.png") center / contain no-repeat;
   }
 }

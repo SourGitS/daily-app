@@ -58,6 +58,13 @@ older summary — re-grep before assuming a fact from here is still true if it l
 
 ## Brand: the wordmark and the app icon (2026-09-07)
 
+- **v318: the wordmark now has the approved medium rounded frame, slanted 14 degrees.**
+  The outer `.wordmark` supplies `color:var(--accent-text,var(--text))`; `::before` holds the
+  original artwork mask filled with `currentColor`, and `::after` draws the frame in the same
+  colour. Never mask the outer span: that would clip the border away. Content-box sizing
+  preserves the existing letter dimensions while padding reserves the frame's space. Header,
+  sidebar, menu and onboarding use the same treatment, with compact landscape sizing. The
+  icon files and manifest are unchanged; this is an ordinary app update, not an icon reinstall.
 - **The wordmark is ONE `<span class="wordmark" role="img" aria-label="Daily">` per placement,
   not a light/dark pair of `<img>`s.** `css/brand.css` (appended LAST, after review.css — do
   not reorder) paints `assets/brand/daily-wordmark-mask.png` as a CSS mask filled with
