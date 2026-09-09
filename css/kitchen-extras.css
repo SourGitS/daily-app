@@ -1762,9 +1762,14 @@
      The same two-pane split desktop uses, at phone scale. 300px of list still shows a
      recognisable recipe row and leaves ~420px for the method — a real reading width, not a
      column of two-word lines. */
-  #view-kitchen{overflow:hidden;display:flex;flex-direction:column}
-  #view-kitchen .kit-pane:not(.hidden){flex:1;min-height:0;display:flex;flex-direction:column}
-  #view-kitchen > .seg-tabs{flex-shrink:0}
+  /* Kitchen's three panes are three of Food's four now, so this is scoped to #view-food and
+     keyed on .food-pane — Today is not a .kit-pane and would otherwise be the one child of a
+     fixed-height flex column with no way to scroll. */
+  #view-food{overflow:hidden;display:flex;flex-direction:column}
+  #view-food .food-pane:not(.hidden){flex:1;min-height:0;display:flex;flex-direction:column}
+  #view-food > .seg-tabs{flex-shrink:0}
+  /* Today is an ordinary scrolling column inside that flex parent, not a two-pane split. */
+  #view-food #food-today:not(.hidden){overflow-y:auto;-webkit-overflow-scrolling:touch;display:block}
   #kit-recipes .kit-cols{display:flex;gap:12px;flex:1;min-height:0;align-items:stretch}
   #kit-recipes .kit-list-col{width:300px;flex-shrink:0;overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0}
   #kit-recipes .kit-detail-col{flex:1;min-width:0;display:block;overflow-y:auto;
@@ -1817,7 +1822,10 @@
      One consistent compact treatment rather than a bespoke layout per screen. Overlays cover
      the whole viewport INCLUDING the rail, so they pad themselves off the side insets directly
      rather than inheriting the padding on #app. */
-  .app-overlay,#view-settings,#view-plans,#view-notes,#view-stats,#view-accounts,
+  /* #view-stats left this list when it became a .swipe-panel: the deck panels take their
+     landscape padding from the .swipe-panel rule in layout.css, and the !important side
+     insets here would have given Stats a gutter none of its four neighbours has. */
+  .app-overlay,#view-settings,#view-plans,#view-notes,#view-accounts,
   #view-exercise-library,#view-exercise-detail{
     padding-left:calc(14px + env(safe-area-inset-left,0px)) !important;
     padding-right:calc(14px + env(safe-area-inset-right,0px)) !important;

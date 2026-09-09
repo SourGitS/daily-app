@@ -482,18 +482,30 @@
       </div>
     </section>
 
-    <section id="view-nutrition" class="swipe-panel">
-      <div id="nutrition-main"></div>
-    </section>
-
-    <section id="view-kitchen" class="swipe-panel">
-      <div class="seg-tabs seg-fill" role="tablist" aria-label="Kitchen sections">
-        <button class="on" id="kit-tab-recipes" role="tab" aria-selected="true" onclick="kitSetTab('recipes')">Recipes</button>
-        <button id="kit-tab-shopping" role="tab" aria-selected="false" onclick="kitSetTab('shopping')">Shopping</button>
-        <button id="kit-tab-pantry" role="tab" aria-selected="false" onclick="kitSetTab('pantry')">Pantry</button>
+    <!-- FOOD VIEW — Nutrition and Kitchen were two top-level destinations answering one
+         question between them: what am I eating, cooking, buying and holding. They are ONE
+         panel with ONE section strip now, so there is never a Food strip stacked on a
+         Nutrition strip. The three kitchen panes keep their exact ids and markup — every
+         kit* renderer writes into the same elements it always did — and Today hosts the
+         nutrition day log through the unchanged #nutrition-main mount.
+         Food library and Nutrition Review are SUPPORTING screens, not a fifth and sixth tab:
+         they are peer overlays outside this transformed deck (see below #app-main). -->
+    <section id="view-food" class="swipe-panel">
+      <div class="seg-tabs seg-fill" id="food-tab-row" role="tablist" aria-label="Food sections">
+        <button class="on" id="food-tab-today" role="tab" aria-selected="true" aria-controls="food-today" onclick="foodSetTab('today')">Today</button>
+        <button id="food-tab-recipes" role="tab" aria-selected="false" aria-controls="kit-recipes" onclick="foodSetTab('recipes')">Recipes</button>
+        <button id="food-tab-shopping" role="tab" aria-selected="false" aria-controls="kit-shopping" onclick="foodSetTab('shopping')">Shopping</button>
+        <button id="food-tab-pantry" role="tab" aria-selected="false" aria-controls="kit-pantry" onclick="foodSetTab('pantry')">Pantry</button>
       </div>
 
-      <div id="kit-recipes" class="kit-pane">
+      <!-- Today: the nutrition day log, rendered by nutRender() into #nutrition-main exactly
+           as it was when Nutrition was its own tab. .food-pane is the landscape flex hook the
+           three .kit-pane siblings already had. -->
+      <div id="food-today" class="food-pane" role="tabpanel" aria-labelledby="food-tab-today">
+        <div id="nutrition-main"></div>
+      </div>
+
+      <div id="kit-recipes" class="kit-pane food-pane hidden" role="tabpanel" aria-labelledby="food-tab-recipes">
         <div class="kit-cols">
           <div class="kit-list-col">
             <div id="kitchen-featured"></div>
@@ -501,7 +513,9 @@
               <input id="kit-search" class="kit-search" type="search" placeholder="Search recipes…" oninput="kitOnSearch(this.value)">
               <button class="kit-add-recipe-btn" onclick="kitOpenForm()">+ Add Recipe</button>
               <button class="kit-add-recipe-btn kit-import-btn" onclick="kitOpenImport()">⇩ Import</button>
-              <button class="kit-add-recipe-btn kit-import-btn" onclick="setView('nutrition');nutSetTab('recipes')">Nutrition Review</button>
+              <!-- Opens the Nutrition Review supporting screen WITHIN Food; its back button
+                   returns here to Recipes. It used to leave for the Nutrition tab. -->
+              <button class="kit-add-recipe-btn kit-import-btn" onclick="foodOpenReview()">Nutrition Review</button>
             </div>
             <div class="kit-mobile-filter-bar">
               <button id="kit-filter-reset" class="kit-mobile-filter-btn active" onclick="kitResetFilters()">All recipes</button>
@@ -522,21 +536,25 @@
         </div>
       </div>
 
-      <div id="kit-shopping" class="kit-pane hidden">
+      <div id="kit-shopping" class="kit-pane food-pane hidden" role="tabpanel" aria-labelledby="food-tab-shopping">
         <div id="kitshop-selector"></div>
         <div id="kitshop-list" class="hidden"></div>
       </div>
 
-      <div id="kit-pantry" class="kit-pane hidden">
+      <div id="kit-pantry" class="kit-pane food-pane hidden" role="tabpanel" aria-labelledby="food-tab-pantry">
         <div id="kitpantry"></div>
       </div>
     </section>
 
-    </div><!-- /#swipe-deck -->
-
     <!-- STATS VIEW — Overview (orientation) → Review (interpretation) → four domain tabs.
-         Raw workout history stays in Log; it is deliberately not a Stats tab. -->
-    <section id="view-stats" class="hidden">
+         Raw workout history stays in Log; it is deliberately not a Stats tab.
+         Stats is the FIFTH deck destination now, so this is a .swipe-panel inside #swipe-deck
+         rather than an overlay <section> child of #app-main: it is tapped and swiped like the
+         other four, and #app-main>section's absolute positioning no longer reaches it. There
+         is still exactly one copy of this markup. The evidence overlay it opens deliberately
+         stays OUTSIDE the deck (below #app-main) — position:fixed resolves against the deck's
+         transform, so an overlay inside it would be positioned against a 500%-wide box. -->
+    <section id="view-stats" class="swipe-panel">
       <div class="seg-tabs seg-scroll" id="stats-tab-row" role="tablist" aria-label="Stats sections">
         <button class="on" id="st-ov-btn" onclick="setStatsTab('overview')">Overview</button>
         <button id="st-rev-btn" onclick="setStatsTab('review')">Review</button>
@@ -596,6 +614,8 @@
         </div>
       </div>
     </section>
+
+    </div><!-- /#swipe-deck -->
 
     <!-- SETTINGS VIEW -->
     <section id="view-settings" class="hidden">
@@ -864,6 +884,29 @@
 
   <!-- The workout-history overlay was retired: its list now lives in Log › History, which is
        where openWorkoutHistory() sends you. One copy of the markup, every entry point intact. -->
+
+  <!-- Food's two SUPPORTING screens. Neither is a fifth Food tab: Food library belongs to
+       Today (it is where Add food discovers its options from) and Nutrition Review belongs to
+       Recipes. They use the app's existing peer-overlay pattern — the same shell as the Stats
+       evidence screen and the exercise detail — so they sit OUTSIDE #swipe-deck: position:fixed
+       resolves against the nearest transformed ancestor, and the deck has one.
+       They keep Food lit in the bottom nav and light their PARENT row in the sidebar, which is
+       why neither is listed in NAV_NO_ROW_OVERLAYS. -->
+  <div id="view-food-library" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:112;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
+    <div class="detail-topbar">
+      <button class="back-btn" onclick="foodCloseLibrary()" aria-label="Back to Today"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <span class="detail-title">Food library</span>
+    </div>
+    <div id="nut-library-pane" class="food-support-content"></div>
+  </div>
+
+  <div id="view-nutrition-review" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:112;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
+    <div class="detail-topbar">
+      <button class="back-btn" onclick="foodCloseReview()" aria-label="Back to Recipes"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <span class="detail-title">Nutrition Review</span>
+    </div>
+    <div id="nut-review-pane" class="food-support-content"></div>
+  </div>
 
   <div id="view-stats-evidence" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:115;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
     <div class="detail-header">
@@ -1215,13 +1258,17 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v16M18 4v16"/><path d="M3 8h3M18 8h3M3 16h3M18 16h3"/><path d="M6 12h12"/></svg>
     Log
   </button>
-  <button class="nav-btn" data-view="nutrition" onclick="setView('nutrition')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c4.4 0 8-4.1 8-9.2C20 8.4 16.4 5 12 5s-8 3.4-8 7.8C4 17.9 7.6 22 12 22z"/><path d="M12 5c0-2 1.6-3 3.5-3"/><path d="M9 8c1.8 1 4.2 1 6 0"/></svg>
-    Nutrition
+  <!-- Food replaces the separate Nutrition and Kitchen buttons; Stats takes the fifth slot it
+       lost when Kitchen arrived. Log stays in the centre. These five ARE NAV_ORDER — the icons
+       here and NAV_QUICK_ICONS in js/app.js draw the same paths, so the phone tab and the
+       sidebar shortcut are visibly the same thing. -->
+  <button class="nav-btn" data-view="food" onclick="setView('food')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16a8 8 0 0 1-8 8 8 8 0 0 1-8-8z"/><path d="M2 12h20"/><path d="M9 8c0-1.6 1.6-1.6 1.6-3.2"/><path d="M14 8c0-1.6 1.6-1.6 1.6-3.2"/></svg>
+    Food
   </button>
-  <button class="nav-btn" data-view="kitchen" onclick="setView('kitchen')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 10h14v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z"/><path d="M3 10h18"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-    Kitchen
+  <button class="nav-btn" data-view="stats" onclick="setView('stats')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M20 8v5h-5"/></svg>
+    Stats
   </button>
 </nav>
 

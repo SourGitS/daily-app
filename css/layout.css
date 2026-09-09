@@ -27,14 +27,18 @@
 #swipe-deck{display:flex;flex-direction:row;width:500%;height:100%;will-change:transform;transition:none;backface-visibility:hidden;-webkit-backface-visibility:hidden}
 #swipe-deck.snapping{transition:transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)}
 .swipe-panel{width:20%;flex-shrink:0;height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:16px;padding-bottom:calc(104px + env(safe-area-inset-bottom));box-sizing:border-box;will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden}
-/* Visual order home→budget→log→kitchen, matching NAV_ORDER in js/app.js.
-   Stats left the deck for the hamburger menu; Kitchen took its slot. */
+/* Visual order home→budget→log→food→stats, matching NAV_ORDER in js/app.js. The two must
+   agree exactly: NAV_ORDER decides which panel a swipe lands on, this decides which panel is
+   at that x offset, and a disagreement gives you a tab you can tap but not swipe to.
+   Nutrition and Kitchen merged into #view-food; Stats returned to the deck in the fifth slot
+   it lost when Kitchen arrived. Still five panels, so #swipe-deck's 500% and .swipe-panel's
+   20% are unchanged. */
 #view-home{order:0}
 #view-budget{order:1}
 #view-log{order:2}
-#view-nutrition{order:3}
-#view-kitchen{order:4}
-/* Non-swipe views (kitchen/settings/plans/notes) overlay the deck when shown. */
+#view-food{order:3}
+#view-stats{order:4}
+/* Non-swipe views (settings/plans/notes) overlay the deck when shown. */
 #app-main>section{position:absolute;top:0;left:0;right:0;bottom:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px;padding-bottom:calc(104px + env(safe-area-inset-bottom));background:var(--bg);z-index:5;box-sizing:border-box;animation:fadeIn 0.18s ease}
 
 /* Desktop: no swipe paging — the deck wrapper collapses and one panel shows at a time

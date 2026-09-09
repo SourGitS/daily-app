@@ -206,7 +206,12 @@
 // the headline the hero repeats and becomes Close out week; Previous weeks, the calculator and
 // Accounts move into a compact History & tools section. Presentation only — no calculation,
 // store, sync path or migration changed.
-const CACHE_NAME = 'daily-v320';
+// v321: combine Kitchen and Nutrition into one Food destination (Today / Recipes / Shopping /
+// Pantry, with Food library and Nutrition Review as supporting screens), and return Stats to the
+// five-item mobile bottom nav as a full swipe-deck destination: Home · Budget · Log · Food · Stats.
+// Navigation and presentation only — no store, sync path, calculation or migration changed. Old
+// #nutrition and #kitchen links resolve through one central mapping (navResolve).
+const CACHE_NAME = 'daily-v321';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

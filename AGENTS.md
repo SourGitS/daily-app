@@ -19,8 +19,12 @@ Four main areas plus supporting screens:
   holds the live split plus its saved snapshots; Exercises and History are the screens that
   used to be full-screen overlays. See the Weekly Review / Workout hub notes below and
   `CLAUDE.md` for the traps.
-- **Stats** — history/training/body/nutrition/finance sub-tabs, charts, PRs.
-- **Kitchen** — recipe book, shopping list, pantry tracker, cooking mode.
+- **Stats** — overview/review/training/body/nutrition/finance sub-tabs, charts, PRs.
+- **Food** — one destination for what is eaten, cooked, bought and held: Today (the day log),
+  Recipes, Shopping, Pantry, plus Food library and Nutrition Review as supporting screens.
+  This is the former **Kitchen** and **Nutrition** tabs merged (v321) — see the Food hub
+  section below before touching navigation, and note that `nut*`/`kit*` functions, DOM ids and
+  storage keys all kept their names.
 - **Budget** — weekly income/expense tracker, CSV export, charts.
 - **Accounts** — net worth / debt payoff tracking.
 - **Plans**, **Notes**, **Settings** — secondary screens (see `CLAUDE.md` for full detail per
@@ -331,6 +335,57 @@ sidebar, the hamburger, Home's recent-sessions card, Stats evidence, the Journal
 keeps working against one copy of the markup. `Settings > Training setup` keeps its persisted
 `training` key and its visible row, and opens Log > Program.
 
+## The Food hub, and Stats back in the deck (v321)
+
+Kitchen and Nutrition became ONE top-level destination, **Food**, and the slot that freed went
+back to Stats. The phone's bottom nav is **Home · Budget · Log · Food · Stats**, with Log still
+in the centre. Presentation and routing only — nothing about the data moved.
+
+- **`NAV_ORDER = ['home','budget','log','food','stats']` IS the deck**, and
+  `#view-*{order:n}` in `css/layout.css` must agree with it position for position. A
+  disagreement gives you a tab you can tap but not swipe to. `tests/food-nav.test.cjs` asserts
+  both, and that the bottom-nav buttons match in order.
+- **Stats is a `.swipe-panel` inside `#swipe-deck` again**, not an `#app-main > section`. One
+  copy of the markup; every section (Overview, Review, Training, Body, Nutrition, Finance)
+  behaves as before and `statsSubTab` still remembers the last one. Its **evidence overlay
+  stays OUTSIDE the deck** — `position:fixed` resolves against the nearest transformed
+  ancestor and the deck has one, so an overlay moved inside it would be positioned against a
+  500%-wide box (verified: the evidence screen measures top 0 / left 0 / full viewport width).
+  `#view-stats` was also removed from the landscape overlay-padding list in
+  `kitchen-extras.css`, since deck panels take their padding from `.swipe-panel`.
+- **`foodState.tab` is IN MEMORY and must stay that way.** A fresh session opens Food on
+  Today; within a session, leaving and returning through the Food button remembers the last
+  primary section. Persisting it would be a boot-time write, which is the `_bootPhase` trap
+  above. It is declared beside `NAV_ORDER`, well above `init()`, for the same TDZ reason the
+  Log hub's state is: `init()` restores a `#hash` through `setView()`, `setView()` reads
+  `foodState`, and `const` does not hoist. `js/nutrition.js` still loads FIRST and must never
+  read it at load time — its calls are all inside functions.
+- **One central legacy mapping, not two screens kept alive.** `NAV_VIEW_ALIAS`
+  (`nutrition`/`kitchen` → `food`) and `FOOD_LEGACY_ROUTES` feed `navResolve(view, sub)`, and
+  `setView()` applies the alias as its FIRST statement — before the history push — so
+  resolving an old destination writes one entry for `#food`, never an intermediate one for a
+  screen that no longer exists. Verified by direct-link reload: `#nutrition` → Food › Today
+  (`#food`), `#kitchen` → Food › Recipes (`#food/recipes`), `#kitchen/pantry` → Pantry,
+  `#nutrition/foods` → Today + Food library, `#nutrition/recipes` → Recipes + Nutrition Review.
+- **Food's history mirrors Log's**: `#food` for Today, `#food/<section>` otherwise, so Back and
+  Forward move between real destinations. No new storage.
+- **Food library and Nutrition Review are peer overlays**, using the same `.app-overlay` +
+  `.detail-topbar` shell as the Stats evidence screen, registered in `APP_PEER_OVERLAYS`. They
+  are NOT in `NAV_NO_ROW_OVERLAYS`: each lights its own sidebar row (`nut-foods` /
+  `nut-review`) while the pinned **Food** item stays lit, and each returns to its parent
+  section (Today / Recipes).
+- **`updateKitFab()` now means Food › Recipes only** — never Today, Shopping, Pantry, a
+  supporting screen, an open sheet/form/import/cook overlay, or another view.
+- **Renamed, and only what the structure required**: `kitSetTab()` and `kitRender()` survive as
+  thin delegates (`foodSetTab` / `foodRefreshActive`), `nutSetTab()` survives as the
+  old-sub-tab shim, `nutRender()` still renders the day log into the unchanged
+  `#nutrition-main`, and `nutRenderFoods()` / `nutRenderRecipes()` just target their own panes.
+  `nutTab` is retired (nothing read it once the strip merged). Every `nut*`/`kit*` storage key,
+  Firebase path and DOM id is untouched.
+- **Sync dispatch, not sync contract.** Listeners now ask `foodShowing(section)` instead of
+  `S.view==='kitchen'/'nutrition'`, and also refresh an open supporting screen. No listener,
+  merge rule, registration or timestamp behaviour changed.
+
 ## Weekly Review (Stats → Review)
 
 Opt-in review of one finished week against a saved weekly plan. `wkr*`/`WKR_*` in
@@ -354,6 +409,43 @@ safety-critical parts:
   the user still has to press Copy there. No API, no key, no automatic transmission.
 
 ## Current unfinished work
+
+### Food hub + Stats in the deck — v321 (LOCAL ONLY, not pushed)
+
+Navigation and presentation. No localStorage key, Firebase path, sync registration, timestamp,
+calculation, migration or security rule was added or changed — audited, and verified by a
+before/after localStorage diff across every reorganised screen (see below). Design rationale
+and the traps are in the Food hub section above and in `CLAUDE.md`.
+
+**Verified locally, in an isolated browser profile on `localhost` against a synthetic fixture:**
+five bottom-nav destinations by tap AND by swipe in the same order; Food opens on Today on a
+fresh session and remembers its section within one; all four sections and both supporting
+screens render and return; the four logging paths (catalogue / custom My Food / recipe /
+manual-Unknown); pantry-scoped shopping checks with a second empty pantry staying empty; an
+unchanged recipe save preserving `""`, `kg` and `L` units; every Stats section, its charts on
+first entry, return visit and rotation, and the evidence overlay's viewport positioning;
+Back/Forward across ten steps with no blank, duplicate or mismatched screen; eleven direct-link
+reloads including every legacy route, with no console errors; sidebar and hamburger agreement
+with a single Stats quick item; empty-data and populated renders; 320/375/932-landscape/1440 in
+both themes with no overflow. `node --test tests/*.test.cjs` → 59/59, including a new
+`tests/food-nav.test.cjs` (10 routing checks).
+
+**NOT verified, and it should not be described otherwise:** no real signed-in account was used,
+read, written or cleared, and no production Firebase data or deployed rules were touched. The
+fresh-profile-signing-into-populated-cloud check has not been run for this change — it is a
+navigation change that registers no store, so it does not carry the sync risk that scenario
+exists to catch, but the claim stands as untested either way. There is no real iOS/Android
+device check: the phone layouts were verified in a desktop browser at phone viewport sizes, so
+safe-area insets and the standalone-PWA status bar are inferred from the existing CSS rather
+than observed. `CACHE_NAME` is `daily-v321`. **Nothing has been pushed.**
+
+**One thing the prompt asked for that does not exist to preserve:** Food › Today has no DATE
+SELECTOR, and never had one — `nutRender()` reads `getLocalDate()` and `nutLogSelected()` /
+`nutSaveManual()` / `nutLogRecipeSnapshot()` all stamp `date: getLocalDate()`. Every new entry
+is dated today; past days are read-only through Stats › Nutrition and the "copy yesterday's
+meal" action. That behaviour is unchanged by this work (verified: four new entries all dated
+today, the previous day's entry untouched). Adding back-dated logging would be a feature
+change to the save path, not a navigation change, so it was deliberately not attempted.
 
 ### Weekly reset — v317
 

@@ -273,9 +273,28 @@
 .tdee-card-lbl{font-size:11px;color:var(--muted);margin-top:2px}
 .tdee-card-active{font-size:10px;font-weight:600;margin-top:4px}
 
-#view-nutrition{--nut-gap:12px}
+/* The day log lives in Food › Today now; the two supporting screens (Food library, Nutrition
+   Review) are peer overlays and need the same spacing token, since every .nut-* rule below
+   reads it. */
+#view-food,#view-food-library,#view-nutrition-review{--nut-gap:12px}
 #nutrition-main{width:100%}
-/* Today / Foods / Recipes use the shared .seg-tabs.seg-fill control (css/workout.css);
+/* One consistent measure for the two Food supporting screens, matching .stats-evidence-content
+   — they are the same kind of thing: a detail screen pushed over a deck destination.
+   The bottom nav paints ABOVE these overlays (it is a body-level element and they are not),
+   which is what keeps Food lit while one is open — so the content has to clear it, using the
+   same 104px + safe-area the deck panels use. Measured: without it the last library row sat
+   40px behind the bar. */
+.food-support-content{max-width:820px;margin:0 auto;
+  padding:14px 16px calc(104px + env(safe-area-inset-bottom,0px))}
+/* Landscape phone turns the bottom bar into a left rail, so there is nothing under the
+   content to clear — see the #bottom-nav rail rules in css/layout.css. */
+@media (orientation:landscape) and (max-width:1023px) and (max-height:600px){
+  .food-support-content{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+}
+/* The Today pane's own labelled shortcut into the library. Right-aligned so it reads as a
+   destination rather than as the day log's primary action, which is "+ Add food". */
+.food-today-actions{display:flex;justify-content:flex-end;margin-bottom:10px}
+/* Food sections use the shared .seg-tabs.seg-fill control (css/workout.css);
    .nut-tabs / .nut-tab were one of the five near-copies it replaced. */
 .nut-hero{border-radius:var(--radius-hero);padding:18px;background:linear-gradient(150deg,var(--accent-hero),var(--accent-hero-2));color:#fff;margin-bottom:var(--nut-gap)}
 /* Nothing logged: one line, not a 38px em dash over three more of them. See nutRenderToday(). */

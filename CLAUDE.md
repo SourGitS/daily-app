@@ -107,11 +107,11 @@ older summary — re-grep before assuming a fact from here is still true if it l
   `assets/brand/refined/` holds the masters, the export script and the ZIP — sources, never
   application assets, never precached.
 
-## Navigation (restructured many times over the project's life — this is current as of 2026-09-07)
+## Navigation (restructured many times over the project's life — this is current as of 2026-09-10)
 
 - **`NAV_TREE` (`js/app.js`, beside `NAV_ORDER`) is the ONE source for the desktop sidebar and
   the mobile hamburger**, together with the `NAV_QUICK` strip pinned above it (see below). Six
-  labelled groups — Today, Training, Money, Kitchen, Stats, More — holding 23 rows between them,
+  labelled groups — Today, Training, Money, **Food**, Stats, More — holding 24 rows between them,
   reaching every real destination rather than only the twelve top-level ones. `renderNav()` builds the tree ONCE and mounts the same markup into `#ds-nav`
   (sidebar) and `#side-menu-list` (hamburger); the two differ in DENSITY only (16px rows and
   44px targets on the phone, 14px pill rows on the sidebar), never in content, order or which
@@ -120,10 +120,11 @@ older summary — re-grep before assuming a fact from here is still true if it l
   `SETTINGS_SECTIONS`: before it, twelve hand-written `.ds-item` buttons in `index.html`, a
   similar-but-different list in `buildSideMenu()` (from `MENU_NAV` + `MENU_SECTIONS` + four
   more literals) and a third in `renderQuickSettingsMenu()` each carried their own copy.
-- **SEVEN destinations are PINNED above the groups on both nav surfaces, and that is what makes
+- **SIX destinations are PINNED above the groups on both nav surfaces, and that is what makes
   them one press.** `NAV_QUICK` (`js/app.js`, beside `NAV_ORDER`) is the quick strip: Home,
-  Budget, Log, Nutrition, Kitchen, **Stats, Settings**, rendered by `navBuildHtml()` above the
-  six groups into both `#ds-nav` and `#side-menu-list`. Before it, the app's most-used
+  Budget, Log, **Food**, **Stats**, Settings, rendered by `navBuildHtml()` above the
+  six groups into both `#ds-nav` and `#side-menu-list`. It was seven until v321 merged Nutrition
+  and Kitchen into Food and gave Stats a real bottom-nav button. Before it, the app's most-used
   destinations cost TWO presses on every surface without a bottom nav — expand a group, then
   pick a row — which is the complaint that produced it, and the same complaint later brought
   Stats and Settings in (2026-09-07).
@@ -131,12 +132,13 @@ older summary — re-grep before assuming a fact from here is still true if it l
   (`NAV_QUICK_VIEWS = NAV_ORDER.concat(NAV_QUICK_EXTRA)`, mapped over `NAV_QUICK_LABELS` /
   `NAV_QUICK_ICONS`), so the phone deck and the shortcut strip cannot come to disagree about
   what the deck holds; their icons are the same paths `#bottom-nav` draws.
-  **`NAV_QUICK_EXTRA` (`['stats','settings']`) is the deliberate exception** — those two are NOT
-  deck tabs, there is no sixth or seventh bottom-nav button and there is not going to be, and
-  keeping them in their own list is what stops `NAV_ORDER` quietly coming to mean "pinned"
-  instead of "the phone deck". Their icons are written out inline beside the others, copied from
-  `CARD_ICONS.trend` and `SETTINGS_ICONS.sliders` rather than referenced, because both of those
-  are declared thousands of lines lower and `const` does not hoist — the same trap the registry
+  **`NAV_QUICK_EXTRA` (`['settings']`) is the deliberate exception** — Settings is NOT a
+  deck tab, there is no sixth bottom-nav button and there is not going to be, and
+  keeping it in its own list is what stops `NAV_ORDER` quietly coming to mean "pinned"
+  instead of "the phone deck". **Stats left this list in v321** when it became a real deck tab;
+  leaving it would have listed it twice in one strip. Settings' icon is written out inline
+  beside the others, copied from `SETTINGS_ICONS.sliders` rather than referenced, because that
+  is declared thousands of lines lower and `const` does not hoist — the same trap the registry
   itself is placed to avoid. A quick item dispatches `navGo(view)` with **no sub-tab**, exactly
   what pressing the bottom-nav button does, so it returns you to wherever you were inside that
   view.
@@ -219,12 +221,20 @@ older summary — re-grep before assuming a fact from here is still true if it l
   `min-height:0` is the load-bearing half, because a flex child will not shrink below its
   content height without it — with the scrollbar hidden the same way every other strip hides
   one.
-- **Mobile bottom nav** (`#bottom-nav`, 5 fixed tabs): Home, Budget, Log, Nutrition, Kitchen.
-  These five and only these five are the swipe deck — `NAV_ORDER` in `js/app.js` IS the deck,
-  and a view named there must be a `.swipe-panel` inside `#swipe-deck` while one that isn't
-  must be a direct `<section>` child of `#app-main`. **Stats is NOT in the deck** (this file
-  said it was for a long time); it is an overlay section reached from the nav or the header
-  chip. The deck, the bottom nav and `#header-stats-pill` are untouched by the nav registry.
+- **Mobile bottom nav** (`#bottom-nav`, 5 fixed tabs): **Home, Budget, Log, Food, Stats**, with
+  Log in the centre. These five and only these five are the swipe deck — `NAV_ORDER` in
+  `js/app.js` IS the deck, and a view named there must be a `.swipe-panel` inside `#swipe-deck`
+  while one that isn't must be a direct `<section>` child of `#app-main`. `#view-*{order:n}` in
+  `css/layout.css` must agree with `NAV_ORDER` position for position, or you get a tab you can
+  tap but not swipe to; `tests/food-nav.test.cjs` asserts that, and that the bottom-nav buttons
+  match too.
+  **Stats IS in the deck as of v321** — this file said it was, then said it wasn't, and both
+  were true at different times. It is a `.swipe-panel` now, with its own bottom-nav button, and
+  `#header-stats-pill` survives as the CONTEXT-aware shortcut (it opens Finance from Budget and
+  Training from Log, which a plain button cannot). Its evidence overlay stays outside the deck.
+  **Nutrition and Kitchen are gone as top-level views**, merged into Food; `NAV_VIEW_ALIAS` and
+  `FOOD_LEGACY_ROUTES` are the only places their names survive. The deck and the bottom nav are
+  otherwise untouched by the nav registry.
 - **Two placements in `NAV_TREE` are deliberate, so they do not get "corrected".** *Weekly
   review* sits under **Money** even though it opens `stats.review`: it is a money review in
   practice — its first and largest section is Money — and the group says what the user is
@@ -317,6 +327,10 @@ older summary — re-grep before assuming a fact from here is still true if it l
   **Weekly Review** the user drives (see below), and beneath it the automatic
   `statsReviewInsights()` cards — a short ranked set of conclusions that cleared an evidence
   threshold. They are separate features that share a tab.
+  **Stats is the fifth phone tab again as of v321** — a real bottom-nav button and a
+  `.swipe-panel`, not the overlay it was while Kitchen held the slot. Nothing about its
+  sections, charts or `statsSubTab` memory changed. **Nutrition trends stay HERE**, in
+  Stats › Nutrition; they did not move into Food › Today, which is the day log only.
 - **Weekly Review** (Stats → Review, `css/review.css`, `wkr*`/`WKR_*` in `js/app.js`) — an
   opt-in review of ONE finished week against a saved weekly plan, ending in a next-week plan.
   Four sections: Money, Work and commission, General life, Reflection and next week. New users
@@ -325,9 +339,25 @@ older summary — re-grep before assuming a fact from here is still true if it l
   one vertical flow of cards; below that, on the phone and in landscape, the SAME markup reflows
   to the week bar and horizontal pill strip. See "Known history" for the three rules it is built
   on and for the rail's geometry.
-- **Kitchen** — Recipe Book (9 preloaded + custom), pantry-aware Shopping List, multiple named
-  Pantry inventories, cooking mode with per-step timers, favourites/recently cooked.
-  Firebase-synced.
+- **Food** (v321) — Kitchen and Nutrition merged into ONE top-level destination, because they
+  were two tabs answering one question between them: what is eaten, cooked, bought and held.
+  One section strip, four sections, and never a Food strip stacked on a Nutrition strip:
+  - **Today** — the day log. The nutrition hero, meal groups, entries, "+ Add food", Manual and
+    Unknown entries, and the empty/partial/over-target states, all rendered by the unchanged
+    `nutRender()` into the unchanged `#nutrition-main`. **There is no date selector and never
+    was**: every new entry is dated `getLocalDate()`. A labelled *Food library →* shortcut sits
+    at the top; discovery through "+ Add food" is untouched and is still the main path.
+  - **Recipes** — the Recipe Book (9 preloaded + custom), search, filters, detail, editing,
+    paste import, cooking mode with per-step timers, favourites/recently cooked, shopping-list
+    integration and the recipe-to-food-log actions. Unchanged.
+  - **Shopping** — pantry-aware Shopping List: recipe selection, combined requirements,
+    active-pantry classification, Pantry needs, "Already in …", manual rows, per-pantry checks.
+  - **Pantry** — multiple named inventories, active selection, item management, stock status.
+  - **Food library** and **Nutrition Review** are SUPPORTING screens, not a fifth and sixth
+    section: peer overlays outside the transformed deck, each returning to its parent (Today /
+    Recipes) and each keeping Food lit in the bottom nav. See the navigation section above and
+    AGENTS.md for the routing rules.
+  Firebase-synced, with every `nut*`/`kit*` key, path and DOM id unchanged.
 - **Budget** — weekly tracker. Income sources, savings target, and fixed/variable categories are
   all user-configurable now — see "Known history" below, these used to be hardcoded to
   Francois's specific numbers and were deliberately made dynamic. Credit-card balance tracking,

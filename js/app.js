@@ -698,10 +698,10 @@ if(firebaseReady){
       if(typeof renderSplitEditor==='function'&&document.getElementById('view-split-editor')&&document.getElementById('view-split-editor').style.display!=='none') renderSplitEditor();
     });
     // ── Kitchen sync ──
-    syncBlobListen(user.uid,'kitRecipes','kitchen_recipes',()=>{ try{ kitRecipes=kitLoadRecipes(); }catch(e){} if(S.view==='kitchen'&&typeof kitRender==='function') kitRender(); });
-    syncBlobListen(user.uid,'kitShopSelected','kitchen_shopping_selected',()=>{ try{ kitShopSelected=kitShopLoadSelected(); kitShopView=kitShopSelected.length?'list':'selector'; }catch(e){} if(S.view==='kitchen'&&typeof kitShopRender==='function') kitShopRender(); });
-    syncBlobListen(user.uid,'kitShopChecked','kitchen_shopping_checked',()=>{ try{ kitShopChecked=kitShopNormaliseChecked(kitShopLoadChecked()); }catch(e){} if(S.view==='kitchen'&&typeof kitShopRenderList==='function') kitShopRenderList(); });
-    syncBlobListen(user.uid,'kitShopManual','kitchen_shopping_manual',()=>{ try{ kitShopManual=kitShopLoadManual(); }catch(e){} if(S.view==='kitchen'&&typeof kitShopRenderList==='function') kitShopRenderList(); });
+    syncBlobListen(user.uid,'kitRecipes','kitchen_recipes',()=>{ try{ kitRecipes=kitLoadRecipes(); }catch(e){} foodRefreshActive(); foodRefreshSupport(); });
+    syncBlobListen(user.uid,'kitShopSelected','kitchen_shopping_selected',()=>{ try{ kitShopSelected=kitShopLoadSelected(); kitShopView=kitShopSelected.length?'list':'selector'; }catch(e){} if(foodShowing('shopping')) kitShopRender(); });
+    syncBlobListen(user.uid,'kitShopChecked','kitchen_shopping_checked',()=>{ try{ kitShopChecked=kitShopNormaliseChecked(kitShopLoadChecked()); }catch(e){} if(foodShowing('shopping')&&typeof kitShopRenderList==='function') kitShopRenderList(); });
+    syncBlobListen(user.uid,'kitShopManual','kitchen_shopping_manual',()=>{ try{ kitShopManual=kitShopLoadManual(); }catch(e){} if(foodShowing('shopping')&&typeof kitShopRenderList==='function') kitShopRenderList(); });
     syncBlobListen(user.uid,'kitPantry','kitchen_pantry',()=>{
       try{
         kitPantryData=kitPantryLoad();
@@ -716,7 +716,7 @@ if(firebaseReady){
       try{ S.dailyLog=loadDailyLog(); }catch(e){}
       if(typeof nutMigrateLegacy==='function') nutMigrateLegacy();
       if(S.view==='home'&&typeof renderHome==='function') renderHome();
-      if(S.view==='nutrition'&&typeof nutRender==='function') nutRender();
+      if(foodShowing('today')&&typeof nutRender==='function') nutRender();
       if(S.view==='stats') refreshStatsForData(['overview','review','nutrition']);
     });
     syncBlobListen(user.uid,'calorieHistory','daily_cal_history',()=>{
@@ -728,8 +728,8 @@ if(firebaseReady){
       try{ savedFoods=loadSavedFoods(); }catch(e){}
       if(typeof nutMigrateLegacy==='function') nutMigrateLegacy();
     });
-    syncBlobListen(user.uid,'nutritionFoods','daily_my_foods',()=>{ if(typeof nutMigrateLegacy==='function') nutMigrateLegacy(); if(S.view==='nutrition'&&typeof nutRender==='function') nutRender(); });
-    syncBlobListen(user.uid,'nutritionPrefs','daily_food_prefs',()=>{ if(typeof nutMigrateLegacy==='function') nutMigrateLegacy(); if(S.view==='nutrition'&&typeof nutRender==='function') nutRender(); });
+    syncBlobListen(user.uid,'nutritionFoods','daily_my_foods',()=>{ if(typeof nutMigrateLegacy==='function') nutMigrateLegacy(); if(foodShowing('today')&&typeof nutRender==='function') nutRender(); foodRefreshSupport(); });
+    syncBlobListen(user.uid,'nutritionPrefs','daily_food_prefs',()=>{ if(typeof nutMigrateLegacy==='function') nutMigrateLegacy(); if(foodShowing('today')&&typeof nutRender==='function') nutRender(); foodRefreshSupport(); });
     if(typeof nutSyncListen==='function') nutSyncListen(user.uid);
     syncBlobListen(user.uid,'checkinLog','daily_checkin_log',()=>{
       if(S.view==='home'&&typeof renderHome==='function') renderHome(); // streak lives on Home (calcStreak)
@@ -2170,7 +2170,11 @@ function initDay(idx){
 
 // ── View ─────────────────────────────────────────────────────────
 let statsSubTab = 'overview';
-function dailyHistoryView(v){return ['home','budget','log','nutrition','kitchen','stats','settings','notes','plans'].includes(v);}
+// 'nutrition' and 'kitchen' stay listed so an old #hash, a bookmark or a history entry written
+// by a previous build is still RECOGNISED here — dailyHistoryTarget() then resolves it to the
+// canonical destination, so nothing ever calls setView('kitchen') and no URL keeps the old
+// name after the first replaceState.
+function dailyHistoryView(v){return ['home','budget','log','food','stats','settings','notes','plans','nutrition','kitchen'].includes(v);}
 function dailyHistoryTarget(raw,state){
   const value=String(raw||'');
   const parts=value.split('/');
@@ -2181,15 +2185,38 @@ function dailyHistoryTarget(raw,state){
     const candidate=(state&&state.dailyLogTab)||parts[1]||'today';
     logTab=LOG_TABS[candidate]?candidate:'today';
   }
-  return {view,logTab};
+  // Resolve legacy names here rather than in setView's caller, so the boot restore and every
+  // popstate land on 'food' directly and write ONE history entry for it.
+  const sub=(view==='log')?null:((state&&state.dailyFoodTab)||parts[1]||null);
+  const t=navResolve(view, sub);
+  return {view:t.view, logTab, foodTab:t.sub, foodScreen:t.screen};
 }
-function dailyHistoryUrl(v,logTab){
-  const suffix=v==='log'&&logTab&&logTab!=='today'?'/'+logTab:'';
+function dailyHistoryUrl(v,sub){
+  // Food mirrors Log: the default section has no suffix, any other one names itself, so Back
+  // and Forward move between real destinations rather than between identical URLs.
+  const suffix=(v==='log'&&sub&&sub!=='today')||(v==='food'&&sub&&sub!=='today') ? '/'+sub : '';
   return location.pathname+location.search+'#'+v+suffix;
+}
+// The sub-tab a given view puts in its history entry, so setView/init/popstate never have to
+// re-derive it per view.
+function dailyHistorySub(v){
+  if(v==='log')  return (typeof logSubTab!=='undefined')?logSubTab:null;
+  if(v==='food') return foodState.tab;
+  return null;
 }
 function setView(v, direction, opts){
   opts = opts || {};
+  // ONE place the retired 'nutrition'/'kitchen' names are turned into 'food', and it is above
+  // everything else in this function — the history push below reads `v`, so resolving later
+  // would stamp a URL for a screen that no longer exists.
+  // A legacy name also carries a DESTINATION, not just a view: setView('kitchen') meant the
+  // recipe book, so it must land on Recipes rather than on whichever section was last open.
+  const _legacyRoute = NAV_VIEW_ALIAS[v] ? (FOOD_LEGACY_ROUTES[v]||null) : null;
+  v = NAV_VIEW_ALIAS[v] || v;
   clearSourceReturn();
+  // Leaving Food closes its supporting screens. They are peers of the deck, not children of
+  // it, so nothing else would hide them and one left open would cover the incoming view.
+  if(v!=='food') foodCloseSupport();
   // Accounts is a fixed overlay (not an #app-main>section), so — like the library above — it
   // won't be hidden by the .hidden toggle below; close it explicitly so a sidebar switch away
   // from Accounts actually leaves it. The nav's selected row is set by setNavActive() below.
@@ -2204,9 +2231,11 @@ function setView(v, direction, opts){
     logSubTab=LOG_TABS[opts.logTab]?opts.logTab:'today';
     logTodayView='overview';
   }
-  if(!opts.fromHistory&&!_bootPhase&&prev!==v&&dailyHistoryView(v)){
+  // Food's section is decided below (opts.foodTab, or the remembered one), so the entry has to
+  // be written after that — see the food block further down. Every other view pushes here.
+  if(!opts.fromHistory&&!_bootPhase&&prev!==v&&dailyHistoryView(v)&&v!=='food'){
     try{
-      if(!history.state?.dailyView&&dailyHistoryView(prev)) history.replaceState({dailyView:prev},'',dailyHistoryUrl(prev,prev==='log'?logSubTab:null));
+      if(!history.state?.dailyView&&dailyHistoryView(prev)) history.replaceState({dailyView:prev},'',dailyHistoryUrl(prev,dailyHistorySub(prev)));
       const nextState={dailyView:v};
       if(v==='log') nextState.dailyLogTab=logSubTab;
       history.pushState(nextState,'',dailyHistoryUrl(v,v==='log'?logSubTab:null));
@@ -2227,9 +2256,6 @@ function setView(v, direction, opts){
   else if(isSwipe) deckIdx=swipeIdx;
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
   setNavActive();
-  // The bottom scroll-fade paints over the kitchen's floating "+" / add bars (the tab-slide
-  // transform traps those fixed elements below it), so hide it on the Kitchen tab.
-  const _sf=document.getElementById('scroll-fade'); if(_sf) _sf.style.display = (v==='kitchen') ? 'none' : '';
   if(v==='home') renderHome();
   if(v==='log'){
     // Entering Log from anywhere else lands on the workout overview, not the set logger —
@@ -2242,12 +2268,25 @@ function setView(v, direction, opts){
   } else {
     rtStopUi();
   }
-  // Stats is a standalone top-level view (its own bottom-nav tab + desktop sidebar item).
+  // Stats is a deck destination again — its own bottom-nav tab, its own swipe slot — and it
+  // still remembers whichever section was last open (statsSubTab).
   if(v==='stats'){ setStatsTab(statsSubTab,true); }
   if(v==='budget') renderBudgetTab();
-  if(v==='nutrition'&&typeof nutRender==='function') nutRender();
-  if(v==='kitchen') kitRender();
-  else if(typeof kitShopRenderAddBar==='function') kitShopRenderAddBar(false); // hide fixed shopping add-bar off-tab
+  // Food lands on its remembered section, unless a shortcut named one. `opts.foodTab` is how
+  // "Log food →" guarantees Today even after a week of Shopping.
+  if(v==='food'){
+    const tab=FOOD_TABS.indexOf(opts.foodTab)>=0 ? opts.foodTab
+            : (_legacyRoute ? _legacyRoute.tab : foodState.tab);
+    foodSetTab(tab, {force:true, skipHistory:true});
+    if(!opts.fromHistory&&!_bootPhase&&prev!==v){
+      try{
+        if(!history.state?.dailyView&&dailyHistoryView(prev)) history.replaceState({dailyView:prev},'',dailyHistoryUrl(prev,dailyHistorySub(prev)));
+        history.pushState({dailyView:'food',dailyFoodTab:tab},'',dailyHistoryUrl('food',tab));
+      }catch(e){}
+    }
+    // setView('nutrition','foods')-era links carried a supporting screen with them.
+    if(_legacyRoute&&_legacyRoute.screen) foodOpenSupport(_legacyRoute.screen);
+  } else if(typeof kitShopRenderAddBar==='function') kitShopRenderAddBar(false); // hide fixed shopping add-bar off-tab
   if(v==='settings') renderSettings();
   if(v==='plans') renderPlans();
   if(v==='notes') renderNotes();
@@ -2257,12 +2296,70 @@ function setView(v, direction, opts){
   if(v!=='home' && homeEditMode){ homeEditMode=false; const b=document.getElementById('home-edit-btn'); if(b){ b.textContent='Edit layout'; b.classList.remove('active'); } }
   updateNavBadges();
 }
-// The four swipeable tabs, in swipe order. Kitchen replaced Stats here: Kitchen is used daily
-// and Stats is a look-back-occasionally screen, so Stats moved to the hamburger menu.
+// The five swipeable tabs, in swipe order. Nutrition and Kitchen merged into ONE Food
+// destination — they were two top-level tabs answering one question between them — and the
+// slot that freed went back to Stats, which had been pushed out of the deck when Kitchen
+// arrived and had been reachable only through the menu and the header chip since.
 // This list IS the deck — a view named here must be a .swipe-panel inside #swipe-deck, and one
 // that isn't must be a direct <section> child of #app-main (see setView). Changing the list
 // without moving the markup gives you a tab you can swipe to but not tap, or the reverse.
-const NAV_ORDER=['home','budget','log','nutrition','kitchen'];
+// #view-*{order:n} in css/layout.css must agree with this order for the same reason.
+const NAV_ORDER=['home','budget','log','food','stats'];
+
+// ── Food: one destination, four sections, two supporting screens ──
+// Declared HERE, beside NAV_ORDER, and not next to the render functions two thousand lines
+// below — exactly the reason the Log hub's state is here. init() restores a #hash view through
+// setView(), setView() reads foodState, and `let`/`const` do not hoist: a late declaration
+// aborts boot with "Cannot access 'foodState' before initialization", silently, because the
+// restore only fires when the URL actually carries a hash. js/nutrition.js loads BEFORE this
+// file, so nothing there may read foodState at load time either — its calls are all inside
+// functions, which run long after both scripts have evaluated.
+const FOOD_TABS=['today','recipes','shopping','pantry'];
+// IN MEMORY, deliberately. "Remember the section I was last in" is a within-session
+// convenience, not a preference worth a synced store or a migration — and a stored default
+// would be a boot-time write, which is the `_bootPhase` trap in AGENTS.md. A fresh session
+// therefore opens on Today, which is what routine logging wants.
+const foodState={tab:'today'};
+// Food's supporting screens, keyed by the overlay they own. Neither is a fifth tab: the
+// library belongs to Today (it is where Add food finds its options) and the review belongs to
+// Recipes, and each returns to its parent.
+const FOOD_SUPPORT={library:{el:'view-food-library', parent:'today'},
+                    review: {el:'view-nutrition-review', parent:'recipes'}};
+
+// ── Legacy navigation compatibility ──────────────────────────────
+// One central mapping, rather than two top-level screens kept alive to catch old links. Every
+// entry point that still says "nutrition" or "kitchen" — a saved #hash, a history entry, a
+// NAV_TREE row someone re-adds, an onclick nobody found — resolves here and nowhere else.
+// setView() applies it before it touches history, so resolving a legacy destination pushes ONE
+// entry for the canonical view instead of an intermediate one for the old name.
+const NAV_VIEW_ALIAS={nutrition:'food', kitchen:'food'};
+// view + sub, as the old callers spelled it → the canonical Food destination. `screen` names a
+// supporting overlay; absent means the primary section alone.
+const FOOD_LEGACY_ROUTES={
+  'nutrition':          {tab:'today'},
+  'nutrition:today':    {tab:'today'},
+  'nutrition:foods':    {tab:'today',   screen:'library'},
+  'nutrition:recipes':  {tab:'recipes', screen:'review'},
+  'kitchen':            {tab:'recipes'},
+  'kitchen:recipes':    {tab:'recipes'},
+  'kitchen:shopping':   {tab:'shopping'},
+  'kitchen:pantry':     {tab:'pantry'},
+  // The canonical spellings, so navGo('food','library') works without a special case.
+  'food:library':       {tab:'today',   screen:'library'},
+  'food:review':        {tab:'recipes', screen:'review'}
+};
+// Resolve any (view, sub) pair — new or legacy — to what should actually happen.
+// Returns {view, sub, screen}: `sub` is a Food TAB when view==='food', otherwise whatever the
+// caller passed through untouched.
+function navResolve(view, sub){
+  const v=NAV_VIEW_ALIAS[view]||view;
+  if(v!=='food') return {view:v, sub:sub||null, screen:null};
+  const route=FOOD_LEGACY_ROUTES[view+(sub?':'+sub:'')] || FOOD_LEGACY_ROUTES[view] || null;
+  if(route) return {view:'food', sub:route.tab, screen:route.screen||null};
+  // A plain Food tab, or nothing — nothing meaning "wherever you were", which is what the
+  // bottom-nav button and the quick strip pass.
+  return {view:'food', sub:FOOD_TABS.indexOf(sub)>=0?sub:null, screen:null};
+}
 
 // ── Quick access ────────────────────────────────────────────────
 // The phone's five bottom-nav tabs, pinned above the groups on BOTH nav surfaces so the app's
@@ -2273,29 +2370,27 @@ const NAV_ORDER=['home','budget','log','nutrition','kitchen'];
 // deck adds it here, and the two cannot drift into disagreeing about which views the deck
 // holds. Their icons are the same paths #bottom-nav draws, so the desktop shortcut and the
 // phone tab are visibly the same thing.
-// NAV_QUICK_EXTRA is the deliberate exception. Stats and Settings are not deck tabs — there is
-// no sixth or seventh bottom-nav button and there is not going to be — but they are used often
-// enough that reaching them through "expand a group, then pick a row" was the complaint that
-// produced this strip in the first place. Naming them in their own list keeps the derivation
-// honest: NAV_ORDER still means "the phone deck", and this means "also worth pinning".
+// NAV_QUICK_EXTRA is the deliberate exception: a destination worth pinning that is NOT a deck
+// tab. Stats used to be in it and no longer is — it is a real bottom-nav tab again, so leaving
+// it here would have listed it twice in one strip. Settings is the only one left.
 // A quick item dispatches setView with NO sub-tab — exactly what pressing the bottom-nav
 // button does — so it lands you back wherever you were inside that view.
 const NAV_QUICK_ICONS={
   home:'<path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/><path d="M9 21V12h6v9"/>',
   budget:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h2M10 15h4"/>',
   log:'<path d="M6 4v16M18 4v16"/><path d="M3 8h3M18 8h3M3 16h3M18 16h3"/><path d="M6 12h12"/>',
-  nutrition:'<path d="M12 22c4.4 0 8-4.1 8-9.2C20 8.4 16.4 5 12 5s-8 3.4-8 7.8C4 17.9 7.6 22 12 22z"/><path d="M12 5c0-2 1.6-3 3.5-3"/><path d="M9 8c1.8 1 4.2 1 6 0"/>',
-  kitchen:'<path d="M5 10h14v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z"/><path d="M3 10h18"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
-  // Stats and Settings have no bottom-nav button to borrow from, so these are written out —
-  // the chart is CARD_ICONS.trend and the control is SETTINGS_ICONS.sliders, copied rather
-  // than referenced because both of those are declared thousands of lines below this and
-  // `const` does not hoist. Keep them in step by eye if either is ever redrawn.
+  // A bowl, not the retired apple (Nutrition) or pot (Kitchen): Food is what you eat, cook,
+  // buy and hold, and neither of those two said all four.
+  food:'<path d="M4 12h16a8 8 0 0 1-8 8 8 8 0 0 1-8-8z"/><path d="M2 12h20"/><path d="M9 8c0-1.6 1.6-1.6 1.6-3.2"/><path d="M14 8c0-1.6 1.6-1.6 1.6-3.2"/>',
   stats:'<path d="M3 17l6-6 4 4 7-7"/><path d="M20 8v5h-5"/>',
+  // Settings has no bottom-nav button to borrow from, so this one is written out — it is
+  // SETTINGS_ICONS.sliders, copied rather than referenced because that is declared thousands
+  // of lines below this and `const` does not hoist. Keep them in step by eye if it is redrawn.
   settings:'<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2.1"/><circle cx="15" cy="12" r="2.1"/><circle cx="8" cy="18" r="2.1"/>'
 };
-const NAV_QUICK_LABELS={home:'Home', budget:'Budget', log:'Log', nutrition:'Nutrition', kitchen:'Kitchen',
+const NAV_QUICK_LABELS={home:'Home', budget:'Budget', log:'Log', food:'Food',
                         stats:'Stats', settings:'Settings'};
-const NAV_QUICK_EXTRA=['stats','settings'];
+const NAV_QUICK_EXTRA=['settings'];
 const NAV_QUICK_VIEWS=NAV_ORDER.concat(NAV_QUICK_EXTRA);
 const NAV_QUICK=NAV_QUICK_VIEWS.map(v=>({view:v, label:NAV_QUICK_LABELS[v]||v, icon:NAV_QUICK_ICONS[v]||''}));
 
@@ -2329,8 +2424,11 @@ const NAV_TREE=[
   // genuinely different destinations and stay — landing on Budget is not the same as landing
   // on Budget › Month.
   {id:'today', label:'Today', rows:[
-    {id:'log-today', label:"Today's session",  view:'log',       sub:'today'},
-    {id:'nut-today', label:'Food log',         view:'nutrition', sub:'today'},
+    {id:'log-today', label:"Today's session",  view:'log',  sub:'today'},
+    // Kept, and pointed at Food › Today rather than the retired Nutrition tab. It is NOT the
+    // duplicate the Home/Settings rule forbids: the pinned Food item lands wherever you were,
+    // this one always lands on the day log.
+    {id:'nut-today', label:'Food log',         view:'food', sub:'today'},
   ]},
   {id:'training', label:'Training', rows:[
     {id:'log-program',   label:'Program',   view:'log', sub:'program'},
@@ -2345,11 +2443,14 @@ const NAV_TREE=[
     {id:'accounts',   label:'Accounts',      view:'accounts'},
     {id:'wkr',        label:'Weekly review', view:'stats',    sub:'review'},
   ]},
-  {id:'kitchen', label:'Kitchen', rows:[
-    {id:'kit-recipes',  label:'Recipes',      view:'kitchen',   sub:'recipes'},
-    {id:'kit-shopping', label:'Shopping',     view:'kitchen',   sub:'shopping'},
-    {id:'kit-pantry',   label:'Pantry',       view:'kitchen',   sub:'pantry'},
-    {id:'nut-foods',    label:'Food library', view:'nutrition', sub:'foods'},
+  // Was "Kitchen". The group is named for the destination it now holds, and Food library keeps
+  // the place it already had here rather than becoming a fifth primary section.
+  {id:'food', label:'Food', rows:[
+    {id:'kit-recipes',  label:'Recipes',          view:'food', sub:'recipes'},
+    {id:'kit-shopping', label:'Shopping',         view:'food', sub:'shopping'},
+    {id:'kit-pantry',   label:'Pantry',           view:'food', sub:'pantry'},
+    {id:'nut-foods',    label:'Food library',     view:'food', sub:'library'},
+    {id:'nut-review',   label:'Nutrition Review', view:'food', sub:'review'},
   ]},
   {id:'stats', label:'Stats', rows:[
     {id:'st-overview',  label:'Overview',  view:'stats', sub:'overview'},
@@ -2386,13 +2487,15 @@ function navGo(viewId, sub){
   closeMenu();
   if(viewId==='accounts') return openAccounts();
   if(viewId==='aihub')    return openAIHub();
-  setView(viewId);
-  if(!sub) return;
-  if(viewId==='log')            setLogTab(sub);
-  else if(viewId==='stats')     setStatsTab(sub);
-  else if(viewId==='budget')    setBudgetView(sub);
-  else if(viewId==='kitchen')   kitSetTab(sub);
-  else if(viewId==='nutrition' && typeof nutSetTab==='function') nutSetTab(sub);
+  // Legacy names resolve BEFORE setView, so a row still saying 'kitchen' pushes one history
+  // entry for #food rather than an intermediate one for a screen that no longer exists.
+  const t=navResolve(viewId, sub);
+  setView(t.view);
+  if(t.view==='food') return foodGo(t.sub, t.screen);
+  if(!t.sub) return;
+  if(t.view==='log')            setLogTab(t.sub);
+  else if(t.view==='stats')     setStatsTab(t.sub);
+  else if(t.view==='budget')    setBudgetView(t.sub);
 }
 function navRowGo(id){ const r=NAV_ROW_BY_ID[id]; if(r) navGo(r.view,r.sub); }
 
@@ -2405,16 +2508,17 @@ function navCurrentRow(){
   if(NAV_NO_ROW_OVERLAYS.some(shown)) return '';
   if(shown('view-accounts')) return 'accounts';
   if(shown('view-aihub'))    return 'aihub';
+  // Food's two supporting screens ARE nav destinations — each has its own row — so unlike the
+  // overlays above they light one rather than clearing the selection. Checked before the view
+  // switch below because they are pushed over Food and S.view is still 'food' underneath.
+  if(shown('view-food-library'))    return 'nut-foods';
+  if(shown('view-nutrition-review'))return 'nut-review';
   const v=(typeof S!=='undefined'&&S&&S.view)||'home';
   if(v==='home')    return 'home';
   if(v==='log')     return ({today:'log-today',program:'log-program',exercises:'log-exercises',history:'log-history'})[logSubTab]||'';
   if(v==='budget')  return ({week:'bud-week',month:'bud-month',bills:'bud-bills',year:'bud-year'})[budgetView]||'';
   if(v==='stats')   return ({overview:'st-overview',review:'wkr',training:'st-training',body:'st-body',nutrition:'st-nutrition',finance:'st-finance'})[statsSubTab]||'';
-  if(v==='kitchen') return ({recipes:'kit-recipes',shopping:'kit-shopping',pantry:'kit-pantry'})[kitState&&kitState.tab]||'';
-  if(v==='nutrition'){
-    const t=(typeof nutTab!=='undefined')?nutTab:'today';
-    return t==='today'?'nut-today':t==='foods'?'nut-foods':'';   // Nutrition > Recipes is a review screen, not a destination
-  }
+  if(v==='food')    return ({today:'nut-today',recipes:'kit-recipes',shopping:'kit-shopping',pantry:'kit-pantry'})[foodState.tab]||'';
   if(v==='notes')    return 'journal';
   if(v==='plans')    return 'plans';
   if(v==='settings') return 'settings';
@@ -2430,6 +2534,8 @@ function navCurrentRow(){
 function navCurrentQuick(){
   if(NAV_NO_ROW_OVERLAYS.some(navShown)) return '';
   if(navShown('view-accounts')||navShown('view-aihub')) return '';
+  // Food's supporting screens deliberately do NOT clear this: they are inside the Food
+  // experience, so Food stays lit here exactly as it stays lit in the bottom nav.
   const v=(typeof S!=='undefined'&&S&&S.view)||'home';
   return NAV_QUICK_VIEWS.indexOf(v)>=0 ? v : '';
 }
@@ -2570,10 +2676,10 @@ let logProgSel=null;
 let plansDocSel=null;
 
 // ── Swipe deck (native-feel tab paging) ──────────────────────────
-// The four bottom-nav views sit side-by-side in #swipe-deck and track the finger in real
+// The five bottom-nav views sit side-by-side in #swipe-deck and track the finger in real
 // time; releasing spring-snaps to the nearest view. Mobile only — desktop pages via
 // .deck-active (see setView + layout.css). Order matches NAV_ORDER: home, budget, log,
-// nutrition, kitchen, keeping the workout action in the centre of the five phone tabs.
+// food, stats, keeping the workout action in the centre of the five phone tabs.
 let deckIdx = 0;
 let deckRaf = 0;      // handle of the pending touchmove frame (0 = none) — must be cancellable
 // Mirrors the gesture IIFE's own `dragging`, at module scope: vpSyncDeck must never re-page
@@ -2953,11 +3059,20 @@ function dailyApplyHistoryView(state){
   const raw=state&&state.dailyView||decodeURIComponent(location.hash.replace(/^#/,''));
   const target=dailyHistoryTarget(raw,state);
   if(!target) return;
-  if(target.view!==S.view) setView(target.view,null,{fromHistory:true,logTab:target.logTab});
+  if(target.view!==S.view) setView(target.view,null,{fromHistory:true,logTab:target.logTab,foodTab:target.foodTab});
   else if(target.view==='log'){
     logTodayView='overview';
     setLogTab(target.logTab,true,{skipHistory:true});
   }
+  else if(target.view==='food'){
+    // Back/Forward between Food sections must move the strip without writing a new entry —
+    // the same shape as Log's branch above.
+    foodCloseSupport();
+    foodSetTab(target.foodTab||'today',{skipHistory:true});
+  }
+  // A legacy entry's supporting screen (an old #nutrition/foods style link) opens on top of
+  // the section it belongs to, once the view is in place.
+  if(target.view==='food'&&target.foodScreen) foodOpenSupport(target.foodScreen);
 }
 window.addEventListener('popstate',e=>dailyApplyHistoryView(e.state));
 window.addEventListener('hashchange',()=>dailyApplyHistoryView(history.state));
@@ -3047,7 +3162,7 @@ window.addEventListener('resize',function(){ if(typeof S!=='undefined'&&S.view) 
     if(now===was) return;
     was=now;
     if(typeof S!=='undefined'&&S.view==='home'&&typeof renderHome==='function') renderHome();
-    if(typeof S!=='undefined'&&S.view==='kitchen'&&typeof kitRehomeForLayout==='function') kitRehomeForLayout();
+    if(typeof S!=='undefined'&&S.view==='food'&&typeof kitRehomeForLayout==='function') kitRehomeForLayout();
     // Budget's two desktop columns are a re-parenting of the same nodes, so crossing 1024px has
     // to redistribute them. Cheap and self-guarding — it no-ops unless the mode actually
     // changed — and it works whether or not Budget is the visible tab.
@@ -3110,7 +3225,10 @@ function applyLogoDayColour(){
 function updateStatsPill(v){
   const p=document.getElementById('header-stats-pill');
   if(!p) return;
-  // Visible on Home/Log/Budget (carrying the tab as context); hidden on Stats itself + Kitchen/Settings.
+  // Visible on Home/Log/Budget (carrying the tab as context); hidden on Stats itself and on
+  // Food/Settings. Stats has its own bottom-nav button now, so this chip is a context-aware
+  // shortcut rather than the only way in — it still opens the sub-tab that matches where it
+  // was tapped from, which the button cannot do.
   if(v==='home'||v==='log'||v==='budget'){
     p.style.display='block';
     p.classList.remove('active');
@@ -3852,7 +3970,7 @@ function openNutritionEvidence(date){
   }).join('');
   openStatsEvidence(date?'Calorie evidence · '+fmtDate(date):'Calorie evidence · 30 days',
     '<div class="stats-data-note">New records retain dated foods and macros. Legacy total-only days stay visible without invented detail. Partial known subtotals are never presented as complete intake.</div><div class="stats-source-list">'+rows+'</div>'+
-    statsSourceActions(['<button onclick="closeStatsEvidence();setView(\'nutrition\')">Open today’s food log →</button>']));
+    statsSourceActions(['<button onclick="closeStatsEvidence();openFoodToday()">Open today’s food log →</button>']));
 }
 function openFinanceCategoryEvidence(key){
   const c=_statsFinanceEvidence[key]; if(!c) return;
@@ -6430,14 +6548,14 @@ function saveCustomCalorieTarget(){
   S.personalInfo.customCalorieTarget=n===null?null:Math.round(n);
   localStorage.setItem('wt_personalinfo',JSON.stringify(S.personalInfo));
   syncPersonalInfoToFirebase();
-  if(S.view==='nutrition'&&typeof nutRender==='function')nutRender();
+  if(foodShowing('today')&&typeof nutRender==='function')nutRender();
   if(S.view==='home')renderHome();
   showToast(n===null?'Using calculated goal':'Custom calorie target saved');
 }
 
 // ── Calorie log ────────────────────────────────────────────────────
 function renderCalorieLog(){
-  if(S.view==='nutrition'&&typeof nutRender==='function') nutRender();
+  if(foodShowing('today')&&typeof nutRender==='function') nutRender();
 }
 
 function logCalorie(category){
@@ -6451,7 +6569,7 @@ function openCalorieOverlay(){ if(typeof nutOpen==='function') nutOpen('snacks')
 function closeCalorieOverlay(){ if(typeof nutCloseFoodSheet==='function') nutCloseFoodSheet(); }
 function overlayAddCalorie(cat){ if(typeof nutOpen==='function') nutOpen(cat||'snacks'); }
 function deleteOverlayEntry(){ if(typeof nutOpen==='function') nutOpen('snacks'); }
-function renderCalorieOverlay(){ if(S.view==='nutrition'&&typeof nutRender==='function') nutRender(); }
+function renderCalorieOverlay(){ if(foodShowing('today')&&typeof nutRender==='function') nutRender(); }
 // Legacy saved foods remain readable and synced for migration, but their old editor is retired.
 function loadSavedFoods(){ return lsLoad('daily_saved_foods', []); }
 function persistSavedFoods(){ lsSave('daily_saved_foods', savedFoods, 'savedFoods'); }
@@ -8193,7 +8311,12 @@ function aiHubText(ctx,fmt){
 // The peer overlays all sit at the same z-index, so opening one on top of another would leave
 // the first showing underneath when this one closes. Each open function hides its peers.
 const AI_PEER_OVERLAYS=['view-accounts','view-aihub'];
-const APP_PEER_OVERLAYS=[...AI_PEER_OVERLAYS,'view-stats-evidence','view-exercise-detail'];
+// Food's two supporting screens join this list so opening Accounts, Daily AI, a Stats
+// evidence screen or an exercise detail hides them, and so aiSyncOverlayInset() recomputes
+// their desktop sidebar inset when the viewport crosses 1024px — they are the same kind of
+// pushed screen and were the only peers that would otherwise have kept a stale inset.
+const APP_PEER_OVERLAYS=[...AI_PEER_OVERLAYS,'view-stats-evidence','view-exercise-detail',
+                         'view-food-library','view-nutrition-review'];
 function aiHidePeerOverlays(keepId){
   APP_PEER_OVERLAYS.forEach(id=>{
     if(id===keepId) return;
@@ -9649,8 +9772,8 @@ function aiUndoLastApply(){
 
 function aiInboxRefreshViews(){
   try{ if(typeof txnAfterChange==='function') txnAfterChange(); }catch(e){}
-  try{ if(typeof kitRender==='function' && S.view==='kitchen') kitRender(); }catch(e){}
-  try{ if(typeof kitShopRender==='function' && S.view==='kitchen') kitShopRender(); }catch(e){}
+  try{ if(typeof foodRefreshActive==='function') foodRefreshActive(); }catch(e){}
+  try{ if(typeof foodRefreshSupport==='function') foodRefreshSupport(); }catch(e){}
   try{ if(typeof renderBudgetTab==='function' && S.view==='budget') renderBudgetTab(); }catch(e){}
   try{ if(typeof renderHome==='function' && S.view==='home') renderHome(); }catch(e){}
 }
@@ -15848,7 +15971,7 @@ function renderNutrition(){
   wrap.innerHTML='<div class="card">'+
     cardHeader('receipt','Calorie coverage',
       statsChip(logged7.length>=5?'good':'warn',logged7.length+' of 7 days')+
-      '<button class="card-hd-act" onclick="setView(\'nutrition\')">Food log &rarr;</button>')+
+      '<button class="card-hd-act" onclick="openFoodToday()">Food log &rarr;</button>')+
     statsFigure(avg7===null?'—':avg7.toLocaleString(),avg7===null?'':'kcal',
       avg7===null?'No completed day logged in the last 7'
         :'Logged-day average · '+fmtDate(last7[0])+' – '+fmtDate(last7[6]))+
@@ -18753,7 +18876,7 @@ function buildPRCard(){
 }
 function buildKitchenCard(){
   const recipes=(typeof kitRecipes!=='undefined'&&Array.isArray(kitRecipes))?kitRecipes:[];
-  const open='onclick="setView(\'kitchen\')"';
+  const open='onclick="openFoodRecipes()"';
   if(!recipes.length){
     return '<div class="card" '+open+' style="cursor:pointer">'+
       cardHeader('pot','Kitchen')+
@@ -20065,7 +20188,7 @@ function renderHome(){
   const heroFoodAct=(goalCals||kcalTotal>0||(nutToday&&nutToday.unknown)||budLeft===null)
     ? '<button type="button" class="card-hd-act" onclick="event.stopPropagation();nutOpen()">Log food →</button>' : '';
   const overviewCard=
-    '<div class="card hero-card" onclick="setView(\'nutrition\')" style="margin-bottom:12px;cursor:pointer">'+
+    '<div class="card hero-card" onclick="openFoodToday()" style="margin-bottom:12px;cursor:pointer">'+
       cardHeader(heroHdrIcon,heroHdrTxt,heroFoodAct)+
       heroContent+
     '</div>';
@@ -23132,23 +23255,143 @@ function kitScaledAmount(amount,baseServings,curServings){
   return kitTrim((n/baseServings)*curServings);
 }
 
-function kitRender(){ kitSetTab(kitState.tab); }
-function kitSetTab(tab){
-  kitState.tab=tab;
-  ['recipes','shopping','pantry'].forEach(t=>{
-    const pane=document.getElementById('kit-'+t); if(pane) pane.classList.toggle('hidden',t!==tab);
-    segSetOn(document.getElementById('kit-tab-'+t), t===tab);
+// ── Food: the section controller ──────────────────────────────────
+// One strip, four sections, and exactly one of them rendered. The three kitchen panes keep
+// their ids and their renderers untouched — only who decides which pane is showing moved here,
+// so there is never a Food strip stacked on the old Nutrition strip.
+// kitState.tab is kept in step because a dozen places still read it (updateKitFab,
+// kitPantryRefreshViews, the recipe list's own layout code); it is not a second source of
+// truth, it is a mirror written from this one place.
+function foodSetTab(tab, opts){
+  opts=opts||{};
+  if(FOOD_TABS.indexOf(tab)<0) tab='today';
+  const changed=foodState.tab!==tab;
+  foodState.tab=tab;
+  if(tab!=='today') kitState.tab=tab;
+  const panes={today:'food-today', recipes:'kit-recipes', shopping:'kit-shopping', pantry:'kit-pantry'};
+  FOOD_TABS.forEach(t=>{
+    const pane=document.getElementById(panes[t]); if(pane) pane.classList.toggle('hidden', t!==tab);
+    segSetOn(document.getElementById('food-tab-'+t), t===tab);
   });
+  // Never scrollIntoView(): #view-food is a .swipe-panel inside the transformed #swipe-deck,
+  // so it would walk up and shove the deck sideways, exposing bare background. segScrollToTab
+  // nudges the strip's own scrollLeft by a measured rect offset — the same fix Log and Stats
+  // already use.
+  segScrollToTab(document.getElementById('food-tab-row'), document.getElementById('food-tab-'+tab));
+  if(changed&&!opts.skipHistory&&!_bootPhase&&S.view==='food'){
+    try{ history.pushState({dailyView:'food',dailyFoodTab:tab},'',dailyHistoryUrl('food',tab)); }catch(e){}
+  }
   setNavActive();
-  if(tab==='recipes') kitRenderList();
-  if(tab==='shopping') kitShopRender();
-  else if(typeof kitShopRenderAddBar==='function') kitShopRenderAddBar(false);
-  if(tab==='pantry') kitPantryRender();
+  foodRenderSection(tab);
+  foodSyncChrome();
+  if(changed||opts.force){
+    // The panel is the scroller on a phone, #app-main on desktop — write both rather than
+    // guessing, the same belt-and-braces setLogTab uses.
+    const panel=document.getElementById('view-food'); if(panel) panel.scrollTop=0;
+    const main=document.getElementById('app-main'); if(main) main.scrollTop=0;
+  }
+}
+// Render whichever section is showing, through each area's OWN existing renderer. Nothing
+// about what these draw changed.
+function foodRenderSection(tab){
+  if(tab==='today'){ if(typeof nutRender==='function') nutRender(); }
+  else if(tab==='recipes')  kitRenderList();
+  else if(tab==='shopping') kitShopRender();
+  else if(tab==='pantry')   kitPantryRender();
+  if(tab!=='shopping' && typeof kitShopRenderAddBar==='function') kitShopRenderAddBar(false);
+}
+// "Is this Food section on screen right now" — asked by every incoming-data callback, so a
+// cloud update refreshes the section being looked at and nothing else. An inactive section is
+// re-rendered when it is opened, so it can never show stale data either.
+function foodShowing(tab){ return S.view==='food' && foodState.tab===tab; }
+function foodRefreshActive(){ if(S.view==='food') foodRenderSection(foodState.tab); }
+// Fixed chrome that belongs to one section only. The scroll fade paints OVER the floating "+"
+// and the shopping add-bar (the deck's transform traps those fixed elements below it), so it
+// stands down exactly where they appear — it used to be keyed on the whole Kitchen view.
+function foodSyncChrome(){
+  const sf=document.getElementById('scroll-fade');
+  if(sf) sf.style.display = (S.view==='food'&&(foodState.tab==='recipes'||foodState.tab==='shopping')) ? 'none' : '';
   updateKitFab();
 }
-// The "+" is only meaningful on the Recipes sub-tab of the Kitchen view. It used to be a child
-// of #kit-recipes, so the pane's own .hidden did this; now that it has to live outside the
-// swipe deck (see index.html) its visibility is explicit.
+// ── Food: supporting screens ──────────────────────────────────────
+// Peer overlays, not tabs. They keep Food selected in the bottom nav, light their own row in
+// the sidebar (see navCurrentRow) and have one obvious way back — to their PARENT section, so
+// the library returns to Today and the review returns to Recipes.
+function foodOpenSupport(key){
+  const def=FOOD_SUPPORT[key]; if(!def) return;
+  const el=document.getElementById(def.el); if(!el) return;
+  // Arrive at the parent section first, so closing lands somewhere coherent however this was
+  // reached — a sidebar row, a deep link, or the button on the parent screen itself.
+  if(S.view!=='food') setView('food',null,{foodTab:def.parent});
+  else if(foodState.tab!==def.parent) foodSetTab(def.parent);
+  if(typeof aiHidePeerOverlays==='function') aiHidePeerOverlays(def.el);
+  foodCloseSupport(key);
+  el.style.display='block';
+  el.style.left=layoutIsDesktop()?'260px':'0';   // leave the desktop sidebar uncovered
+  foodRenderSupport(key);
+  setNavActive();
+  foodSyncChrome();                              // the "+" must not float over a detail screen
+  if(typeof closeMenu==='function') closeMenu();
+}
+function foodCloseSupport(keepKey){
+  Object.keys(FOOD_SUPPORT).forEach(k=>{
+    if(k===keepKey) return;
+    const el=document.getElementById(FOOD_SUPPORT[k].el);
+    if(el&&el.style.display!=='none'){ el.style.display='none'; el.style.left='0'; }
+  });
+}
+function foodSupportOpen(key){
+  const def=FOOD_SUPPORT[key]; if(!def) return false;
+  const el=document.getElementById(def.el);
+  return !!(el&&el.style.display&&el.style.display!=='none');
+}
+function foodRenderSupport(key){
+  if(key==='library'&&typeof nutRenderFoods==='function') nutRenderFoods();
+  if(key==='review' &&typeof nutRenderRecipes==='function') nutRenderRecipes();
+}
+// Re-render whichever supporting screen is open, for the same reason foodRefreshActive exists:
+// recipes and My Foods both arrive from the cloud while one of these can be on screen.
+function foodRefreshSupport(){
+  Object.keys(FOOD_SUPPORT).forEach(k=>{ if(foodSupportOpen(k)) foodRenderSupport(k); });
+}
+function foodCloseSupportKey(key){
+  const def=FOOD_SUPPORT[key]; if(!def) return;
+  const el=document.getElementById(def.el);
+  if(el){ el.style.display='none'; el.style.left='0'; }
+  if(S.view==='food'&&foodState.tab!==def.parent) foodSetTab(def.parent);
+  setNavActive();
+  foodSyncChrome();
+}
+function foodOpenLibrary(){ foodOpenSupport('library'); }
+function foodCloseLibrary(){ foodCloseSupportKey('library'); }
+function foodOpenReview(){ foodOpenSupport('review'); }
+function foodCloseReview(){ foodCloseSupportKey('review'); }
+// One entry point for "take me to this Food destination", used by navGo and every shortcut.
+// `sub` is a primary section OR a supporting screen key; null means "wherever I was", which is
+// what the bottom-nav button and the quick strip pass.
+function foodGo(sub, screen){
+  if(screen) return foodOpenSupport(screen);
+  if(FOOD_SUPPORT[sub]) return foodOpenSupport(sub);
+  foodCloseSupport();
+  if(FOOD_TABS.indexOf(sub)>=0) foodSetTab(sub);
+  else foodSyncChrome();
+}
+// Home's "Log food →" and every other food-log shortcut. ALWAYS Today, whatever section was
+// last used — that is the whole point of it being a shortcut rather than the Food button.
+function openFoodToday(){ if(S.view!=='food') setView('food',null,{foodTab:'today'}); else foodGo('today'); }
+function openFoodRecipes(){ navGo('food','recipes'); }
+function openFoodShopping(){ navGo('food','shopping'); }
+function openFoodPantry(){ navGo('food','pantry'); }
+
+// kitRender() kept its name and its callers; it now means "re-render the Food section that is
+// showing", which is what every one of those callers actually wanted.
+function kitRender(){ foodRefreshActive(); }
+// Legacy: three Kitchen tabs became three of Food's four sections. Callers that still say
+// kitSetTab('shopping') land in exactly the right place.
+function kitSetTab(tab){ foodSetTab(tab); }
+// The "+" is only meaningful on Food's Recipes section. It used to be a child of #kit-recipes,
+// so the pane's own .hidden did this; now that it has to live outside the swipe deck (see
+// index.html) its visibility is explicit.
 function updateKitFab(){
   const fab=document.getElementById('kit-fab'); if(!fab) return;
   // The FAB is a BODY-level element at z-index 80, and Chrome makes #app's position:fixed a
@@ -23162,8 +23405,10 @@ function updateKitFab(){
     // the FAB sat on top of its content — the macro caption and the bottom actions.
     const d=document.getElementById('kit-detail-overlay');
     return !!(d&&d.style.display&&d.style.display!=='none');
-  })();
-  const show = S.view==='kitchen' && (kitState&&kitState.tab==='recipes') && !covered;
+  })() || foodSupportOpen('library') || foodSupportOpen('review');
+  // Food's Recipes section ONLY: never Today, never Shopping or Pantry, never a supporting
+  // screen pushed over them, and never another view.
+  const show = S.view==='food' && foodState.tab==='recipes' && !covered;
   fab.style.display = show ? 'flex' : 'none';
 }
 function kitOnSearch(v){ kitState.search=v||''; kitRenderList(); }
@@ -24054,7 +24299,7 @@ function kitLogConfirm(){
   const rv=kitResolve(r,kitLogState.optionId,r.servings);
   const n=kitLogState.servings;
   if(rv.nutrition.calories==null&&!confirm('This recipe has unresolved nutrition. Log it explicitly as Unknown?\n\nThe day will be marked Partial.')){
-    kitSheetClose(); if(typeof nutSetTab==='function'){ setView('nutrition'); nutSetTab('recipes'); } return;
+    kitSheetClose(); if(typeof foodOpenReview==='function') foodOpenReview(); return;
   }
   const kcal=rv.nutrition.calories==null?null:Math.round(rv.nutrition.calories*n);
   // The NAME is a snapshot: renaming or deleting the recipe later must not rewrite what the
@@ -25672,7 +25917,7 @@ function kitPantryToggleStockedSection(pantryId){
   const ui=kitPantryUI();
   if(ui.stockedOpen[pantryId]) delete ui.stockedOpen[pantryId]; else ui.stockedOpen[pantryId]=true;
   kitPantryUISave(ui);
-  if(kitState.tab==='shopping') kitShopRenderList();
+  if(foodShowing('shopping')) kitShopRenderList();
 }
 function kitPantryRestock(pantryId,id){
   if(id==null){ id=pantryId; pantryId=kitPantryActiveId(); }
@@ -25976,9 +26221,9 @@ function kitPantryLocationControlHTML(context,manage){
   return html+'</section>';
 }
 function kitPantryRefreshViews(){
-  if(typeof S!=='undefined'&&S.view==='kitchen'){
-    if(kitState.tab==='pantry') kitPantryRender();
-    else if(kitState.tab==='shopping') kitShopRender();
+  if(typeof foodShowing==='function'){
+    if(foodShowing('pantry')) kitPantryRender();
+    else if(foodShowing('shopping')) kitShopRender();
   }
   if(typeof S!=='undefined'&&S.view==='home'&&typeof renderHome==='function') renderHome();
 }
@@ -26187,13 +26432,19 @@ try {
   // Boot is over: from here every save is a real edit and stamps the current time.
   _bootPhase = false;
   const initialTarget=dailyHistoryTarget(decodeURIComponent(location.hash.replace(/^#/,'')));
-  if(initialTarget&&(initialTarget.view!==S.view||initialTarget.view==='log')){
-    setView(initialTarget.view,null,{fromHistory:true,logTab:initialTarget.logTab});
+  if(initialTarget&&(initialTarget.view!==S.view||initialTarget.view==='log'||initialTarget.view==='food')){
+    setView(initialTarget.view,null,{fromHistory:true,logTab:initialTarget.logTab,foodTab:initialTarget.foodTab});
   }
+  // A legacy #nutrition/foods or #kitchen link opens its supporting screen after the view is
+  // in place. Everything above resolved to 'food' already, so this pushes no extra entry.
+  if(initialTarget&&initialTarget.view==='food'&&initialTarget.foodScreen) foodOpenSupport(initialTarget.foodScreen);
   try{
+    // Written with the CANONICAL view name, so a bookmarked #kitchen becomes #food/recipes on
+    // arrival rather than staying a name the app no longer has.
     const state={dailyView:S.view};
-    if(S.view==='log') state.dailyLogTab=logSubTab;
-    history.replaceState(state,'',dailyHistoryUrl(S.view,S.view==='log'?logSubTab:null));
+    if(S.view==='log')  state.dailyLogTab=logSubTab;
+    if(S.view==='food') state.dailyFoodTab=foodState.tab;
+    history.replaceState(state,'',dailyHistoryUrl(S.view,dailyHistorySub(S.view)));
   }catch(e){}
 } catch(e) {
   // Cleared in the failure path too — otherwise an init error would leave every later save
@@ -26493,7 +26744,7 @@ function jrnOpenDaySource(kind,ds){
     return;
   }
   if(kind==='calories'){
-    if(ds===getLocalDate()){ setView('nutrition'); }
+    if(ds===getLocalDate()){ openFoodToday(); }
     else { setView('stats'); setStatsTab('nutrition',true); openNutritionEvidence(ds); }
     return;
   }
