@@ -423,6 +423,38 @@ safety-critical parts:
 
 ## Current unfinished work
 
+### Budget: Outlook projection polish — v325 (released; see git log)
+
+Presentation only, on the Outlook card's *Until next pay* half. No store, sync
+registration, Firebase path, migration, boot write or finance calculation added or
+changed; the 47-helper byte-compare against v324 is clean, and `payCycleForecast` is
+untouched.
+
+- The three supporting facts were stacked grey sentences at one size and weight, under a
+  figure with nothing structural beneath it. They are **cells** now, via a new `fcSplit()`
+  over the app's own `.card-split` vocabulary: **Payday** / date / countdown and **Bills
+  before then** / total / count. The half now has the same shape as the timeline's
+  labelled header row beneath it, which is what it was failing to match.
+- Copy: the unit says what the number means (“projected to still be available on payday” /
+  “projected shortfall by payday”) instead of naming the operation; “dated in the list
+  below” is gone, since it pointed at a list already on screen; the no-income state's
+  middot run-on became a caption under the cells.
+- **One real bug fixed:** the no-projection state had `tone=''`, so with no income entered
+  the figure — which is then the BILLS DUE — was painted `--positive`. It is `is-plain`
+  now, the same as the no-payday branch, on the same reasoning: nothing has been judged.
+- `.fc-line`, `.fc-line-2` and `.fc-ok` lost their only caller and are gone.
+
+Verified in the in-app browser against a synthetic fixture, all four states: healthy
+(green), tight (amber), shortfall (red) and no-income (neutral). 375px light and 1200px
+dark, no clipping and no overflow, cells even at 140px each on a phone.
+`node --test tests/*.test.cjs` — 82/82. `CACHE_NAME` is `daily-v325`.
+
+**Found, reported, NOT fixed:** `.fc-card`'s coloured left rail has never rendered in
+either theme. `.fc-card{border-left:3px solid var(--positive)}` is (0,1,0) and
+`[data-theme="dark"] .card{border:...}` is (0,2,0) later in the same file, resetting the
+shorthand. The figure still carries the state, so the rail is redundant reinforcement
+that never shipped — reviving it is a visual change nobody asked for, not a bug fix.
+
 ### Budget: Fixed expenses card corrections — v324 (released; see git log)
 
 Two follow-ups to v323, both on the Fixed expenses card. No store, sync registration, Firebase

@@ -239,7 +239,17 @@
 // is now written read-modify-write so the two preferences sharing it cannot erase each
 // other. The disclosure is a real control now (role=button, keyboard, focus ring).
 // No store, sync path, calculation or migration changed.
-const CACHE_NAME = 'daily-v324';
+// v325: finish the Outlook card's projection half. Its three supporting facts were stacked
+// grey sentences at one size and weight, with a figure and nothing structural under it,
+// which is what made it read as unfinished beside the timeline's labelled header row.
+// They are cells now, on the app's own .card-split two-up-with-divider vocabulary, each
+// carrying a label, a figure and one line of context. The unit says what the number MEANS
+// rather than which operation produced it, the no-income state's run-on label became a
+// caption, and "dated in the list below" is gone -- it pointed at a list already on screen.
+// Fixes one real state bug: with no income entered the figure is the BILLS DUE, and it was
+// being painted --positive, stating money going out as a good outcome.
+// No store, sync path, calculation or migration changed.
+const CACHE_NAME = 'daily-v325';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

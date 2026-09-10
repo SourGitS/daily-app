@@ -1609,9 +1609,29 @@ the accent or the theme must go through those, not set `--accent` directly.
   coming" does not change with which week you are looking at. The card no longer hides itself
   when there is neither a forecast nor a dated charge — an explained empty state beats a missing
   card.
+  **The projection half states its facts as CELLS, not prose (v325).** It was the figure, a
+  unit label and then three stacked grey sentences at one size and weight — no hierarchy,
+  and a figure with nothing structural under it, which is what made this half read as
+  unfinished beside the timeline's labelled header row. `fcSplit()` builds the app's own
+  `.card-split` two-up-with-divider (Home's weight card, Log › Today) with a third context
+  line per cell: **Payday** / date / countdown, and **Bills before then** / total / count.
+  The unit says what the number MEANS (“projected to still be available on payday”) rather
+  than which operation produced it (“after planned bills”), and “dated in the list below” is
+  gone — it pointed at a list already on screen. The no-income state's run-on label became a
+  caption under the cells.
+  **`is-plain` now covers the no-projection state as well as the no-payday one**, and that
+  was a real bug: with no income entered the figure is the BILLS DUE, and the default
+  treatment paints `.fc-fig` `--positive` — a green $41.94 under “in scheduled bills before
+  payday” states money going out as a good outcome.
+  **Known and NOT fixed:** `.fc-card`'s coloured left rail has never rendered. The rule is
+  `.fc-card{border-left:3px solid var(--positive)}` at (0,1,0), and
+  `[data-theme="dark"] .card{border:0.5px solid var(--card-border)}` at (0,2,0) sits later in
+  the same file and resets the whole shorthand; light mode has the same collision. The
+  FIGURE still carries the state (green / amber / red), so the card is not mute — the rail is
+  redundant reinforcement that never shipped. Reviving it is a visual change, not a fix.
   **Retired with it:** `budUpcomingRowHtml()`, the `upcomingCharges(30)` fallback branch and its
-  7-day cluster warning, `.up-title`, `.up-account`, `.up-warn`, `.fc-bill*`, `.fc-more` and
-  `.fc-card .up-list`. `upcomingCharges()` itself STAYS — the AI context export still calls it.
+  7-day cluster warning, `.up-title`, `.up-account`, `.up-warn`, `.fc-bill*`, `.fc-more`,
+  `.fc-card .up-list` and (v325) `.fc-line`, `.fc-line-2`, `.fc-ok`. `upcomingCharges()` itself STAYS — the AI context export still calls it.
   `billRowHtml()` gained a `trial` badge, on its META line rather than its title: the title is a
   `white-space:nowrap` + `text-overflow:ellipsis` block, so a badge appended there is the first
   thing a long merchant name pushes out of view. The Bills calendar shows it too, which is

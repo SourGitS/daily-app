@@ -2019,9 +2019,15 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .fc-card.is-over .fc-fig{color:var(--danger)}
 .fc-card.is-over .bud-head-sum{color:var(--danger)}
 .fc-unit{font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--text-2);margin-top:2px}
-.fc-line{font-size:12px;font-weight:600;color:var(--muted);margin-top:8px}
-.fc-line-2{margin-top:2px}
-.fc-ok{color:var(--positive);font-weight:700}
+/* The projection's supporting facts, as a two-up with a hairline divider rather than a stack
+   of grey sentences. It IS .card-split (css/kitchen-extras.css) — only the third line is new,
+   because a payday without its countdown or a total without its count is the stranded figure
+   this replaced. Slightly tighter than the shared 17px, so it sits under a 30px .fc-fig
+   without competing with it. */
+.fc-split{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.fc-split .card-split-v{font-size:16px}
+.fc-split .card-split-s{font-size:11px;font-weight:600;color:var(--muted);margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Two labelled parts in one card: a projection and a schedule, which answer different
    questions over different windows and must not read as one running total. The divider is
    what says so. .fc-bill*, .fc-more and .fc-card .up-list went with the truncated

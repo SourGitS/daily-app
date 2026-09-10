@@ -13483,6 +13483,18 @@ function budRangeLabel(a,b){
     ? a.getDate()+'–'+b.toLocaleDateString('en-AU',fmt)
     : a.toLocaleDateString('en-AU',fmt)+' – '+b.toLocaleDateString('en-AU',fmt);
 }
+// Two-up with a hairline divider, each cell a label, a figure and one line of context.
+// statsSplit() builds the same .card-split markup but takes no third line, and every cell here
+// has one -- a payday without its countdown, or a total without its count, is exactly the
+// stranded figure this replaced.
+function fcSplit(cells){
+  return '<div class="card-split fc-split">'+cells.map((c,i)=>
+    (i?'<div class="card-split-div"></div>':'')+
+    '<div><div class="card-split-l">'+c[0]+'</div>'+
+      '<div class="card-split-v">'+c[1]+'</div>'+
+      (c[2]?'<div class="card-split-s">'+c[2]+'</div>':'')+
+    '</div>').join('')+'</div>';
+}
 function renderOutlookCard(available, week){
   const el=document.getElementById('bud-outlook-card'); if(!el) return;
   const undated=billsUndatedCount();
@@ -13504,32 +13516,51 @@ function renderOutlookCard(available, week){
   const calLink='<button type="button" class="up-cal-link" onclick="openBillsCalendar()">View bills calendar →</button>';
 
   // -- Part 1: the projection, when there is an honest one to make --
+  // The supporting facts are CELLS, not prose. They were three stacked grey sentences at one
+  // size and weight, which is what made this half of the card read as unfinished beside the
+  // timeline's labelled header row: no hierarchy, and a figure with nothing structural under
+  // it. .card-split is the app's own two-up-with-divider vocabulary (Home's weight card, Log >
+  // Today), so this now matches every other card that states a figure and the facts behind it.
+  // Also gone: "dated in the list below", which pointed at a list already on screen.
   let tone=' is-plain', sum, forecastPart='';
   if(f){
-    tone=(f.projected==null) ? '' : (f.projected<0 ? ' is-over' : (f.projected<50 ? ' is-tight' : ''));
+    // is-plain when there is no projection: the figure is then the BILLS DUE, and the
+    // default treatment paints it --positive — a green $41.94 under “in scheduled bills
+    // before payday” states money going out as a good outcome. Same reasoning as the
+    // no-payday branch below: nothing has been judged, so nothing is coloured.
+    tone=(f.projected==null) ? ' is-plain' : (f.projected<0 ? ' is-over' : (f.projected<50 ? ' is-tight' : ''));
     let figure, unit;
     if(f.projected==null){
-      // No income entered yet -- state the bills, don't invent a projection.
+      // No income entered yet -- state the bills, don't invent a projection. The prompt for the
+      // missing figure is a caption under the cells rather than a clause hung off this label.
       figure=fmtMoneyExact(f.scheduled);
-      unit='in scheduled bills before then · enter this week’s income to project what’s left';
+      unit='in scheduled bills before payday';
     } else {
       figure=(f.projected<0?'-':'')+fmtMoney(Math.abs(f.projected)).replace('-','');
-      unit=f.projected<0 ? 'projected shortfall after planned bills' : 'projected after planned bills';
+      // Says what the number MEANS, not which operation produced it: "after planned bills"
+      // described the arithmetic and left the reader to work out what was being projected.
+      unit=f.projected<0 ? 'projected shortfall by payday' : 'projected to still be available on payday';
     }
     sum=figure;
-    const payTxt='Payday '+f.pay.date.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+
-      ' · '+(f.pay.inDays===1?'tomorrow':f.pay.inDays+' days away');
+    const n=f.bills.length;
+    // Exact, not rounded: the rows carrying these amounts are printed in the timeline below,
+    // so a rounded total would disagree with its own visible arithmetic.
+    const secondCell = (f.projected==null)
+      ? ['This week’s income', 'Not entered', 'no projection yet']
+      : ['Bills before then', n?fmtMoneyExact(f.scheduled):'None', n?(n+' charge'+(n===1?'':'s')):'nothing scheduled'];
     forecastPart='<div class="fc-part">'+
       '<div class="fc-part-h">Until next pay</div>'+
       '<div class="fc-fig">'+figure+'</div>'+
       '<div class="fc-unit">'+unit+'</div>'+
-      '<div class="fc-line">'+payTxt+'</div>'+
-      (f.bills.length
-        // Exact, not rounded: this total usually holds one or two per-cent amounts, and the
-        // rows carrying them are printed in the timeline below, so a rounded figure here
-        // would disagree with its own visible arithmetic.
-        ? '<div class="fc-line fc-line-2">'+fmtMoneyExact(f.scheduled)+' in scheduled bills before then — dated in the list below.</div>'
-        : '<div class="fc-line fc-ok">No scheduled bills before your next pay.</div>')+
+      fcSplit([
+        ['Payday',
+         f.pay.date.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}),
+         f.pay.inDays===1?'tomorrow':'in '+f.pay.inDays+' days'],
+        secondCell
+      ])+
+      (f.projected==null
+        ? '<div class="fc-note">Enter this week’s income in Week plan and Daily will project what is left by payday.</div>'
+        : '')+
     '</div>';
   } else {
     // No pay day named, or a past week: there is no honest projection, so the card leads with
