@@ -423,7 +423,101 @@ safety-critical parts:
 
 ## Current unfinished work
 
-### Weekly Review presentation — v322 (LOCAL ONLY, not committed, not pushed)
+### Budget: Fixed expenses, Accounts access, 14-day outlook — v323 (LOCAL ONLY, not committed, not pushed)
+
+Presentation, navigation and one read-only schedule window. **No localStorage key, Firebase
+path, sync registration, timestamp, category rewrite, boot write, migration, security rule or
+finance calculation was added or changed.** Audited two ways: the diff contains no
+`localStorage` / `lsSave` / `lsSaveTS` / `SYNC_BLOB_REG` / `firebase` / `schemaVersion` /
+`_bootPhase` line at all, and every canonical finance, schedule and sync helper was
+byte-compared against `HEAD` — 47 of them, all identical once comments are stripped
+(`payCycleForecast`'s only diff is a comment naming the renamed caller). Design rationale in
+`CLAUDE.md`.
+
+Three changes:
+
+1. **Fixed expenses is its own card again**, directly below Spending in the phone stack and in
+   the desktop left column — one line added to `BUD_CARDS`, which stays the single source for
+   both layouts. `renderPlanFixSection()` became `renderFixedCardBody()`: same rows, same
+   `fix-<id>` input ids, same recurring disclosure with its `/wk` units, same Edit/Done through
+   the unchanged `data-action="bud-edit-toggle"` contract. `#sum-fix` moved to the new card's
+   header and is **always** visible there (`.bud-head-sum.is-always`) rather than only while
+   collapsed — that visibility is the whole point of the move. Week plan keeps a quiet,
+   non-editable echo on a distinct id, `#plan-fix-sum`, written from the same `totalFixed` in
+   the same `budRecalc` pass, so income − fixed − savings still reads there. The card's collapse
+   key is `fix`, which is what the pre-v320 Fixed card used, so an existing collapsed preference
+   is honoured and everyone else gets it open.
+2. **An Accounts button beside the four view tabs.** `#budget-view-tabs` is now wrapped in
+   `.bud-topnav`, which takes over the sticky + bleed treatment; the button sits OUTSIDE the
+   `role="tablist"` because Accounts is an overlay, not a fifth `budgetView`. It calls the
+   existing `openAccounts()`; `setBudgetView('accounts')` is never invoked and no fifth tab is
+   faked. `openAccounts(from)` now records the launcher (defaulting to `document.activeElement`,
+   so every existing entry point is covered) and `closeAccounts()` returns focus to it when it
+   is still on screen. The row wraps to a second line below ~340px rather than letting the
+   never-shrinking `.seg-fill` buttons spill over the button beside them.
+3. **Outlook holds two labelled parts.** *Until next pay* is the unchanged
+   `payCycleForecast(available, week)` projection. *Next 14 days* is a complete schedule from
+   `billOccurrences(today, today+13)` — inclusive at both ends, calendar arithmetic
+   (`new Date(y, m, d+n)`), drawn with the Bills calendar's own `billRowHtml`, so the two
+   surfaces cannot disagree. It is never truncated, never stopped at payday, has no 30-day
+   fallback and no nested scroll box, and carries its own total, labelled to say when card
+   statements are in it. **The fortnight total is never subtracted from anything**: the weekly
+   hero holds one week of accrual, and the card says so in words. On a past week the projection
+   is suppressed and the timeline is labelled as counted from today.
+   `budUpcomingRowHtml()` and the `upcomingCharges(30)` fallback branch lost their last caller
+   and are gone, with `.up-title` / `.up-account` / `.up-warn` / `.fc-bill*` / `.fc-more` /
+   `.fc-card .up-list`. `upcomingCharges()` itself stays — the AI context export still calls it.
+   `billRowHtml()` gained a `trial` badge on its meta line (not its title, which is a
+   nowrap/ellipsis block); the Bills calendar shows it too, which is correct.
+
+**Verified locally in the in-app browser on `localhost:8765` against a synthetic fixture**
+(invented categories, accounts and balances — no real account was signed into, read or written):
+Fixed expenses shows its heading and weekly total collapsed and expanded; a fixed edit moves
+`#sum-fix`, `#plan-fix-sum`, `#plan-avail`/`#sum-plan` and the hero's Committed/Available
+together and by the exact arithmetic, and leaves the spending goal, By category and By day
+untouched; Edit/Done, add, rename, delete, the recurring disclosure, the empty state and the
+explicit past-week unlock all work; focus survives `budRecalc()` + `budApplyLayout()` mid-typing;
+values, savings and notes survive a Home→Log→Stats→Month→Week round trip and reach the store.
+Accounts opens from beside the tabs on all four sub-views and closes back to the same sub-view,
+week index, tab selection, nav highlight and launcher focus, with a typed draft intact; the
+sidebar row and the History & tools link still reach it. The timeline's seven rows and their
+exact sum are **identical to the Bills calendar's rows for the same dates**, including a
+statement and two bills sharing 19 Sept (biggest first); a weekly bill appears twice; day 13 is
+in and day 14 is out with payday tomorrow. Empty states checked: only-undated (empty list, hint
+retained), archived/cancelled only, nothing in range, no fixed costs, no named income source (no
+projection, timeline still shown), and income not yet entered. Logos: working (18px, `alt=""`),
+failed load falling back to the initial, missing site, a legacy emoji prefix stripped, a
+50-character account name ellipsised without crowding the amount, and the statement's account
+icon — all identical in both themes. Widths 320 (≈120% zoom of a phone) / 375 / 390 / 414 /
+932-landscape / 1024 / 1440 / 1920 in both themes: no page overflow, no clipped label, cards
+keep independent heights, and in landscape the pinned row and the compact week nav stack without
+overlapping. Zero console errors throughout. Home's Finance check-in and the Bills calendar are
+unchanged apart from that trial badge.
+
+`node --test tests/*.test.cjs` → **79/79**, including a new `tests/budget-outlook.test.cjs`
+(13 checks: window edges, repeated weekly occurrences, month-end clamping, month/year
+boundaries, an Australia/Sydney daylight-saving boundary in both directions with the saved
+anchor proven read-only, archived/cancelled/non-recurring/undated exclusion, statement
+inclusion and ordering, forecast-vs-timeline independence, and the `BUD_CARDS` position).
+`CACHE_NAME` is `daily-v323`.
+
+**NOT verified:** no real signed-in account or production Firebase data was used, and no
+deployed rule was touched — the sync suites pass but they are isolated, so nothing here is a
+cloud test. No physical device: phone and zoom layouts were checked at the equivalent CSS-pixel
+viewport in a desktop browser, so safe-area insets and the standalone status bar are inferred
+from the existing CSS rather than observed. Logo images come from DuckDuckGo's icon service, so
+which specific sites resolve depends on that service, not on this code. **Nothing has been
+committed or pushed.**
+
+**One pre-existing inconsistency this change makes more visible, and deliberately did not
+touch:** the Recurring disclosure lists `activeCats(loadFixCats()).filter(catIsRecurring)`,
+which includes a paused or cancelled charge, while `#sum-fix` comes from `weekFixedTotal()`,
+which does not. So the recurring subtotal plus the weekly rows can exceed the header figure by
+exactly the paused charges. That was equally true inside Week plan before v323 — the rows and
+the totals are unchanged — but the card is more prominent now. Fixing it means deciding whether
+a paused subscription should stop being listed at all, which is a product call, not a bug fix.
+
+### Weekly Review presentation — v322 (released; commit `4344d83`)
 
 Presentation and copy. No canonical money reader, review record, optional page answer, saved
 allocation, draft rule, stale-draft guard, completed snapshot, reopen rule, current-week
@@ -450,8 +544,7 @@ Firebase data or deployed rules were touched. No physical device — phone and 2
 were checked at the equivalent CSS-pixel viewport in a desktop browser, so safe-area insets and
 the standalone status bar are inferred from the existing CSS rather than observed. At 200% zoom
 on a desktop the viewport matches the landscape-phone media query, so insights show two-up
-there; that is pre-existing behaviour for all of Stats, not new. **Nothing has been committed
-or pushed.**
+there; that is pre-existing behaviour for all of Stats, not new.
 
 ### Food hub + Stats in the deck — v321 (released; see git log)
 

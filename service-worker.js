@@ -219,7 +219,19 @@
 // flex/align-items contradiction that shrank insight cards to their own text is removed at
 // source. Presentation and copy only — no calculation, record, draft rule, storage, sync or
 // migration changed.
-const CACHE_NAME = 'daily-v322';
+// v323: three Budget follow-ups. Fixed expenses is a card of its own again, directly below
+// Spending on both layouts, so the week's commitments and their weekly total are readable
+// without opening Week plan — which keeps a quiet, non-editable echo of the same #sum-fix
+// figure so income − fixed − savings still reads there. Accounts gains a labelled button
+// beside the four view tabs, outside the tablist because it is an overlay and not a fifth
+// budgetView; closing it returns to the same sub-view, week and launcher focus. Outlook holds
+// two labelled parts: the unchanged Until next pay projection, and a complete Next 14 days
+// schedule (today through today + 13, inclusive) drawn with the Bills calendar's own rows,
+// logos and statement treatment, with its own total. The fortnight is a schedule, never a
+// projection: it is not truncated, not stopped at payday, and never subtracted from the
+// weekly hero. Presentation and navigation only — no calculation, store, sync path or
+// migration changed.
+const CACHE_NAME = 'daily-v323';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

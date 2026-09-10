@@ -1,5 +1,27 @@
 # Daily — Project Reference
 
+## Budget correction — v323, 2026-09-10
+
+Three v320 prescriptions are SUPERSEDED and must not be reinstated:
+
+1. **Fixed costs do not live inside Week plan.** Fixed expenses is its own card again, directly
+   below Spending in the phone stack and in the desktop left column, with its own heading and an
+   always-visible weekly total (`#sum-fix`). Week plan keeps Income and Savings, plus a quiet
+   non-editable echo of the fixed total on a distinct id (`#plan-fix-sum`) so income − fixed −
+   savings still reads there. Both figures come from the one `totalFixed` in the one `budRecalc`
+   pass.
+2. **Outlook does not stop at three bills or at payday.** It holds two labelled parts: the
+   unchanged *Until next pay* projection, and a complete *Next 14 days* schedule (today through
+   today + 13, inclusive) using the Bills calendar's own rows. The fortnight is a schedule, not
+   a projection, and its total is never subtracted from the weekly hero.
+3. **Accounts is reachable from Budget's top row**, on a labelled button beside the four view
+   tabs and OUTSIDE the `role="tablist"` — it is an overlay, not a fifth `budgetView`.
+
+Nothing about the money changed: every canonical finance, schedule and sync helper is
+byte-identical to v322. No store, migration, sync registration, Firebase path or boot write was
+added or touched. Full rationale under "Known history" (`BUD_CARDS`, Outlook, `.bud-topnav`) and
+the release note in `AGENTS.md`.
+
 ## Home feature-card correction — v313, 2026-09-08
 
 The user chose to restore the original workout hero: plain gradient, 40px desktop title,
@@ -363,9 +385,11 @@ older summary — re-grep before assuming a fact from here is still true if it l
   all user-configurable now — see "Known history" below, these used to be hardcoded to
   Francois's specific numbers and were deliberately made dynamic. Credit-card balance tracking,
   comprehensive 8-section CSV export, collapsible sections, monthly/yearly charts.
-  **Week is SIX groups as of v320** (see the `BUD_CARDS` entry below for the full history):
-  the weekly hero, Spending, Week plan, Outlook until next pay, Close out week, History &
-  tools. The weekly **spending goal** is the first block INSIDE the Spending card, above the
+  **Week is SEVEN groups as of v323** (see the `BUD_CARDS` entry below for the full history):
+  the weekly hero, Spending, **Fixed expenses**, Week plan, Outlook, Close out week, History &
+  tools. **Accounts is one press from every Budget sub-view**, on a labelled button beside the
+  four view tabs — outside the `role="tablist"`, because it is an overlay and not a fifth
+  `budgetView`; see the `.bud-topnav` entry under "Known history". The weekly **spending goal** is the first block INSIDE the Spending card, above the
   breakdown it caps (a self-imposed cap on variable spending, distinct from "money left
   over"): the goal input is behind that card's *Edit goal* button (`budEditMode.vargoal`, same
   convention as everywhere else on the tab), the usual goal is `budDefaults.varGoal`, and each
@@ -375,7 +399,12 @@ older summary — re-grep before assuming a fact from here is still true if it l
   and expands each day into its purchases. See the reconciliation rule below before touching
   either.
 - **Accounts** — net-worth tracking across accounts; added after Budget, migrated from the old
-  savings/CC logs. An asset can be flagged `saver:true` ("Savers account"): it still counts in
+  savings/CC logs. Reached from the sidebar/hamburger row, from Budget › History & tools, and
+  (v323) from the button beside Budget's view tabs. It is an OVERLAY over whatever was showing:
+  `openAccounts()` changes no view state, so closing it returns to the same Budget sub-view,
+  week and month by doing nothing at all. `openAccounts(from)` records the launcher — defaulting
+  to `document.activeElement`, which covers every entry point without each having to pass itself
+  — and `closeAccounts()` hands focus back when that element is still on screen. An asset can be flagged `saver:true` ("Savers account"): it still counts in
   net worth but is excluded from the **debt payoff position** (`(assets − savers) − debts`),
   which answers "am I covered" rather than "what am I worth".
   **The screen states net worth ONCE, and where it does is deliberate (2026-09-05).** The hero
@@ -1488,17 +1517,36 @@ the accent or the theme must go through those, not set `--accent` directly.
   *Upcoming charges + Until next pay* → **one Outlook until next pay card** (the projection,
   the payday, and the next THREE bills; the 30-day list belonged to the Bills tab, which is
   still the authoritative calendar);
+  **v323 superseded two of those, and the reasons are recorded here so they are not undone.**
+  *Fixed expenses left Week plan and is a card again* (eight entries), directly below Spending
+  on both layouts. Folding it in meant the week's commitments and their total were only
+  reachable by expanding a card whose header showed a different figure — you had to know Fixed
+  was in there. The two halves of "where is the money going" now read in order: what I chose to
+  spend, then what was already committed. Week plan keeps a quiet, non-editable echo of the same
+  total on a distinct id, `#plan-fix-sum`, because income − fixed − savings is arithmetic that
+  has to be readable where it is performed; **both come from the one `totalFixed` in the one
+  `budRecalc` pass**, never a second calculation. `#sum-fix` lives on the new card's header and
+  is ALWAYS visible there (`.bud-head-sum.is-always`) rather than only while collapsed — that
+  is the whole point of the move, and every other card keeps the collapsed-only rule. The card's
+  collapse key is `fix`, the key the pre-v320 Fixed card used, so an existing preference is
+  honoured and everyone else gets it open. `renderPlanFixSection()` is `renderFixedCardBody()`
+  now; the rows, the `fix-<id>` ids, the recurring disclosure with its `/wk` units and the
+  `data-action="bud-edit-toggle"` contract are unchanged, and `budPlanSection()` still builds
+  Income.
+  *Outlook shows the whole fortnight, not three bills* — see its own entry below;
   *Record spending* → the **hero's** Add expense action;
   *Weekly result* → **Close out week**, having lost the Money-left-over headline and On track
   pill the hero already states;
   *Previous weeks + Calculator + Accounts & net worth* → **History & tools**, where the
   eight-week list is one recent-week snapshot and the keypad is a disclosure.
-  Current order: **mobile** is the priority reading — Setup, Spending, Week plan, Outlook,
-  Close out, History & tools, Stranded data. **Desktop** keeps that reading across the two
-  columns rather than becoming two unrelated stacks: left is Setup → Spending → Close out (the
-  long Spending card lives here and is what makes the page tall), right is Week plan → Outlook
-  → History & tools → Stranded data. **Source order in `index.html` is NOT render order** —
-  read `BUD_CARDS`.
+  Current order: **mobile** is the priority reading — Setup, Spending, Fixed expenses, Week
+  plan, Outlook, Close out, History & tools, Stranded data. **Desktop** keeps that reading
+  across the two columns rather than becoming two unrelated stacks: left is Setup → Spending →
+  Fixed expenses → Close out (the long Spending card lives here and is what makes the page
+  tall), right is Week plan → Outlook → History & tools → Stranded data. **Source order in
+  `index.html` is NOT render order** — read `BUD_CARDS`. `tests/budget-outlook.test.cjs`
+  asserts Fixed sits immediately after Spending in both, and that the two desktop columns are
+  a partition of the one list.
   **Nothing about the money changed.** Every figure still comes from the canonical readers
   (`weekIncome`, `weekFixedTotal`, `weekVarTotal`, `weekSavedAmt`, `weekLeftover`,
   `statsWeekParts`, `payCycleForecast`, `budDaySpend`); no localStorage key, Firebase path,
@@ -1514,12 +1562,59 @@ the accent or the theme must go through those, not set `--accent` directly.
   elsewhere; `sum-inc`, `sum-fix`, `sav-head-sum`, `sum-var`, `calc-variable`, `sav-status`,
   `sav-goal-label` and every `vargoal-*` id are unchanged and still written live by
   `budRecalc`.
+- **Budget › Outlook is TWO labelled parts, and confusing them is the failure mode (v323).**
+  *Until next pay* is a PROJECTION: the unchanged `payCycleForecast(available, week)`, with
+  `available` still passed in from `budRecalc` and `week` still the object it was derived from,
+  so it cannot disagree with the hero above it. *Next 14 days* is a SCHEDULE: every occurrence
+  from `billOccurrences(today, today+13)`, inclusive at both ends, built with
+  `new Date(y, m, d+n)` calendar arithmetic (`budTimelineWindow()`) so a daylight-saving
+  boundary inside the window cannot walk a series off local midnight — the same rule
+  `catOccurrencesBetween` generates with, and nothing writes a `dueDate` back.
+  **The fortnight total is never subtracted from anything, and must never be.** The weekly hero
+  holds ONE week of accrued commitment; these are the amounts that will actually be charged, at
+  their real dates, which is a different quantity. The card says so out loud rather than leaving
+  the two looking like a discrepancy, and the before-payday total stays its own separate figure.
+  Rows are drawn by the Bills calendar's own `billRowHtml`, so the two surfaces cannot come to
+  disagree — verified row for row and to the cent against the calendar for the same dates. It is
+  **not truncated, not stopped at payday, and has no 30-day fallback**: a weekly subscription
+  genuinely lands twice in a fortnight and both are money leaving the account. A past week
+  suppresses the projection and labels the timeline as counted from today, because "what is
+  coming" does not change with which week you are looking at. The card no longer hides itself
+  when there is neither a forecast nor a dated charge — an explained empty state beats a missing
+  card.
+  **Retired with it:** `budUpcomingRowHtml()`, the `upcomingCharges(30)` fallback branch and its
+  7-day cluster warning, `.up-title`, `.up-account`, `.up-warn`, `.fc-bill*`, `.fc-more` and
+  `.fc-card .up-list`. `upcomingCharges()` itself STAYS — the AI context export still calls it.
+  `billRowHtml()` gained a `trial` badge, on its META line rather than its title: the title is a
+  `white-space:nowrap` + `text-overflow:ellipsis` block, so a badge appended there is the first
+  thing a long merchant name pushes out of view. The Bills calendar shows it too, which is
+  correct — it is the same fact about the same charge.
+- **`.bud-topnav` is Budget's pinned top row, and the sticky treatment lives THERE, not on the
+  strip (v323).** `#budget-view-tabs` is still an ordinary `.seg-tabs.seg-fill` with the four
+  real tabs and its `role="tablist"`; the Accounts button is a SIBLING outside that list.
+  Accounts is an overlay with no `budgetView` value, so faking a fifth selected tab — or calling
+  `setBudgetView('accounts')` — would put a tablist into a state no tab panel answers.
+  `.seg-tabs`' own `position:sticky` and bleed box-shadow move up to the wrapper (a strip that
+  pinned alone would let the button scroll away beside it), and the landscape block's
+  `height:var(--bud-switch-h)`, drop shadow and `::before` backdrop moved with them — the
+  compact week nav offsets against the WRAPPER's height now. `#view-budget .bud-topnav >
+  .seg-tabs` carries ID specificity on purpose, so it beats both the shared control's desktop
+  rule and the landscape block wherever they sit in the file. On desktop the 760px cap is on the
+  wrapper, so Accounts ends on the line the cards start on.
+  **The row WRAPS rather than letting the strip shrink**, and that is not cosmetic: `.seg-fill`'s
+  buttons are `flex:1 0 auto` and never shrink, so a strip allowed below its content width does
+  not ellipsise — it spills straight over the button beside it (seen at 320px, which is what a
+  375px phone becomes at 120% zoom). A `min-width:205px` on the strip turns that into a measured
+  wrap instead of a guessed breakpoint; below ~340px the button takes a second row at full touch
+  height. Above that it is one row at every width.
   **`.bud-sec` is a section INSIDE a card and is NOT the card collapse.** `.bud-toggle` shuts a
   whole card and persists to `daily_budget_collapse`; `.bud-sec`'s open set (`_budSecOpen` /
   `budSecApply()`) is in memory, so a re-render restores it and a reload starts from the
   summary — which is the point of the Week plan card. `budSecApply()` writes both the
   JS-rendered sections and the STATIC ones from one place, because Savings and the calculator
   are never rebuilt and a second copy of "is this open" is what goes stale between them.
+  Week plan's sections are Income and Savings; Fixed left for its own card in v323 and
+  `_budSecOpen`'s `'fix'` entry went with it.
   **`#sav-amount` and `#week-notes` are still STATIC markup** inside the new cards, which is why
   Week plan's Savings section and Close out week are hand-written in `index.html` rather than
   rendered: see the note above `budWriteFields` — a save firing while another tab is showing
@@ -1586,10 +1681,13 @@ the accent or the theme must go through those, not set `--accent` directly.
     so it floated at the middle of a 2200px canvas while the week selector, the section pills
     and both card columns began at the left content edge — the only element on the page off that
     line. 760 is not new; it is the cap Log and Stats already chose.
-  Budget's landscape-phone layout is the one screen with extra rules: the toggle keeps its exact
-  `--bud-switch-h` height (`.bud-compact-nav` sticks below it and offsets against that number)
-  and a `::before` backdrop, because two sticky strips stacking with a 6px gap between them is
-  a case the shared bleed does not cover.
+  Budget's landscape-phone layout is the one screen with extra rules: the pinned row keeps its
+  exact `--bud-switch-h` height (`.bud-compact-nav` sticks below it and offsets against that
+  number) and a `::before` backdrop, because two sticky strips stacking with a 6px gap between
+  them is a case the shared bleed does not cover. **Since v323 those rules key on
+  `.bud-topnav`, the wrapper holding the strip AND the Accounts button, not on the strip** — see
+  the `.bud-topnav` entry under "Known history". Budget's strip is therefore the one `.seg-tabs`
+  in the app that is not itself sticky; every other one still is.
 - **The uppercase micro-label scale is THREE steps, each with a different job.** Nine
   near-identical eyebrow treatments existed at 9 / 9.5 / 10 / 10.5 / 11px, weights 600–800,
   tracking .04–.12em, across three colour tokens — two of them in the same card on Stats ›

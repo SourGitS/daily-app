@@ -300,6 +300,54 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .wx-details summary{font-size:12.5px;font-weight:700;color:var(--accent-text);cursor:pointer;padding:4px 0}
 .wx-coords{font-family:var(--font-num);font-size:13px;color:var(--text);padding:6px 0 0}
 
+/* ── Budget's top navigation row ───────────────────────────────────
+   The four view tabs plus the Accounts shortcut, pinned as ONE row. Accounts is an overlay
+   rather than a fifth budgetView, so it is a plain button OUTSIDE the role="tablist" — it
+   never carries a selected state and the four real tabs keep theirs underneath it.
+   The sticky + bleed treatment moves here from .seg-tabs, because a strip that pinned on its
+   own would leave the button scrolling away beside it. The mechanics are the shared control's
+   unchanged (see .seg-tabs in css/workout.css): --bud-nav-bleed mirrors --seg-bleed, which is
+   the SCROLL CONTAINER's own padding — the band cards would otherwise be seen passing through
+   — and one box-shadow grown by it on every side then offset up covers both gutters and the
+   band above while stopping at the row's bottom edge. */
+.bud-topnav{--bud-nav-bleed:16px;
+  display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin-bottom:16px;
+  position:sticky;top:0;z-index:8;background:var(--bg);
+  box-shadow:0 calc(var(--bud-nav-bleed) * -1) 0 var(--bud-nav-bleed) var(--bg)}
+/* The strip inside gives up everything the wrapper now owns. ID specificity so it also beats
+   the landscape block's #view-budget .seg-tabs margin/shadow wherever that sits in the file;
+   height is deliberately NOT set here, so landscape's exact --bud-switch-h still applies.
+   min-width is what makes the wrap above a MEASUREMENT rather than a guessed breakpoint:
+   .seg-fill's buttons are flex:1 0 auto and never shrink, so a strip allowed below its
+   content width does not ellipsise, it spills straight over the button beside it (seen at
+   320px, which is what a 375px phone becomes at 120% zoom). 205px is the four labels at the
+   narrow padding below; under it the button takes a second row instead. */
+#view-budget .bud-topnav > .seg-tabs{position:static;z-index:auto;box-shadow:none;
+  margin:0;max-width:none;flex:1 1 auto;min-width:205px}
+/* Wrapped: the button spans the row rather than sitting alone at one end, and keeps a full
+   touch target. Only ever reached below ~340px or under heavy zoom. */
+.bud-topnav > .seg-tabs + .bud-nav-act{min-height:34px}
+/* Reads as a destination, not as a fifth tab: bordered and quiet rather than filled, and it
+   never takes .on. Sized to its label — there is no universal cap — and the icon is
+   decorative beside a word that is always present. */
+.bud-nav-act{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  flex:0 0 auto;padding:0 13px;border-radius:10px;
+  border:1px solid var(--border);background:var(--bg);color:var(--text);
+  font:inherit;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.bud-nav-act svg{width:15px;height:15px;flex-shrink:0;color:var(--muted)}
+.bud-nav-act:hover{background:var(--card)}
+.bud-nav-act:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* Narrow phones: the four labels plus a fifth control do not fit at the shared control's
+   13px side padding. The BUTTONS give up horizontal padding — their height, and therefore
+   every touch target on the row, is unchanged — rather than the Accounts label being cut or
+   pushed onto a second permanently-pinned row. */
+@media (max-width:430px){
+  .bud-topnav{gap:6px}
+  #view-budget .bud-topnav > .seg-tabs > button{padding-left:8px;padding-right:8px}
+  .bud-nav-act{padding:0 10px;gap:5px}
+}
+
 /* Compact week navigation for short landscape. display:none everywhere else — the weekly
    hero carries these controls in every other layout. Opaque on purpose: it is pinned over
    scrolling cards, and a translucent pinned surface is exactly the bug it replaces. */
@@ -338,8 +386,6 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .up-row.soon .up-when{color:var(--warn)}
 .up-when{flex:0 0 82px;font-size:12px;font-weight:700;color:var(--muted)}
 .up-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;color:var(--text);overflow:hidden}
-.up-title{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.up-account{font-size:10.5px;font-weight:600;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .month-big-cat{align-self:flex-start;font-size:10.5px;font-weight:650;color:var(--muted);line-height:1.25}
 .up-trial{font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:2px 6px;
   border-radius:999px;background:rgba(99,102,241,.16);color:var(--purple)}
@@ -347,8 +393,6 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 /* .up-total held the "Next 30 days · $x" footer of the upcoming-charges card. It lost its
    only caller when that card merged into Outlook until next pay, which counts the bills
    before PAYDAY — a 30-day total on the weekly page was answering the Bills tab's question. */
-.up-warn{font-size:12px;font-weight:700;color:var(--warn);background:rgba(var(--warn-rgb),.12);
-  border-radius:9px;padding:8px 10px;margin-bottom:8px}
 .up-none{font-size:13px;color:var(--muted);padding:6px 0}
 .up-hint{font-size:11px;color:var(--muted);line-height:1.45;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)}
 
@@ -435,6 +479,14 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
    shows the same figure. */
 .bud-head-sum{display:none;font-family:var(--font-num);font-size:14px;font-weight:800;letter-spacing:-.01em}
 .bud-collapsed .bud-head-sum{display:inline}
+/* Fixed expenses states its weekly total in its own header at ALL times, collapsed or not:
+   the whole reason it left Week plan is that the figure was only readable after expanding a
+   card whose header showed something else. Every other card keeps the collapsed-only rule,
+   where the row below already prints the same number. */
+.bud-head-sum.is-always{display:inline}
+.bud-head-unit{font-size:10px;font-weight:700;letter-spacing:.04em;color:var(--muted);
+  margin-left:-6px}
+.bud-collapsed .bud-head-unit{color:var(--muted)}
 /* Edit belongs to an open card — there is nothing to edit while it's shut, and it competed
    with the figure for the same corner. */
 .bud-collapsed .bud-edit-btn{display:none}
@@ -473,8 +525,32 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .bud-sec-none.is-empty{font-size:12.5px;font-weight:600;color:var(--muted);line-height:1.55;
   padding:4px 2px 10px}
 
+/* Week plan's quiet echo of the Fixed expenses total. Deliberately NOT a .bud-sec: there is
+   nothing to expand here and nothing to edit, only the middle term of income − fixed −
+   savings. Same row rhythm as a section header so the card still reads as one list, but
+   muted, with the figure at section weight rather than conclusion weight, and a text link
+   rather than a control — pressing it goes to the card that owns the rows. */
+.bud-plan-fixrow{display:flex;align-items:center;gap:10px;padding:11px 0;
+  border-bottom:1px solid var(--border)}
+.bud-plan-fixrow-l{font-size:13.5px;font-weight:600;color:var(--muted);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bud-plan-fixrow-v{font-family:var(--font-num);font-size:15px;font-weight:800;
+  letter-spacing:-.01em;color:var(--muted);margin-left:auto;flex-shrink:0}
+.bud-plan-fixrow-a{flex-shrink:0;border:none;background:transparent;padding:2px 0;
+  font:inherit;font-size:11.5px;font-weight:700;color:var(--accent-text);cursor:pointer;
+  text-transform:none;letter-spacing:0;-webkit-tap-highlight-color:transparent}
+.bud-plan-fixrow-a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;
+  border-radius:6px}
+
+/* Fixed expenses: what the header figure IS. A weekly allocation and the amount actually
+   charged are different numbers for the same bill, and Outlook states the second — so the
+   card says which one it is holding instead of leaving the two looking like a discrepancy. */
+.bud-fix-cap{font-size:11.5px;font-weight:600;color:var(--muted);line-height:1.5;
+  padding:2px 2px 4px}
+.bud-fix-tools{padding:6px 0 8px}
+
 /* Week plan's closing row. Not a section — there is nothing to expand, it is the arithmetic
-   of the three sections above it, and it is the ceiling the Spending card is measured
+   of the sections above it, and it is the ceiling the Spending card is measured
    against. Heavier than a section header, because it is the conclusion. */
 .bud-plan-avail{display:flex;align-items:center;justify-content:space-between;gap:12px;
   padding:13px 0 2px}
@@ -1246,6 +1322,10 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      ratio was never the problem — the left stack simply carried almost every card, so the right
      ran out of content a couple of screens early. align-items:start keeps both columns starting
      at the same line and lets each run to its own natural length. */
+  /* One measure for the whole pinned row, so Accounts ends on the same line the cards do
+     rather than floating out at the right of a 2200px canvas. 760 is the cap .seg-tabs
+     already takes on desktop — it moves to the wrapper, and the strip flexes inside it. */
+  #view-budget .bud-topnav{--bud-nav-bleed:0px;max-width:760px;margin-right:auto}
   #view-budget .budget-desktop-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 20px;align-items:start}
   #view-budget #bud-col-left,#view-budget #bud-col-right{min-width:0}
 
@@ -1769,6 +1849,14 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   #view-budget .seg-tabs{height:var(--bud-switch-h);
     box-sizing:border-box;margin-bottom:6px;padding:2px;
     box-shadow:0 6px 12px -8px rgba(0,0,0,.5)}
+  /* The pinned row is the WRAPPER now (tabs + Accounts), so the height .bud-compact-nav
+     offsets against, the drop shadow and the backdrop belong to it. The strip keeps its own
+     exact height above so the two are the same size inside the row. */
+  #view-budget .bud-topnav{--bud-nav-bleed:14px;
+    height:var(--bud-switch-h);box-sizing:border-box;margin-bottom:6px;
+    box-shadow:0 6px 12px -8px rgba(0,0,0,.5)}
+  .bud-nav-act{padding:0 9px;font-size:12px}
+  .bud-nav-act svg{width:14px;height:14px}
   /* A pinned control has to be opaque across the FULL scrollport, and the panel's own
      10px/14px padding is NOT part of either control's box — so cards scrolled visibly through
      the strip above and beside them (measured: 150 hits of cards, rows and inputs in a 10px
@@ -1776,9 +1864,9 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      which is why the toggle keeps its pill instead of being flooded with --bg. Negative
      z-index stays inside the sticky element's own stacking context, so it paints over the
      cards but under the control. */
-  #view-budget .seg-tabs::before,#view-budget .bud-compact-nav::before{
+  #view-budget .bud-topnav::before,#view-budget .bud-compact-nav::before{
     content:'';position:absolute;z-index:-1;background:var(--bg);left:-14px;right:-14px}
-  #view-budget .seg-tabs::before{top:-10px;bottom:-6px}
+  #view-budget .bud-topnav::before{top:-10px;bottom:-6px}
   #view-budget .bud-compact-nav::before{top:0;bottom:-8px}
   #view-budget .seg-tabs > button{padding:4px 8px;font-size:12.5px}
   #view-budget .bud-compact-nav{display:flex;position:sticky;top:var(--bud-switch-h);z-index:7}
@@ -1889,6 +1977,13 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 /* A statement is a balance that moves, not a fixed scheduled amount — said in words, not
    by colour alone (.bill-row-meta reads "Statement balance"). */
 .bill-row.is-stmt .bill-row-amt{color:var(--warn-dark)}
+/* Shared with the Outlook timeline. The name column is the only flexible one, so a long
+   merchant or account name ellipsises and the date and the amount keep their room -- the
+   amount is the thing the row exists to state and must never be crowded off a phone.
+   Trial status rides the META line, not the title: the title is a nowrap/ellipsis block, so a
+   badge appended there is the first thing a long name pushes out of view, and it would be
+   competing with the amount for the same edge on a phone. */
+.bill-row-meta .up-trial{margin-right:5px;vertical-align:1px}
 
 /* "View bills calendar →" at the foot of the Upcoming card. */
 .up-cal-link{display:block;width:100%;margin-top:10px;padding:9px;border-radius:20px;
@@ -1909,8 +2004,6 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .fc-card.is-plain{border-left-color:var(--border)}
 .fc-card.is-plain .fc-fig{color:var(--text)}
 .fc-card.is-plain .bud-head-sum{color:var(--text)}
-/* The three charges shown here are a preview of the Bills calendar, not the calendar. */
-.fc-card .up-list{margin-top:10px;padding-top:4px;border-top:1px solid var(--border)}
 .fc-card.is-tight{border-left-color:var(--warn)}
 .fc-card.is-over{border-left-color:var(--danger)}
 .fc-fig{font-family:var(--font-num);font-size:30px;font-weight:800;letter-spacing:-.02em;
@@ -1924,16 +2017,24 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .fc-line{font-size:12px;font-weight:600;color:var(--muted);margin-top:8px}
 .fc-line-2{margin-top:2px}
 .fc-ok{color:var(--positive);font-weight:700}
-.fc-bills{margin-top:10px;padding-top:8px;border-top:1px solid var(--border)}
-.fc-bill{display:flex;align-items:center;gap:10px;padding:4px 0}
-.fc-bill-when{flex:0 0 46px;font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap}
-.fc-bill-name{flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--text);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.fc-bill-name em{font-style:normal;font-size:10px;font-weight:700;color:var(--warn-dark);
-  margin-left:5px}
-.fc-bill-amt{font-family:var(--font-num);font-size:12px;font-weight:800;color:var(--text);
-  white-space:nowrap}
-.fc-more{font-size:11px;font-weight:600;color:var(--muted);padding-top:4px}
+/* Two labelled parts in one card: a projection and a schedule, which answer different
+   questions over different windows and must not read as one running total. The divider is
+   what says so. .fc-bill*, .fc-more and .fc-card .up-list went with the truncated
+   three-row preview this replaced -- the schedule is complete now and uses the same
+   .bill-row the Bills calendar draws, so the two can be compared row for row. */
+.fc-part + .fc-part{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.fc-part-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--text-2);margin-bottom:2px}
+.fc-part-r{font-family:var(--font-num);font-size:11px;font-weight:700;letter-spacing:0;
+  text-transform:none;color:var(--muted);flex-shrink:0}
+.fc-timeline{margin-top:6px}
+.fc-total{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  padding:10px 0 0;margin-top:6px;border-top:1px solid var(--border)}
+.fc-total-l{font-size:12px;font-weight:700;color:var(--text);min-width:0}
+.fc-total-v{font-family:var(--font-num);font-size:16px;font-weight:800;letter-spacing:-.01em;
+  color:var(--text);flex-shrink:0}
+.fc-note{font-size:11px;font-weight:600;color:var(--muted);line-height:1.5;padding:6px 0 0}
 
 /* ── Home: Finance check-in ────────────────────────────────────────
    Three information lines and one action, no more — it links into Budget rather than

@@ -10959,7 +10959,7 @@ function payCycleForecast(available, week){
   const wk=week||budgetData[weekKey(monday)]||{};
   const inThisWeek=d=>d>=monday&&d<=sunday;
   // "Already recorded as paid this week." A recurring charge normally has no weekly input at
-  // all (renderPlanFixSection says so: counted automatically from its cycle), but an explicit
+  // all (renderFixedCardBody says so: counted automatically from its cycle), but an explicit
   // fix_<id> entry on the current week means a real figure was recorded against it, and
   // weekFixedTotal already treats that entry as the week's actual cost. Subtracting the bill
   // on top of it would charge for it twice.
@@ -12670,9 +12670,12 @@ function budPlanSection(id, icon, label, sumId, bodyHtml, editType, isCur){
 // A scheduled subscription, bill or payment plan accrues its prorated share automatically —
 // typing into it would double-count what's already been counted. Other weekly commitments
 // keep their editable weekly input.
-// The card wrapper and its own total row are gone: this is the Fixed section of the Week plan
-// card, whose header already carries the figure budRecalc writes into #sum-fix.
-function renderPlanFixSection(data,isCur){
+// The BODY of the Fixed expenses card. The card's own header is static markup in index.html
+// and carries #sum-fix — the canonical weekly total budRecalc has always written there — so
+// the heading and the figure are readable with the body collapsed and without opening any
+// other card. Edit/Done sits in a tools row of its own rather than on the header, matching
+// the Spending card; the `data-action="bud-edit-toggle"` contract is unchanged.
+function renderFixedCardBody(data,isCur){
   const editing=budEditMode.fix && isCur;
   const cats=activeCats(loadFixCats()); // archived keep counting in totals, just no row
   const weeklyCats=cats.filter(c=>!catIsRecurring(c));
@@ -12714,10 +12717,38 @@ function renderPlanFixSection(data,isCur){
       '</div>';
   }
 
-  const body=(rows||recurBlock ? rows+recurBlock
+  // Says out loud what the figure in the header IS. A weekly allocation and an actual charge
+  // are different numbers for the same bill — $3.23/wk against a $13.99 monthly AppleCare —
+  // and the Outlook card below states the second, so the two are pointed at each other rather
+  // than left to look like a discrepancy.
+  const cap='<div class="bud-fix-cap">A weekly allocation toward bills and commitments, not the amounts charged. '+
+    'Outlook shows the actual dates and amounts due.</div>';
+  // Current week only, exactly as every other Edit control on this tab: amounts stay editable
+  // whenever the week is, but add/rename/remove never appears on a stray tap.
+  const tools=isCur
+    ? '<div class="bud-spend-tools bud-fix-tools">'+
+        '<button class="bud-edit-btn'+(editing?' active':'')+'" data-type="fix" '+
+          'data-action="bud-edit-toggle" aria-label="'+(editing?'Done editing fixed expenses':'Edit fixed expenses')+'">'+
+          (editing?'Done':'Edit')+'</button>'+
+      '</div>'
+    : '';
+  return cap+tools+
+    (rows||recurBlock ? rows+recurBlock
       : '<div class="bud-sec-none is-empty">No fixed costs yet. Add the bills that come out every week, or set up subscriptions and scheduled charges in Settings → Budget setup.</div>')+
     (editing?'<button class="add-cat-btn" data-type="fix">+ Add fixed expense</button>':'');
-  return budPlanSection('fix','pin','Fixed / committed','sum-fix',body,'fix',isCur);
+}
+// The Week plan row and the setup shortcut both point here: reveal the card (a collapsed card
+// would otherwise be scrolled to and still show nothing) and bring it into view. Never
+// scrollIntoView() — #view-budget is a .swipe-panel inside the transformed #swipe-deck, and
+// walking up the ancestors would shove the deck sideways. safeScrollIntoView scrolls the
+// vertical scroller only.
+function budOpenFixedCard(){
+  const el=document.getElementById('bud-fixed-card'); if(!el) return;
+  if(el.classList.contains('bud-collapsed')){
+    el.classList.remove('bud-collapsed');
+    saveBudgetCollapseState();
+  }
+  if(typeof safeScrollIntoView==='function') safeScrollIntoView(el,{behavior:'smooth',block:'start'});
 }
 // ── Weekly variable-spend goal ────────────────────────────────────
 // A self-imposed ceiling on the breakdown below it in the Spending card, separate from
@@ -13312,15 +13343,27 @@ function _billWeekday(d){ return d.toLocaleDateString('en-AU',{weekday:'short'})
 // without saying what it is would be misleading.
 function billRowHtml(o){
   const isStmt=o.kind==='statement';
+  // catIconHtml already carries alt="" and falls back to the stored name's initial when there
+  // is no site or the image fails, so the logo is decorative beside a name that is always
+  // printed. o.name comes from catLabel(), which strips a legacy emoji prefix -- an emoji and
+  // a logo side by side is the duplicate that helper exists to prevent.
   const icon=isStmt
     ? '<span class="bill-row-ic">'+acctIcon('card',18)+'</span>'
     : catIconHtml(o.cat,18);
   const meta=isStmt ? 'Statement balance' : o.acctName;
+  // A charge still inside its free trial is not the same commitment as a live one, and the
+  // date is what makes that matter. It rides the META line rather than the title, which is a
+  // nowrap/ellipsis block -- a badge appended there is the first thing a long name pushes out
+  // of view. Carried on both surfaces that use this row.
+  const trial=(!isStmt && catStatus(o.cat)==='trial') ? '<span class="up-trial">trial</span>' : '';
+  const metaHtml=(trial||meta)
+    ? '<span class="bill-row-meta">'+trial+(meta?_catEscHtml(meta):'')+'</span>'
+    : '';
   return '<div class="bill-row'+(isStmt?' is-stmt':'')+'">'+
     '<span class="bill-row-when"><b>'+_billDayLabel(o.date)+'</b><small>'+_billWeekday(o.date)+'</small></span>'+
     icon+
     '<span class="bill-row-name"><span class="bill-row-title">'+_catEscHtml(o.name)+'</span>'+
-      (meta?'<span class="bill-row-meta">'+_catEscHtml(meta)+'</span>':'')+'</span>'+
+      metaHtml+'</span>'+
     '<span class="bill-row-amt">'+fmtMoneyExact(o.amount)+'</span>'+
   '</div>';
 }
@@ -13394,121 +13437,126 @@ function renderBillsView(){
   wrap.innerHTML=summary+chart+lists;
 }
 
-// ── Outlook until next pay ────────────────────────────────────────
-// One question: after the bills due before my next pay, what will I have available?
-// A projection, never a balance — the wording says "projected" everywhere, and it creates
-// nothing: no transactions, no changes to the week, no date is rolled forward.
+// -- Outlook: until next pay, and the next 14 days -----------------
+// One question in two timeframes, and they must not be confused with each other:
+//   - UNTIL NEXT PAY is a projection. After the bills due before my next pay, what is left?
+//     Never a balance; the wording says "projected" everywhere, and it creates nothing: no
+//     transactions, no changes to the week, no date is rolled forward.
+//   - NEXT 14 DAYS is a schedule, not a projection. Every dated occurrence in a fixed
+//     fortnight window, at the amounts actually due. It is deliberately NOT subtracted from
+//     anything: the weekly hero holds ONE week of accrued commitment, and a fortnight of real
+//     charges is a different quantity entirely. Presenting the two as one figure is how a
+//     card ends up double-counting an accrual it has already taken out.
 //
 // This is the old "Until next pay" card and the old "Upcoming charges" card merged. They were
 // two cards leading with the same schedule from opposite ends: the forecast said what would
-// be left after the bills before payday, the upcoming card listed thirty days of charges — so
-// the same bill was named twice, a screen apart, and the second list duplicated the Bills tab
-// that is the authoritative calendar for it. Only the next few charges appear here now; the
-// full schedule is one press away.
+// be left after the bills before payday, the upcoming card listed thirty days of charges, so
+// the same bill was named twice a screen apart and the second list duplicated the Bills tab.
+// The merge then truncated the schedule to three rows, which put the card back to being a
+// teaser for a calendar one press away. The full fortnight is here instead, and the forecast
+// above it no longer repeats its own bills as rows: nextPayInfo() is a WEEKDAY, so payday is
+// never more than 7 days out and every bill it counts is already dated in the list below.
 //
 // `available` is passed in rather than recomputed, and `week` is the object it was derived
-// FROM, so this can never disagree with the hero directly above it. Nothing here invents a
-// projection: with no named income source payCycleForecast() returns null and the card falls
-// back to naming the charges, exactly as the upcoming card did.
-function budUpcomingRowHtml(x){
-  const soon=x.days<=3;
-  const when=x.days===0?'today':x.days===1?'tomorrow':'in '+x.days+' days';
-  const account=catPaymentAccount(x.cat);
-  return '<div class="up-row'+(soon?' soon':'')+'">'+
-    '<span class="up-when">'+when+'</span>'+
-    '<span class="up-name"><span class="up-title">'+_catEscHtml(catLabel(x.cat))+
-      (catStatus(x.cat)==='trial'?'<span class="up-trial">trial</span>':'')+'</span>'+
-      (account?'<span class="up-account">'+_catEscHtml(account.name||'Linked account')+'</span>':'')+'</span>'+
-    '<span class="up-amt">'+fmtMoneyExact(x.amount)+'</span>'+
-  '</div>';
+// FROM, so the projection can never disagree with the hero directly above it.
+const BUD_TIMELINE_DAYS=14;
+// Today through today + 13, inclusive: 14 calendar days counting today. Built with
+// (y, m, d + n) rather than millisecond arithmetic, so a daylight-saving boundary inside the
+// window cannot walk the end date off local midnight -- the same rule catOccurrencesBetween
+// generates its series with.
+function budTimelineWindow(from){
+  const a=localMidnight(from||getLocalDate());
+  const b=new Date(a.getFullYear(), a.getMonth(), a.getDate()+BUD_TIMELINE_DAYS-1);
+  return {from:a, to:b};
+}
+// "10-23 Sept", or "30 Aug - 12 Sept" across a month boundary. Same form Home's week range
+// uses, so a dated span reads the same wherever it appears.
+function budRangeLabel(a,b){
+  const fmt={day:'numeric',month:'short'};
+  return a.getMonth()===b.getMonth()
+    ? a.getDate()+'–'+b.toLocaleDateString('en-AU',fmt)
+    : a.toLocaleDateString('en-AU',fmt)+' – '+b.toLocaleDateString('en-AU',fmt);
 }
 function renderOutlookCard(available, week){
   const el=document.getElementById('bud-outlook-card'); if(!el) return;
-  const recur=loadFixCats().filter(c=>catIsRecurring(c)&&catIsCharging(c));
-  const dated=recur.filter(c=>c.dueDate).length;
-  const undated=recur.length-dated;
-  // Forecasting only makes sense from the current week — a past week has no future to project.
-  const f=budIsCurrentWeek()?payCycleForecast(available, week):null;
-  // With neither a forecast nor a single dated charge this would be an empty card asking to
-  // be configured, which is worse than not being there.
-  if(!f && !dated){ el.innerHTML=''; return; }
+  const undated=billsUndatedCount();
+  // Forecasting only makes sense from the current week -- a past week has no future to
+  // project. The TIMELINE is unconditional and always runs from today, because "what is
+  // coming" does not change with which week you happen to be looking at.
+  const isCur=budIsCurrentWeek();
+  const f=isCur?payCycleForecast(available, week):null;
+
+  const win=budTimelineWindow();
+  const occ=billOccurrences(win.from, win.to);
+  const range=budRangeLabel(win.from, win.to);
+  const timelineTotal=occ.reduce((s,o)=>s+o.amount,0);
+  const hasStmt=occ.some(o=>o.kind==='statement');
+
   const hint=undated
     ? '<div class="up-hint">'+undated+' recurring charge'+(undated===1?'':'s')+' without a billing date — add one in Settings → Budget setup to see '+(undated===1?'it':'them')+' here.</div>'
     : '';
   const calLink='<button type="button" class="up-cal-link" onclick="openBillsCalendar()">View bills calendar →</button>';
 
-  let label, sum, body, tone='';
-
+  // -- Part 1: the projection, when there is an honest one to make --
+  let tone=' is-plain', sum, forecastPart='';
   if(f){
     tone=(f.projected==null) ? '' : (f.projected<0 ? ' is-over' : (f.projected<50 ? ' is-tight' : ''));
     let figure, unit;
     if(f.projected==null){
-      // No income entered yet — state the bills, don't invent a projection.
+      // No income entered yet -- state the bills, don't invent a projection.
       figure=fmtMoneyExact(f.scheduled);
       unit='in scheduled bills before then · enter this week’s income to project what’s left';
     } else {
       figure=(f.projected<0?'-':'')+fmtMoney(Math.abs(f.projected)).replace('-','');
       unit=f.projected<0 ? 'projected shortfall after planned bills' : 'projected after planned bills';
     }
+    sum=figure;
     const payTxt='Payday '+f.pay.date.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+
       ' · '+(f.pay.inDays===1?'tomorrow':f.pay.inDays+' days away');
-    // Three, not the whole run-up: the point is what is about to land, and the calendar holds
-    // the rest. The remainder is counted out loud so the total above it still reconciles.
-    const shown=f.bills.slice(0,3);
-    const billLines=f.bills.length
-      ? '<div class="fc-bills">'+shown.map(b=>
-          '<div class="fc-bill"><span class="fc-bill-when">'+_billDayLabel(b.date)+'</span>'+
-          '<span class="fc-bill-name">'+_catEscHtml(b.name)+
-            (b.kind==='statement'?'<em>statement</em>':'')+'</span>'+
-          '<span class="fc-bill-amt">'+fmtMoneyExact(b.amount)+'</span></div>').join('')+
-        (f.bills.length>shown.length?'<div class="fc-more">+'+(f.bills.length-shown.length)+' more before payday</div>':'')+
-        '</div>'
-      : '';
-    label='Outlook until next pay';
-    sum=figure;
-    body='<div class="fc-fig">'+figure+'</div>'+
+    forecastPart='<div class="fc-part">'+
+      '<div class="fc-part-h">Until next pay</div>'+
+      '<div class="fc-fig">'+figure+'</div>'+
       '<div class="fc-unit">'+unit+'</div>'+
       '<div class="fc-line">'+payTxt+'</div>'+
       (f.bills.length
-        // Exact, not rounded: this list is short and usually holds one or two per-cent
-        // amounts, so a rounded total disagrees with its own visible arithmetic ($13.99
-        // summarised as $14 directly above the row that says $13.99).
-        ? '<div class="fc-line fc-line-2">'+fmtMoneyExact(f.scheduled)+' in scheduled bills before then</div>'+billLines
+        // Exact, not rounded: this total usually holds one or two per-cent amounts, and the
+        // rows carrying them are printed in the timeline below, so a rounded figure here
+        // would disagree with its own visible arithmetic.
+        ? '<div class="fc-line fc-line-2">'+fmtMoneyExact(f.scheduled)+' in scheduled bills before then — dated in the list below.</div>'
         : '<div class="fc-line fc-ok">No scheduled bills before your next pay.</div>')+
-      hint+calLink;
+    '</div>';
   } else {
-    // No pay day named, or a past week: there is no honest projection, so the card states
-    // what is scheduled instead — which is what the upcoming-charges card always did.
-    const list=upcomingCharges(30);
-    const next=list[0]||null;
-    // A cluster of charges landing together is the thing that actually catches people out, so
-    // it gets called out rather than left to be inferred from the list.
-    const within7=list.filter(x=>x.days<=7);
-    const cluster=within7.length>=2
-      ? '<div class="up-warn">'+within7.length+' charges land within 7 days — '+fmtMoney(within7.reduce((s,x)=>s+x.amount,0))+' total</div>'
-      : '';
-    label='Upcoming charges';
-    sum=next?fmtMoneyExact(next.amount):'—';
-    // .fc-card's default rail is --positive, and there is no projection here to be positive
-    // about: a green edge beside a list of charges would be a verdict on nothing.
-    tone=' is-plain';
-    body=(next
-        ? '<div class="fc-fig">'+fmtMoneyExact(next.amount)+'</div>'+
-          '<div class="fc-unit">next scheduled charge · '+
-            (next.days===0?'today':next.days===1?'tomorrow':'in '+next.days+' days')+'</div>'
-        : '')+
-      cluster+
-      (list.length
-        ? '<div class="up-list">'+list.slice(0,3).map(budUpcomingRowHtml).join('')+'</div>'+
-          (list.length>3?'<div class="fc-more">+'+(list.length-3)+' more in the next 30 days</div>':'')
-        : '<div class="up-none">Nothing due in the next 30 days.</div>')+
-      hint+calLink;
+    // No pay day named, or a past week: there is no honest projection, so the card leads with
+    // the schedule. .fc-card's default rail is --positive and there would be nothing to be
+    // positive about -- a green edge beside a list of charges is a verdict on nothing.
+    sum=occ.length?fmtMoneyExact(timelineTotal):'—';
   }
 
+  // -- Part 2: the fortnight, complete --
+  // Every occurrence, in date order, never truncated and never stopped at payday: a weekly
+  // subscription genuinely lands twice in a fortnight and both are money leaving the account.
+  const pastNote=isCur ? ''
+    : '<div class="fc-note">Counted from today, not from the week you’re viewing — this is what is still to come.</div>';
+  const rows=occ.length
+    ? '<div class="fc-timeline">'+occ.map(billRowHtml).join('')+'</div>'+
+      '<div class="fc-total">'+
+        '<span class="fc-total-l">Total scheduled'+(hasStmt?', including card statements':'')+'</span>'+
+        '<span class="fc-total-v">'+fmtMoneyExact(timelineTotal)+'</span>'+
+      '</div>'+
+      // Says which quantity this is. The weekly hero holds one week of ACCRUAL; these are the
+      // amounts that will actually be charged, so the two are not comparable and the card
+      // says so rather than letting them look like a discrepancy.
+      '<div class="fc-note">Amounts actually due, not the weekly allocation in Fixed expenses. Nothing here is deducted from this week’s figures.</div>'
+    : '<div class="up-none">No scheduled bills in the next 14 days.</div>';
+  const timelinePart='<div class="fc-part">'+
+    '<div class="fc-part-h">Next 14 days<span class="fc-part-r">'+range+'</span></div>'+
+    pastNote+rows+
+  '</div>';
+
   el.innerHTML='<div class="card fc-card'+tone+'" data-bud-key="outlook">'+
-    '<div class="sec-label bud-toggle"><span class="bud-head-label">'+cardIcon('calendar')+'<span>'+label+'</span></span>'+
+    '<div class="sec-label bud-toggle"><span class="bud-head-label">'+cardIcon('calendar')+'<span>Outlook</span></span>'+
       '<span class="bud-head-right"><span class="bud-head-sum">'+sum+'</span>'+BUD_CHEVRON+'</span></div>'+
-    '<div class="bud-collapse-body">'+body+'</div>'+
+    '<div class="bud-collapse-body">'+forecastPart+timelinePart+hint+calLink+'</div>'+
   '</div>';
   // budRecalc replaces this markup after every edited amount. Reapply the keyed saved state so
   // recalculating the projection cannot silently reopen a card the user minimised.
@@ -13596,10 +13644,20 @@ function openBudgetSetup(){
   budEditMode.inc=true;
   budEditMode.fix=true;
   if(typeof renderBudgetTab==='function') renderBudgetTab();
-  // Week plan, where those two sections now live — renderBudgetTab opens the section that
-  // owns each edit mode, so both are already expanded by the time this scrolls to them.
-  const el=document.getElementById('bud-plan-card');
-  if(el && typeof safeScrollIntoView==='function') safeScrollIntoView(el,{behavior:'smooth',block:'start'});
+  // Income and fixed bills live in two cards now, so both have to be revealed — a collapsed
+  // card would be scrolled to and still show nothing. renderBudgetTab has already expanded
+  // Week plan's Income section, which owns budEditMode.inc.
+  const plan=document.getElementById('bud-plan-card');
+  const fix=document.getElementById('bud-fixed-card');
+  let changed=false;
+  [plan,fix].forEach(el=>{ if(el&&el.classList.contains('bud-collapsed')){ el.classList.remove('bud-collapsed'); changed=true; } });
+  if(changed) saveBudgetCollapseState();
+  // Whichever comes FIRST on this layout, so the second is below it rather than scrolled off
+  // the top: on the phone that is Fixed expenses, on desktop it is the left-hand column.
+  const first=(plan&&fix)
+    ? ((fix.compareDocumentPosition(plan)&Node.DOCUMENT_POSITION_FOLLOWING)?fix:plan)
+    : (plan||fix);
+  if(first && typeof safeScrollIntoView==='function') safeScrollIntoView(first,{behavior:'smooth',block:'start'});
 }
 function renderBudgetSetupCard(){
   if(budSetupDismissed()) return '';
@@ -13616,7 +13674,7 @@ function renderBudgetSetupCard(){
       '<button type="button" class="bud-setup-x" onclick="budSetupDismiss()" aria-label="Dismiss setup card">\u00d7</button>')+
     // "The categories below" until the redesign, which is no longer true on desktop \u2014 Week
     // plan sits in the right-hand column. Named rather than pointed at.
-    '<p class="bud-setup-body">The categories in Week plan and Spending are starters. Add your income and your fixed weekly bills and every figure on this page becomes yours \u2014 the weekly hero, the spending goal and Stats all read from them.</p>'+
+    '<p class="bud-setup-body">The categories in Spending, Fixed expenses and Week plan are starters. Add your income and your fixed weekly bills and every figure on this page becomes yours \u2014 the weekly hero, the spending goal and Stats all read from them.</p>'+
     '<div class="bud-setup-actions">'+
       '<button type="button" class="bud-setup-btn primary" onclick="openBudgetSetup()">Add income &amp; bills</button>'+
       '<button type="button" class="bud-setup-btn" onclick="budSetupDismiss()">Not now</button>'+
@@ -13652,23 +13710,31 @@ function renderHeroAction(){
 //
 // Fourteen entries became seven, because the tab had come to answer the same question in
 // several places at once. Spending goal + Variable expenses + Day by day are ONE Spending
-// card; Income + Savings + Fixed are ONE Week plan card; Upcoming charges + Until next pay
-// are ONE Outlook card; Record spending moved onto the hero; Weekly result lost the headline
-// the hero already carried and became Close out week; Previous weeks and the calculator are
-// compact sections of History & tools.
+// card; Income + Savings are the Week plan card; Upcoming charges + Until next pay are ONE
+// Outlook card; Record spending moved onto the hero; Weekly result lost the headline the hero
+// already carried and became Close out week; Previous weeks and the calculator are compact
+// sections of History & tools.
+//
+// FIXED EXPENSES came back out of Week plan as its own card (eight entries). Folding it in
+// hid the week's commitments and their total behind a card header showing a different figure
+// — you had to know Fixed was in there to find it. It sits directly BELOW Spending on both
+// layouts, so the two halves of "where is the money going" read in order: what I chose to
+// spend, then what was already committed. Week plan keeps a quiet, non-editable echo of the
+// same total, because income − fixed − savings is arithmetic that has to be readable there.
 //
 // MOBILE is this order top to bottom, and it is the order the tab is meant to be read in:
-// what can I spend today (hero) → where is it going (Spending) → what is committed (Week
-// plan) → what needs attention before payday (Outlook) → close the week → reference. Setup is
-// a dismissible onboarding banner so it leads; Stranded data is a maintenance state so it
-// trails.
-// DESKTOP keeps that same priority reading across the two columns — Spending beside Week
-// plan, then Outlook, then Close out, then the tools — rather than becoming two unrelated
-// stacks. Spending is the long card and lives on the left, which is what stops the right
-// column running out of content a screen early.
+// what can I spend today (hero) → where is it going (Spending) → what is already committed
+// (Fixed expenses) → how the week is allocated (Week plan) → what needs attention before
+// payday (Outlook) → close the week → reference. Setup is a dismissible onboarding banner so
+// it leads; Stranded data is a maintenance state so it trails.
+// DESKTOP keeps that same priority reading across the two columns — Spending and Fixed on the
+// left beside Week plan and Outlook on the right, then Close out, then the tools — rather
+// than becoming two unrelated stacks. Spending is the long card and lives on the left, which
+// is what stops the right column running out of content a screen early.
 const BUD_CARDS=[
   {id:'bud-setup-card',      col:'left' },
   {id:'bud-spend-card',      col:'left' },
+  {id:'bud-fixed-card',      col:'left' },
   {id:'bud-plan-card',       col:'right'},
   {id:'bud-outlook-card',    col:'right'},
   {id:'bud-closeout-card',   col:'left' },
@@ -14082,12 +14148,12 @@ function renderBudgetTab(){
     savEl.disabled=!editable; savEl.style.opacity=editable?'1':'0.7';
   }
 
-  // Week plan's two dynamic sections (Savings is static markup — #sav-amount must never
-  // leave the DOM, see budWriteFields) and the merged Spending card.
+  // Week plan's one dynamic section (Savings is static markup — #sav-amount must never
+  // leave the DOM, see budWriteFields), the Fixed expenses card and the merged Spending card.
   const incWrap=document.getElementById('bud-plan-inc');
   if(incWrap) incWrap.innerHTML=renderPlanIncSection(data,editable);
-  const fixWrap=document.getElementById('bud-plan-fix');
-  if(fixWrap) fixWrap.innerHTML=renderPlanFixSection(data,editable);
+  const fixWrap=document.getElementById('bud-fix-body');
+  if(fixWrap) fixWrap.innerHTML=renderFixedCardBody(data,editable);
   const setupWrap=document.getElementById('bud-setup-card');
   if(setupWrap) setupWrap.innerHTML=renderBudgetSetupCard();
   const spendWrap=document.getElementById('bud-spend-card');
@@ -14097,11 +14163,11 @@ function renderBudgetTab(){
   if(strandedWrap) strandedWrap.innerHTML=renderStrandedCard();
 
   renderHeroAction();
-  // Opening a card's Edit mode has to open the section that holds it, or "Add income & bills"
+  // Opening Income's Edit mode has to open the section that holds it, or "Add income & bills"
   // from the setup banner would unlock controls nobody can see. Only ever ADDITIVE — nothing
-  // here closes a section the user opened.
+  // here closes a section the user opened. Fixed needs no equivalent: its controls are in a
+  // card of their own now, and openBudgetSetup() reveals that card directly.
   if(budEditMode.inc) _budSecOpen.add('inc');
-  if(budEditMode.fix) _budSecOpen.add('fix');
   budSecApply();
 
   const notesEl=document.getElementById('week-notes');
@@ -14339,7 +14405,7 @@ function budRecalc(animate){
   // them is how the on-screen total ends up disagreeing with the saved week.
   const _wkKey=weekKey(getMondayOf(currentWeekIdx));
   const _live=Object.assign({}, _wk);
-  // Only ACTIVE NON-RECURRING categories have inputs (renderPlanFixSection gives recurring charges
+  // Only ACTIVE NON-RECURRING categories have inputs (renderFixedCardBody gives recurring charges
   // a read-only block instead), so merging the live values below stamps fix_ keys for just
   // those — and weekFixedTotal treats any week carrying fix_ fields as defining its own
   // category list. Recurring charges therefore dropped straight out of the total: a brand-new
@@ -14377,7 +14443,11 @@ function budRecalc(animate){
   // Each is a SECTION HEADER now rather than a collapsed-card summary, so all four read
   // without expanding anything. Same totals, same canonical readers, one place each.
   $('sum-inc',totalIncome>0?'$'+totalIncome.toFixed(0):'—');
+  // ONE total, two places it is printed: the Fixed expenses card's own header, and Week
+  // plan's quiet echo so the arithmetic under it reads. Both from totalFixed — there is no
+  // second calculation, which is the only thing that keeps them from drifting.
   $('sum-fix','$'+totalFixed.toFixed(0));
+  $('plan-fix-sum','$'+totalFixed.toFixed(0));
   // Header summary: this week's savings, which is the figure that matters week to week.
   $('sav-head-sum','$'+totalSaved.toFixed(0));
   // What the week leaves for variable spending — the ceiling the Spending card is measured
@@ -22076,8 +22146,16 @@ function acctToggleEdit(){
   _acctEditMode=!_acctEditMode;
   renderAccountsPage();
 }
-function openAccounts(){
+// Whatever opened Accounts, so closing it can hand focus back. Accounts is reached from the
+// sidebar, the hamburger, Budget's top row and History & tools, and a keyboard user who
+// presses Back lands on <body> otherwise — with no way to get to the next control except
+// tabbing from the top of the page. Defaults to the focused element, which covers every
+// entry point without each having to pass itself in.
+let _acctReturnFocus=null;
+function openAccounts(from){
   const v=document.getElementById('view-accounts'); if(!v) return;
+  const src=from||document.activeElement;
+  _acctReturnFocus=(src&&src!==document.body&&typeof src.focus==='function')?src:null;
   if(typeof aiHidePeerOverlays==='function') aiHidePeerOverlays('view-accounts');
   v.style.display='block';
   v.style.left=layoutIsDesktop()?'260px':'0'; // leave the desktop sidebar uncovered
@@ -22090,8 +22168,17 @@ function openAccounts(){
 }
 function closeAccounts(){
   const v=document.getElementById('view-accounts'); if(v){ v.style.display='none'; v.style.left='0'; }
-  // Restore the nav highlight to whatever tab is actually showing underneath.
+  // Restore the nav highlight to whatever tab is actually showing underneath. Nothing else is
+  // touched: the Budget sub-view, its week or month index and any in-progress input are
+  // exactly where they were left, because this overlay never changed them.
   setNavActive();
+  const back=_acctReturnFocus; _acctReturnFocus=null;
+  // Only if it is still on screen — the launcher may have been re-rendered away (the
+  // History & tools link) or hidden by a layout change while Accounts was open. offsetParent
+  // is null for a display:none ancestor, which is exactly the case to skip.
+  if(back && back.isConnected && back.offsetParent!==null){
+    try{ back.focus({preventScroll:true}); }catch(e){ try{ back.focus(); }catch(e2){} }
+  }
 }
 
 function fmtMoney(n){ const v=Math.round(Math.abs(n)).toLocaleString(); return (n<0?'-$':'$')+v; }
