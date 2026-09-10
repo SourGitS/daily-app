@@ -1998,19 +1998,12 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .up-cal-link:hover{background:rgba(var(--accent-rgb),.08)}
 
 /* ── Until next pay ────────────────────────────────────────────────
-   Lives directly beneath Variable expenses in the planning/spending stack. Neutral by
-   default; amber when the projection is thin, red when the bills exceed what is available.
-   Semantic, not accent — the accent can be any hue at runtime, so it cannot carry good/bad. */
+   The figure carries the projection state: neutral without a projection, green when healthy,
+   amber when thin and red when the bills exceed what is available. */
 #bud-outlook-card:empty{display:none}
-.fc-card{border-left:3px solid var(--positive);padding-top:14px}
-/* No projection to be positive ABOUT. Without a named income source there is no pay day and
-   payCycleForecast() returns null, so the card names what is scheduled instead — and a green
-   rail beside it would be a verdict on a week nothing has been judged about. */
-.fc-card.is-plain{border-left-color:var(--border)}
+.fc-card{padding-top:14px}
 .fc-card.is-plain .fc-fig{color:var(--text)}
 .fc-card.is-plain .bud-head-sum{color:var(--text)}
-.fc-card.is-tight{border-left-color:var(--warn)}
-.fc-card.is-over{border-left-color:var(--danger)}
 .fc-fig{font-family:var(--font-num);font-size:30px;font-weight:800;letter-spacing:-.02em;
   line-height:1.05;margin-top:4px;color:var(--positive)}
 .fc-card .bud-head-sum{color:var(--positive)}

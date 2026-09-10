@@ -13539,7 +13539,7 @@ function renderOutlookCard(available, week){
       figure=(f.projected<0?'-':'')+fmtMoney(Math.abs(f.projected)).replace('-','');
       // Says what the number MEANS, not which operation produced it: "after planned bills"
       // described the arithmetic and left the reader to work out what was being projected.
-      unit=f.projected<0 ? 'projected shortfall by payday' : 'projected to still be available on payday';
+      unit=f.projected<0 ? 'estimated shortfall before your next pay' : 'estimated left before your next pay';
     }
     sum=figure;
     const n=f.bills.length;

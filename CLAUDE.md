@@ -1615,20 +1615,17 @@ the accent or the theme must go through those, not set `--accent` directly.
   unfinished beside the timeline's labelled header row. `fcSplit()` builds the app's own
   `.card-split` two-up-with-divider (Home's weight card, Log › Today) with a third context
   line per cell: **Payday** / date / countdown, and **Bills before then** / total / count.
-  The unit says what the number MEANS (“projected to still be available on payday”) rather
-  than which operation produced it (“after planned bills”), and “dated in the list below” is
-  gone — it pointed at a list already on screen. The no-income state's run-on label became a
-  caption under the cells.
+  The unit says what the number MEANS (“estimated left before your next pay”, tightened in
+  v326) rather than which operation produced it (“after planned bills”), and “dated in the
+  list below” is gone — it pointed at a list already on screen. The no-income state's run-on
+  label became a caption under the cells.
   **`is-plain` now covers the no-projection state as well as the no-payday one**, and that
   was a real bug: with no income entered the figure is the BILLS DUE, and the default
   treatment paints `.fc-fig` `--positive` — a green $41.94 under “in scheduled bills before
   payday” states money going out as a good outcome.
-  **Known and NOT fixed:** `.fc-card`'s coloured left rail has never rendered. The rule is
-  `.fc-card{border-left:3px solid var(--positive)}` at (0,1,0), and
-  `[data-theme="dark"] .card{border:0.5px solid var(--card-border)}` at (0,2,0) sits later in
-  the same file and resets the whole shorthand; light mode has the same collision. The
-  FIGURE still carries the state (green / amber / red), so the card is not mute — the rail is
-  redundant reinforcement that never shipped. Reviving it is a visual change, not a fix.
+  **v326 retires the coloured left rail.** Its declaration never won the card border cascade
+  in either theme, so no user had seen it. The FIGURE remains the single state signal
+  (green / amber / red), avoiding redundant colour reinforcement.
   **Retired with it:** `budUpcomingRowHtml()`, the `upcomingCharges(30)` fallback branch and its
   7-day cluster warning, `.up-title`, `.up-account`, `.up-warn`, `.fc-bill*`, `.fc-more`,
   `.fc-card .up-list` and (v325) `.fc-line`, `.fc-line-2`, `.fc-ok`. `upcomingCharges()` itself STAYS — the AI context export still calls it.

@@ -423,6 +423,15 @@ safety-critical parts:
 
 ## Current unfinished work
 
+### Budget: Outlook projection wording — v326 (local follow-up)
+
+The projection unit now reads “estimated left before your next pay” or “estimated shortfall
+before your next pay.” This is shorter and does not imply the upcoming pay is included in the
+figure. The coloured `.fc-card` left-rail declarations were removed: the rail had never won
+the card border cascade, and the figure remains the one visible green/amber/red state signal.
+Presentation only; no calculation, storage, sync or Firebase path changed. `CACHE_NAME` is
+`daily-v326`. `node --test tests/*.test.cjs` remains 82/82.
+
 ### Budget: Outlook projection polish — v325 (released; see git log)
 
 Presentation only, on the Outlook card's *Until next pay* half. No store, sync
@@ -449,11 +458,8 @@ Verified in the in-app browser against a synthetic fixture, all four states: hea
 dark, no clipping and no overflow, cells even at 140px each on a phone.
 `node --test tests/*.test.cjs` — 82/82. `CACHE_NAME` is `daily-v325`.
 
-**Found, reported, NOT fixed:** `.fc-card`'s coloured left rail has never rendered in
-either theme. `.fc-card{border-left:3px solid var(--positive)}` is (0,1,0) and
-`[data-theme="dark"] .card{border:...}` is (0,2,0) later in the same file, resetting the
-shorthand. The figure still carries the state, so the rail is redundant reinforcement
-that never shipped — reviving it is a visual change nobody asked for, not a bug fix.
+The coloured left rail was still only a reported dead declaration at this release; v326
+removed it deliberately and retained the figure as the state signal.
 
 ### Budget: Fixed expenses card corrections — v324 (released; see git log)
 

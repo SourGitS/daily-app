@@ -249,7 +249,10 @@
 // Fixes one real state bug: with no income entered the figure is the BILLS DUE, and it was
 // being painted --positive, stating money going out as a good outcome.
 // No store, sync path, calculation or migration changed.
-const CACHE_NAME = 'daily-v325';
+// v326: tighten the projection copy to "estimated left before your next pay" (or estimated
+// shortfall), and retire the coloured left-rail declarations that never rendered. The figure
+// remains the single green / amber / red state signal. Presentation only.
+const CACHE_NAME = 'daily-v326';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
