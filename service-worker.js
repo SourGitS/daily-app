@@ -231,7 +231,15 @@
 // projection: it is not truncated, not stopped at payday, and never subtracted from the
 // weekly hero. Presentation and navigation only — no calculation, store, sync path or
 // migration changed.
-const CACHE_NAME = 'daily-v323';
+// v324: two small Budget corrections. Fixed expenses' header total prints cents
+// (fmtMoneyExact) because it sits directly above per-cent rows and a $201 header over a
+// $201.08 subtotal read as a bug; Week plan's echo stays whole-dollar, because the
+// subtraction printed under IT has to add up on screen. And the recurring breakdown
+// remembers whether it is open, in the existing device-local daily_budget_ui blob, which
+// is now written read-modify-write so the two preferences sharing it cannot erase each
+// other. The disclosure is a real control now (role=button, keyboard, focus ring).
+// No store, sync path, calculation or migration changed.
+const CACHE_NAME = 'daily-v324';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

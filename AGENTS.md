@@ -423,7 +423,40 @@ safety-critical parts:
 
 ## Current unfinished work
 
-### Budget: Fixed expenses, Accounts access, 14-day outlook — v323 (LOCAL ONLY, not committed, not pushed)
+### Budget: Fixed expenses card corrections — v324 (released; see git log)
+
+Two follow-ups to v323, both on the Fixed expenses card. No store, sync registration, Firebase
+path, migration, boot write or finance calculation added or changed; the 47-helper byte-compare
+against the v323 commit is clean.
+
+- **`#sum-fix` prints cents** (`fmtMoneyExact`), because it heads the itemised rows. A $201
+  header above a $201.08 recurring subtotal read as a discrepancy when it was only rounding —
+  the same fault `#calc-variable` was already fixed for. `#plan-fix-sum` deliberately stays
+  `toFixed(0)`: it sits in a whole-dollar column whose subtraction is printed under it.
+- **The recurring breakdown remembers whether it is open**, in the existing device-local
+  `daily_budget_ui` blob as `recurOpen`. This also fixed a quieter bug: the old inline toggle
+  wrote `style.display` over a hardcoded `display:none`, so it shut on every re-render (week
+  change, Edit, typing an amount), not just on reload. **`daily_budget_ui` is now written
+  read-modify-write** (`budUiLoad()` / `budUiSave(patch)`) — `budSetSpendView()` used to
+  stringify a fresh single-key object, which would have erased `recurOpen` on the next
+  breakdown switch. Still plain `setItem`, never the three-argument `lsSave`, still excluded
+  from `exportAllData()`. The disclosure head became a real control: `role="button"`,
+  `tabindex="0"`, `aria-expanded`, Enter/Space, and a `:focus-visible` ring (needed, because
+  the app suppresses the UA outline globally).
+
+Verified in the in-app browser against a synthetic fixture: the open state survives a full
+reload and a week round trip; changing the spending breakdown keeps the list open and toggling
+the list keeps the breakdown — the clobbering case; Enter toggles from the keyboard; a fresh
+device gets closed/category defaults and reading a preference writes nothing (it runs during a
+render). `node --test tests/*.test.cjs` — **82/82**, with three new checks covering the
+read-modify-write, the defaults, and a corrupt blob. `CACHE_NAME` is `daily-v324`.
+
+**Worth knowing:** the stale-CSS confusion hit during this work was the service worker doing
+exactly what it is designed to do — a cached `budget-home.css` from before the edit. If a CSS
+change appears not to apply locally, clear the caches and unregister the worker before
+suspecting the rule.
+
+### Budget: Fixed expenses, Accounts access, 14-day outlook — v323 (released; see git log)
 
 Presentation, navigation and one read-only schedule window. **No localStorage key, Firebase
 path, sync registration, timestamp, category rewrite, boot write, migration, security rule or
@@ -499,15 +532,14 @@ unchanged apart from that trial badge.
 boundaries, an Australia/Sydney daylight-saving boundary in both directions with the saved
 anchor proven read-only, archived/cancelled/non-recurring/undated exclusion, statement
 inclusion and ordering, forecast-vs-timeline independence, and the `BUD_CARDS` position).
-`CACHE_NAME` is `daily-v323`.
+`CACHE_NAME` was `daily-v323`.
 
 **NOT verified:** no real signed-in account or production Firebase data was used, and no
 deployed rule was touched — the sync suites pass but they are isolated, so nothing here is a
 cloud test. No physical device: phone and zoom layouts were checked at the equivalent CSS-pixel
 viewport in a desktop browser, so safe-area insets and the standalone status bar are inferred
 from the existing CSS rather than observed. Logo images come from DuckDuckGo's icon service, so
-which specific sites resolve depends on that service, not on this code. **Nothing has been
-committed or pushed.**
+which specific sites resolve depends on that service, not on this code.
 
 **One pre-existing inconsistency this change makes more visible, and deliberately did not
 touch:** the Recurring disclosure lists `activeCats(loadFixCats()).filter(catIsRecurring)`,

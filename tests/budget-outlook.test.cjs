@@ -237,3 +237,59 @@ test('Fixed expenses sits directly below Spending in both layouts', () => {
   assert.equal(new Set(desktop).size, desktop.length);
   assert.deepEqual(mobile, BUD_CARDS.map(c => c.id));
 });
+
+// ── Device-local Budget UI state ──────────────────────────────────
+// daily_budget_ui holds which spending breakdown this handset shows AND whether the Fixed
+// expenses recurring list is open. It is device-local by design (plain setItem, never
+// lsSave(key,value,syncName), excluded from exportAllData), so nothing here touches sync — but
+// the two preferences share one blob, and the writer used to stringify a fresh single-key
+// object. These cover the read-modify-write that stops one from erasing the other.
+function uiCtx(seed) {
+  const store = new Map(seed === undefined ? [] : [['daily_budget_ui', seed]]);
+  const context = vm.createContext({
+    console, JSON, Object, Array,
+    localStorage: {
+      getItem: k => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => store.set(k, String(v))
+    },
+    BUD_SPEND_VIEWS: ['cat', 'day'],
+    _budSpendView: null,
+    _budRecurOpen: null
+  });
+  vm.runInContext(['budUiLoad', 'budUiSave', 'budSpendView', 'budRecurOpen'].map(extract).join('\n'), context);
+  context.__store = store;
+  return context;
+}
+
+test('saving one Budget UI preference does not erase the other', () => {
+  const c = uiCtx();
+  c.budUiSave({ spendView: 'day' });
+  c.budUiSave({ recurOpen: true });
+  assert.deepEqual(JSON.parse(c.__store.get('daily_budget_ui')), { spendView: 'day', recurOpen: true });
+  c.budUiSave({ spendView: 'cat' });
+  assert.deepEqual(JSON.parse(c.__store.get('daily_budget_ui')), { spendView: 'cat', recurOpen: true },
+    'changing the breakdown must not close the recurring list');
+});
+
+test('both preferences are read back, and a fresh device gets the closed/category defaults', () => {
+  const seeded = uiCtx('{"spendView":"day","recurOpen":true}');
+  assert.equal(seeded.budSpendView(), 'day');
+  assert.equal(seeded.budRecurOpen(), true);
+
+  const fresh = uiCtx();
+  assert.equal(fresh.budSpendView(), 'cat');
+  assert.equal(fresh.budRecurOpen(), false);
+  assert.equal(fresh.__store.has('daily_budget_ui'), false,
+    'reading a preference must never write one — this runs during a render');
+});
+
+test('a corrupt or unexpected blob falls back instead of throwing', () => {
+  for (const bad of ['not json', 'null', '[]', '"str"', '7']) {
+    const c = uiCtx(bad);
+    // Object.keys rather than deepEqual({}): the object is built inside the VM and carries
+    // that realm's prototype, which assert/strict compares.
+    assert.equal(Object.keys(c.budUiLoad()).length, 0, bad);
+    assert.equal(c.budSpendView(), 'cat', bad);
+    assert.equal(c.budRecurOpen(), false, bad);
+  }
+});

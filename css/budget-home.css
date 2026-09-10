@@ -123,6 +123,11 @@
 /* Recurring (monthly/yearly) fixed expenses — one summary row that expands to a read-only
    breakdown. No inputs: their prorated share is already counted, so typing would double it. */
 .bud-recur-head{cursor:pointer;-webkit-tap-highlight-color:transparent}
+/* It is a real control now (role=button, tabindex=0, and its open state persists), so it
+   needs a visible focus ring: the app suppresses the UA outline globally, which would
+   otherwise leave a keyboard user with no indication of where they are. Same treatment
+   .bud-sec-hd uses. */
+.bud-recur-head:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:8px}
 /* Was a 🔁 emoji, which could not follow the theme. The svg inherits the row's colour. */
 .bud-recur-ic{display:inline-flex;align-items:center;flex-shrink:0;color:var(--muted)}
 .bud-recur-ic .card-hd-ico{width:14px;height:14px}

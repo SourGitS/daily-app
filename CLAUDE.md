@@ -22,6 +22,10 @@ byte-identical to v322. No store, migration, sync registration, Firebase path or
 added or touched. Full rationale under "Known history" (`BUD_CARDS`, Outlook, `.bud-topnav`) and
 the release note in `AGENTS.md`.
 
+**v324 followed with two corrections to that card**, both recorded under `BUD_CARDS` below:
+`#sum-fix` prints cents while Week plan's echo stays whole-dollar, and the recurring breakdown
+remembers whether it is open.
+
 ## Home feature-card correction — v313, 2026-09-08
 
 The user chose to restore the original workout hero: plain gradient, 40px desktop title,
@@ -1533,6 +1537,29 @@ the accent or the theme must go through those, not set `--accent` directly.
   now; the rows, the `fix-<id>` ids, the recurring disclosure with its `/wk` units and the
   `data-action="bud-edit-toggle"` contract are unchanged, and `budPlanSection()` still builds
   Income.
+  **The two printings of that total format DIFFERENTLY, on purpose (v324).** `#sum-fix` uses
+  `fmtMoneyExact` and `#plan-fix-sum` uses `toFixed(0)`, from the same `totalFixed` in the same
+  pass. The card header sits directly above per-cent rows — a $201 header over a $201.08
+  recurring subtotal is the exact fault `#calc-variable` was already fixed for, and it reads as
+  a bug rather than as rounding. Week plan's echo sits in a column of whole-dollar figures whose
+  subtraction is printed underneath it (income − fixed − savings = available), so whole dollars
+  is what makes THAT sum add up on screen. Do not "unify" them; they answer to different
+  neighbours.
+  **The recurring breakdown's open state persists, and that is a THIRD kind of disclosure.**
+  Card collapse (`.bud-toggle` — `daily_budget_collapse`) and section collapse (`.bud-sec` —
+  in-memory) were the two; this is a list you either want to read every time or never, so it is
+  remembered across reloads in `daily_budget_ui` as `recurOpen`. Rendering it from
+  `budRecurOpen()` also fixed a quieter bug: the old inline toggle wrote `style.display` over a
+  hardcoded `display:none`, so changing week, pressing Edit or typing an amount all closed it.
+  `budRecurToggle()` writes the DOM directly rather than re-rendering, because the card holds
+  live weekly inputs. The head is a real control now — `role="button"`, `tabindex="0"`,
+  `aria-expanded`, Enter/Space, and a `:focus-visible` ring, which it NEEDS because the app
+  suppresses the UA outline globally.
+  **`daily_budget_ui` is written read-modify-write (`budUiLoad()`/`budUiSave(patch)`), and that
+  is load-bearing.** `budSetSpendView()` used to `JSON.stringify({spendView:v})`, so the moment
+  a second preference landed in that blob, saving the first would have silently dropped it.
+  It is still device-local (plain `setItem`, never the three-argument `lsSave`) and still
+  excluded from `exportAllData()`, so neither preference syncs.
   *Outlook shows the whole fortnight, not three bills* — see its own entry below;
   *Record spending* → the **hero's** Add expense action;
   *Weekly result* → **Close out week**, having lost the Money-left-over headline and On track

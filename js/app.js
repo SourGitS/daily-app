@@ -12705,14 +12705,20 @@ function renderFixedCardBody(data,isCur){
         '<div class="bud-recur-amt">$'+catBudget(c).toFixed(2)+
           '<span class="bud-recur-per">/wk</span></div>'+
       '</div>').join('');
+    // Rendered in its REMEMBERED state, not closed. It used to be an inline toggle over a
+    // hardcoded display:none, so it shut again on every re-render — changing week, pressing
+    // Edit or typing an amount all closed it — as well as on every reload.
+    const rOpen=budRecurOpen();
     recurBlock=
-      '<div class="bud-row bud-recur-head" onclick="var l=this.nextElementSibling;var open=l.style.display!==\'none\';l.style.display=open?\'none\':\'block\';var ch=this.querySelector(\'.bud-recur-chev\');if(ch)ch.textContent=open?\'▾\':\'▴\'">'+
+      '<div class="bud-row bud-recur-head" role="button" tabindex="0" aria-expanded="'+(rOpen?'true':'false')+'" '+
+        'aria-controls="bud-recur-list" onclick="budRecurToggle()" '+
+        'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();budRecurToggle();}">'+
         '<div class="bud-row-left"><span class="bud-recur-ic">'+cardIcon('repeat')+'</span>'+
           '<div class="bud-row-name">Recurring<span class="bud-recur-count">'+recurCats.length+'</span></div></div>'+
         '<div class="bud-row-calc bud-recur-total">$'+recurTotal.toFixed(2)+
-          '<span class="bud-recur-chev">▾</span></div>'+
+          '<span class="bud-recur-chev">'+(rOpen?'▴':'▾')+'</span></div>'+
       '</div>'+
-      '<div class="bud-recur-list" style="display:none">'+items+
+      '<div class="bud-recur-list" id="bud-recur-list"'+(rOpen?'':' style="display:none"')+'>'+items+
         '<div class="bud-recur-note">Counted automatically each week from their billing cycle — nothing to enter. Edit them in Settings → Budget setup.</div>'+
       '</div>';
   }
@@ -13917,12 +13923,49 @@ let _budSpendView=null;
 // breakdown this handset is showing is not the user's data, so it is a plain setItem and
 // never lsSave(key,value,syncName). No new synced store, no migration — an absent or
 // unrecognised value simply reads as the default.
+// Device-local Budget presentation state: which spending breakdown this handset is showing,
+// and whether the recurring list inside Fixed expenses is open. Plain setItem, NEVER
+// lsSave(key,value,syncName) — the three-argument form is the synced path, and neither of
+// these is a preference another device should inherit. daily_pantry_ui is the precedent, and
+// like it this key is excluded from exportAllData().
+function budUiLoad(){
+  try{ const v=JSON.parse(localStorage.getItem('daily_budget_ui')||'{}');
+       return (v&&typeof v==='object'&&!Array.isArray(v))?v:{}; }catch(e){ return {}; }
+}
+// Read-modify-write, and that is load-bearing: budSetSpendView used to stringify a fresh
+// {spendView} object, so the moment a SECOND preference landed here, saving the first would
+// have silently dropped it.
+function budUiSave(patch){
+  try{ localStorage.setItem('daily_budget_ui', JSON.stringify(Object.assign(budUiLoad(), patch))); }catch(e){}
+}
 function budSpendView(){
   if(_budSpendView) return _budSpendView;
-  let v=null;
-  try{ v=(JSON.parse(localStorage.getItem('daily_budget_ui')||'{}')||{}).spendView; }catch(e){}
+  const v=budUiLoad().spendView;
   _budSpendView=BUD_SPEND_VIEWS.indexOf(v)>=0?v:'cat';
   return _budSpendView;
+}
+// Whether Fixed expenses' recurring breakdown is expanded. Remembered across reloads, unlike
+// .bud-sec's in-memory open set: that one is a card you unfold to answer one question, this is
+// a LIST you either want to read every time or never. Resolved once and cached, so rendering
+// never touches localStorage.
+let _budRecurOpen=null;
+function budRecurOpen(){
+  if(_budRecurOpen===null) _budRecurOpen=!!budUiLoad().recurOpen;
+  return _budRecurOpen;
+}
+// Writes the DOM directly rather than re-rendering: the card holds live weekly inputs, and
+// rebuilding it to open a disclosure would drop focus out of whichever one was being typed in.
+function budRecurToggle(){
+  _budRecurOpen=!budRecurOpen();
+  budUiSave({recurOpen:_budRecurOpen});
+  const head=document.querySelector('#bud-fixed-card .bud-recur-head');
+  const list=document.querySelector('#bud-fixed-card .bud-recur-list');
+  if(list) list.style.display=_budRecurOpen?'block':'none';
+  if(head){
+    head.setAttribute('aria-expanded',_budRecurOpen?'true':'false');
+    const ch=head.querySelector('.bud-recur-chev');
+    if(ch) ch.textContent=_budRecurOpen?'▴':'▾';
+  }
 }
 function budSetSpendView(v){
   if(BUD_SPEND_VIEWS.indexOf(v)<0 || budSpendView()===v) return;
@@ -13930,7 +13973,7 @@ function budSetSpendView(v){
   // rebuilding the list without capturing them first would throw away what was just entered.
   budSaveDraft();
   _budSpendView=v;
-  try{ localStorage.setItem('daily_budget_ui', JSON.stringify({spendView:v})); }catch(e){}
+  budUiSave({spendView:v});
   renderBudgetTab();
 }
 function renderSpendCard(data,isCur){
@@ -14443,10 +14486,15 @@ function budRecalc(animate){
   // Each is a SECTION HEADER now rather than a collapsed-card summary, so all four read
   // without expanding anything. Same totals, same canonical readers, one place each.
   $('sum-inc',totalIncome>0?'$'+totalIncome.toFixed(0):'—');
-  // ONE total, two places it is printed: the Fixed expenses card's own header, and Week
-  // plan's quiet echo so the arithmetic under it reads. Both from totalFixed — there is no
-  // second calculation, which is the only thing that keeps them from drifting.
-  $('sum-fix','$'+totalFixed.toFixed(0));
+  // ONE total, two places it is printed, and they format DIFFERENTLY on purpose. Both read
+  // totalFixed — there is no second calculation, which is the only thing that keeps them
+  // from drifting — but each is rounded for what sits under it, the same rule
+  // #calc-variable already follows. The card header sits directly above the itemised rows,
+  // which carry cents ($3.23/wk, a $201.08 recurring subtotal), so a toFixed(0) header
+  // disagreed with its own visible arithmetic and read as a bug. Week plan's echo sits in a
+  // column of whole-dollar figures whose subtraction is printed under it (income − fixed
+  // − savings = available), so whole dollars is what makes THAT sum add up on screen.
+  $('sum-fix',fmtMoneyExact(totalFixed));
   $('plan-fix-sum','$'+totalFixed.toFixed(0));
   // Header summary: this week's savings, which is the figure that matters week to week.
   $('sav-head-sum','$'+totalSaved.toFixed(0));
