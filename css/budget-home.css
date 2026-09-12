@@ -1130,8 +1130,12 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      the header and side menu show. Flush left at 14px, matching the sidebar's own left edge.
      Previously inset to 54px to align with the nav ITEM LABELS rather than the sidebar edge —
      moved back to the edge on request. */
-  .ds-logo{display:flex;justify-content:flex-start;padding:0 14px 18px}
-  .ds-logo .wordmark{height:28px}
+  .ds-logo{display:flex;justify-content:flex-start;padding:0 14px 12px}
+  /* 24px, not 28: at 28 the framed block was 157.6 x 50px — 68% of the sidebar's usable
+     width and taller than a nav row, so the one element carrying no information was the
+     biggest thing in the column. At 24 it is 133.3 x 42px and still the clear brand block.
+     The frame metrics come from .wordmark's own base in css/brand.css at this size. */
+  .ds-logo .wordmark{height:24px}
   .ds-profile{margin-top:auto;padding:10px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px}
   .ds-av{width:24px;height:24px;border-radius:50%;background:rgba(var(--accent-rgb),0.25);color:var(--accent-text);font-size:9px;font-weight:600;display:flex;align-items:center;justify-content:center}
   .ds-av.has-photo{background:transparent}

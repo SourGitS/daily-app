@@ -98,7 +98,7 @@ older summary — re-grep before assuming a fact from here is still true if it l
   copies of itself. That is what lets it follow the accent the user actually chose — preset,
   custom, per-training-day or weather — with **no second palette, no geolocation, no timer, no
   setting and no stored key**. There are four placements: `#header-title` (22px, 16px in
-  landscape), `.ds-logo` (28px), `#side-menu-title` (18px) and onboarding (`.ob-center`,
+  landscape), `.ds-logo` (24px), `#side-menu-title` (18px) and onboarding (`.ob-center`,
   `.ob-welcome`). Every one sets a height and lets `aspect-ratio:1877/412` supply the width, so
   a span can neither collapse nor stretch the letters.
 - **The ink is `--accent-text`, never `--accent`.** Every accent the app can hold is tuned to

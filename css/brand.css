@@ -53,13 +53,9 @@
   transform:skewX(-14deg);
   pointer-events:none;
 }
-.ds-logo .wordmark{
-  --wordmark-pad-y:11px;
-  --wordmark-pad-x:15px;
-  --wordmark-stroke:2.5px;
-  --wordmark-radius:9px;
-  margin-inline:7px;
-}
+/* The sidebar mark (.ds-logo, sized in css/budget-home.css) takes the base frame above. It
+   used to scale it up — 11/15px padding, a 2.5px stroke, a 9px radius — for a 28px mark; at
+   24px that made the frame the heaviest line in the sidebar, so the override is gone. */
 #side-menu-title .wordmark{
   --wordmark-pad-y:7px;
   --wordmark-pad-x:10px;
