@@ -1,5 +1,161 @@
 # Daily — Project Reference
 
+## Log › Today, rebuilt — v330, 2026-09-13 (corrected in v331)
+
+**Log › Today is a training BRIEFING and the entry point to the set logger**, answering four
+questions in this order: what am I training now, what should I prepare for, what have I done
+this week, what did I do recently. Longer-term analysis stays in **Stats › Training**, program
+editing in **Log › Program**, body weight in **Stats › Body** — this screen deliberately holds
+none of them.
+
+**`logTodayBrief()` is the ONE canonical training-state reader**, and every training surface
+goes through it — Log › Today's hero, Log › Today's plan card and **Home's session hero**. It
+exists because three different facts were being combined incorrectly:
+
+| fact | what it answers | when it moves |
+|---|---|---|
+| `suggestDay()` | which rotation day is NEXT | advances the moment a session is saved |
+| `S.dayIdx` | which day the logger currently holds | `saveSession()` does NOT move it |
+| a session dated today | what was actually recorded | on save |
+
+So the old overview could say "Session saved", print the name of the **next** rotation and open
+a **third** thing when pressed; browsing another logger day left `S.dayIdx` disagreeing with
+whatever it advertised. The reader resolves four states, in this precedence:
+
+1. **In progress** — a MEANINGFUL unsaved draft. Uses the draft's actual `S.dayIdx`. Outranks a
+   session saved earlier the same day.
+2. **Saved today** — a session dated today with no newer draft. Uses the RECORD's own
+   `sessionType`, figures and `completed` flag, and names the next rotation on a separate line.
+   A partial save says *Saved today*; only the record's canonical `completed` may say
+   *Completed today*. Several sessions today → the latest record, and the count is stated.
+   **A HISTORICAL PLANNED TOTAL IS NEVER RECONSTRUCTED (v331).** A session stores the exercises
+   it performed, its working sets, its duration, its effort and its `completed` flag — it does
+   NOT snapshot how many exercises were planned when it was saved. v330 derived that from the
+   current program at the record's `dayNum`, which is not historical evidence: editing or
+   replacing the program silently rewrote an old partial workout's displayed progress. So a
+   partial save states only what it recorded — **no "1 of 5", no percentage, no progress bar**
+   — and a completed one shows a full progress state from **its own exercise count**, because
+   `completed` is a judgement the record itself makes. Do not add `plannedCount` back, and do
+   not backfill it onto old records or into `saveSession()` to support a presentation.
+   **A draft only outranks a same-day record when it has MOVED since that save (v331).**
+   `saveSession()` clears `wt_setdata` but deliberately leaves the entered sets in `S.setData`
+   so a partial workout can be carried on — so those sets, which are what was just saved, kept
+   reading as a newer draft and the overview said *In progress* the instant you pressed Save.
+   `logDraftTouchedSinceSave()` asks the one question that separates them: is `wt_setdata`
+   there again? Every set edit rewrites it, so its presence IS "the logger has moved". A read,
+   never a write. This was found by the end-to-end save run, not by the in-memory fixtures.
+3. **Ready** — nothing saved, nothing meaningful drafted. Uses `suggestDay()`, and the action
+   opens **exactly** that day.
+4. **No usable exercises** — the selected or suggested day has none. Offers *Set up program →*
+   rather than an empty logger.
+
+**A meaningful draft** is a running session timer, a completed check, an entered weight or rep
+value, a session-only exercise, or a typed note. **Merely opening the logger is not** — it
+initialises one blank working row per exercise, and the old `done>0` test could not tell the
+difference.
+
+`logTodayBrief()` is **PURE**: it writes nothing, seeds nothing, migrates nothing and never
+sorts `S.sessions` in place. `logRecentSessions()` sorts a CLONE for the same reason.
+
+**`logOpenPlannedDay(idx)`, not `selectDay(idx)`.** `selectDay` resets the rest timer,
+dismisses the post-save prompt and writes over whatever is loaded — it means "discard this
+workout and switch days", which is the wrong verb for "open the session the overview just
+described". The new helper initialises the day ONLY when there is nothing meaningful to lose.
+
+**Weight is gone from Log › Today** (`renderLogWeightCard()`, `logTodayWeight()`,
+`#log-weight-input` and every `.lg-weight-*` rule). Log is for performing and reviewing
+workouts; weight stays in Stats › Body, Home's weight card and the post-save prompt, none of
+which changed. **"7-day consistency · 3 / 7 days" is gone** with `.lg-consistency-score`: seven
+training days is not a goal anyone set, so the denominator was an invented judgement. It is a
+factual **Last 7 days** — sessions, days trained, logged time when recorded — over the
+unchanged window of today plus the six preceding local calendar days. No consistency score, no
+readiness score, no weekly target, no missed-workout warning, no recovery advice.
+**"What should I improve?" is gone** too (`renderLogImprovementCard()`,
+`logImprovementSuggestions()`): supported targets now sit beside the exercises they apply to.
+
+Full detail under "Known history" (Log › Today).
+
+## The Finance hub — v329, 2026-09-13
+
+**The destination is called FINANCE, and it holds SIX views:**
+Overview · Week · Month · Bills · Accounts · Yearly, in one `role="tablist"`, one panel each.
+
+**The internal view id is still `budget`.** So are the `bud*` function prefixes, every DOM id
+(`#view-budget`, `#budget-view-tabs`, `bv-*-btn`, `budget-*-view`, `badge-budget`), every
+storage key (`daily_budget`, `daily_budget_ui`, `daily_budget_collapse`, `daily_budget_*_cats`,
+`daily_budget_defaults`, `daily_budget_config`), every Firebase path and the `#budget` route.
+This was a user-facing rename, NOT a namespace rewrite or a data migration, and there is
+deliberately no `#finance` hash — an existing `#budget` link must keep working.
+
+**"Finance" is the PLACE; "budget" is still the concept.** Renamed: the bottom-nav button, the
+sidebar's pinned destination (`NAV_QUICK_LABELS.budget`), the tablist's `aria-label`, Home's
+*Open Finance →* action, the Home Layout editor's per-card `tab` field, and the copy that tells
+a reader where to go ("Add the week in Finance", "Set due date in Finance", "Finance › Week").
+NOT renamed, because the word still means the budgeting concept: weekly budget, over budget,
+budget goal, **Budget setup**, budget categories, the budget CSV export, the budget reminder,
+the AI export's Budget data scope, and Stats' *Budget consistency* card.
+
+**Accounts is the sixth Finance VIEW, not an overlay any more.** It was a full-screen
+`.app-overlay` (`#view-accounts`) with its own `.detail-topbar` and Back button, launched from a
+`.bud-nav-act` button beside the tablist. All of that is gone: the markup moved unchanged into
+`#budget-accounts-view` inside `#view-budget`, there is still exactly ONE copy of
+`#accounts-hero` / `#accounts-chart` / `#accounts-list-head` / `#accounts-list` /
+`#accounts-addform`, and `renderAccountsPage()` is registered through `BUD_VIEWS`.
+`closeAccounts()`, `_acctReturnFocus` and the `#view-accounts` entry in `AI_PEER_OVERLAYS` are
+deleted. **`openAccounts()` survives as the compatibility navigation helper** — a dozen callers
+say it — and now switches to Finance › Accounts instead of showing a layer.
+
+**The Accounts DATA did not move.** `daily_accounts`, the account ids and shapes,
+`ensureAccountsMigrated()`, every total (`accountsNetWorth`, `accountsPayoffPosition`, …), the
+`accounts` Firebase blob registration, the timestamps, the merge behaviour, the balance history
+and the statement fields are all byte-identical. No migration, no seeding, no boot-time write.
+
+**Stats › Finance is unchanged and is still the ANALYSIS surface** — completed weeks and longer
+ranges. Finance › Overview is the current-position and action surface. The two are not the same
+screen and must not converge.
+
+Full rationale under "Known history" (`BUD_VIEWS`, "Accounts is a Finance view").
+
+## Budget Overview — v327, 2026-09-12 (corrected in v328)
+
+**Budget has FIVE views now, and Overview is the first of them and the one a fresh session
+lands on:** Overview · Week · Month · Bills · Yearly, with the Accounts button unchanged beside
+the strip and still OUTSIDE the `role="tablist"`. Overview is the current-position screen —
+what is available this week, what needs a decision, what is due over the next fortnight, where
+the accounts stand, how the month is going — and it leads INTO Week, Bills, Month and Accounts
+to act on any of it. Stats › Finance is untouched and is still where COMPLETED weeks and longer
+ranges are analysed; the Overview only ever describes now.
+
+Three things this established. Full rationale under "Known history" (`BUD_VIEWS`, "Available
+to spend", "Budget › Overview"):
+
+1. **`BUD_VIEWS` is the single source for which Budget views exist** — id, tab button, panel
+   and nav row on one line each. `setBudgetView()` loops it, `navCurrentRow()` reads the row
+   back off it, `setView('budget')` applies the remembered view through it, and
+   `tests/budget-overview.test.cjs` asserts `index.html` carries a button and a panel for every
+   entry and for nothing else. **Accounts is deliberately NOT in it** — it is an overlay with
+   no panel and no tab state, and an entry would fake a selected tab for a panel that does not
+   exist.
+2. **"Available to spend" is defined ONCE, in `budAvailable()`**, with `budWeekMoney()`
+   supplying its four components from the canonical readers for a caller that has no budget
+   inputs on screen. The Week hero (`budRecalc`), Home's Finance check-in and the Overview all
+   go through it — the check-in carried its own copy of the subtraction until this existed.
+   `budPaceText()` and `budForecastPart()` do the same job for the daily-pace line and for the
+   pay-cycle projection's copy, threshold and tone.
+3. **The screen is read-only.** No localStorage key, Firebase path, sync registration,
+   migration or boot write was added, and the one write it can cause is Add expense, through
+   the existing transaction modal and save path. Opening it and switching between all five
+   views produced zero localStorage writes, verified by a before/after diff.
+
+**v328 corrected one thing on that screen**, recorded in full under "Known history": the
+*This month* card's **Open month →** now calls `openBudgetCurrentMonth()`, which resets
+`currentMonthOffset` before switching. It was the plain `setBudgetView('month')`, which
+preserves the browsed month — so after paging back to June, the card describing September
+opened June. Every other way into Month still remembers where you were.
+
+The top-level destination is still called **Budget**; renaming it to Finance is a later
+decision.
+
 ## Budget correction — v323, 2026-09-10
 
 Three v320 prescriptions are SUPERSEDED and must not be reinstated:
@@ -261,6 +417,10 @@ older summary — re-grep before assuming a fact from here is still true if it l
   **Nutrition and Kitchen are gone as top-level views**, merged into Food; `NAV_VIEW_ALIAS` and
   `FOOD_LEGACY_ROUTES` are the only places their names survive. The deck and the bottom nav are
   otherwise untouched by the nav registry.
+- **The Money group leads with Budget › Overview** (`bud-overview`), before This week. It is
+  the current-position screen and This week is where you go to change something once you have
+  read it, so that is the order the group is read in. Every `BUD_VIEWS` entry has a row here
+  and a test asserts it — a view with no row lights nothing in the sidebar.
 - **Two placements in `NAV_TREE` are deliberate, so they do not get "corrected".** *Weekly
   review* sits under **Money** even though it opens `stats.review`: it is a money review in
   practice — its first and largest section is Money — and the group says what the user is
@@ -323,10 +483,11 @@ older summary — re-grep before assuming a fact from here is still true if it l
     Manrope UI / Space Grotesk numeric typography and its existing information geometry.
 - **Log** (was "Train") — **the workout hub**, four sections behind one sub-tab strip
   (`setLogTab()`, `LOG_TABS`): **Today**, **Program**, **Exercises**, **History**.
-  - **Today** lands on an OVERVIEW (`renderLogOverview()`), not the set logger: today's
-    workout hero, then question-shaped cards — weight movement (`renderLogWeightCard()`),
-    consistency (`renderLogConsistencyCard()`), improvement (`renderLogImprovementCard()`) —
-    and the recent sessions. `logOpenSession()`
+  - **Today** lands on an OVERVIEW (`renderLogOverview()`), not the set logger — a training
+    briefing, rebuilt in v330: a state-aware hero from `logTodayBrief()`, **Today's plan** (or
+    **Up next** after a saved session), **Last 7 days** and **Recent sessions**. One mobile
+    stack; two INDEPENDENT desktop columns (hero + plan | last 7 days + recent), the same
+    composition Finance › Overview uses and for the same reason. `logOpenSession()`
     swaps in the logger; `logBackToOverview()` and re-tapping the active Today tab come back.
     `setView('log')` resets `logTodayView` to `'overview'` whenever you arrive from another
     view — that reset lives in setView because it is the only place that can tell a genuine
@@ -389,11 +550,18 @@ older summary — re-grep before assuming a fact from here is still true if it l
   all user-configurable now — see "Known history" below, these used to be hardcoded to
   Francois's specific numbers and were deliberately made dynamic. Credit-card balance tracking,
   comprehensive 8-section CSV export, collapsible sections, monthly/yearly charts.
+  **FIVE views as of v327** — Overview · Week · Month · Bills · Yearly, from `BUD_VIEWS` — and
+  **Overview is where a fresh session lands.** It is the current-position screen: an accent hero
+  stating what is available to spend this week (with Spent / Committed / Saved, the daily pace
+  and Add expense), then Needs attention and Coming up in one desktop column beside Accounts and
+  This month in the other. It computes nothing of its own — see the "Budget › Overview" entry
+  under "Known history" — and it does not use Week's card collapse system. Within a session the
+  tab still returns to whichever view was last open.
   **Week is SEVEN groups as of v323** (see the `BUD_CARDS` entry below for the full history):
   the weekly hero, Spending, **Fixed expenses**, Week plan, Outlook, Close out week, History &
-  tools. **Accounts is one press from every Budget sub-view**, on a labelled button beside the
-  four view tabs — outside the `role="tablist"`, because it is an overlay and not a fifth
-  `budgetView`; see the `.bud-topnav` entry under "Known history". The weekly **spending goal** is the first block INSIDE the Spending card, above the
+  tools. **Accounts is a Finance VIEW as of v329**, a tab inside the `role="tablist"` with a panel of
+  its own — no longer an overlay and no longer a button beside the strip; see the `.bud-topnav`
+  and "Accounts is a Finance view" entries under "Known history". The weekly **spending goal** is the first block INSIDE the Spending card, above the
   breakdown it caps (a self-imposed cap on variable spending, distinct from "money left
   over"): the goal input is behind that card's *Edit goal* button (`budEditMode.vargoal`, same
   convention as everywhere else on the tab), the usual goal is `budDefaults.varGoal`, and each
@@ -403,12 +571,13 @@ older summary — re-grep before assuming a fact from here is still true if it l
   and expands each day into its purchases. See the reconciliation rule below before touching
   either.
 - **Accounts** — net-worth tracking across accounts; added after Budget, migrated from the old
-  savings/CC logs. Reached from the sidebar/hamburger row, from Budget › History & tools, and
-  (v323) from the button beside Budget's view tabs. It is an OVERLAY over whatever was showing:
-  `openAccounts()` changes no view state, so closing it returns to the same Budget sub-view,
-  week and month by doing nothing at all. `openAccounts(from)` records the launcher — defaulting
-  to `document.activeElement`, which covers every entry point without each having to pass itself
-  — and `closeAccounts()` hands focus back when that element is still on screen. An asset can be flagged `saver:true` ("Savers account"): it still counts in
+  savings/CC logs. **It is the sixth FINANCE VIEW as of v329** (`#budget-accounts-view`), not an
+  overlay: a tab in the shared strip, a panel, a nav row and a remembered selection like Month
+  or Bills. Reached from the Finance tab, the Overview's Accounts card, Week › History & tools,
+  Home's net-worth and credit-card cards, Stats › Finance and its evidence screens, and the
+  sidebar / hamburger row — every one of them still says `openAccounts()`, which is now a
+  compatibility navigation helper rather than an overlay opener. The retired overlay shell,
+  its Back button, `closeAccounts()` and `_acctReturnFocus` are gone. An asset can be flagged `saver:true` ("Savers account"): it still counts in
   net worth but is excluded from the **debt payoff position** (`(assets − savers) − debts`),
   which answers "am I covered" rather than "what am I worth".
   **The screen states net worth ONCE, and where it does is deliberate (2026-09-05).** The hero
@@ -954,6 +1123,68 @@ the accent or the theme must go through those, not set `--accent` directly.
   for anyone reloading on a hash. It failed silently in casual testing because the restore only
   fires when the URL actually carries one. Do not move them back down.
 
+- **Log › Today is a briefing, and `logTodayBrief()` is the only thing that decides what it
+  says (v330).** (`logTodayBrief` / `logDraftIsMeaningful` / `logSavedToday` /
+  `logLastOfType` / `logSessionSetCount` / `logOpenPlannedDay` / `logHeroHtml` /
+  `logPlanCardHtml` / `logPlanRowHtml` / `logWeekCardHtml` / `logRecentCardHtml` in
+  `js/app.js`, `.lg-cols` / `.lg-hero-next` / `.lg-plan-sub` in `css/workout.css`.)
+  The state model and the four states are in the header entry above. What belongs here are the
+  traps:
+  - **Home must not compute this a second time.** `renderHome()` read `type(S.dayIdx)` and
+    `S.checked.size` directly, which is exactly how it came to advertise the day loaded in the
+    logger while Log advertised the next rotation, and to show "0 of 8 done" for a session
+    already saved today. It reads `logTodayBrief()` now — same state, same day name, same
+    exercise count, same progress, same saved/active distinction. Home still opens Log ›
+    Today's OVERVIEW (`setView('log')`) and must never bypass it or begin a workout.
+  - **A partial save has an honest denominator.** The brief carries `plannedCount`, derived
+    from the day the RECORD names (`dayNum`), so Home shows "1 of 2 done" for a partial rather
+    than 100% of itself. Best-effort by nature: the program may have changed since.
+  - **`logOpenPlannedDay()` exists so "open this" and "discard that" stay different verbs.**
+    It initialises the advertised day only when `logDraftIsMeaningful()` is false and the
+    logger is not already on it. Continue never re-initialises anything — it just shows the
+    logger, so every entered set, check, timer value, swap, note and session-only exercise
+    survives. (`renderLog()` will add a blank set row for a session-only exercise it has not
+    rendered before; that is the logger's own existing behaviour, not a loss.)
+  - **The plan row is unit-aware through the LOGGER's own readers**, not the overload helper.
+    `poHistoryFor()` is built FOR `poShouldIncrease()` and drops every set without a positive
+    load, so using it for the "Last:" line reported "no history" for bodyweight, timed and
+    assisted movements that plainly had some. The row uses `lastWorkingSetsFor()` (swap-aware,
+    warmups excluded — the same reader the set-row hints use) with `exerciseUnit()` and
+    `fmtLoggedSet()`. A timed hold reads `45s`, a bodyweight set `16 reps`, an assisted set
+    `-10kg × 8`, and `exerciseMetricInfo()`'s `mixed` verdict is reported rather than averaged.
+  - **A target only where the canonical rule supports one**, and only in kilograms where the
+    movement is externally loaded (`exerciseMetricInfo().kind==='load'`). Everything else gets
+    an honest *Last:* and nothing more. The step is `PO_STEP_KG` (2.5), which the post-save
+    `showPOModal()` now also reads — one constant, two printers. **Do not invent a second
+    progression formula**, and do not label every previous result a target.
+  - **`.lg-cols` is two flex stacks becoming a two-column grid at 1024px**, plus a two-column
+    grid in the landscape-phone block. Never a row grid: the plan card is as long as the day
+    has exercises, and Last 7 days beside it would inherit that height.
+  - **`#log-overview` scrolls inside its own column in landscape.** `#view-log` is
+    `overflow:hidden` there and the overview is a plain block child of `#log-sub-today`, so
+    anything taller than the short viewport was simply cut off with no way to reach it — the
+    same treatment Program, Exercises and History already had.
+  - **The session listener refreshes the overview.** `wtAttachRecords(dbRef,'wt_sessions',…)`
+    now re-renders Log › Today when it is the visible section, and Home when Home is. Saved
+    state, Last 7 days and Recent sessions all read `S.sessions`, so a snapshot arriving
+    underneath them went stale. No listener registration, Firebase path, merge rule or
+    timestamp behaviour changed.
+  - **Home's four states are Log's four states, wording included (v331).** `state:'empty'` used
+    to fall through to the `UP NEXT` eyebrow on Home while Log said *No exercises yet*; it now
+    reads `NO EXERCISES YET` / *No exercises configured* / *Set up program*. Home's action still
+    opens Log › Today's OVERVIEW — the overview's own action is what opens Program.
+  - **A hero with nothing to measure against OMITS the progress row and the track**, rather
+    than drawing them at zero: a saved PARTIAL session and an empty training day have no known
+    total. `.hero-flat` closes the 16px bottom margin `.hero-meta` would otherwise leave
+    dangling (the grid's `prog`/`track` rows collapse on their own). Measured at 0px across
+    320 / 375 / 932-landscape / 1440 in both themes.
+  - **The set logger is untouched.** `logTodayView`, `logBackToOverview()`, the restored
+    same-day draft, set values, checks, swaps, session-only exercises, the rest and session
+    timers, partial saves, notes, the post-save weight and effort prompts, the
+    progressive-overload modal, day navigation and `persist()` all behave exactly as before.
+    `setLogTab()` still must not call `scrollIntoView()` — `#view-log` is a `.swipe-panel`
+    inside the transformed `#swipe-deck` — and the hub state must stay declared above the boot
+    block, which restores a `#hash` through `setView()`.
 - **The Log sub-tab strip must not use `scrollIntoView()`.** `#view-log` is a `.swipe-panel`
   inside the transformed `#swipe-deck`. `scrollIntoView()` walks every scrollable ancestor and
   would shove the deck sideways, exposing bare background — the same bug Stats hit. `setLogTab`
@@ -1633,11 +1864,13 @@ the accent or the theme must go through those, not set `--accent` directly.
   `white-space:nowrap` + `text-overflow:ellipsis` block, so a badge appended there is the first
   thing a long merchant name pushes out of view. The Bills calendar shows it too, which is
   correct — it is the same fact about the same charge.
-- **`.bud-topnav` is Budget's pinned top row, and the sticky treatment lives THERE, not on the
-  strip (v323).** `#budget-view-tabs` is still an ordinary `.seg-tabs.seg-fill` with the four
-  real tabs and its `role="tablist"`; the Accounts button is a SIBLING outside that list.
-  Accounts is an overlay with no `budgetView` value, so faking a fifth selected tab — or calling
-  `setBudgetView('accounts')` — would put a tablist into a state no tab panel answers.
+- **`.bud-topnav` is Finance's pinned top row, and the sticky treatment lives THERE, not on the
+  strip (v323).** `#budget-view-tabs` is a `.seg-tabs.seg-scroll` holding all SIX tabs inside
+  one `role="tablist"` (v329). There is no sibling launcher any more: Accounts had no
+  `budgetView` value while it was an overlay, which is why it sat outside the list; it has one
+  now, with a panel and a nav row, so it is an ordinary tab. The wrapper survives the launcher's
+  removal because the sticky + bleed treatment lives on it rather than on the strip, and the
+  landscape block offsets `.bud-compact-nav` against its height.
   `.seg-tabs`' own `position:sticky` and bleed box-shadow move up to the wrapper (a strip that
   pinned alone would let the button scroll away beside it), and the landscape block's
   `height:var(--bud-switch-h)`, drop shadow and `::before` backdrop moved with them — the
@@ -1645,12 +1878,18 @@ the accent or the theme must go through those, not set `--accent` directly.
   .seg-tabs` carries ID specificity on purpose, so it beats both the shared control's desktop
   rule and the landscape block wherever they sit in the file. On desktop the 760px cap is on the
   wrapper, so Accounts ends on the line the cards start on.
-  **The row WRAPS rather than letting the strip shrink**, and that is not cosmetic: `.seg-fill`'s
-  buttons are `flex:1 0 auto` and never shrink, so a strip allowed below its content width does
-  not ellipsise — it spills straight over the button beside it (seen at 320px, which is what a
-  375px phone becomes at 120% zoom). A `min-width:205px` on the strip turns that into a measured
-  wrap instead of a guessed breakpoint; below ~340px the button takes a second row at full touch
-  height. Above that it is one row at every width.
+  **The strip SCROLLS as of v327, and it has to.** It was `.seg-fill`, whose buttons are
+  `flex:1 0 auto` and never shrink — so a strip allowed below its content width does not
+  ellipsise, it spills over its neighbour. Four labels fitted a 375px phone; six do not, and
+  `.seg-scroll` is the app's existing answer to that (Stats' six tabs). Every label keeps its
+  full size and every touch target its full height; `setBudgetView` reveals the selected tab
+  with `segScrollToTab`, never `scrollIntoView` — `#view-budget` is a `.swipe-panel` inside the
+  transformed deck.
+  **`flex:1 1 0` on the strip stays** (`min-width:0` since v329, when the strip became the row's
+  only child): zero basis is what lets it take exactly the row it is given and scroll inside
+  itself, rather than overflowing the panel at the width of six labels. Measured with no page
+  overflow at 320 / 375 / 390 / 414 / 720 / 932-landscape / 1024 / 1440; the strip scrolls
+  within itself at 320 and 375 and fits outright from 390 up.
   **`.bud-sec` is a section INSIDE a card and is NOT the card collapse.** `.bud-toggle` shuts a
   whole card and persists to `daily_budget_collapse`; `.bud-sec`'s open set (`_budSecOpen` /
   `budSecApply()`) is in memory, so a re-render restores it and a reload starts from the
@@ -1670,6 +1909,154 @@ the accent or the theme must go through those, not set `--accent` directly.
   against the wanted list and returns early when they match, because re-appending a node that is
   already in place still detaches and re-inserts it, which drops focus out of a budget input
   mid-typing. Keep that check.
+- **`BUD_VIEWS` is the single source for which FINANCE views exist (v327, six as of v329).**
+  One ordered list beside `budgetView` in `js/app.js`, `{id, btn, panel, row, render}` per view,
+  in the order Overview · Week · Month · Bills · Accounts · Yearly. Before it the same facts
+  lived in four hand-written places inside `setBudgetView` alone — a `segSetOn` call, a
+  `classList.toggle` call, a render call and a literal `{week:'bud-week', …}` map in
+  `navCurrentRow()` — which is how a view gets added everywhere except the one list nobody
+  remembered. `setBudgetView()` loops it; `navCurrentRow()` does `BUD_VIEWS.find`;
+  **`budRenderView()` dispatches through `render`**, so adding a view is still ONE line rather
+  than a line here and a branch in `setBudgetView`;
+  `tests/budget-overview.test.cjs` asserts `index.html` has a button and a panel for every
+  entry AND that no `bv-*-btn` exists that the registry has never heard of.
+  **`render` is a NAME, not a function reference**, because the test evaluates this array in a
+  bare VM where a reference would not resolve. Overview and Week both name `renderBudgetTab`:
+  it refreshes the week's static `#sav-amount` / `#week-notes` and renders the Overview from its
+  own tail, so one call serves the pair.
+  **ACCOUNTS IS IN IT AS OF v329**, and this file used to say the opposite for a good reason —
+  it was an overlay with no panel and no tab state, so an entry would have faked a selected tab
+  for a panel that did not exist. It has all three now. Nothing else may be added on the old
+  terms: a `BUD_VIEWS` entry means a real tab, a real panel and a real nav row.
+  **`setView('budget')` now calls `setBudgetView(budgetView)`** instead of `renderBudgetTab()`
+  alone. The old call kept the WEEK's static inputs in step with `budgetData` (the invariant
+  above `budWriteFields`) but left the VISIBLE panel to whatever `setBudgetView` had last
+  toggled — fine while Week was the default and the first thing rendered, wrong the moment a
+  session can start on Overview or a deep link sets `budgetView` before arriving
+  (`openBudgetWeekFromStats` does exactly that). `setBudgetView('overview')` calls
+  `renderBudgetTab()`, which renders the week AND, from its own tail, the Overview — so the
+  static-input invariant is preserved whichever view is showing, and every existing "budget data
+  moved" caller (a transaction save, a cloud snapshot, a category edit) refreshes the Overview
+  without fifteen call sites having to learn about a second screen.
+  **`budgetView` starts on `'overview'` and is still IN MEMORY.** A stored default would be a
+  boot-time write, the `_bootPhase` trap in AGENTS.md, for a preference worth nothing across
+  sessions. Within a session the tab returns to the last-used view, which is what `setView`
+  restores.
+- **Accounts is a Finance VIEW, not an overlay (v329).** It was a full-screen `.app-overlay`
+  (`#view-accounts`) with a `.detail-topbar`, a `data-back="closeAccounts"` button and a
+  `.bud-nav-act` launcher beside the tablist. The markup MOVED — unchanged — into
+  `#budget-accounts-view` inside `#view-budget`, so there is still exactly ONE `#accounts-hero`,
+  `#accounts-chart`, `#accounts-list-head`, `#accounts-list` and `#accounts-addform`, and ONE
+  `renderAccountsPage()`, now registered through `BUD_VIEWS`. Do not build a second renderer or
+  a second copy of that markup.
+  **Retired with the overlay, do not bring any of it back:** `closeAccounts()`,
+  `_acctReturnFocus`, `.bud-nav-act` and its CSS, the `#view-accounts` entry in
+  `AI_PEER_OVERLAYS`, `setView()`'s explicit close, `navGo`'s `viewId==='accounts'` branch, the
+  `navCurrentRow()` / `navCurrentQuick()` overlay branches, and the three `#view-accounts` CSS
+  rules (the desktop back-button hide in `budget-home.css`, and the landscape overlay padding
+  and canvas cap in `kitchen-extras.css` — `#view-budget` covers the chart now). A test asserts
+  none of them returns, including in the stylesheets.
+  **`openAccounts()` STAYS, as the compatibility navigation helper.** A dozen callers say it —
+  the Overview's Accounts card, Week's History & tools, Home's net-worth and credit-card cards,
+  Stats › Finance and both evidence screens, the sidebar and hamburger rows, generated action
+  buttons — and none of them had to change. It assigns `budgetView='accounts'` FIRST, then calls
+  `setView('budget')` from another destination (so the history entry exists and Back returns to
+  it) or `setBudgetView('accounts')` from inside Finance (so no intermediate panel is painted
+  and no history entry is pushed for what is really a tab switch). It still takes and ignores
+  the launcher argument its callers pass.
+  **Nothing about the account DATA moved.** `daily_accounts`, the ids and shapes,
+  `ensureAccountsMigrated()`, `loadAccounts()` / `saveAccounts()`, the `accounts` Firebase blob
+  registration, the totals and every edit path are byte-identical. No migration, no seeding, no
+  boot-time write, and browsing the panel writes nothing.
+  **Two listeners changed, and only in how they ask the question.** The account sync listener
+  tests `S.view==='budget' && budgetView==='accounts'` instead of probing an overlay's
+  `style.display`, and `saveAccounts()` rebuilds the Overview's account card while Finance is
+  the live view — a string build that writes nothing, so an edit made on the Accounts tab shows
+  in the Overview immediately rather than only on its next render.
+  **`.accounts-wrap` is in normal flow now**: `max-width:1120px;margin:0`, LEFT-aligned like
+  every other Finance view. It was `max-width:520px;margin:0 auto` plus the overlay's inline
+  padding, which put a centred column in the middle of a canvas whose every other screen starts
+  at the content edge.
+- **"Available to spend" is defined ONCE, and three screens read it (v327).**
+  `budAvailable(income, committed, spent, saved)` is the whole definition: income − committed −
+  spent − saved, and **NULL rather than zero when no income has been entered**, because "nothing
+  left" and "nothing told us yet" are different answers and only the second may not be judged,
+  coloured or paced. `budWeekMoney(d, key)` supplies the four components from the canonical
+  readers (`weekIncome`, `weekFixedTotal`, `weekVarTotal`, `weekSavedAmt`) for a caller with no
+  budget inputs on screen; `budRecalc` builds the same four off the LIVE DOM values merged over
+  the saved week and hands them to the same function. Home's Finance check-in had carried its
+  own copy of the subtraction — and read `sav_amount` directly instead of going through
+  `weekSavedAmt()` — until this existed.
+  `budPaceText(available, daysLeft)` is the daily-pace line on the same footing: one rule, and
+  empty when there is nothing to pace (no income figure, exactly nothing left, or no days left).
+  `budForecastPart(f)` is the projection half of Outlook — figure, unit, payday cell, bills cell
+  and the no-income caption — returning `{tone, sum, html}` so the caller re-derives neither the
+  tone nor the collapsed-header figure. `BUD_TIGHT_UNDER` (50) is the one number that decides
+  "tight", read by that function and by the Overview's Needs attention card.
+  **None of the canonical readers changed.** 96 finance, schedule, account and sync helpers were
+  byte-compared against the previous commit and are identical once comments are stripped.
+- **Budget › Overview is a current-position screen, not a second dashboard (v327).**
+  (`budOv*` / `renderBudgetOverview` in `js/app.js`, `.bov-*` in `css/budget-home.css`,
+  `#budget-overview-view` in `index.html`.) One full-width hero, then two INDEPENDENT vertical
+  stacks — the composition Home's Dashboard settled on, for the same reason: Needs attention
+  holds one to three rows and Coming up holds a fortnight, so a row grid would make the short
+  card carry the tall one's slack. `align-items:start`, no `flex:1`, no shared row height.
+  On a phone the two wrappers simply stack, which gives the required reading order — position →
+  attention → coming up → accounts → month — from DOM order alone, with no CSS `order` and no
+  second copy of the markup. Measured at 1440: main column 590×169 and 590×581, side column
+  491×216 and 491×217, none stretched.
+  - **The hero is ONE `.hero-panel` cell**, so it follows the accent and carries its verdict in
+    a `.tstat` chip like every other hero. Its figure is `budWeekMoney()`'s `available`, its
+    sub-line is `budPaceText()`, and the Spent / Committed / Saved cells are the shared
+    `statsSplit()`. **It says out loud that this is an allocation and not a bank balance** — a
+    hero figure with a dollar sign on it is read as a balance unless the card says otherwise.
+    With no income entered the figure is an em dash and a *Set up income & bills* action leads
+    to `openBudgetSetup()`; `$0 available` is never presented as a result.
+  - **Needs attention shows at most three items and invents no score.** Each reads ONE canonical
+    fact and says what it means — an overdue tracked statement (`acctDueDays`), a projected
+    shortfall or a tight position (`payCycleForecast`, at `BUD_TIGHT_UNDER`), a bill or
+    statement due inside three days (`billOccurrences`), spending past the week's own goal
+    (`getWeekVarGoal`), a missing current-week income figure, and undated recurring charges
+    (`billsUndatedCount`). **RED is reserved for a state that has actually gone wrong** — an
+    overdue statement and a projected shortfall, and only those two — while amber is for close,
+    incomplete or unknown; an ordinary bill landing next week is neither and belongs to Coming
+    up. Nothing urgent is a real answer and is stated as one, rather than leaving a card-shaped
+    hole that reads as something failing to load.
+  - **Coming up is the shared projection plus a TRUNCATED preview of the same fortnight the
+    Bills calendar owns.** `budTimelineWindow()` and `billOccurrences()` unchanged, drawn with
+    `billRowHtml()`, three rows shown and the rest counted — but **the TOTAL is every
+    occurrence in the window**, never the three. It is an upcoming-payment total and the card
+    says so: the weekly hero above holds ONE week of accrued commitment, so this figure is never
+    subtracted from anything.
+  - **Accounts and This month are read-only summaries.** Accounts leads with `accountsNetWorth()`
+    and carries assets, debts, the `accountsPayoffPosition()` verdict as a chip and the nearest
+    tracked statement; **no account balance is folded into the weekly available-to-spend
+    figure**. This month reads `monthRecordedKeys` / `monthVariableTotal` / `weekSavedAmt` and
+    the existing like-for-like `monthSpendComparison(…, isCurrent=true)`, so a partial current
+    month is never compared against a complete previous one. Its biggest-category line comes
+    from `monthSpendBreakdown(…, {register:false})` — **the new option skips the evidence
+    registration**, because those drill-down records belong to Budget › Month, the screen that
+    can actually open one — and it refuses to name a category at all when the month's biggest
+    line is the legacy `__uncategorised__` aggregate. No chart.
+    **Its Open month → is `openBudgetCurrentMonth()`, and that is the one Month entry point
+    that resets `currentMonthOffset` (v328).** The card is LABELLED "This month" and states
+    `getMonthDate(0)`'s figures, so its action has to open that month; with the ordinary
+    `setBudgetView('month')` it preserved the browsed index, and after paging back to June the
+    September card opened June. **Every other route into Month keeps the remembered offset,
+    deliberately** — the Month tab, History & tools → Month, Money › Month in the nav,
+    `returnFromSourceView()` and `setView('budget')`'s restore all mean "the Month workspace"
+    rather than one named month, and a control that silently rewound your position is the worse
+    bug. The helper is two lines, in memory exactly like `currentWeekIdx`, and it does NOT call
+    `setView()` — it is only ever pressed from inside Budget, unlike `openBudgetWeek()` and its
+    neighbours. `tests/budget-overview.test.cjs` runs it against a stubbed `setBudgetView` to
+    prove the reset lands BEFORE the switch, and asserts the other five entry points were not
+    quietly converted to it.
+  - **It does NOT use Budget Week's collapse system**, and its cards are not in `BUD_CARDS`.
+    These are short summaries; a disclosure on a four-line card hides the thing you came for,
+    and a second set of keyed collapse state is one more place for a stale preference to live.
+    `BUD_CARDS` stays dedicated to the Week layout — a test asserts no `bov-` id appears in it.
+  - **Read-only, and a test asserts it**: the source block contains no `localStorage`, `lsSave`,
+    `SYNC_BLOB_REG`, `firebase`, `schemaVersion`, `Date.now()`, `updatedAt` or `_bootPhase`.
 - **Budget card collapse state is keyed by `data-bud-key`**, not by card index (it was
   index-based, which mis-applied the saved state whenever the card count changed — the due
   banner and previous-weeks list render `.card`s conditionally). Any new card in
@@ -1696,8 +2083,9 @@ the accent or the theme must go through those, not set `--accent` directly.
   must not come back: `.stats-tab-row`/`.stats-tab-btn`, `.log-tab-row`/`.log-tab-btn`,
   `.nut-tabs`/`.nut-tab`, `.kit-subnav`/`.kit-subnav-btn` and Budget's inline-styled
   `.sub-toggle`. No two of them agreed on radius, padding, gap, type or the selected treatment.
-  Anatomy: `.seg-tabs` (the track) + `.seg-fill` (buttons fill it — Log, Nutrition, Kitchen,
-  Budget) or `.seg-scroll` (buttons scroll — Stats' six do not fit a phone), and the selected
+  Anatomy: `.seg-tabs` (the track) + `.seg-fill` (buttons fill it — Log, Food) or
+  `.seg-scroll` (buttons scroll — Stats' six and, since v327, Budget's five plus the Accounts
+  button do not fit a phone), and the selected
   button carries **`.on`**, the same class `.stats-seg` and `.wkr-tabs` already used. Selection
   is FILL plus WEIGHT, never an accent tint: the default accent is a neutral grey that is
   indistinguishable from the track at low alpha. In JS, `segSetOn(btn, on)` writes the class and

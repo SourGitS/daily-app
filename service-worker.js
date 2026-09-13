@@ -252,7 +252,59 @@
 // v326: tighten the projection copy to "estimated left before your next pay" (or estimated
 // shortfall), and retire the coloured left-rail declarations that never rendered. The figure
 // remains the single green / amber / red state signal. Presentation only.
-const CACHE_NAME = 'daily-v326';
+// v327: Budget gains an OVERVIEW as its first view and its landing screen -- Overview / Week /
+// Month / Bills / Yearly, with the Accounts button unchanged beside them and outside the
+// tablist. It answers what is available this week, what needs attention, what is due over the
+// next fortnight, where the accounts stand and how the month is going, then leads into the
+// screens that can change any of it. Read-only: no localStorage key, Firebase path, sync
+// registration, migration or boot write, and the one write it can cause is the existing Add
+// expense modal. "Available to spend" is now defined once, in budAvailable(), which the Week
+// hero, Home's Finance check-in and the Overview all go through; the pay-cycle projection's
+// copy and tone come from one shared budForecastPart(). The view strip scrolls (.seg-scroll)
+// because five labels plus Accounts do not fit a phone at the filling control's width.
+// v328: one correction to that Overview. The "This month" card always describes the CURRENT
+// calendar month, but its Open month action was the plain setBudgetView('month'), which
+// preserves the browsed month index -- so after paging back to June the September card opened
+// June. It calls a new openBudgetCurrentMonth() instead, which resets the index first. Every
+// other way into Month (the tab, History & tools, Money > Month, returning from a source view,
+// ordinary movement between Budget views) still remembers where you were, deliberately.
+// In-memory navigation only: no storage, migration, Firebase path or calculation changed.
+// v329: the destination is FINANCE, and Accounts is one of its views. The bottom nav, the
+// sidebar's pinned strip, the quick-nav label and "Open Budget" all say Finance now; the
+// budgeting CONCEPT keeps its own name (weekly budget, over budget, budget goal, Budget setup,
+// budget categories, budget CSV, budget reminder), and the internal view id, the bud* prefixes,
+// every DOM id, every storage key and the #budget route are unchanged -- this is a user-facing
+// rename, not a data migration. Accounts stops being a full-screen overlay (#view-accounts,
+// its top bar, its Back button and closeAccounts() are gone) and becomes the sixth registered
+// Finance view: Overview - Week - Month - Bills - Accounts - Yearly, one role="tablist", one
+// panel each, remembered within a session like any other. openAccounts() survives as the
+// compatibility helper every existing caller still reaches it through. The accounts store, its
+// ids, its sync registration, its Firebase path and every calculation are untouched.
+// v330: Log > Today is a training BRIEFING, and one canonical reader answers what it shows.
+// logTodayBrief() resolves Ready / In progress / Saved today / No usable exercises from
+// suggestDay(), S.dayIdx, the draft and the saved record, so the hero can no longer say
+// "Session saved", print the name of the NEXT rotation and open a third thing when pressed --
+// and Home's session hero reads the same helper instead of a second calculation of its own.
+// The overview is now a state-aware hero, Today's plan (per-exercise last result in the
+// exercise's OWN unit, with a progression target only where poShouldIncrease supports one),
+// a factual Last 7 days -- the "3 / 7 days" score is gone, seven training days was never a
+// goal anyone set -- and Recent sessions. Weight left Log entirely; it stays in Stats > Body,
+// Home's weight card and the post-save prompt. The set logger, its drafts, timers, swaps,
+// session-only exercises, partial saves and sync are untouched.
+// v331: two correctness fixes to that overview. A saved session records its exercises, its
+// working sets, its duration and its `completed` flag -- it does NOT store how many exercises
+// were PLANNED at the time. Reconstructing that from the current program at the record's
+// dayNum meant editing the program silently rewrote an old partial workout's displayed
+// progress, so it is gone: a partial save now states only what it recorded (no "1 of 5", no
+// percentage, no bar), and only a record whose `completed` flag is true shows a full progress
+// state, from its own exercise count. Home's empty state also stops falling through to
+// UP NEXT -- it reads NO EXERCISES YET / "No exercises configured" / Set up program, matching
+// Log. And the end-to-end save check found one more: saveSession() clears wt_setdata but
+// leaves the entered sets on screen, so the sets that PRODUCED today's record kept reading as
+// a newer draft and the overview said "In progress" the instant you pressed Save. A draft now
+// outranks a same-day record only when it has moved since (wt_setdata present again).
+// No session schema, storage key, migration, Firebase path or sync helper changed.
+const CACHE_NAME = 'daily-v331';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

@@ -191,24 +191,37 @@
     <!-- BUDGET VIEW -->
     <section id="view-budget" class="swipe-panel">
       <button id="source-return-bar" class="source-return-bar hidden" type="button" onclick="returnFromSourceView()"></button>
-      <!-- Toggle pill, plus the Accounts shortcut beside it. Accounts is an OVERLAY, not a
-           fifth budgetView: it has no tab state, so it sits OUTSIDE the role="tablist" as an
-           ordinary button rather than faking a selected fifth tab. The four real tabs keep
-           their selected state underneath it, and closing the overlay returns to whichever
-           one was showing. The sticky/bleed treatment .seg-tabs carries everywhere else moves
-           up to this wrapper here, so the strip and the button pin as one row. -->
+      <!-- Finance's SIX views, one tablist, one selected state. Accounts used to be a
+           full-screen overlay launched from a button beside this strip — it is a real Finance
+           view now, with a tab and a panel like every other, so the launcher is gone and the
+           tablist holds all six.
+           SEG-SCROLL, not seg-fill: .seg-fill's buttons are flex:1 0 auto and never shrink, so
+           six labels would spill over each other on a phone rather than ellipsising. Stats'
+           six tabs already scroll for exactly this reason — it is the app's existing answer,
+           and it keeps every label at full size and every touch target at full height.
+           BUD_VIEWS in js/app.js is the single source for which views exist; every button here
+           must have an entry there and vice versa (tests/budget-overview.test.cjs). -->
       <div class="bud-topnav" id="bud-topnav">
-        <div class="seg-tabs seg-fill" id="budget-view-tabs" role="tablist" aria-label="Budget views">
-          <button id="bv-week-btn" class="on" role="tab" aria-selected="true" onclick="setBudgetView('week')">Week</button>
-          <button id="bv-month-btn" role="tab" aria-selected="false" onclick="setBudgetView('month')">Month</button>
-          <button id="bv-bills-btn" role="tab" aria-selected="false" onclick="setBudgetView('bills')">Bills</button>
-          <button id="bv-year-btn" role="tab" aria-selected="false" onclick="setBudgetView('year')">Yearly</button>
+        <div class="seg-tabs seg-scroll" id="budget-view-tabs" role="tablist" aria-label="Finance views">
+          <button id="bv-overview-btn" class="on" role="tab" aria-selected="true" aria-controls="budget-overview-view" onclick="setBudgetView('overview')">Overview</button>
+          <button id="bv-week-btn" role="tab" aria-selected="false" aria-controls="budget-week-view" onclick="setBudgetView('week')">Week</button>
+          <button id="bv-month-btn" role="tab" aria-selected="false" aria-controls="budget-month-view" onclick="setBudgetView('month')">Month</button>
+          <button id="bv-bills-btn" role="tab" aria-selected="false" aria-controls="budget-bills-view" onclick="setBudgetView('bills')">Bills</button>
+          <button id="bv-accounts-btn" role="tab" aria-selected="false" aria-controls="budget-accounts-view" onclick="setBudgetView('accounts')">Accounts</button>
+          <button id="bv-year-btn" role="tab" aria-selected="false" aria-controls="budget-year-view" onclick="setBudgetView('year')">Yearly</button>
         </div>
-        <button type="button" class="bud-nav-act" id="bud-accounts-btn" onclick="openAccounts(this)" title="Balances, net worth and debt position">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>
-          <span>Accounts</span>
-        </button>
       </div>
+
+      <!-- OVERVIEW -->
+      <!-- Budget's current-position screen and its landing view: what is available this week,
+           what needs attention, what is due over the next fortnight, where the accounts stand
+           and how the month is going. Entirely rendered by renderBudgetOverview() — it holds
+           no inputs and no static figures, so unlike the week below there is nothing here that
+           has to be kept in step with budgetData while another view is showing.
+           Visible by default because budgetView starts on 'overview'; the week's own div
+           therefore carries .hidden in the markup, and setBudgetView() owns both from then on.
+           This is a read-only summary: opening it writes nothing. -->
+      <div id="budget-overview-view" role="tabpanel" aria-labelledby="bv-overview-btn"></div>
 
       <!-- WEEK VIEW -->
       <!-- Six groups, in the order the tab is meant to be read: the weekly hero (the one
@@ -216,7 +229,7 @@
            Outlook until next pay, Close out week, then History &amp; tools. BUD_CARDS in
            js/app.js is the single source for where each of the six actually sits — source
            order below is the MOBILE order only. -->
-      <div id="budget-week-view">
+      <div id="budget-week-view" class="hidden" role="tabpanel" aria-labelledby="bv-week-btn">
         <!-- Compact week navigation. Hidden everywhere except short landscape, where the
              weekly hero is far too tall to pin — this strip is what stays reachable while the
              cards scroll, so changing week doesn't mean scrolling back to the top. The hero
@@ -401,7 +414,7 @@
                clears the Budget reminder badge and releases the week-in-review summary. Named
                and explained for that. -->
           <button onclick="budSaveWeekExplicit()" style="width:100%;padding:12px;background:var(--header);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer" id="save-week-btn">Finish week</button>
-          <div id="save-week-hint" style="text-align:center;color:var(--muted);font-size:11px;line-height:1.45;padding:8px 4px 0">Your entries save automatically. Finishing marks the week reviewed — it clears the Budget reminder and unlocks this week's summary. You can still edit it afterwards.</div>
+          <div id="save-week-hint" style="text-align:center;color:var(--muted);font-size:11px;line-height:1.45;padding:8px 4px 0">Your entries save automatically. Finishing marks the week reviewed — it clears the budget reminder and unlocks this week's summary. You can still edit it afterwards.</div>
           <div id="save-week-msg" style="display:none;text-align:center;color:var(--green);font-size:13px;font-weight:500;padding:8px 0">Week finished &#10003;</div>
         </div>
 
@@ -465,7 +478,7 @@
       </div>
 
       <!-- MONTH VIEW -->
-      <div id="budget-month-view" class="hidden">
+      <div id="budget-month-view" class="hidden" role="tabpanel" aria-labelledby="bv-month-btn">
         <div class="week-nav" style="margin-bottom:16px">
           <button class="week-nav-btn" onclick="changeMonth(-1)">&#8249;</button>
           <div class="week-label"><div class="week-label-main" id="month-label-main">&#8212;</div><div class="week-label-sub" id="month-label-sub">&#8212;</div></div>
@@ -483,10 +496,29 @@
       <!-- Forward planning only: every row is generated from a recurring charge's saved
            dueDate + cycle at render time. Nothing here writes back — see the note above
            catOccurrencesBetween() in js/app.js. -->
-      <div id="budget-bills-view" class="hidden"></div>
+      <div id="budget-bills-view" class="hidden" role="tabpanel" aria-labelledby="bv-bills-btn"></div>
+
+      <!-- ACCOUNTS VIEW -->
+      <!-- Assets, debts and net worth. This was a full-screen .app-overlay (#view-accounts)
+           with its own top bar and Back button, launched from a button beside the tab strip.
+           It is a normal Finance panel now: the same single copy of #accounts-hero,
+           #accounts-chart, #accounts-list-head, #accounts-list and #accounts-addform, rendered
+           by the same renderAccountsPage() through BUD_VIEWS, reached by the same
+           openAccounts() from every existing caller. No overlay shell and no Back button — the
+           Finance tabs are the way out, like every other view here.
+           The store, its ids, its sync registration and every calculation are untouched. -->
+      <div id="budget-accounts-view" class="hidden" role="tabpanel" aria-labelledby="bv-accounts-btn">
+        <div class="accounts-wrap">
+          <div id="accounts-hero"></div>
+          <div id="accounts-chart"></div>
+          <div id="accounts-list-head"></div>
+          <div id="accounts-list"></div>
+          <div id="accounts-addform"></div>
+        </div>
+      </div>
 
       <!-- YEARLY VIEW -->
-      <div id="budget-year-view" class="hidden">
+      <div id="budget-year-view" class="hidden" role="tabpanel" aria-labelledby="bv-year-btn">
         <!-- Same nav pattern as the week and month views, which this previously lacked —
              it was pinned to a rolling 12 months with no way to see a different year. -->
         <div class="week-nav" style="margin-bottom:16px">
@@ -1148,7 +1180,7 @@
     <button class="detail-action" onclick="closeBudgetEditor()">Done</button>
   </div>
   <div class="budget-setup-wrap">
-    <p class="budget-setup-intro">Set the structure behind Budget here. Weekly entries stay in the Budget tab; changes here update future planning without rewriting saved history.</p>
+    <p class="budget-setup-intro">Set the structure behind your budget here. Weekly entries stay in Finance › Week; changes here update future planning without rewriting saved history.</p>
 
     <section class="budget-setup-section">
       <div class="budget-setup-heading"><span>Income &amp; pay</span><small>Expected each week</small></div>
@@ -1190,20 +1222,8 @@
   </div>
 </div>
 
-<!-- ACCOUNTS PAGE (assets & debts; net worth) -->
-<div id="view-accounts" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
-  <div class="detail-topbar">
-    <button class="back-btn" data-back="closeAccounts" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
-    <span class="detail-title">Accounts</span>
-  </div>
-  <div class="accounts-wrap" style="padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 40px)">
-    <div id="accounts-hero"></div>
-    <div id="accounts-chart"></div>
-    <div id="accounts-list-head"></div>
-    <div id="accounts-list"></div>
-    <div id="accounts-addform"></div>
-  </div>
-</div>
+<!-- Accounts is no longer here: it is a Finance view (#budget-accounts-view inside
+     #view-budget), not a peer overlay. Its markup, its ids and its renderer moved unchanged. -->
 
 <!-- DAILY + AI — context export builder. Peer destination of Accounts: an .app-overlay so it
      inherits the shared back-button/edge-drag dismissal and the landscape-phone shell. -->
@@ -1279,10 +1299,12 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg>
     Home
   </button>
+  <!-- The DESTINATION is Finance; the internal view id, the badge id and the #budget route
+       stay 'budget' on purpose — this is a user-facing rename, not a data migration. -->
   <button class="nav-btn" data-view="budget" onclick="setView('budget')">
     <span class="nav-badge" id="badge-budget" style="background:#f59e0b"></span>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h2M10 15h4"/></svg>
-    Budget
+    Finance
   </button>
   <button class="nav-btn" data-view="log" onclick="setView('log')">
     <span class="nav-badge" id="badge-log" style="background:var(--danger)"></span>

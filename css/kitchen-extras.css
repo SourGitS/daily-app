@@ -734,6 +734,11 @@
 .hero-play-btn:focus-visible{outline:2px solid #fff;outline-offset:3px}
 .hero-workout-title{font-size:30px;font-weight:800;letter-spacing:-.025em;color:#fff;margin:0 0 4px;grid-area:title}
 .hero-meta{font-size:14px;font-weight:600;color:rgba(255,255,255,.75);margin:0 0 16px;grid-area:meta}
+/* No progress row and no track: a saved PARTIAL session and an empty training day have no
+   known total to measure against, so the hero omits both rather than drawing an empty bar.
+   The grid's prog/track rows collapse on their own; what is left is .hero-meta's 16px bottom
+   margin with nothing under it, which this closes. */
+.hero-workout-card.hero-flat .hero-meta{margin-bottom:0}
 .hero-progress-row{display:flex;justify-content:space-between;margin-bottom:8px;grid-area:prog}
 @media (min-width:1024px){.hero-progress-row{margin-bottom:6px}}
 .hero-progress-text,.hero-progress-pct{font-size:13px;font-weight:700;color:rgba(255,255,255,.85)}
@@ -1824,8 +1829,11 @@
      rather than inheriting the padding on #app. */
   /* #view-stats left this list when it became a .swipe-panel: the deck panels take their
      landscape padding from the .swipe-panel rule in layout.css, and the !important side
-     insets here would have given Stats a gutter none of its four neighbours has. */
-  .app-overlay,#view-settings,#view-plans,#view-notes,#view-accounts,
+     insets here would have given Stats a gutter none of its four neighbours has.
+     #view-accounts left it for the same reason when Accounts became a Finance VIEW — its
+     panel is inside #view-budget and takes that panel's padding, so an !important inset here
+     would have given it a gutter none of its five neighbours has. */
+  .app-overlay,#view-settings,#view-plans,#view-notes,
   #view-exercise-library,#view-exercise-detail{
     padding-left:calc(14px + env(safe-area-inset-left,0px)) !important;
     padding-right:calc(14px + env(safe-area-inset-right,0px)) !important;
@@ -1864,7 +1872,8 @@
      A chart with no height collapses; one sized in vh on a 390px viewport is barely a strip.
      A real px cap instead. Chart.js is also told to drop its aspect ratio at this size in
      js/app.js, or a wide canvas would compute a very tall one. */
-  #view-stats canvas,#view-accounts canvas,#view-budget canvas{max-height:200px !important}
+  /* #view-budget covers the Accounts chart now that Accounts is a panel inside it. */
+  #view-stats canvas,#view-budget canvas{max-height:200px !important}
   #accounts-chart canvas{max-height:180px !important}
   /* Range and series controls stay full-size tap targets and wrap rather than compressing. */
   .nw-range-row,.nw-series-row{flex-wrap:wrap;gap:6px}

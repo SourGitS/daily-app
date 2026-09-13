@@ -15,18 +15,27 @@ Four main areas plus supporting screens:
 - **Home** — dashboard of independently show/hideable widget cards (session hero, budget
   snapshot, calorie ring, net worth, notes, habits, etc.)
 - **Log** — the workout hub: four sections behind one sub-tab strip (Today / Program /
-  Exercises / History). Today lands on an overview and opens the set logger from it; Program
-  holds the live split plus its saved snapshots; Exercises and History are the screens that
-  used to be full-screen overlays. See the Weekly Review / Workout hub notes below and
-  `CLAUDE.md` for the traps.
+  Exercises / History). **Today is a training BRIEFING** — a state-aware hero, Today's plan (or
+  Up next), Last 7 days and Recent sessions — and it opens the set logger from there.
+  `logTodayBrief()` is the ONE canonical training-state reader behind it, shared with Home's
+  session hero. Program holds the live split plus its saved snapshots; Exercises and History
+  are the screens that used to be a separate tab and two full-screen overlays. Body weight is
+  NOT in Log — it lives in Stats › Body, Home's weight card and the post-save prompt. See the
+  Workout hub notes below and `CLAUDE.md` for the traps.
 - **Stats** — overview/review/training/body/nutrition/finance sub-tabs, charts, PRs.
 - **Food** — one destination for what is eaten, cooked, bought and held: Today (the day log),
   Recipes, Shopping, Pantry, plus Food library and Nutrition Review as supporting screens.
   This is the former **Kitchen** and **Nutrition** tabs merged (v321) — see the Food hub
   section below before touching navigation, and note that `nut*`/`kit*` functions, DOM ids and
   storage keys all kept their names.
-- **Budget** — weekly income/expense tracker, CSV export, charts.
-- **Accounts** — net worth / debt payoff tracking.
+- **Finance** (internal view id `budget`) — six views: **Overview** (the landing screen: what
+  is available this week, what needs attention, what is due over the next fortnight, the
+  accounts position and the month so far), Week, Month, Bills, **Accounts** and Yearly.
+  `BUD_VIEWS` in `js/app.js` is the single source for which views exist — id, tab button,
+  panel, nav row and renderer. Weekly income/expense tracking, CSV export, charts.
+  The DESTINATION is named Finance; the budgeting CONCEPT is still called the budget. The view
+  id, the `bud*` prefixes, the DOM ids, the storage keys and the `#budget` route are unchanged.
+- **Accounts** — net worth / debt payoff tracking. A FINANCE VIEW since v329, not an overlay.
 - **Plans**, **Notes**, **Settings** — secondary screens (see `CLAUDE.md` for full detail per
   area if you need it; not reproduced here). Plans holds imported HTML plan DOCUMENTS only —
   saved workout programs live in Log › Program.
@@ -314,7 +323,56 @@ No staging environment exists — a push to `main` is live immediately at
 
 ## Workout hub (Log)
 
-Log holds Today / Program / Exercises / History. Three things a future change must not undo:
+Log holds Today / Program / Exercises / History. **Today is a briefing, and
+`logTodayBrief()` decides what it says** (v330). Read this before touching either:
+
+- **One canonical reader, four states.** `suggestDay()` answers "which rotation day is NEXT"
+  and advances the moment a session is saved; `S.dayIdx` answers "which day is loaded in the
+  logger" and `saveSession()` does not move it; a session dated today is a third fact again.
+  Combining them by hand is how the overview came to say "Session saved", print the name of the
+  next rotation and open a third thing. `logTodayBrief()` resolves, in precedence order:
+  **in progress** (a MEANINGFUL draft → the draft's actual `S.dayIdx`, outranking a session
+  saved earlier the same day), **saved today** (the record's own `sessionType`, figures and
+  `completed` flag, with the next rotation named on a separate line — a partial save is *Saved
+  today*, never *Completed today*), **ready** (`suggestDay()`, and the action opens exactly that
+  day), **no usable exercises** (offer Program setup, never an empty logger).
+- **A meaningful draft** is a running timer, a completed check, an entered weight or rep value,
+  a session-only exercise or a typed note. Merely opening the logger — which initialises one
+  blank working row per exercise — is not one. **And it only outranks a session already saved
+  TODAY when it has moved since that save**: `saveSession()` clears `wt_setdata` but leaves the
+  entered sets on screen so a partial workout can be carried on, so the sets that produced the
+  record are not a newer workout. `logDraftTouchedSinceSave()` reads `wt_setdata` back — every
+  set edit rewrites it — and never writes.
+- **A historical planned total is NEVER reconstructed.** A session records its performed
+  exercises, working sets, duration, effort and `completed` flag; it does not snapshot how many
+  exercises were planned at the time. Deriving that from the current program at the record's
+  `dayNum` meant editing the program silently rewrote an old partial workout's progress. A
+  partial save therefore shows only recorded facts — no "X of Y", no percentage, no bar — and
+  only a `completed` record shows a full progress state, from its own exercise count. Do not
+  reintroduce `plannedCount`, and do not backfill one onto old records or into
+  `saveSession()` to support a presentation.
+- **The reader is PURE.** It writes nothing, seeds nothing, migrates nothing and never sorts
+  `S.sessions` in place; `logRecentSessions()` sorts a clone. Browsing the overview performs
+  zero localStorage writes, and a test asserts it.
+- **Home reads the same helper.** `renderHome()` must not recompute training state — that
+  second calculation is what let Home and Log describe the same session differently. Home opens
+  Log › Today's OVERVIEW and must never bypass it or begin a workout.
+- **`logOpenPlannedDay()`, not `selectDay()`.** `selectDay` resets the rest timer, dismisses
+  the post-save prompt and writes over the loaded day — it means "discard this workout". The
+  new helper initialises the advertised day ONLY when there is nothing meaningful to lose, so
+  Continue can never erase a draft.
+- **Progression targets come from `poShouldIncrease()` and nothing else**, in kilograms only
+  where `exerciseMetricInfo().kind === 'load'`. The step is the shared `PO_STEP_KG`. The
+  "Last:" line uses `lastWorkingSetsFor()` + `exerciseUnit()` + `fmtLoggedSet()` — the logger's
+  own readers — so timed, bodyweight, assisted and legacy movements read honestly.
+- **Weight and the "3 / 7 days" consistency score are gone from Log.** Weight is Stats › Body's
+  subject; seven training days was never a goal anyone set. Last 7 days states sessions, days
+  trained and logged time, and invents no score, target, warning or advice.
+- **Log Overview vs Stats › Training:** the overview is a briefing about now — what to train,
+  what to prepare for, this week's facts, the last few sessions. Longer-term analysis, charts
+  and per-exercise progression belong to Stats › Training and must not migrate here.
+
+Three more things a future change must not undo:
 
 - **No migration, and none is needed.** Programs and imported HTML plan documents share the
   existing `wt_plans` store and are separated at render time (`planIsProgram()` vs
@@ -422,6 +480,336 @@ safety-critical parts:
   guards the retired rail, the `.rev-list` cascade and the visible/disclosed split.
 
 ## Current unfinished work
+
+### Log › Today: honest saved-session facts and Home's empty state — v331 (local, NOT pushed)
+
+Three corrections to v330's overview, all in the state presentation. **No session schema,
+storage key, migration, Firebase path or sync helper changed** — `saveSession()`'s record is
+field-for-field identical and nothing was backfilled onto existing sessions.
+
+- **`plannedCount` is removed.** It derived a saved session's denominator from the CURRENT
+  program at the record's `dayNum`, which is not historical evidence — editing or replacing the
+  program changed an old partial workout's displayed progress. A partial save now states only
+  what the record holds (duration, exercises saved, working sets, effort): no "1 of 5", no
+  percentage, no progress bar. A record whose canonical `completed` is true still shows a full
+  progress state, from its OWN exercise count.
+- **Home's empty state agrees with Log.** `state:'empty'` fell through to the `UP NEXT`
+  eyebrow; it now reads `NO EXERCISES YET` / "No exercises configured" / *Set up program*, with
+  the progress row, percentage and track omitted. Home's action still opens Log › Today's
+  overview, and the overview's own action opens Log › Program. `.hero-flat` closes the bottom
+  margin `.hero-meta` would otherwise leave dangling.
+- **A draft no longer outranks the record it produced.** `saveSession()` clears `wt_setdata`
+  but deliberately leaves the entered sets in `S.setData` so a partial workout can be carried
+  on — so those sets kept reading as a meaningful draft and the overview said *In progress* the
+  instant Save was pressed. `logDraftTouchedSinceSave()` breaks the tie by reading `wt_setdata`
+  back (every set edit rewrites it); the reader stays pure. **This was found by the end-to-end
+  save run**, which the v330 report listed as not performed — the in-memory fixtures could not
+  see it.
+
+**Verified locally in the in-app browser on `localhost:8765` against a synthetic fixture**
+(invented split, exercise library and sessions — no real account signed into, read or written,
+and no production Firebase data or deployed rule touched), including the END-TO-END save that
+was missing before: opened the Ready workout through the overview's hero, typed weights and
+reps into two of five exercises through the real `.set-kg` / `.set-reps` inputs, pressed the
+existing **Save partial workout** button, and confirmed the written record
+(`Push`, 2 exercises, `completed:false`, no `plannedCount`, `wt_setdata` cleared). Log and Home
+then both read **"SAVED TODAY · Push · 2 exercises saved · 2 working sets"** with no fraction,
+no percentage and no bar (`hero-progress-row` and `hero-progress-track` absent, `hero-flat`
+applied). The Push day was then edited from 5 exercises to 7 through `saveSplit()` and the
+saved summary was **byte-identical** on both surfaces. A fully completed workout (both
+exercises ticked, `completed:true`) still reads **"COMPLETED TODAY"** with Home at 2 of 2 /
+100%. An empty training day reads **NO EXERCISES YET / "No exercises configured" / Set up
+program** on Home and Log, Home's action lands on the overview and the overview's lands on
+Program. Read-only navigation recorded **zero localStorage writes and zero changed keys**; the
+save and the program edit used their own existing write paths. 320 / 375 / 932-landscape /
+1440 in both themes: `.hero-meta`'s bottom gap measures 0px with the progress omitted, the
+action stays inside the card, nothing clipped, no page overflow. Zero console errors.
+`node --check js/app.js` passes, `git diff --check` is clean, and
+`node --test tests/*.test.cjs` → **140/140**, with eight new checks (no `plannedCount` on the
+brief or in the code, no X-of-Y or percentage in the saved branch, a program edit not moving a
+saved summary, completed still completing, Home's empty eyebrow and omitted progress, Home/Log
+wording parity across all four states, the schema/store/sync audit, and the
+draft-versus-just-saved tie-break in four configurations).
+`CACHE_NAME` is `daily-v331`.
+
+**NOT verified:** no real signed-in account, production Firebase data or deployed rule was
+touched — the sync suites are isolated, so none of this is a cloud test, and the signed-in
+fresh-profile check has still not been run (this change registers no store and performs no
+migration). No physical device: phone and landscape layouts were checked at the equivalent
+CSS-pixel viewport, so safe-area insets are inferred from the existing CSS. The post-save
+weight and effort prompts appear after a save and were not separately exercised in this run.
+**Nothing has been committed or pushed.**
+
+### Log › Today rebuilt as the training overview — v330 (local, NOT pushed)
+
+Presentation plus one new canonical READER. **No localStorage key, Firebase path, sync
+registration, migration, boot write or save/restore path was added or changed** — audited, and
+every logger, session and sync helper was byte-compared against the previous commit.
+
+- **`logTodayBrief()` is the canonical training-state reader**, with `logDraftIsMeaningful()`,
+  `logSavedToday()`, `logLastOfType()` and `logSessionSetCount()` beside it. Pure: no write, no
+  seed, no migration, no in-place sort of `S.sessions`. The four states, their precedence and
+  the meaningful-draft definition are in the Workout hub section above.
+- **Home's session hero reads it too.** `renderHome()`'s own `type(S.dayIdx)` + `S.checked.size`
+  calculation is gone; it now shares state, day name, exercise count, progress and the
+  saved/active distinction with Log. Home still opens the overview and starts nothing.
+- **`logOpenPlannedDay(idx)`** prepares the advertised day without `selectDay()`'s discard
+  semantics — it initialises only when no meaningful draft exists and the logger is not already
+  on that day.
+- **The overview is hero → Today's plan → Last 7 days → Recent sessions**, one mobile stack and
+  two independent desktop columns (`.lg-cols`, plus a two-column grid in the landscape block,
+  where `#log-overview` now also scrolls inside its column — `#view-log` is `overflow:hidden`
+  there, so a tall overview was previously cut off).
+- **Removed, with an audit confirming no other caller:** `renderLogWeightCard()`,
+  `logTodayWeight()`, `renderLogImprovementCard()`, `logImprovementSuggestions()`,
+  `renderLogConsistencyCard()` (replaced by `logWeekCardHtml()`), `#log-weight-input`, every
+  `.lg-weight-*` rule and `.lg-consistency-score`. `addWeightEntry()`, `loadWeights()`, the
+  weight sync, Stats › Body and the post-save weight prompt are untouched.
+- **One shared constant added:** `PO_STEP_KG` (2.5), which `showPOModal()` now reads as well —
+  same value, one source.
+- **The session cloud listener refreshes Log › Today and Home** when either is the visible
+  surface. Registration, Firebase path, record merging and timestamp behaviour are unchanged.
+
+**Verified locally in the in-app browser on `localhost:8765` against a synthetic fixture**
+(invented split, exercise library, sessions and weights — no real account was signed into, read
+or written, and no production Firebase data or deployed rule was touched), with
+`localStorage.setItem`/`removeItem` intercepted and a before/after key diff around the
+read-only runs: **Ready** (advertises `suggestDay()`'s day while the logger sits on another,
+and `Open workout` loads exactly the advertised one), **in progress with entered sets and no
+timer**, **in progress with a running timer** ("1 of 5 exercises done · 22m elapsed"), **a
+meaningful draft outranking a session saved today**, **saved partial** ("SAVED TODAY · Pull ·
+40m · 1 exercise · 1 working set" with "Up next: Legs · 3 exercises" on its own line),
+**completed today** ("COMPLETED TODAY"), **multiple sessions today** (latest record, "2 sessions
+saved today — this is the latest", `S.sessions` order unchanged), **no sessions**, **no
+exercises** (Set up program → reaches Log › Program), **blank initialised rows not counting as a
+draft**, and the plan rows for a loaded exercise with a rising-rep streak ("Last: 60kg × 9 ·
+reps up 3 sessions running" + "Try 62.5 kg"), a bodyweight one ("Last: 16 reps"), a timed hold
+("Last: 45s"), an assisted one ("Last: -10kg × 8") and one with no history. Home matched Log's
+state and session name in every state. Continuing a draft preserved every set value, check,
+timer, note, session-only exercise and swap (diffed field by field). **Zero localStorage writes
+and zero changed keys** while browsing. Widths 320 / 375 / 390 / 414 / 720 (≈200% zoom of 1440)
+/ 932-landscape / 1024 / 1440 in both themes: no page overflow, no clipped element, and the two
+desktop columns keeping independent heights (170/185 beside 196/233 at 1440). Zero console
+errors throughout.
+`node --check js/app.js` passes, `git diff --check` is clean, and
+`node --test tests/*.test.cjs` → **132/132**, including a new `tests/log-overview.test.cjs`
+(23 checks covering the state model, draft detection, saved wording, the next-rotation split,
+purity, recent-session sorting, unit-aware plan rows, target gating, the removed cards, the
+Home/Log contract, the two-column composition and the logger invariants).
+`CACHE_NAME` is `daily-v330`.
+
+**NOT verified:** no real signed-in account was used, read, written or cleared, and no
+production Firebase data or deployed rules were touched — the sync suites pass but they are
+isolated, so nothing here is a cloud test. The signed-in fresh-profile check has NOT been run;
+this change registers no store and performs no migration, so it does not carry the risk that
+scenario exists to catch, but the claim stands as untested either way. No physical device —
+phone, landscape and 200%-zoom layouts were checked at the equivalent CSS-pixel viewport in a
+desktop browser, so safe-area insets and the standalone status bar are inferred from the
+existing CSS rather than observed. A real end-to-end save (logging sets and pressing Save) was
+NOT performed against the fixture; the saved-today states were exercised by writing session
+records directly, so `saveSession()` itself is covered by its unchanged code and the existing
+suites rather than by a fresh manual run. **Nothing has been committed or pushed.**
+
+### The Finance hub: the destination is renamed and Accounts joins it — v329 (local, NOT pushed)
+
+Structural navigation. **No storage key, Firebase path, sync registration, migration, boot
+write or calculation was added or changed** — audited, and the accounts store, its readers and
+its writer were byte-compared against the previous commit.
+
+- **Budget → Finance, user-facing only.** The bottom-nav button, the sidebar's pinned
+  destination (`NAV_QUICK_LABELS.budget`), the tablist `aria-label`, Home's *Open Finance →*
+  action, the Home Layout editor's per-card `tab` field and the copy that tells a reader where
+  to go now say Finance. The internal view id stays `budget`, and with it every `bud*` prefix,
+  every DOM id, every storage key, every Firebase path and the `#budget` route — an existing
+  `#budget` link still works and there is deliberately no `#finance` hash. The budgeting
+  CONCEPT keeps its own name: weekly budget, over budget, budget goal, **Budget setup**, budget
+  categories, budget CSV, budget reminder, the AI Budget data scope.
+- **Accounts is the sixth registered Finance view.** `BUD_VIEWS` gained
+  `{id:'accounts', btn:'bv-accounts-btn', panel:'budget-accounts-view', row:'accounts',
+  render:'renderAccountsPage'}` in the order Overview · Week · Month · Bills · Accounts ·
+  Yearly, and it is now the single source for a view's renderer as well — `setBudgetView()`
+  dispatches through `budRenderView()` instead of an if/else chain. `render` is a NAME rather
+  than a reference because `tests/budget-overview.test.cjs` evaluates this array in a bare VM.
+- **The overlay is gone.** `#view-accounts`, its `.detail-topbar`, its `data-back="closeAccounts"`
+  button, `closeAccounts()`, `_acctReturnFocus`, the `.bud-nav-act` launcher and its CSS, the
+  `#view-accounts` entry in `AI_PEER_OVERLAYS`, `setView()`'s explicit close, the
+  `navCurrentRow`/`navCurrentQuick` overlay branches, `navGo`'s `viewId==='accounts'` special
+  case and every `#view-accounts` CSS rule (the desktop back-button hide, the landscape overlay
+  padding, the landscape canvas cap) are all removed. The markup moved unchanged, so there is
+  still exactly ONE `#accounts-hero` / `#accounts-chart` / `#accounts-list-head` /
+  `#accounts-list` / `#accounts-addform` and one renderer.
+- **`openAccounts()` is the compatibility navigation helper.** It assigns `budgetView='accounts'`
+  FIRST, then `setView('budget')` from another destination (so the history entry exists and Back
+  returns) or `setBudgetView('accounts')` from inside Finance (so no intermediate panel is
+  painted and no history entry is pushed for a tab switch). It still takes and ignores the
+  launcher argument its callers pass. No caller had to change.
+- **`NAV_TREE`'s Money › Accounts row is `{view:'budget', sub:'accounts'}`**, so the ordinary
+  registry answers it. Finance stays lit in the bottom nav and the sidebar while Accounts is
+  open, the Accounts row is selected, and the selection is remembered for the session.
+- **Account data refreshes reach both surfaces.** The sync listener asks
+  `S.view==='budget' && budgetView==='accounts'` instead of probing an overlay's display, and
+  `saveAccounts()` rebuilds the Overview's account card when Finance is the live view — a string
+  build that writes nothing.
+- **Accessibility.** Six `role="tab"` buttons each carrying `aria-controls`, six
+  `role="tabpanel"` panels each carrying `aria-labelledby`, exactly one `aria-selected="true"` in
+  the strip, and hidden panels behind `.hidden` (`display:none`) so none is exposed as selected.
+
+**Verified locally in the in-app browser on `localhost:8765` against a synthetic fixture**
+(invented income sources, categories, transactions, accounts and balances — no real account was
+signed into, read or written, and no production Firebase data or deployed rule was touched),
+with `localStorage.setItem`/`removeItem` intercepted and a before/after key diff around every
+read-only run: Finance opens on Overview; all six tabs show their own panel and hide the other
+five; the Accounts tab is revealed and `aria-selected="true"` at 320–1440; Overview → *Open
+accounts*, Week → History & tools → Accounts, Home's net-worth *Manage →*, Stats › Finance's
+*Open account records →*, the Stats EVIDENCE screen's link and the sidebar row all reach the
+same panel with `navCurrentRow()==='accounts'` and the Finance destination still lit; browser
+Back from Home → Accounts returns to Home; leaving Finance for Log and returning lands back on
+Accounts. **Zero localStorage writes and zero changed keys** across all of it. Account add
+(asset and tracked debt), rename, balance update (history grew, hero and Overview both moved),
+statement balance, Mark statement as paid and delete-with-confirm all still work through the
+unchanged `saveAccounts()` + `renderAccountsPage()` path. Five account states checked — none,
+assets only, debts only, debt fully covered, and accounts with no history (the chart's own empty
+state) — in the panel and in the Overview card. Widths 320 / 375 / 390 / 414 / 720 (≈200% zoom
+of 1440) / 932-landscape / 1024 / 1440 in both themes: no page overflow, no overlay top bar or
+Back button left in the panel, and no clipped control except a **pre-existing** one at 320px
+(the account card's balance-row label column squeezes below its text; the card's content box is
+256px there, exactly what the overlay produced, so it is unchanged by this work and does not
+occur at 375+). Zero console errors throughout.
+`node --check js/app.js` passes, `git diff --check` is clean, and
+`node --test tests/*.test.cjs` → **109/109**, with `tests/budget-overview.test.cjs` rewritten
+around the new contract (Accounts in `BUD_VIEWS` exactly once, one tab and one panel, the
+overlay/launcher/`closeAccounts` all gone from markup, source and every stylesheet,
+`openAccounts()` free of overlay manipulation, the nav tree routing through the subview, the
+store and sync registration unchanged, rendering write-free, and the tablist's six tabs and six
+panels). `CACHE_NAME` is `daily-v329`.
+
+**NOT verified:** no real signed-in account was used, read, written or cleared, and no
+production Firebase data or deployed rules were touched — the sync suites pass but they are
+isolated, so nothing here is a cloud test. The signed-in fresh-profile check has NOT been run;
+this change registers no store and performs no migration, so it does not carry the risk that
+scenario exists to catch, but the claim stands as untested either way. No physical device —
+phone, landscape and 200%-zoom layouts were checked at the equivalent CSS-pixel viewport in a
+desktop browser, so safe-area insets and the standalone status bar are inferred from the
+existing CSS rather than observed; in particular the overlay's old
+`padding-bottom: env(safe-area-inset-bottom)` is now the deck panel's, which was not observed on
+hardware. **Nothing has been committed or pushed.**
+
+### Budget: "This month" opens this month — v328 (local, NOT pushed)
+
+One correction to the Overview below, nothing else. Budget › Overview's **This month** card
+always describes the CURRENT calendar month (`getMonthDate(0)`), but its *Open month →* action
+was the plain `setBudgetView('month')`, which preserves `currentMonthOffset` — so after paging
+Month back to June, the card showing September's figures opened June.
+
+- **New helper `openBudgetCurrentMonth()`** (beside `openBillsCalendar()`): sets
+  `currentMonthOffset=0`, then `setBudgetView('month')`. Two lines, in memory exactly like
+  `currentWeekIdx`. It deliberately does NOT call `setView()` — it is only ever pressed from
+  inside Budget, unlike `openBudgetWeek()` / `openBudgetOverview()` / `openBillsCalendar()`.
+- **Exactly one caller**, the `budOvMonthHtml()` header action. **Every other Month entry point
+  is untouched and still remembers the browsed month**: the `bv-month-btn` tab and the History
+  & tools link in `index.html`, `navGo()`'s `setBudgetView(t.sub)` for Money › Month,
+  `returnFromSourceView()`'s `setBudgetView(dest.tab||'month')`, and `setView('budget')`'s
+  `setBudgetView(budgetView)`. Those name the Month WORKSPACE, not a month, and a control that
+  silently rewound your position would be the worse bug.
+- **No storage, migration, Firebase path, sync registration or calculation changed** — the diff
+  is a two-line function, one onclick, comments, the tests and the cache name. The Overview is
+  still read-only.
+
+**Verified locally in the in-app browser on `localhost:8765` against a synthetic fixture** (no
+real account signed into, read or written): Month paged back three months, back to Overview —
+the card still describes September and still prints September's figures — then *Open month →*
+lands on September with `currentMonthOffset` at 0. The Month tab, History & tools → Month and
+Money › Month all still return to the browsed month after the same detour. Repeated at 375px
+and 1440px. Zero console errors, and a `setItem`/`removeItem` interceptor plus a before/after
+key diff recorded **zero localStorage writes** across the whole sequence.
+`node --test tests/*.test.cjs` → **102/102**, with two new checks: the helper run against a
+stubbed `setBudgetView` proving the reset lands before the switch (and that it is idempotent
+and touches no storage), and an assertion that the other five entry points were not converted
+to it. `node --check js/app.js` passes and `git diff --check` is clean. `CACHE_NAME` is
+`daily-v328`. **Nothing has been committed or pushed.**
+
+### Budget: the Overview — v327 (local, NOT pushed)
+
+Budget gains a fifth view, **Overview**, as its first tab and the screen a fresh session lands
+on: Overview · Week · Month · Bills · Yearly, with the Accounts button unchanged beside the
+strip and still outside the `role="tablist"`. It is a current-position and decision screen —
+available to spend this week, Needs attention, Coming up (the pay-cycle projection plus a
+preview of the existing 14-day bill window), an Accounts snapshot and a This-month summary —
+and it leads into Week, Bills, Month and Accounts to act. Stats › Finance is untouched and is
+still where completed weeks and longer ranges are ANALYSED. Design rationale is in
+`CLAUDE.md`; the safety-critical parts are here.
+
+- **No new store, path, registration, migration or boot write.** The diff contains no
+  `localStorage` / `lsSave` / `lsSaveTS` / `SYNC_BLOB_REG` / `firebase` / `schemaVersion` /
+  `_bootPhase` / `Date.now()` / `updatedAt` line at all (audited), and a before/after
+  localStorage diff across opening the Overview and cycling all five views plus Home and Stats
+  recorded **zero writes** — no `setItem`, no `removeItem`. The one write the screen can cause
+  is Add expense, through the existing `openTxnModal()` / `txnCommitSave()` path.
+- **Every canonical helper is unchanged.** 96 finance, schedule, account, transaction and sync
+  helpers were byte-compared against the previous commit — `weekIncome`, `weekFixedTotal`,
+  `weekVarTotal`, `weekSavedAmt`, `weekLeftover`, `statsWeekParts`, `varCatAmount`,
+  `billOccurrences`, `catOccurrencesBetween`, `payCycleForecast`, `budTimelineWindow`,
+  `billRowHtml`, the account totals, `budWriteFields`/`budSaveDraft`, `lsSave`/`lsSaveTS`,
+  the `syncBlob*` family and the rest — all identical once comments are stripped.
+- **Nine functions changed, all deliberately**: `setBudgetView` (registry-driven, five views,
+  `segScrollToTab`), `setView` (Budget now applies the remembered view), `navCurrentRow`
+  (reads the row off `BUD_VIEWS`), `renderBudgetTab` (renders the Overview from its tail when
+  it is the active view), `budRecalc` (goes through `budAvailable()` and `budPaceText()` —
+  same arithmetic, same output), `renderOutlookCard` (uses the extracted `budForecastPart()`),
+  `buildFinanceCheckinCard` (uses `budWeekMoney()`, and its Open Budget action now opens the
+  Overview), `openBudgetSetup` (switches to Week first, since it is reachable from a view that
+  does not show the cards it unlocks) and `monthSpendBreakdown` (an optional
+  `{register:false}` that skips evidence registration for a summary caller). Fourteen functions
+  were added; none were removed.
+- **"Available to spend" now has one definition**, `budAvailable(income, committed, spent,
+  saved)`, returning NULL — not zero — when no income has been entered. `budWeekMoney(d, key)`
+  supplies its components from the canonical readers. Home's Finance check-in had its own copy
+  of that subtraction (and read `sav_amount` directly rather than through `weekSavedAmt()`);
+  it goes through the shared reader now. Verified in the browser: the Week hero and the
+  Overview print identical Available / Spent / Committed / Saved and an identical pace line
+  from the same week, and the Overview follows a typed savings figure the moment it is entered.
+- **The tab strip became `.seg-scroll`.** `.seg-fill`'s buttons never shrink, so five labels
+  plus the Accounts button spill over each other on a phone; Stats' six tabs already scroll for
+  this reason. `#view-budget .bud-topnav > .seg-tabs` is `flex:1 1 0; min-width:180px` — basis
+  0 because a wrapping flex row breaks lines on the hypothetical size, and with `auto` the
+  Accounts button wrapped onto a second row at 375px where both fit. One row measured at 320 /
+  375 / 390 / 414 / 932-landscape / 720 / 1024 / 1440.
+
+**Verified locally in the in-app browser on `localhost:8765` against a synthetic fixture**
+(invented income sources, categories, transactions, accounts and balances — no real account was
+signed into, read or written, and no production Firebase data or deployed rule was touched):
+the Overview renders and is the landing view on a cold load and on a `#budget` reload; the
+Week hero and the Overview agree to the dollar; Add expense saves through the existing modal
+and refreshes the Overview in place without leaving the view; Accounts opens from the Overview
+and closes back to it with launcher focus restored and the nav row correct; Home's Finance
+check-in opens the Overview while `openBudgetWeek()`, `openBillsCalendar()` and Stats'
+source-week link still open their own views; the selected week index, the month offset and a
+typed draft all survive a trip through every view; zero console errors across a full cycle of
+five views plus Accounts, Home and Stats. Seventeen states checked by swapping the fixture: no
+setup at all, income with no spending, spending with no income, on track, overspent, a tight
+before-pay position, a negative before-pay forecast, no configured payday, no bills in the next
+14 days, undated recurring charges, a bill due today, no accounts, assets only, debts only,
+debt fully covered, an overdue statement, an upcoming statement, no recorded month history and
+a legacy aggregate-only month (which correctly refuses to name a biggest category). Widths
+320 / 375 / 390 / 414 / 720 (≈200% zoom of 1440) / 932-landscape / 1024 / 1440 in both themes:
+no page overflow, no clipped element, the top row one line at every one of them, and the two
+desktop columns keeping independent heights (590×169 / 590×581 beside 491×216 / 491×217 at
+1440). `node --test tests/*.test.cjs` → **100/100**, including a new
+`tests/budget-overview.test.cjs` (18 checks: the registry against the markup in both
+directions, the default view, the Accounts-is-not-a-tab rule, the nav mapping, the entry
+points, the canonical arithmetic and its null rule against fixtures, the pace rule, the shared
+projection, the read-only source, `BUD_CARDS` staying the Week layout, the evidence-free month
+read, the three-item attention cap and the truncated-preview/complete-total split).
+`CACHE_NAME` was `daily-v327` at this release; it is `daily-v328` after the correction above.
+
+**NOT verified:** no real signed-in account was used, read, written or cleared, and no
+production Firebase data or deployed rules were touched — the sync suites pass but they are
+isolated, so nothing here is a cloud test. The signed-in fresh-profile check has not been run:
+this change registers no store and writes nothing, so it does not carry the risk that scenario
+exists to catch, but the claim stands as untested either way. No physical device — phone,
+landscape and 200%-zoom layouts were checked at the equivalent CSS-pixel viewport in a desktop
+browser, so safe-area insets and the standalone status bar are inferred from the existing CSS
+rather than observed. **Nothing has been committed or pushed.**
 
 ### Budget: Outlook projection wording — v326 (local follow-up)
 

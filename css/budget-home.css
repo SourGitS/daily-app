@@ -107,9 +107,15 @@
 .bs-growth-total{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:13px;font-weight:800;font-family:var(--font-num)}
 .bs-growth-total>span:first-child{font-family:var(--font-ui);font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 
-/* Accounts page. Mobile keeps the single centred column it always had; the desktop grid is
-   in the ≥1024px block below. */
-.accounts-wrap{max-width:520px;margin:0 auto}
+/* Accounts is a Finance PANEL now (#budget-accounts-view inside #view-budget), not a fixed
+   .app-overlay with its own top bar, Back button and inline padding. So the wrapper is in
+   normal document flow: the panel starts under the shared Finance tab strip and takes the
+   deck panel's own padding, exactly like Week, Month, Bills and Yearly.
+   LEFT-aligned, not centred: every other Finance view begins at the content edge, and a
+   520px column floating in the middle of the canvas was the one thing on this screen off
+   that line. The measure is the desktop cap below; on a phone the panel is already the
+   viewport's width, so it does nothing there. */
+.accounts-wrap{max-width:1120px;margin:0}
 /* Per-account trend line + 30-day movement */
 .acct-spark-wrap{padding:2px 2px 6px}
 .acct-spark{display:block;width:100%;height:28px;overflow:visible}
@@ -305,52 +311,39 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .wx-details summary{font-size:12.5px;font-weight:700;color:var(--accent-text);cursor:pointer;padding:4px 0}
 .wx-coords{font-family:var(--font-num);font-size:13px;color:var(--text);padding:6px 0 0}
 
-/* ── Budget's top navigation row ───────────────────────────────────
-   The four view tabs plus the Accounts shortcut, pinned as ONE row. Accounts is an overlay
-   rather than a fifth budgetView, so it is a plain button OUTSIDE the role="tablist" — it
-   never carries a selected state and the four real tabs keep theirs underneath it.
-   The sticky + bleed treatment moves here from .seg-tabs, because a strip that pinned on its
-   own would leave the button scrolling away beside it. The mechanics are the shared control's
-   unchanged (see .seg-tabs in css/workout.css): --bud-nav-bleed mirrors --seg-bleed, which is
-   the SCROLL CONTAINER's own padding — the band cards would otherwise be seen passing through
-   — and one box-shadow grown by it on every side then offset up covers both gutters and the
-   band above while stopping at the row's bottom edge. */
+/* ── Finance's top navigation row ──────────────────────────────────
+   SIX view tabs — Overview · Week · Month · Bills · Accounts · Yearly — in ONE role="tablist",
+   pinned as one row. Accounts used to be a plain button OUTSIDE that list, because it was a
+   full-screen overlay with no tab state; it is a real Finance view now, so the launcher and
+   .bud-nav-act are gone and every destination on this row is a tab.
+   The wrapper survives the launcher because the sticky + bleed treatment lives here rather
+   than on .seg-tabs, and the landscape block offsets .bud-compact-nav against its height.
+   The mechanics are the shared control's, unchanged (see .seg-tabs in css/workout.css):
+   --bud-nav-bleed mirrors --seg-bleed, which is the SCROLL CONTAINER's own padding — the band
+   cards would otherwise be seen passing through — and one box-shadow grown by it on every side
+   then offset up covers both gutters and the band above while stopping at the row's bottom
+   edge. */
 .bud-topnav{--bud-nav-bleed:16px;
   display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin-bottom:16px;
   position:sticky;top:0;z-index:8;background:var(--bg);
   box-shadow:0 calc(var(--bud-nav-bleed) * -1) 0 var(--bud-nav-bleed) var(--bg)}
-/* The strip inside gives up everything the wrapper now owns. ID specificity so it also beats
-   the landscape block's #view-budget .seg-tabs margin/shadow wherever that sits in the file;
+/* The strip inside gives up everything the wrapper owns. ID specificity so it also beats the
+   landscape block's #view-budget .seg-tabs margin/shadow wherever that sits in the file;
    height is deliberately NOT set here, so landscape's exact --bud-switch-h still applies.
-   min-width is what makes the wrap above a MEASUREMENT rather than a guessed breakpoint:
-   .seg-fill's buttons are flex:1 0 auto and never shrink, so a strip allowed below its
-   content width does not ellipsise, it spills straight over the button beside it (seen at
-   320px, which is what a 375px phone becomes at 120% zoom). 205px is the four labels at the
-   narrow padding below; under it the button takes a second row instead. */
+   A .seg-scroll, because six labels do not fit a phone at .seg-fill's never-shrinking width —
+   Stats' six tabs scroll for the same reason, and scrolling keeps every label at full size and
+   every touch target at full height rather than squeezing either.
+   flex:1 1 0 rather than the default basis:auto: it is now the only child, so the basis no
+   longer decides a wrap, but zero is still what lets the strip take exactly the row it is
+   given instead of overflowing the panel at the width of six labels. */
 #view-budget .bud-topnav > .seg-tabs{position:static;z-index:auto;box-shadow:none;
-  margin:0;max-width:none;flex:1 1 auto;min-width:205px}
-/* Wrapped: the button spans the row rather than sitting alone at one end, and keeps a full
-   touch target. Only ever reached below ~340px or under heavy zoom. */
-.bud-topnav > .seg-tabs + .bud-nav-act{min-height:34px}
-/* Reads as a destination, not as a fifth tab: bordered and quiet rather than filled, and it
-   never takes .on. Sized to its label — there is no universal cap — and the icon is
-   decorative beside a word that is always present. */
-.bud-nav-act{display:inline-flex;align-items:center;justify-content:center;gap:6px;
-  flex:0 0 auto;padding:0 13px;border-radius:10px;
-  border:1px solid var(--border);background:var(--bg);color:var(--text);
-  font:inherit;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer;
-  -webkit-tap-highlight-color:transparent}
-.bud-nav-act svg{width:15px;height:15px;flex-shrink:0;color:var(--muted)}
-.bud-nav-act:hover{background:var(--card)}
-.bud-nav-act:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-/* Narrow phones: the four labels plus a fifth control do not fit at the shared control's
-   13px side padding. The BUTTONS give up horizontal padding — their height, and therefore
-   every touch target on the row, is unchanged — rather than the Accounts label being cut or
-   pushed onto a second permanently-pinned row. */
+  margin:0;max-width:none;flex:1 1 0;min-width:0}
+/* Narrow phones: six labels at the shared control's 13px side padding put more of the strip
+   off-screen than on it. The BUTTONS give up horizontal padding — their height, and therefore
+   every touch target on the row, is unchanged. */
 @media (max-width:430px){
   .bud-topnav{gap:6px}
   #view-budget .bud-topnav > .seg-tabs > button{padding-left:8px;padding-right:8px}
-  .bud-nav-act{padding:0 10px;gap:5px}
 }
 
 /* Compact week navigation for short landscape. display:none everywhere else — the weekly
@@ -1343,19 +1336,14 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      lives with the rest of it in css/settings.css. */
   #view-settings-detail .detail-title{padding:0 120px}
 
-  /* Accounts + Exercise Library are sidebar peers on desktop, not drill-downs: you leave by
-     clicking another sidebar item (setView now closes both), so their "← Back" is redundant
-     and inconsistent here. Hidden desktop-only — on mobile it's still the only way out.
-     Scoped to these two overlays so the genuine drill-down backs (settings-detail, split /
-     budget editors, exercise-detail) keep theirs. .detail-title stays centred (it's absolutely
-     positioned), so hiding the Accounts back leaves the header balanced. */
-  #view-accounts .back-btn{display:none}
-  /* Accounts was the one full-screen view that never got a desktop layout — a 520px column
-     stranded in the middle of a 1600px screen. Two columns: net worth + trend on the left,
-     the editable account cards on the right. */
+  /* Exercise Library is a sidebar peer on desktop, not a drill-down: you leave by clicking
+     another sidebar item, so its "← Back" is redundant and inconsistent here. Hidden
+     desktop-only — on mobile it's still the only way out. Scoped so the genuine drill-down
+     backs (settings-detail, split / budget editors, exercise-detail) keep theirs.
+     Accounts left this rule with its overlay: a Finance view has no top bar and no Back. */
   /* Full-width stacked rather than two narrow columns: net worth, then the trend, then each
-     account — every card using the whole width. */
-  .accounts-wrap{max-width:1120px}
+     account — every card using the whole width. The cap is on .accounts-wrap itself now, so
+     it applies at every width rather than only here. */
   /* Account cards: the balance row and the statement fields sit inline on a wide screen, so
      the extra width carries content instead of becoming a gap. */
   /* Net worth and debt payoff used to be two stacked full-width hero cards, each spreading
@@ -1864,8 +1852,6 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   #view-budget .bud-topnav{--bud-nav-bleed:14px;
     height:var(--bud-switch-h);box-sizing:border-box;margin-bottom:6px;
     box-shadow:0 6px 12px -8px rgba(0,0,0,.5)}
-  .bud-nav-act{padding:0 9px;font-size:12px}
-  .bud-nav-act svg{width:14px;height:14px}
   /* A pinned control has to be opaque across the FULL scrollport, and the panel's own
      10px/14px padding is NOT part of either control's box — so cards scrolled visibly through
      the strip above and beside them (measured: 150 hits of cards, rows and inputs in a 10px
@@ -1893,6 +1879,12 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      than being squeezed into half. */
   #view-budget #bud-col-left > .bud-span-2{grid-column:1 / -1}
   #view-budget .card{padding:13px;margin-bottom:0}
+  /* Overview's two stacks side by side here for the same reason the week's cards are: a short
+     landscape screen has width to spend and almost no height, so one column means scrolling
+     past the hero to reach anything. Still two INDEPENDENT stacks -- a grid of two columns,
+     not a row grid: each column is its own flex stack and neither stretches the other. */
+  #view-budget .bov-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;align-items:start}
+  #view-budget .bov-col{gap:10px}
 }
 
 /* ── Bills calendar ────────────────────────────────────────────────
@@ -2062,6 +2054,119 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;
   -webkit-tap-highlight-color:transparent}
 .fin-act:hover{background:rgba(var(--accent-rgb),.08)}
+
+/* ── Budget › Overview ─────────────────────────────────────────────
+   The current-position screen: one full-width hero, then two INDEPENDENT vertical stacks.
+   Everything here is assembled from components that already exist — .hero-panel for the hero,
+   .card + cardHeader() for the four cards, .card-split / .card-fig / .fin-line / .bill-row /
+   the .fc-* Outlook parts for their contents — so these rules are composition and tone only.
+   There is no new colour: --positive / --warn / --danger and the accent are the app's own, and
+   the hero's surface is the same .hero-surface every other hero wears. */
+
+/* Two stacks, not a row grid. Same reasoning as Home's Dashboard: the cards are variable
+   height (Needs attention holds one to three rows, Coming up holds a fortnight), and a row
+   grid makes the short one carry the tall one's slack. align-items:start, no flex:1, no shared
+   row height. On a phone the wrappers simply stack, which gives the required reading order —
+   position, attention, coming up, accounts, month — from DOM order alone. */
+.bov-cols{display:flex;flex-direction:column;gap:12px}
+.bov-col{display:flex;flex-direction:column;gap:12px;min-width:0}
+/* The column gap spaces the cards; .card's own bottom margin would double it. */
+.bov-card{margin-bottom:0}
+
+/* ── The hero ──────────────────────────────────────────────────────
+   One .hero-panel cell, so the surface follows the accent and the verdict rides in a .tstat
+   chip exactly as it does on Accounts, Month and Year. Everything below sits in that cell's
+   `extra` slot and therefore on white-on-accent text. */
+.bov-hero .hp-cell{padding-bottom:18px}
+.bov-hero-range{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  color:rgba(255,255,255,.72);margin-top:10px}
+/* .card-split is drawn for a card surface (muted labels, --text figures, a --border rule), so
+   its three parts are re-inked for the hero here rather than a second split being invented. */
+.bov-hero .card-split{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.18)}
+.bov-hero .card-split>.card-split-div{background:rgba(255,255,255,.2)}
+.bov-hero .card-split-l{color:rgba(255,255,255,.72)}
+.bov-hero .card-split-v{color:#fff;font-size:18px}
+/* Says what the figure IS. "Available to spend" is an allocation out of this week's income,
+   and a hero figure with a dollar sign on it will be read as a bank balance unless the card
+   says otherwise. */
+.bov-hero-note{font-size:10.5px;font-weight:600;line-height:1.45;color:rgba(255,255,255,.7);
+  margin-top:10px}
+.bov-hero-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+/* One action treatment, two strengths: filled white means "do the thing", outlined means
+   "go and look". Both carry full-height touch targets at every width. */
+.bov-act{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-height:38px;padding:0 14px;border-radius:20px;
+  border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.14);color:#fff;
+  font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.bov-act:hover{background:rgba(255,255,255,.22)}
+.bov-act:focus-visible{outline:2px solid #fff;outline-offset:2px}
+/* --accent-hero, not --accent: this is accent-coloured text on a WHITE pill, and every accent
+   the app can hold is tuned to carry white text rather than to be readable under it. Same
+   reasoning as Home's session-hero action. */
+.bov-act-primary{background:#fff;border-color:#fff;color:var(--accent-hero,#26262C);
+  text-shadow:none}
+.bov-act-primary:hover{background:rgba(255,255,255,.9)}
+/* The Accounts empty state's action sits on a card, not a hero. */
+.bov-act-wide{width:100%;margin-top:12px;background:transparent;border-color:var(--border);
+  color:var(--accent-text);text-shadow:none}
+.bov-act-wide:hover{background:rgba(var(--accent-rgb),.08)}
+.bov-act-wide:focus-visible{outline-color:var(--accent)}
+
+/* ── Needs attention ───────────────────────────────────────────────
+   A toned row: an icon, what is wrong and the figure that says so, then one place to go.
+   RED only for a state that has actually gone wrong, amber for close or incomplete — the rule
+   the rest of Budget's palette already follows. The icon takes the row's colour through
+   currentColor, which is the thing an emoji fundamentally cannot do. */
+.bov-item{display:flex;align-items:flex-start;gap:10px;padding:11px 0;
+  border-bottom:1px solid var(--border)}
+.bov-item:last-child{border-bottom:none;padding-bottom:2px}
+.bov-item-ic{flex:0 0 auto;display:flex;margin-top:1px}
+.bov-item-ic svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;
+  stroke-linecap:round;stroke-linejoin:round}
+.bov-item.is-neg .bov-item-ic{color:var(--danger)}
+.bov-item.is-warn .bov-item-ic{color:var(--warn)}
+.bov-item-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.bov-item-t{font-size:13px;font-weight:700;color:var(--text);line-height:1.35}
+.bov-item-b{font-size:11.5px;font-weight:600;color:var(--muted);line-height:1.45}
+/* The action is a link, not a button block: it means "this goes somewhere", which is what
+   .card-hd-act says everywhere else in the app. */
+.bov-item-a{flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;align-self:center;
+  background:none;border:none;padding:4px 0 4px 6px;font:inherit;font-size:12px;font-weight:700;
+  color:var(--accent-text);white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.bov-item-a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+/* Nothing wrong is a real answer and gets stated, rather than leaving a card-shaped hole that
+   reads as something failing to load. */
+.bov-calm{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:2px 0}
+.bov-calm span{font-size:12px;font-weight:600;color:var(--muted);line-height:1.45}
+
+/* ── Shared small parts ───────────────────────────────────────────── */
+.bov-fig-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.bov-fig-row .card-fig{font-size:30px}
+.bov-fig-row .tstat{flex-shrink:0;margin-top:3px}
+.bov-empty{font-size:12.5px;font-weight:600;color:var(--muted);line-height:1.5}
+.bov-note{font-size:11px;font-weight:600;color:var(--muted);line-height:1.5;padding:8px 0 0}
+/* The bill preview is truncated; the total beneath it is not. Saying how many rows are not
+   shown is what keeps the two honest. */
+.bov-more{font-size:11.5px;font-weight:600;color:var(--muted);padding:8px 0 0}
+.bov-card .month-spend-compare{margin-top:6px}
+.bov-card .fin-line{margin-top:4px}
+/* Coming up carries the .fc-card tone for its projection figure, but it is a plain card with a
+   cardHeader() rather than a collapsing .bud-toggle — so it takes .card's own padding. */
+.bov-card.fc-card{padding-top:16px}
+.bov-card .fc-part:first-of-type{margin-top:2px}
+
+@media (min-width:1024px){
+  /* Two stacks, main wider than summary: Needs attention and Coming up are the cards you act
+     from and Coming up carries a dated list, while Accounts and This month are four figures
+     each. Independent columns, so a long fortnight cannot stretch the Accounts card beside it
+     — the thing Home's Grid does and its Dashboard was built to stop. */
+  .bov-cols{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);
+    gap:0 20px;align-items:start}
+  .bov-col{gap:14px}
+  .bov-hero .hp-cell{padding:18px 20px 20px}
+  .bov-hero .card-split-v{font-size:20px}
+}
 
 /* Desktop: the calendar has width to spend, so the three month lists sit side by side under
    a full-width chart instead of stacking into a very long column. Mobile-first — this is the

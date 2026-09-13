@@ -411,6 +411,13 @@
   -webkit-tap-highlight-color:transparent}
 .lg-hero-btn:active{transform:scale(.985)}
 .lg-hero-btn:focus-visible{outline:2px solid #fff;outline-offset:3px}
+/* The NEXT rotation, after a session already saved today. Below the action and visibly quieter
+   than the title above it, because the hero is describing the SAVED session and this is a
+   separate fact about a different one — the two reading as one line is the confusion this
+   screen was rebuilt to remove. */
+.lg-hero-next{margin-top:11px;padding-top:10px;border-top:1px solid rgba(255,255,255,.22);
+  font-size:12px;font-weight:600;color:rgba(255,255,255,.82)}
+.lg-hero-note{margin-top:6px;font-size:11.5px;font-weight:600;color:rgba(255,255,255,.72)}
 
 /* A genuine content card, so it reads --card-border like .card and is in the matte
    content-card surface list in budget-home.css. It used to be var(--card) + a 1px
@@ -420,6 +427,22 @@
    .lg-card-lbl and .lg-card-act are retired. */
 .lg-card{background:var(--card);border:0.5px solid var(--card-border);border-radius:var(--radius-card);
   padding:14px 16px;margin-bottom:12px}
+
+/* Log › Today: one mobile stack, two INDEPENDENT desktop columns. The same composition Finance
+   › Overview settled on, for the same reason — the plan card is as long as the day has
+   exercises, so a row grid would make Last 7 days and Recent sessions beside it inherit that
+   height. Two flex stacks at align-items:start, no flex:1, no shared row height; on a phone
+   they simply stack, which gives the reading order hero → plan → last 7 days → recent from DOM
+   order alone, with no CSS `order` and no second copy of the markup. */
+.lg-cols{display:flex;flex-direction:column}
+.lg-col{display:flex;flex-direction:column;min-width:0}
+/* Which day the plan below belongs to, stated once under the header rather than repeated on
+   every row. */
+.lg-plan-sub{font-size:11.5px;font-weight:600;color:var(--muted);margin:-2px 0 2px}
+@media (min-width:1024px){
+  .lg-cols{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);
+    gap:0 18px;align-items:start}
+}
 
 /* Rows double as buttons in some lists and plain rows in others; one shape either way. */
 .lg-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
@@ -463,33 +486,11 @@ button.lg-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;
 .lg-back:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .lg-help{font-size:11.5px;line-height:1.55;color:var(--muted);margin-top:10px}
 .lg-blank{font-size:13.5px;line-height:1.55;color:var(--muted);padding:8px 0}
-.lg-weight-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:7px}
-.lg-weight-summary>div{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:10px;background:var(--track)}
-.lg-weight-summary span{font-size:10.5px;font-weight:700;color:var(--muted)}
-.lg-weight-summary strong{font-family:var(--font-num);font-size:16px;font-weight:800;color:var(--text);white-space:nowrap}
-.lg-weight-summary small{margin-left:2px;font-size:9px;font-weight:700;color:var(--muted)}
-.lg-weight-recent{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:8px;border:1px solid var(--border);border-radius:11px;overflow:hidden}
-.lg-weight-reading{display:flex;min-width:0;flex-direction:column;gap:3px;padding:10px;text-align:center;border-left:1px solid var(--border);background:var(--bg)}
-.lg-weight-reading:first-child{border-left:0}
-.lg-weight-reading.latest{background:rgba(var(--accent-rgb),.08)}
-.lg-weight-reading>span{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.lg-weight-reading>strong{font-family:var(--font-num);font-size:17px;font-weight:800;color:var(--text);white-space:nowrap}
-.lg-weight-reading>strong small{margin-left:2px;font-size:10px;font-weight:700;color:var(--muted)}
-.lg-weight-entry{display:grid;grid-template-columns:auto minmax(90px,1fr) auto;align-items:center;gap:8px;
-  margin-top:10px;padding-top:11px;border-top:1px solid var(--border)}
-.lg-weight-entry label{font-size:12px;font-weight:700;color:var(--text-2)}
-.lg-weight-input-wrap{display:flex;align-items:center;min-width:0;border:1px solid var(--border);border-radius:10px;background:var(--bg);overflow:hidden}
-.lg-weight-input-wrap:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px rgba(var(--accent-rgb),.12)}
-.lg-weight-input-wrap input{width:100%;min-width:0;padding:9px 4px 9px 10px;border:0;outline:0;background:transparent;color:var(--text);font:inherit;font-family:var(--font-num);font-size:14px;font-weight:700}
-.lg-weight-input-wrap span{padding-right:9px;font-size:11px;color:var(--muted)}
-.lg-weight-entry>button{min-height:38px;padding:8px 11px;border:0;border-radius:10px;background:var(--accent);color:#fff;font:inherit;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap}
-.lg-weight-entry>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-@media(max-width:390px){
-  .lg-weight-summary>div{align-items:flex-start;flex-direction:column;gap:2px}
-  .lg-weight-entry{grid-template-columns:auto 1fr}
-  .lg-weight-entry>button{grid-column:1/-1;width:100%}
-}
-.lg-consistency-score{font-family:var(--font-num);font-size:12px;font-weight:800;color:var(--text-2)}
+/* .lg-weight-* is GONE with the "How is my weight moving?" card and its inline entry form.
+   Weight was never Log's subject — Log is for performing and reviewing workouts — and it is
+   still reachable from Stats › Body, Home's weight card and the post-save prompt, none of
+   which changed. .lg-consistency-score went with the "3 / 7 days" figure it rendered: seven
+   training days is not a goal anyone set, so the denominator was an invented judgement. */
 .lg-consistency{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:10px}
 .lg-consistency-day{display:flex;flex-direction:column;align-items:center;gap:6px;padding:3px 0;border:0;background:transparent;color:var(--muted);font:inherit;font-size:10px;font-weight:700;cursor:pointer}
 .lg-consistency-day i{display:block;width:100%;max-width:32px;aspect-ratio:1;border-radius:9px;background:var(--track);border:1px solid var(--border)}
@@ -971,6 +972,15 @@ button.ov-day{cursor:pointer}
   #view-log #log-session > .lg-back{flex:0 0 auto;align-self:flex-start}
   #view-log #log-sub-program,#view-log #log-sub-exercises,#view-log #log-sub-history{
     flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  /* Today's OVERVIEW scrolls inside the column too. #view-log is overflow:hidden here, and the
+     overview is a plain block child of #log-sub-today — so anything taller than the short
+     landscape viewport was simply cut off with no way to reach it. Same treatment the other
+     three sections already had.
+     Two columns while it is at it: ~930px of width with barely 300px of height is exactly the
+     case the desktop composition was drawn for, and it roughly halves the scroll distance.
+     Still two INDEPENDENT stacks — align-items:start, no shared row height. */
+  #view-log #log-overview{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  #view-log .lg-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;align-items:start}
   #view-log .log-cols{display:flex;gap:12px;flex:1;min-height:0}
   /* 38% keeps the day hero's title readable and the timer controls at a real tap size.
      The column itself does NOT scroll: the day hero and the timer card are pinned, and only the

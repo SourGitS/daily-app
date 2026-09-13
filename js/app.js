@@ -434,6 +434,12 @@ if(firebaseReady){
       _cloudApplied.sessions=true;
       S.sessions=records;
       if(S.view==='log'&&logSubTab==='history') renderHistory();
+      // Log › Today states what was saved today, the last seven days and the recent sessions,
+      // all off S.sessions — so a snapshot arriving while it is on screen must refresh it or
+      // every one of those goes stale. Presentation only; no listener, path, merge rule or
+      // timestamp behaviour changes.
+      if(S.view==='log'&&logSubTab==='today'&&logTodayView==='overview'&&typeof renderLogOverview==='function') renderLogOverview();
+      if(S.view==='home'&&typeof renderHome==='function') renderHome();
       if(S.view==='stats') refreshStatsForData(['overview','review','training']);
     });
 
@@ -643,7 +649,10 @@ if(firebaseReady){
       if(S.view==='home'&&typeof renderHome==='function') renderHome();
       if(S.view==='budget'&&typeof renderBudgetTab==='function') renderBudgetTab();
       if(S.view==='stats') refreshStatsForData(['overview','review','finance']);
-      if(typeof renderAccountsPage==='function'&&document.getElementById('view-accounts')&&document.getElementById('view-accounts').style.display!=='none') renderAccountsPage();
+      // Accounts is a Finance view now, so "is it on screen" is the same question every other
+      // Finance panel answers. renderBudgetTab() above already refreshed the week and, from
+      // its tail, the Overview's account card.
+      if(S.view==='budget'&&budgetView==='accounts'&&typeof renderAccountsPage==='function') renderAccountsPage();
     };
     const _acctListen=()=>syncTrack(syncBlobListen(user.uid,'accounts','daily_accounts',_acctRerender));
     db.ref('users/'+user.uid+'/accounts').once('value').then(snap=>{
@@ -2217,12 +2226,9 @@ function setView(v, direction, opts){
   // Leaving Food closes its supporting screens. They are peers of the deck, not children of
   // it, so nothing else would hide them and one left open would cover the incoming view.
   if(v!=='food') foodCloseSupport();
-  // Accounts is a fixed overlay (not an #app-main>section), so — like the library above — it
-  // won't be hidden by the .hidden toggle below; close it explicitly so a sidebar switch away
-  // from Accounts actually leaves it. The nav's selected row is set by setNavActive() below.
-  const _acctOv=document.getElementById('view-accounts');
-  if(_acctOv&&_acctOv.style.display!=='none'){_acctOv.style.display='none';_acctOv.style.left='0';}
-  // Daily + AI is the same kind of peer destination, so it needs the same explicit close.
+  // Accounts used to need an explicit close here — it was a fixed overlay, so the .hidden
+  // toggle below could not reach it. It is a Finance panel now and leaves with its own view.
+  // Daily + AI is still a peer destination, so it needs the explicit close.
   const _aiOv=document.getElementById('view-aihub');
   if(_aiOv&&_aiOv.style.display!=='none'){_aiOv.style.display='none';_aiOv.style.left='0';}
   const prev=S.view;
@@ -2271,7 +2277,13 @@ function setView(v, direction, opts){
   // Stats is a deck destination again — its own bottom-nav tab, its own swipe slot — and it
   // still remembers whichever section was last open (statsSubTab).
   if(v==='stats'){ setStatsTab(statsSubTab,true); }
-  if(v==='budget') renderBudgetTab();
+  // Budget is entered from the deck, the sidebar, a hash restore and several deep links, and
+  // every one has to land on the sub-view budgetView actually names. This used to call
+  // renderBudgetTab() alone, which kept the WEEK's static inputs in step with budgetData but
+  // left the VISIBLE panel to whatever setBudgetView had last toggled — fine while Week was
+  // the default and the first thing rendered, wrong the moment a session can start on
+  // Overview, or a deep link sets budgetView before arriving.
+  if(v==='budget') setBudgetView(budgetView);
   // Food lands on its remembered section, unless a shortcut named one. `opts.foodTab` is how
   // "Log food →" guarantees Today even after a week of Shopping.
   if(v==='food'){
@@ -2388,7 +2400,10 @@ const NAV_QUICK_ICONS={
   // of lines below this and `const` does not hoist. Keep them in step by eye if it is redrawn.
   settings:'<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2.1"/><circle cx="15" cy="12" r="2.1"/><circle cx="8" cy="18" r="2.1"/>'
 };
-const NAV_QUICK_LABELS={home:'Home', budget:'Budget', log:'Log', food:'Food',
+// The DESTINATION is Finance; the view id stays 'budget' (see BUD_VIEWS). These labels drive
+// the desktop sidebar's pinned strip and the phone hamburger, and they must read the same as
+// the bottom-nav button beside them.
+const NAV_QUICK_LABELS={home:'Home', budget:'Finance', log:'Log', food:'Food',
                         stats:'Stats', settings:'Settings'};
 const NAV_QUICK_EXTRA=['settings'];
 const NAV_QUICK_VIEWS=NAV_ORDER.concat(NAV_QUICK_EXTRA);
@@ -2436,11 +2451,14 @@ const NAV_TREE=[
     {id:'log-history',   label:'History',   view:'log', sub:'history'},
   ]},
   {id:'money', label:'Money', rows:[
+    // Overview leads the group because it leads the tab: it is the current-position screen,
+    // and This week is where you go to change something once you have read it.
+    {id:'bud-overview', label:'Overview',   view:'budget',   sub:'overview'},
     {id:'bud-week',   label:'This week',     view:'budget',   sub:'week'},
     {id:'bud-month',  label:'Month',         view:'budget',   sub:'month'},
     {id:'bud-bills',  label:'Bills',         view:'budget',   sub:'bills'},
     {id:'bud-year',   label:'Year',          view:'budget',   sub:'year'},
-    {id:'accounts',   label:'Accounts',      view:'accounts'},
+    {id:'accounts',   label:'Accounts',      view:'budget',   sub:'accounts'},
     {id:'wkr',        label:'Weekly review', view:'stats',    sub:'review'},
   ]},
   // Was "Kitchen". The group is named for the destination it now holds, and Food library keeps
@@ -2485,7 +2503,8 @@ const NAV_NO_ROW_OVERLAYS=['view-settings-detail','view-split-editor','view-stat
 // calls setStatsTab(statsSubTab,true), so the explicit sub-tab call has to come AFTER setView.
 function navGo(viewId, sub){
   closeMenu();
-  if(viewId==='accounts') return openAccounts();
+  // No Accounts special case: NAV_TREE routes it as budget/accounts, which the registry
+  // answers like any other Finance view.
   if(viewId==='aihub')    return openAIHub();
   // Legacy names resolve BEFORE setView, so a row still saying 'kitchen' pushes one history
   // entry for #food rather than an intermediate one for a screen that no longer exists.
@@ -2506,7 +2525,8 @@ const navShown=id=>{ const el=document.getElementById(id); return !!(el&&el.styl
 function navCurrentRow(){
   const shown=navShown;
   if(NAV_NO_ROW_OVERLAYS.some(shown)) return '';
-  if(shown('view-accounts')) return 'accounts';
+  // No Accounts branch: it is a Finance view now, so the budget line below answers it off
+  // BUD_VIEWS like Month or Bills.
   if(shown('view-aihub'))    return 'aihub';
   // Food's two supporting screens ARE nav destinations — each has its own row — so unlike the
   // overlays above they light one rather than clearing the selection. Checked before the view
@@ -2516,7 +2536,7 @@ function navCurrentRow(){
   const v=(typeof S!=='undefined'&&S&&S.view)||'home';
   if(v==='home')    return 'home';
   if(v==='log')     return ({today:'log-today',program:'log-program',exercises:'log-exercises',history:'log-history'})[logSubTab]||'';
-  if(v==='budget')  return ({week:'bud-week',month:'bud-month',bills:'bud-bills',year:'bud-year'})[budgetView]||'';
+  if(v==='budget')  return ((BUD_VIEWS.find(x=>x.id===budgetView)||{}).row)||'';
   if(v==='stats')   return ({overview:'st-overview',review:'wkr',training:'st-training',body:'st-body',nutrition:'st-nutrition',finance:'st-finance'})[statsSubTab]||'';
   if(v==='food')    return ({today:'nut-today',recipes:'kit-recipes',shopping:'kit-shopping',pantry:'kit-pantry'})[foodState.tab]||'';
   if(v==='notes')    return 'journal';
@@ -2533,7 +2553,9 @@ function navCurrentRow(){
 // as navCurrentRow(): a pushed screen that is not a nav destination lights nothing.
 function navCurrentQuick(){
   if(NAV_NO_ROW_OVERLAYS.some(navShown)) return '';
-  if(navShown('view-accounts')||navShown('view-aihub')) return '';
+  // Accounts no longer clears this: it is inside Finance, so the Finance destination stays
+  // lit in the bottom nav and the sidebar exactly as it does on any other Finance view.
+  if(navShown('view-aihub')) return '';
   // Food's supporting screens deliberately do NOT clear this: they are inside the Food
   // experience, so Food stays lit here exactly as it stays lit in the bottom nav.
   const v=(typeof S!=='undefined'&&S&&S.view)||'home';
@@ -4534,6 +4556,10 @@ function saveSession(){
 const PO_STREAK_NEEDED=3;      // sessions of strictly increasing reps
 const PO_REP_CEILING=8;        // reps at or above this means the load is too light
 const PO_CEILING_SESSIONS=2;   // ...sustained for this many sessions
+// The increase the overload rule recommends, in ONE place: the post-save modal and Log ›
+// Today's plan rows both print it, and a second literal would be free to drift from the first.
+// Only ever applied to an externally LOADED movement — see logPlanRowHtml().
+const PO_STEP_KG=2.5;
 // The first working set specifically: it's the freshest and least affected by fatigue, and
 // it's what Francois judges his own progress on.
 function poFirstWorkingSet(ex){
@@ -4591,7 +4617,7 @@ function showPOModal(suggestions){
   document.getElementById('po-items').innerHTML = suggestions.map(s=>`
     <div class="po-item">
       <div class="po-item-name">${s.name}</div>
-      <div class="po-item-tip">Try ${s.weight+2.5}kg next time (+2.5kg)</div>
+      <div class="po-item-tip">Try ${s.weight+PO_STEP_KG}kg next time (+${PO_STEP_KG}kg)</div>
       <!-- Say WHY it fired, so a suggestion can be judged rather than just trusted. -->
       <div class="po-item-why">${s.reason} · currently ${s.weight}kg × ${s.reps}</div>
     </div>`).join('');
@@ -7425,7 +7451,7 @@ function aiLedgerScope(range){
     ? ledgerSavingsMovement(range.from, range.to) : null;
   return {records:rows, importedSourceKeys:[...new Set(importedKeys)].sort(),
     savingsMovement:savingsMovement,
-    savedMetricNote:'Daily’s weekly Saved figure is typed into the Budget week by the user. Imported transfers are recorded as account movement only and never write it.'};
+    savedMetricNote:'Daily’s weekly Saved figure is typed into Finance › Week by the user. Imported transfers are recorded as account movement only and never write it.'};
 }
 
 // Live scheduled Fixed categories are the subscription/bill/payment-plan model.
@@ -7715,7 +7741,7 @@ function aiReviewScope(range){
       return {
         week:w, status:rec.status,
         completedAt:rec.completedAt?new Date(rec.completedAt).toISOString():null,
-        figuresAre:frozen?'frozen at completion':'read live from Budget now',
+        figuresAre:frozen?'frozen at completion':'read live from Finance now',
         planned:wkrPlannedFor(used),
         // The labels from the plan THIS review used, not today's — a renamed group must not
         // relabel a review that was completed under the old name.
@@ -8310,7 +8336,10 @@ function aiHubText(ctx,fmt){
 
 // The peer overlays all sit at the same z-index, so opening one on top of another would leave
 // the first showing underneath when this one closes. Each open function hides its peers.
-const AI_PEER_OVERLAYS=['view-accounts','view-aihub'];
+// Accounts LEFT this list when it became a Finance view: it is a panel inside #view-budget
+// now, not a fixed layer, so it has nothing to hide, nothing to hide it and no sidebar inset
+// to recompute. Do not add it back.
+const AI_PEER_OVERLAYS=['view-aihub'];
 // Food's two supporting screens join this list so opening Accounts, Daily AI, a Stats
 // evidence screen or an exercise detail hides them, and so aiSyncOverlayInset() recomputes
 // their desktop sidebar inset when the viewport crosses 1024px — they are the same kind of
@@ -8345,7 +8374,7 @@ function openAIHub(){
 function closeAIHub(){
   const v=document.getElementById('view-aihub');
   if(v){ v.style.display='none'; v.style.left='0'; }
-  // Restore the nav highlight to whatever tab is showing underneath (mirrors closeAccounts).
+  // Restore the nav highlight to whatever tab is showing underneath.
   setNavActive();
 }
 
@@ -9201,8 +9230,8 @@ function aiValTransfer(d,id){
   if(move&&savedHere) conflicts.push('The week of '+aiActFmtDate(wk)+' already records '+
     fmtMoneyExact(parseFloat(wd.sav_amount)||0)+' saved, typed in by hand. This '+move+' is recorded as account movement only and '+
     'Daily’s Saved figure for that week is unchanged, so the same money is not counted twice. If that typed figure was meant to be '+
-    'this transfer, it is already right — if it was meant to be something else, edit it in Budget.');
-  else if(move) infos.push('Recorded as a savings '+move+'. Daily’s Saved figure is a weekly number you type in Budget, so it is left alone.');
+    'this transfer, it is already right — if it was meant to be something else, edit it in Finance.');
+  else if(move) infos.push('Recorded as a savings '+move+'. Daily’s Saved figure is a weekly number you type in Finance › Week, so it is left alone.');
   const summary='Move '+fmtMoneyExact(amt)+' from '+from.rec.name+' to '+to.rec.name+' on '+aiActFmtDate(date)+
     '. This is your own money changing accounts — it adds no income and no spending'+
     (move?', and counts as a savings '+move:'')+'.';
@@ -9988,7 +10017,7 @@ function aiInboxCopySchema(){
     '  Keep salary, family support, gifts, reimbursements and internal transfers as different incomeType values. A reimbursement is NOT salary. An internal transfer is not income at all — use add_transfer.\n'+
     'add_transfer data: amount (>0), date, fromAccountId/Name, toAccountId/Name, optional note, source, counterpartSource.\n'+
     '  Moving your own money between your own accounts. It creates no income and no spending. ONE real transfer appears as TWO statement rows (a debit in one file, a credit in the other) — send ONE action and put the other row in counterpartSource, so the second file does not import it again.\n'+
-    '  A transfer into an account marked "Savers" is reported as a savings contribution and one out of it as a withdrawal, but Daily NEVER writes the week’s Saved figure from an import: that number is typed in Budget by the user, and writing it here would record the same saving twice. Do not send savings as add_income either.\n'+
+    '  A transfer into an account marked "Savers" is reported as a savings contribution and one out of it as a withdrawal, but Daily NEVER writes the week’s Saved figure from an import: that number is typed in Finance › Week by the user, and writing it here would record the same saving twice. Do not send savings as add_income either.\n'+
     'add_reimbursement data: amount (>0), date the money came back, expenseId (the exact transaction id from the context export), optional reason, paymentAccountId/Name, note, source.\n'+
     '  The original expense stays at its full amount in your spending. Daily derives your net cost. Never also lower the expense with update_expense — that would remove the same money twice. The reimbursement may fall in a different week from the purchase; both dates are kept.\n'+
     'add_bill_payment data: amount (>0), date the payment actually left the account, fixedCategoryId/Name, optional paymentAccountId/Name, note, source.\n'+
@@ -10070,7 +10099,7 @@ function aiReconReport(){
       ' looks like the recurring cost “'+catLabel(hit)+'” (id '+t.id+')');
   });
   add('double_counted','Variable spending that may already be a committed cost','warn',dbl,
-    'A recurring cost is accrued every week from the week’s own frozen rates. If one of these is that same bill, move it with update_expense or delete it in Budget, then record the payment with add_bill_payment.');
+    'A recurring cost is accrued every week from the week’s own frozen rates. If one of these is that same bill, move it with update_expense or delete it in Finance, then record the payment with add_bill_payment.');
 
   // 3. Possible duplicates. Rows that differ by SOURCE ROW are two purchases and are not listed;
   //    everything else with the same day, merchant and amount is shown for a human to judge.
@@ -10181,7 +10210,7 @@ function aiReconReport(){
   const savLines=[];
   if(mv.transfers) savLines.push('Imported transfers: '+fmtMoneyExact(mv.contributions)+' into savers, '+
     fmtMoneyExact(mv.withdrawals)+' out, net '+fmtMoneyExact(mv.net)+' across '+mv.transfers+' transfer'+(mv.transfers===1?'':'s'));
-  if(typed) savLines.push('Saved figures typed into Budget weeks: '+fmtMoneyExact(Math.round(typed*100)/100));
+  if(typed) savLines.push('Saved figures typed into Finance weeks: '+fmtMoneyExact(Math.round(typed*100)/100));
   add('savings','Savings movement','info',savLines,
     'Daily’s Saved metric is the typed weekly figure. Imported transfers are account movement and never write it, so these two numbers are allowed to differ.');
 
@@ -10501,7 +10530,43 @@ const BUD_DONUT_COLOURS = [
 // ── Budget state ──────────────────────────────────────────────────
 let currentWeekIdx     = 0;
 let currentMonthOffset = 0;
-let budgetView         = 'week';
+// ── The six Finance views ─────────────────────────────────────────
+// The user-facing destination is FINANCE. The internal view id stays 'budget', with it the
+// bud* prefixes, every DOM id, every storage key and the #budget route — this is a naming
+// change for the person using the app, not a namespace rewrite or a data migration.
+//
+// ONE ordered list, and the only place a Finance view's tab, panel, nav row or renderer is
+// named. setBudgetView() loops it, navCurrentRow() reads the row back off it, budRenderView()
+// dispatches through its `render` field, and the tests assert index.html carries a button and a
+// panel for every entry and for nothing else — before this, the same facts lived in four
+// hand-written places (a segSetOn call, a classList.toggle call, a render call and a literal
+// map in navCurrentRow), which is how a view gets added everywhere except the one list nobody
+// remembered.
+//
+// ACCOUNTS IS ONE OF THEM NOW. It was a full-screen .app-overlay (#view-accounts) launched
+// from a button beside the strip, outside the role="tablist" because it had no tab state. It
+// has one: a tab, a panel, a nav row and a remembered selection like every other view, so the
+// launcher, the overlay shell, its Back button and closeAccounts() are all gone. openAccounts()
+// survives as the compatibility helper every existing caller still reaches it through.
+// `render` NAMES the renderer setBudgetView() runs when the view is selected, as a string
+// rather than a reference: this array is evaluated in a bare VM by tests/budget-overview.test.cjs, where
+// a function reference would not resolve. Overview and Week both name renderBudgetTab() — it
+// refreshes the week's static #sav-amount / #week-notes (the invariant above budWriteFields)
+// and renders the Overview from its own tail, so one call serves the pair.
+const BUD_VIEWS=[
+  {id:'overview', btn:'bv-overview-btn', panel:'budget-overview-view', row:'bud-overview', render:'renderBudgetTab'},
+  {id:'week',     btn:'bv-week-btn',     panel:'budget-week-view',     row:'bud-week',     render:'renderBudgetTab'},
+  {id:'month',    btn:'bv-month-btn',    panel:'budget-month-view',    row:'bud-month',    render:'renderMonth'},
+  {id:'bills',    btn:'bv-bills-btn',    panel:'budget-bills-view',    row:'bud-bills',    render:'renderBillsView'},
+  {id:'accounts', btn:'bv-accounts-btn', panel:'budget-accounts-view', row:'accounts',     render:'renderAccountsPage'},
+  {id:'year',     btn:'bv-year-btn',     panel:'budget-year-view',     row:'bud-year',     render:'renderYear'},
+];
+// IN MEMORY, and 'overview' is where a fresh session lands: the current-position screen is the
+// answer to "how am I doing" and the week's editors are one press from it. Within a session
+// the tab still returns to whichever view was last open, which is what setView() restores.
+// Deliberately not persisted — a stored default would be a boot-time write, the _bootPhase
+// trap in AGENTS.md, for a preference worth nothing across sessions.
+let budgetView         = 'overview';
 let budgetData         = budLoadData();
 let budDefaults        = budLoadDefaults();
 // ── Unified budget config (single source of truth) ───────────────
@@ -10940,6 +11005,38 @@ function nextPayInfo(){
 function budCurrentWeekBasis(){
   return budgetData[weekKey(getMondayOf(0))]||{};
 }
+// ── "Available to spend", in ONE place ────────────────────────────
+// income − committed − spent − saved, and NULL rather than zero when no income has been
+// entered: "nothing left" and "nothing told us yet" are different answers, and only the second
+// one may not be judged, coloured or paced. Three surfaces need this arithmetic — the Week
+// hero (budRecalc), Home's Finance check-in and Budget › Overview — and the check-in carried
+// its own copy of the subtraction until this existed.
+function budAvailable(income, committed, spent, saved){
+  return income>0 ? (income-spent-committed-saved) : null;
+}
+// Every component of that subtraction from the canonical readers, for a caller with no budget
+// inputs on screen to read. budRecalc() builds the same four totals from the live DOM values
+// merged over the saved week and hands them to budAvailable() too, so the Week hero and the
+// Overview state one figure by construction rather than by one reproducing the other.
+// Reads only; writes nothing, stamps nothing.
+function budWeekMoney(d, key){
+  const week=d||{};
+  const income=weekIncome(week);
+  const committed=weekFixedTotal(week);
+  const spent=weekVarTotal(week,key);
+  const saved=weekSavedAmt(week);
+  return {week, key, income, committed, spent, saved,
+          available:budAvailable(income,committed,spent,saved)};
+}
+// The safe daily pace line — the figure that actually governs a decision at the counter.
+// Shared by the Week hero and Budget › Overview so one rule states it. Empty when there is
+// nothing to pace: no income figure, exactly nothing left, or no days left to spread it over.
+function budPaceText(available, daysLeft){
+  if(available===null||available===undefined) return '';
+  if(available<0) return 'Over by $'+Math.abs(available).toFixed(0)+' this week';
+  if(!(available>0)||!(daysLeft>0)) return '';
+  return '$'+Math.floor(available/daysLeft)+'/day for the '+(daysLeft===1?'rest of today':daysLeft+' days left');
+}
 // What is left after the bills that land before the next pay day.
 // `available` is passed in rather than recomputed: budRecalc() already derives it from the
 // live inputs, and a second implementation of that arithmetic is exactly how an on-screen
@@ -11096,7 +11193,7 @@ function catRemoveItem(type,id){
       'Delete "'+(cats.find(c=>c.id===id)||{}).name+'"?\n\n'+
       stranded.weeks+' past week'+(stranded.weeks===1?'':'s')+' still hold '+fmtMoney(stranded.total)+
       ' against it. That figure is kept, not erased, but it stops counting towards those weeks '+
-      'until you restore the category from Budget → Stranded data.')) return;
+      'until you restore the category from Finance → Stranded data.')) return;
   BUD_CAT_SAVE[type](cats.filter(c=>c.id!==id));
   refreshCatBudgetUI();
 }
@@ -11397,6 +11494,10 @@ function saveAccounts(list){
   // treats this as authoritative (offline edits win) rather than discarding it for the cloud.
   try{ localStorage.removeItem('daily_accounts_migrated'); }catch(e){}
   lsSave('daily_accounts', accounts, 'accounts');
+  // Finance › Overview states the account position, so an edit made on the Accounts tab has to
+  // reach it. Building that markup writes nothing, and the panel may be hidden — it is the
+  // string that matters, so the card is right the moment the tab is selected.
+  if(typeof S!=='undefined'&&S&&S.view==='budget'&&typeof renderBudgetOverview==='function') renderBudgetOverview();
   const be=document.getElementById('view-budget-editor');
   if(be&&be.style.display!=='none'&&typeof renderBudgetEditor==='function') renderBudgetEditor();
 }
@@ -11684,24 +11785,35 @@ function getMondaysInMonth(monthDate){
 function fmtMonthLabel(d){ return d.toLocaleDateString('en-AU',{month:'long',year:'numeric'}); }
 
 // ── Budget view toggle ────────────────────────────────────────────
+// Driven by BUD_VIEWS, so adding a view means adding one line there rather than a segSetOn, a
+// classList.toggle, a render call and a nav-row entry in four separate places.
+// The strip is a .seg-scroll now — five labels plus the Accounts button do not fit a phone at
+// the shared control's padding, and that is the pattern Stats' six tabs already use — so the
+// selected tab is revealed with segScrollToTab(). NEVER scrollIntoView(): #view-budget is a
+// .swipe-panel inside the transformed #swipe-deck and it would shove the deck sideways.
 function setBudgetView(v){
+  if(!BUD_VIEWS.some(x=>x.id===v)) v='overview';
   budgetView=v;
-  // The selected tab used to be four inline styles written from here, which is why this strip
-  // was the one that could not share a class with the other four. It is a .seg-tabs now.
-  segSetOn(document.getElementById('bv-week-btn'),  v==='week');
-  segSetOn(document.getElementById('bv-month-btn'), v==='month');
-  segSetOn(document.getElementById('bv-bills-btn'), v==='bills');
-  segSetOn(document.getElementById('bv-year-btn'),  v==='year');
+  const row=document.getElementById('budget-view-tabs');
+  BUD_VIEWS.forEach(x=>{
+    const btn=document.getElementById(x.btn);
+    segSetOn(btn, x.id===v);
+    if(btn&&x.id===v&&row) segScrollToTab(row, btn);
+    const panel=document.getElementById(x.panel);
+    if(panel) panel.classList.toggle('hidden', x.id!==v);
+  });
   setNavActive();
-  document.getElementById('budget-week-view').classList.toggle('hidden',v!=='week');
-  document.getElementById('budget-month-view').classList.toggle('hidden',v!=='month');
-  const billsEl=document.getElementById('budget-bills-view');
-  if(billsEl) billsEl.classList.toggle('hidden',v!=='bills');
-  document.getElementById('budget-year-view').classList.toggle('hidden',v!=='year');
-  if(v==='week') renderBudgetTab();
-  if(v==='month') renderMonth();
-  if(v==='bills') renderBillsView();
-  if(v==='year') renderYear();
+  budRenderView(v);
+}
+// The registry's own dispatch. Every view names its renderer, so adding one is still a single
+// line in BUD_VIEWS rather than a line there and a branch here.
+// Named rather than referenced (see BUD_VIEWS): these are all top-level function declarations,
+// so they are properties of the global object by the time anything can call this.
+function budRenderView(v){
+  const def=BUD_VIEWS.find(x=>x.id===v);
+  if(!def) return;
+  const fn=(typeof window!=='undefined')?window[def.render]:null;
+  if(typeof fn==='function') fn();
 }
 
 // ── Week navigation ───────────────────────────────────────────────
@@ -12545,7 +12657,11 @@ const TSTAT_ICONS={
   down:'<path d="M12 5v14M6 13l6 6 6-6"/>',
   check:'<path d="M4 12.5 9.5 18 20 6.5"/>',
   alert:'<path d="M12 8v5M12 16.5v.01M12 3 2.5 20h19z"/>',
-  flat:'<path d="M4 12h16"/>'
+  flat:'<path d="M4 12h16"/>',
+  // Something is incomplete or unknown rather than wrong -- the state Budget > Overview's
+  // Needs attention card raises for a week with no income figure or a charge with no billing
+  // date. The 'flat' dash was standing in for it and reads as a stray minus at row size.
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.8v.01"/>'
 };
 function tstatIcon(name){
   const d=TSTAT_ICONS[name]; if(!d) return '';
@@ -13466,6 +13582,10 @@ function renderBillsView(){
 // `available` is passed in rather than recomputed, and `week` is the object it was derived
 // FROM, so the projection can never disagree with the hero directly above it.
 const BUD_TIMELINE_DAYS=14;
+// Under this much projected to be left by payday, the forecast is "tight" rather than healthy.
+// Named because Budget › Overview's Needs attention card raises the same state and the two
+// must tighten on the same number — a second literal 50 is how they would drift apart.
+const BUD_TIGHT_UNDER=50;
 // Today through today + 13, inclusive: 14 calendar days counting today. Built with
 // (y, m, d + n) rather than millisecond arithmetic, so a daylight-saving boundary inside the
 // window cannot walk the end date off local midnight -- the same rule catOccurrencesBetween
@@ -13495,6 +13615,53 @@ function fcSplit(cells){
       (c[2]?'<div class="card-split-s">'+c[2]+'</div>':'')+
     '</div>').join('')+'</div>';
 }
+// The projection half of Outlook: figure, unit, payday cell, bills cell and the no-income
+// caption. Extracted so Budget › Overview's Coming up card shows the SAME copy, the same
+// three-way tone and the same threshold — two renderers wording or colouring one figure
+// differently is the failure this split exists to prevent.
+// Returns {tone, sum, html}: tone and sum fall out of the same branches the copy does, so the
+// caller does not re-derive either. Pure; it reads the forecast it is handed and nothing else.
+function budForecastPart(f){
+  if(!f) return {tone:'is-plain', sum:null, html:''};
+  // is-plain when there is no projection: the figure is then the BILLS DUE, and the default
+  // treatment paints it --positive — a green $41.94 under “in scheduled bills before payday”
+  // states money going out as a good outcome. Nothing has been judged, so nothing is coloured.
+  const tone=(f.projected==null) ? 'is-plain'
+    : (f.projected<0 ? 'is-over' : (f.projected<BUD_TIGHT_UNDER ? 'is-tight' : ''));
+  let figure, unit;
+  if(f.projected==null){
+    // No income entered yet -- state the bills, don't invent a projection. The prompt for the
+    // missing figure is a caption under the cells rather than a clause hung off this label.
+    figure=fmtMoneyExact(f.scheduled);
+    unit='in scheduled bills before payday';
+  } else {
+    figure=(f.projected<0?'-':'')+fmtMoney(Math.abs(f.projected)).replace('-','');
+    // Says what the number MEANS, not which operation produced it: "after planned bills"
+    // described the arithmetic and left the reader to work out what was being projected.
+    unit=f.projected<0 ? 'estimated shortfall before your next pay' : 'estimated left before your next pay';
+  }
+  const n=f.bills.length;
+  // Exact, not rounded: the rows carrying these amounts are printed in the timeline below, so
+  // a rounded total would disagree with its own visible arithmetic.
+  const secondCell = (f.projected==null)
+    ? ['This week’s income', 'Not entered', 'no projection yet']
+    : ['Bills before then', n?fmtMoneyExact(f.scheduled):'None', n?(n+' charge'+(n===1?'':'s')):'nothing scheduled'];
+  const html='<div class="fc-part">'+
+    '<div class="fc-part-h">Until next pay</div>'+
+    '<div class="fc-fig">'+figure+'</div>'+
+    '<div class="fc-unit">'+unit+'</div>'+
+    fcSplit([
+      ['Payday',
+       f.pay.date.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}),
+       f.pay.inDays===1?'tomorrow':'in '+f.pay.inDays+' days'],
+      secondCell
+    ])+
+    (f.projected==null
+      ? '<div class="fc-note">Enter this week’s income in Week plan and Daily will project what is left by payday.</div>'
+      : '')+
+  '</div>';
+  return {tone, sum:figure, html};
+}
 function renderOutlookCard(available, week){
   const el=document.getElementById('bud-outlook-card'); if(!el) return;
   const undated=billsUndatedCount();
@@ -13516,53 +13683,12 @@ function renderOutlookCard(available, week){
   const calLink='<button type="button" class="up-cal-link" onclick="openBillsCalendar()">View bills calendar →</button>';
 
   // -- Part 1: the projection, when there is an honest one to make --
-  // The supporting facts are CELLS, not prose. They were three stacked grey sentences at one
-  // size and weight, which is what made this half of the card read as unfinished beside the
-  // timeline's labelled header row: no hierarchy, and a figure with nothing structural under
-  // it. .card-split is the app's own two-up-with-divider vocabulary (Home's weight card, Log >
-  // Today), so this now matches every other card that states a figure and the facts behind it.
-  // Also gone: "dated in the list below", which pointed at a list already on screen.
-  let tone=' is-plain', sum, forecastPart='';
-  if(f){
-    // is-plain when there is no projection: the figure is then the BILLS DUE, and the
-    // default treatment paints it --positive — a green $41.94 under “in scheduled bills
-    // before payday” states money going out as a good outcome. Same reasoning as the
-    // no-payday branch below: nothing has been judged, so nothing is coloured.
-    tone=(f.projected==null) ? ' is-plain' : (f.projected<0 ? ' is-over' : (f.projected<50 ? ' is-tight' : ''));
-    let figure, unit;
-    if(f.projected==null){
-      // No income entered yet -- state the bills, don't invent a projection. The prompt for the
-      // missing figure is a caption under the cells rather than a clause hung off this label.
-      figure=fmtMoneyExact(f.scheduled);
-      unit='in scheduled bills before payday';
-    } else {
-      figure=(f.projected<0?'-':'')+fmtMoney(Math.abs(f.projected)).replace('-','');
-      // Says what the number MEANS, not which operation produced it: "after planned bills"
-      // described the arithmetic and left the reader to work out what was being projected.
-      unit=f.projected<0 ? 'estimated shortfall before your next pay' : 'estimated left before your next pay';
-    }
-    sum=figure;
-    const n=f.bills.length;
-    // Exact, not rounded: the rows carrying these amounts are printed in the timeline below,
-    // so a rounded total would disagree with its own visible arithmetic.
-    const secondCell = (f.projected==null)
-      ? ['This week’s income', 'Not entered', 'no projection yet']
-      : ['Bills before then', n?fmtMoneyExact(f.scheduled):'None', n?(n+' charge'+(n===1?'':'s')):'nothing scheduled'];
-    forecastPart='<div class="fc-part">'+
-      '<div class="fc-part-h">Until next pay</div>'+
-      '<div class="fc-fig">'+figure+'</div>'+
-      '<div class="fc-unit">'+unit+'</div>'+
-      fcSplit([
-        ['Payday',
-         f.pay.date.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}),
-         f.pay.inDays===1?'tomorrow':'in '+f.pay.inDays+' days'],
-        secondCell
-      ])+
-      (f.projected==null
-        ? '<div class="fc-note">Enter this week’s income in Week plan and Daily will project what is left by payday.</div>'
-        : '')+
-    '</div>';
-  } else {
+  // Built by budForecastPart(), which Budget > Overview's Coming up card also calls -- the
+  // copy, the three-way tone and the tight threshold are decided there so the two surfaces
+  // cannot word or colour the same figure differently.
+  const fc=budForecastPart(f);
+  let tone=fc.tone?' '+fc.tone:'', sum=fc.sum, forecastPart=fc.html;
+  if(!f){
     // No pay day named, or a past week: there is no honest projection, so the card leads with
     // the schedule. .fc-card's default rail is --positive and there would be nothing to be
     // positive about -- a green edge beside a list of charges is a verdict on nothing.
@@ -13600,6 +13726,333 @@ function renderOutlookCard(available, week){
   restoreBudgetCollapseState();
 }
 
+
+// ── Budget › Overview ─────────────────────────────────────────────
+// The current-position screen, and the first of the five Budget views. It answers what can be
+// spent this week, whether the week reaches the next pay, what needs a decision, what is due
+// over the next fortnight, where the accounts stand and how the month is going — then leads
+// into Week, Bills, Month and Accounts to act on any of it.
+//
+// It INTERPRETS what Daily already holds and computes nothing of its own: every figure comes
+// from a canonical reader (budWeekMoney → weekIncome / weekFixedTotal / weekVarTotal /
+// weekSavedAmt, payCycleForecast, billOccurrences, monthVariableTotal, monthSpendComparison,
+// the accounts totals). Stats › Finance is still where COMPLETED weeks and longer ranges are
+// analysed; this screen only ever describes now.
+//
+// Read-only by construction. Nothing here writes a store, stamps a timestamp, seeds a default
+// or registers a sync path. The one write it can cause is Add expense, which opens the
+// existing transaction modal and goes through the existing save path — the same one Week's
+// hero and Home's quick capture use.
+//
+// It deliberately does NOT use Budget Week's card collapse system (.bud-toggle /
+// daily_budget_collapse). These are short summaries; a disclosure on a four-line card hides
+// the thing you came for, and a second set of keyed collapse state would be one more place
+// for a stale preference to live.
+const BUD_OV_ATTENTION_MAX=3;
+const BUD_OV_BILL_PREVIEW=3;
+
+// A toned row: what is wrong, the figure or date that says so, and one place to go about it.
+// `run` is the onclick body, so an item can reach any existing entry point without this
+// renderer growing a dispatcher of its own.
+function budOvItemHtml(it){
+  return '<div class="bov-item is-'+it.tone+'">'+
+    '<span class="bov-item-ic">'+tstatIcon(it.icon)+'</span>'+
+    '<span class="bov-item-txt">'+
+      '<span class="bov-item-t">'+it.title+'</span>'+
+      '<span class="bov-item-b">'+it.body+'</span>'+
+    '</span>'+
+    '<button type="button" class="bov-item-a" onclick="'+escAttr(it.run)+'">'+escText(it.act)+
+      '<span aria-hidden="true">→</span></button>'+
+  '</div>';
+}
+// "Friday", for the pay day a forecast is measured against.
+function budOvPayLabel(f){
+  if(!f||!f.pay||!f.pay.date) return 'payday';
+  return f.pay.date.toLocaleDateString('en-AU',{weekday:'long'});
+}
+// Everything that needs a decision today, most serious first; the card shows the first three.
+// Each item reads ONE canonical fact and says what it means. Nothing here scores, weights or
+// blends them into a single financial-health number — a rank that cannot be checked against a
+// figure on another screen is exactly what this list exists instead of.
+// Red is reserved for a state that has actually gone wrong (an overdue statement, a projected
+// shortfall); amber is for close, incomplete or unknown. An ordinary bill landing next week is
+// neither, and is left to the Coming up card.
+function budOvAttention(m, f){
+  const items=[];
+  const today=localMidnight(getLocalDate());
+
+  // 1. An overdue tracked statement is the only item here that is a FACT rather than a
+  //    projection, which is why it leads.
+  (Array.isArray(accounts)?accounts:[]).forEach(a=>{
+    if(!a||a.type!=='debt'||!a.tracksStatement||!a.dueDate) return;
+    const n=acctDueDays(a);
+    if(n===null||n>=0) return;
+    const bal=parseFloat(a.statementBalance)||0;
+    items.push({tone:'neg', icon:'alert',
+      title:escText(a.name||'Card')+' statement is overdue',
+      body:escText(acctDueText(a))+(bal>0?' · '+fmtMoneyExact(bal)+' on the last statement':''),
+      act:'Open accounts', run:'openAccounts(this)'});
+  });
+
+  // 2. The Outlook card's own projection, at the point where it has gone negative.
+  if(f&&f.projected!=null&&f.projected<0){
+    items.push({tone:'neg', icon:'down',
+      title:'Short before your next pay',
+      body:'After the '+(f.bills.length?fmtMoneyExact(f.scheduled)+' of bills dated before ':'bills due before ')+
+        escText(budOvPayLabel(f))+', this week is projected to run '+fmtMoney(Math.abs(f.projected))+' short.',
+      act:'Open week', run:"setBudgetView('week')"});
+  }
+
+  // 3. No income figure means every "available" number on this screen is UNANSWERABLE rather
+  //    than zero, so it is said here as well as in the hero.
+  if(!(m.income>0)){
+    const named=activeCats(loadIncCats()).some(c=>String(c.name||'').trim());
+    items.push({tone:'warn', icon:'info',
+      title:named?'No income recorded for this week':'No income sources set up yet',
+      body:named
+        ? 'Available to spend cannot be worked out until this week’s pay is entered.'
+        : 'Add your income sources and fixed costs and Daily can work out what each week leaves.',
+      act:named?'Enter income':'Set up budget', run:'openBudgetSetup()'});
+  }
+
+  // 4. Due today, tomorrow or the day after — close enough to change what you would do now.
+  //    Anything further out is the Coming up card's job, not an alarm.
+  const soonTo=new Date(today.getFullYear(), today.getMonth(), today.getDate()+2);
+  const soon=billOccurrences(today, soonTo);
+  if(soon.length){
+    const first=soon[0];
+    const n=Math.round((first.date-today)/864e5);
+    const when=n<=0?'today':n===1?'tomorrow':'in '+n+' days';
+    const rest=soon.length>1?' · '+(soon.length-1)+' more within three days':'';
+    items.push({tone:'warn', icon:'alert',
+      title:escText(first.name)+(first.kind==='statement'?' statement':'')+' is due '+when,
+      body:fmtMoneyExact(first.amount)+rest,
+      act:'View bills', run:'openBillsCalendar()'});
+  }
+
+  // 5. The week's own self-imposed ceiling, read exactly the way the Spending card reads it.
+  const goal=getWeekVarGoal(m.week);
+  if(goal!==null&&goal>0&&m.spent>goal){
+    items.push({tone:'warn', icon:'up',
+      title:'Spending is past this week’s goal',
+      body:fmtMoneyExact(m.spent)+' against a '+fmtMoney(goal)+' goal — '+fmtMoney(m.spent-goal)+' over.',
+      act:'Open week', run:"setBudgetView('week')"});
+  }
+
+  // 6. The SAME threshold the Outlook card tightens at, so one number decides "tight" in both
+  //    places. Mutually exclusive with the shortfall above.
+  if(f&&f.projected!=null&&f.projected>=0&&f.projected<BUD_TIGHT_UNDER){
+    items.push({tone:'warn', icon:'alert',
+      title:'Tight until your next pay',
+      body:fmtMoney(f.projected)+' projected to be left by '+escText(budOvPayLabel(f))+
+        (f.bills.length?', after '+fmtMoneyExact(f.scheduled)+' of bills.':', with nothing scheduled before then.'),
+      act:'Open week', run:"setBudgetView('week')"});
+  }
+
+  // 7. A live recurring cost with no billing date is counted in the weekly commitment but can
+  //    never be scheduled, so it is invisible in everything answering "what is coming".
+  const undated=billsUndatedCount();
+  if(undated){
+    items.push({tone:'warn', icon:'info',
+      title:undated+' recurring charge'+(undated===1?'':'s')+' without a billing date',
+      body:'Counted in your weekly commitments, but never shown in what is coming up.',
+      act:'Add dates', run:'openBudgetEditor()'});
+  }
+
+  return items;
+}
+function budOvAttentionHtml(m, f){
+  const items=budOvAttention(m,f).slice(0,BUD_OV_ATTENTION_MAX);
+  const body=items.length
+    ? items.map(budOvItemHtml).join('')
+    : '<div class="bov-calm">'+tstat('pos','Nothing urgent right now','check')+
+      '<span>Daily found nothing here that needs a decision today.</span></div>';
+  return '<div class="card bov-card">'+cardHeader('alert','Needs attention')+body+'</div>';
+}
+
+// Coming up: the pay-cycle projection, then a short preview of the same fortnight the Bills
+// calendar owns. The projection half is budForecastPart(), shared with the Outlook card, so
+// the two surfaces cannot word or colour the same figure differently.
+function budOvComingHtml(f){
+  const win=budTimelineWindow();
+  const occ=billOccurrences(win.from, win.to);
+  const range=budRangeLabel(win.from, win.to);
+  const total=occ.reduce((s,o)=>s+o.amount,0);
+  const hasStmt=occ.some(o=>o.kind==='statement');
+  const shown=occ.slice(0,BUD_OV_BILL_PREVIEW);
+  const more=occ.length-shown.length;
+  const fc=budForecastPart(f);
+  const noPay=f?'':'<div class="fc-part"><div class="fc-part-h">Until next pay</div>'+
+    '<div class="fc-note">No pay day is set for any income source, so there is nothing to project against. '+
+    'Add one in Settings → Budget setup and this becomes a real forecast.</div></div>';
+  // The preview is truncated; the TOTAL never is — it is exactly the occurrences this 14-day
+  // window holds. An upcoming-payment total and nothing else: the hero above carries ONE week
+  // of accrued commitment, so this figure is never subtracted from it.
+  const rows=occ.length
+    ? '<div class="fc-timeline">'+shown.map(billRowHtml).join('')+'</div>'+
+      (more>0?'<div class="bov-more">'+more+' more scheduled in this period</div>':'')+
+      '<div class="fc-total">'+
+        '<span class="fc-total-l">Total scheduled'+(hasStmt?', including card statements':'')+'</span>'+
+        '<span class="fc-total-v">'+fmtMoneyExact(total)+'</span>'+
+      '</div>'+
+      '<div class="fc-note">Amounts actually due, not the weekly allocation in Fixed expenses. Nothing here is deducted from this week’s figures.</div>'
+    : '<div class="up-none">No scheduled bills in the next 14 days.</div>';
+  const undated=billsUndatedCount();
+  const hint=undated
+    ? '<div class="up-hint">'+undated+' recurring charge'+(undated===1?'':'s')+' without a billing date — add one in Settings → Budget setup to see '+(undated===1?'it':'them')+' here.</div>'
+    : '';
+  return '<div class="card bov-card fc-card '+fc.tone+'">'+
+    cardHeader('calendar','Coming up')+
+    fc.html+noPay+
+    '<div class="fc-part"><div class="fc-part-h">Next 14 days<span class="fc-part-r">'+range+'</span></div>'+
+      rows+'</div>'+
+    hint+
+    '<button type="button" class="up-cal-link" onclick="openBillsCalendar()">View all bills →</button>'+
+  '</div>';
+}
+
+// Accounts, read-only. Net worth leads, because that is what the screen underneath leads with;
+// the coverage verdict rides in a chip beside it rather than recolouring the figure. Nothing
+// here is folded into the weekly available-to-spend calculation — an account balance and a
+// weekly allocation are different quantities and must not be added together.
+function budOvAccountsHtml(){
+  const head=cardHeader('bank','Accounts',
+    '<button type="button" class="card-hd-act" onclick="openAccounts(this)">Open accounts →</button>');
+  if(!Array.isArray(accounts)||!accounts.length){
+    return '<div class="card bov-card">'+head+
+      '<div class="bov-empty">No accounts yet. Add your savings, cards and anything else you want tracked, and your net worth and debt position appear here.</div>'+
+      '<button type="button" class="bov-act bov-act-wide" onclick="openAccounts(this)">Add an account →</button>'+
+    '</div>';
+  }
+  const assets=accountsAssetsTotal(), debts=accountsDebtsTotal();
+  const net=accountsNetWorth(), pos=accountsPayoffPosition();
+  const chip=debts<=0
+    ? tstat('pos','No debts','check',true)
+    : (pos>=0?tstat('pos','Debts covered','check',true):tstat('neg','Not yet covered','alert',true));
+  const cover=debts<=0
+    ? 'No debts recorded — everything here is yours.'
+    : (pos>=0
+        ? fmtMoney(pos)+' spare after clearing every debt'
+        : fmtMoney(Math.abs(pos))+' still needed to clear every debt');
+  // The nearest tracked statement in either direction. acctDueText() already names an overdue
+  // one as overdue, and that is the only case coloured.
+  const stmt=accounts
+    .filter(a=>a&&a.type==='debt'&&a.tracksStatement&&a.dueDate&&acctDueDays(a)!==null)
+    .sort((a,b)=>acctDueDays(a)-acctDueDays(b))[0]||null;
+  const stmtRow=stmt
+    ? '<div class="fin-line"><span class="fin-line-l">'+escText(stmt.name||'Card')+' statement'+
+        '<small>'+escText(acctDueText(stmt))+'</small></span>'+
+        '<span class="fin-line-r'+(acctDueDays(stmt)<0?' is-over':'')+'">'+
+        fmtMoneyExact(parseFloat(stmt.statementBalance)||0)+'</span></div>'
+    : '';
+  return '<div class="card bov-card">'+head+
+    '<div class="bov-fig-row">'+statsFigure(fmtMoney(net),'net worth','')+chip+'</div>'+
+    '<div class="card-cap">'+cover+'</div>'+
+    statsSplit([['Assets',fmtMoney(assets)],['Debts',fmtMoney(debts)]])+
+    stmtRow+
+  '</div>';
+}
+
+// This month, from the same readers Budget › Month and Stats use. A partial current month is
+// never compared against a complete previous one: monthSpendComparison() slices the earlier
+// month to the same number of recorded weeks and says so in its own text.
+function budOvMonthHtml(){
+  const monthDate=getMonthDate(0);
+  // openBudgetCurrentMonth(), not setBudgetView('month'): this card is labelled "This month"
+  // and states the current month's figures, so its action has to open that month rather than
+  // wherever Month happened to be left.
+  const head=cardHeader('trend','This month',
+    '<button type="button" class="card-hd-act" onclick="openBudgetCurrentMonth()">Open month →</button>');
+  const keys=monthRecordedKeys(monthDate);
+  if(!keys.length){
+    return '<div class="card bov-card">'+head+
+      '<div class="bov-empty">Nothing recorded in '+escText(fmtMonthLabel(monthDate))+' yet. Each week you fill in appears here.</div>'+
+    '</div>';
+  }
+  const total=monthVariableTotal(keys);
+  const saved=keys.reduce((s,k)=>s+weekSavedAmt(budgetData[k]),0);
+  const cmp=monthSpendComparison(monthDate,keys,total,true);
+  // register:false — this is a summary. The evidence records belong to Budget › Month, which
+  // is the screen that can actually open one.
+  const breakdown=monthSpendBreakdown(monthDate,keys,{register:false});
+  const first=breakdown.cats[0]||null;
+  // The largest category, but only when the month actually HAS category detail. A month whose
+  // biggest line is the legacy "Uncategorised / archived" aggregate has no answer to give, and
+  // naming the second-biggest as the largest would be inventing one.
+  const top=(first&&first.id!=='__uncategorised__')?first:null;
+  const topLine = !(total>0)
+    ? '<div class="bov-note">No variable spending recorded this month yet.</div>'
+    : (top
+      ? '<div class="fin-line"><span class="fin-line-l">Biggest category<small>'+escText(top.label)+'</small></span>'+
+          '<span class="fin-line-r">'+fmtMoneyExact(top.val)+'</span></div>'
+      : '<div class="bov-note">Category detail is missing for part of this month, so there is no reliable biggest category yet.</div>');
+  return '<div class="card bov-card">'+head+
+    statsFigure(fmtMoneyExact(total),'variable spending','')+
+    '<div class="month-spend-compare '+(cmp.available?cmp.direction:'')+'">'+escText(cmp.text)+'</div>'+
+    statsSplit([
+      ['Saved', fmtMoney(saved)],
+      ['Weeks recorded', String(keys.length)]
+    ])+
+    topLine+
+  '</div>';
+}
+
+// The hero. ONE figure — what is actually still spendable this week — on the app's own
+// .hero-panel, so it follows the accent and carries its verdict in a .tstat chip like every
+// other hero. "Available to spend" is an allocation out of this week's income and NOT a bank
+// balance; the card says so rather than leaving the reader to assume it.
+function budOvHeroHtml(m){
+  const setup=!(m.income>0);
+  const sunday=new Date(m.monday.getFullYear(), m.monday.getMonth(), m.monday.getDate()+6);
+  const acts='<div class="bov-hero-acts">'+
+    (setup?'<button type="button" class="bov-act bov-act-primary" onclick="openBudgetSetup()">Set up income &amp; bills</button>':'')+
+    '<button type="button" class="bov-act'+(setup?'':' bov-act-primary')+'" onclick="openTxnModal()">'+
+      '<span aria-hidden="true">+</span> Add expense</button>'+
+    '<button type="button" class="bov-act" onclick="setBudgetView(\'week\')">Open week →</button>'+
+  '</div>';
+  const extra='<div class="bov-hero-range">This week · '+budRangeLabel(m.monday,sunday)+'</div>'+
+    statsSplit([
+      ['Spent',     fmtMoney(m.spent)],
+      ['Committed', fmtMoney(m.committed)],
+      ['Saved',     fmtMoney(m.saved)]
+    ])+
+    '<div class="bov-hero-note">An allocation out of this week’s income — not a bank balance.</div>'+
+    acts;
+  return budHeroPanel([{
+    icon:'wallet',
+    label:'Available to spend this week',
+    lg:true,
+    val: setup ? '—' : (m.available<0?'-':'')+'$'+Math.abs(m.available).toFixed(0),
+    sub: setup
+      ? 'Enter this week’s income and your fixed costs and Daily will work out what is left.'
+      : escText(budPaceText(m.available, varGoalDaysLeft())),
+    chip: setup ? '' : (m.available<0
+      ? tstat('neg','Over budget','alert',true)
+      : tstat('pos','On track','check',true)),
+    extra: extra
+  }],{cols:1,colsSm:1,className:'bov-hero'});
+}
+
+// One full-width hero, then two INDEPENDENT vertical stacks — the composition Home's Dashboard
+// settled on, for the same reason: a tall card must not stretch the card beside it. Main holds
+// the two cards you act from, summary the two you check. On a phone the wrappers simply stack,
+// which gives the required reading order (position → attention → coming up → accounts →
+// month) with no CSS `order` and no second copy of the markup.
+function renderBudgetOverview(){
+  const wrap=document.getElementById('budget-overview-view'); if(!wrap) return;
+  const monday=getMondayOf(0);
+  const key=weekKey(monday);
+  const m=Object.assign({monday, key}, budWeekMoney(budCurrentWeekBasis(), key));
+  // Derived from the SAME figure and the SAME week object the hero above it states, exactly
+  // as budRecalc hands them to the Outlook card.
+  const f=payCycleForecast(m.available, m.week);
+  wrap.innerHTML=budOvHeroHtml(m)+
+    '<div class="bov-cols">'+
+      '<div class="bov-col bov-col-main">'+budOvAttentionHtml(m,f)+budOvComingHtml(f)+'</div>'+
+      '<div class="bov-col bov-col-side">'+budOvAccountsHtml()+budOvMonthHtml()+'</div>'+
+    '</div>';
+}
+
 // ── Home: Finance check-in ────────────────────────────────────────
 // A one-glance summary that links into Budget, not a second finance dashboard: at most three
 // information lines and one action. Renders empty — and so disappears from Home entirely —
@@ -13613,11 +14066,13 @@ function buildFinanceCheckinCard(){
   if(!next&&!pay) return '';
   // The same projection the Budget tab shows, from the saved week rather than live inputs —
   // Home has no budget fields on screen to read.
-  const monday=getMondayOf(0), mk=weekKey(monday);
+  const mk=weekKey(getMondayOf(0));
   const wk=budCurrentWeekBasis();
-  const inc=weekIncome(wk);
-  const avail=inc>0 ? (inc - weekVarTotal(wk,mk) - weekFixedTotal(wk) - (parseFloat(wk.sav_amount)||0)) : null;
-  const f=pay?payCycleForecast(avail, wk):null;
+  // budWeekMoney() rather than a fourth copy of income − committed − spent − saved. This card
+  // carried its own subtraction, and its saved term read sav_amount directly instead of going
+  // through weekSavedAmt().
+  const m=budWeekMoney(wk, mk);
+  const f=pay?payCycleForecast(m.available, wk):null;
 
   const lines=[];
   if(next){
@@ -13637,21 +14092,47 @@ function buildFinanceCheckinCard(){
       '<span class="fin-line-r">'+pay.date.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+'</span></div>');
   }
   if(!lines.length) return '';
-  return '<div class="card fin-card" onclick="openBudgetWeek()" style="cursor:pointer">'+
+  // Opens the OVERVIEW, not the week's editors: this card is a check-in, and the screen that
+  // answers "how am I doing" is the one it should hand you. Callers that genuinely need the
+  // week (Stats' source-week links, the Bills link) still say so explicitly.
+  return '<div class="card fin-card" onclick="openBudgetOverview()" style="cursor:pointer">'+
     cardHeader('calendar','Finance check-in')+
     lines.slice(0,3).join('')+
-    '<button type="button" class="fin-act card-act-inline" onclick="event.stopPropagation();openBudgetWeek()">Open Budget →</button>'+
+    '<button type="button" class="fin-act card-act-inline" onclick="event.stopPropagation();openBudgetOverview()">Open Finance →</button>'+
   '</div>';
 }
-// Home's Finance check-in and the Upcoming card both need "take me to Budget's Week view",
-// which is not the same as setView('budget') — the tab remembers whichever view was last open.
+// Callers that need "take me to Finance's WEEK view" specifically, which is not the same as
+// setView('budget') — the destination remembers whichever view was last open.
 function openBudgetWeek(){
   setView('budget');
   setBudgetView('week');
 }
+// Budget's current-position screen, for callers that want "take me to Budget" rather than a
+// specific editor. Kept separate from openBudgetWeek() on purpose: a caller that explicitly
+// needs the week (a source-week link out of Stats, "log a purchase") must keep getting it.
+function openBudgetOverview(){
+  setView('budget');
+  setBudgetView('overview');
+}
 function openBillsCalendar(){
   setView('budget');
   setBudgetView('bills');
+}
+// The ONE Month entry point that resets the month index, and it exists because of what its
+// caller says out loud. Budget › Overview's "This month" card always describes the CURRENT
+// calendar month (getMonthDate(0)), so its Open month action has to land on that month — with
+// the ordinary setBudgetView('month') it preserved currentMonthOffset, and after browsing back
+// to June the September card opened June.
+// Every OTHER way into Month keeps the remembered offset, deliberately: the Month tab, the
+// History & tools link, Money › Month in the nav, returning from a source/evidence view and
+// ordinary movement between Budget views all refer to the Month WORKSPACE rather than to one
+// named month, and a control that silently rewound your position would be the worse bug.
+// In memory only, exactly like currentWeekIdx — nothing here is stored, stamped or synced.
+// Not a "take me to Budget" helper either: it is called from inside Budget, so unlike
+// openBudgetWeek() and its neighbours it deliberately does not call setView().
+function openBudgetCurrentMonth(){
+  currentMonthOffset=0;
+  setBudgetView('month');
 }
 // A new transaction is always dated today (openTxnModal defaults to getLocalDate()), so every
 // "log a purchase" affordance has to be gated on the CURRENT week being on screen — not on the
@@ -13680,7 +14161,10 @@ function budSetupDismiss(){
 function openBudgetSetup(){
   budEditMode.inc=true;
   budEditMode.fix=true;
-  if(typeof renderBudgetTab==='function') renderBudgetTab();
+  // Reachable from Budget › Overview now, where neither card it unlocks is on screen. Switch
+  // first, then render — setBudgetView('week') renders, so a second call would be wasted.
+  if(budgetView!=='week') setBudgetView('week');
+  else if(typeof renderBudgetTab==='function') renderBudgetTab();
   // Income and fixed bills live in two cards now, so both have to be revealed — a collapsed
   // card would be scrolled to and still show nothing. renderBudgetTab has already expanded
   // Week plan's Income section, which owns budEditMode.inc.
@@ -13707,7 +14191,7 @@ function renderBudgetSetupCard(){
   });
   if(hasIncome) return '';
   return '<div class="card bud-setup" data-bud-key="setup">'+
-    cardHeader('wallet','Finish setting up Budget',
+    cardHeader('wallet','Finish setting up your budget',
       '<button type="button" class="bud-setup-x" onclick="budSetupDismiss()" aria-label="Dismiss setup card">\u00d7</button>')+
     // "The categories below" until the redesign, which is no longer true on desktop \u2014 Week
     // plan sits in the right-hand column. Named rather than pointed at.
@@ -14281,6 +14765,11 @@ function renderBudgetTab(){
   // of these two is belt-and-braces rather than load-bearing.)
   budApplyLayout();
   restoreBudgetCollapseState();
+  // Overview describes the same week this render just refreshed, so it hangs off the ONE
+  // "budget data moved" entry point every caller already uses — a transaction save, a cloud
+  // snapshot, a category edit, a week save — rather than adding a second call to fifteen
+  // existing sites and leaving one of them behind. It never calls back into this function.
+  if(budgetView==='overview') renderBudgetOverview();
 }
 // Visual reminder only (never touches the leftover calc): for the week being viewed, surface
 // any debt account with statement tracking on whose due date falls Mon–Sun of that week.
@@ -14568,7 +15057,9 @@ function budRecalc(animate){
   // stays useful without pretending an annual bill is charged weekly.
   const spentNow   = totalVar;
   const committed  = totalFixed;
-  const available  = totalIncome>0 ? (totalIncome - spentNow - committed - totalSaved) : null;
+  // The subtraction itself lives in budAvailable(), so Budget › Overview and Home's Finance
+  // check-in cannot state a different figure for the same week.
+  const available  = budAvailable(totalIncome, committed, spentNow, totalSaved);
   $('bud-hero-avail', available===null ? '$0' : (available>=0?'':'-')+'$'+Math.abs(available).toFixed(0));
   $('bud-hero-spent', '$'+spentNow.toFixed(0));
   $('bud-hero-committed', '$'+committed.toFixed(0));
@@ -14579,9 +15070,7 @@ function budRecalc(animate){
   const paceEl=document.getElementById('bud-hero-pace');
   if(paceEl){
     const daysLeft=(currentWeekIdx===0&&typeof varGoalDaysLeft==='function')?varGoalDaysLeft():0;
-    paceEl.textContent = (available!==null && available>0 && daysLeft>0)
-      ? '$'+Math.floor(available/daysLeft)+'/day for the '+(daysLeft===1?'rest of today':daysLeft+' days left')
-      : (available!==null && available<0 ? 'Over by $'+Math.abs(available).toFixed(0)+' this week' : '');
+    paceEl.textContent = budPaceText(available, daysLeft);
   }
   const availLbl=document.getElementById('bud-hero-avail-lbl');
   if(availLbl) availLbl.textContent = (available!==null&&available<0) ? 'Over budget' : 'Available to spend';
@@ -14798,7 +15287,12 @@ function monthSpendPct(val,total){
   if(pct>0&&pct<0.1) return '<0.1%';
   return (pct<10?Math.round(pct*10)/10:Math.round(pct))+'%';
 }
-function monthSpendBreakdown(monthDate,keys){
+// opts.register === false skips the evidence registration, for a caller that only wants the
+// figures. The evidence records belong to Budget › Month, which is the screen that can open
+// one; Budget › Overview reads the same breakdown for its biggest-category line and must not
+// leave drill-down targets behind for a list it does not draw.
+function monthSpendBreakdown(monthDate,keys,opts){
+  const register=!(opts&&opts.register===false);
   const periodKey=monthDate.getFullYear()+'-'+String(monthDate.getMonth()+1).padStart(2,'0');
   const periodLabel=fmtMonthLabel(monthDate);
   const byKey={}, issues=[];
@@ -14865,11 +15359,11 @@ function monthSpendBreakdown(monthDate,keys){
   cats.forEach(c=>{
     c.color=c.kind==='Legacy'?(budIsDark()?'#94A3B8':'#64748B'):budCategoryColor(c.id);
     c.pctLabel=monthSpendPct(c.val,total);
-    c.evidenceKey=statsRegisterFinanceEvidence({
+    c.evidenceKey=register?statsRegisterFinanceEvidence({
       scope:'month-'+periodKey,
       id:c.id,label:c.label,kind:c.kind,weeks:c.weeks,
       periodLabel,total:c.val,pctLabel:c.pctLabel
-    });
+    }):'';
   });
   return {periodKey,periodLabel,cats,total,issues};
 }
@@ -17186,12 +17680,12 @@ function wkrHowItWorksHtml(){
   return '<details class="wkr-how"><summary>How Weekly Review works</summary>'+
     '<div class="wkr-how-body">'+
       '<p>Start with the weekly reset: next week’s money plan, what Daily noticed, and the changes worth considering. '+
-        'Money compares the selected week’s Budget figures with your accepted allocation, or your baseline when no allocation exists.</p>'+
+        'Money compares the selected week’s budget figures with your accepted allocation, or your baseline when no allocation exists.</p>'+
       '<p>Next Week lets you allocate income, savings and a buffer for a dated week. Save explicitly; Cancel discards the draft. '+
         'The following review uses that allocation. Optional pages save answers as you type; configure them in Edit baseline & pages.</p>'+
-      '<p>'+escText(timing)+' Earlier Budget history remains in Budget and Stats; it is not a list of overdue reviews.</p>'+
+      '<p>'+escText(timing)+' Earlier budget history remains in Finance and Stats; it is not a list of overdue reviews.</p>'+
       '<p>Completing a review saves a frozen copy of that week’s plan and figures. It never changes '+
-        'your Budget, accounts, workouts, nutrition or Journal. Ask Daily AI only prepares text for you to copy.</p>'+
+        'your budget, accounts, workouts, nutrition or Journal. Ask Daily AI only prepares text for you to copy.</p>'+
     '</div></details>';
 }
 function wkrSetSection(sec){
@@ -17305,7 +17799,7 @@ function wkrReopenReview(){
 // history worthless. The plan snapshot is deliberately NOT refreshed here — only the actuals.
 function wkrRefreshActuals(){
   const week=wkrCurrentWeek(); const rec=wkrReview(week); if(!rec) return;
-  if(!confirm('Re-take this week’s figures from Budget and update the completed review?\n\n'+
+  if(!confirm('Re-take this week’s figures from Finance and update the completed review?\n\n'+
     'The plan it was reviewed against stays exactly as it was.')) return;
   rec.actualSnapshot=wkrSnapshotActuals(week, wkrEffectivePlan(rec), rec);
   wkrSaveReview(week);
@@ -17546,7 +18040,7 @@ function wkrSetupFormHtml(){
         reviewStarts.map(week=>'<option value="'+week+'"'+(week===d.reviewStartWeek?' selected':'')+'>'+
           escText(wkrWeekLabel(week))+'</option>').join('')+
       '</select>',
-      'Daily only prompts you about completed weeks from this point. Earlier Budget history stays unchanged and is not a review backlog.')+
+      'Daily only prompts you about completed weeks from this point. Earlier budget history stays unchanged and is not a review backlog.')+
   '</div>';
 
   const money='<div class="card">'+cardHeader('wallet','Money plan')+
@@ -17596,7 +18090,7 @@ function wkrSetupFormHtml(){
               '<option value="'+g.id+'"'+(groupOf(c.id)===g.id?' selected':'')+'>'+
               escText(g.id==='other'?'Other spending':d.money.groupLabels[g.id])+'</option>').join('')+
           '</select></div>').join('')
-      : '<div class="wkr-blank">You have no variable spending categories yet. Add them in Budget and they '+
+      : '<div class="wkr-blank">You have no variable spending categories yet. Add them in Finance and they '+
         'will appear here — until then everything you spend counts as Other spending.</div>')+
   '</div>';
 
@@ -17608,7 +18102,7 @@ function wkrSetupFormHtml(){
       ? incCats.map(c=>wkrCheckRow('wr-irr-'+wkrAttr(c.id),
           (d.money.irregularIncomeCatIds||[]).indexOf(c.id)>=0, catLabel(c), '',
           'wkrSetupIrregularToggle(\''+wkrAttr(c.id)+'\',this.checked)')).join('')
-      : '<div class="wkr-blank">No income sources are set up in Budget yet.</div>')+
+      : '<div class="wkr-blank">No income sources are set up in Finance yet.</div>')+
   '</div>';
 
   const work='<div class="card">'+cardHeader('trophy','Work and commission')+
@@ -17737,8 +18231,8 @@ function wkrMoneySectionHtml(week, rec, plan){
 
   if(!m.hasData){
     return '<div class="card wkr-span">'+cardHeader('wallet','Money')+
-      '<div class="wkr-blank">Budget has nothing recorded for this week, so there is nothing to compare '+
-      'against your plan yet. Add the week in Budget and it will appear here.</div></div>';
+      '<div class="wkr-blank">Finance has nothing recorded for this week, so there is nothing to compare '+
+      'against your plan yet. Add the week in Finance and it will appear here.</div></div>';
   }
 
   // Income. The total is weekIncome() exactly; the split is only about how to READ it.
@@ -17775,7 +18269,7 @@ function wkrMoneySectionHtml(week, rec, plan){
     '<div class="wkr-total"><span class="wkr-total-l">Total spent</span>'+
       '<span class="wkr-total-v">'+fmtMoneyExact(m.spendTotal)+'</span></div>'+
     '<div class="wkr-help">Fixed '+fmtMoneyExact(m.fixed)+' + variable '+fmtMoneyExact(m.variable)+
-      '. These are the same figures Budget and Stats › Finance show for this week.'+
+      '. These are the same figures Finance › Week and Stats › Finance show for this week.'+
       (m.fromSnapshot?' Part of this week only survives as a saved total, so it has no category detail.':'')+
       (m.quality.ambiguousLegacyVariable?' This week has both a legacy total and transactions; Finance treats the transactions as authoritative.':'')+
     '</div>'+
@@ -17787,7 +18281,7 @@ function wkrMoneySectionHtml(week, rec, plan){
     wkrPvRow('Savings', p.savings, m.saved, {higherIsBetter:true})+
     wkrPvRow('Safety buffer / left over', p.buffer, m.leftover, {higherIsBetter:true,
       sub:'Money in, less everything spent and saved.'})+
-    '<div class="wkr-help">Left over is Budget’s own figure for this week — income '+
+    '<div class="wkr-help">Left over is Finance’s own figure for this week — income '+
       fmtMoneyExact(m.incomeTotal)+' − spent '+fmtMoneyExact(m.spendTotal)+' − saved '+
       fmtMoneyExact(m.saved)+'.</div>'+
   '</div>';
@@ -17833,7 +18327,7 @@ function wkrMoneySectionHtml(week, rec, plan){
   const stale=frozen&&wkrActualsDrifted(week,rec)
     ? '<div class="card wkr-span">'+cardHeader('alert','Figures have moved since this review was completed',
         tstat('warn','Out of date','alert',true))+
-      '<div class="wkr-blank">Budget now shows '+fmtMoneyExact(wkrMoneyActuals(week,plan).spendTotal)+
+      '<div class="wkr-blank">Finance now shows '+fmtMoneyExact(wkrMoneyActuals(week,plan).spendTotal)+
         ' spent for this week, against the '+fmtMoneyExact(m.spendTotal)+' frozen into this review. '+
         'Everything below is still exactly as you completed it — nothing is rewritten behind you.</div>'+
       '<div class="wkr-actions"><button type="button" class="wkr-btn" onclick="wkrRefreshActuals()">Refresh figures and re-review</button></div>'+
@@ -18204,7 +18698,7 @@ function wkrNextEditorHtml(week,rec,plan){
   const stale=wkrUI.nextBase!==wkrNextRevision(week);
   return '<div class="card">'+cardHeader('target','Allocate next week’s money')+
     '<h3 class="wkr-reset-title">'+escText(wkrWeekLabel(d.week))+'</h3>'+
-    '<p class="wkr-help">Use the income available for this week. For a fortnightly pay, allocate only the portion you intend to use this week. Saving keeps this plan in Review; Budget entries stay separate.</p>'+
+    '<p class="wkr-help">Use the income available for this week. For a fortnightly pay, allocate only the portion you intend to use this week. Saving keeps this plan in Review; Finance entries stay separate.</p>'+
     (stale?'<div class="wkr-warning" role="alert">Your saved review or baseline changed. This draft has not been applied. <button class="wkr-btn" onclick="wkrReloadNext()">Reload saved plan</button></div>':'')+
     wkrField('Planned income',input('income',d.money.regularWeeklyTakeHome))+
     wkrField('Pay date (optional)','<input class="wkr-input" type="date" value="'+wkrAttr(d.payDate)+'" min="'+d.week+'" max="'+dateStr(new Date(localMidnight(d.week).getFullYear(),localMidnight(d.week).getMonth(),localMidnight(d.week).getDate()+6))+'" onchange="wkrNextSet(\'payDate\',this.value)">')+
@@ -18218,9 +18712,9 @@ function wkrSuggestionsHtml(week,rec,plan){
   const m=wkrDisplayActuals(week,rec,plan),n=wkrUI.nextDraft||wkrNextSeed(week,rec,plan);
   const suggestions=[];
   const completed=week<weekKey(getMondayOf(0));
-  if(!m.hasData)suggestions.push('No Budget record for the reviewed week yet. Check the source figures before deciding what to change.');
+  if(!m.hasData)suggestions.push('No Finance record for the reviewed week yet. Check the source figures before deciding what to change.');
   else if(!completed)suggestions.push('This week is still in progress. Treat spending so far as a check-in, not a full-week result.');
-  else if((m.quality&&m.quality.ambiguousLegacyVariable)||Math.abs(m.spendTotal-WKR_GROUPS.reduce((sum,g)=>sum+m.groups[g.id],0))>0.5)suggestions.push('Some older spending detail is missing. Check Budget before adjusting category goals from this week.');
+  else if((m.quality&&m.quality.ambiguousLegacyVariable)||Math.abs(m.spendTotal-WKR_GROUPS.reduce((sum,g)=>sum+m.groups[g.id],0))>0.5)suggestions.push('Some older spending detail is missing. Check Finance before adjusting category goals from this week.');
   else if(!WKR_GROUPS.some(g=>plan.money.allocations[g.id]>0))suggestions.push('No spending allocations were set for comparison. Choose realistic amounts for next week before judging spending against a goal.');
   else {
     WKR_GROUPS.filter(g=>plan.money.allocations[g.id]>0&&m.groups[g.id]>plan.money.allocations[g.id]+0.5).slice(0,2).forEach(g=>{
@@ -18265,7 +18759,7 @@ function wkrWeekSummaryHtml(week,rec,plan){
            : statsChip('neutral','Week finished');
   // Coverage, stated where it changes how the figures read. Never suppressed.
   const cov=[];
-  if(!m.hasData) cov.push('No Budget record for this week yet, so there is nothing to compare.');
+  if(!m.hasData) cov.push('No Finance record for this week yet, so there is nothing to compare.');
   else {
     if(inProgress) cov.push('This week has not finished. Treat these as a check-in rather than a result.');
     if(!m.incomeKnown) cov.push('No income was recorded for this week, so anything left over cannot be worked out.');
@@ -18475,7 +18969,7 @@ function renderBSTrend(){
   const card=body=>'<div class="card">'+cardHeader('trend','Money flow',statsChip('neutral',bsFinRangeLabel()))+body+'</div>';
   const shown=bsFinRangeKeys();
   if(!shown.length){
-    wrap.innerHTML=card('<div class="stats-note-panel">No completed budget week falls in this range. Save a week in Budget — the live week is never plotted as a result.</div>');
+    wrap.innerHTML=card('<div class="stats-note-panel">No completed budget week falls in this range. Save a week in Finance — the live week is never plotted as a result.</div>');
     return;
   }
   const parts=shown.map(k=>statsWeekParts(budgetData[k],k));
@@ -19971,7 +20465,7 @@ function renderCCCard(){
       dueEl.textContent=(overdue?'Overdue · ':'Due ')+due.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
       dueEl.style.color = overdue ? 'var(--danger)' : '';
     } else {
-      dueEl.textContent='Set due date in Budget';
+      dueEl.textContent='Set due date in Finance';
       dueEl.style.color='';
     }
   }
@@ -20360,10 +20854,26 @@ function renderHome(){
   const heroHdrIcon=(goalCals||hasNutrition)?'flame':budLeft!==null?'wallet':'check';
 
   // ── Momentum redesign: top-of-Home cards (display only; reuse existing data) ──
-  const mCurType=type(S.dayIdx);
-  const mExCount=mCurType.exercises.length;
-  const mDone=S.checked.size;
-  const mPct=mExCount?Math.round(mDone/mExCount*100):0;
+  // The session hero reads logTodayBrief() — the SAME canonical training state Log › Today's
+  // hero reads — rather than combining type(S.dayIdx) with S.checked.size itself. That second
+  // calculation is what let Home advertise the day loaded in the logger while Log advertised
+  // the next rotation, and show "0 of 8 done" for a session already saved today.
+  const mBrief=logTodayBrief();
+  // A saved record carries its exercises, its working sets, its duration and its `completed`
+  // flag — and NOT how many exercises were PLANNED when it was saved. So a partial save states
+  // only what it recorded: no "1 of 5", no percentage, no bar. Reconstructing the denominator
+  // from the current program at the record's dayNum was tried and removed: it is not historical
+  // evidence, and editing the program silently rewrote an old workout's displayed progress.
+  // Only a record whose canonical `completed` is true may show a full progress state, because
+  // that is the judgement the record itself makes — and its own exercise count is the whole of
+  // it, with no second source consulted.
+  const mSavedDone=mBrief.state==='saved'&&mBrief.completed;
+  const mExCount=mBrief.exCount||0;
+  const mDone=mBrief.state==='inprogress'?mBrief.doneCount:(mSavedDone?mExCount:0);
+  // Ready and In progress pace against a plan that exists right now, so they keep the bar.
+  // A partial save and an empty training day have nothing to measure against.
+  const mShowProgress=mBrief.state==='ready'||mBrief.state==='inprogress'||mSavedDone;
+  const mPct=(mShowProgress&&mExCount)?Math.round(mDone/mExCount*100):0;
   const mGoal=6;
   const mMon=getMondayOf(0);
   const mSessions=[...new Set(S.sessions.filter(s=>localMidnight(s.date)>=mMon).map(s=>s.date))].length;
@@ -20376,28 +20886,50 @@ function renderHome(){
   const mBudCol=mBudOver?'var(--danger)':'var(--positive)';
   const heroDateLabel=localMidnight(today).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
   // The button goes to Log > Today, which is the workout OVERVIEW — it does not start or
-  // resume a set, so "Start workout" would be a lie. The label says what pressing it
-  // actually does, and reads the live set state (mDone/mExCount, already computed above) so
-  // a half-finished or finished session says so. No new session state, no change to the
-  // workout logic: three words chosen from numbers this card already has.
-  const heroActLabel=(mExCount&&mDone>=mExCount)?'Review workout'
-                    :mDone>0?'Continue workout':'Open workout';
+  // resume a set, so "Start workout" would be a lie, and it must not bypass the overview or
+  // begin a workout by itself. The label comes from the canonical state, so Home and Log
+  // cannot describe the same session differently.
+  const heroActLabel=mBrief.state==='saved'?'Review workout'
+                    :mBrief.state==='inprogress'?'Continue workout'
+                    :mBrief.state==='empty'?'Set up program':'Open workout';
+  // 'empty' gets its own eyebrow rather than falling through to UP NEXT: there is nothing up
+  // next until the day has exercises, and Log says so — the two surfaces read one state and
+  // must word it the same way.
+  const heroEyebrow=mBrief.state==='saved'?(mBrief.completed?'COMPLETED TODAY':'SAVED TODAY')
+                   :mBrief.state==='inprogress'?'IN PROGRESS'
+                   :mBrief.state==='empty'?'NO EXERCISES YET':'UP NEXT';
+  // The meta line states what is actually known. For a saved session that is the record's own
+  // facts — duration, exercises saved, working sets — and never a fraction of a planned total
+  // the record does not carry.
+  const heroMeta=mBrief.state==='empty'
+    ? 'No exercises configured'
+    : mBrief.state==='saved'
+      ? [ mBrief.duration?fmtDuration(mBrief.duration):'',
+          mExCount+' exercise'+(mExCount===1?'':'s')+' saved',
+          mBrief.setCount?(mBrief.setCount+' working set'+(mBrief.setCount===1?'':'s')):''
+        ].filter(Boolean).join(' · ')
+      : mExCount+' exercise'+(mExCount!==1?'s':'');
+  // Omitted entirely rather than zeroed: an empty bar under "Saved today" is a claim about a
+  // total nobody recorded. .hero-flat closes the gap .hero-meta leaves when nothing follows it.
+  const heroProgress=mShowProgress
+    ? '<div class="hero-progress-row">'+
+        '<span class="hero-progress-text" id="hero-progress-text">'+mDone+' of '+mExCount+' done</span>'+
+        '<span class="hero-progress-pct" id="hero-progress-pct">'+mPct+'%</span>'+
+      '</div>'+
+      '<div class="hero-progress-track"><div class="hero-progress-fill" id="hero-progress-fill" style="width:'+mPct+'%;"></div></div>'
+    : '';
   // Flat grid children preserve the original top-row round play action on both layouts.
   // Its accessible name still reflects workout progress even though the visible label is hidden.
   const heroCard=
-    '<div class="hero-workout-card">'+
-      '<span class="hero-label">TODAY\'S SESSION · '+heroDateLabel+'</span>'+
-      '<p class="hero-workout-title" id="hero-day-name">'+mCurType.name+'</p>'+
-      '<p class="hero-meta" id="hero-meta">'+mExCount+' exercise'+(mExCount!==1?'s':'')+'</p>'+
+    '<div class="hero-workout-card'+(mShowProgress?'':' hero-flat')+'">'+
+      '<span class="hero-label">'+heroEyebrow+' · '+heroDateLabel+'</span>'+
+      '<p class="hero-workout-title" id="hero-day-name">'+escText(mBrief.dayName)+'</p>'+
+      '<p class="hero-meta" id="hero-meta">'+escText(heroMeta)+'</p>'+
       '<button class="hero-play-btn" aria-label="'+heroActLabel+'" onclick="setView(\'log\')">'+
         '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M5 3.5l10 5.5-10 5.5V3.5z" fill="currentColor"/></svg>'+
         '<span class="hero-act-txt">'+heroActLabel+'</span>'+
       '</button>'+
-      '<div class="hero-progress-row">'+
-        '<span class="hero-progress-text" id="hero-progress-text">'+mDone+' of '+mExCount+' done</span>'+
-        '<span class="hero-progress-pct" id="hero-progress-pct">'+mPct+'%</span>'+
-      '</div>'+
-      '<div class="hero-progress-track"><div class="hero-progress-fill" id="hero-progress-fill" style="width:'+mPct+'%;"></div></div>'+
+      heroProgress+
     '</div>';
   const statsSplit=
     '<div class="card stats-split-card">'+
@@ -20846,16 +21378,19 @@ const HOME_WIDGETS=[
   {id:'prs',      label:'Personal Records',     tab:'Train', preview:hlPrevPRs},
   {id:'kitchen',  label:'Kitchen Snapshot',     tab:'Kitchen', preview:hlPrevKitchen},
   {id:'habits',   label:"Today's Habits",       tab:'Habits', preview:hlPrevHabits},
-  {id:'budget',   label:'Weekly Budget',        tab:'Budget', preview:hlPrevBudget},
-  {id:'balance',  label:'Net Worth & Accounts', tab:'Budget', preview:hlPrevBalance},
-  {id:'tiles',    label:'Money Quick Tiles',    tab:'Budget', preview:hlPrevTiles},
+  // `tab` is shown under the card name in Settings › Home Layout — it names the DESTINATION
+  // the card belongs to, which is Finance. The card labels themselves still say Budget where
+  // they mean the weekly budget, which is the concept rather than the place.
+  {id:'budget',   label:'Weekly Budget',        tab:'Finance', preview:hlPrevBudget},
+  {id:'balance',  label:'Net Worth & Accounts', tab:'Finance', preview:hlPrevBalance},
+  {id:'tiles',    label:'Money Quick Tiles',    tab:'Finance', preview:hlPrevTiles},
   // id stays 'notes' — it is persisted in the saved Home layout (order/wide/hidden), so
   // renaming it would silently reset the user's dashboard. Only the label changed.
   {id:'notes',    label:'Journal',              tab:'Journal', preview:hlPrevNotes},
   // Renders empty (and so vanishes from Home) until there is a scheduled bill or a named
   // income source — see buildFinanceCheckinCard. No parallel preference system: it is hidden
   // and reordered through Settings → Home Layout like every other card.
-  {id:'finance',  label:'Finance check-in',     tab:'Budget', preview:hlPrevFinance},
+  {id:'finance',  label:'Finance check-in',     tab:'Finance', preview:hlPrevFinance},
 ];
 const HOME_DEFAULT_ORDER=['session','weather','streak','prs','calories','weight','review','habits','budget','finance','balance','tiles','kitchen','notes','recent'];
 // Which cards span the full desktop grid row by default. User-editable per card
@@ -22225,39 +22760,23 @@ function acctToggleEdit(){
   _acctEditMode=!_acctEditMode;
   renderAccountsPage();
 }
-// Whatever opened Accounts, so closing it can hand focus back. Accounts is reached from the
-// sidebar, the hamburger, Budget's top row and History & tools, and a keyboard user who
-// presses Back lands on <body> otherwise — with no way to get to the next control except
-// tabbing from the top of the page. Defaults to the focused element, which covers every
-// entry point without each having to pass itself in.
-let _acctReturnFocus=null;
+// The COMPATIBILITY navigation helper. Accounts is a Finance view now, so this no longer opens
+// an overlay, records launcher focus, positions a fixed layer or has a closeAccounts() to pair
+// with — but it is called from a dozen places (the Finance Overview's account card, Week's
+// History & tools, Home's net-worth and credit-card cards, Stats › Finance and its evidence
+// screens, the sidebar and hamburger rows, and generated action buttons), so it survives as the
+// one name every one of them still says. It takes and ignores the launcher argument those
+// callers still pass.
+// The assignment comes FIRST on purpose: setView('budget') restores whichever Finance view is
+// remembered, so setting it here means arriving from Home or Stats lands on Accounts directly
+// rather than painting the previous panel and then switching off it. Arriving from inside
+// Finance skips setView() entirely — there is no view change to make, and calling it would push
+// a history entry for a tab switch that never pushes one anywhere else.
 function openAccounts(from){
-  const v=document.getElementById('view-accounts'); if(!v) return;
-  const src=from||document.activeElement;
-  _acctReturnFocus=(src&&src!==document.body&&typeof src.focus==='function')?src:null;
-  if(typeof aiHidePeerOverlays==='function') aiHidePeerOverlays('view-accounts');
-  v.style.display='block';
-  v.style.left=layoutIsDesktop()?'260px':'0'; // leave the desktop sidebar uncovered
-  // Nav peer highlight: navCurrentRow() reads this overlay's own display state, so one call
-  // lights the Accounts row and clears whatever was lit before.
-  setNavActive();
-  _acctAddOpen=false; _acctAddType='asset'; _acctAddTracks=false; _acctAddSaver=false;
-  renderAccountsPage();
+  budgetView='accounts';
+  if(typeof S!=='undefined' && S && S.view!=='budget') setView('budget');
+  else setBudgetView('accounts');
   if(typeof closeMenu==='function') closeMenu();
-}
-function closeAccounts(){
-  const v=document.getElementById('view-accounts'); if(v){ v.style.display='none'; v.style.left='0'; }
-  // Restore the nav highlight to whatever tab is actually showing underneath. Nothing else is
-  // touched: the Budget sub-view, its week or month index and any in-progress input are
-  // exactly where they were left, because this overlay never changed them.
-  setNavActive();
-  const back=_acctReturnFocus; _acctReturnFocus=null;
-  // Only if it is still on screen — the launcher may have been re-rendered away (the
-  // History & tools link) or hidden by a layout change while Accounts was open. offsetParent
-  // is null for a display:none ancestor, which is exactly the case to skip.
-  if(back && back.isConnected && back.offsetParent!==null){
-    try{ back.focus({preventScroll:true}); }catch(e){ try{ back.focus(); }catch(e2){} }
-  }
 }
 
 function fmtMoney(n){ const v=Math.round(Math.abs(n)).toLocaleString(); return (n<0?'-$':'$')+v; }
@@ -28096,6 +28615,149 @@ function logBackToOverview(){
   setLogTab('today');
 }
 
+// ── The canonical training state ────────────────────────────────
+// ONE reader, and every training surface goes through it: Log › Today's hero, Log › Today's
+// plan card and Home's session hero. It exists because three different sources were being
+// combined incorrectly:
+//   · suggestDay() answers "which rotation day is NEXT", and it ADVANCES the moment a session
+//     is saved (it reads the last session's dayNum).
+//   · S.dayIdx answers "which day is loaded in the logger", and saveSession() does NOT move it.
+//   · a session saved today is a third fact again.
+// So the old overview could say "Session saved", print the name of the NEXT rotation day, and
+// open a third thing when pressed — and browsing to another day in the logger left S.dayIdx
+// disagreeing with whatever the overview advertised.
+//
+// PURE. It reads S.sessions, S.setData, S.checked, S.sessionStart, S.sessionAdds and the split
+// config, and writes nothing: no store, no seeding, no migration, and no in-place sort of
+// S.sessions. Run it as often as you like.
+//
+// A meaningful draft is a running session timer, a completed check, an entered weight or rep
+// value, a session-only exercise added by hand, or a typed session note. Merely opening the
+// logger — which initialises one blank working row per exercise — is NOT a workout in progress,
+// which is the distinction the old `done>0` test could not make.
+function logDraftIsMeaningful(){
+  if(typeof S==='undefined'||!S) return false;
+  if(S.sessionStart) return true;
+  if(S.checked&&S.checked.size>0) return true;
+  if(Array.isArray(S.sessionAdds)&&S.sessionAdds.length) return true;
+  if(String(S.sessionNote||'').trim()) return true;
+  const d=S.setData||{};
+  return Object.keys(d).some(k=>(d[k]||[]).some(s=>s&&(
+    s.done===true ||
+    String(s.weight==null?'':s.weight).trim()!=='' ||
+    String(s.reps==null?'':s.reps).trim()!=='' )));
+}
+// Has the loaded draft MOVED since the last save? saveSession() clears wt_setdata and every
+// set edit re-writes it, so the key's presence is exactly that question.
+// It has to be asked, because saveSession() deliberately leaves the entered sets on screen in
+// S.setData so a partial workout can be carried on — which meant the sets that PRODUCED
+// today's record still read as a meaningful draft, and the overview said "In progress" the
+// instant you pressed Save. Those sets are not unsaved; they are what was saved.
+// A read, never a write: the reader stays pure.
+function logDraftTouchedSinceSave(){
+  try{
+    const raw=localStorage.getItem('wt_setdata');
+    if(!raw) return false;
+    const o=JSON.parse(raw);
+    return !!(o && o.date===getLocalDate());
+  }catch(e){ return false; }
+}
+// The latest session saved TODAY, and how many there are. Walks backwards over the existing
+// array rather than sorting it — S.sessions is the canonical order and this reader must not
+// touch it. Later records win, which is what "the latest" means for same-day pushes.
+function logSavedToday(){
+  const today=getLocalDate();
+  const list=(typeof S!=='undefined'&&S&&Array.isArray(S.sessions))?S.sessions:[];
+  let latest=null, count=0;
+  for(let i=0;i<list.length;i++){
+    const s=list[i];
+    if(s&&s.date===today){ latest=s; count++; }
+  }
+  return {latest, count};
+}
+// The most recent session of a given type, for the "last performed" line. Read-only.
+function logLastOfType(name, excludeId){
+  const list=(typeof S!=='undefined'&&S&&Array.isArray(S.sessions))?S.sessions:[];
+  for(let i=list.length-1;i>=0;i--){
+    const s=list[i];
+    if(s&&s.sessionType===name&&(!excludeId||String(s.id)!==String(excludeId))) return s;
+  }
+  return null;
+}
+// Working sets recorded in one saved session — a fact from the record, not a recomputation.
+function logSessionSetCount(s){
+  return ((s&&s.exercises)||[]).reduce((n,ex)=>
+    n+((ex.sets||[]).filter(set=>set&&set.type!=='warmup').length),0);
+}
+function logTodayBrief(){
+  const dayOf=i=>{ try{ return type(i); }catch(e){ return null; } };
+  const saved=logSavedToday();
+  const draft=logDraftIsMeaningful();
+  const suggested=suggestDay();
+
+  // A meaningful draft OUTRANKS a session already saved today: the user is mid-workout and
+  // that is what the hero has to offer to continue. Its day is S.dayIdx, never suggestDay(),
+  // because the draft is loaded against the day the logger actually holds.
+  // "Already saved today" is the one case that needs the second question: the sets that
+  // produced that record are still loaded, so the draft only wins when it has MOVED since
+  // (see logDraftTouchedSinceSave). Without a saved session there is nothing to outrank.
+  if(draft && (!saved.latest || logDraftTouchedSinceSave())){
+    const idx=S.dayIdx, t=dayOf(idx), exs=(t&&t.exercises)||[];
+    if(!exs.length) return {state:'empty', dayIdx:idx, dayName:(t&&t.name)||'Training', exCount:0};
+    return {state:'inprogress', dayIdx:idx, dayName:t.name, exCount:exs.length,
+            exercises:exs, doneCount:S.checked?S.checked.size:0,
+            elapsedMs:S.sessionStart?(Date.now()-S.sessionStart):0,
+            savedCount:saved.count};
+  }
+
+  // Saved today with no newer draft: the hero describes the SAVED RECORD — its own
+  // sessionType, its own figures, its own completion flag — and never the rotation that
+  // suggestDay() has already advanced to. That next rotation is named separately below it.
+  if(saved.latest){
+    const s=saved.latest;
+    const nextIdx=suggested, nt=dayOf(nextIdx), nextExs=(nt&&nt.exercises)||[];
+    return {state:'saved', session:s, dayName:s.sessionType||'Session',
+            // Only the record's own canonical flag may say "completed". A partial save is
+            // saved, and calling it completed would be a claim the record does not make.
+            completed:s.completed===true,
+            exCount:((s.exercises)||[]).length,
+            // There is deliberately NO plannedCount. A session records the exercises it
+            // performed, its working sets, its duration and its `completed` flag — it does NOT
+            // snapshot how many exercises were planned at the time. Deriving that from the
+            // current program at the record's dayNum was tried and removed: it is not
+            // historical evidence, so editing or replacing the program silently rewrote an old
+            // partial workout's displayed progress. A partial save states what it recorded and
+            // nothing more; only `completed` may claim the session was finished.
+            setCount:logSessionSetCount(s),
+            duration:s.duration||0, effort:s.effort||'',
+            savedCount:saved.count,
+            nextIdx, nextName:(nt&&nt.name)||'Training', nextExCount:nextExs.length};
+  }
+
+  // Ready: nothing saved today and nothing meaningful in the logger. The next rotation day is
+  // what the hero advertises, and pressing it must load exactly that day.
+  const t=dayOf(suggested), exs=(t&&t.exercises)||[];
+  if(!exs.length) return {state:'empty', dayIdx:suggested, dayName:(t&&t.name)||'Training', exCount:0};
+  const last=logLastOfType(t.name);
+  return {state:'ready', dayIdx:suggested, dayName:t.name, exCount:exs.length, exercises:exs,
+          lastDate:last?last.date:'', savedCount:saved.count};
+}
+
+// Prepare the ADVERTISED day and show the logger. Deliberately NOT selectDay(): that one
+// resets the rest timer, dismisses the post-save prompt and calls saveSetData() over whatever
+// is loaded — it means "discard the current workout and switch days", which is the wrong verb
+// for "open the session the overview just described". Here the day is initialised ONLY when
+// there is nothing meaningful to lose, so a draft can never be erased by pressing Continue.
+function logOpenPlannedDay(idx){
+  if(typeof idx==='number' && idx>=0 && S.dayIdx!==idx && !logDraftIsMeaningful()){
+    logEditMode=false; activeExIdx=-1; exCollapsed.clear();
+    initDay(idx);
+    saveSetData();                 // so a reload restores the day that was actually opened
+    if(typeof rtUpdateSessionLabels==='function') rtUpdateSessionLabels();
+  }
+  logOpenSession();
+}
+
 // ── Today: overview vs the set logger ───────────────────────────
 function renderLogToday(){
   const ov=document.getElementById('log-overview'), se=document.getElementById('log-session');
@@ -28114,64 +28776,156 @@ function logActiveProgram(){
     return plans.find(p=>planAppliedState(p)==='active')||null;
   }catch(e){ return null; }
 }
+// The three latest saved sessions, newest first. Sorts a CLONE — S.sessions is the canonical
+// order that persist() and the sync merge read, and a presentation list must never reorder it.
+// Ties on date fall back to record order, so two sessions saved on one day keep their sequence.
 function logRecentSessions(n){
-  return (S.sessions||[]).slice(-(n||3)).reverse();
+  const list=((typeof S!=='undefined'&&S&&S.sessions)||[]).map((s,i)=>({s,i}));
+  list.sort((a,b)=>{
+    const da=(a.s&&a.s.date)||'', db=(b.s&&b.s.date)||'';
+    return da===db ? b.i-a.i : (da<db?1:-1);
+  });
+  return list.slice(0,n||3).map(x=>x.s);
 }
-function renderLogOverview(){
-  const el=document.getElementById('log-overview'); if(!el) return;
-  const todayIdx=suggestDay();
-  const t=type(todayIdx);
+
+// ── Log › Today ─────────────────────────────────────────────────
+// A training BRIEFING and the entry point to the set logger, answering four questions in
+// order: what am I training now, what should I prepare for, what have I done this week, and
+// what did I do recently. Longer-term analysis stays in Stats › Training, program editing in
+// Log › Program and body weight in Stats › Body — this screen deliberately holds none of them.
+// Every figure comes from logTodayBrief() or an existing canonical reader, and rendering it
+// writes nothing.
+function logHeroHtml(b){
+  const lead=b.state==='inprogress' ? 'In progress'
+            : b.state==='saved' ? (b.completed?'Completed today':'Saved today')
+            : b.state==='empty' ? 'No exercises yet'
+            : 'Up next';
+  let sub='', act='', run='';
+  if(b.state==='ready'){
+    sub=b.exCount+' exercise'+(b.exCount===1?'':'s')+
+      (b.lastDate?' · last done '+escText(fmtDate(b.lastDate)):'');
+    act='Open workout'; run='logOpenPlannedDay('+b.dayIdx+')';
+  } else if(b.state==='inprogress'){
+    const mins=Math.round(b.elapsedMs/60000);
+    sub=b.doneCount+' of '+b.exCount+' exercise'+(b.exCount===1?'':'s')+' done'+
+      (mins>0?' · '+escText(fmtDuration(mins))+' elapsed':'');
+    act='Continue workout'; run='logOpenSession()';
+  } else if(b.state==='saved'){
+    // Only facts the RECORD carries — duration, the exercises it saved, its working sets and
+    // its effort. Never a fraction of a planned total: the record does not store one.
+    const bits=[];
+    if(b.duration) bits.push(fmtDuration(b.duration));
+    bits.push(b.exCount+' exercise'+(b.exCount===1?'':'s')+' saved');
+    if(b.setCount) bits.push(b.setCount+' working set'+(b.setCount===1?'':'s'));
+    const eff=b.effort&&typeof effortMeta==='function'?effortMeta(b.effort):null;
+    if(eff) bits.push(eff.label.toLowerCase());
+    sub=escText(bits.join(' · '));
+    act='View in history'; run="logGoto('history')";
+  } else {
+    sub='This training day has no exercises yet, so there is nothing to log.';
+    act='Set up program'; run="logGoto('program')";
+  }
+  // The next rotation, named as its own line and clearly not the session just saved. It is
+  // suggestDay()'s answer, which is exactly what the logger will open next time.
+  const upNext=(b.state==='saved')
+    ? '<div class="lg-hero-next">Up next: '+escText(b.nextName)+' · '+b.nextExCount+
+      ' exercise'+(b.nextExCount===1?'':'s')+'</div>'
+    : '';
+  const more=(b.state==='saved'&&b.savedCount>1)
+    ? '<div class="lg-hero-note">'+b.savedCount+' sessions saved today — this is the latest.</div>'
+    : '';
+  return '<div class="lg-hero">'+
+    '<div class="lg-hero-lead">'+escText(lead)+'</div>'+
+    '<div class="lg-hero-title">'+escText(b.dayName)+'</div>'+
+    '<div class="lg-hero-sub">'+sub+'</div>'+
+    more+
+    '<button type="button" class="lg-hero-btn" onclick="'+escAttr(run)+'">'+escText(act)+' &rarr;</button>'+
+    upNext+
+  '</div>';
+}
+
+// One row of Today's plan: what the exercise is, how many sets are planned, what happened last
+// time in the exercise's OWN unit, and a progression target only where the canonical rule
+// supports one.
+// Unit-aware by construction: exerciseUnit() resolves how this movement is measured and
+// fmtLoggedSet() prints it, exactly as the logger's own set-row hints do. A timed hold reads
+// "45s", a bodyweight set "12 reps", an assisted set its negative load — never an invented kg.
+function logPlanRowHtml(ex, t){
+  const name=dn(ex.name);
+  const planned=parseInt(ex.sets)||1;
+  // The unit resolver the SET ROWS use, so the plan and the logger describe one movement the
+  // same way — a library 'secs' flag counts, not just a unit baked into the plan.
+  const unit=exerciseUnit(ex);
+  // The same last-session reader the set-row hints use (swap-aware, warmups excluded), rather
+  // than poHistoryFor(): that one is built FOR the overload rule and drops every set without a
+  // positive load, so it reports "no history" for bodyweight, timed and assisted movements
+  // that plainly have some.
+  const lw=(lastWorkingSetsFor(t, ex.name)||[])[0]||null;
+  const info=(typeof exerciseMetricInfo==='function')?exerciseMetricInfo(name):{kind:'reps'};
+  let meta, target='';
+  if(info.kind==='mixed'){
+    // exerciseMetricInfo refuses to join a history whose saved unit changed; so does this row.
+    meta='History uses more than one unit — not comparable';
+  } else if(!lw || (!parseFloat(lw.weight) && !parseFloat(lw.reps))){
+    meta='No comparable history yet';
+  } else {
+    // LAST, not a target. Calling every previous result a target would put a recommendation on
+    // rows the overload rule has said nothing about.
+    meta='Last: '+fmtLoggedSet(lw, unit);
+    // A target ONLY where the canonical rule supports one. poShouldIncrease() is written for
+    // externally loaded movements — poHistoryFor() drops any set without a positive load — so
+    // it is consulted only when the metric IS a load. A timed hold, a bodyweight set and an
+    // assisted rep get an honest last result and no invented kilogram.
+    if(info.kind==='load'){
+      const hist=poHistoryFor(name, t.name);
+      const reason=poShouldIncrease(hist);
+      if(reason && hist[0] && Math.abs(parseFloat(hist[0].weight)||0)>0){
+        target='<span class="lg-focus-target">Try '+escText(String(hist[0].weight+PO_STEP_KG))+' kg</span>';
+        meta+=' · '+escText(reason);
+      }
+    }
+  }
+  return '<button type="button" class="lg-focus-row" onclick="openExerciseDetail(\''+escAttr(name)+'\')">'+
+    '<span class="lg-focus-copy"><strong>'+escText(name)+'</strong>'+
+      '<small>'+planned+' set'+(planned===1?'':'s')+' planned · '+meta+'</small></span>'+
+    target+
+  '</button>';
+}
+function logPlanCardHtml(b){
+  // After a saved session the plan describes the NEXT rotation, and says so in its title.
+  const isNext=b.state==='saved';
+  const idx=isNext?b.nextIdx:b.dayIdx;
+  let t=null; try{ t=type(idx); }catch(e){}
   const exs=(t&&t.exercises)||[];
-  // Done count only means anything for the day the logger is actually on.
-  const onToday = S.dayIdx===todayIdx;
-  const done = onToday ? S.checked.size : 0;
-  const savedToday=(S.sessions||[]).some(s=>s&&s.date===getLocalDate());
-
-  const lead = savedToday ? 'Session saved' : done>0 ? 'In progress' : 'Ready';
-  const cta  = savedToday ? 'Open today’s session' : done>0 ? 'Continue today’s session' : 'Open today’s session';
-
-  const recent=logRecentSessions(3);
-  const recentRows = recent.length
-    ? recent.map(s=>'<button type="button" class="lg-row" onclick="logGoto(\'history\')">'+
-        '<span class="lg-row-l"><span class="lg-row-name">'+escText(s.sessionType||'Session')+'</span>'+
-        '<span class="lg-row-meta">'+escText(fmtDate(s.date))+'</span></span>'+
-        '<span class="lg-row-v">'+(s.duration?escText(fmtDuration(s.duration)):'—')+'</span></button>').join('')
-    : '<div class="lg-blank">No sessions saved yet. Your first one shows up here.</div>';
-  const weightCard=renderLogWeightCard();
-  const consistencyCard=renderLogConsistencyCard();
-  const improvementCard=renderLogImprovementCard();
-
-  el.innerHTML=
-    '<div class="lg-hero">'+
-      '<div class="lg-hero-lead">Today’s workout · '+escText(lead)+'</div>'+
-      '<div class="lg-hero-title">'+escText(t&&t.name?t.name:'Training')+'</div>'+
-      '<div class="lg-hero-sub">'+exs.length+' exercise'+(exs.length===1?'':'s')+
-        (onToday&&exs.length?' · '+done+' of '+exs.length+' done':'')+'</div>'+
-      '<button type="button" class="lg-hero-btn" onclick="logOpenSession()">'+escText(cta)+' &rarr;</button>'+
-    '</div>'+
-
-    consistencyCard+
-
-    improvementCard+
-
-    weightCard+
-
-    '<div class="lg-card">'+
-      cardHeader('check','What have I completed?',
-        '<button type="button" class="card-hd-act" onclick="logGoto(\'history\')">All history &rarr;</button>')+
-      recentRows+
-    '</div>';
+  const title=isNext?'Up next':'Today’s plan';
+  const head=cardHeader('medal',title,
+    '<button type="button" class="card-hd-act" onclick="logGoto(\'program\')">Program &rarr;</button>');
+  if(!exs.length){
+    return '<div class="lg-card">'+head+
+      '<div class="lg-blank">'+escText(t&&t.name?t.name:'This training day')+
+      ' has no exercises. Add them in Program if it should be a training day.</div></div>';
+  }
+  return '<div class="lg-card">'+head+
+    '<div class="lg-plan-sub">'+escText(t.name)+' · '+exs.length+' exercise'+(exs.length===1?'':'s')+'</div>'+
+    '<div class="lg-focus-list">'+exs.map(ex=>logPlanRowHtml(ex,t)).join('')+'</div>'+
+  '</div>';
 }
 
-function renderLogConsistencyCard(){
+// Facts about the last seven calendar days, and nothing more. It was "7-day consistency ·
+// 3 / 7 days", which reads as a score against a seven-session target nobody set — Daily has no
+// weekly training goal, so the denominator was an invented judgement. Sessions, days trained
+// and logged time are things that happened; there is deliberately no consistency score, no
+// readiness score, no target, no missed-workout warning and no recovery advice.
+function logWeekCardHtml(){
   const today=localMidnight(getLocalDate());
   const typeByName={};
   splitTypes().forEach(t=>{ typeByName[t.name]=t; });
   const byDate={};
-  (S.sessions||[]).forEach(s=>{
+  ((typeof S!=='undefined'&&S&&S.sessions)||[]).forEach(s=>{
     if(!s||!s.date) return;
-    const item=byDate[s.date]||(byDate[s.date]={count:0,type:s.sessionType||''});
+    const item=byDate[s.date]||(byDate[s.date]={count:0,type:s.sessionType||'',mins:0});
     item.count++;
+    item.mins+=parseInt(s.duration)||0;
   });
   const days=[];
   for(let i=6;i>=0;i--){
@@ -28182,86 +28936,55 @@ function renderLogConsistencyCard(){
   }
   const trained=days.filter(d=>d.saved).length;
   const sessions=days.reduce((n,d)=>n+(d.saved?d.saved.count:0),0);
+  const mins=days.reduce((n,d)=>n+(d.saved?d.saved.mins:0),0);
+  const cells=[['Sessions',String(sessions)],['Days trained',String(trained)]];
+  // Only when something actually recorded a duration — a column of em dashes is not a fact.
+  if(mins>0) cells.push(['Logged time',fmtDuration(mins)]);
+  const range=budRangeLabel(localMidnight(days[0].date), today);
   return '<div class="lg-card">'+
-    cardHeader('calendar','7-day consistency','<span class="lg-consistency-score">'+trained+' / 7 days</span>')+
-    '<div class="lg-consistency" aria-label="'+trained+' trained days in the last seven days">'+
+    cardHeader('calendar','Last 7 days',
+      '<button type="button" class="card-hd-act" onclick="logGoto(\'history\')">All history &rarr;</button>')+
+    statsSplit(cells)+
+    '<div class="lg-consistency" role="group" aria-label="Saved sessions on each of the last seven days">'+
       days.map(d=>'<button type="button" class="lg-consistency-day'+(d.date===getLocalDate()?' today':'')+'" '+
         'aria-label="'+escAttr(fmtDate(d.date)+(d.saved?': '+d.saved.count+' saved session'+(d.saved.count===1?'':'s'):': no saved session'))+'" '+
         'onclick="logGoto(\'history\')"><span>'+escText(d.label)+'</span><i'+(d.saved?' class="done" style="background:'+escAttr(d.color)+'"':'')+'></i></button>').join('')+
     '</div>'+
-    '<div class="lg-help">'+sessions+' session'+(sessions===1?'':'s')+' saved across the last seven calendar days.</div>'+
+    '<div class="lg-help">'+escText(range)+' — today and the six calendar days before it.</div>'+
   '</div>';
 }
 
-function logImprovementSuggestions(){
-  const out=[];
-  (splitTypes()||[]).forEach(t=>{
-    (t.exercises||[]).forEach(ex=>{
-      if(out.some(s=>s.name===ex.name)) return;
-      const hist=poHistoryFor(ex.name,t.name), reason=poShouldIncrease(hist);
-      if(reason&&hist[0]) out.push({name:ex.name,weight:hist[0].weight,reps:hist[0].reps,reason});
-    });
-  });
-  return out.slice(0,3);
-}
-function renderLogImprovementCard(){
-  const suggestions=logImprovementSuggestions();
+function logRecentCardHtml(){
+  const recent=logRecentSessions(3);
+  const rows = recent.length
+    ? recent.map(s=>{
+        const facts=s.duration
+          ? fmtDuration(s.duration)
+          : (((s.exercises)||[]).length+' exercise'+(((s.exercises)||[]).length===1?'':'s'));
+        return '<button type="button" class="lg-row" onclick="logGoto(\'history\')">'+
+          '<span class="lg-row-l"><span class="lg-row-name">'+escText(s.sessionType||'Session')+'</span>'+
+          '<span class="lg-row-meta">'+escText(fmtDate(s.date))+'</span></span>'+
+          '<span class="lg-row-v">'+escText(facts)+'</span></button>';
+      }).join('')
+    : '<div class="lg-blank">No sessions saved yet. Your first one shows up here.</div>';
   return '<div class="lg-card">'+
-    cardHeader('trend','What should I improve?',
-      '<button type="button" class="card-hd-act" onclick="logGoto(\'exercises\')">Exercises &rarr;</button>')+
-    (suggestions.length
-      ? '<div class="lg-focus-list">'+suggestions.map(s=>
-          '<button type="button" class="lg-focus-row" onclick="openExerciseDetail(\''+escAttr(s.name)+'\')">'+
-            '<span class="lg-focus-copy"><strong>'+escText(s.name)+'</strong>'+
-              '<small>'+escText(s.reason)+' · now '+s.weight+' kg × '+s.reps+'</small></span>'+
-            '<span class="lg-focus-target">'+escText(String(s.weight+2.5))+' kg</span>'+
-          '</button>').join('')+'</div>'
-      : '<div class="lg-blank">Keep logging your working sets. Daily will suggest an increase after a repeatable trend, not a single good session.</div>')+
+    cardHeader('check','Recent sessions',
+      '<button type="button" class="card-hd-act" onclick="logGoto(\'history\')">All history &rarr;</button>')+
+    rows+
   '</div>';
 }
 
-// A compact view of the canonical weight check-ins. This never keeps its own copy: saves go
-// through addWeightEntry(), and the full history/goal tools remain in Stats > Body and Health.
-function renderLogWeightCard(){
-  const sorted=[...(S.weights||[])].filter(w=>w&&Number.isFinite(parseFloat(w.weight)))
-    .sort((a,b)=>a.date<b.date?-1:1);
-  const recent=sorted.slice(-3);
-  const current=recent[recent.length-1]||null;
-  const previous=recent[recent.length-2]||null;
-  const change=current&&previous?+(parseFloat(current.weight)-parseFloat(previous.weight)).toFixed(1):null;
-  const today=getLocalDate(), todayEntry=sorted.find(w=>w.date===today);
-  return '<div class="lg-card">'+
-    cardHeader('scale','How is my weight moving?',
-      '<button type="button" class="card-hd-act" onclick="setView(\'stats\');setStatsTab(\'body\')">Full trend &rarr;</button>')+
-    (recent.length
-      ? '<div class="lg-weight-summary">'+
-          '<div><span>Current weight</span><strong>'+escText(String(current.weight))+'<small>kg</small></strong></div>'+
-          '<div><span>Last change</span><strong>'+(change===null?'—':(change>0?'+':'')+change+'<small>kg</small>')+'</strong></div>'+
-        '</div>'+
-        '<div class="lg-weight-recent">'+recent.map((w,i)=>
-          '<div class="lg-weight-reading'+(i===recent.length-1?' latest':'')+'">'+
-            '<span>'+escText(fmtDate(w.date))+'</span><strong>'+escText(String(w.weight))+'<small>kg</small></strong>'+
-          '</div>').join('')+'</div>'
-      : '<div class="lg-blank">No weight check-ins yet. Add one below to start your trend.</div>')+
-    '<div class="lg-weight-entry">'+
-      '<label for="log-weight-input">Today</label>'+
-      '<div class="lg-weight-input-wrap"><input id="log-weight-input" type="number" inputmode="decimal" min="30" max="250" step="0.1" placeholder="kg" value="'+(todayEntry?escAttr(String(todayEntry.weight)):'')+'" onkeydown="if(event.key===\'Enter\')logTodayWeight()">'+
-        '<span>kg</span></div>'+
-      '<button type="button" onclick="logTodayWeight()">'+(todayEntry?'Update':'Log weight')+'</button>'+
-    '</div>'+
-  '</div>';
-}
-function logTodayWeight(){
-  const input=document.getElementById('log-weight-input');
-  const value=parseFloat(input&&input.value);
-  if(!Number.isFinite(value)||value<30||value>250){
-    if(input){ input.focus(); input.setCustomValidity('Enter a weight between 30 and 250 kg.'); input.reportValidity(); }
-    return;
-  }
-  if(input) input.setCustomValidity('');
-  addWeightEntry(getLocalDate(), value);
-  renderLogOverview();
-  if(typeof showToast==='function') showToast('Weight logged');
+// One mobile stack; two INDEPENDENT desktop columns. Same composition as Finance › Overview
+// and for the same reason: the plan card is as long as the day has exercises, and a row grid
+// would make the short cards beside it inherit that height.
+function renderLogOverview(){
+  const el=document.getElementById('log-overview'); if(!el) return;
+  const b=logTodayBrief();
+  el.innerHTML=
+    '<div class="lg-cols">'+
+      '<div class="lg-col lg-col-main">'+logHeroHtml(b)+logPlanCardHtml(b)+'</div>'+
+      '<div class="lg-col lg-col-side">'+logWeekCardHtml()+logRecentCardHtml()+'</div>'+
+    '</div>';
 }
 
 // ── Program ─────────────────────────────────────────────────────
