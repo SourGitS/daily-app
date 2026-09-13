@@ -304,7 +304,17 @@
 // a newer draft and the overview said "In progress" the instant you pressed Save. A draft now
 // outranks a same-day record only when it has moved since (wt_setdata present again).
 // No session schema, storage key, migration, Firebase path or sync helper changed.
-const CACHE_NAME = 'daily-v331';
+// v332: post-save notes, a new timer and session-only adds count as a newer draft even before
+// wt_setdata is recreated. Retained saved sets still resolve to Saved today; the reader stays
+// read-only and note keystrokes use the unchanged logger path.
+// v333: saved partial workouts offer a secondary Continue saved workout action only when
+// the logger retains matching meaningful sets. Opening rechecks eligibility, preserves the
+// draft and Saved today state, and leaves the primary history action and save path unchanged.
+// v334: Food Today becomes a recipe-first overview with in-memory filters, per-serving
+// comparison and canonical pantry/shopping/log summaries. The existing food logger remains
+// at #food/log; explicit logging links, recipe options and return destinations are preserved.
+// Overview browsing and incoming-data refresh add no storage, migration or sync changes.
+const CACHE_NAME = 'daily-v334';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

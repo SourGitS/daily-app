@@ -60,7 +60,8 @@ const FNS = ['dateStr', 'localMidnight', 'getLocalDate',
   'exerciseMetricInfo', 'setMetricValue',
   'poFirstWorkingSet', 'poHistoryFor', 'poShouldIncrease',
   'logDraftIsMeaningful', 'logSavedToday', 'logLastOfType', 'logSessionSetCount',
-  'logTodayBrief', 'logRecentSessions', 'logPlanRowHtml', 'logDraftTouchedSinceSave'];
+  'logTodayBrief', 'logRecentSessions', 'logPlanRowHtml', 'logDraftTouchedSinceSave',
+  'logCanContinueSaved', 'logContinueSavedWorkout', 'logHeroHtml'];
 
 function ctx(state) {
   const context = vm.createContext({ console, Date, Math, JSON, Set, Map, Object, Array,
@@ -72,8 +73,8 @@ function ctx(state) {
   vm.runInContext('var escText=s=>String(s==null?"":s); var escAttr=s=>String(s==null?"":s);', context);
   vm.runInContext(FNS.map(extract).join('\n'), context);
   context.splitCfg = () => SPLIT;
-  // Swapped per case: logDraftTouchedSinceSave() reads wt_setdata to tell a draft that has
-  // MOVED since the last save from the sets that produced it. Never written by these tests.
+  // Swapped per case: wt_setdata marks set/check edits after saving; a fresh note, timer or
+  // session-only exercise can be recognised in memory. Readers never write this marker.
   context.localStorage = { getItem: () => null };
   context.S = Object.assign({
     dayIdx: 0, setData: {}, checked: new Set(), sessions: [], swaps: {},
@@ -225,6 +226,353 @@ test('the sets that produced today’s record stop counting as a newer draft', (
   assert.match(fn, /localStorage\.getItem\('wt_setdata'\)/);
   assert.ok(!/setItem|removeItem/.test(fn));
   assert.match(body('logTodayBrief'), /!saved\.latest \|\| logDraftTouchedSinceSave\(\)/);
+});
+
+function afterPartialSave(state) {
+  return ctx(Object.assign({
+    dayIdx: 0,
+    sessions: [sess({ id: 's1', date: '2026-09-13', completed: false,
+      exercises: [ex('Bench press', 'reps', [wset(60, 8)])] })],
+    setData: { 'Bench press': [{ weight: '60', reps: '8', type: 'working', done: false }] }
+  }, state || {}));
+}
+
+test('a note typed after saving outranks the saved sets without recreating wt_setdata', () => {
+  const c = afterPartialSave();
+  assert.equal(c.localStorage.getItem('wt_setdata'), null);
+  assert.equal(c.logDraftTouchedSinceSave(), false);
+  assert.equal(c.brief().state, 'saved');
+
+  c.S.sessionNote = 'Try a narrower grip next set';
+  assert.equal(c.localStorage.getItem('wt_setdata'), null, 'typing the note creates no marker');
+  assert.equal(c.logDraftTouchedSinceSave(), true);
+  assert.equal(c.brief().state, 'inprogress');
+  assert.equal(c.S.sessionNote, 'Try a narrower grip next set', 'reading the overview preserves the note');
+
+  c.S.sessionNote = '';
+  assert.equal(c.brief().state, 'saved', 'old saved sets alone still cannot win the tie-break');
+});
+
+test('a whitespace-only post-save note leaves the saved session in front', () => {
+  const c = afterPartialSave({ sessionNote: '  \n\t ' });
+  assert.equal(c.logDraftTouchedSinceSave(), false);
+  assert.equal(c.brief().state, 'saved');
+});
+
+test('a new timer after saving is a newer draft even without wt_setdata', () => {
+  const c = afterPartialSave({ sessionStart: Date.now() });
+  assert.equal(c.localStorage.getItem('wt_setdata'), null);
+  assert.equal(c.logDraftTouchedSinceSave(), true);
+  assert.equal(c.brief().state, 'inprogress');
+});
+
+test('a session-only exercise after saving is a newer draft even without wt_setdata', () => {
+  const c = afterPartialSave({ sessionAdds: [{ name: 'Face pull', sets: 3 }] });
+  assert.equal(c.localStorage.getItem('wt_setdata'), null);
+  assert.equal(c.logDraftTouchedSinceSave(), true);
+  assert.equal(c.brief().state, 'inprogress');
+});
+
+test('a note remains in progress when there is no saved session today', () => {
+  const c = ctx({ sessions: [sess({ date: '2026-09-11' })], setData: blankRows(PUSH),
+    sessionNote: 'Shoulder feels better today' });
+  assert.equal(c.localStorage.getItem('wt_setdata'), null);
+  assert.equal(c.brief().state, 'inprogress');
+});
+
+test('the post-save tie-break and overview remain read-only for every draft signal', () => {
+  const fn = body('logDraftTouchedSinceSave');
+  [/setItem/, /removeItem/, /\.clear\(/, /lsSave/, /saveSetData/, /persist\(/]
+    .forEach(re => assert.ok(!re.test(fn), 'the tie-break must not contain ' + re));
+  [{}, { sessionNote: 'New note' }, { sessionStart: Date.now() },
+   { sessionAdds: [{ name: 'Face pull', sets: 3 }] }].forEach(state => {
+    [null, JSON.stringify({ date: '2026-09-13', dayIdx: 0 })].forEach(marker => {
+      const c = afterPartialSave(state);
+      let writes = 0;
+      c.localStorage = { getItem: () => marker, setItem: () => writes++,
+        removeItem: () => writes++, clear: () => writes++ };
+      const before = JSON.stringify(c.S);
+      c.logDraftTouchedSinceSave();
+      c.brief();
+      c.brief();
+      assert.equal(writes, 0);
+      assert.equal(JSON.stringify(c.S), before, 'reading does not mutate the logger or saved record');
+    });
+  });
+});
+
+// A saved partial can be reopened only while the logger still holds the same performed sets.
+// Every effective exercise already has a row: opening the real renderLog must not seed one.
+function retainedPartial(state) {
+  const rows = blankRows(PUSH);
+  rows['Bench press'] = [
+    { weight: '20', reps: '10', type: 'warmup', done: true },
+    { weight: '60', reps: '8', type: 'working', done: true },
+    { weight: '', reps: '', type: 'working', done: false }
+  ];
+  return ctx(Object.assign({
+    dayIdx: 0, checked: new Set([0]), setData: rows,
+    sessions: [sess({ id: 'retained', date: '2026-09-13', completed: false,
+      exercises: [ex('Bench press', 'reps', [
+        { weight: 20, reps: 10, type: 'warmup' }, wset(60, 8)
+      ])] })]
+  }, state || {}));
+}
+const draftSnapshot = c => JSON.stringify(c.S, (key, value) =>
+  value instanceof Set ? [...value] : value);
+
+function retainedUi(c) {
+  // Execute the actual opener, tab navigation, view switch and set-logger renderer. Only
+  // DOM elements and unrelated formatting/card components are stand-ins.
+  vm.runInContext(['logOpenSession', 'logBackToOverview', 'setLogTab', 'renderLogToday',
+    'renderLog', 'checkSessionComplete'].map(extract).join('\n'), c);
+  c.logSubTab = 'today'; c.logTodayView = 'overview'; c.logEditMode = false;
+  c.LOG_TABS = { today: 'log-today' };
+  c.LOG_TAB_BTNS = { today: 'log-tab-today' };
+  c._bootPhase = false;
+  const nodes = Object.fromEntries(['log-today', 'log-overview', 'log-session',
+    'exercise-list', 'save-msg', 'save-btn', 'session-note'].map(id => [id, {
+      innerHTML: '', textContent: '', value: '', style: {},
+      classList: { toggle() {} }
+    }]));
+  c.document = { getElementById: id => nodes[id] || null };
+  ['segSetOn', 'segScrollToTab', 'setNavActive', 'refreshAllowNegNames', 'refreshSecsNames']
+    .forEach(n => { c[n] = () => {}; });
+  c.renderExCard = () => '';
+  c.currentAccentHex = () => '#123456';
+  c.hexToRgb = () => '18,52,86';
+  c.fmtDuration = mins => mins + ' min';
+  c.renderLogOverview = () => { nodes['log-overview'].innerHTML = c.logHeroHtml(c.logTodayBrief()); };
+  c.initDay = () => assert.fail('opening a retained workout must not initialise a day');
+  c.startWorkout = () => assert.fail('opening must not start a timer');
+  c.clearSetData = () => assert.fail('opening must not clear a draft');
+  c.saveSetData = () => assert.fail('opening must not persist a draft');
+  c.writes = [];
+  c.localStorage = {
+    getItem: () => null,
+    setItem: (...args) => c.writes.push(['set', ...args]),
+    removeItem: (...args) => c.writes.push(['remove', ...args]),
+    clear: () => c.writes.push(['clear'])
+  };
+  return nodes;
+}
+
+test('a matching retained partial is eligible without an in-progress storage marker', () => {
+  const c = retainedPartial();
+  const before = draftSnapshot(c);
+  assert.equal(c.localStorage.getItem('wt_setdata'), null);
+  assert.equal(c.brief().state, 'saved');
+  assert.equal(c.logCanContinueSaved(c.S.sessions[0]), true);
+  assert.equal(draftSnapshot(c), before, 'eligibility is read-only, including checks and blank rows');
+});
+
+test('continuation matches numeric set values as saved, including warmup and assisted load', () => {
+  const c = retainedPartial();
+  c.S.setData['Bench press'][1].weight = '060.00';
+  c.S.setData['Bench press'][1].reps = '08';
+  c.S.setData.Pullups[0] = { weight: '-10', reps: '6', done: false };
+  c.S.sessions[0].exercises.push(ex('Pullups', 'reps', [wset(-10, 6)]));
+  assert.equal(c.logCanContinueSaved(c.S.sessions[0]), true);
+  c.S.setData['Bench press'][0].type = 'working';
+  assert.equal(c.logCanContinueSaved(c.S.sessions[0]), false, 'warmups are not interchangeable with working sets');
+});
+
+test('continuation recognises retained original keys under the saved swapped movement name', () => {
+  const c = retainedPartial({ swaps: { 'Bench press': 'Dumbbell press' } });
+  c.S.sessions[0].exercises[0].name = 'Dumbbell press';
+  assert.equal(c.logCanContinueSaved(c.S.sessions[0]), true);
+  c.S.swaps['Bench press'] = 'Incline press';
+  assert.equal(c.logCanContinueSaved(c.S.sessions[0]), false, 'a different performed movement must not match');
+});
+
+test('a day match cannot qualify blank, missing, changed or unrelated retained sets', () => {
+  const cases = [
+    ['blank logger after reload', c => { c.S.setData = blankRows(PUSH); }],
+    ['empty logger', c => { c.S.setData = {}; }],
+    ['missing exercise row', c => { delete c.S.setData.Pushups; }],
+    ['empty exercise array', c => { c.S.setData.Pushups = []; }],
+    ['different weight', c => { c.S.setData['Bench press'][1].weight = '62.5'; }],
+    ['different reps', c => { c.S.setData['Bench press'][1].reps = '9'; }],
+    ['different set order', c => { c.S.setData['Bench press'].reverse(); }],
+    ['missing saved set', c => { c.S.setData['Bench press'].splice(0, 1); }],
+    ['extra entered set', c => { c.S.setData.Pushups[0].reps = '15'; }],
+    ['different saved exercise', c => { c.S.sessions[0].exercises[0].name = 'Incline press'; }],
+    ['orphan session-only exercise', c => { c.S.setData['Face pull'] = [wset(20, 12)]; }],
+    ['duplicate performed names', c => { c.S.swaps.Pushups = 'Bench press'; }]
+  ];
+  cases.forEach(([label, mutate]) => {
+    const c = retainedPartial(); mutate(c);
+    const before = draftSnapshot(c);
+    assert.equal(c.logCanContinueSaved(c.S.sessions[0]), false, label);
+    assert.equal(draftSnapshot(c), before, label + ': eligibility must not repair or seed data');
+  });
+});
+
+test('completed, stale, mismatched and empty saved workouts cannot be continued', () => {
+  const cases = [
+    ['completed', c => { c.S.sessions[0].completed = true; }],
+    ['legacy unknown completion', c => { delete c.S.sessions[0].completed; }],
+    ['different date', c => { c.S.sessions[0].date = '2026-09-12'; }],
+    ['different loaded day', c => { c.S.dayIdx = 1; }],
+    ['different saved rotation', c => { c.S.sessions[0].dayNum = 2; }],
+    ['different session type', c => { c.S.sessions[0].sessionType = 'Old Push'; }],
+    ['empty program', c => { c.splitCfg = () => ({ types: [{ id: 'push', name: 'Push', exercises: [] }], schedule: [0] }); }],
+    ['no performed exercises', c => { c.S.sessions[0].exercises = []; }],
+    ['no meaningful retained saved sets', c => {
+      c.S.setData = blankRows(PUSH);
+      c.S.sessions[0].exercises[0].sets = [wset(0, 0)];
+    }]
+  ];
+  cases.forEach(([label, mutate]) => {
+    const c = retainedPartial(); mutate(c);
+    assert.equal(c.logCanContinueSaved(c.S.sessions[0]), false, label);
+  });
+});
+
+test('continuation rejects changed exercise ordering and malformed saved data without throwing', () => {
+  const c = retainedPartial();
+  c.S.setData.Pushups[0].reps = '15';
+  c.S.sessions[0].exercises.push(ex('Pushups', 'reps', [wset(0, 15)]));
+  assert.equal(c.logCanContinueSaved(c.S.sessions[0]), true);
+  c.S.sessions[0].exercises.reverse();
+  assert.equal(c.logCanContinueSaved(c.S.sessions[0]), false);
+  [null, {}, { ...c.S.sessions[0], exercises: [{}] },
+    { ...c.S.sessions[0], exercises: [{ name: 'Bench press', sets: null }] }]
+    .forEach(saved => assert.equal(c.logCanContinueSaved(saved), false));
+});
+
+test('saved hero keeps history primary and only offers continuation for a matching partial', () => {
+  const c = retainedPartial(); retainedUi(c);
+  const hero = c.logHeroHtml(c.logTodayBrief());
+  const buttons = [...hero.matchAll(/<button\b[^>]*>(.*?)<\/button>/g)];
+  assert.equal(buttons.length, 2);
+  assert.equal(buttons[0][1], 'View in history &rarr;');
+  assert.match(buttons[0][0], /onclick="logGoto\('history'\)"/);
+  assert.equal(buttons[1][1], 'Continue saved workout &rarr;');
+  assert.match(buttons[1][0], /lg-hero-secondary/);
+  assert.match(buttons[1][0], /onclick="logContinueSavedWorkout\(\)"/);
+  c.S.sessions[0].completed = true;
+  assert.doesNotMatch(c.logHeroHtml(c.logTodayBrief()), /Continue saved workout/);
+  c.S.sessions[0].completed = false;
+  c.S.setData = blankRows(PUSH);
+  assert.doesNotMatch(c.logHeroHtml(c.logTodayBrief()), /Continue saved workout/);
+});
+
+test('opening and browsing the retained logger preserve all remaining draft fields without writes', () => {
+  const c = retainedPartial({ sessionNote: '  ', swaps: { 'Bench press': 'Dumbbell press' } });
+  c.S.sessions[0].exercises[0].name = 'Dumbbell press';
+  retainedUi(c);
+  const before = draftSnapshot(c);
+  c.logContinueSavedWorkout();
+  assert.equal(c.logTodayView, 'session');
+  assert.equal(draftSnapshot(c), before, 'sets, checks, swaps, note, timer and additions are untouched');
+  assert.equal(c.brief().state, 'saved');
+  c.logBackToOverview();
+  assert.equal(c.logTodayView, 'overview');
+  assert.equal(c.brief().state, 'saved');
+  c.logContinueSavedWorkout(); c.logBackToOverview();
+  assert.equal(draftSnapshot(c), before);
+  assert.deepEqual(c.writes, []);
+});
+
+test('a stale continuation action rechecks both the latest saved record and current draft state', () => {
+  const cases = [
+    ['completed since render', c => { c.S.sessions[0].completed = true; }],
+    ['logger changed since render', c => { c.S.setData['Bench press'][1].reps = '9'; }],
+    ['new note since render', c => { c.S.sessionNote = 'New note'; }],
+    ['new timer since render', c => { c.S.sessionStart = Date.now(); }],
+    ['newer saved session', c => { c.S.sessions.push(sess({ date: '2026-09-13', completed: false })); }]
+  ];
+  cases.forEach(([label, mutate]) => {
+    const c = retainedPartial(); retainedUi(c);
+    assert.match(c.logHeroHtml(c.logTodayBrief()), /Continue saved workout/);
+    mutate(c);
+    const before = draftSnapshot(c);
+    c.logContinueSavedWorkout();
+    assert.equal(c.logTodayView, 'overview', label);
+    assert.equal(draftSnapshot(c), before, label);
+    assert.deepEqual(c.writes, [], label);
+  });
+});
+
+test('Saved → open → Saved → note-only edit → In progress keeps the note on Continue', () => {
+  const c = retainedPartial(); retainedUi(c);
+  c.logContinueSavedWorkout(); c.logBackToOverview();
+  assert.equal(c.brief().state, 'saved');
+  c.logContinueSavedWorkout();
+  c.S.sessionNote = 'One more set after a short rest';
+  c.logBackToOverview();
+  assert.equal(c.brief().state, 'inprogress');
+  assert.match(c.logHeroHtml(c.logTodayBrief()), /Continue workout &rarr;/);
+  assert.doesNotMatch(c.logHeroHtml(c.logTodayBrief()), /Continue saved workout/);
+  c.logOpenSession();
+  assert.equal(c.S.sessionNote, 'One more set after a short rest');
+  assert.equal(c.localStorage.getItem('wt_setdata'), null);
+  assert.deepEqual(c.writes, []);
+});
+
+test('a retained set or check edit recreates the existing marker and becomes In progress', () => {
+  const edits = [
+    c => { c.S.setData['Bench press'][1].reps = '9'; },
+    c => { c.S.setData['Bench press'][1].done = false; c.S.checked.delete(0); }
+  ];
+  edits.forEach(edit => {
+    const c = retainedPartial(); retainedUi(c);
+    vm.runInContext(extract('saveSetData'), c);
+    let marker = null;
+    c.localStorage.getItem = () => marker;
+    c.localStorage.setItem = (key, value) => {
+      assert.equal(key, 'wt_setdata'); marker = value;
+    };
+    c.logContinueSavedWorkout();
+    assert.equal(c.brief().state, 'saved');
+    edit(c); c.saveSetData();
+    assert.equal(JSON.parse(marker).date, '2026-09-13');
+    c.logBackToOverview();
+    assert.equal(c.brief().state, 'inprogress');
+    const before = draftSnapshot(c);
+    c.logOpenSession();
+    assert.equal(draftSnapshot(c), before);
+  });
+});
+
+test('saving a continued partial appends a new record and never overwrites the earlier save', () => {
+  const c = retainedPartial(); retainedUi(c);
+  vm.runInContext(['saveSession', 'clearSetData'].map(extract).join('\n'), c);
+  c.loadExerciseLib = () => [];
+  c.libGuessMuscle = () => 'other';
+  c.getDurationMins = () => 0;
+  c.checkPO = () => [];
+  ['updateNavBadges', 'rtResetAll', 'rtUpdateSessionLabels', 'showPostSaveWeightPrompt',
+    'showPostSaveEffortPrompt'].forEach(n => { c[n] = () => {}; });
+  c.setTimeout = () => {};
+  let persisted = [];
+  c.persist = ids => { persisted = [...ids]; return true; };
+  const original = JSON.stringify(c.S.sessions[0]);
+  c.logContinueSavedWorkout();
+  c.S.setData['Bench press'][1].reps = '9';
+  c.S.sessionNote = 'Continued after saving';
+  c.saveSession();
+  assert.equal(c.S.sessions.length, 2);
+  assert.equal(JSON.stringify(c.S.sessions[0]), original);
+  assert.notEqual(c.S.sessions[1].id, c.S.sessions[0].id);
+  assert.deepEqual(persisted, [c.S.sessions[1].id]);
+  assert.equal(c.S.sessions[1].note, 'Continued after saving');
+  assert.equal(c.S.sessions[1].exercises[0].sets[1].reps, 9);
+  assert.equal(c.S.sessionNote, '');
+  assert.equal(c.S.sessionStart, null);
+  assert.deepEqual([...c.S.sessionAdds], []);
+  assert.equal(c.brief().state, 'saved');
+  assert.equal(c.logCanContinueSaved(c.S.sessions[1]), true);
+});
+
+test('retained eligibility and opening introduce no storage, initialisation or timer write path', () => {
+  ['logCanContinueSaved', 'logContinueSavedWorkout'].forEach(n => {
+    const fn = body(n).replace(/^\s*\/\/.*$/gm, '');
+    [/localStorage/, /lsSave/, /saveSetData/, /clearSetData/, /persist\(/,
+      /initDay\(/, /selectDay\(/, /startWorkout\(/, /S\.[\w]+\s*=(?!=)/]
+      .forEach(re => assert.doesNotMatch(fn, re, n + ' must not contain ' + re));
+  });
 });
 
 test('the saved state carries no reconstructed planned total', () => {

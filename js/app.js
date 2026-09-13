@@ -478,6 +478,7 @@ if(firebaseReady){
         S.personalInfo = snap.val();
         localStorage.setItem('wt_personalinfo', JSON.stringify(S.personalInfo));
         renderSettings();
+        foodRefreshToday();
       });
     });
 
@@ -708,9 +709,9 @@ if(firebaseReady){
     });
     // ── Kitchen sync ──
     syncBlobListen(user.uid,'kitRecipes','kitchen_recipes',()=>{ try{ kitRecipes=kitLoadRecipes(); }catch(e){} foodRefreshActive(); foodRefreshSupport(); });
-    syncBlobListen(user.uid,'kitShopSelected','kitchen_shopping_selected',()=>{ try{ kitShopSelected=kitShopLoadSelected(); kitShopView=kitShopSelected.length?'list':'selector'; }catch(e){} if(foodShowing('shopping')) kitShopRender(); });
-    syncBlobListen(user.uid,'kitShopChecked','kitchen_shopping_checked',()=>{ try{ kitShopChecked=kitShopNormaliseChecked(kitShopLoadChecked()); }catch(e){} if(foodShowing('shopping')&&typeof kitShopRenderList==='function') kitShopRenderList(); });
-    syncBlobListen(user.uid,'kitShopManual','kitchen_shopping_manual',()=>{ try{ kitShopManual=kitShopLoadManual(); }catch(e){} if(foodShowing('shopping')&&typeof kitShopRenderList==='function') kitShopRenderList(); });
+    syncBlobListen(user.uid,'kitShopSelected','kitchen_shopping_selected',()=>{ try{ kitShopSelected=kitShopLoadSelected(); kitShopView=kitShopSelected.length?'list':'selector'; }catch(e){} if(foodShowing('shopping')) kitShopRender(); foodRefreshToday(); });
+    syncBlobListen(user.uid,'kitShopChecked','kitchen_shopping_checked',()=>{ try{ kitShopChecked=kitShopNormaliseChecked(kitShopLoadChecked()); }catch(e){} if(foodShowing('shopping')&&typeof kitShopRenderList==='function') kitShopRenderList(); foodRefreshToday(); });
+    syncBlobListen(user.uid,'kitShopManual','kitchen_shopping_manual',()=>{ try{ kitShopManual=kitShopLoadManual(); }catch(e){} if(foodShowing('shopping')&&typeof kitShopRenderList==='function') kitShopRenderList(); foodRefreshToday(); });
     syncBlobListen(user.uid,'kitPantry','kitchen_pantry',()=>{
       try{
         kitPantryData=kitPantryLoad();
@@ -725,7 +726,7 @@ if(firebaseReady){
       try{ S.dailyLog=loadDailyLog(); }catch(e){}
       if(typeof nutMigrateLegacy==='function') nutMigrateLegacy();
       if(S.view==='home'&&typeof renderHome==='function') renderHome();
-      if(foodShowing('today')&&typeof nutRender==='function') nutRender();
+      foodRefreshToday();
       if(S.view==='stats') refreshStatsForData(['overview','review','nutrition']);
     });
     syncBlobListen(user.uid,'calorieHistory','daily_cal_history',()=>{
@@ -737,8 +738,8 @@ if(firebaseReady){
       try{ savedFoods=loadSavedFoods(); }catch(e){}
       if(typeof nutMigrateLegacy==='function') nutMigrateLegacy();
     });
-    syncBlobListen(user.uid,'nutritionFoods','daily_my_foods',()=>{ if(typeof nutMigrateLegacy==='function') nutMigrateLegacy(); if(foodShowing('today')&&typeof nutRender==='function') nutRender(); foodRefreshSupport(); });
-    syncBlobListen(user.uid,'nutritionPrefs','daily_food_prefs',()=>{ if(typeof nutMigrateLegacy==='function') nutMigrateLegacy(); if(foodShowing('today')&&typeof nutRender==='function') nutRender(); foodRefreshSupport(); });
+    syncBlobListen(user.uid,'nutritionFoods','daily_my_foods',()=>{ if(typeof nutMigrateLegacy==='function') nutMigrateLegacy(); foodRefreshToday(); foodRefreshSupport(); });
+    syncBlobListen(user.uid,'nutritionPrefs','daily_food_prefs',()=>{ if(typeof nutMigrateLegacy==='function') nutMigrateLegacy(); foodRefreshToday(); foodRefreshSupport(); });
     if(typeof nutSyncListen==='function') nutSyncListen(user.uid);
     syncBlobListen(user.uid,'checkinLog','daily_checkin_log',()=>{
       if(S.view==='home'&&typeof renderHome==='function') renderHome(); // streak lives on Home (calcStreak)
@@ -2198,7 +2199,8 @@ function dailyHistoryTarget(raw,state){
   // popstate land on 'food' directly and write ONE history entry for it.
   const sub=(view==='log')?null:((state&&state.dailyFoodTab)||parts[1]||null);
   const t=navResolve(view, sub);
-  return {view:t.view, logTab, foodTab:t.sub, foodScreen:t.screen};
+  return {view:t.view, logTab, foodTab:t.sub, foodScreen:t.screen,
+    foodTodayView:(state&&state.dailyFoodTodayView)||t.todayView||(view==='food'&&(!t.sub||t.sub==='today')?'overview':null)};
 }
 function dailyHistoryUrl(v,sub){
   // Food mirrors Log: the default section has no suffix, any other one names itself, so Back
@@ -2210,7 +2212,7 @@ function dailyHistoryUrl(v,sub){
 // re-derive it per view.
 function dailyHistorySub(v){
   if(v==='log')  return (typeof logSubTab!=='undefined')?logSubTab:null;
-  if(v==='food') return foodState.tab;
+  if(v==='food') return foodState.tab==='today'&&foodState.todayView==='log'?'log':foodState.tab;
   return null;
 }
 function setView(v, direction, opts){
@@ -2289,15 +2291,16 @@ function setView(v, direction, opts){
   if(v==='food'){
     const tab=FOOD_TABS.indexOf(opts.foodTab)>=0 ? opts.foodTab
             : (_legacyRoute ? _legacyRoute.tab : foodState.tab);
-    foodSetTab(tab, {force:true, skipHistory:true});
+    const todayView=opts.foodTodayView||(_legacyRoute&&_legacyRoute.todayView)||foodState.todayView;
+    foodSetTab(tab, {force:true, skipHistory:true, todayView});
     if(!opts.fromHistory&&!_bootPhase&&prev!==v){
       try{
         if(!history.state?.dailyView&&dailyHistoryView(prev)) history.replaceState({dailyView:prev},'',dailyHistoryUrl(prev,dailyHistorySub(prev)));
-        history.pushState({dailyView:'food',dailyFoodTab:tab},'',dailyHistoryUrl('food',tab));
+        history.pushState({dailyView:'food',dailyFoodTab:tab,dailyFoodTodayView:foodState.todayView},'',dailyHistoryUrl('food',dailyHistorySub('food')));
       }catch(e){}
     }
     // setView('nutrition','foods')-era links carried a supporting screen with them.
-    if(_legacyRoute&&_legacyRoute.screen) foodOpenSupport(_legacyRoute.screen);
+    if(_legacyRoute&&_legacyRoute.screen) foodOpenSupport(_legacyRoute.screen,{canonical:true});
   } else if(typeof kitShopRenderAddBar==='function') kitShopRenderAddBar(false); // hide fixed shopping add-bar off-tab
   if(v==='settings') renderSettings();
   if(v==='plans') renderPlans();
@@ -2330,8 +2333,10 @@ const FOOD_TABS=['today','recipes','shopping','pantry'];
 // IN MEMORY, deliberately. "Remember the section I was last in" is a within-session
 // convenience, not a preference worth a synced store or a migration — and a stored default
 // would be a boot-time write, which is the `_bootPhase` trap in AGENTS.md. A fresh session
-// therefore opens on Today, which is what routine logging wants.
-const foodState={tab:'today'};
+// therefore opens on Today's recipe-first overview.
+const foodState={tab:'today',todayView:'overview'};
+const foodOverviewState={search:'',category:'all',maxMinutes:'',maxCalories:'',compareId:null};
+const foodSupportReturn={};
 // Food's supporting screens, keyed by the overlay they own. Neither is a fifth tab: the
 // library belongs to Today (it is where Add food finds its options) and the review belongs to
 // Recipes, and each returns to its parent.
@@ -2348,8 +2353,8 @@ const NAV_VIEW_ALIAS={nutrition:'food', kitchen:'food'};
 // view + sub, as the old callers spelled it → the canonical Food destination. `screen` names a
 // supporting overlay; absent means the primary section alone.
 const FOOD_LEGACY_ROUTES={
-  'nutrition':          {tab:'today'},
-  'nutrition:today':    {tab:'today'},
+  'nutrition':          {tab:'today',todayView:'log'},
+  'nutrition:today':    {tab:'today',todayView:'log'},
   'nutrition:foods':    {tab:'today',   screen:'library'},
   'nutrition:recipes':  {tab:'recipes', screen:'review'},
   'kitchen':            {tab:'recipes'},
@@ -2358,7 +2363,8 @@ const FOOD_LEGACY_ROUTES={
   'kitchen:pantry':     {tab:'pantry'},
   // The canonical spellings, so navGo('food','library') works without a special case.
   'food:library':       {tab:'today',   screen:'library'},
-  'food:review':        {tab:'recipes', screen:'review'}
+  'food:review':        {tab:'recipes', screen:'review'},
+  'food:log':           {tab:'today',todayView:'log'}
 };
 // Resolve any (view, sub) pair — new or legacy — to what should actually happen.
 // Returns {view, sub, screen}: `sub` is a Food TAB when view==='food', otherwise whatever the
@@ -2367,7 +2373,7 @@ function navResolve(view, sub){
   const v=NAV_VIEW_ALIAS[view]||view;
   if(v!=='food') return {view:v, sub:sub||null, screen:null};
   const route=FOOD_LEGACY_ROUTES[view+(sub?':'+sub:'')] || FOOD_LEGACY_ROUTES[view] || null;
-  if(route) return {view:'food', sub:route.tab, screen:route.screen||null};
+  if(route) return Object.assign({view:'food', sub:route.tab, screen:route.screen||null},route.todayView?{todayView:route.todayView}:{});
   // A plain Food tab, or nothing — nothing meaning "wherever you were", which is what the
   // bottom-nav button and the quick strip pass.
   return {view:'food', sub:FOOD_TABS.indexOf(sub)>=0?sub:null, screen:null};
@@ -2443,7 +2449,7 @@ const NAV_TREE=[
     // Kept, and pointed at Food › Today rather than the retired Nutrition tab. It is NOT the
     // duplicate the Home/Settings rule forbids: the pinned Food item lands wherever you were,
     // this one always lands on the day log.
-    {id:'nut-today', label:'Food log',         view:'food', sub:'today'},
+    {id:'nut-today', label:'Food log',         view:'food', sub:'log'},
   ]},
   {id:'training', label:'Training', rows:[
     {id:'log-program',   label:'Program',   view:'log', sub:'program'},
@@ -2509,8 +2515,11 @@ function navGo(viewId, sub){
   // Legacy names resolve BEFORE setView, so a row still saying 'kitchen' pushes one history
   // entry for #food rather than an intermediate one for a screen that no longer exists.
   const t=navResolve(viewId, sub);
+  if(t.view==='food'){
+    if(S.view!=='food') setView('food',null,{foodTab:t.sub,foodTodayView:t.todayView||(t.sub==='today'?'overview':null)});
+    return foodGo(t.sub,t.screen,{todayView:t.todayView,canonicalSupport:true});
+  }
   setView(t.view);
-  if(t.view==='food') return foodGo(t.sub, t.screen);
   if(!t.sub) return;
   if(t.view==='log')            setLogTab(t.sub);
   else if(t.view==='stats')     setStatsTab(t.sub);
@@ -3081,7 +3090,7 @@ function dailyApplyHistoryView(state){
   const raw=state&&state.dailyView||decodeURIComponent(location.hash.replace(/^#/,''));
   const target=dailyHistoryTarget(raw,state);
   if(!target) return;
-  if(target.view!==S.view) setView(target.view,null,{fromHistory:true,logTab:target.logTab,foodTab:target.foodTab});
+  if(target.view!==S.view) setView(target.view,null,{fromHistory:true,logTab:target.logTab,foodTab:target.foodTab,foodTodayView:target.foodTodayView});
   else if(target.view==='log'){
     logTodayView='overview';
     setLogTab(target.logTab,true,{skipHistory:true});
@@ -3090,11 +3099,11 @@ function dailyApplyHistoryView(state){
     // Back/Forward between Food sections must move the strip without writing a new entry —
     // the same shape as Log's branch above.
     foodCloseSupport();
-    foodSetTab(target.foodTab||'today',{skipHistory:true});
+    foodSetTab(target.foodTab||'today',{skipHistory:true,todayView:target.foodTodayView||'overview'});
   }
   // A legacy entry's supporting screen (an old #nutrition/foods style link) opens on top of
   // the section it belongs to, once the view is in place.
-  if(target.view==='food'&&target.foodScreen) foodOpenSupport(target.foodScreen);
+  if(target.view==='food'&&target.foodScreen) foodOpenSupport(target.foodScreen,{canonical:true});
 }
 window.addEventListener('popstate',e=>dailyApplyHistoryView(e.state));
 window.addEventListener('hashchange',()=>dailyApplyHistoryView(history.state));
@@ -3113,7 +3122,7 @@ function isLandscapePhone(){ return !!(LANDSCAPE_MQ && LANDSCAPE_MQ.matches); }
 // Kitchen's landscape recipe book uses the same list/detail composition as desktop. Keep the
 // breakpoint in one predicate so rendering does not mistake that visible detail pane for the
 // portrait overlay model and leave it empty.
-function kitUsesSplitPane(){ return layoutIsDesktop() || isLandscapePhone(); }
+function kitUsesSplitPane(){ return foodShowing('recipes') && (layoutIsDesktop() || isLandscapePhone()); }
 function updateNavPill(v){
   const idx=NAV_ORDER.indexOf(v);
   const n=NAV_ORDER.length;
@@ -6574,14 +6583,14 @@ function saveCustomCalorieTarget(){
   S.personalInfo.customCalorieTarget=n===null?null:Math.round(n);
   localStorage.setItem('wt_personalinfo',JSON.stringify(S.personalInfo));
   syncPersonalInfoToFirebase();
-  if(foodShowing('today')&&typeof nutRender==='function')nutRender();
+  foodRefreshToday();
   if(S.view==='home')renderHome();
   showToast(n===null?'Using calculated goal':'Custom calorie target saved');
 }
 
 // ── Calorie log ────────────────────────────────────────────────────
 function renderCalorieLog(){
-  if(foodShowing('today')&&typeof nutRender==='function') nutRender();
+  foodRefreshToday();
 }
 
 function logCalorie(category){
@@ -6595,7 +6604,7 @@ function openCalorieOverlay(){ if(typeof nutOpen==='function') nutOpen('snacks')
 function closeCalorieOverlay(){ if(typeof nutCloseFoodSheet==='function') nutCloseFoodSheet(); }
 function overlayAddCalorie(cat){ if(typeof nutOpen==='function') nutOpen(cat||'snacks'); }
 function deleteOverlayEntry(){ if(typeof nutOpen==='function') nutOpen('snacks'); }
-function renderCalorieOverlay(){ if(foodShowing('today')&&typeof nutRender==='function') nutRender(); }
+function renderCalorieOverlay(){ foodRefreshToday(); }
 // Legacy saved foods remain readable and synced for migration, but their old editor is retired.
 function loadSavedFoods(){ return lsLoad('daily_saved_foods', []); }
 function persistSavedFoods(){ lsSave('daily_saved_foods', savedFoods, 'savedFoods'); }
@@ -24085,6 +24094,148 @@ function kitScaledAmount(amount,baseServings,curServings){
   return kitTrim((n/baseServings)*curServings);
 }
 
+// ── Food Today: read-only recipe chooser ──────────────────────────
+function foodOverviewMinutes(value){
+  if(typeof value==='number') return Number.isFinite(value)&&value>=0?value:null;
+  if(typeof value!=='string'||!value.trim()) return null;
+  const s=value.trim().toLowerCase();
+  let m=s.match(/^(\d+(?:\.\d+)?)\s*(?:m|min|mins|minute|minutes)?$/);
+  if(m) return Number(m[1]);
+  m=s.match(/^(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)(?:\s+(\d+(?:\.\d+)?)\s*(?:m|min|mins|minute|minutes))?$/);
+  return m?Number(m[1])*60+Number(m[2]||0):null;
+}
+function foodOverviewRecipe(r){
+  const resolved=kitResolve(r);
+  const source=resolved.option||r;
+  const nutritionState=resolved.ok?nutRecipeState(source):'missing';
+  return {
+    id:r.id, recipe:r, name:String(r.name||'Untitled recipe'), category:r.category||'',
+    resolved, optionId:resolved.optionId, optionLabel:resolved.optionLabel,
+    calories:resolved.ok?nutNum(resolved.nutrition.calories):null,
+    protein:resolved.ok?nutNum(resolved.nutrition.protein):null,
+    nutritionState, partialReview:source.nutritionBasis==='partial'||r.nutritionBasis==='partial',
+    // An option's cookTime is its protein-step timer, not the whole recipe's duration.
+    minutes:foodOverviewMinutes(r.cookTime),
+    proteinMinutes:resolved.option?foodOverviewMinutes(resolved.option.cookTime):null
+  };
+}
+function foodOverviewModel(){
+  const state=foodOverviewState;
+  const all=kitRecipes.map(foodOverviewRecipe).sort((a,b)=>Number(!!b.recipe.favourite)-Number(!!a.recipe.favourite)||a.name.localeCompare(b.name));
+  const search=state.search.trim().toLowerCase();
+  const candidates=all.filter(r=>(!search||r.name.toLowerCase().includes(search))&&(state.category==='all'||r.category===state.category));
+  const maxMinutes=state.maxMinutes===''?null:nutNum(state.maxMinutes);
+  const maxCalories=state.maxCalories===''?null:nutNum(state.maxCalories);
+  const matched=candidates.filter(r=>(maxMinutes==null||(r.minutes!=null&&r.minutes<=maxMinutes))&&(maxCalories==null||(r.calories!=null&&r.calories<=maxCalories)));
+  const plan=kitShopComputePlan();
+  const shoppingRows=plan.pantryNeeds.concat(Object.values(plan.normal).filter(row=>!kitShopRowChecked(row,plan.pantryId)));
+  return {
+    total:all.length, matched, shown:matched.slice(0,6),
+    unknownCalories:maxCalories==null?0:candidates.filter(r=>r.calories==null).length,
+    unknownTime:maxMinutes==null?0:candidates.filter(r=>r.minutes==null).length,
+    needsReview:all.some(r=>r.calories==null||r.partialReview||r.nutritionState==='missing'),
+    comparison:all.find(r=>r.id===state.compareId)||null,
+    target:nutNum(nutTarget()),
+    shopping:{pantryName:plan.pantryName,count:kitShopCountLeft(plan),preview:shoppingRows.slice(0,3)},
+    log:nutDaySummary(getLocalDate())
+  };
+}
+function foodOverviewSetFilter(key,value){
+  if(!['search','category','maxMinutes','maxCalories'].includes(key)) return;
+  if(key==='category'&&!KIT_CATS.some(c=>c[0]===value)) return;
+  foodOverviewState[key]=String(value);
+  foodRenderOverview();
+}
+function foodOverviewReset(){
+  Object.assign(foodOverviewState,{search:'',category:'all',maxMinutes:'',maxCalories:''});
+  foodRenderOverview();
+}
+function foodOverviewCompare(id){
+  if(!foodOverviewModel().shown.some(r=>r.id===id)) return;
+  foodOverviewState.compareId=foodOverviewState.compareId===id?null:id;
+  foodRenderOverview();
+}
+function foodOverviewView(id){
+  const r=kitRecipes.find(r=>r.id===id); if(!r) return;
+  const item=foodOverviewRecipe(r);
+  kitOpenDetail(id,item.optionId);
+}
+function foodOverviewCook(id){
+  const r=kitRecipes.find(r=>r.id===id); if(!r) return;
+  const item=foodOverviewRecipe(r);
+  if(item.resolved.ok) kitStartCooking(id,item.optionId);
+}
+function foodOverviewRecipeHTML(item){
+  const arg=kitEsc(JSON.stringify(item.id));
+  const category=(KIT_CATS.find(c=>c[0]===item.category)||[])[1]||'Recipe';
+  const time=item.minutes==null?'Cooking time unknown':kitTrim(item.minutes)+' min';
+  const nutrition=item.nutritionState==='calculated'?'Calculated values':item.nutritionState==='manual'?'Manual values':item.nutritionState==='partial'?'Partial nutrition':'Nutrition missing';
+  const selected=foodOverviewState.compareId===item.id;
+  return '<article class="fo-recipe'+(selected?' is-compared':'')+'">'+
+    '<div class="fo-recipe-top"><div class="fo-recipe-art" aria-hidden="true">'+kitEsc(kitCardEmoji(item.recipe))+'</div><div class="fo-recipe-title"><span class="fo-eyebrow">'+kitEsc(category)+'</span><h3>'+kitEsc(item.name)+'</h3>'+
+    (item.optionLabel?'<div class="fo-option">'+kitEsc(item.optionLabel)+' option</div>':'')+'</div></div>'+
+    '<div class="fo-time">'+time+(item.minutes==null&&item.proteinMinutes!=null?' · Protein step: '+kitTrim(item.proteinMinutes)+' min':'')+'</div>'+
+    '<div class="fo-nutrition"><span>'+(item.calories==null?'Calories unknown':'<strong>'+kitTrim(item.calories)+'</strong> kcal')+'</span><span>'+(item.protein==null?'Protein unknown':'<strong>'+kitTrim(item.protein)+'</strong> g protein')+'</span><small>per serving</small></div>'+
+    '<div class="fo-provenance">'+nutrition+(item.partialReview&&item.nutritionState!=='partial'?' · Partial nutrition review':'')+'</div>'+
+    (!item.resolved.ok?'<p class="fo-note">Review this recipe’s protein options before cooking.</p>':'')+
+    '<div class="fo-recipe-actions"><button class="fo-btn" onclick="foodOverviewView('+arg+')">View recipe</button><button class="fo-btn fo-btn-primary" onclick="foodOverviewCook('+arg+')"'+(!item.resolved.ok?' disabled':'')+'>Cook</button></div>'+
+    '<button class="fo-link fo-compare" aria-pressed="'+selected+'" onclick="foodOverviewCompare('+arg+')">'+(selected?'Serving selected ✓':'Compare a serving')+'</button></article>';
+}
+function foodOverviewResultsHTML(model){
+  const heading='<div class="fo-results-hd"><h2>Recipe options</h2><span>'+model.matched.length+' match'+(model.matched.length===1?'':'es')+(model.matched.length>6?' · showing 6':'')+'</span></div>';
+  if(!model.total) return heading+'<div class="fo-card fo-empty"><h3>Your recipes, ready when you are</h3><p>Add a favourite or import recipes to start choosing something to cook.</p><div class="fo-actions"><button class="fo-btn fo-btn-primary" onclick="kitOpenForm()">Add recipe</button><button class="fo-btn" onclick="kitOpenImport()">Import recipes</button></div></div>';
+  const omitted=[];
+  if(model.unknownCalories) omitted.push(model.unknownCalories+' with unknown calories');
+  if(model.unknownTime) omitted.push(model.unknownTime+' with unknown cooking time');
+  return heading+(omitted.length?'<p class="fo-note">Excluded by your limits: '+omitted.join('; ')+'.</p>':'')+
+    (model.shown.length?'<div class="fo-recipes">'+model.shown.map(foodOverviewRecipeHTML).join('')+'</div>':'<div class="fo-card fo-empty"><h3>No recipes match these filters</h3><p>Try a different name, category or limit.</p><button class="fo-btn" onclick="foodOverviewReset()">Reset filters</button></div>')+
+    (model.needsReview?'<button class="fo-link fo-review" onclick="foodOpenReview()">Review missing or partial nutrition →</button>':'');
+}
+function foodOverviewGoalHTML(model){
+  const target=model.target;
+  let html=cardHeader('target','Calorie goal')+(target==null?'<h3>No calorie target set</h3><p class="fo-note">You can still browse recipes and choose what to cook.</p>':'<div class="fo-figure">'+kitTrim(target)+' <span>kcal</span></div><div class="fo-caption">Daily calorie target</div><p class="fo-note">Recipe figures are per serving to help you choose portions.</p>');
+  const item=model.comparison;
+  if(item){
+    html+='<div class="fo-comparison"><span class="fo-eyebrow">Serving comparison</span><strong>'+kitEsc(item.name)+(item.optionLabel?' · '+kitEsc(item.optionLabel):'')+'</strong><p>'+(item.calories==null?'Calories unknown for this serving.':'One serving: '+kitTrim(item.calories)+' kcal'+(target>0?' · '+Math.round(item.calories/target*100)+'% of your daily target':''))+'</p><small>A portion comparison only. This does not record food eaten.</small></div>';
+  }else html+='<p class="fo-note">Choose “Compare a serving” on a recipe to see it here.</p>';
+  return html+'<button class="fo-link" onclick="openHealthSettings()">'+(target==null?'Set calorie target':'Calorie settings')+' →</button>';
+}
+function foodOverviewShoppingHTML(model){
+  const shopping=model.shopping;
+  return cardHeader('cart','Shopping')+'<div class="fo-caption">'+kitEsc(shopping.pantryName)+'</div><div class="fo-figure">'+shopping.count+' <span>thing'+(shopping.count===1?'':'s')+' to buy</span></div>'+
+    (shopping.preview.length?'<ul class="fo-shopping-list">'+shopping.preview.map(row=>'<li>'+kitEsc(row.name)+'</li>').join('')+'</ul>':'<p class="fo-note">Nothing unchecked on this pantry’s shopping list.</p>')+
+    '<div class="fo-actions"><button class="fo-link" onclick="foodGo(\'shopping\')">Open shopping →</button><button class="fo-link" onclick="foodGo(\'pantry\')">Pantry →</button></div>';
+}
+function foodOverviewLogHTML(model){
+  const summary=model.log, count=summary.entries.length;
+  let body='<h3>No food logged today</h3>';
+  if(count) body='<div class="fo-figure">'+kitTrim(summary.calories)+' <span>known logged kcal</span></div><div class="fo-caption">'+count+' entr'+(count===1?'y':'ies')+' recorded'+(summary.unknown?' · '+summary.unknown+' with unknown calories':'')+'</div><p class="fo-note">A summary of recorded entries; it may not include everything eaten.</p>';
+  else if(summary.status==='legacy') body='<div class="fo-figure">'+kitTrim(summary.calories)+' <span>logged kcal</span></div><p class="fo-note">An earlier daily total is recorded without individual entries.</p>';
+  return cardHeader('flame','Food log')+body+'<button class="fo-link" onclick="foodOpenLog()">Open food log →</button>';
+}
+function foodRenderOverview(){
+  const root=document.getElementById('food-overview'); if(!root) return;
+  // Keep the chooser DOM alive: a nutrition or pantry refresh must not interrupt typing.
+  if(!document.getElementById('fo-search')) root.innerHTML='<div class="fo-columns"><div class="fo-main"><section class="fo-card fo-chooser">'+cardHeader('pot','Choose something to cook','<button class="fo-link" onclick="foodGo(\'recipes\')">All recipes →</button>')+
+    '<h1>What would you like to eat?</h1><label class="fo-search"><span class="sr-only">Search recipe names</span><input id="fo-search" type="search" placeholder="Search recipe names" oninput="foodOverviewSetFilter(\'search\',this.value)"></label>'+
+    '<div class="fo-categories" aria-label="Recipe category">'+KIT_CATS.map(c=>'<button data-fo-category="'+kitEsc(c[0])+'" onclick="foodOverviewSetFilter(\'category\','+kitEsc(JSON.stringify(c[0]))+')">'+kitEsc(c[1])+'</button>').join('')+'</div>'+
+    '<div class="fo-limits"><label>Max cooking time <span>(minutes)</span><input id="fo-maxMinutes" type="number" min="0" step="1" placeholder="Any time" oninput="foodOverviewSetFilter(\'maxMinutes\',this.value)"></label><label>Max kcal per serving<input id="fo-maxCalories" type="number" min="0" step="1" placeholder="Any calories" oninput="foodOverviewSetFilter(\'maxCalories\',this.value)"></label></div><button class="fo-link fo-reset" onclick="foodOverviewReset()">Reset filters</button></section><section id="fo-results" aria-label="Recipe options"></section></div><aside class="fo-support"><section class="fo-card" id="fo-goal"></section><section class="fo-card" id="fo-shopping"></section><section class="fo-card" id="fo-log-summary"></section></aside></div>';
+  const model=foodOverviewModel();
+  if(foodOverviewState.compareId&&!model.comparison) foodOverviewState.compareId=null;
+  ['search','maxMinutes','maxCalories'].forEach(key=>{
+    const input=document.getElementById('fo-'+key);
+    if(input&&input.value!==foodOverviewState[key]) input.value=foodOverviewState[key];
+  });
+  root.querySelectorAll('[data-fo-category]').forEach(button=>{
+    const active=button.dataset.foCategory===foodOverviewState.category;
+    button.classList.toggle('active',active); button.setAttribute('aria-pressed',String(active));
+  });
+  document.getElementById('fo-results').innerHTML=foodOverviewResultsHTML(model);
+  document.getElementById('fo-goal').innerHTML=foodOverviewGoalHTML(model);
+  document.getElementById('fo-shopping').innerHTML=foodOverviewShoppingHTML(model);
+  document.getElementById('fo-log-summary').innerHTML=foodOverviewLogHTML(model);
+}
+
 // ── Food: the section controller ──────────────────────────────────
 // One strip, four sections, and exactly one of them rendered. The three kitchen panes keep
 // their ids and their renderers untouched — only who decides which pane is showing moved here,
@@ -24095,8 +24246,10 @@ function kitScaledAmount(amount,baseServings,curServings){
 function foodSetTab(tab, opts){
   opts=opts||{};
   if(FOOD_TABS.indexOf(tab)<0) tab='today';
-  const changed=foodState.tab!==tab;
+  const todayView=opts.todayView==='log'?'log':'overview';
+  const changed=foodState.tab!==tab||(tab==='today'&&foodState.todayView!==todayView);
   foodState.tab=tab;
+  if(tab==='today') foodState.todayView=todayView;
   if(tab!=='today') kitState.tab=tab;
   const panes={today:'food-today', recipes:'kit-recipes', shopping:'kit-shopping', pantry:'kit-pantry'};
   FOOD_TABS.forEach(t=>{
@@ -24109,7 +24262,7 @@ function foodSetTab(tab, opts){
   // already use.
   segScrollToTab(document.getElementById('food-tab-row'), document.getElementById('food-tab-'+tab));
   if(changed&&!opts.skipHistory&&!_bootPhase&&S.view==='food'){
-    try{ history.pushState({dailyView:'food',dailyFoodTab:tab},'',dailyHistoryUrl('food',tab)); }catch(e){}
+    try{ history.pushState({dailyView:'food',dailyFoodTab:tab,dailyFoodTodayView:foodState.todayView},'',dailyHistoryUrl('food',dailyHistorySub('food'))); }catch(e){}
   }
   setNavActive();
   foodRenderSection(tab);
@@ -24124,12 +24277,30 @@ function foodSetTab(tab, opts){
 // Render whichever section is showing, through each area's OWN existing renderer. Nothing
 // about what these draw changed.
 function foodRenderSection(tab){
-  if(tab==='today'){ if(typeof nutRender==='function') nutRender(); }
+  if(tab==='today') foodRenderToday();
   else if(tab==='recipes')  kitRenderList();
   else if(tab==='shopping') kitShopRender();
   else if(tab==='pantry')   kitPantryRender();
   if(tab!=='shopping' && typeof kitShopRenderAddBar==='function') kitShopRenderAddBar(false);
 }
+function foodRenderToday(){
+  const logging=foodState.todayView==='log';
+  const overview=document.getElementById('food-overview'),log=document.getElementById('food-log');
+  if(overview) overview.classList.toggle('hidden',logging);
+  if(log) log.classList.toggle('hidden',!logging);
+  if(logging){ if(typeof nutRender==='function') nutRender(); }
+  else if(typeof foodRenderOverview==='function') foodRenderOverview();
+}
+function foodSetTodayView(view,opts){
+  opts=opts||{};
+  foodCloseSupport();
+  const todayView=view==='log'?'log':'overview';
+  if(S.view!=='food') setView('food',null,{foodTab:'today',foodTodayView:todayView});
+  else foodSetTab('today',Object.assign({},opts,{todayView}));
+}
+function foodOpenLog(){ foodSetTodayView('log'); }
+function foodOpenOverview(){ foodSetTodayView('overview'); }
+function foodRefreshToday(){ if(foodShowing('today')) foodRenderToday(); }
 // "Is this Food section on screen right now" — asked by every incoming-data callback, so a
 // cloud update refreshes the section being looked at and nothing else. An inactive section is
 // re-rendered when it is opened, so it can never show stale data either.
@@ -24147,13 +24318,16 @@ function foodSyncChrome(){
 // Peer overlays, not tabs. They keep Food selected in the bottom nav, light their own row in
 // the sidebar (see navCurrentRow) and have one obvious way back — to their PARENT section, so
 // the library returns to Today and the review returns to Recipes.
-function foodOpenSupport(key){
+function foodOpenSupport(key,opts){
+  opts=opts||{};
   const def=FOOD_SUPPORT[key]; if(!def) return;
   const el=document.getElementById(def.el); if(!el) return;
-  // Arrive at the parent section first, so closing lands somewhere coherent however this was
-  // reached — a sidebar row, a deep link, or the button on the parent screen itself.
-  if(S.view!=='food') setView('food',null,{foodTab:def.parent});
-  else if(foodState.tab!==def.parent) foodSetTab(def.parent);
+  // Local shortcuts return to their caller; sidebar and legacy routes retain canonical parents.
+  if(!foodSupportOpen(key)) foodSupportReturn[key]=S.view==='food'&&!opts.canonical
+    ? {tab:foodState.tab,todayView:foodState.todayView} : {tab:def.parent,todayView:'overview'};
+  const dest=foodSupportReturn[key];
+  if(S.view!=='food') setView('food',null,{foodTab:dest.tab,foodTodayView:dest.todayView});
+  else if(foodState.tab!==dest.tab) foodSetTab(dest.tab,{todayView:dest.todayView});
   if(typeof aiHidePeerOverlays==='function') aiHidePeerOverlays(def.el);
   foodCloseSupport(key);
   el.style.display='block';
@@ -24188,7 +24362,12 @@ function foodCloseSupportKey(key){
   const def=FOOD_SUPPORT[key]; if(!def) return;
   const el=document.getElementById(def.el);
   if(el){ el.style.display='none'; el.style.left='0'; }
-  if(S.view==='food'&&foodState.tab!==def.parent) foodSetTab(def.parent);
+  const dest=foodSupportReturn[key]||{tab:def.parent,todayView:'overview'};
+  delete foodSupportReturn[key];
+  if(S.view==='food'){
+    if(foodState.tab!==dest.tab||foodState.todayView!==dest.todayView) foodSetTab(dest.tab,{todayView:dest.todayView});
+    else foodRefreshActive();
+  }
   setNavActive();
   foodSyncChrome();
 }
@@ -24199,16 +24378,18 @@ function foodCloseReview(){ foodCloseSupportKey('review'); }
 // One entry point for "take me to this Food destination", used by navGo and every shortcut.
 // `sub` is a primary section OR a supporting screen key; null means "wherever I was", which is
 // what the bottom-nav button and the quick strip pass.
-function foodGo(sub, screen){
-  if(screen) return foodOpenSupport(screen);
-  if(FOOD_SUPPORT[sub]) return foodOpenSupport(sub);
+function foodGo(sub, screen,opts){
+  opts=opts||{};
+  if(screen) return foodOpenSupport(screen,{canonical:!!opts.canonicalSupport});
+  if(FOOD_SUPPORT[sub]) return foodOpenSupport(sub,{canonical:!!opts.canonicalSupport});
   foodCloseSupport();
-  if(FOOD_TABS.indexOf(sub)>=0) foodSetTab(sub);
+  if(sub==='log') return foodOpenLog();
+  if(FOOD_TABS.indexOf(sub)>=0) foodSetTab(sub,{todayView:opts.todayView});
   else foodSyncChrome();
 }
 // Home's "Log food →" and every other food-log shortcut. ALWAYS Today, whatever section was
 // last used — that is the whole point of it being a shortcut rather than the Food button.
-function openFoodToday(){ if(S.view!=='food') setView('food',null,{foodTab:'today'}); else foodGo('today'); }
+function openFoodToday(){ foodOpenLog(); }
 function openFoodRecipes(){ navGo('food','recipes'); }
 function openFoodShopping(){ navGo('food','shopping'); }
 function openFoodPantry(){ navGo('food','pantry'); }
@@ -24496,7 +24677,9 @@ function kitStartCooking(id,optionId){
     return;
   }
   kitCookState.proteinOptionId=probe.variant?(optionId||probe.optionId):null;
-  kitCookState.servings=kitState.selectedId===id?(kitState.scaleServings||r.servings):r.servings;
+  const detail=document.getElementById('kit-detail-overlay');
+  const detailVisible=kitUsesSplitPane()||!!(detail&&detail.style.display==='flex');
+  kitCookState.servings=detailVisible&&kitState.selectedId===id?(kitState.scaleServings||r.servings):r.servings;
   kitCookState.recipeId=id;
   kitCookState.step=0;
   kitCookState.timerRunning=false;
@@ -24759,6 +24942,7 @@ function kitRenderFeatured(){
     '</div>';
 }
 function kitRenderList(){
+  if(foodShowing('today')&&foodState.todayView==='overview') foodRenderOverview();
   kitRenderFeatured();
   kitRenderFilterChips();
   kitRenderCatPills();
@@ -24840,7 +25024,7 @@ function kitToggleFav(id){
   if(kitState.selectedId===id) kitRefreshOpenDetail();
 }
 
-function kitOpenDetail(id){
+function kitOpenDetail(id,optionId){
   const changing=kitState.selectedId!==id;
   kitState.selectedId=id;
   const r=kitRecipes.find(x=>x.id===id); if(!r) return;
@@ -24848,7 +25032,8 @@ function kitOpenDetail(id){
   // Only on a genuine recipe change. Desktop re-renders the list (and therefore the detail
   // column) for all sorts of incidental reasons; resetting the selector on every one of them
   // would throw away a choice the user just made.
-  if(changing||!kitFindOption(r,kitState.proteinOptionId)){
+  if(optionId&&kitFindOption(r,optionId)) kitState.proteinOptionId=optionId;
+  else if(changing||!kitFindOption(r,kitState.proteinOptionId)){
     const d=kitDefaultOption(r);
     kitState.proteinOptionId=d?d.id:null;
   }
@@ -24856,6 +25041,7 @@ function kitOpenDetail(id){
     kitRenderList(); // re-render list (highlight) + detail column
   } else {
     const ov=document.getElementById('kit-detail-overlay');
+    if(ov) ov.classList.toggle('kit-detail-from-today',foodShowing('today'));
     kitRenderDetail(id,document.getElementById('kit-detail-overlay-inner'));
     if(ov) ov.style.display='flex';
     updateKitFab();
@@ -24870,6 +25056,12 @@ function kitCloseDetail(){
 }
 function kitRehomeForLayout(){
   const ov=document.getElementById('kit-detail-overlay');
+  if(!foodShowing('recipes')){
+    if(ov&&ov.style.display==='flex'&&kitState.selectedId) kitRefreshOpenDetail();
+    updateKitFab();
+    return;
+  }
+  if(ov) ov.classList.remove('kit-detail-from-today');
   if(kitUsesSplitPane()){
     if(ov) ov.style.display='none';
     kitRenderList();
@@ -25019,6 +25211,7 @@ function kitSheetOpen(html){
   const ov=document.getElementById('kit-sheet-overlay'), box=document.getElementById('kit-sheet-box');
   if(!ov||!box) return;
   ov.classList.remove('kitpantry-item-sheet');
+  ov.classList.toggle('kit-sheet-from-today',foodShowing('today'));
   box.innerHTML=html;
   ov.classList.remove('hidden');
   box.scrollTop=0;
@@ -25026,7 +25219,7 @@ function kitSheetOpen(html){
 }
 function kitSheetClose(){
   const ov=document.getElementById('kit-sheet-overlay');
-  if(ov){ ov.classList.add('hidden'); ov.classList.remove('kitpantry-item-sheet'); }
+  if(ov){ ov.classList.add('hidden'); ov.classList.remove('kitpantry-item-sheet','kit-sheet-from-today'); }
   if(typeof updateKitFab==='function') updateKitFab();
 }
 function kitSheetHead(title,sub){
@@ -27054,6 +27247,7 @@ function kitPantryRefreshViews(){
   if(typeof foodShowing==='function'){
     if(foodShowing('pantry')) kitPantryRender();
     else if(foodShowing('shopping')) kitShopRender();
+    else if(foodShowing('today')) foodRenderToday();
   }
   if(typeof S!=='undefined'&&S.view==='home'&&typeof renderHome==='function') renderHome();
 }
@@ -27263,17 +27457,17 @@ try {
   _bootPhase = false;
   const initialTarget=dailyHistoryTarget(decodeURIComponent(location.hash.replace(/^#/,'')));
   if(initialTarget&&(initialTarget.view!==S.view||initialTarget.view==='log'||initialTarget.view==='food')){
-    setView(initialTarget.view,null,{fromHistory:true,logTab:initialTarget.logTab,foodTab:initialTarget.foodTab});
+    setView(initialTarget.view,null,{fromHistory:true,logTab:initialTarget.logTab,foodTab:initialTarget.foodTab,foodTodayView:initialTarget.foodTodayView});
   }
   // A legacy #nutrition/foods or #kitchen link opens its supporting screen after the view is
   // in place. Everything above resolved to 'food' already, so this pushes no extra entry.
-  if(initialTarget&&initialTarget.view==='food'&&initialTarget.foodScreen) foodOpenSupport(initialTarget.foodScreen);
+  if(initialTarget&&initialTarget.view==='food'&&initialTarget.foodScreen) foodOpenSupport(initialTarget.foodScreen,{canonical:true});
   try{
     // Written with the CANONICAL view name, so a bookmarked #kitchen becomes #food/recipes on
     // arrival rather than staying a name the app no longer has.
     const state={dailyView:S.view};
     if(S.view==='log')  state.dailyLogTab=logSubTab;
-    if(S.view==='food') state.dailyFoodTab=foodState.tab;
+    if(S.view==='food'){ state.dailyFoodTab=foodState.tab; state.dailyFoodTodayView=foodState.todayView; }
     history.replaceState(state,'',dailyHistoryUrl(S.view,dailyHistorySub(S.view)));
   }catch(e){}
 } catch(e) {
@@ -28614,6 +28808,10 @@ function logBackToOverview(){
   logTodayView='overview';
   setLogTab('today');
 }
+function logContinueSavedWorkout(){
+  const b=logTodayBrief();
+  if(b.state==='saved' && logCanContinueSaved(b.session)) logOpenSession();
+}
 
 // ── The canonical training state ────────────────────────────────
 // ONE reader, and every training surface goes through it: Log › Today's hero, Log › Today's
@@ -28647,19 +28845,45 @@ function logDraftIsMeaningful(){
     String(s.weight==null?'':s.weight).trim()!=='' ||
     String(s.reps==null?'':s.reps).trim()!=='' )));
 }
-// Has the loaded draft MOVED since the last save? saveSession() clears wt_setdata and every
-// set edit re-writes it, so the key's presence is exactly that question.
+// Has the loaded draft MOVED since the last save? saveSession() clears the note, timer,
+// session-only adds and wt_setdata. A new note need not recreate that key; set edits do.
 // It has to be asked, because saveSession() deliberately leaves the entered sets on screen in
 // S.setData so a partial workout can be carried on — which meant the sets that PRODUCED
 // today's record still read as a meaningful draft, and the overview said "In progress" the
 // instant you pressed Save. Those sets are not unsaved; they are what was saved.
 // A read, never a write: the reader stays pure.
 function logDraftTouchedSinceSave(){
+  if(String(S.sessionNote||'').trim() || S.sessionStart ||
+     (Array.isArray(S.sessionAdds)&&S.sessionAdds.length)) return true;
   try{
     const raw=localStorage.getItem('wt_setdata');
     if(!raw) return false;
     const o=JSON.parse(raw);
     return !!(o && o.date===getLocalDate());
+  }catch(e){ return false; }
+}
+// Eligibility only, not the draft tie-break: compare the retained data in saveSession's
+// representation. A day match alone could reopen blank or unrelated rows after a reload.
+function logCanContinueSaved(s){
+  if(!s || s.date!==getLocalDate() || s.completed!==false ||
+     typeof S==='undefined' || !S || s.dayNum!==S.dayIdx+1) return false;
+  try{
+    const t=type(S.dayIdx), data=S.setData||{};
+    if(t.name!==s.sessionType || !t.exercises.length ||
+       !Array.isArray(s.exercises) || !s.exercises.length) return false;
+    // renderLog seeds missing rows. Only offer a logger it can open without doing that;
+    // orphan rows (e.g. session-only additions cleared on save) must not be reconstructed.
+    if(Object.keys(data).length!==t.exercises.length ||
+       t.exercises.some(ex=>!Array.isArray(data[ex.name]) || !data[ex.name].length)) return false;
+    const names=t.exercises.map(ex=>dn(ex.name));
+    if(new Set(names).size!==names.length) return false;
+    const sets=rows=>rows.map(row=>({weight:parseFloat(row.weight)||0,
+      reps:parseInt(row.reps)||0, type:row.type==='warmup'?'warmup':'working'}))
+      .filter(row=>row.weight!==0 || row.reps>0);
+    const retained=t.exercises.map((ex,i)=>({name:names[i],sets:sets(data[ex.name])}))
+      .filter(ex=>ex.sets.length);
+    const saved=s.exercises.map(ex=>({name:ex.name,sets:sets(ex.sets)}));
+    return retained.length>0 && JSON.stringify(retained)===JSON.stringify(saved);
   }catch(e){ return false; }
 }
 // The latest session saved TODAY, and how many there are. Walks backwards over the existing
@@ -28834,12 +29058,16 @@ function logHeroHtml(b){
   const more=(b.state==='saved'&&b.savedCount>1)
     ? '<div class="lg-hero-note">'+b.savedCount+' sessions saved today — this is the latest.</div>'
     : '';
+  const resume=(b.state==='saved'&&logCanContinueSaved(b.session))
+    ? '<button type="button" class="lg-hero-btn lg-hero-secondary" onclick="logContinueSavedWorkout()">Continue saved workout &rarr;</button>'
+    : '';
   return '<div class="lg-hero">'+
     '<div class="lg-hero-lead">'+escText(lead)+'</div>'+
     '<div class="lg-hero-title">'+escText(b.dayName)+'</div>'+
     '<div class="lg-hero-sub">'+sub+'</div>'+
     more+
     '<button type="button" class="lg-hero-btn" onclick="'+escAttr(run)+'">'+escText(act)+' &rarr;</button>'+
+    resume+
     upNext+
   '</div>';
 }

@@ -561,11 +561,13 @@
         <button id="food-tab-pantry" role="tab" aria-selected="false" aria-controls="kit-pantry" onclick="foodSetTab('pantry')">Pantry</button>
       </div>
 
-      <!-- Today: the nutrition day log, rendered by nutRender() into #nutrition-main exactly
-           as it was when Nutrition was its own tab. .food-pane is the landscape flex hook the
-           three .kit-pane siblings already had. -->
+      <!-- Today keeps the recipe overview and the existing food logger in one primary section. -->
       <div id="food-today" class="food-pane" role="tabpanel" aria-labelledby="food-tab-today">
-        <div id="nutrition-main"></div>
+        <div id="food-overview"></div>
+        <div id="food-log" class="hidden">
+          <div class="food-today-actions"><button class="nut-small-btn" onclick="foodOpenOverview()">← Food overview</button></div>
+          <div id="nutrition-main"></div>
+        </div>
       </div>
 
       <div id="kit-recipes" class="kit-pane food-pane hidden" role="tabpanel" aria-labelledby="food-tab-recipes">
@@ -957,7 +959,7 @@
        why neither is listed in NAV_NO_ROW_OVERLAYS. -->
   <div id="view-food-library" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:112;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
     <div class="detail-topbar">
-      <button class="back-btn" onclick="foodCloseLibrary()" aria-label="Back to Today"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <button class="back-btn" onclick="foodCloseLibrary()" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
       <span class="detail-title">Food library</span>
     </div>
     <div id="nut-library-pane" class="food-support-content"></div>
@@ -965,7 +967,7 @@
 
   <div id="view-nutrition-review" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:112;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
     <div class="detail-topbar">
-      <button class="back-btn" onclick="foodCloseReview()" aria-label="Back to Recipes"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <button class="back-btn" onclick="foodCloseReview()" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
       <span class="detail-title">Nutrition Review</span>
     </div>
     <div id="nut-review-pane" class="food-support-content"></div>

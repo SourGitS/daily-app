@@ -1,6 +1,6 @@
 # Daily — Project Reference
 
-## Log › Today, rebuilt — v330, 2026-09-13 (corrected in v331)
+## Log › Today, rebuilt — v330, 2026-09-13 (corrected in v331–v333)
 
 **Log › Today is a training BRIEFING and the entry point to the set logger**, answering four
 questions in this order: what am I training now, what should I prepare for, what have I done
@@ -41,9 +41,13 @@ whatever it advertised. The reader resolves four states, in this precedence:
    `saveSession()` clears `wt_setdata` but deliberately leaves the entered sets in `S.setData`
    so a partial workout can be carried on — so those sets, which are what was just saved, kept
    reading as a newer draft and the overview said *In progress* the instant you pressed Save.
-   `logDraftTouchedSinceSave()` asks the one question that separates them: is `wt_setdata`
-   there again? Every set edit rewrites it, so its presence IS "the logger has moved". A read,
-   never a write. This was found by the end-to-end save run, not by the in-memory fixtures.
+   `logDraftTouchedSinceSave()` first checks for a non-empty trimmed `S.sessionNote`, a new
+   `S.sessionStart` or non-empty `S.sessionAdds`, all explicitly cleared by `saveSession()`.
+   These count as a newer draft even without `wt_setdata` (v332): typing only a note does not
+   recreate that marker. It then reads today's `wt_setdata` for set/check changes. Retained
+   saved sets alone still resolve to Saved today. A read, never a write; no comparison against
+   the saved record and no storage write on note keystrokes. The original retained-set bug
+   was found by the end-to-end save run, not by the in-memory fixtures.
 3. **Ready** — nothing saved, nothing meaningful drafted. Uses `suggestDay()`, and the action
    opens **exactly** that day.
 4. **No usable exercises** — the selected or suggested day has none. Offers *Set up program →*
@@ -56,6 +60,26 @@ difference.
 
 `logTodayBrief()` is **PURE**: it writes nothing, seeds nothing, migrates nothing and never
 sorts `S.sessions` in place. `logRecentSessions()` sorts a CLONE for the same reason.
+
+**A retained partial workout can be reopened from the saved hero (v333).** **View in history →**
+remains primary; the secondary **Continue saved workout →** appears only for today's latest
+record with explicit `completed:false` and a matching retained logger. `logCanContinueSaved()`
+requires the same day index and type, a complete current exercise row map with no missing or
+orphan rows, and meaningful sets matching the saved exercise names/order and numeric
+weight/reps/set types after the save path's normalisation. A rotation index alone is
+insufficient: blank rows, changed exercises or a reload without the matching retained data
+must not offer this action. Duplicate displayed exercise names also fail conservatively.
+This comparison establishes continuation eligibility only; `logDraftTouchedSinceSave()`
+continues to decide whether a draft is newer without comparing sets against history.
+
+`logContinueSavedWorkout()` revalidates the saved state and eligibility before calling the
+existing `logOpenSession()`. It never initialises a day, clears fields, starts a timer or
+writes storage. Opening and returning without an edit stays **Saved today**; a meaningful
+note/set/check/timer/addition edit then becomes **In progress** through the existing reader.
+Completed sessions have no secondary action. No draft is reconstructed from history and no
+new persistence is introduced. A subsequent save still appends a new session record, leaving
+the earlier partial record intact. This is the production route that was missing from the
+v332 browser test, which needed a temporary navigation control.
 
 **`logOpenPlannedDay(idx)`, not `selectDay(idx)`.** `selectDay` resets the rest timer,
 dismisses the post-save prompt and writes over whatever is loaded — it means "discard this
@@ -517,7 +541,8 @@ older summary — re-grep before assuming a fact from here is still true if it l
   **Stats is the fifth phone tab again as of v321** — a real bottom-nav button and a
   `.swipe-panel`, not the overlay it was while Kitchen held the slot. Nothing about its
   sections, charts or `statsSubTab` memory changed. **Nutrition trends stay HERE**, in
-  Stats › Nutrition; they did not move into Food › Today, which is the day log only.
+  Stats › Nutrition; Food › Today is a recipe-first overview with a secondary day log, not a
+  second nutrition-analysis destination.
 - **Weekly Review** (Stats → Review, `css/review.css`, `wkr*`/`WKR_*` in `js/app.js`) — an
   opt-in review of ONE finished week against a saved weekly plan, ending in a next-week plan.
   Core sections are Weekly reset, Money and Next week, plus whichever optional/custom pages the
@@ -527,14 +552,18 @@ older summary — re-grep before assuming a fact from here is still true if it l
   that leads with the selected week beside a compact next-week summary, and everything else at a
   reading measure on the Stats canvas. See "Known history" for the three rules it is built on
   and for the layout decisions.
-- **Food** (v321) — Kitchen and Nutrition merged into ONE top-level destination, because they
+- **Food** (v321 hub; v334 Today overview) — Kitchen and Nutrition merged into ONE destination, because they
   were two tabs answering one question between them: what is eaten, cooked, bought and held.
   One section strip, four sections, and never a Food strip stacked on a Nutrition strip:
-  - **Today** — the day log. The nutrition hero, meal groups, entries, "+ Add food", Manual and
-    Unknown entries, and the empty/partial/over-target states, all rendered by the unchanged
-    `nutRender()` into the unchanged `#nutrition-main`. **There is no date selector and never
-    was**: every new entry is dated `getLocalDate()`. A labelled *Food library →* shortcut sits
-    at the top; discovery through "+ Add food" is untouched and is still the main path.
+  - **Today** — a recipe chooser and overview, useful even when no food is logged. Mobile order:
+    Choose something to cook → Recipe options → Calorie goal → Shopping → Food log. Desktop has
+    an independent main column for chooser/results and a supporting column for summaries, so
+    short cards do not stretch to recipe height. Name, category, maximum cooking time and maximum
+    kcal filters default to all categories; six stable, favourite-first recipe options lead.
+    **Open food log →** reaches the existing nutrition hero, meal groups, entries, "+ Add food",
+    Manual and Unknown entries, and detailed empty/partial/over-target calculations. One copy of
+    `nutRender()` / `#nutrition-main` remains behind **← Food overview**. **There is no date
+    selector**: every new entry is dated `getLocalDate()`. Food library remains accessible there.
   - **Recipes** — the Recipe Book (9 preloaded + custom), search, filters, detail, editing,
     paste import, cooking mode with per-step timers, favourites/recently cooked, shopping-list
     integration and the recipe-to-food-log actions. Unchanged.
@@ -542,10 +571,58 @@ older summary — re-grep before assuming a fact from here is still true if it l
     active-pantry classification, Pantry needs, "Already in …", manual rows, per-pantry checks.
   - **Pantry** — multiple named inventories, active selection, item management, stock status.
   - **Food library** and **Nutrition Review** are SUPPORTING screens, not a fifth and sixth
-    section: peer overlays outside the transformed deck, each returning to its parent (Today /
-    Recipes) and each keeping Food lit in the bottom nav. See the navigation section above and
+    section: peer overlays outside the transformed deck, keeping Food lit. Local shortcuts return
+    to the originating overview/logger/section; sidebar and legacy routes use canonical parents
+    (Today / Recipes). See the navigation section above and
     AGENTS.md for the routing rules.
   Firebase-synced, with every `nut*`/`kit*` key, path and DOM id unchanged.
+
+  **Today routing and data are separate.** `foodState={tab:'today',todayView:'overview'}` and
+  `foodOverviewState` (filters plus comparison recipe ID) are declared beside `NAV_ORDER`, above
+  init, and remain in memory. `#food` names the overview and `#food/log` the secondary logger;
+  Back/Forward restore the screen, and the Food destination remembers its last primary section.
+  Selecting Today opens the overview. `foodOpenLog()` / `foodOpenOverview()` switch screens via
+  `foodSetTodayView()`. `openFoodToday()`, `nutOpen()`, Home calorie actions, the sidebar Food log
+  row and legacy `#nutrition` / `#nutrition/today` explicitly reach the logger, including links
+  highlighting a recorded entry. Do not redirect these logging shortcuts to the overview.
+
+  **The recipe chooser reads existing contracts.** `foodOverviewRecipe()` uses `kitResolve()`
+  for default-option per-serving values and `nutRecipeState()` for manual/calculated/partial/
+  missing provenance; there is no implemented `kitNutritionState()`. Never divide calories by
+  servings again or substitute unaccepted calculated suggestions. Protein options state their
+  label, and detail/cooking receive that same option ID. Missing calories/protein remain unknown.
+  A calorie ceiling excludes unevaluable recipes and counts them explicitly. Cooking-time limits
+  require a reliably parsed whole-recipe duration via `foodOverviewMinutes()`; a protein option's
+  step duration is labelled separately, never treated as the full recipe's cooking time. Recipe
+  ordering follows favourites then name without reading or changing Recipes' own filters.
+
+  **The supporting figures make limited claims.** `nutTarget()` supplies the daily calorie
+  target. Comparing a serving can show kcal and its percentage of that target; it neither logs a
+  meal nor changes servings, and no allowance is derived by subtracting recorded intake. With no
+  target, recipes remain usable and the existing Health settings destination is offered.
+  `nutDaySummary()` supplies known logged kcal, entry count and unknown-entry information:
+  `status:'complete'` only means the recorded entries have known calorie values. The overview
+  never claims the user logged a complete day, ate only that amount, has an exact amount left to
+  eat or is on/off track. `kitShopComputePlan()` plus `kitShopCountLeft(plan)` supply the active
+  pantry and exact Shopping count: pantry needs plus unchecked normal rows; stocked rows are
+  informational. Their first three buy rows form the preview. Stocked does not prove sufficient
+  quantity to cook, and selections for shopping are not a daily meal plan.
+
+  **Refresh and return preserve browsing state.** `foodRenderToday()` dispatches to overview or
+  logger, and `foodRefreshToday()` is the nutrition/target/shopping/pantry refresh entry point.
+  Recipe refreshes also redraw the visible overview. The chooser's DOM nodes survive incoming
+  data, retaining focused text and filter values; comparison selection stays attached to its
+  recipe ID and clears if that recipe disappears. Today detail uses the existing overlay even
+  on desktop/landscape (`.kit-detail-from-today`); Recipes retains its split pane. Closing detail
+  or exiting cooking reveals Today with filters and comparison unchanged. Direct cooking from
+  Today ignores stale hidden-detail serving scaling; an intentionally scaled visible detail
+  keeps its existing behavior. Viewing/cooking alone never log the recipe as eaten.
+
+  **This phase adds no persistence.** Read-only overview navigation, filters and comparisons
+  write nothing. Preserve recipe IDs/schemas/protein options, countable units (`""`), `kg` and
+  `L`, manual nutrition and explicit calculated-value acceptance, historical food snapshots,
+  active pantry and checked namespaces, every store key/sync path, and boot/migration/restore
+  behavior. It is not a saved daily meal planner, automatic logging flow or new nutrition engine.
 - **Budget** — weekly tracker. Income sources, savings target, and fixed/variable categories are
   all user-configurable now — see "Known history" below, these used to be hardcoded to
   Francois's specific numbers and were deliberately made dynamic. Credit-card balance tracking,
@@ -1136,9 +1213,10 @@ the accent or the theme must go through those, not set `--accent` directly.
     already saved today. It reads `logTodayBrief()` now — same state, same day name, same
     exercise count, same progress, same saved/active distinction. Home still opens Log ›
     Today's OVERVIEW (`setView('log')`) and must never bypass it or begin a workout.
-  - **A partial save has an honest denominator.** The brief carries `plannedCount`, derived
-    from the day the RECORD names (`dayNum`), so Home shows "1 of 2 done" for a partial rather
-    than 100% of itself. Best-effort by nature: the program may have changed since.
+  - **A partial save has no historical denominator (v331).** The record never stored its
+    planned total, so the brief reports only its recorded exercises, working sets, duration
+    and effort. No fraction, percentage or progress bar; never derive `plannedCount` from
+    today's program. Only a completed record shows full progress from its own exercise count.
   - **`logOpenPlannedDay()` exists so "open this" and "discard that" stay different verbs.**
     It initialises the advertised day only when `logDraftIsMeaningful()` is false and the
     logger is not already on it. Continue never re-initialises anything — it just shows the

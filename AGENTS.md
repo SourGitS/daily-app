@@ -23,7 +23,8 @@ Four main areas plus supporting screens:
   NOT in Log — it lives in Stats › Body, Home's weight card and the post-save prompt. See the
   Workout hub notes below and `CLAUDE.md` for the traps.
 - **Stats** — overview/review/training/body/nutrition/finance sub-tabs, charts, PRs.
-- **Food** — one destination for what is eaten, cooked, bought and held: Today (the day log),
+- **Food** — one destination for what is eaten, cooked, bought and held: Today (a recipe-first
+  overview with the existing food log as a secondary screen),
   Recipes, Shopping, Pantry, plus Food library and Nutrition Review as supporting screens.
   This is the former **Kitchen** and **Nutrition** tabs merged (v321) — see the Food hub
   section below before touching navigation, and note that `nut*`/`kit*` functions, DOM ids and
@@ -341,8 +342,23 @@ Log holds Today / Program / Exercises / History. **Today is a briefing, and
   blank working row per exercise — is not one. **And it only outranks a session already saved
   TODAY when it has moved since that save**: `saveSession()` clears `wt_setdata` but leaves the
   entered sets on screen so a partial workout can be carried on, so the sets that produced the
-  record are not a newer workout. `logDraftTouchedSinceSave()` reads `wt_setdata` back — every
-  set edit rewrites it — and never writes.
+  record are not a newer workout. `logDraftTouchedSinceSave()` first checks for a non-empty
+  trimmed `S.sessionNote`, a new `S.sessionStart` or non-empty `S.sessionAdds` — all explicitly
+  cleared by `saveSession()` — then reads today's `wt_setdata` for set/check changes. A note
+  alone need not recreate that marker. The reader never writes; note keystrokes stay unchanged.
+- **A retained partial workout has a guarded route back (v333).** The saved hero keeps
+  **View in history →** primary. **Continue saved workout →** appears only for today's latest
+  record with `completed:false` when `logCanContinueSaved()` finds the same day index/type,
+  a complete current logger row map (no missing or orphan rows), and meaningful sets matching
+  the saved exercise names, order and numeric weight/reps/set types. It uses the save path's
+  normalisation only to establish continuation eligibility; it does not replace the draft
+  tie-break. A matching rotation index or blank rows alone prove nothing. Completed records,
+  missing retained data and ordinary reloads without a matching draft get no action.
+  `logContinueSavedWorkout()` revalidates before opening the existing logger: no day init,
+  clearing, timer start or storage write. Merely opening and returning stays **Saved today**;
+  a meaningful edit then becomes **In progress** through the existing reader. No draft is
+  reconstructed from history or persisted by this action. Saving again keeps the existing
+  append semantics: it creates another record and leaves the earlier save intact.
 - **A historical planned total is NEVER reconstructed.** A session records its performed
   exercises, working sets, duration, effort and `completed` flag; it does not snapshot how many
   exercises were planned at the time. Deriving that from the current program at the record's
@@ -411,8 +427,10 @@ in the centre. Presentation and routing only — nothing about the data moved.
   500%-wide box (verified: the evidence screen measures top 0 / left 0 / full viewport width).
   `#view-stats` was also removed from the landscape overlay-padding list in
   `kitchen-extras.css`, since deck panels take their padding from `.swipe-panel`.
-- **`foodState.tab` is IN MEMORY and must stay that way.** A fresh session opens Food on
-  Today; within a session, leaving and returning through the Food button remembers the last
+- **Food state is IN MEMORY and must stay that way.** `foodState.tab` names the primary
+  section, `foodState.todayView` names `overview` or `log`, and `foodOverviewState` holds recipe
+  filters and a comparison recipe ID. A fresh session opens Today's overview; within a session,
+  leaving and returning through the Food button remembers the last
   primary section. Persisting it would be a boot-time write, which is the `_bootPhase` trap
   above. It is declared beside `NAV_ORDER`, well above `init()`, for the same TDZ reason the
   Log hub's state is: `init()` restores a `#hash` through `setView()`, `setView()` reads
@@ -421,17 +439,22 @@ in the centre. Presentation and routing only — nothing about the data moved.
 - **One central legacy mapping, not two screens kept alive.** `NAV_VIEW_ALIAS`
   (`nutrition`/`kitchen` → `food`) and `FOOD_LEGACY_ROUTES` feed `navResolve(view, sub)`, and
   `setView()` applies the alias as its FIRST statement — before the history push — so
-  resolving an old destination writes one entry for `#food`, never an intermediate one for a
+  resolving an old destination writes one canonical Food entry, never an intermediate one for a
   screen that no longer exists. Verified by direct-link reload: `#nutrition` → Food › Today
-  (`#food`), `#kitchen` → Food › Recipes (`#food/recipes`), `#kitchen/pantry` → Pantry,
+  › food log (`#food/log`), `#kitchen` → Food › Recipes (`#food/recipes`), `#kitchen/pantry` → Pantry,
   `#nutrition/foods` → Today + Food library, `#nutrition/recipes` → Recipes + Nutrition Review.
-- **Food's history mirrors Log's**: `#food` for Today, `#food/<section>` otherwise, so Back and
-  Forward move between real destinations. No new storage.
+- **Today is an overview with one secondary logger (v334).** `#food` opens the overview;
+  `#food/log` opens the existing `nutRender()` / `#nutrition-main` logger. `foodOpenLog()` and
+  `foodOpenOverview()` switch the two mounts through `foodSetTodayView()` without storage writes.
+  `openFoodToday()`, `nutOpen()`, Home's calorie actions, the sidebar Food log row and legacy
+  Nutrition links intentionally open the logger, including entry highlighting. Back and Forward
+  restore the active Today screen. Selecting the primary Today tab opens its overview.
 - **Food library and Nutrition Review are peer overlays**, using the same `.app-overlay` +
   `.detail-topbar` shell as the Stats evidence screen, registered in `APP_PEER_OVERLAYS`. They
   are NOT in `NAV_NO_ROW_OVERLAYS`: each lights its own sidebar row (`nut-foods` /
-  `nut-review`) while the pinned **Food** item stays lit, and each returns to its parent
-  section (Today / Recipes).
+  `nut-review`) while the pinned **Food** item stays lit. Local shortcuts return to their origin:
+  Nutrition Review opened from Today returns to the overview, and Food library opened from the
+  logger returns to the logger. Sidebar and legacy routes use canonical parents (Today / Recipes).
 - **`updateKitFab()` now means Food › Recipes only** — never Today, Shopping, Pantry, a
   supporting screen, an open sheet/form/import/cook overlay, or another view.
 - **Renamed, and only what the structure required**: `kitSetTab()` and `kitRender()` survive as
@@ -442,7 +465,46 @@ in the centre. Presentation and routing only — nothing about the data moved.
   Firebase path and DOM id is untouched.
 - **Sync dispatch, not sync contract.** Listeners now ask `foodShowing(section)` instead of
   `S.view==='kitchen'/'nutrition'`, and also refresh an open supporting screen. No listener,
-  merge rule, registration or timestamp behaviour changed.
+  merge rule, registration or timestamp behaviour changed. `foodRenderToday()` dispatches to
+  the overview or logger; incoming nutrition refreshes must use `foodRefreshToday()`, never
+  render the logger over the overview. Recipe, target, pantry and shopping refreshes follow the
+  same active-screen dispatch. The overview keeps its search and filter DOM nodes alive during
+  refresh, and retains comparison selection by recipe ID until that recipe disappears.
+
+### Food overview readers and preservation (v334)
+
+- **The overview remains useful without logging.** Mobile order is chooser, recipe options,
+  calorie goal, shopping, food-log summary. Desktop uses independent main and supporting
+  columns. Filters are optional user choices, default to all categories and never change the
+  Recipes section's own search/filter state. There is no saved meal plan or new nutrition engine.
+- **Recipes use canonical values.** `foodOverviewRecipe()` reads `kitResolve()` for the default
+  protein option and per-serving nutrition; `nutRecipeState()` is the existing provenance reader
+  (`kitNutritionState()` does not exist). Never divide calories by recipe servings again or use
+  unaccepted `nutritionCalculation.perServing` suggestions. Missing values stay unknown; partial
+  review and manual/calculated distinctions stay visible. The advertised option is passed to
+  `kitOpenDetail(id, optionId)` and `kitStartCooking(id, optionId)`. Invalid options are not offered
+  for cooking. `foodOverviewMinutes()` accepts reliable duration forms only; a protein-step time
+  is labelled separately and does not establish a whole-recipe cooking time for a ceiling.
+- **Comparison is not intake.** `nutTarget()` supplies the existing daily target. Comparing a
+  recipe states one serving's kcal and percentage of that target; it never changes servings,
+  writes a food entry, derives a remaining allowance or invents a target. `nutDaySummary()`
+  supplies the compact food-log summary. Its `complete` status means recorded entries have
+  known calories, not that the day's intake was fully logged. No on/off-track or exact remaining
+  intake claims belong here.
+- **Shopping uses the same classification and count as Shopping.** `kitShopComputePlan()` and
+  `kitShopCountLeft(plan)` supply the active pantry, things-to-buy count and first three rows.
+  Pantry needs count; checked normal rows and informational stocked rows do not. In-stock status
+  proves neither enough quantity for a recipe nor that the user can cook it now. Shopping recipe
+  selections are not today's meal plan. Browsing changes no pantry/check namespace.
+- **Recipe/cook overlays return to Today.** Today detail always uses the existing overlay,
+  including desktop and landscape (`.kit-detail-from-today`); Recipes retains its split pane.
+  Closing detail or exiting cooking reveals the original screen with filters/comparison intact.
+  Starting from Today ignores stale scaling in a hidden recipe detail; a deliberate visible
+  detail's serving choice still applies. Viewing and cooking never automatically log food.
+- **No new storage, migration or schema.** Overview browsing, filtering, comparison, opening
+  the logger and returning write nothing. Preserve recipe IDs, protein options, ingredient units
+  including `""`, `kg` and `L`, manual values and explicit calculation acceptance, historical food
+  snapshots, active pantry/check namespaces, all sync keys/paths and boot/restore behavior.
 
 ## Weekly Review (Stats → Review)
 
@@ -480,6 +542,63 @@ safety-critical parts:
   guards the retired rail, the `.rev-list` cascade and the visible/disclosed split.
 
 ## Current unfinished work
+
+### Continue a retained partial workout — v333 (local, uncommitted)
+
+The saved Log › Today hero now keeps **View in history →** primary and offers the secondary
+**Continue saved workout →** only when `logCanContinueSaved()` verifies today's explicit
+partial record against meaningful retained sets in a complete matching logger row map.
+The guarded opener only displays that logger. Draft state, note input, save semantics,
+session schema and persistence are unchanged; no historical draft is reconstructed.
+
+Thirteen behavioral regressions bring `node --test tests/*.test.cjs` to **159/159**.
+Eligibility, a non-mutating opener and saved-to-edited transitions are covered; syntax and
+diff checks pass. `CACHE_NAME` is `daily-v333`.
+
+**Local browser verification with production controls:** entered and saved a partial
+workout, returned to **Saved today**, pressed **Continue saved workout**, and confirmed every
+retained draft field was unchanged. Returning without edits stayed **Saved today**. Reopened
+through the secondary action, typed only a note, and returned to **In progress**;
+**Continue workout** preserved the note. A set edit also became **In progress**. Saving again
+appended a second record with 60 kg × 7 while the earlier 60 kg × 8 record stayed intact.
+Opening and browsing recorded **zero storage writes**. This production route resolves the
+v332 verification limitation below; no temporary navigation control was used.
+
+The secondary action was also absent after **Finish workout** saved a completed record,
+after switching the logger to a different day with blank rows, and after reloading a saved
+partial without a retained draft. The pure eligibility regressions separately cover blank
+rows on the same rotation index. At **320px, 375px and 1440px in both themes**, the secondary
+button stayed within the hero, measured 46px high, and had no clipped text or horizontal
+overflow. Zero console errors across the local fixtures. Test instrumentation only counted
+storage calls and compared draft snapshots; all workout navigation used production controls.
+
+### Log post-save note tie-break — v332 (local, uncommitted)
+
+`logDraftTouchedSinceSave()` now recognises a non-empty trimmed `S.sessionNote`, a new
+`S.sessionStart` or non-empty `S.sessionAdds` before checking today's `wt_setdata`. These
+fields are explicitly cleared by `saveSession()`, so their presence means the logger moved
+since the save. Retained saved sets alone still resolve to **Saved today**; the existing
+marker still covers set edits and completion toggles. No saved-record comparison, storage
+write on note keystrokes, logger/save/schema/sync change or migration was added.
+
+Six regressions bring `node --test tests/*.test.cjs` to **146/146**. The new note, timer and
+session-add cases fail against the original helper and pass with the correction. Syntax and
+diff checks pass. `CACHE_NAME` is `daily-v332`.
+
+**Local browser verification:** used an invented split in an unsigned-in local origin.
+Entered 60 kg × 8 in the real set inputs and saved a partial workout; the overview read
+**Saved today**. Reopened the retained logger, typed only a new note, and returned through
+**Workout overview**: **In progress**, with `wt_setdata` still absent, timer stopped and no
+session-only additions. **Continue workout** retained the note in the textarea. Repeating
+the original save without a post-save edit again read **Saved today**. Instrumented
+`localStorage.setItem`/`removeItem`/`clear` recorded **zero writes and zero changed keys**
+through overview navigation, reopening, note entry and Continue. Zero console errors.
+
+**Historical verification limitation, resolved by v333 above:** the v332 saved overview
+offered only **View in history**, with no route back to the retained logger. A temporary control
+in the test server called the existing `logOpenSession()` solely to reopen it. Save, note
+entry, return to overview and Continue used the real app controls. This test-only control
+and storage instrumentation were not added to the repository.
 
 ### Log › Today: honest saved-session facts and Home's empty state — v331 (local, NOT pushed)
 

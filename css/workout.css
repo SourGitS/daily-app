@@ -411,6 +411,8 @@
   -webkit-tap-highlight-color:transparent}
 .lg-hero-btn:active{transform:scale(.985)}
 .lg-hero-btn:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.lg-hero-btn.lg-hero-secondary{margin-top:8px;background:transparent;color:#fff;
+  border:1px solid rgba(255,255,255,.5);font-size:14px;font-weight:700}
 /* The NEXT rotation, after a session already saved today. Below the action and visibly quieter
    than the title above it, because the hero is describing the SAVED session and this is a
    separate fact about a different one — the two reading as one line is the confusion this

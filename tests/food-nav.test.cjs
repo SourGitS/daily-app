@@ -95,7 +95,7 @@ test('the retired Nutrition and Kitchen views survive only as aliases', () => {
   // The Today group keeps its food-log shortcut, routed to Food › Today.
   const today = c.NAV_TREE.find(g => g.id === 'today');
   const foodLog = today.rows.find(r => r.id === 'nut-today');
-  assert.deepEqual({ view: foodLog.view, sub: foodLog.sub }, { view: 'food', sub: 'today' });
+  assert.deepEqual({ view: foodLog.view, sub: foodLog.sub }, { view: 'food', sub: 'log' });
   // Weekly review keeps its Money-group shortcut into Stats.
   const wkr = c.NAV_TREE.find(g => g.id === 'money').rows.find(r => r.id === 'wkr');
   assert.deepEqual({ view: wkr.view, sub: wkr.sub }, { view: 'stats', sub: 'review' });
@@ -143,6 +143,7 @@ test('legacy hashes reach Food without keeping the retired name in the URL', () 
   // written for a screen that no longer exists.
   assert.equal(c.dailyHistoryTarget('nutrition').view, 'food');
   assert.equal(c.dailyHistoryTarget('nutrition').foodTab, 'today');
+  assert.equal(c.dailyHistoryTarget('nutrition').foodTodayView, 'log');
   assert.equal(c.dailyHistoryTarget('kitchen').view, 'food');
   assert.equal(c.dailyHistoryTarget('kitchen').foodTab, 'recipes');
   assert.equal(c.dailyHistoryTarget('kitchen/pantry').foodTab, 'pantry');
@@ -156,6 +157,9 @@ test('legacy hashes reach Food without keeping the retired name in the URL', () 
   // bottom-nav button passes. On a cold load that resolves to Today, because foodState starts
   // there; mid-session it keeps whichever section the user last chose.
   assert.equal(c.dailyHistoryTarget('food').foodTab, null);
+  assert.equal(c.dailyHistoryTarget('food').foodTodayView, 'overview');
+  assert.equal(c.dailyHistoryTarget('food/log').foodTab, 'today');
+  assert.equal(c.dailyHistoryTarget('food/log').foodTodayView, 'log');
   assert.equal(c.foodState.tab, 'today');
   // A view Daily does not have is not a destination.
   assert.equal(c.dailyHistoryTarget('bogus'), null);
@@ -164,6 +168,7 @@ test('legacy hashes reach Food without keeping the retired name in the URL', () 
 test('Food history URLs mirror Log: the default section carries no suffix', () => {
   const c = ctx();
   assert.equal(c.dailyHistoryUrl('food', 'today'), '/daily/#food');
+  assert.equal(c.dailyHistoryUrl('food', 'log'), '/daily/#food/log');
   assert.equal(c.dailyHistoryUrl('food', 'pantry'), '/daily/#food/pantry');
   assert.equal(c.dailyHistoryUrl('food', null), '/daily/#food');
   assert.equal(c.dailyHistoryUrl('stats', null), '/daily/#stats');
@@ -173,7 +178,7 @@ test('Food history URLs mirror Log: the default section carries no suffix', () =
 
 test('a fresh session opens Food on Today, and Food state is never persisted', () => {
   const c = ctx();
-  assert.deepEqual(c.foodState, { tab: 'today' });
+  assert.deepEqual(c.foodState, { tab: 'today', todayView: 'overview' });
   assert.deepEqual(c.FOOD_TABS, ['today', 'recipes', 'shopping', 'pantry']);
   // The whole point of holding this in memory: no new synced key, no storage migration.
   const block = slice('const NAV_ORDER=', '// Row id → row.');

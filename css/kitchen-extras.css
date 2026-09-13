@@ -2197,3 +2197,90 @@ button.aih-row{cursor:pointer}
 .aih-rec-list{margin:0;padding-left:18px;font-size:12.5px;line-height:1.5;color:var(--text)}
 .aih-rec-list li{margin:2px 0;overflow-wrap:anywhere}
 .aih-rec-note{margin-top:7px;font-size:11.5px;line-height:1.45;color:var(--muted)}
+
+/* Food Today keeps its chooser mounted while incoming data refreshes the cards. */
+#food-overview{padding:4px 0 28px}
+.fo-columns,.fo-main,.fo-support{min-width:0}
+.fo-support{display:flex;flex-direction:column;gap:14px;margin-top:18px}
+.fo-card{padding:18px;border:1px solid var(--border);border-radius:18px;background:var(--surface-card);box-shadow:var(--surface-card-top)}
+.fo-card .card-hd{margin-bottom:16px;gap:10px}
+.fo-card .card-hd-l{min-width:0}
+.fo-chooser h1{margin:2px 0 18px;font-family:var(--font-num);font-size:27px;letter-spacing:-.8px;line-height:1.15;color:var(--text)}
+.fo-search{display:block}
+.fo-search .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.fo-search input,.fo-limits input{box-sizing:border-box;width:100%;min-width:0;min-height:42px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;font-size:13px;padding:10px 12px}
+.fo-search input:focus,.fo-limits input:focus{outline:2px solid var(--accent);outline-offset:2px}
+.fo-categories{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 16px}
+.fo-categories button{border:1px solid var(--border);border-radius:9px;padding:8px 10px;min-height:36px;background:transparent;color:var(--text-2);font:inherit;font-size:11px;font-weight:700;cursor:pointer}
+.fo-categories button.active{background:rgba(var(--accent-rgb),.12);border-color:var(--accent);color:var(--accent-text)}
+.fo-limits{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.fo-limits label{display:flex;flex-direction:column;justify-content:flex-end;gap:6px;min-width:0;color:var(--text-2);font-size:11px;font-weight:700;line-height:1.4}
+.fo-limits label span{display:contents;font-weight:400}
+.fo-limits input{font-weight:500}
+.fo-link{border:0;background:none;padding:5px 0;min-height:32px;color:var(--accent-text);font:inherit;font-size:12px;font-weight:750;text-align:left;line-height:1.4;cursor:pointer}
+.fo-card .card-hd>.fo-link{flex-shrink:0;font-size:11px}
+.fo-reset{margin-top:10px;color:var(--muted);font-size:11px}
+.fo-results-hd{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:22px 2px 12px}
+.fo-results-hd h2{font-family:var(--font-num);font-size:17px;letter-spacing:-.3px;margin:0;color:var(--text)}
+.fo-results-hd>span{font-size:11px;color:var(--muted);text-align:right}
+.fo-recipes{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.fo-recipe{display:flex;flex-direction:column;min-width:0;padding:16px;border:1px solid var(--border);border-radius:16px;background:var(--surface-card);box-shadow:var(--surface-card-top)}
+.fo-recipe.is-compared{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.fo-recipe-top{display:flex;gap:12px;align-items:center;min-height:64px}
+.fo-recipe-art{display:grid;place-items:center;flex:0 0 62px;height:62px;border-radius:15px;background:rgba(var(--accent-rgb),.07);font-size:32px}
+.fo-recipe-title{min-width:0}
+.fo-eyebrow{display:block;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.fo-recipe h3{margin:4px 0;font-family:var(--font-num);font-size:17px;line-height:1.25;letter-spacing:-.2px;color:var(--text);overflow-wrap:anywhere}
+.fo-option{font-size:11px;font-weight:700;color:var(--accent-text);line-height:1.4}
+.fo-time{margin:12px 0 8px;color:var(--muted);font-size:11px;line-height:1.5}
+.fo-nutrition{display:flex;flex-wrap:wrap;gap:5px 12px;font-size:11px;color:var(--text-2);align-items:baseline}
+.fo-nutrition strong{font-family:var(--font-num);font-size:18px;font-weight:750;letter-spacing:-.5px;color:var(--text)}
+.fo-nutrition small{flex-basis:100%;color:var(--muted);font-size:10px}
+.fo-provenance{margin:7px 0 14px;color:var(--muted);font-size:10px;line-height:1.5}
+.fo-recipe-actions{display:flex;gap:8px;margin-top:auto}
+.fo-btn{min-height:38px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;font-size:12px;font-weight:750;padding:8px 14px;cursor:pointer;line-height:1.3}
+.fo-recipe-actions .fo-btn:first-child{flex:1}
+.fo-btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.fo-btn:disabled{opacity:.45;cursor:default}
+.fo-compare{margin-top:8px;font-size:11px;align-self:flex-start}
+.fo-review{margin-top:12px}
+.fo-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px}
+.fo-card h3{margin:0 0 8px;font-family:var(--font-num);font-size:18px;line-height:1.35;color:var(--text)}
+.fo-note,.fo-empty p{font-size:12px;line-height:1.6;color:var(--muted);margin:10px 0 12px}
+.fo-empty p{max-width:42em}
+.fo-figure{font-family:var(--font-num);font-size:32px;font-weight:700;line-height:1.2;letter-spacing:-1px;color:var(--text)}
+.fo-figure span{font-family:var(--font-ui);font-size:12px;font-weight:500;letter-spacing:0;color:var(--muted)}
+.fo-caption{font-size:11px;line-height:1.5;color:var(--muted);margin:6px 0 10px}
+.fo-comparison{margin:14px 0;padding:14px;border-radius:12px;background:rgba(var(--accent-rgb),.07);border:1px solid var(--border)}
+.fo-comparison>strong{display:block;font-size:13px;line-height:1.45;margin-top:6px;color:var(--text)}
+.fo-comparison p{font-size:13px;font-weight:700;line-height:1.55;margin:10px 0 6px;color:var(--accent-text)}
+.fo-comparison small{font-size:10px;line-height:1.5;color:var(--muted);display:block}
+.fo-shopping-list{list-style:none;margin:12px 0;padding:0;color:var(--text-2);font-size:12px;line-height:1.5}
+.fo-shopping-list li{padding:7px 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere}
+.fo-btn:focus-visible,.fo-link:focus-visible,.fo-categories button:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+/* Recipe split panes are only in Recipes; Today uses the existing detail overlay. */
+#kit-detail-overlay.kit-detail-from-today[style*="display: flex"]{display:flex!important}
+@media(max-width:1023px) and (orientation:portrait){
+  #kit-detail-overlay.kit-detail-from-today{padding-bottom:calc(var(--nav-height,90px) + 20px)}
+}
+@media(min-width:600px){.fo-chooser h1{font-size:30px}}
+@media(min-width:1200px){.fo-recipes{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(min-width:1024px){
+  #food-overview{padding:8px 0 36px}
+  .fo-columns{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(260px,1fr);gap:20px;align-items:start}
+  .fo-support{margin-top:0;gap:16px}
+  .fo-card{padding:20px}
+  #kit-detail-overlay.kit-detail-from-today{left:260px;padding:24px 32px}
+  #kit-sheet-overlay.kit-sheet-from-today{left:260px}
+  #kit-detail-overlay.kit-detail-from-today #kit-detail-overlay-inner{max-width:900px;margin:0 auto}
+}
+@media(min-width:1024px) and (max-width:1199px){.fo-recipes{grid-template-columns:minmax(0,1fr)}.fo-columns{gap:14px;grid-template-columns:minmax(0,1.3fr) minmax(240px,1fr)}}
+@media(max-width:350px){.fo-card{padding:14px}.fo-chooser h1{font-size:25px}.fo-card .card-label{font-size:9px}.fo-card .card-hd{gap:5px}.fo-categories{gap:5px}.fo-categories button{padding:7px 8px}.fo-recipe{padding:14px}}
+@media(orientation:landscape) and (max-width:1023px) and (max-height:600px){
+  .fo-columns{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(220px,1fr);gap:12px;align-items:start}
+  .fo-support{margin-top:0;gap:12px}
+  .fo-card{padding:16px}
+  .fo-chooser h1{font-size:25px}
+  #kit-detail-overlay.kit-detail-from-today,#kit-sheet-overlay.kit-sheet-from-today{left:calc(var(--rail-w) + env(safe-area-inset-left,0px));right:env(safe-area-inset-right,0px)}
+  #kit-sheet-overlay.kit-sheet-from-today .modal-box{padding-bottom:18px}
+}
