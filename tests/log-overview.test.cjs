@@ -657,7 +657,7 @@ test('a completed saved session still presents as completed, from its own count'
 test('Home’s empty state agrees with Log and shows no progress at all', () => {
   const home = body('renderHome');
   assert.match(home, /mBrief\.state==='empty'\?'NO EXERCISES YET'/);
-  assert.match(home, /mBrief\.state==='empty'\?'Set up program'/);
+  assert.match(home, /mBrief\.state==='empty'\?'Set up split'/);
   assert.match(home, /mBrief\.state==='empty'\s*\r?\n?\s*\? 'No exercises configured'/);
   // 'empty' is not in the progress list, so the row, the percentage and the track are omitted.
   assert.ok(!/mShowProgress=.*'empty'/.test(home));
@@ -720,7 +720,7 @@ test('multiple sessions today use the latest record, and never reorder S.session
   assert.deepEqual(c.brief(), b);
 });
 
-test('a training day with no exercises offers Program setup instead of an empty logger', () => {
+test('a training day with no exercises offers split setup instead of an empty logger', () => {
   // Last session was dayNum 3, so the next rotation is index 3 — the empty Rest day.
   const c = ctx({ sessions: [sess({ date: '2026-09-11', dayNum: 3 })] });
   assert.equal(c.suggestDay(), 3);
@@ -729,7 +729,7 @@ test('a training day with no exercises offers Program setup instead of an empty 
   assert.equal(b.dayName, 'Rest day');
   assert.equal(b.exCount, 0);
   const hero = body('logHeroHtml');
-  assert.match(hero, /Set up program/);
+  assert.match(hero, /Set up split/);
   assert.match(hero, /logGoto\('program'\)/);
   assert.ok(!/saveSession|initDay/.test(hero), 'the empty state must not start or save anything');
 });

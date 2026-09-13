@@ -14,11 +14,12 @@ Four main areas plus supporting screens:
 
 - **Home** — dashboard of independently show/hideable widget cards (session hero, budget
   snapshot, calorie ring, net worth, notes, habits, etc.)
-- **Log** — the workout hub: four sections behind one sub-tab strip (Today / Program /
+- **Log** — the workout hub: four sections behind one sub-tab strip (Today / Splits /
   Exercises / History). **Today is a training BRIEFING** — a state-aware hero, Today's plan (or
   Up next), Last 7 days and Recent sessions — and it opens the set logger from there.
   `logTodayBrief()` is the ONE canonical training-state reader behind it, shared with Home's
-  session hero. Program holds the live split plus its saved snapshots; Exercises and History
+  session hero. Splits is the current split and a compact collection to preview and choose from;
+  Exercises and History
   are the screens that used to be a separate tab and two full-screen overlays. Body weight is
   NOT in Log — it lives in Stats › Body, Home's weight card and the post-save prompt. See the
   Workout hub notes below and `CLAUDE.md` for the traps.
@@ -39,7 +40,68 @@ Four main areas plus supporting screens:
 - **Accounts** — net worth / debt payoff tracking. A FINANCE VIEW since v329, not an overlay.
 - **Plans**, **Notes**, **Settings** — secondary screens (see `CLAUDE.md` for full detail per
   area if you need it; not reproduced here). Plans holds imported HTML plan DOCUMENTS only —
-  saved workout programs live in Log › Program.
+  saved workout splits live in Log › Splits.
+
+## Sidebar navigation
+
+- `NAV_QUICK` and `NAV_TREE` remain the shared source for desktop and the mobile hamburger.
+  Quick access keeps Home, Finance, Log, Food, Stats and Settings. Groups are Today, Log,
+  Finance, Food, Stats and More; the renamed Log/Finance groups retain IDs `training`/`money`
+  so existing `daily_nav_ui` expansion preferences survive. Only a header press toggles a
+  group. Navigation and boot neither expand groups nor persist new defaults.
+- Finance children follow **Overview · Week · Month · Bills · Accounts · Yearly**. The single
+  **Weekly review** row (`wkr`, `stats/review`) now belongs to Stats after Overview. Today keeps
+  Today's session and Food log; Log keeps Splits (`program`), Exercises and History. Food
+  library, Nutrition Review, Journal/Notes, Plans and Daily AI remain reachable. Routing,
+  aliases and selected states still come from the existing readers and dispatch helpers.
+- Desktop styling starts at 1024px and keeps the 260px width and brand size. Quick access has
+  a subtle selected fill; an indented selected child has text emphasis and a small dot, without
+  another filled pill. `#ds-nav` contains opaque non-shrinking quick access and a separate
+  `.nv-groups` scroller with `min-height:0`; the account footer remains outside that scroller,
+  with wrapping names. At heights of 460px or less, one whole-sidebar scroller replaces the
+  inner scroller so no destination is stranded. Mobile styling stays separate. The footer's
+  existing **Synced** / **Local only** text and all account/sync behavior remain unchanged.
+
+## Weather refresh and Home card (v340)
+
+- **One coordinator, one device cache.** `weatherRefresh()` owns sample-city, saved-coordinate,
+  retry and explicit current-location requests. `WEATHER_FRESH_MS` remains one hour for both
+  refresh eligibility and weather-driven appearance. `daily_weather_cache` stays device-local,
+  excluded from backup/sync; no new store, migration or Home-layout preference was added.
+- **Lifecycle checks do not rely on background timers.** `weatherEnsureFresh()` checks on
+  initial use, Home entry, visible resume/pageshow and reconnection. `weatherStartLifecycle()`
+  installs listeners once; its one-minute timer runs only while visible and stops on hide or
+  pagehide. Fresh successful data avoids a request; otherwise each location has a five-minute
+  cooldown after an automatic attempt. Forced retry and reconnecting after offline bypass that
+  cooldown. With no cache, lifecycle recovery uses `S.view==='home'` plus the actual weather
+  card element, not an out-of-scope layout list; explicit Home requests and weather-driven
+  appearance also remain eligible. Initial failures can recover on online/resume. Repeated
+  rendering must never multiply listeners or timers.
+- **Requests cannot roll the card backwards.** The coordinator deduplicates a matching request;
+  explicit location changes/clearing invalidate earlier generations and abort where supported.
+  Fetch/location timeouts end loading, and late successes or failures are ignored. Routine
+  refresh reuses saved coordinates; only an explicit location action invokes geolocation.
+  An accepted geolocation result updates the in-memory `_weatherPerm` on grant or refusal, so
+  Settings cannot keep saying Allowed after that request was denied. There is no manual city
+  selector in the existing app; do not infer one or add a second source.
+- **Failed refreshes keep the last successful reading and `fetchedAt`.** The card shows its
+  update age, a discreet stale/failure/offline notice and an accessible retry. Successful data
+  patches the existing weather DOM rather than rebuilding Home, preserving nearby controls and
+  scroll. `observedAt` is the provider's model-valid instant, not a measured observation or the
+  time of download; stale model data remains distinguishable from a newly successful fetch.
+- **Forecasts are optional cache fields.** Open-Meteo returns epoch timestamps with
+  `timeformat=unixtime`, timezone/offset and two days of hourly data to cover midnight. Missing
+  values remain null. `weatherForecastHours()` selects up to six upcoming hours;
+  `weatherForecastTime()` uses the forecast timezone (including DST), then an explicit offset,
+  never the device timezone as a guess. `weatherForecastSummary()` distinguishes precipitation
+  probability from forecast amounts and names rain/snow only when the WMO code supports it.
+  Clear copy requires several contiguous clear hours; missing evidence means no sentence.
+- **Phone composition grows naturally.** The slightly taller card reuses the existing
+  condition scenes, illustration and Dashboard neighbourhood, followed by evidence copy and
+  a compact inner hourly scroller. Location/details, current temperature, condition, high/low
+  and freshness stay legible. It has no clipping fixed height and respects reduced motion.
+  Desktop geometry and saved compact/wide placements remain intact. Settings > Weather is the
+  existing details destination; there is no duplicate weather overlay.
 
 ## Tech stack, hosting, structure
 
@@ -324,7 +386,7 @@ No staging environment exists — a push to `main` is live immediately at
 
 ## Workout hub (Log)
 
-Log holds Today / Program / Exercises / History. **Today is a briefing, and
+Log holds Today / Splits / Exercises / History. **Today is a briefing, and
 `logTodayBrief()` decides what it says** (v330). Read this before touching either:
 
 - **One canonical reader, four states.** `suggestDay()` answers "which rotation day is NEXT"
@@ -336,7 +398,7 @@ Log holds Today / Program / Exercises / History. **Today is a briefing, and
   saved earlier the same day), **saved today** (the record's own `sessionType`, figures and
   `completed` flag, with the next rotation named on a separate line — a partial save is *Saved
   today*, never *Completed today*), **ready** (`suggestDay()`, and the action opens exactly that
-  day), **no usable exercises** (offer Program setup, never an empty logger).
+  day), **no usable exercises** (offer split setup, never an empty logger).
 - **A meaningful draft** is a running timer, a completed check, an entered weight or rep value,
   a session-only exercise or a typed note. Merely opening the logger — which initialises one
   blank working row per exercise — is not one. **And it only outranks a session already saved
@@ -388,14 +450,53 @@ Log holds Today / Program / Exercises / History. **Today is a briefing, and
   what to prepare for, this week's facts, the last few sessions. Longer-term analysis, charts
   and per-exercise progression belong to Stats › Training and must not migrate here.
 
+### Split picker (v336)
+
+- **Visible Splits, internal `program`.** The Log tab, navigation links, overview setup action
+  and Settings destination say Splits. `LOG_TABS.program`, existing DOM IDs,
+  `#log/program`, `logGoto('program')` and compatibility helpers stay unchanged.
+- **One compact picker and one preview.** `renderLogProgram()` leads with Current split and
+  Edit split, then Your splits with Create split and Import. The current live split remains
+  usable without a saved copy. `logSplitRotation()` reads the schedule in order, including
+  repeated days. `logProgSelect()` opens `#view-split-preview`; it never applies or saves.
+  Closing preserves the collection's scroll position and in-memory selection. Preview, menu,
+  pending decision and return-focus state live above `init()` and are never persisted.
+- **In use means an actual configuration match.** `logActiveProgram()` filters through the
+  existing `planAppliedState()` comparison first, then chooses one match by `lastAppliedAt`,
+  `activePlanId` as a tie-break, and original order. Neither selection nor the stored ID can
+  make a mismatching split active. Identical copies get one collection marker; their previews
+  may both say Currently in use because either has the same configuration. The comparison
+  remains `planCfgFingerprint()` (day/exercise names and order plus schedule); it does not
+  compare planned-set counts or other metadata. Do not add a second comparison or active store.
+- **Applying owns the workout decision.** `plansApply()` uses `logConfirmSplitChange()` before
+  changing a different split. Protection is `logDraftIsMeaningful()` plus the existing
+  saved-today/post-save tie-break, so retained saved sets alone do not demand discard, while
+  a new note, timer, session-only exercise or set marker does. Keep current workout cancels
+  without changing any draft field. Discard workout and switch invokes the pending apply;
+  the saved target is re-read and validated before any reset. `logResetWorkoutForSplit()` uses
+  `initDay()` with the clamped current index, clears `wt_setdata` and resets the rest timer and
+  post-save UI. It does not save a blank draft or touch workout history, swaps or customisations.
+  Editing the live split uses the same guard when saving a changed configuration.
+- **Create is an isolated editor draft.** `openNewSplitEditor()` uses the existing editor in
+  new mode. Cancelling leaves the live split, saved splits and staged custom exercises alone.
+  Save uses `plansSaveNewSplit()` to add a named saved split; it does not activate it. Save as a
+  new split reuses the current-split workflow. Update saved copy is an explicit menu action.
+- **Existing stores, explicit management.** Rename, duplicate, update, delete and import use
+  `savePlans()`; application uses `saveSplit()`. Duplicate deep-clones nested data and obtains
+  a new collision-free ID. Deleting a saved copy preserves the live split and history. JSON
+  import adds to the collection without applying; an ID collision creates a new copy instead
+  of replacing an existing record. Older workout formats remain viewable and manageable but
+  cannot be applied to the logger. HTML documents remain in Plans. No key, migration, sync
+  registration, timestamp safeguard or backup/restore contract changes for this presentation.
+
 Three more things a future change must not undo:
 
-- **No migration, and none is needed.** Programs and imported HTML plan documents share the
-  existing `wt_plans` store and are separated at render time (`planIsProgram()` vs
+- **No migration, and none is needed.** Saved splits and imported HTML plan documents share the
+  existing `wt_plans` store and are separated at render time (`planIsWorkoutSaved()` vs
   `type==='html'`). Nothing was rewritten, moved between stores or deleted. The retired Plans
   streak's `streak` field is still stored and simply never read — removing it would BE a
   migration. Each view's selection (`logProgSel`, `plansDocSel`) is in-memory so that merely
-  browsing a program cannot write to a synced store.
+  browsing a split cannot write to a synced store.
 - **Hub state is declared above `init()`** (beside `NAV_ORDER`). `init()` calls `setView()` to
   restore a `#hash` view, and `setView` reads `logTodayView`; `let`/`const` do not hoist, so a
   late declaration aborts boot with a TDZ error for anyone reloading on a hash.
@@ -407,7 +508,7 @@ Exercise Library and Workout history no longer have overlay wrappers. `openExerc
 and `openWorkoutHistory()` navigate to their Log section, so every existing caller — the
 sidebar, the hamburger, Home's recent-sessions card, Stats evidence, the Journal day context —
 keeps working against one copy of the markup. `Settings > Training setup` keeps its persisted
-`training` key and its visible row, and opens Log > Program.
+`training` key and its visible row, and opens Log > Splits.
 
 ## The Food hub, and Stats back in the deck (v321)
 

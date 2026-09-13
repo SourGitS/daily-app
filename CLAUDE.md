@@ -1,11 +1,80 @@
 # Daily — Project Reference
 
+## Log › Splits — v336
+
+The visible **Splits** destination answers “Which training split do I want to use?” Its
+internal tab remains `program`: `#log/program`, `LOG_TABS.program`, existing DOM IDs and
+compatibility helpers are unchanged. Navigation, Today setup links and Settings use the
+visible Splits name. Older stored workout formats can retain their legacy terminology.
+
+The landing screen is a compact **Current split** card followed by **Your splits**. It shows
+the actual rotation sequence, including repeated training days, through `logSplitRotation()`.
+Current split offers Edit split and Save as a new split; a live configuration needs no saved
+copy before it can be used. Your splits offers Create split, Import, compact preview targets
+and separate overflow buttons. Exercise details are in the editor or the one preview, rather
+than repeated beneath a selected collection item. Rename, Duplicate, Export, Update saved
+copy and Delete belong to the selected item's menu.
+
+`logActiveProgram()` uses the existing `planAppliedState()` / `planCfgFingerprint()` comparison
+before considering any stored selection metadata. It compares day names, exercise names and
+order, and the schedule; planned-set counts and other exercise metadata are not added to that
+existing definition. Among identical matches, most recent `lastAppliedAt` wins, then an
+`activePlanId` match, then original collection order. This yields exactly one **In use** marker
+in the collection. A preview of an identical copy also says **Currently in use**, because its
+configuration is already live. A mismatching selected record or `activePlanId` never makes a
+split active; an unmatched live configuration uses Current split as its name and explains
+that it differs from the saved copy when that source is available.
+
+`logProgSelect()` opens `#view-split-preview` without applying or saving. The overlay contains
+the rotation and each day's saved exercise details, plus **Use this split** when applicable.
+Opening and closing leave the collection's scroll position, selection and stores intact.
+`logProgSel`, `logSplitPreviewId`, return-focus state and `logSplitPendingSwitch` are declared
+with the Log hub state above `init()`, not persisted. The preview and action sheet have their
+own accessible names, keyboard dismissal/focus handling and separate controls; there are no
+nested buttons inside a clickable split item.
+
+**`plansApply()` is still the canonical apply path, and it owns draft protection.**
+`logConfirmSplitChange()` combines `logDraftIsMeaningful()` with `logSavedToday()` and
+`logDraftTouchedSinceSave()`. Do not substitute `logTodayBrief().state`: a note can still need
+protection when a day has no usable exercises. Retained sets from a just-saved workout are
+not a newer unsaved draft; a new note alone is, even without `wt_setdata`. The decision is
+**Keep current workout** or **Discard workout and switch**. Cancelling changes no draft field
+or store. The callback re-reads and validates the target before writing or resetting, so a
+removed or invalid saved split cannot consume the current workout. A normal switch without
+an unsaved draft proceeds directly.
+
+After application, `logResetWorkoutForSplit()` calls `initDay()` with the current index
+clamped to the new schedule, clears the old set-data marker and resets the rest timer,
+post-save prompt and logger UI. It does not write blank set data, start a session timer or
+change saved sessions, exercise swaps or per-day customisations. The picker refreshes and the
+preview closes with a brief confirmation. Home and Log › Today continue reading their shared
+canonical state. Saving a changed live split from the editor uses the same workout guard.
+
+**Create opens a draft, not a replacement live configuration.** `openNewSplitEditor()` reuses
+the existing editor with `SE.mode === 'new'`; its days, name and new custom exercises remain
+in memory until Save. Cancel leaves the current split and saved collection untouched. Save
+uses `plansSaveNewSplit()` to add a new named saved split through `savePlans()` without
+activation. Save as a new split captures the current configuration; **Update saved copy**
+replaces only the explicitly named saved item after confirmation. Neither runs automatically.
+
+Duplicate deep-clones the whole record and obtains a collision-free ID through `plansNewId()`.
+Delete explains that only the saved copy is removed; the live training configuration and
+workout history stay. Paste and file import share `plansImportText()` validation. Import adds
+a saved choice without activation, and colliding IDs receive new IDs so existing copies and
+HTML documents cannot be silently replaced. Older workout formats remain accessible for
+preview, rename, duplicate, export and deletion but receive no misleading apply action.
+
+The stores and sync contracts stay `wt_plans` / `wt_plans_ts` / `plans` and `wt_split` /
+`wt_split_ts` / `trainingSplit`, through `savePlans()` and `saveSplit()`. Browsing writes
+nothing. There is no presentation key, deferred-switch persistence or migration, and the boot
+timestamp, backup/restore, history and session-save safeguards remain in place.
+
 ## Log › Today, rebuilt — v330, 2026-09-13 (corrected in v331–v333)
 
 **Log › Today is a training BRIEFING and the entry point to the set logger**, answering four
 questions in this order: what am I training now, what should I prepare for, what have I done
-this week, what did I do recently. Longer-term analysis stays in **Stats › Training**, program
-editing in **Log › Program**, body weight in **Stats › Body** — this screen deliberately holds
+this week, what did I do recently. Longer-term analysis stays in **Stats › Training**, split
+editing in **Log › Splits**, body weight in **Stats › Body** — this screen deliberately holds
 none of them.
 
 **`logTodayBrief()` is the ONE canonical training-state reader**, and every training surface
@@ -50,7 +119,7 @@ whatever it advertised. The reader resolves four states, in this precedence:
    was found by the end-to-end save run, not by the in-memory fixtures.
 3. **Ready** — nothing saved, nothing meaningful drafted. Uses `suggestDay()`, and the action
    opens **exactly** that day.
-4. **No usable exercises** — the selected or suggested day has none. Offers *Set up program →*
+4. **No usable exercises** — the selected or suggested day has none. Offers *Set up split →*
    rather than an empty logger.
 
 **A meaningful draft** is a running session timer, a completed check, an entered weight or rep
@@ -225,7 +294,9 @@ some hero presence and reduces the larger weather card to match, without linking
 Unusually long content can still grow; never clip it to enforce equal height. Weather's
 precipitation travel/duration scales with it. Scene and height rules live together in
 kitchen-extras.css; the old higher-specificity height overrides in budget-home.css are gone.
-The SVG is hidden outside desktop Dashboard, preserving phone, landscape and Grid's banner.
+The SVG remains hidden in desktop Grid. Since v340, the phone and landscape weather card
+reuse the neighbourhood beneath their forecast preview; the desktop compositions retain their
+existing geometry.
 No store, migration, calculation, sync path or layout preference changes.
 
 Personal lifestyle web app for Francois: workout tracking, kitchen/recipes, budget, and
@@ -313,22 +384,24 @@ older summary — re-grep before assuming a fact from here is still true if it l
   `assets/brand/refined/` holds the masters, the export script and the ZIP — sources, never
   application assets, never precached.
 
-## Navigation (restructured many times over the project's life — this is current as of 2026-09-10)
+## Navigation (current as of 2026-09-14)
 
 - **`NAV_TREE` (`js/app.js`, beside `NAV_ORDER`) is the ONE source for the desktop sidebar and
-  the mobile hamburger**, together with the `NAV_QUICK` strip pinned above it (see below). Six
-  labelled groups — Today, Training, Money, **Food**, Stats, More — holding 24 rows between them,
-  reaching every real destination rather than only the twelve top-level ones. `renderNav()` builds the tree ONCE and mounts the same markup into `#ds-nav`
-  (sidebar) and `#side-menu-list` (hamburger); the two differ in DENSITY only (16px rows and
-  44px targets on the phone, 14px pill rows on the sidebar), never in content, order or which
-  destinations exist. **Adding a destination means adding a row to `NAV_TREE` — never a literal
+  the mobile hamburger**, together with the `NAV_QUICK` strip above it (see below). Six
+  labelled groups — Today, Log, Finance, Food, Stats, More — holding 25 rows between them,
+  reaching every real destination rather than only the twelve top-level ones. `renderNav()`
+  builds the tree ONCE and mounts the same markup into `#ds-nav`
+  (sidebar) and `#side-menu-list` (hamburger); the two differ in presentation (16px rows and
+  44px targets on the phone; compact quick links, headers and indented children on desktop),
+  never in content, order or which destinations exist. **Adding a destination means adding a
+  row to `NAV_TREE` — never a literal
   button in `index.html` again.** This is the fix Settings already made with
   `SETTINGS_SECTIONS`: before it, twelve hand-written `.ds-item` buttons in `index.html`, a
   similar-but-different list in `buildSideMenu()` (from `MENU_NAV` + `MENU_SECTIONS` + four
   more literals) and a third in `renderQuickSettingsMenu()` each carried their own copy.
 - **SIX destinations are PINNED above the groups on both nav surfaces, and that is what makes
   them one press.** `NAV_QUICK` (`js/app.js`, beside `NAV_ORDER`) is the quick strip: Home,
-  Budget, Log, **Food**, **Stats**, Settings, rendered by `navBuildHtml()` above the
+  Finance, Log, **Food**, **Stats**, Settings, rendered by `navBuildHtml()` above the
   six groups into both `#ds-nav` and `#side-menu-list`. It was seven until v321 merged Nutrition
   and Kitchen into Food and gave Stats a real bottom-nav button. Before it, the app's most-used
   destinations cost TWO presses on every surface without a bottom nav — expand a group, then
@@ -351,29 +424,26 @@ older summary — re-grep before assuming a fact from here is still true if it l
   **A quick item lights by VIEW, a tree row by ROW, and both being lit is a breadcrumb rather
   than a bug.** `navCurrentQuick()` sits beside `navCurrentRow()` and reads the same state with
   the same overlay rules — it is a second projection, not a second variable — and
-  `navApplyState()` writes both in ONE pass. On Budget › Month the strip's "Budget" and the
-  Money group's "Month" are both lit, which is the relationship the phone already has between
+  `navApplyState()` writes both in ONE pass. On Finance › Month the strip's "Finance" and the
+  Finance group's "Month" are both lit, which is the relationship the phone already has between
   its bottom nav and a sub-tab strip. Exactly one element carries `aria-current="page"`: the
   tree row when the destination has one, the quick item when it does not.
   **There is no Home row in Today and no Settings row in More any more.** Those are the two
   destinations the strip duplicates exactly — same label, same view, no sub-tab — and listing
-  either twice, lit twice, a hundred pixels apart read as a bug. The other five pinned items
-  point at views whose tree rows name specific SUB-TABS (Budget › Month, Stats › Overview …),
+  either twice, lit twice, a hundred pixels apart read as a bug. The other four pinned items
+  point at views whose tree rows name specific SUB-TABS (Finance › Month, Stats › Overview …),
   so those rows are genuinely different destinations and stay. Both are one press from
   everywhere; `navCurrentRow()` still answers `'home'` and `'settings'`, which simply match no
   row, and `navCurrentQuick()` lights the pinned item instead.
-  **Selection reuses `.nv-row.is-on` (tint + rail + weight); do not give it its own.**
-  `.nav-btn.active`'s colour-and-weight was tried and is wrong here: the bottom nav brightens a
-  `--muted` label to `--accent-text`, but these rows are already `--text`, so with the default
-  neutral-grey accent the selected item came out DIMMER than its neighbours. The `#side-menu-list`
-  and `#ds-nav` density blocks each have to RESTATE `.nv-qrow.is-on`, for the same
-  specificity reason `.nv-row.is-on` is restated there.
-  **On desktop the strip is `position:sticky` at the top of `#ds-nav`**, because with every
-  group expanded that scroller holds ~1250px of content in ~490px on a short laptop and a
-  shortcut that scrolls out of reach is not a shortcut. Its background is
+  **Desktop selection distinguishes the two levels.** Quick links use one subtle accent fill
+  with stronger text and icons, without the old rail. A selected child uses stronger text and
+  a small accent dot, without a filled pill. Both use the existing `.is-on` state and dynamic
+  accent tokens; no selected-sidebar variable exists. Desktop rules are scoped to `#ds-nav`
+  inside the 1024px media query. The phone keeps its existing tint, rail and weight treatment.
+  **The desktop quick strip is a non-shrinking sibling of the scrolling `.nv-groups`, rather
+  than a sticky overlay inside the scroller.** Its background remains the opaque composition
   `linear-gradient(var(--card),var(--card)),var(--bg)` — **`--card` alone is translucent in dark
-  mode**, so rows would scroll visibly through it; this is the same compositing fix `.seg-tabs`
-  uses. The phone sheet scrolls normally: it has the bottom nav as well.
+  mode**. The phone sheet scrolls normally and does not inherit desktop overflow or density.
   The strip is headerless and never collapsible on purpose — a group header here would invite
   folding away the one block that exists to be always reachable.
 - A row is DATA, not code: `{id, label, view, sub}`. `navGo(view, sub)` is the single
@@ -382,16 +452,17 @@ older summary — re-grep before assuming a fact from here is still true if it l
   and `setView('stats')` calls `setStatsTab(statsSubTab, true)`.
 - **`navCurrentRow()` → `setNavActive()` is the only place a selected row is written**, for
   both surfaces, and it computes the answer from the state the screens themselves read
-  (`S.view`, `logSubTab`, `statsSubTab`, `budgetView`, `kitState.tab`, `nutTab`, plus the
-  Accounts / AI-hub overlay display flags). There is deliberately NO parallel "currently
-  selected nav row" variable — that is the thing that goes stale. This replaced seven scattered
+  (`S.view`, `logSubTab`, `statsSubTab`, `budgetView`, `foodState.tab`, plus the supporting
+  overlay display flags). There is deliberately NO parallel "currently selected nav row"
+  variable — that is the thing that goes stale. This replaced seven scattered
   `.ds-item` `classList.toggle` sites that all keyed on `data-tab` alone. `setNavActive()` is
   called from `setView` and from every sub-tab setter (`setLogTab`, `setStatsTab`,
-  `setBudgetView`, `kitSetTab`, `nutSetTab`), so the sidebar follows a sub-tab change made from
-  inside a screen, and from the open/close of Accounts, Daily AI, the split editor, the Stats
-  evidence overlay, an exercise detail and a mounted Settings section. Those last four are not
-  nav destinations (`NAV_NO_ROW_OVERLAYS`) and light NO row — they are inset past the sidebar
-  rather than covering it, so a stale highlight beside them would be visible.
+  `setBudgetView`, and the Food setters), so the sidebar follows a sub-tab change made from
+  inside a screen. Accounts is an ordinary Finance view. Food library and Nutrition Review
+  select their own child rows while Food stays selected above. Daily AI selects its More row.
+  The split editor/preview, Stats evidence, exercise detail and mounted Settings detail are
+  not nav destinations (`NAV_NO_ROW_OVERLAYS`) and clear quick and child selection — they are
+  inset past the sidebar rather than covering it, so a stale highlight would be visible.
 - **The JS hook is `[data-nav-row]` / `[data-nav-group]`, not a class.** `renderQuickSettingsMenu`
   used to emit `.ds-item` buttons with no `data-tab`, which is the only reason the old toggles
   did not light them up.
@@ -403,31 +474,37 @@ older summary — re-grep before assuming a fact from here is still true if it l
   choice. **NOTHING opens a group except a press on its header** (2026-09-07). Navigating used
   to expand the group owning the destination — additively, so it never collapsed anything — and
   that was still wrong: opening a tab rearranged the menu underneath you, which is the one thing
-  a menu must not do. The quick strip already puts the seven most-used destinations one press
+  a menu must not do. The quick strip already puts the six most-used destinations one press
   away with every group shut, so the reason that behaviour existed is gone. `setNavActive()`
   now writes the selected state and nothing else, and `NAV_GROUP_OF_ROW` was deleted with it —
   it had no other reader. Do not reintroduce either that or the close-the-others behaviour.
 - **Expansion state is device-local, in `daily_nav_ui`** as `{open:[groupId, …]}`, written with
   a plain `localStorage.setItem` and **never** `lsSave(key, value, syncName)` — the
-  three-argument form is the synced path and the sidebar is desktop-only, so a phone must not
-  write a preference only the laptop reads. `daily_pantry_ui` is the precedent, and like it,
+  three-argument form is the synced path, whereas expansion is a device-local presentation
+  preference shared by the two mounts. `daily_pantry_ui` is the precedent, and like it,
   `daily_nav_ui` is excluded from `exportAllData()`. **Whatever is expanded when you leave is
   expanded when you come back**; a header press is now the only thing that writes it. **Nothing
   is written during `_bootPhase`**, so restoring a stored state cannot rewrite it, and **a fresh
   device with no record starts with every group COLLAPSED** — it used to open whichever group
   owned wherever the app happened to have started, which is the same "the menu opened itself"
-  behaviour, only harder to notice. The sidebar is not empty in that state: the seven pinned
+  behaviour, only harder to notice. The sidebar is not empty in that state: the six pinned
   items sit above the six headers. `navResolveOpen()` also reads the one-at-a-time era's
   `{open:"money"}` string shape without rewriting it; the next toggle saves the array form.
   Deleting the key resets to all-collapsed.
-- **`#ds-nav` scrolls independently of `.ds-profile`.** `#desktop-sidebar` is
-  `height:100vh; position:sticky` with `.ds-profile{margin-top:auto}`; twelve flat rows just
-  fitted, and the moment a group expanded past the viewport the profile would have been pushed
-  off screen with nothing to scroll. `#ds-nav{flex:1;min-height:0;overflow-y:auto}` — the
-  `min-height:0` is the load-bearing half, because a flex child will not shrink below its
-  content height without it — with the scrollbar hidden the same way every other strip hides
-  one.
-- **Mobile bottom nav** (`#bottom-nav`, 5 fixed tabs): **Home, Budget, Log, Food, Stats**, with
+- **Desktop has one navigation scroller.** The 260px sidebar keeps its unchanged-size brand
+  above `#ds-nav` and the account footer below. `#ds-nav` is a flex column with `min-height:0`
+  and `overflow:hidden`; `.nv-quick` does not shrink, while `.nv-groups` has `flex:1`,
+  `min-height:0` and its own vertical overflow. Quick links are about 36px high, group controls
+  are 12px text in 30px rows, and child links are 13px text in 30px rows, indented from the
+  header. One divider separates quick access from the groups; groups use spacing, not cards.
+  The footer does not shrink, its text container can shrink horizontally, and long names wrap
+  without displacing the avatar or widening the sidebar. At desktop heights of 460px or less,
+  the whole sidebar becomes the single scroller and inner overflow is released: brand, quick
+  access, every grouped link and the footer remain reachable even when they cannot fit at once.
+  Widths below 1024px use the existing mobile shell, including when browser zoom crosses that
+  breakpoint. `updateDesktopSidebar()` still renders the existing name/photo and literal
+  **Synced** or **Local only** according to auth; this layout adds no new sync behavior.
+- **Mobile bottom nav** (`#bottom-nav`, 5 fixed tabs): **Home, Finance, Log, Food, Stats**, with
   Log in the centre. These five and only these five are the swipe deck — `NAV_ORDER` in
   `js/app.js` IS the deck, and a view named there must be a `.swipe-panel` inside `#swipe-deck`
   while one that isn't must be a direct `<section>` child of `#app-main`. `#view-*{order:n}` in
@@ -441,17 +518,18 @@ older summary — re-grep before assuming a fact from here is still true if it l
   **Nutrition and Kitchen are gone as top-level views**, merged into Food; `NAV_VIEW_ALIAS` and
   `FOOD_LEGACY_ROUTES` are the only places their names survive. The deck and the bottom nav are
   otherwise untouched by the nav registry.
-- **The Money group leads with Budget › Overview** (`bud-overview`), before This week. It is
-  the current-position screen and This week is where you go to change something once you have
-  read it, so that is the order the group is read in. Every `BUD_VIEWS` entry has a row here
-  and a test asserts it — a view with no row lights nothing in the sidebar.
-- **Two placements in `NAV_TREE` are deliberate, so they do not get "corrected".** *Weekly
-  review* sits under **Money** even though it opens `stats.review`: it is a money review in
-  practice — its first and largest section is Money — and the group says what the user is
-  doing, not which screen hosts it. *Exercise Library* and *workout History* are gone as
-  top-level rows and are **Training › Exercises / History**, which is where they have actually
-  gone since the Log hub was built; `openExerciseLibrary()` / `openWorkoutHistory()` stay
-  exported for their other callers, but the nav rows dispatch through `navGo` directly.
+- **Group names follow destinations; IDs preserve expansion preferences.** Visible Log and
+  Finance retain the internal group IDs `training` and `money`. Finance follows `BUD_VIEWS`
+  exactly: **Overview · Week · Month · Bills · Accounts · Yearly**. **Weekly review** has one
+  canonical row (`wkr`) under **Stats**, after Overview and before Training, matching Stats'
+  tab order. It is no longer mixed into the Finance tabs; its `stats/review` route is unchanged.
+- **Today remains a deliberate cross-area shortcut group.** Today's session opens Log ›
+  Today and Food log opens the secondary food logger. Log keeps Splits (`program` internally),
+  Exercises and History in tab order. Food keeps Recipes, Shopping and Pantry in tab order,
+  followed by Food library and Nutrition Review. More retains Journal (the Notes destination),
+  Plans and Daily AI. No supporting screen or route is removed. `openExerciseLibrary()` /
+  `openWorkoutHistory()` stay exported for their other callers, but the nav rows dispatch
+  through `navGo` directly.
   *Settings* is pinned in the quick strip and has no tree row (see above); the screen it pushes
   is already registry-driven and searchable, so mirroring its ten destinations here would
   rebuild the duplication this registry removes. A second nesting level anywhere in this
@@ -465,12 +543,11 @@ older summary — re-grep before assuming a fact from here is still true if it l
   shortcuts are one tap deeper on a searchable Settings landing page, and keeping it meant the
   sidebar had one row that expanded differently from every other row. `js/app.js` carries a
   comment saying exactly what would restore it.
-- **`#desktop-sidebar` is declared ONCE now**, in `css/budget-home.css`, with the values that
-  used to win (260px, `0.5px` border). It was previously declared there at 160px with 12px rows
-  and a `border-left` rail AND again in `css/kitchen-extras.css` at 260px with 14px pill rows —
-  the second won on load order, so half of what the first file said never rendered. The `.nv-*`
-  component itself lives in `css/kitchen-extras.css` beside `#side-menu`, because both surfaces
-  share it and that file loads late enough to win ties.
+- **The sidebar shell has one base definition**, in `css/budget-home.css` (260px, `0.5px`
+  border), alongside its brand and footer. The `.nv-*` component and the short-height overflow
+  exception live in `css/kitchen-extras.css` beside `#side-menu`, because both surfaces share
+  the component and that file loads late enough to win ties. Do not reintroduce conflicting
+  sidebar widths in those two files.
 
 ## What's in each area
 
@@ -504,9 +581,62 @@ older summary — re-grep before assuming a fact from here is still true if it l
     scenes without adding scene IDs. These attributes are render state only, never persisted.
   - Weather labels and decorative condition/location marks come from controlled mappings and
     the existing Tabler line-icon resource—no weather emoji. The card retains Daily's exact
-    Manrope UI / Space Grotesk numeric typography and its existing information geometry.
+    Manrope UI / Space Grotesk numeric typography. Since v340 the phone card grows naturally
+    to fit a modest forecast preview: location/details and freshness/retry, large temperature,
+    condition and available high/low, the reused scene and neighbourhood, one supported sentence
+    and an inner horizontally scrolling hourly strip. No fixed clipping height or Home-layout
+    override is used; desktop keeps its existing composition plus shared freshness/failure
+    status. Reduced-motion preferences continue to govern the existing decorative layers.
+  - **Weather refresh is coordinated, not tied to repainting Home (v340).** The original Home
+    render and opportunistic lifecycle hooks could leave an open page stale; the loading flag
+    also could not distinguish old and new location requests. `weatherRefresh()` now owns all
+    fetch paths. The single `WEATHER_FRESH_MS` remains **60 minutes**, appropriate for this
+    model-based provider without aggressive polling. `weatherEnsureFresh()` checks initial use,
+    Home entry, visibility resume, pageshow and online recovery; one visible-only minute timer
+    also updates age/scene/forecast presentation and checks freshness. Listeners register once,
+    and hide/pagehide removes the timer. Repeated renders do not install anything extra.
+  - Fresh successful cache data does not fetch. Matching concurrent work shares one promise;
+    otherwise automatic attempts have a **five-minute per-location cooldown after an attempt**.
+    Forced manual retry and an online transition after offline bypass it. There is no separate
+    60-second attempt throttle: one minute is the visible check cadence. With no cached data,
+    lifecycle recovery checks `S.view==='home'` and the actual weather-card element; it must not
+    refer to the local `_homeIds` variable from `renderHome()`. Explicit Home requests and
+    weather-driven appearance also remain eligible. A failed initial load therefore recovers
+    on reconnect/resume while the card is visible. A generation/location check and abortable
+    timeouts protect both success and failure callbacks: a superseded location response cannot
+    overwrite a newer choice or restore weather the user just cleared. Routine checks reuse
+    saved coordinates without asking permission; only an explicit current-location action asks
+    geolocation. Accepted location callbacks update the existing in-memory `_weatherPerm`
+    on grant/refusal, preventing an Allowed label beside a new permission-denied result.
+    Existing saved-coordinate support remains; there is no manual city chooser.
+  - Loading and failure preserve usable weather. **Updated ... ago** reads only the last
+    successful `fetchedAt`; failure records `lastError`/`lastErrorAt` without advancing it.
+    Offline, unavailable, failed and stale states have concise feedback and an accessible retry.
+    Success patches the current weather card and Settings details without rebuilding Home or
+    disturbing its scroll and controls. Settings > Weather remains the detail destination,
+    including stored-coordinate disclosure; no second weather screen was introduced.
+  - The existing Open-Meteo endpoint now requests hourly temperature, WMO code, day/night,
+    precipitation probability and precipitation for two days, using `timeformat=unixtime`.
+    `observedAt` records **model-valid time**, distinct from download time: Open-Meteo current
+    conditions are modelled 15-minute values, not a live station observation. New timezone,
+    offset and hourly fields are optional additions to the same device-local cache; old caches
+    remain readable without migration. New sunrise/sunset instants are unambiguous UTC ISO
+    strings so existing scene motion handles locations outside the device timezone correctly.
+  - `weatherForecastHours()` reads at most six sorted unique slots in the next six hours without
+    mutating the cache. Missing temperatures/probabilities remain unavailable, never zero.
+    `weatherForecastTime()` formats the location's IANA timezone, including DST, or a supplied
+    UTC offset; absent timezone evidence does not fall back to the device clock. Probability
+    is a chance of precipitation, not an amount or a rain-only guarantee. Copy says **possible**
+    for a chance of at least 30%, **forecast** for a positive amount, and uses rain/snow only
+    when supported by the WMO code; otherwise it says precipitation. A clear outlook needs at
+    least three contiguous upcoming clear hours and no contrary precipitation evidence. Omit
+    unsupported timing/copy. See [Open-Meteo's parameter definitions](https://open-meteo.com/en/docs).
+  - `daily_weather_cache` remains device-local and excluded from backup/sync. No second cache,
+    provider, synced store, migration, layout preference, Firebase path or timestamp safeguard
+    was added or changed. Physical iPhone/PWA resume needs device verification; simulated
+    lifecycle tests cannot establish how iOS suspends the installed app.
 - **Log** (was "Train") — **the workout hub**, four sections behind one sub-tab strip
-  (`setLogTab()`, `LOG_TABS`): **Today**, **Program**, **Exercises**, **History**.
+  (`setLogTab()`, `LOG_TABS`): **Today**, **Splits**, **Exercises**, **History**.
   - **Today** lands on an OVERVIEW (`renderLogOverview()`), not the set logger — a training
     briefing, rebuilt in v330: a state-aware hero from `logTodayBrief()`, **Today's plan** (or
     **Up next** after a saved session), **Last 7 days** and **Recent sessions**. One mobile
@@ -516,9 +646,10 @@ older summary — re-grep before assuming a fact from here is still true if it l
     `setView('log')` resets `logTodayView` to `'overview'` whenever you arrive from another
     view — that reset lives in setView because it is the only place that can tell a genuine
     tab entry from an in-tab re-render.
-  - **Program** holds the live split (with `openSplitEditor()` as a full-screen push, since it
-    is a collection editor with its own top-bar Save) AND the saved program snapshots that
-    used to be the Plans tab: switch, save-current-as, rename, delete, JSON import/export.
+  - **Splits** (`program` internally) is the compact current-split card and saved collection.
+    One read-only preview offers Use this split through the guarded `plansApply()` path.
+    `openSplitEditor()` edits the current split; `openNewSplitEditor()` creates a separate
+    draft whose Save adds a saved choice without activating it. See the v336 contract above.
   - Every card in the hub is a `.lg-card` on the shared MATTE content-card surface with a
     `cardHeader(icon, label, rightHtml)` header — those four Log › Today cards were the app's
     only iconless card headers until 2026-09-05, and the only content cards reading the
@@ -673,7 +804,7 @@ older summary — re-grep before assuming a fact from here is still true if it l
   (Stats → Finance) — and both show the sub-line and the chip. Only the Stats mount gets the
   "Open account records →" link; that gate stays on `wrapId`.
 - **Plans** — **imported plan DOCUMENTS only** (the `type:'html'` entries: import any HTML
-  file, view it in a sandboxed iframe). Saved workout programs moved to Log › Program, and the
+  file, view it in a sandboxed iframe). Saved workout splits live in Log › Splits, and the
   streak that used to head this screen is gone from the UI. The nav label stays "Plans".
 - **Notes** — date-tracked notes, fullscreen view, optional home-screen bubble.
 - **Settings** — a searchable control centre, not a menu of unrelated forms. Landing page:
@@ -771,7 +902,7 @@ the accent or the theme must go through those, not set `--accent` directly.
   namespaced by pantry ID so checked recipe rows do not leak between locations. Pantry filters,
   category collapse and stocked-section disclosure remain device-local in `daily_pantry_ui`.
 
-- **Budget's palette is semantic about DIRECTION, and yellow is reserved for warnings.**
+- **Budget's shared palette is semantic about DIRECTION, with scoped neutral spending bars.**
   Two superseded designs are worth knowing so neither is re-proposed. First it was six
   unrelated hues (emerald income, orange variable, grey fixed, blue saved, a second emerald for
   the rate, a red spending) used at equal strength — all the colour the interface had was spent
@@ -780,7 +911,7 @@ the accent or the theme must go through those, not set `--accent` directly.
   spent no colour on the one distinction that actually matters and read washed out. **Neither
   is the current design; do not restore either, and do not drift back toward sage, olive,
   mustard, terracotta or rust for a data series.**
-  Current mapping, in `budPalette()` / `BUD_MONEY` (js/app.js):
+  Shared mapping, in `budPalette()` / `BUD_MONEY` (js/app.js):
   - **income / earned → a rich green** (`#22C55E` dark, `#15803D` light)
   - **expenses / spending / variable → a saturated red** (`#EF4444` dark, `#DC2626` light)
   - **committed / fixed → the SAME red held back** — `budExpenseRgba(.40/.32)` fill plus a
@@ -790,6 +921,14 @@ the accent or the theme must go through those, not set `--accent` directly.
   - **a reference series that is neither in nor out** (the account-balance line) → `neutral`,
     a colourless tone, so it cannot be read as a direction
   - **amber → warning states only.** It is not a graph indicator.
+  **Month → Weekly breakdown and Stats → Finance → Money flow use a scoped exception:**
+  `budNeutralSpendPalette()` supplies theme-aware solid grey variable spending and a lighter,
+  translucent grey committed fill with a visible neutral outline. Their legend markers and
+  explicit hover colours use the same palette. These bars never read the selected accent;
+  income stays green and saved / saved-plan styling stays on the existing accent path.
+  Do not change `budExpenseHex()`, `budExpenseRgba()` or `BUD_CHART_COLORS` globally to achieve
+  this treatment: other charts, Week's day-by-day bars and Weekly Review's actual over-plan /
+  shortfall fills retain the shared red. Semantic danger and warning tokens are unchanged.
   **Income and expenses must never follow the accent.** The accent is per-device and can be a
   weather scene; the same money would then be a different colour on two devices.
   `BUD_CHART_COLORS` survives as a `Proxy` over `budPalette()` so ~25 call sites keep working
@@ -801,8 +940,9 @@ the accent or the theme must go through those, not set `--accent` directly.
   `{line:true}` (solid line) and `{ring:hex}` (outlined swatch, for the held-back committed
   fill), the savings-rate line is dashed with `rectRot` markers, and expenses are BARS while
   income is a LINE on the Stats money-flow chart. Ordinary currency totals stay `var(--text)`.
-  The same mapping is used by the Stats → Finance direction charts and its fixed/variable
-  breakdown. `BUD_CATEGORY_COLORS` / `budCategoryColor()` assign a stable, ID-derived
+  The shared red mapping still serves Stats → Finance's fixed/variable category breakdown;
+  Money flow uses the neutral exception above. `BUD_CATEGORY_COLORS` / `budCategoryColor()`
+  assign a stable, ID-derived
   categorical colour (red/rose/plum-led, never income green or warning amber) for anything
   that genuinely needs per-category identity. **Budget → Month's composition view is no
   longer a caller** — it is a ranked bar list whose colour carries no information at all; see
@@ -915,7 +1055,7 @@ the accent or the theme must go through those, not set `--accent` directly.
   with purchases is a `<button>`, the rest are `<div>`s, so nothing carries a press affordance
   that leads nowhere; the expanded purchases reuse the existing `.txn-item` markup rather than
   inventing a second row vocabulary. The bar fill is set inline from **`budExpenseHex()`**, the
-  same source every spending chart reads — a second red hardcoded in CSS would be free to drift
+  shared spending-red source — a second red hardcoded in CSS would be free to drift
   from `BUD_MONEY`. Like the charts, it takes a theme change on the next render. The amount
   itself stays `var(--text)`: the bar is a redundant encoding of a figure that is already
   printed, so the row still reads with no colour at all.
@@ -944,9 +1084,10 @@ the accent or the theme must go through those, not set `--accent` directly.
   changed.
   Three things follow, and each removed a whole class of problem:
   - **Colour now carries NO information.** The rows are sorted, so rank is already stated by
-    position; the fill is one red shaded by rank (`budRankShade(i,n)`, derived from
-    `budExpenseHex()` so there is still a single source for the spending red) and the card
-    reads correctly in greyscale. This is why the old palette problem is GONE rather than
+    position; the fill is a theme-aware neutral-grey rank ramp (`budRankShade(i,n)`), independent
+    of the selected accent and the shared spending-red helpers. Each composition segment and
+    its matching category row use the same shade, and the card reads correctly in greyscale.
+    This is why the old palette problem is GONE rather than
     solved — do not reintroduce a categorical palette here. `BUD_CATEGORY_COLORS` /
     `budCategoryColor()` still exist for anything that genuinely needs per-category identity,
     but this view is no longer a caller. The ramp direction flips per theme: brightest = biggest
@@ -964,7 +1105,7 @@ the accent or the theme must go through those, not set `--accent` directly.
   straight to the donut, which is part of why eight near-identical slices were on screen. The
   ranked list shows all categories and needs no such rule.
   Missing legacy category detail is still shown as `Uncategorised / archived`, never silently
-  dropped or assigned today's label, and it keeps a colourless slate fill rather than a rank
+  dropped or assigned today's label, and it keeps a neutral-grey fill rather than a rank
   shade because it is not a category anyone chose. Category rows still register scoped evidence
   through the existing Stats evidence overlay; their source-week return target is Budget →
   Month, while Stats evidence still returns to Stats → Finance.
@@ -1249,8 +1390,9 @@ the accent or the theme must go through those, not set `--accent` directly.
     timestamp behaviour changed.
   - **Home's four states are Log's four states, wording included (v331).** `state:'empty'` used
     to fall through to the `UP NEXT` eyebrow on Home while Log said *No exercises yet*; it now
-    reads `NO EXERCISES YET` / *No exercises configured* / *Set up program*. Home's action still
-    opens Log › Today's OVERVIEW — the overview's own action is what opens Program.
+    reads `NO EXERCISES YET` / *No exercises configured* / *Set up split* (visible wording
+    updated in v336). Home's action still opens Log › Today's OVERVIEW — the overview's own
+    action opens Splits.
   - **A hero with nothing to measure against OMITS the progress row and the track**, rather
     than drawing them at zero: a saved PARTIAL session and an empty training day have no known
     total. `.hero-flat` closes the 16px bottom margin `.hero-meta` would otherwise leave
@@ -1277,13 +1419,15 @@ the accent or the theme must go through those, not set `--accent` directly.
   rules. Without them the columns collapse to content height and the pinned rest timer scrolls
   away — the one thing that layout exists to prevent.
 
-- **Programs and plan documents share ONE store, split at render time.** `wt_plans` still holds
-  both; Log › Program filters with `planIsProgram()` and Plans filters on `type==='html'`.
+- **Saved splits and plan documents share ONE store, split at render time.** `wt_plans` still
+  holds both; Log › Splits filters with `planIsWorkoutSaved()` (including older workout
+  formats), `planIsProgram()` identifies logger-compatible splits, and Plans filters on
+  `type==='html'`.
   There is deliberately **no migration** — verified that opening every screen and every entry
   point leaves `wt_plans`, `wt_split` and `wt_sessions` byte-identical. The retired streak's
   `streak` field is still stored and simply never read; deleting it would be a migration.
   Selection in each view (`logProgSel`, `plansDocSel`) is IN-MEMORY on purpose: picking a
-  program to look at must not write to a synced store.
+  split to look at must not write to a synced store.
 
 - **Weekly Review is `wkr-`, NOT `wr-`, and that is not a typo.** `.wr-row`, `.wr-row-l`,
   `.wr-row-v`, `.wr-row-none`, `.wr-row-u` and `.wr-chip*` already belong to Home's **Week in
@@ -1418,7 +1562,7 @@ the accent or the theme must go through those, not set `--accent` directly.
   deterministic, evidence-based prompts; missing/ambiguous data and partial weeks are labelled.
   `catOccurrencesBetween` supplies every scheduled charge for the following Monday–Sunday.
   Saved allocations keep their captured bill list. No Budget/Accounts/Journal/workout/nutrition
-  data is written. Plans remains imported HTML documents, and Training links to Log > Program.
+  data is written. Plans remains imported HTML documents, and Training links to Log > Splits.
 
   `pages` is additive to the EXISTING `daily_review_plan` blob: ordered stable id, title,
   enabled, prompts (id, label, text/number/check, optional numeric target). New setups enable

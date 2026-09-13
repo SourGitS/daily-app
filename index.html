@@ -101,7 +101,7 @@
     <section id="view-log" class="swipe-panel">
       <div class="seg-tabs seg-fill" id="log-tab-row" role="tablist" aria-label="Workout sections">
         <button class="on" id="lg-today-btn" role="tab" aria-selected="true" aria-controls="log-sub-today" onclick="setLogTab('today')">Today</button>
-        <button id="lg-prog-btn" role="tab" aria-selected="false" aria-controls="log-sub-program" onclick="setLogTab('program')">Program</button>
+        <button id="lg-prog-btn" role="tab" aria-selected="false" aria-controls="log-sub-program" onclick="setLogTab('program')">Splits</button>
         <button id="lg-ex-btn" role="tab" aria-selected="false" aria-controls="log-sub-exercises" onclick="setLogTab('exercises')">Exercises</button>
         <button id="lg-hist-btn" role="tab" aria-selected="false" aria-controls="log-sub-history" onclick="setLogTab('history')">History</button>
       </div>
@@ -1158,18 +1158,31 @@
   <div id="settings-detail-content" style="padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 40px);max-width:640px;margin:0 auto"></div>
 </div>
 
+<!-- Split preview stays outside the transformed swipe deck. -->
+<div id="view-split-preview" class="app-overlay lg-split-preview" role="dialog" aria-modal="true" aria-labelledby="log-split-preview-title" style="display:none" onkeydown="logSplitDialogKeydown(event,true)">
+  <div class="detail-topbar">
+    <button type="button" class="back-btn with-label" data-back="logCloseSplitPreview" aria-label="Back to splits">‹ Splits</button>
+    <span class="detail-title" id="log-split-preview-title">Split preview</span>
+  </div>
+  <div id="log-split-preview-content"></div>
+</div>
+<div id="log-split-sheet" class="modal-overlay hidden" onclick="if(event.target===this)logSplitSheetClose()" onkeydown="logSplitDialogKeydown(event,false)">
+  <div id="log-split-sheet-box" class="modal-box" role="dialog" aria-modal="true" aria-labelledby="log-split-sheet-title"></div>
+</div>
+
 <!-- TRAINING SPLIT EDITOR PAGE -->
 <div id="view-split-editor" class="app-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch">
   <div class="detail-topbar">
-    <!-- "Back", not "Settings": this editor is opened from Log › Program now as well as from
+    <!-- This editor is opened from Log › Splits as well as from
          the Settings row, and closeSplitEditor() just dismisses the overlay onto whichever
          one you came from. -->
-    <button class="back-btn with-label" data-back="closeSplitEditor"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Back</button>
-    <span class="detail-title">Training Split</span>
+    <button class="back-btn with-label" data-back="closeSplitEditor" aria-label="Cancel split changes"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Cancel</button>
+    <span class="detail-title" id="split-editor-title">Edit split</span>
     <button class="detail-action" onclick="saveSplitEditor()">Save</button>
   </div>
   <div style="padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 32px);max-width:520px;margin:0 auto">
-    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Each training day rotates in order. Name each day and pick its exercises — changes apply to your Log, Stats and consistency grid. Your saved workout history is never changed.</p>
+    <div id="split-editor-name-wrap" class="stg-field hidden" style="margin-bottom:16px"><label for="split-editor-name">Split name</label><input id="split-editor-name" type="text" placeholder="Name your split" oninput="SE.name=this.value" style="width:100%;min-width:0"></div>
+    <p id="split-editor-help" style="font-size:13px;color:var(--muted);margin-bottom:14px">Each training day rotates in order. Changes apply to your current split when you save. Your saved workout history is never changed.</p>
     <div id="split-editor-wrap"></div>
   </div>
 </div>

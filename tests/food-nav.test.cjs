@@ -96,8 +96,8 @@ test('the retired Nutrition and Kitchen views survive only as aliases', () => {
   const today = c.NAV_TREE.find(g => g.id === 'today');
   const foodLog = today.rows.find(r => r.id === 'nut-today');
   assert.deepEqual({ view: foodLog.view, sub: foodLog.sub }, { view: 'food', sub: 'log' });
-  // Weekly review keeps its Money-group shortcut into Stats.
-  const wkr = c.NAV_TREE.find(g => g.id === 'money').rows.find(r => r.id === 'wkr');
+  // Weekly review has one canonical home under Stats.
+  const wkr = c.NAV_TREE.find(g => g.id === 'stats').rows.find(r => r.id === 'wkr');
   assert.deepEqual({ view: wkr.view, sub: wkr.sub }, { view: 'stats', sub: 'review' });
 });
 

@@ -15,13 +15,10 @@
 .kit-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform 0.1s ease}
 .kit-card:active{transform:scale(0.985)}
 .kit-card-active{border-color:var(--accent);box-shadow:0 0 0 1.5px var(--accent)}
-/* The gold favourite card is deliberate and stays. It is the one place in the app where gold
-   is NOT the warning colour it is everywhere else (#f59e0b: low pantry, over budget, stale
-   data) — a favourite recipe is simply meant to look warm. Do not "fix" this for consistency
-   with the warning palette; it was removed once on that reasoning and put straight back.
-   What DID go is the ⭐ emoji that used to sit on the card face — see .kit-fav below. */
-.kit-card-favourite{background:linear-gradient(145deg,rgba(255,218,112,.30),rgba(216,166,42,.14) 58%,rgba(255,255,255,.55));border-color:rgba(183,132,18,.45);box-shadow:0 10px 28px rgba(146,99,0,.10),inset 0 1px 0 rgba(255,255,255,.58)}
-.kit-card-favourite.kit-card-active{border-color:#d9a928;box-shadow:0 0 0 1.5px rgba(217,169,40,.82),0 12px 30px rgba(146,99,0,.14)}
+/* Favourites follow the live accent in every mode. Keep the tint over the card surface so
+   neutral accents remain subtle and text keeps the ordinary card's contrast. */
+.kit-card-favourite{background:linear-gradient(145deg,rgba(var(--accent-rgb),.10),rgba(var(--accent-rgb),.04) 58%,rgba(var(--accent-rgb),.01)),var(--surface-card);border-color:rgba(var(--accent-rgb),.45);box-shadow:0 10px 28px rgba(var(--accent-rgb),.08),inset 0 1px 0 rgba(var(--accent-rgb),.10)}
+.kit-card-favourite.kit-card-active{border-color:var(--accent);box-shadow:0 0 0 1.5px rgba(var(--accent-rgb),.82),0 12px 30px rgba(var(--accent-rgb),.12)}
 /* Kitchen content cards don't inherit the .card rule, so they restate the matte surface from
    budget-home.css. .kit-scaler and .kit-macro are deliberately NOT here: the scaler is a
    +/- control row and the macro chips are compact figures — both stay flat (see the surface
@@ -29,8 +26,8 @@
 [data-theme="dark"] .kit-card,[data-theme="dark"] .kit-ing-list,[data-theme="dark"] .kitshop-sel-card,[data-theme="dark"] .bst-tile,[data-theme="dark"] .wt-log-row{
   background:var(--surface-card);border:0.5px solid var(--surface-card-border);box-shadow:var(--surface-card-top)}
 [data-theme="dark"] .kit-card.kit-card-active{box-shadow:0 0 0 1.5px var(--accent)}
-[data-theme="dark"] .kit-card.kit-card-favourite{background:linear-gradient(145deg,rgba(226,185,72,.24),rgba(125,84,8,.16) 58%,rgba(255,255,255,.035));border:1px solid rgba(231,187,68,.40);box-shadow:0 12px 30px rgba(91,58,0,.20),inset 0 1px 0 rgba(255,226,142,.12)}
-[data-theme="dark"] .kit-card.kit-card-favourite.kit-card-active{border-color:#e2b746;box-shadow:0 0 0 1.5px rgba(226,183,70,.82),0 14px 32px rgba(91,58,0,.24)}
+[data-theme="dark"] .kit-card.kit-card-favourite{background:linear-gradient(145deg,rgba(var(--accent-rgb),.14),rgba(var(--accent-rgb),.06) 58%,rgba(var(--accent-rgb),.02)),var(--surface-card);border:1px solid rgba(var(--accent-rgb),.50);box-shadow:0 12px 30px rgba(var(--accent-rgb),.10),inset 0 1px 0 rgba(var(--accent-rgb),.12)}
+[data-theme="dark"] .kit-card.kit-card-favourite.kit-card-active{border-color:var(--accent);box-shadow:0 0 0 1.5px rgba(var(--accent-rgb),.82),0 14px 32px rgba(var(--accent-rgb),.14)}
 /* Three children now: tile | name | actions. The name takes the slack (min-width:0 so a long
    title wraps instead of shoving the actions off the edge), and centring keeps the 38px tile
    visually locked to the title rather than towering over a single-line one. */
@@ -136,12 +133,11 @@
 .kitshop-sel-list{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
 .kitshop-sel-card{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kitshop-sel-card.selected{border-color:var(--accent);box-shadow:0 0 0 1.5px var(--accent)}
-/* The Shopping picker carries its own copy of the gold favourite treatment on purpose, so the
-   two places a favourite appears look the same. Change one, change the other. */
-.kitshop-sel-card.favourite{background:linear-gradient(145deg,rgba(255,218,112,.30),rgba(216,166,42,.14) 58%,rgba(255,255,255,.55));border-color:rgba(183,132,18,.45);box-shadow:0 10px 28px rgba(146,99,0,.10),inset 0 1px 0 rgba(255,255,255,.58)}
-.kitshop-sel-card.favourite.selected{border-color:#d9a928;box-shadow:0 0 0 1.5px rgba(217,169,40,.82),0 12px 30px rgba(146,99,0,.14)}
-[data-theme="dark"] .kitshop-sel-card.favourite{background:linear-gradient(145deg,rgba(226,185,72,.24),rgba(125,84,8,.16) 58%,rgba(255,255,255,.035));border:1px solid rgba(231,187,68,.40);box-shadow:0 12px 30px rgba(91,58,0,.20),inset 0 1px 0 rgba(255,226,142,.12)}
-[data-theme="dark"] .kitshop-sel-card.favourite.selected{border-color:#e2b746;box-shadow:0 0 0 1.5px rgba(226,183,70,.82),0 14px 32px rgba(91,58,0,.24)}
+/* The Shopping recipe picker uses the same favourite treatment as Recipes. */
+.kitshop-sel-card.favourite{background:linear-gradient(145deg,rgba(var(--accent-rgb),.10),rgba(var(--accent-rgb),.04) 58%,rgba(var(--accent-rgb),.01)),var(--surface-card);border-color:rgba(var(--accent-rgb),.45);box-shadow:0 10px 28px rgba(var(--accent-rgb),.08),inset 0 1px 0 rgba(var(--accent-rgb),.10)}
+.kitshop-sel-card.favourite.selected{border-color:var(--accent);box-shadow:0 0 0 1.5px rgba(var(--accent-rgb),.82),0 12px 30px rgba(var(--accent-rgb),.12)}
+[data-theme="dark"] .kitshop-sel-card.favourite{background:linear-gradient(145deg,rgba(var(--accent-rgb),.14),rgba(var(--accent-rgb),.06) 58%,rgba(var(--accent-rgb),.02)),var(--surface-card);border:1px solid rgba(var(--accent-rgb),.50);box-shadow:0 12px 30px rgba(var(--accent-rgb),.10),inset 0 1px 0 rgba(var(--accent-rgb),.12)}
+[data-theme="dark"] .kitshop-sel-card.favourite.selected{border-color:var(--accent);box-shadow:0 0 0 1.5px rgba(var(--accent-rgb),.82),0 14px 32px rgba(var(--accent-rgb),.14)}
 .kitshop-sel-check{width:26px;height:26px;flex-shrink:0;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff}
 .kitshop-sel-card.selected .kitshop-sel-check{background:var(--accent);border-color:var(--accent)}
 .kitshop-sel-body{flex:1;min-width:0}
@@ -799,13 +795,28 @@
 .weather-icon{width:1em;height:1em;font-size:24px;line-height:1;display:inline-flex;align-items:center;justify-content:center;flex:0 0 1em}
 .weather-icon i{display:block;font-size:1em;line-height:1;color:#fff}
 .weather-temp{font-family:var(--font-num);font-size:26px;font-weight:800;color:#fff}
-.weather-condition{font-size:11px;font-weight:600;color:rgba(255,255,255,.75);margin-top:2px;cursor:pointer}
-/* On the sample reading this line is a call to action, not a label — underlined and full
-   white so it reads as the tappable thing rather than a caption. */
-.weather-condition.weather-cta{color:#fff;text-decoration:underline;text-underline-offset:3px}
+.weather-condition{font-size:11px;font-weight:600;color:rgba(255,255,255,.75);margin-top:2px}
 /* High/low + feels-like. Tabular figures so the numbers don't jitter between refreshes. */
 .weather-meta{font-family:var(--font-num);font-size:11px;font-weight:700;color:rgba(255,255,255,.9);margin-top:4px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .weather-meta:empty{display:none}
+.weather-heading{display:flex;align-items:flex-start;gap:10px;margin-bottom:6px}
+.weather-place{flex:1;min-width:0}
+button.weather-city{display:block;max-width:100%;padding:0;border:0;background:none;text-align:left;
+  font-family:var(--font-ui);cursor:pointer;white-space:normal;overflow-wrap:anywhere}
+.weather-freshness{display:block;font-size:10px;line-height:1.4;color:rgba(255,255,255,.85)}
+.weather-refresh,.weather-use-location{font-family:var(--font-ui);font-size:11px;line-height:1.3;
+  color:#fff;background:rgba(9,22,37,.24);border:1px solid rgba(255,255,255,.25);border-radius:8px;
+  min-height:30px;padding:5px 7px;cursor:pointer}
+.weather-refresh{flex:none;display:flex;align-items:center;gap:4px}
+.weather-refresh:disabled{opacity:.7;cursor:default}
+.weather-city:focus-visible,.weather-refresh:focus-visible,.weather-use-location:focus-visible,
+.weather-hours:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.weather-feedback,.weather-preview{position:relative;z-index:2;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.weather-notice{font-size:11px;line-height:1.4;margin:7px 0 0}
+.weather-use-location{margin-top:7px}
+.weather-preview{display:none}
+.weather-notice[hidden],.weather-use-location[hidden],.weather-summary[hidden],
+#view-home .weather-hours[hidden],.weather-forecast-empty[hidden]{display:none}
 
 /* Local edge support keeps 11–12px copy readable on the brightest skies without laying a
    muddy veil over the scene itself. These sit above the artwork and below the two text
@@ -1113,10 +1124,10 @@
 /* ── Navigation tree (.nv-*) — ONE component, two mounts ──────────────
    Rendered from NAV_TREE by renderNav() into #ds-nav (the desktop sidebar) and
    #side-menu-list (the phone's hamburger sheet). Same groups, same rows, same order and the
-   same accordion on both; they differ in DENSITY only, which is the two blocks at the end.
+   same accordion on both; desktop hierarchy and scrolling are scoped in the block below.
    This replaced twelve literal .ds-item buttons in index.html, a similar-but-different list
    built by buildSideMenu(), and a third in renderQuickSettingsMenu().
-   Selection is carried by an accent TINT plus a rail plus a weight change — never by tint
+   The shared phone selection uses an accent TINT plus a rail plus a weight change — never by tint
    alone. The default accent is a neutral grey that vanishes as a 3px bar on #080808, which is
    why the rail is --accent-text and not --accent (same reason the Journal rail is). Colour is
    never the only cue: the weight change carries it with no colour at all.
@@ -1143,20 +1154,9 @@
 .nv-row:focus-visible,.nv-hd:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
 /* ── Quick access strip ───────────────────────────────────────────────
-   NAV_QUICK (= NAV_ORDER) pinned above the groups on both mounts, so the five destinations
-   the phone keeps under a thumb are ONE press here too. Reaching Budget or the Food log used
-   to cost two — expand a group, then pick a row — and that cost only ever existed on the
-   surfaces without a bottom nav.
-   Selection reuses .nv-row.is-on's treatment (tint + rail + weight) rather than inventing a
-   second one. .nav-btn.active's colour-and-weight was tried and is wrong HERE: the bottom nav
-   brightens a --muted label to --accent-text, but these rows are already --text, so with the
-   default neutral-grey accent the selected item came out DIMMER than its neighbours. Tint plus
-   rail plus weight is the app's accent-proof combination and it is already this component's.
-   A quick item lights by VIEW and stays lit across every sub-tab, exactly as the bottom nav
-   does, so on Budget > Month both "Budget" here and "Month" in the group below are lit. That
-   is a breadcrumb, not a duplicate — the two blocks are visibly different (icons and a hairline
-   separate them) and they answer different questions.
-   Icons are what separates this block from the group rows below it, which are text-only. */
+   NAV_QUICK keeps the main destinations and Settings directly reachable on both mounts.
+   A quick item lights by VIEW across sub-tabs; a child link lights by the actual section.
+   Desktop separates their selected treatments below; the phone keeps its tint and rail. */
 .nv-quick{display:flex;flex-direction:column;border-bottom:1px solid var(--border)}
 .nv-qrow{display:flex;align-items:center;gap:10px;width:100%;background:transparent;border:0;
   cursor:pointer;text-align:left;font-family:var(--font-ui);color:var(--muted);
@@ -1175,44 +1175,50 @@
 #side-menu-list .nv-qrow.is-on{color:var(--accent-text);font-weight:700}
 #side-menu-list .nv-qrow.is-on::before{left:-4px}
 #side-menu-list .nv-hd{padding:14px 14px 6px}
-#side-menu-list .nv-group:first-child .nv-hd{padding-top:6px}
+#side-menu-list .nv-groups{display:contents}
 #side-menu-list .nv-row{min-height:44px;padding:12px 14px;border-radius:12px;
   font-size:16px;font-weight:600;color:var(--text)}
 #side-menu-list .nv-row.is-on{color:var(--accent-text);font-weight:700}
 #side-menu-list .nv-row.is-on::before{left:-4px}
 
-/* Desktop sidebar: 14px rows in the pill shape the old .ds-item used. */
+/* Desktop: quick destinations, group controls and indented child links have separate levels.
+   Only the groups scroll; quick access cannot cover a link or push the account footer away. */
 @media (min-width:1024px){
-  /* The nav list is the part that scrolls, so an expanded group can never push .ds-profile
-     (margin-top:auto) off the bottom of a 100vh sticky column. min-height:0 is the load-bearing
-     half: a flex child will not shrink below its content height without it. The scrollbar is
-     hidden the same way every other strip in the app hides one (.lg-scroll-x). */
-  #ds-nav{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none}
-  #ds-nav::-webkit-scrollbar{display:none}
-  /* Pinned to the top of the scroller, which is the whole point of the block: with every group
-     expanded #ds-nav is ~1250px of content in a ~490px column on a short laptop, and a shortcut
-     that scrolls out of reach is not a shortcut.
-     A pinned surface has to be OPAQUE, and --card is NOT: in dark mode it is a translucent
-     rgba(255,255,255,.055) wash, so #desktop-sidebar's own background is that wash over --bg
-     and rows would scroll visibly through this block. Compositing the wash over --bg renders
-     the sidebar's exact surface and cannot be seen through — the same fix .seg-tabs uses for
-     the same reason. */
-  #ds-nav .nv-quick{margin:0 0 6px;padding:0 0 8px;position:sticky;top:0;z-index:1;
+  #ds-nav{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+  #ds-nav .nv-quick{flex:none;margin:0;padding:0 0 8px;
     background:linear-gradient(var(--card),var(--card)),var(--bg)}
-  #ds-nav .nv-qrow{margin:0 10px 2px;width:auto;border-radius:12px;padding:9px 14px;
-    font-size:14px;font-weight:600;color:#555;transition:background .15s,color .15s}
-  [data-theme="dark"] #ds-nav .nv-qrow{color:rgba(255,255,255,0.7)}
-  #ds-nav .nv-qrow.is-on{color:var(--accent-text);font-weight:700}
-  #ds-nav .nv-hd{padding:12px 24px 4px;font-size:14px;font-weight:600;
-    letter-spacing:normal;text-transform:none}
-  #ds-nav .nv-row{margin:0 10px 2px;width:auto;border-radius:12px;padding:9px 14px;
-    font-size:14px;font-weight:600;color:#555;transition:background .15s,color .15s}
-  [data-theme="dark"] #ds-nav .nv-row{color:rgba(255,255,255,0.7)}
-  #ds-nav .nv-row.is-on{color:var(--accent-text);font-weight:700}
+  #ds-nav .nv-qrow{flex:none;min-height:36px;margin:0 10px;width:auto;border-radius:9px;
+    padding:7px 12px;font-size:14px;line-height:20px;font-weight:600;color:var(--text);
+    transition:background .15s,color .15s}
+  #ds-nav .nv-qico{color:var(--muted)}
+  #ds-nav .nv-qrow.is-on{background:linear-gradient(rgba(var(--accent-rgb),.10),rgba(var(--accent-rgb),.10)),var(--track);
+    color:var(--text);font-weight:700}
+  #ds-nav .nv-qrow.is-on .nv-qico{color:var(--accent-text)}
+  #ds-nav .nv-qrow.is-on::before{display:none}
+  #ds-nav .nv-groups{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;
+    padding:8px 0;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+  #ds-nav .nv-group+.nv-group{margin-top:4px}
+  #ds-nav .nv-hd{min-height:30px;padding:5px 22px;font-size:12px;line-height:20px;font-weight:600;
+    letter-spacing:normal;text-transform:none;color:var(--muted)}
+  #ds-nav .nv-hd:hover{color:var(--text)}
+  #ds-nav .nv-caret{width:12px;height:12px}
+  #ds-nav .nv-row{min-height:30px;margin:0 10px;width:auto;border-radius:6px;padding:5px 12px 5px 42px;
+    font-size:13px;line-height:20px;font-weight:400;color:var(--muted);transition:background .15s,color .15s}
+  #ds-nav .nv-row:hover{color:var(--text)}
+  #ds-nav .nv-row.is-on{background:transparent;color:var(--text);font-weight:700}
+  #ds-nav .nv-row.is-on::before{left:28px;top:calc(50% - 2px);bottom:auto;width:4px;height:4px;
+    border-radius:50%;background:var(--accent-text)}
+}
+/* At very short heights, one sidebar scroller keeps every link reachable. A fixed quick
+   block plus footer would otherwise leave no usable space for the groups. */
+@media (min-width:1024px) and (max-height:460px){
+  #desktop-sidebar{overflow-y:auto;overscroll-behavior:contain}
+  #ds-nav{flex:none;overflow:visible}
+  #ds-nav .nv-groups{flex:none;overflow:visible}
+  #desktop-sidebar .ds-profile{margin-top:8px}
 }
 
-/* Step 12 — Desktop shell (≥1024px). #desktop-sidebar itself is declared ONCE, in
-   budget-home.css, with the values that used to win here. */
+/* Desktop shell (≥1024px). Base sidebar geometry lives in budget-home.css. */
 @media (min-width:1024px){
   .kitshop-addbar{left:260px}
   .screen-title{font-size:34px}
@@ -1222,8 +1228,14 @@
   .metric-num{font-size:44px}
   .desktop-grid{display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start}
 }
-/* Dashboard-only scenery; the compact phone and Grid sky banner stay unchanged. */
+/* The phone borrows Dashboard's existing neighbourhood; the Grid banner keeps its sky. */
 .weather-neighbourhood{display:none}
+.weather-ridge{fill:var(--village-ridge);opacity:.6}
+.weather-cityscape{fill:var(--village-city);opacity:.85}
+.weather-houses{fill:var(--village-house)}
+.weather-roofs{fill:none;stroke:var(--village-roof);stroke-width:3;stroke-linejoin:round}
+.weather-windows{fill:var(--village-window);opacity:.8}
+.weather-trees{fill:var(--village-tree)}
 @media(min-width:1024px){
   /* These two feature cards share a resting height without coupling the independent
      columns. Allow unusually long text or zoomed content to grow rather than clipping it. */
@@ -1245,12 +1257,6 @@
   #view-home .home-dash .weather-meta{margin-top:5px;max-width:220px}
   #view-home .home-dash .weather-neighbourhood{display:block;position:absolute;bottom:0;left:0;
     width:100%;height:60%;pointer-events:none}
-  .weather-ridge{fill:var(--village-ridge);opacity:.6}
-  .weather-cityscape{fill:var(--village-city);opacity:.85}
-  .weather-houses{fill:var(--village-house)}
-  .weather-roofs{fill:none;stroke:var(--village-roof);stroke-width:3;stroke-linejoin:round}
-  .weather-windows{fill:var(--village-window);opacity:.8}
-  .weather-trees{fill:var(--village-tree)}
   #view-home .home-dash .home-weather-card:not([data-scene$="night"]){
     --village-ridge:#78929d;--village-city:#607c89;--village-house:#3c5867;
     --village-tree:#213f49;--village-roof:#8caaaf;--village-window:#a6c5cc}
@@ -1275,6 +1281,47 @@
   #view-home .home-dash .wfx-sun{width:46px;height:46px;background:#fff0ba;
     box-shadow:0 0 36px 14px rgba(255,221,143,.3)}
 }
+@media(max-width:1023px){
+  #view-home .home-card[data-card-id="weather"]{min-width:0}
+  #view-home .home-weather-card{padding:14px;--village-ridge:#31445c;--village-city:#24354b;
+    --village-house:#16263b;--village-tree:#0d1b2d;--village-roof:#3e536b;--village-window:#f3c482}
+  #view-home .weather-content{display:block;min-width:0}
+  #view-home .weather-day,#view-home .weather-date{display:none}
+  #view-home .weather-heading{margin-bottom:8px}
+  #view-home .weather-city{font-size:12px;line-height:1.3}
+  #view-home .weather-right{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:12px;text-align:left;min-width:0}
+  #view-home .weather-temp-row{grid-row:1/3;justify-content:flex-start;gap:7px}
+  #view-home .weather-temp{font-size:38px;line-height:1;font-weight:700}
+  #view-home .weather-icon{order:1;font-size:24px}
+  #view-home .weather-condition{grid-column:2;font-size:13px;line-height:1.35;margin-top:0;color:#fff}
+  #view-home .weather-meta{grid-column:2;white-space:normal;font-size:11px;line-height:1.4;margin-top:3px}
+  #view-home .weather-preview{display:block;min-width:0;margin-top:9px}
+  #view-home .weather-summary{font-size:11px;line-height:1.4;margin:0 0 7px}
+  #view-home .weather-hours{display:flex;max-width:100%;overflow-x:auto;overflow-y:hidden;
+    overscroll-behavior-x:contain;touch-action:pan-x pan-y;scrollbar-width:thin;
+    scrollbar-color:rgba(255,255,255,.3) transparent;border-top:1px solid rgba(255,255,255,.2);padding-top:7px}
+  #view-home .weather-hour{flex:1 0 50px;min-width:0;display:flex;align-items:center;flex-direction:column;
+    gap:3px;font-size:11px;line-height:1.2;text-align:center}
+  #view-home .weather-hour-time{white-space:nowrap}
+  #view-home .weather-hour .ti{font-size:17px;color:#fff}
+  #view-home .weather-hour-temp{font-family:var(--font-num);font-size:13px;font-weight:700}
+  #view-home .weather-hour-chance{font-family:var(--font-num);min-height:1.2em;font-size:10px;color:rgba(255,255,255,.9)}
+  #view-home .weather-hour-chance:empty{display:none}
+  #view-home .weather-forecast-empty{font-size:11px;line-height:1.4;margin:0;color:rgba(255,255,255,.85)}
+  #view-home .home-weather-card .weather-legibility-left{display:block;width:100%;
+    background:linear-gradient(90deg,rgba(7,17,32,.55),rgba(7,17,32,.12)),linear-gradient(0deg,rgba(7,17,32,.45),transparent 60%)}
+  #view-home .home-weather-card .weather-legibility-right{display:none}
+  #view-home .weather-neighbourhood{display:block;position:absolute;bottom:65px;left:25%;width:85%;height:130px;opacity:.7}
+  #view-home .home-weather-card:not([data-scene$="night"]){--village-ridge:#78929d;--village-city:#607c89;
+    --village-house:#3c5867;--village-tree:#213f49;--village-roof:#8caaaf;--village-window:#a6c5cc}
+  #view-home .home-weather-card[data-scene$="dusk"],#view-home .home-weather-card[data-scene$="dawn"]{
+    --village-ridge:#82627f;--village-city:#584861;--village-house:#353447;--village-tree:#242b38;
+    --village-roof:#987087;--village-window:#ffd097}
+  #view-home .home-weather-card[data-scene^="snow"]{--village-roof:#dde9ec}
+  #view-home .home-weather-card .wfx-sun,#view-home .home-weather-card .wfx-moon{left:78%;top:26%;width:38px;height:38px}
+  #view-home .home-weather-card .wfx-stars{--star-moon-x:calc(78% + 19px);--star-moon-y:calc(26% + 19px)}
+}
+@media(prefers-reduced-motion:reduce){.home-weather-card{transition:none}}
 /* ── Dynamic day colours: animate the accent-driven properties smoothly (0.3s) ── */
 /* CSS custom properties can't transition natively, so we transition the properties
    that USE var(--accent) on each element instead. */

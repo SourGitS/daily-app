@@ -314,7 +314,20 @@
 // comparison and canonical pantry/shopping/log summaries. The existing food logger remains
 // at #food/log; explicit logging links, recipe options and return destinations are preserved.
 // Overview browsing and incoming-data refresh add no storage, migration or sync changes.
-const CACHE_NAME = 'daily-v334';
+// v335: Finance tabs keep content widths and consistent side padding on phones, including
+// short touch landscapes past the desktop breakpoint. Reveal selection after panel rendering;
+// desktop sizing and tab routing stay intact.
+// v336: Splits picker, read-only preview, independent creation and explicit workout protection
+// on activation. Existing program routes, stores and sync paths remain in place.
+// v337: Favourite recipe borders, tints and selection glows follow the dynamic system accent
+// in Recipes and the Shopping picker; category colours and favourite behaviour are unchanged.
+// v338: Month spending bars and Stats Money flow use theme-aware neutral greys;
+// income, saved series and semantic warning colours retain their existing palettes.
+// v339: Desktop sidebar groups follow app destinations, with quieter selected rows,
+// fixed quick access and reachable group scrolling at short viewport heights.
+// v340: Weather refreshes through one lifecycle coordinator with guarded requests and honest
+// freshness/retry states; the phone card adds a location-timezone hourly forecast and scene.
+const CACHE_NAME = 'daily-v340';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

@@ -213,6 +213,59 @@ test('setBudgetView drives the registry and never calls scrollIntoView', () => {
   assert.match(body('budRenderView'), /BUD_VIEWS\.find/);
 });
 
+test('selecting Yearly reveals its whole tab after the new panel restores the scrollbar', () => {
+  const { BUD_VIEWS } = views();
+  const elements = {};
+  const measurements = [];
+  let width = 288;
+  let scrollLeft = 0;
+  let rendered = false;
+  const row = {
+    get scrollLeft() { return scrollLeft; },
+    set scrollLeft(value) { scrollLeft = Math.max(0, Math.min(360 - width, value)); },
+    getBoundingClientRect() {
+      measurements.push({ width, rendered, yearHidden: elements['budget-year-view'].hidden });
+      return { left: 16, width };
+    }
+  };
+  elements['budget-view-tabs'] = row;
+  BUD_VIEWS.forEach((view, index) => {
+    const selected = new Set();
+    elements[view.btn] = {
+      classList: { toggle(name, on) { if (on) selected.add(name); else selected.delete(name); } },
+      setAttribute(name, value) { this[name] = value; },
+      getBoundingClientRect() { return { left: 16 + index * 60 - scrollLeft, width: 60 }; }
+    };
+    const panel = { hidden: view.id !== 'overview' };
+    panel.classList = { toggle(name, hidden) { panel.hidden = hidden; } };
+    elements[view.panel] = panel;
+  });
+  const context = vm.createContext({
+    BUD_VIEWS, budgetView: 'overview',
+    document: { getElementById(id) { return elements[id] || null; } },
+    setNavActive() {},
+    budRenderView(view) {
+      assert.equal(view, 'year');
+      assert.equal(elements['budget-year-view'].hidden, false);
+      // Rendering the tall destination restores a 15px scrollbar after the old panel hid.
+      rendered = true;
+      width = 273;
+    }
+  });
+  vm.runInContext(['segSetOn', 'segScrollToTab', 'setBudgetView'].map(extract).join('\n'), context);
+  context.setBudgetView('year');
+
+  assert.deepEqual(measurements, [{ width: 273, rendered: true, yearHidden: false }],
+    'reveal must measure the final scrollport after the destination is shown and rendered');
+  assert.equal(scrollLeft, 87, 'the browser clamp must use the final width, not leave 15px clipped');
+  const year = elements['bv-year-btn'].getBoundingClientRect();
+  assert.ok(year.left >= 16 && year.left + year.width <= 16 + width);
+  BUD_VIEWS.forEach(view => {
+    assert.equal(elements[view.btn]['aria-selected'], view.id === 'year' ? 'true' : 'false');
+    assert.equal(elements[view.panel].hidden, view.id !== 'year');
+  });
+});
+
 test('the tab strip is a real tablist: six tabs, six panels, one control each', () => {
   const { BUD_VIEWS } = views();
   assert.match(html, /id="budget-view-tabs" role="tablist" aria-label="Finance views"/);

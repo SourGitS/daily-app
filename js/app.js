@@ -1640,7 +1640,7 @@ function setAccentMode(mode){
   applyDayColour();
   // Selecting weather is itself a reason to have current weather — the accent must not wait
   // for a Home render, which may never come if the weather card is switched off.
-  if(mode==='weather' && typeof weatherEnsureFresh==='function'){ _weatherLastCheck=0; weatherEnsureFresh(); }
+  if(mode==='weather' && typeof weatherEnsureFresh==='function') weatherEnsureFresh('appearance');
 }
 // Scene → accent. Deliberately darker/more saturated than the scene gradient itself: the
 // gradient only needs to look like sky, whereas the accent carries white text, so every one
@@ -2416,8 +2416,8 @@ const NAV_QUICK_VIEWS=NAV_ORDER.concat(NAV_QUICK_EXTRA);
 const NAV_QUICK=NAV_QUICK_VIEWS.map(v=>({view:v, label:NAV_QUICK_LABELS[v]||v, icon:NAV_QUICK_ICONS[v]||''}));
 
 // ── Navigation registry ──────────────────────────────────────────
-// The ONE source for the desktop sidebar and the mobile hamburger. Six groups, one open at a
-// time. A row is DATA, not code: {id,label,view,sub} — navGo() turns view+sub into the right
+// The ONE source for the desktop sidebar and the mobile hamburger. Six independently
+// expandable groups. A row is DATA, not code: {id,label,view,sub} — navGo() turns view+sub into the right
 // call and navCurrentRow() turns the current state back into a row id, so the selected state
 // is computed in one place instead of the seven scattered .ds-item toggles this replaced.
 // Adding a destination means adding a row HERE; never a literal button in index.html again.
@@ -2431,41 +2431,33 @@ const NAV_QUICK=NAV_QUICK_VIEWS.map(v=>({view:v, label:NAV_QUICK_LABELS[v]||v, i
 // "Cannot access 'NAV_TREE' before initialization" and abort boot — silently, because the
 // restore only fires when the URL actually carries a hash.
 //
-// Two placements are deliberate. Weekly review is filed under Money even though it opens
-// stats.review: it is a money review in practice (its first and largest section is Money),
-// and the group says what the user is doing, not which screen hosts it. Exercise Library and
-// workout History stop being top-level rows and become Training › Exercises / History, which
-// is where they have actually gone since the Log hub was built.
+// Group labels follow their destinations, while the older training/money IDs preserve saved
+// expansion preferences. Weekly review has one home under Stats, in that destination's tab order.
 const NAV_TREE=[
   // No Home row here, and no Settings row in More below. Those are the two destinations the
   // quick strip duplicates EXACTLY — same label, same view, no sub-tab — so listing either
   // twice a hundred pixels apart, lit twice, read as a bug. Both are pinned above, always
-  // visible and one press from anywhere. The other pinned items (Budget, Log, Nutrition,
-  // Kitchen, Stats) point at views whose tree rows name specific SUB-TABS, so those rows are
-  // genuinely different destinations and stay — landing on Budget is not the same as landing
-  // on Budget › Month.
+  // visible and one press from anywhere. The other pinned items (Finance, Log, Food, Stats)
+  // point at views whose tree rows name specific SUB-TABS, so those rows are different actions
+  // and stay — landing on Finance is not the same as landing on Finance › Month.
   {id:'today', label:'Today', rows:[
     {id:'log-today', label:"Today's session",  view:'log',  sub:'today'},
-    // Kept, and pointed at Food › Today rather than the retired Nutrition tab. It is NOT the
-    // duplicate the Home/Settings rule forbids: the pinned Food item lands wherever you were,
-    // this one always lands on the day log.
+    // The pinned Food item lands wherever you were; this one always opens the food log.
     {id:'nut-today', label:'Food log',         view:'food', sub:'log'},
   ]},
-  {id:'training', label:'Training', rows:[
-    {id:'log-program',   label:'Program',   view:'log', sub:'program'},
+  {id:'training', label:'Log', rows:[
+    {id:'log-program',   label:'Splits',   view:'log', sub:'program'},
     {id:'log-exercises', label:'Exercises', view:'log', sub:'exercises'},
     {id:'log-history',   label:'History',   view:'log', sub:'history'},
   ]},
-  {id:'money', label:'Money', rows:[
-    // Overview leads the group because it leads the tab: it is the current-position screen,
-    // and This week is where you go to change something once you have read it.
+  {id:'money', label:'Finance', rows:[
+    // Keep the labels and order aligned with the Finance tabs in BUD_VIEWS.
     {id:'bud-overview', label:'Overview',   view:'budget',   sub:'overview'},
-    {id:'bud-week',   label:'This week',     view:'budget',   sub:'week'},
+    {id:'bud-week',   label:'Week',          view:'budget',   sub:'week'},
     {id:'bud-month',  label:'Month',         view:'budget',   sub:'month'},
     {id:'bud-bills',  label:'Bills',         view:'budget',   sub:'bills'},
-    {id:'bud-year',   label:'Year',          view:'budget',   sub:'year'},
     {id:'accounts',   label:'Accounts',      view:'budget',   sub:'accounts'},
-    {id:'wkr',        label:'Weekly review', view:'stats',    sub:'review'},
+    {id:'bud-year',   label:'Yearly',        view:'budget',   sub:'year'},
   ]},
   // Was "Kitchen". The group is named for the destination it now holds, and Food library keeps
   // the place it already had here rather than becoming a fifth primary section.
@@ -2478,6 +2470,7 @@ const NAV_TREE=[
   ]},
   {id:'stats', label:'Stats', rows:[
     {id:'st-overview',  label:'Overview',  view:'stats', sub:'overview'},
+    {id:'wkr',         label:'Weekly review', view:'stats', sub:'review'},
     {id:'st-training',  label:'Training',  view:'stats', sub:'training'},
     {id:'st-body',      label:'Body',      view:'stats', sub:'body'},
     {id:'st-nutrition', label:'Nutrition', view:'stats', sub:'nutrition'},
@@ -2502,7 +2495,7 @@ NAV_TREE.forEach(g=>g.rows.forEach(r=>{ NAV_ROW_BY_ID[r.id]=r; }));
 // Save, the Stats evidence overlay, an exercise detail, a mounted Settings section. They are
 // inset past the desktop sidebar rather than covering it, so the nav is visible beside them —
 // which is why they clear the selected row instead of leaving the one underneath lit.
-const NAV_NO_ROW_OVERLAYS=['view-settings-detail','view-split-editor','view-stats-evidence','view-exercise-detail'];
+const NAV_NO_ROW_OVERLAYS=['view-settings-detail','view-split-editor','view-split-preview','view-stats-evidence','view-exercise-detail'];
 
 // One dispatcher. Every nav row goes through here; nothing calls setView plus a sub-tab setter
 // by hand any more. Order matters: setView('log') resets logTodayView and setView('stats')
@@ -2599,7 +2592,7 @@ function navResolveOpen(){
   // No record at all — first run on this device, and everything starts collapsed. It used to
   // open whichever group owned wherever the app happened to have started, which is the same
   // "the menu opened itself" behaviour removed above, only harder to notice. The strip above
-  // the groups is not empty on first run: it holds the seven pinned destinations.
+  // the groups is not empty on first run: it holds the six pinned destinations.
   else                                        navOpenGroups=new Set();
   return navOpenGroups;
 }
@@ -2659,14 +2652,14 @@ function navBuildHtml(){
       '<svg class="nv-qico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '+
         'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+q.icon+'</svg>'+
       '<span>'+q.label+'</span></button>').join('')+'</div>';
-  return quick+NAV_TREE.map(g=>
+  return quick+'<div class="nv-groups">'+NAV_TREE.map(g=>
     '<div class="nv-group" data-nav-group="'+g.id+'">'+
       '<button type="button" class="nv-hd" data-nav-group-hd="'+g.id+'" aria-expanded="false">'+
         '<span>'+g.label+'</span>'+caret+'</button>'+
       '<div class="nv-rows">'+g.rows.map(r=>
         '<button type="button" class="nv-row" data-nav-row="'+r.id+'">'+r.label+'</button>'
       ).join('')+'</div>'+
-    '</div>').join('');
+    '</div>').join('')+'</div>';
 }
 function renderNav(){
   const html=navBuildHtml();
@@ -2704,6 +2697,10 @@ let logTodayView='overview';
 // Which saved program / imported document each screen is looking at. In-memory ON PURPOSE:
 // merely selecting one to read must never write to wt_plans.
 let logProgSel=null;
+let logSplitPreviewId=null;
+let logSplitReturnFocus=null;
+let logSplitSheetFocus=null;
+let logSplitPendingSwitch=null;
 let plansDocSel=null;
 
 // ── Swipe deck (native-feel tab paging) ──────────────────────────
@@ -5958,7 +5955,7 @@ const SETTINGS_SECTIONS={
     // links, and this is the path anyone who learned it will still try. Only the destination
     // moved — days and exercises are edited from Log > Program now, next to the saved
     // programs that snapshot them.
-    label:'Training setup', icon:'dumbbell', tint:'#FF9500',
+    label:'Training splits', icon:'dumbbell', tint:'#FF9500',
     open:function(){ logGoto('program'); },
     summary:function(){
       const n=splitTypes().length;
@@ -6042,9 +6039,9 @@ const SETTINGS_SEARCH=[
   {s:'health',  label:'Calorie target',     sub:'Daily calorie targets', a:'stg-card-calories', keys:'kcal calories tdee cut bulk maintain deficit surplus goal energy macro'},
   {s:'health',  label:'Body weight log',    sub:'Body weight', a:'stg-card-weight',    keys:'weigh in kg scale check chart history track'},
   {s:'health',  label:'Weight goal',        sub:'Weight goal', a:'stg-card-weightgoal', keys:'target body weight target date lose gain drop pace kg'},
-  {s:'training',label:'Training days',      sub:'Log \u203a Program', keys:'split rotation push pull legs day names schedule programme program'},
-  {s:'training',label:'Exercises per day',  sub:'Log \u203a Program', keys:'add remove swap movement lift library order'},
-  {s:'training',label:'Saved programs',     sub:'Log \u203a Program', keys:'plan plans program switch snapshot save split preset'},
+  {s:'training',label:'Training days',      sub:'Log \u203a Splits', keys:'split rotation push pull legs day names schedule programme program'},
+  {s:'training',label:'Exercises per day',  sub:'Log \u203a Splits', keys:'add remove swap movement lift library order'},
+  {s:'training',label:'Saved splits',     sub:'Log \u203a Splits', keys:'plan plans program switch snapshot save split preset'},
   {s:'training',label:'Exercise Library',   sub:'Log \u203a Exercises', keys:'exercise library custom movement muscle group hidden'},
   {s:'budget',  label:'Income sources',     sub:'Categories', keys:'pay wage salary money in earnings'},
   {s:'budget',  label:'Fixed expenses',     sub:'Categories', keys:'rent bills subscriptions recurring monthly direct debit'},
@@ -8354,7 +8351,7 @@ const AI_PEER_OVERLAYS=['view-aihub'];
 // their desktop sidebar inset when the viewport crosses 1024px — they are the same kind of
 // pushed screen and were the only peers that would otherwise have kept a stale inset.
 const APP_PEER_OVERLAYS=[...AI_PEER_OVERLAYS,'view-stats-evidence','view-exercise-detail',
-                         'view-food-library','view-nutrition-review'];
+                         'view-food-library','view-nutrition-review','view-split-preview'];
 function aiHidePeerOverlays(keepId){
   APP_PEER_OVERLAYS.forEach(id=>{
     if(id===keepId) return;
@@ -11807,12 +11804,13 @@ function setBudgetView(v){
   BUD_VIEWS.forEach(x=>{
     const btn=document.getElementById(x.btn);
     segSetOn(btn, x.id===v);
-    if(btn&&x.id===v&&row) segScrollToTab(row, btn);
     const panel=document.getElementById(x.panel);
     if(panel) panel.classList.toggle('hidden', x.id!==v);
   });
   setNavActive();
   budRenderView(v);
+  // Rendering can add a vertical scrollbar; reveal against the strip's final width.
+  segScrollToTab(row, document.getElementById(BUD_VIEWS.find(x=>x.id===v).btn));
 }
 // The registry's own dispatch. Every view names its renderer, so adding one is still a single
 // line in BUD_VIEWS rather than a line there and a branch here.
@@ -12597,6 +12595,19 @@ function budAccentHex(){
     return (typeof accentTextHex==='function') ? accentTextHex(raw, dark) : raw;
   }catch(e){ return '#5C5C5C'; }
 }
+// Only Month's weekly bars and Stats' Money flow use this neutral spending treatment.
+// Keep the shared expense palette intact: other callers include genuine over-budget states.
+function budNeutralSpendPalette(){
+  const dark=budIsDark();
+  const grey=dark?'#A0A0A0':'#5C5C5C';
+  const hover=dark?'#B8B8B8':'#484848';
+  return {
+    variable:grey, variableHover:hover,
+    fixed:'rgba('+hexToRgb(grey)+','+(dark?0.30:0.22)+')',
+    fixedHover:'rgba('+hexToRgb(grey)+','+(dark?0.44:0.34)+')',
+    fixedEdge:grey, fixedHoverEdge:hover
+  };
+}
 function budPalette(){
   const dark=budIsDark();
   const accent=budAccentHex();
@@ -12686,7 +12697,7 @@ function budChartLegend(items){
   // it.dash marks a series drawn as a dashed LINE rather than a filled bar, so the legend
   // distinguishes them by shape too — the savings rate shares the accent with Saved, and a
   // legend that separated them by colour alone would be separating them by nothing.
-  // it.ring does the same job for the committed-spending bars, which are the SAME red as
+  // it.ring does the same job for the committed-spending bars, which use the same hue as
   // variable spending at a third of the strength plus an outline: the legend swatch is
   // outlined too, so the pairing survives greyscale.
   return items.map(it=>{
@@ -15406,20 +15417,13 @@ function openMonthSpendCategory(evidenceKey){
   document.querySelectorAll('.month-spend-row').forEach(row=>row.classList.toggle('selected',row.dataset.evidenceKey===_monthSpendSelected));
   openFinanceCategoryEvidence(evidenceKey);
 }
-// One red, shaded by RANK. The rows are sorted, so colour carries no information here and is
-// free to be decoration — which is the whole reason the donut's palette problem disappears
-// rather than being solved. The shade is derived from budExpenseHex() so there is still one
-// source for the spending red (see BUD_MONEY in CLAUDE.md), and the direction flips per theme:
-// on the dark card the biggest category is the brightest and the tail recedes, on white the
-// biggest is the deepest and the tail pales. Either way "strongest = biggest".
+// Rank shades stay neutral: strongest = biggest, with matching segment and row fills.
+// Keep the lightest/deepest tail visible against each theme's tracks and card surfaces.
 function budRankShade(i,n){
-  const base=budExpenseHex();
-  if(!/^#[0-9a-fA-F]{6}$/.test(base)) return base;
-  const [hu,s]=_hexToHsl(base);
   const t=(n>1)?(i/(n-1)):0;
   const dark=budIsDark();
-  const from=dark?0.62:0.40, to=dark?0.30:0.80;
-  return _hslToHex(hu, Math.max(0.25,s*(dark?1:0.92)), from+(to-from)*t);
+  const from=dark?0.72:0.32, to=dark?0.46:0.54;
+  return _hslToHex(0,0,from+(to-from)*t);
 }
 function renderMonthSpendBreakdown(wrap,monthDate,keys,weekCount,isCurrent){
   if(!weekCount){
@@ -15436,7 +15440,7 @@ function renderMonthSpendBreakdown(wrap,monthDate,keys,weekCount,isCurrent){
   const n=cats.length;
   // Legacy/archived detail keeps its own colourless tone — it is not a category that was
   // chosen, so it should not read as one.
-  const shade=(c,i)=>c.kind==='Legacy'?(budIsDark()?'#94A3B8':'#64748B'):budRankShade(i,n);
+  const shade=(c,i)=>c.kind==='Legacy'?(budIsDark()?'#949494':'#646464'):budRankShade(i,n);
   const max=cats.reduce((m,c)=>Math.max(m,c.val),0)||1;
 
   // Part-to-whole, which is the one thing the donut was genuinely good for — kept as a single
@@ -15559,10 +15563,11 @@ function renderMonth(){
       // components — so the same money was graphed twice at equal visual weight and the tallest
       // bar was always a duplicate. Stacked, the components sum to the total by construction
       // and the comparison that matters (income vs everything it has to cover) is left-to-right.
+      const spend=budNeutralSpendPalette();
       const legend=budChartLegend([
         {c:BUD_CHART_COLORS.income,l:'Income'},
-        {c:BUD_CHART_COLORS.variable,l:'Spent (variable)'},
-        {c:BUD_CHART_COLORS.fixed,l:'Committed',ring:BUD_CHART_COLORS.fixedEdge},
+        {c:spend.variable,l:'Spent (variable)'},
+        {c:spend.fixed,l:'Committed',ring:spend.fixedEdge},
         {c:BUD_CHART_COLORS.saved,l:'Saved'},
       ]);
       wl.innerHTML='<div class="chart-legend">'+legend+'</div><div id="month-weeks-chart-wrap" style="height:220px"><canvas id="month-weeks-chart"></canvas></div>';
@@ -15574,10 +15579,10 @@ function renderMonth(){
           labels,
           datasets:[
             {label:'Income',data:data.map(weekIncome),backgroundColor:BUD_CHART_COLORS.income,borderRadius:3,stack:'in',order:0},
-            {label:'Spent (variable)',data:keys.map((k,i)=>weekVarTotal(data[i],k)),backgroundColor:BUD_CHART_COLORS.variable,borderRadius:3,stack:'out',order:1},
-            // Committed is the same red at a third of the strength, outlined — so the two
+            {label:'Spent (variable)',data:keys.map((k,i)=>weekVarTotal(data[i],k)),backgroundColor:spend.variable,hoverBackgroundColor:spend.variableHover,borderRadius:3,stack:'out',order:1},
+            // Committed is a lighter grey with an outline — so the two
             // halves of "out" separate by fill AND edge, not by hue alone.
-            {label:'Committed',data:data.map(weekFixed),backgroundColor:BUD_CHART_COLORS.fixed,borderColor:BUD_CHART_COLORS.fixedEdge,borderWidth:1,borderRadius:3,stack:'out',order:2},
+            {label:'Committed',data:data.map(weekFixed),backgroundColor:spend.fixed,hoverBackgroundColor:spend.fixedHover,borderColor:spend.fixedEdge,hoverBorderColor:spend.fixedHoverEdge,borderWidth:1,borderSkipped:false,borderRadius:3,stack:'out',order:2},
             {label:'Saved',data:data.map(weekSavedAmt),backgroundColor:BUD_CHART_COLORS.saved,borderRadius:3,stack:'out',order:3},
           ]
         },
@@ -18218,7 +18223,7 @@ function wkrOptionalPageHtml(week,rec,plan){
   if(p.id==='reflection')built=wkrReflectionSectionHtml(week,rec,plan);
   if(p.id==='training'){
     const days=rec&&rec.status==='completed'&&rec.actualSnapshot&&rec.actualSnapshot.trainingDays!=null?rec.actualSnapshot.trainingDays:wkrTrainingDays(week);
-    built='<div class="card">'+cardHeader('calendar','Training this week')+'<p>'+days+' logged training day'+(days===1?'':'s')+' · '+escText(wkrWeekLabel(week))+'</p><div class="wkr-actions"><button class="wkr-btn" onclick="logGoto(\'program\')">Open workout program</button><button class="wkr-btn" onclick="setStatsTab(\'training\')">View training history</button></div></div>';
+    built='<div class="card">'+cardHeader('calendar','Training this week')+'<p>'+days+' logged training day'+(days===1?'':'s')+' · '+escText(wkrWeekLabel(week))+'</p><div class="wkr-actions"><button class="wkr-btn" onclick="logGoto(\'program\')">Open training splits</button><button class="wkr-btn" onclick="setStatsTab(\'training\')">View training history</button></div></div>';
   }
   if(p.id==='health')built='<div class="card">'+cardHeader('flame','Health & habits')+'<p class="wkr-help">Use your recorded health information to choose one sustainable change.</p><div class="wkr-actions"><button class="wkr-btn" onclick="setStatsTab(\'nutrition\')">View nutrition</button><button class="wkr-btn" onclick="setStatsTab(\'body\')">View body trends</button></div></div>';
   const prompts=p.prompts.map(q=>{
@@ -19001,10 +19006,11 @@ function renderBSTrend(){
   const conclusion='Latest completed week: '+fmtMoney(Math.round(totalArr[totalArr.length-1]))+
     (latestAmbiguous?' known spend; full legacy total unavailable.':' out')+
     (incomeArr[incomeArr.length-1]===null?', income not recorded.':' against '+fmtMoney(Math.round(incomeArr[incomeArr.length-1]))+' in.');
+  const spend=budNeutralSpendPalette();
   const legend=budChartLegend([
     {c:BUD_CHART_COLORS.income,l:'Income',line:true},
-    {c:BUD_CHART_COLORS.variable,l:'Variable spend'},
-    {c:BUD_CHART_COLORS.fixed,l:'Committed spend',ring:BUD_CHART_COLORS.fixedEdge}
+    {c:spend.variable,l:'Variable spend'},
+    {c:spend.fixed,l:'Committed spend',ring:spend.fixedEdge}
   ].concat(goalCoverage?[{c:BUD_CHART_COLORS.rate,l:'Saved plan',dash:true}]:[]));
   wrap.innerHTML=card('<div class="stats-chart-summary">'+conclusion+' <button class="stats-inline-link" onclick="openBudgetWeekFromStats(\''+latestDone+'\')">Open source week →</button></div>'+
     '<div class="stats-data-note">Income recorded in '+sum.incomeWeeks+' of '+shown.length+' week'+(shown.length===1?'':'s')+'; unrecorded weeks are drawn as gaps, not zeros. Saved plan available for '+goalCoverage+' of '+shown.length+'. Missing plans are not reconstructed from today’s defaults.'+(ambiguousCoverage?' '+ambiguousCoverage+' snapshot-only legacy week'+(ambiguousCoverage===1?' shows':'s show')+' known detail only.':'')+'</div>'+
@@ -19013,8 +19019,8 @@ function renderBSTrend(){
   const ctx=document.getElementById('bs-trend-chart'); if(!ctx) return;
   const {gc,tc}=budChartGridColors();
   const datasets=[
-    {type:'bar',label:'Committed spend',data:fixedArr,backgroundColor:BUD_CHART_COLORS.fixed,borderColor:BUD_CHART_COLORS.fixedEdge,borderWidth:1,borderRadius:2,stack:'out',maxBarThickness:44,order:3},
-    {type:'bar',label:'Variable spend',data:varArr,backgroundColor:BUD_CHART_COLORS.variable,borderWidth:0,borderRadius:{topLeft:4,topRight:4},stack:'out',maxBarThickness:44,order:3},
+    {type:'bar',label:'Committed spend',data:fixedArr,backgroundColor:spend.fixed,hoverBackgroundColor:spend.fixedHover,borderColor:spend.fixedEdge,hoverBorderColor:spend.fixedHoverEdge,borderWidth:1,borderSkipped:false,borderRadius:2,stack:'out',maxBarThickness:44,order:3},
+    {type:'bar',label:'Variable spend',data:varArr,backgroundColor:spend.variable,hoverBackgroundColor:spend.variableHover,borderWidth:0,borderRadius:{topLeft:4,topRight:4},stack:'out',maxBarThickness:44,order:3},
     // Each line gets its OWN stack id. y.stacked:true is what makes the two expense bars sum
     // into one column, but Chart.js applies it to line datasets too — left alone, income and
     // the saved plan were drawn stacked on top of the bars and on each other, so a $1,023
@@ -20088,7 +20094,7 @@ const WEATHER_FRESH_MS=60*60*1000; // 60 minutes
 // grey box. It's a real live reading for this city, clearly labelled "sample", not fake data —
 // and, because it is not this user's sky, it is never allowed to drive the app's appearance.
 const WEATHER_SAMPLE_LOC={lat:-33.8688, lon:151.2093, city:'Sydney'};
-function weatherIsFresh(c){ return !!(c && c.fetchedAt && (Date.now()-c.fetchedAt) < WEATHER_FRESH_MS); }
+function weatherIsFresh(c){ return !!(c && Number.isFinite(c.fetchedAt) && c.fetchedAt>0 && Date.now()>=c.fetchedAt && (Date.now()-c.fetchedAt) < WEATHER_FRESH_MS); }
 function weatherIsReal(c){ return !!(c && !c.placeholder && c.lat!=null); }
 // The only reading the global accent is allowed to follow: a real location, still fresh.
 function weatherAppearanceEntry(){
@@ -20112,6 +20118,7 @@ let _weatherStatus={state:'idle', message:''};
 function weatherSetStatus(state,message){
   _weatherStatus={state:state, message:message||''};
   if(typeof renderWeatherSection==='function') renderWeatherSection();
+  if(typeof renderWeatherStatus==='function') renderWeatherStatus();
 }
 function weatherRecordFailure(msg){
   const c=loadWeatherCache();
@@ -20140,18 +20147,19 @@ function renderWeatherInto(entry){
   // hiding the card left the whole app following whatever sky was last cached.
   if(accentMode()==='weather' && typeof applyDayColour==='function') applyDayColour();
   if(typeof renderWeatherSection==='function') renderWeatherSection();
+  renderWeatherStatus();
   const tempEl=document.getElementById('home-weather-temp');
   if(!tempEl) return; // card isn't in the current layout — nothing else to patch
   tempEl.textContent=Math.round(entry.tempC)+'°';
   const look=weatherLook(entry);
   weatherSetIcon(document.getElementById('home-weather-icon'),look[0]);
-  // On the sample reading the tappable label states what tapping does, rather than the
-  // condition — the icon already carries that, and an unexplained city is the confusing part.
   const labelEl=document.getElementById('home-weather-label');
-  labelEl.textContent=entry.placeholder?'Tap for your weather':look[1];
-  labelEl.classList.toggle('weather-cta',!!entry.placeholder);
+  labelEl.textContent=look[1];
   const cityEl=document.getElementById('home-weather-city');
-  if(cityEl) cityEl.textContent=entry.placeholder?(entry.city||'Sydney')+' · sample':(entry.city||'');
+  if(cityEl){
+    cityEl.textContent=entry.placeholder?(entry.city||'Sydney')+' · sample':(entry.city||'Weather details');
+    cityEl.setAttribute('aria-label','Weather details and location: '+cityEl.textContent);
+  }
   // Feels-like is only worth showing when it actually differs from the real temperature —
   // repeating the same number twice reads as a bug, not a detail.
   const metaEl=document.getElementById('home-weather-meta');
@@ -20167,24 +20175,84 @@ function renderWeatherInto(entry){
     applyWeatherIntensity(card,entry.code);
     applyWeatherMotion(card,entry);
   }
+  renderWeatherForecast(entry);
 }
-// First-ever load (no cache yet): show an explicit "tap for weather" invite instead of
-// popping the OS location prompt unasked — Home is where most sessions land first, and an
-// unprompted permission dialog there is a bad first impression. Once granted, the browser
-// won't re-prompt, so every later call is a silent refresh via loadWeatherWidget(true)
-// (the label's own tap) or the auto-refresh at the bottom of renderHome().
+function renderWeatherStatus(){
+  const fresh=document.getElementById('home-weather-freshness');
+  if(!fresh) return;
+  const c=loadWeatherCache(), busy=_weatherStatus.state==='loading';
+  const error=_weatherStatus.state==='error'||!!(c&&c.lastError);
+  const offline=navigator.onLine===false;
+  fresh.textContent=c&&c.fetchedAt?'Updated '+weatherAgeLabel(c.fetchedAt):'No update yet';
+  const button=document.getElementById('home-weather-refresh');
+  if(button){
+    button.disabled=busy;
+    button.setAttribute('aria-label',busy?'Updating weather':error?'Retry weather refresh':'Refresh weather');
+    button.querySelector('span').textContent=busy?'Updating…':error?'Retry':'Refresh';
+  }
+  const notice=document.getElementById('home-weather-notice');
+  if(notice){
+    let message=offline?(c?'Offline · showing saved weather.':'Offline · connect and retry.'):'';
+    if(!message&&error) message=c?'May be out of date · refresh failed.':'Weather unavailable · retry or check location settings.';
+    if(!message&&c&&!weatherIsFresh(c)) message='May be out of date · showing the last update.';
+    if(!message&&c&&Number.isFinite(c.observedAt)&&Date.now()-c.observedAt>90*60000){
+      message='Forecast conditions are from '+weatherAgeLabel(c.observedAt)+'.';
+    }
+    if(notice.textContent!==message) notice.textContent=message;
+    notice.hidden=!message;
+  }
+  const location=document.getElementById('home-weather-location');
+  if(location) location.hidden=weatherIsReal(c);
+}
+function renderWeatherForecast(entry){
+  const preview=document.getElementById('home-weather-preview');
+  if(!preview) return;
+  const hours=weatherForecastHours(entry);
+  const sentence=weatherForecastSummary(entry);
+  const summary=document.getElementById('home-weather-summary');
+  summary.textContent=sentence;
+  summary.hidden=!sentence;
+  const strip=document.getElementById('home-weather-hours');
+  const html=hours.map(h=>{
+    const time=weatherForecastTime(entry,h.time);
+    const look=WEATHER_CODES[h.code]||['unknown','Condition unavailable'];
+    let icon=look[0];
+    if(h.isDay===0){ if(h.code===0) icon='moon'; else if(h.code===1||h.code===2) icon='partlyNight'; }
+    const temp=h.tempC==null?'—':Math.round(h.tempC)+'°';
+    const chance=h.rainProbability!=null&&h.rainProbability>=20?h.rainProbability+'%':'';
+    return '<div class="weather-hour" role="listitem" aria-label="'+escText((time||'Time unavailable')+', '+look[1]+', '+(h.tempC==null?'temperature unavailable':Math.round(h.tempC)+' degrees Celsius')+(chance?', '+h.rainProbability+' percent chance of precipitation':''))+'">'+
+      '<span class="weather-hour-time">'+escText(time||'—')+'</span>'+weatherIcon(icon)+
+      '<span class="weather-hour-temp">'+temp+'</span><span class="weather-hour-chance">'+chance+'</span></div>';
+  }).join('');
+  // Keep the strip node and scroll position on freshness ticks and identical responses.
+  if(strip.innerHTML!==html) strip.innerHTML=html;
+  strip.hidden=!hours.length;
+  const empty=document.getElementById('home-weather-forecast-empty');
+  empty.hidden=!!hours.length;
+  empty.textContent='Hourly forecast unavailable';
+}
+// No-data rendering never asks for location; only the explicit location button can do that.
 function renderWeatherPrompt(){
   const labelEl=document.getElementById('home-weather-label'); if(!labelEl) return;
   document.getElementById('home-weather-temp').textContent='';
   weatherSetIcon(document.getElementById('home-weather-icon'),'location');
-  labelEl.textContent='Tap for weather';
+  labelEl.textContent='Weather unavailable';
+  const city=document.getElementById('home-weather-city');
+  if(city){ city.textContent='Weather details'; city.setAttribute('aria-label','Weather details and location'); }
+  const meta=document.getElementById('home-weather-meta'); if(meta) meta.textContent='';
+  renderWeatherStatus();
+  renderWeatherForecast(null);
   setWeatherPlaceholderScene();
 }
 function renderWeatherError(denied){
+  const cached=loadWeatherCache();
+  if(cached){ renderWeatherInto(cached); return; }
   const labelEl=document.getElementById('home-weather-label'); if(!labelEl) return;
   document.getElementById('home-weather-temp').textContent='';
   weatherSetIcon(document.getElementById('home-weather-icon'),'location');
-  labelEl.textContent=denied?'Enable location for weather':'Couldn\'t load weather — tap to retry';
+  labelEl.textContent=denied?'Location access unavailable':'Weather unavailable';
+  renderWeatherStatus();
+  renderWeatherForecast(null);
   setWeatherPlaceholderScene();
 }
 // Both no-data states share the clock-based sky; without this they kept whatever scene was
@@ -20199,99 +20267,178 @@ function setWeatherPlaceholderScene(){
 }
 // One place that turns coordinates into a reading, so the sample city, the saved-coordinate
 // refresh and the real geolocation path all build an identical entry.
-function fetchWeatherAt(lat,lon){
+function fetchWeatherAt(lat,lon,signal){
   return fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+
         '&current=temperature_2m,apparent_temperature,weather_code,is_day,cloud_cover,wind_speed_10m,wind_direction_10m'+
-        '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=1&timezone=auto')
-    .then(r=>r.json())
+        '&hourly=temperature_2m,weather_code,is_day,precipitation_probability,precipitation'+
+        '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=2&timezone=auto&timeformat=unixtime',
+        signal?{signal}:undefined)
+    .then(r=>{ if(!r.ok) throw new Error('weather HTTP '+r.status); return r.json(); })
     .then(data=>{
       const c=data&&data.current;
-      if(!c||c.temperature_2m==null) throw new Error('no current-weather block');
-      const d=(data&&data.daily)||{};
-      const first=a=>Array.isArray(a)&&a.length?a[0]:null;
-      return {lat,lon,tempC:c.temperature_2m,feelsC:c.apparent_temperature,
-        code:c.weather_code,isDay:c.is_day,cloud:c.cloud_cover,
-        wind:c.wind_speed_10m,windDir:c.wind_direction_10m,
+      if(!c||!Number.isFinite(c.temperature_2m)) throw new Error('no current-weather block');
+      const d=(data&&data.daily)||{}, h=(data&&data.hourly)||{};
+      const value=n=>Number.isFinite(n)?n:null;
+      const first=a=>Array.isArray(a)&&a.length?value(a[0]):null;
+      const instant=n=>Number.isFinite(n)?n*1000:null;
+      const iso=n=>Number.isFinite(n)?new Date(n*1000).toISOString():null;
+      const at=(a,i)=>Array.isArray(a)?value(a[i]):null;
+      return {lat,lon,tempC:c.temperature_2m,feelsC:value(c.apparent_temperature),
+        code:value(c.weather_code),isDay:value(c.is_day),cloud:value(c.cloud_cover),
+        wind:value(c.wind_speed_10m),windDir:value(c.wind_direction_10m),
         tmax:first(d.temperature_2m_max),tmin:first(d.temperature_2m_min),
-        sunrise:first(d.sunrise),sunset:first(d.sunset),
+        sunrise:iso(first(d.sunrise)),sunset:iso(first(d.sunset)),
         city:weatherCityFromTz(data&&data.timezone),
+        timezone:typeof data.timezone==='string'?data.timezone:'',utcOffsetSeconds:value(data.utc_offset_seconds),
+        // Provider/model validity and successful retrieval are distinct clocks. Unix times
+        // avoid interpreting the forecast city's local hour in the handset's timezone.
+        observedAt:instant(c.time),
+        hourly:(Array.isArray(h.time)?h.time:[]).map((time,i)=>({
+          time:instant(time),tempC:at(h.temperature_2m,i),code:at(h.weather_code,i),
+          isDay:at(h.is_day,i),rainProbability:at(h.precipitation_probability,i),
+          precipitation:at(h.precipitation,i)
+        })).filter(hour=>hour.time!==null),
         fetchedAt:Date.now()};
     });
 }
-// Routine refresh. Runs whether or not the Home weather card is in the layout, because
-// weather-driven appearance needs current data of its own accord. Reuses stored coordinates
-// while permission-compatible — getCurrentPosition() is never called here, and a browser can
-// only prompt when we actually ask where we are, which is what stops iOS asking every launch.
-function loadWeatherWidget(userInitiated){
+const WEATHER_CHECK_MS=60*1000;
+const WEATHER_RETRY_MS=5*60*1000; // failed automatic requests wait five minutes
+const WEATHER_REQUEST_MS=20000;
+let _weatherRequest=null, _weatherGeneration=0, _weatherLastAttemptAt=0;
+let _weatherLastAttemptKey='', _weatherWasOffline=false;
+let _weatherLifecycleStarted=false, _weatherInterval=null;
+function weatherLocationKey(c){
+  return c&&Number.isFinite(c.lat)&&Number.isFinite(c.lon)
+    ? c.lat+','+c.lon+','+(c.placeholder?'sample':'real') : '';
+}
+function weatherCancelRequest(){
+  _weatherGeneration++;
+  const request=_weatherRequest;
+  _weatherRequest=null;
+  _weatherLoading=false;
+  if(request&&request.cancel) request.cancel();
+}
+function weatherRequestCurrent(request){
+  if(_weatherRequest!==request||request.generation!==_weatherGeneration) return false;
   const cache=loadWeatherCache();
+  return weatherLocationKey(cache)===request.baseKey && (cache&&cache.fetchedAt||0)===request.baseFetchedAt;
+}
+// One coordinator owns every weather request, including explicit location gestures. Ordinary
+// lifecycle checks reuse saved coordinates (or the labelled sample) and never ask permission.
+function weatherRefresh(options){
+  const opts=options||{}, cache=loadWeatherCache();
   if(cache) renderWeatherInto(cache);
-  if(_weatherLoading) return;
-  const haveRealLocation=weatherIsReal(cache);
-
-  // Tapping the card while it's showing the sample means "use my location" — one of only two
-  // paths that touch geolocation, so the OS dialog only ever appears after a direct gesture.
-  if(userInitiated && !haveRealLocation){ weatherUseCurrentLocation(); return; }
-  if(weatherIsFresh(cache) && !userInitiated) return;
-
-  if(haveRealLocation){ weatherRefreshStored(); return; }
-
-  // No location yet: show a real reading for the sample city so the card looks finished
-  // instead of empty, with the label inviting them to switch to their own. Explicitly
-  // flagged placeholder:true, which is what keeps it out of the appearance system.
+  else if(typeof renderWeatherStatus==='function') renderWeatherStatus();
+  const useLocation=!!opts.useCurrentLocation;
+  const target=weatherLocationKey(cache)?cache:{...WEATHER_SAMPLE_LOC,placeholder:true};
+  const key=useLocation?'current-location':weatherLocationKey(target);
+  if(_weatherRequest){
+    if(!useLocation&&_weatherRequest.useLocation) return _weatherRequest.promise;
+    if(_weatherRequest.key===key&&weatherRequestCurrent(_weatherRequest)) return _weatherRequest.promise;
+    weatherCancelRequest();
+  }
+  if(!useLocation&&!opts.force&&weatherIsFresh(cache)&&!cache.lastError) return Promise.resolve(true);
+  const visibleHome=typeof S!=='undefined'&&S.view==='home'&&document.getElementById('home-weather-temp');
+  if(!cache&&!useLocation&&!opts.force&&opts.reason!=='home'&&!visibleHome&&accentMode()!=='weather') return Promise.resolve(false);
+  const feedback=!!opts.force&&opts.reason!=='onboarding';
+  if(navigator.onLine===false){
+    _weatherWasOffline=true;
+    weatherRecordFailure(cache?'You are offline — showing the last reading.':'You are offline. Connect to load weather.');
+    if(cache) renderWeatherInto(cache); else renderWeatherError(false);
+    if(feedback&&typeof showToast==='function') showToast('Weather could not update — you are offline');
+    return Promise.resolve(false);
+  }
+  if(_weatherWasOffline){ _weatherLastAttemptAt=0; _weatherWasOffline=false; }
+  const now=Date.now();
+  if(!opts.force&&key===_weatherLastAttemptKey&&_weatherLastAttemptAt&&now-_weatherLastAttemptAt<WEATHER_RETRY_MS){
+    if(!cache) renderWeatherError(false);
+    return Promise.resolve(false);
+  }
+  _weatherLastAttemptAt=now; _weatherLastAttemptKey=key;
+  const request={generation:++_weatherGeneration,key,useLocation,baseKey:weatherLocationKey(cache),
+    baseFetchedAt:cache&&cache.fetchedAt||0,promise:null,cancel:null};
+  _weatherRequest=request;
   _weatherLoading=true;
   weatherSetStatus('loading','');
-  fetchWeatherAt(WEATHER_SAMPLE_LOC.lat,WEATHER_SAMPLE_LOC.lon)
-    .then(e=>{ e.city=WEATHER_SAMPLE_LOC.city; e.placeholder=true; weatherRecordSuccess(e); renderWeatherInto(e); })
-    .catch(()=>{ weatherRecordFailure('Could not reach the weather service.'); renderWeatherError(false); })
-    .finally(()=>{ _weatherLoading=false; });
+  let deadline=null, controller=typeof AbortController==='function'?new AbortController():null;
+  const work=new Promise((resolve,reject)=>{
+    request.cancel=()=>{ if(controller) controller.abort(); reject(new Error('superseded')); };
+    // The deadline also settles browsers/providers that ignore AbortSignal.
+    deadline=setTimeout(()=>{
+      if(controller) controller.abort();
+      reject(new Error('timeout'));
+    },WEATHER_REQUEST_MS+(useLocation?15000:0));
+    const fetchAt=(lat,lon)=>{
+      if(!weatherRequestCurrent(request)){ reject(new Error('superseded')); return; }
+      if(useLocation){
+        _weatherPerm='granted';
+        if(typeof renderWeatherSection==='function') renderWeatherSection();
+      }
+      fetchWeatherAt(lat,lon,controller&&controller.signal).then(resolve,reject);
+    };
+    if(useLocation){
+      if(!navigator.geolocation){ reject(new Error('location-unavailable')); return; }
+      navigator.geolocation.getCurrentPosition(
+        pos=>fetchAt(pos.coords.latitude,pos.coords.longitude),
+        err=>reject(new Error(err&&err.code===1?'location-denied':'location-failed')),
+        {maximumAge:0,enableHighAccuracy:false,timeout:15000}
+      );
+    }else fetchAt(target.lat,target.lon);
+  });
+  request.promise=work.then(entry=>{
+    if(!weatherRequestCurrent(request)) return false;
+    // Retain any existing location metadata on a saved-coordinate refresh; a new fix owns
+    // its own region. Never carry the sample flag onto a newly acquired real location.
+    if(!useLocation){ entry={...cache,...entry}; if(target.city) entry.city=target.city; if(target.placeholder) entry.placeholder=true; }
+    _weatherLoading=false;
+    weatherRecordSuccess(entry);
+    renderWeatherInto(entry);
+    if(feedback&&typeof showToast==='function') showToast('Weather updated');
+    return true;
+  }).catch(error=>{
+    if(!weatherRequestCurrent(request)) return false;
+    if(error.message==='location-denied') _weatherPerm='denied';
+    const msg=error.message==='location-denied'
+      ? 'Location permission was refused. Allow it in your browser or iOS Settings, then try again.'
+      : error.message==='location-unavailable' ? 'This browser cannot provide a location.'
+      : error.message==='location-failed' ? 'Could not get a location fix. Try again somewhere with a clearer signal.'
+      : (cache?'Could not refresh weather — showing the last reading.':'Could not reach the weather service. Try again.');
+    _weatherLoading=false;
+    weatherRecordFailure(msg);
+    const previous=loadWeatherCache();
+    if(previous) renderWeatherInto(previous); else renderWeatherError(error.message==='location-denied');
+    if(feedback&&typeof showToast==='function') showToast('Weather could not update — try again');
+    return false;
+  }).finally(()=>{
+    clearTimeout(deadline);
+    if(_weatherRequest===request){
+      _weatherRequest=null; _weatherLoading=false;
+      if(_weatherStatus.state==='loading') weatherSetStatus('idle','');
+    }
+  });
+  return request.promise;
 }
-// Refetch at the coordinates already stored. Keeps the last good reading on any failure —
-// but records the failure rather than swallowing it, so Weather settings can say so.
+function loadWeatherWidget(userInitiated){
+  if(userInitiated&&!weatherIsReal(loadWeatherCache())) return weatherUseCurrentLocation();
+  weatherStartLifecycle();
+  return weatherRefresh({force:!!userInitiated,reason:userInitiated?'retry':'home'});
+}
 function weatherRefreshStored(){
   const cache=loadWeatherCache();
-  if(!cache || cache.lat==null){ weatherSetStatus('error','No saved location to refresh.'); return; }
-  if(_weatherLoading) return;
-  _weatherLoading=true;
-  weatherSetStatus('loading','');
-  fetchWeatherAt(cache.lat,cache.lon)
-    .then(e=>{ if(cache.placeholder){ e.placeholder=true; e.city=cache.city; } weatherRecordSuccess(e); renderWeatherInto(e); })
-    .catch(()=>{ weatherRecordFailure('Could not reach the weather service \u2014 showing the last reading.'); })
-    .finally(()=>{ _weatherLoading=false; });
+  if(!weatherLocationKey(cache)){ weatherSetStatus('error','No saved location to refresh.'); return Promise.resolve(false); }
+  return weatherRefresh({force:true,reason:'retry'});
 }
-// A direct user gesture: ALWAYS reacquire coordinates. maximumAge:0 is the point of it —
-// "Update current location" that answers from a six-hour-old cached fix has not updated
-// anything, which is exactly what made a stale suburb impossible to correct.
+// A location change invalidates an outstanding saved-location response before acquiring a
+// fresh fix. Repeated taps join the same request instead of asking the OS repeatedly.
 function weatherUseCurrentLocation(){
-  if(!navigator.geolocation){
-    weatherRecordFailure('This browser cannot provide a location.');
-    renderWeatherError(false); return;
-  }
-  _weatherLoading=true;
-  weatherSetStatus('loading','');
-  navigator.geolocation.getCurrentPosition(
-    pos=>{
-      const lat=pos.coords.latitude, lon=pos.coords.longitude;
-      fetchWeatherAt(lat,lon)
-        .then(e=>{ weatherRecordSuccess(e); renderWeatherInto(e); if(typeof showToast==='function') showToast('Weather updated'); })
-        .catch(()=>{ weatherRecordFailure('Found your location, but the weather service did not answer.'); renderWeatherError(false); })
-        .finally(()=>{ _weatherLoading=false; });
-    },
-    err=>{
-      _weatherLoading=false;
-      const denied=!!(err&&err.code===1);
-      weatherRecordFailure(denied
-        ? 'Location permission was refused. Your browser or iOS Settings controls this \u2014 Daily cannot grant it.'
-        : 'Could not get a location fix. Try again somewhere with a clearer signal.');
-      const c=loadWeatherCache();
-      if(c) renderWeatherInto(c); else renderWeatherError(denied);
-    },
-    {maximumAge:0, enableHighAccuracy:false, timeout:15000}
-  );
+  return weatherRefresh({force:true,useCurrentLocation:true,reason:'location'});
 }
 // Clears the device cache, and — because the user asked for exactly that — also removes the
 // obsolete users/<uid>/weatherCache node that older builds uploaded coordinates to. Nothing
 // else reads that node; this is the only place it is ever deleted.
 function weatherClearSaved(){
+  weatherCancelRequest();
+  _weatherLastAttemptAt=0; _weatherLastAttemptKey='';
   try{
     localStorage.removeItem('daily_weather_cache');
     localStorage.removeItem('daily_weather_cache_ts');
@@ -20325,14 +20472,26 @@ function weatherAgeLabel(ts){
   const days=Math.floor(hrs/24);
   return days+' day'+(days===1?'':'s')+' ago';
 }
+function weatherConditionsTime(c){
+  if(!c||!Number.isFinite(c.observedAt)||c.observedAt<=0) return '';
+  const format=(time,zone)=>new Intl.DateTimeFormat('en-AU',{timeZone:zone,day:'numeric',month:'short',
+    hour:'numeric',minute:'2-digit',hour12:true}).format(new Date(time));
+  if(c.timezone){ try{ return format(c.observedAt,c.timezone); }catch(e){} }
+  if(Number.isFinite(c.utcOffsetSeconds)&&Math.abs(c.utcOffsetSeconds)<=86400){
+    return format(c.observedAt+c.utcOffsetSeconds*1000,'UTC');
+  }
+  return format(c.observedAt,'UTC')+' UTC';
+}
 function weatherSourceLabel(c){
   if(!c) return {t:'Unavailable', d:'No reading has been taken on this device yet.'};
   if(c.placeholder) return {t:'Sydney sample', d:'A real live reading for a sample city, shown so the card is not empty. It never drives the app colour.'};
-  if(weatherIsFresh(c)) return {t:'Your current location', d:'A live reading for the coordinates saved on this device.'};
+  if(weatherIsFresh(c)) return {t:'Your current location', d:'Latest forecast conditions for the coordinates saved on this device.'};
   return {t:'Cached real location', d:'Your location, but the reading is older than an hour and is treated as stale.'};
 }
 function renderWeatherSection(){
   const wrap=document.getElementById('settings-weather-section'); if(!wrap) return;
+  const coordinates=wrap.querySelector('.wx-details');
+  const coordinatesOpen=!!(coordinates&&coordinates.open);
   const c=loadWeatherCache();
   const src=weatherSourceLabel(c);
   const app=weatherAppearanceStatus();
@@ -20354,7 +20513,8 @@ function renderWeatherSection(){
       row('Scene Daily reads', '<code>'+escText(scene)+'</code>')+
       row('Temperature', (c&&c.tempC!=null)?(Math.round(c.tempC)+'°C'):'—')+
       row('Last updated', (c?escText(weatherAgeLabel(c.fetchedAt)):'never')+(stale?' · stale':''))+
-      (navigator.onLine===false?'<div class="stg-status" style="margin:12px 0 0">You are offline — showing the last reading.</div>':'')+
+      (weatherConditionsTime(c)?row('Conditions for',escText(weatherConditionsTime(c))+' · model time'):'')+
+      (navigator.onLine===false?'<div class="stg-status" style="margin:12px 0 0">'+(c?'You are offline — showing the last reading.':'You are offline. Connect to load weather.')+'</div>':'')+
       ((err||liveMsg)?'<div class="stg-status err" style="margin:12px 0 0" role="alert">'+escText(liveMsg||err)+'</div>':'')+
     '</div>'+
     '<div class="stg-card" id="stg-card-wx-location">'+
@@ -20365,12 +20525,12 @@ function renderWeatherSection(){
       row('Forecast region', c?escText(c.city||'—'):'—')+
       row('Location permission', escText(WEATHER_PERM_LABEL[_weatherPerm]||WEATHER_PERM_LABEL.unknown))+
       (c&&c.lat!=null
-        ? '<details class="wx-details"><summary>Stored coordinates</summary>'+
+        ? '<details class="wx-details"'+(coordinatesOpen?' open':'')+'><summary>Stored coordinates</summary>'+
           '<div class="wx-coords">'+escText(Number(c.lat).toFixed(4))+', '+escText(Number(c.lon).toFixed(4))+
           '<br><span class="stg-help">Kept on this device only. Never uploaded, never included in a backup file.</span></div></details>'
         : '')+
       '<div class="stg-actions stack">'+
-        '<button type="button" class="stg-btn primary"'+(busy?' disabled':'')+' onclick="weatherUseCurrentLocation()">'+
+        '<button type="button" class="stg-btn primary"'+(busy&&_weatherRequest&&_weatherRequest.useLocation?' disabled':'')+' onclick="weatherUseCurrentLocation()">'+
           (weatherIsReal(c)?'Update current location':'Use current location')+'</button>'+
         '<button type="button" class="stg-btn"'+((busy||!c||c.lat==null)?' disabled':'')+' onclick="weatherRefreshStored()">Refresh at the saved location</button>'+
       '</div>'+
@@ -20383,29 +20543,93 @@ function renderWeatherSection(){
     '<div class="stg-card stg-danger-zone" id="stg-card-wx-danger">'+
       stgCardHead('alert','Danger zone','Removes the cached reading and coordinates from this device, so old coordinates stop being reused. If you are signed in it also deletes the obsolete copy an earlier version of Daily uploaded.')+
       '<div class="stg-actions stack">'+
-        '<button type="button" class="stg-btn danger"'+((busy||!c)?' disabled':'')+' onclick="weatherClearSaved()">Clear saved weather &amp; location</button>'+
+        '<button type="button" class="stg-btn danger"'+(!c?' disabled':'')+' onclick="weatherClearSaved()">Clear saved weather &amp; location</button>'+
       '</div>'+
     '</div>';
 }
-// Called from app launch, tab returns and appearance changes. Throttled so a burst of
-// visibility/pageshow events cannot turn into a burst of requests.
-let _weatherLastCheck=0;
-function weatherEnsureFresh(){
-  const now=Date.now();
-  if(now-_weatherLastCheck < 60*1000) return;
-  _weatherLastCheck=now;
-  const cache=loadWeatherCache();
-  // Nothing saved and no reason to need it yet: don't fetch a sample the user hasn't asked for.
-  if(!cache && accentMode()!=='weather' && !(typeof _homeIds!=='undefined' && _homeIds.includes && _homeIds.includes('weather'))) return;
-  if(weatherIsFresh(cache)) return;
-  if(weatherIsReal(cache)){ weatherRefreshStored(); return; }
-  loadWeatherWidget();
+// iOS can suspend timers for hours. Resume, Home entry and reconnection all check now;
+// the visible timer is only a fallback for a page left open. Rendering installs nothing.
+function weatherEnsureFresh(reason){
+  weatherStartLifecycle();
+  return weatherRefresh({reason:reason||'check'});
+}
+function weatherStopInterval(){
+  if(_weatherInterval!==null){ clearInterval(_weatherInterval); _weatherInterval=null; }
+}
+function weatherStartInterval(){
+  if(document.hidden||_weatherInterval!==null) return;
+  _weatherInterval=setInterval(()=>{
+    if(!document.hidden) weatherEnsureFresh('interval');
+  },WEATHER_CHECK_MS);
+}
+function weatherStartLifecycle(){
+  if(_weatherLifecycleStarted) return;
+  _weatherLifecycleStarted=true;
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden){ weatherStopInterval(); return; }
+    weatherStartInterval(); weatherEnsureFresh('resume');
+  });
+  window.addEventListener('pageshow',()=>{ weatherStartInterval(); weatherEnsureFresh('resume'); });
+  window.addEventListener('pagehide',weatherStopInterval);
+  window.addEventListener('online',()=>{ weatherEnsureFresh('online'); });
+  window.addEventListener('offline',()=>{
+    _weatherWasOffline=true;
+    if(typeof renderWeatherStatus==='function') renderWeatherStatus();
+    if(typeof renderWeatherSection==='function') renderWeatherSection();
+  });
+  weatherStartInterval();
 }
 // Fixed set of decorative layers for every possible scene, shown/hidden per
 // .home-weather-card[data-scene] in CSS — cheaper and simpler than swapping markup per
 // condition, since it is just controlled data-attribute writes in renderWeatherInto(). The
 // shared cloud banks and fixed rain/snow fields stay organic through varied shape and timing,
 // never per-frame DOM work or repeating particle textures.
+// Forecast slots use provider instants, never the device's local interpretation of a city clock.
+function weatherForecastHours(entry,now=Date.now()){
+  if(!entry||!Array.isArray(entry.hourly)||!Number.isFinite(now)) return [];
+  const number=v=>typeof v==='number'&&Number.isFinite(v)?v:null;
+  const seen=new Set(), end=now+6*60*60*1000;
+  return entry.hourly.filter(h=>h&&number(h.time)!=null&&h.time>0&&h.time>=now&&h.time<=end)
+    .slice().sort((a,b)=>a.time-b.time).filter(h=>{
+      if(seen.has(h.time)) return false;
+      seen.add(h.time); return true;
+    }).slice(0,6).map(h=>({
+      time:h.time,tempC:number(h.tempC),code:Number.isInteger(h.code)?h.code:null,
+      isDay:h.isDay===0||h.isDay===1?h.isDay:null,
+      rainProbability:number(h.rainProbability)!=null&&h.rainProbability>=0&&h.rainProbability<=100?h.rainProbability:null,
+      precipitation:number(h.precipitation)!=null&&h.precipitation>=0?h.precipitation:null
+    }));
+}
+function weatherForecastTime(entry,time){
+  if(!entry||!Number.isFinite(time)||time<=0) return '';
+  if(entry.timezone){
+    try{
+      return new Intl.DateTimeFormat('en-AU',{timeZone:entry.timezone,hour:'numeric',minute:'2-digit',hour12:true})
+        .format(new Date(time)).replace(':00','').replace(/\s+/g,' ').toLowerCase();
+    }catch(e){}
+  }
+  // Legacy caches may have no timezone. An explicit provider offset is safe; device time is not.
+  if(!Number.isFinite(entry.utcOffsetSeconds)||Math.abs(entry.utcOffsetSeconds)>24*60*60) return '';
+  const d=new Date(time+entry.utcOffsetSeconds*1000), h=d.getUTCHours(), m=d.getUTCMinutes();
+  if(!Number.isFinite(h)) return '';
+  return (h%12||12)+(m?':'+String(m).padStart(2,'0'):'')+' '+(h<12?'am':'pm');
+}
+function weatherForecastSummary(entry,now=Date.now()){
+  const hours=weatherForecastHours(entry,now);
+  if(!hours.length||!weatherForecastTime(entry,hours[0].time)) return '';
+  const event=hours.find(h=>h.precipitation>0||h.rainProbability>=30);
+  if(event){
+    const rain=[51,53,55,56,57,61,63,65,66,67,80,81,82].includes(event.code);
+    const snow=[71,73,75,77,85,86].includes(event.code);
+    const kind=rain?'Rain':snow?'Snow':'Precipitation';
+    return kind+(event.precipitation>0?' forecast around ':' possible around ')+weatherForecastTime(entry,event.time)+'.';
+  }
+  // A gap, an unknown condition or distant first slot cannot support a claim about the next few hours.
+  if(hours.length>=3&&hours[0].time-now<=60*60*1000&&hours.every((h,i)=>
+    (h.code===0||h.code===1)&&!(h.precipitation>0)&&!(h.rainProbability>=30)&&
+    (!i||h.time-hours[i-1].time===60*60*1000))) return 'Clear through the next few hours.';
+  return '';
+}
 function buildWeatherCard(){
   const d=localMidnight(getLocalDate());
   const dayLabel=d.toLocaleDateString('en-AU',{weekday:'long'});
@@ -20440,7 +20664,11 @@ function buildWeatherCard(){
     '<div class="weather-legibility weather-legibility-right" aria-hidden="true"></div>'+
     '<div class="weather-content">'+
       '<div class="weather-left">'+
-        '<div class="weather-city" id="home-weather-city"></div>'+
+        '<div class="weather-heading">'+
+          '<div class="weather-place"><button type="button" class="weather-city" id="home-weather-city" onclick="openSettingsSection(\'weather\')" aria-label="Weather details and location">Weather details</button>'+
+            '<span class="weather-freshness" id="home-weather-freshness">No update yet</span></div>'+
+          '<button type="button" class="weather-refresh" id="home-weather-refresh" onclick="weatherRefresh({force:true,reason:\'retry\'})" aria-label="Refresh weather"><i class="ti ti-refresh" aria-hidden="true"></i><span>Refresh</span></button>'+
+        '</div>'+
         '<div class="weather-day">'+dayLabel+'</div>'+
         '<div class="weather-date">'+dateLabel+'</div>'+
       '</div>'+
@@ -20449,9 +20677,16 @@ function buildWeatherCard(){
           '<span class="weather-icon" id="home-weather-icon">'+weatherIcon('location')+'</span>'+
           '<span class="weather-temp" id="home-weather-temp"></span>'+
         '</div>'+
-        '<div class="weather-condition" id="home-weather-label" onclick="loadWeatherWidget(true)">Loading…</div>'+
+        '<div class="weather-condition" id="home-weather-label">Loading…</div>'+
         '<div class="weather-meta" id="home-weather-meta"></div>'+
       '</div>'+
+    '</div>'+
+    '<div class="weather-feedback"><p class="weather-notice" id="home-weather-notice" role="status" aria-live="polite" hidden></p>'+
+      '<button type="button" class="weather-use-location" id="home-weather-location" onclick="weatherUseCurrentLocation()" hidden>Use my location</button></div>'+
+    '<div class="weather-preview" id="home-weather-preview">'+
+      '<p class="weather-summary" id="home-weather-summary" hidden></p>'+
+      '<div class="weather-hours" id="home-weather-hours" role="list" aria-label="Next six hours at the forecast location" tabindex="0" ontouchstart="event.stopPropagation()" ontouchmove="event.stopPropagation()" hidden></div>'+
+      '<p class="weather-forecast-empty" id="home-weather-forecast-empty">Hourly forecast unavailable</p>'+
     '</div>'+
   '</div>';
 }
@@ -20900,7 +21135,7 @@ function renderHome(){
   // cannot describe the same session differently.
   const heroActLabel=mBrief.state==='saved'?'Review workout'
                     :mBrief.state==='inprogress'?'Continue workout'
-                    :mBrief.state==='empty'?'Set up program':'Open workout';
+                    :mBrief.state==='empty'?'Set up split':'Open workout';
   // 'empty' gets its own eyebrow rather than falling through to UP NEXT: there is nothing up
   // next until the day has exercises, and Log says so — the two surfaces read one state and
   // must word it the same way.
@@ -22555,34 +22790,61 @@ function obEnsureBudgetStarter(){
   }
 }
 // ── Training split editor (shared: onboarding 'split' step + Settings overlay) ──
-// Works on a flat, editable list of "days" (each = name + its own exercise list). On save
-// it becomes splitConfig.types with a 1:1 schedule. splitToDays expands an existing split's
-// schedule so what you edit matches the rotation you actually see.
+// The editor shows rotation slots. Source references stay in memory so opening/saving does
+// not flatten repeated days or strip metadata from the existing split.
 let obSplitDraft = null;
-const SE = { days:[], target:-1, pickerQuery:'', container:'se-wrap' };
+const SE = { days:[], target:-1, pickerQuery:'', container:'se-wrap', mode:'live', name:'', customExercises:[] };
 function splitToDays(cfg){
   const src=(cfg&&Array.isArray(cfg.types)&&cfg.types.length)?cfg:splitCfg();
   const sch=(Array.isArray(src.schedule)&&src.schedule.length)?src.schedule:src.types.map((_,i)=>i);
-  return sch.map((idx,i)=>{
+  const days=sch.map((idx,i)=>{
     const t=src.types[idx]||src.types[0]||{};
-    return {
-      id:'d'+i+'_'+Math.random().toString(36).slice(2,6),
+    const day=Object.assign(JSON.parse(JSON.stringify(t)),{
+      id:t.id||('d'+i+'_'+Math.random().toString(36).slice(2,6)),
       name:t.name||('Day '+(i+1)),
       colorKey:t.colorKey||'',
       barColor:t.barColor||SPLIT_PALETTE[i%SPLIT_PALETTE.length],
-      exercises:(t.exercises||[]).map(e=>({...e})),
-    };
+      exercises:JSON.parse(JSON.stringify(t.exercises||[])),
+    });
+    Object.defineProperty(day,'_seSource',{value:{index:idx,initial:JSON.stringify(day)}});
+    return day;
   });
+  Object.defineProperty(days,'_seSourceCfg',{value:JSON.parse(JSON.stringify(src))});
+  return days;
 }
 function daysToSplit(days){
-  const types=(days||[]).map((d,i)=>({
+  const source=days&&days._seSourceCfg;
+  const normalise=(d,i)=>Object.assign(JSON.parse(JSON.stringify(d)),{
     id:d.id||('d'+i+'_'+Math.random().toString(36).slice(2,6)),
     name:(d.name||('Day '+(i+1))).trim()||('Day '+(i+1)),
     colorKey:d.colorKey||'',
     barColor:d.barColor||SPLIT_PALETTE[i%SPLIT_PALETTE.length],
-    exercises:(d.exercises||[]).filter(e=>e&&e.name).map(e=>({...e, sets:e.sets||1})),
-  }));
-  return { types, schedule: types.map((_,i)=>i) };
+    exercises:(d.exercises||[]).filter(e=>e&&e.name).map(e=>Object.assign(JSON.parse(JSON.stringify(e)),{sets:e.sets||1})),
+  });
+  if(!source){ const types=(days||[]).map(normalise); return {types,schedule:types.map((_,i)=>i)}; }
+  const cfg=JSON.parse(JSON.stringify(source)),types=cfg.types,counts=new Map(),variants=new Map();
+  days.forEach(d=>{if(d._seSource) counts.set(d._seSource.index,(counts.get(d._seSource.index)||0)+1);});
+  const schedule=days.map((d,i)=>{
+    const info=d._seSource;
+    if(info&&types[info.index]){
+      if(JSON.stringify(d)===info.initial) return info.index;
+      const edited=normalise(d,i);
+      if(counts.get(info.index)===1){ types[info.index]=edited; return info.index; }
+      const key=info.index+':'+JSON.stringify(edited);
+      if(variants.has(key)) return variants.get(key);
+      edited.id=edited.id+'_'+Math.random().toString(36).slice(2,8);
+      const index=types.push(edited)-1; variants.set(key,index); return index;
+    }
+    return types.push(normalise(d,i))-1;
+  });
+  const used=new Set(schedule),originalSlots=new Set(source.schedule||source.types.map((_,i)=>i)),indices=new Map();
+  cfg.types=types.filter((t,i)=>{
+    const keep=i>=source.types.length||used.has(i)||!originalSlots.has(i);
+    if(keep) indices.set(i,indices.size);
+    return keep;
+  });
+  cfg.schedule=schedule.map(i=>indices.get(i));
+  return cfg;
 }
 function seRerender(){ renderSplitEditor(SE.container); }
 function renderSplitEditor(containerId){
@@ -22628,7 +22890,8 @@ function renderSplitEditor(containerId){
 }
 function sePickerListHTML(){
   const d=SE.days[SE.target]; if(!d) return '';
-  const lib=loadExerciseLib();
+  const lib=loadExerciseLib().slice();
+  if(SE.mode==='new') SE.customExercises.forEach(e=>{if(!lib.some(x=>x.name.toLowerCase()===e.name.toLowerCase())) lib.push(e);});
   const q=(SE.pickerQuery||'').toLowerCase().trim();
   const inDay=new Set((d.exercises||[]).map(e=>e.name.toLowerCase()));
   const filtered=lib.filter(e=>!inDay.has(e.name.toLowerCase())&&(!q||e.name.toLowerCase().includes(q)));
@@ -22637,7 +22900,7 @@ function sePickerListHTML(){
       '<span class="se-picker-pick" onclick="sePick('+JSON.stringify(e.name).replace(/"/g,'&quot;')+')">'+
         '<span>'+_catEscHtml(e.name)+'</span><span class="se-picker-muscle">'+e.muscle+'</span>'+
       '</span>'+
-      '<button class="se-picker-edit" onclick="event.stopPropagation();openEditExercise(\''+e.id+'\')" aria-label="Edit exercise">✎</button>'+
+      (SE.mode==='new'&&SE.customExercises.some(x=>x.id===e.id)?'':'<button class="se-picker-edit" onclick="event.stopPropagation();openEditExercise(\''+e.id+'\')" aria-label="Edit exercise">✎</button>')+
     '</div>'
   ).join('');
   if(q && !lib.some(e=>e.name.toLowerCase()===q)){
@@ -22657,12 +22920,12 @@ function seClearAll(){
   try{
     alreadySaved=(loadPlans().plans||[]).some(p=>planIsProgram(p)&&planCfgFingerprint(p.cfg)===planCfgFingerprint(daysToSplit(SE.days)));
   }catch(e){}
-  if(!alreadySaved && SE.days.some(d=>(d.exercises||[]).length)){
-    if(confirm('Save this split as a program before clearing it?\n\nYou can switch back to it any time from Log › Program.')){
+  if(SE.mode!=='new'&&!alreadySaved && SE.days.some(d=>(d.exercises||[]).length)){
+    if(confirm('Save this split before clearing it?\n\nYou can switch back to it any time from Log › Splits.')){
       // Persist what's in the editor right now, so the saved program matches what's on screen.
       const cfg=sanitizeSplit(daysToSplit(SE.days));
       if(cfg){
-        const name=(prompt('Name this program?', cfg.types.length+'-day split')||'').trim();
+        const name=(prompt('Name this split?', cfg.types.length+'-day split')||'').trim();
         if(name){
           const data=loadPlans();
           data.plans.push({id:'plan_'+Date.now(),name,kind:'split',description:'',
@@ -22687,14 +22950,29 @@ function sePick(name){ const d=SE.days[SE.target]; if(d&&name&&!d.exercises.some
 function sePickCustom(){
   const name=(SE.pickerQuery||'').trim(); if(!name) return;
   const lib=loadExerciseLib();
-  if(!lib.some(e=>e.name.toLowerCase()===name.toLowerCase())){ lib.push({id:'ex_custom_'+Date.now(),name,muscle:libGuessMuscle(name),custom:true}); saveExerciseLib(lib); }
+  if(!lib.some(e=>e.name.toLowerCase()===name.toLowerCase())){
+    const exercise={id:'ex_custom_'+Date.now(),name,muscle:libGuessMuscle(name),custom:true};
+    if(SE.mode==='new'){
+      if(!SE.customExercises.some(e=>e.name.toLowerCase()===name.toLowerCase())) SE.customExercises.push(exercise);
+    }else{ lib.push(exercise); saveExerciseLib(lib); }
+  }
   sePick(name);
+}
+function seSaveNewExercises(cfg){
+  const names=new Set(cfg.types.flatMap(t=>(t.exercises||[]).map(e=>e.name.toLowerCase()))),lib=loadExerciseLib().slice();
+  let added=false;
+  SE.customExercises.forEach(e=>{
+    if(names.has(e.name.toLowerCase())&&!lib.some(x=>x.name.toLowerCase()===e.name.toLowerCase())){
+      lib.push(JSON.parse(JSON.stringify(e))); added=true;
+    }
+  });
+  if(added) saveExerciseLib(lib);
 }
 
 // ── Onboarding 'split' step ──
 function obSplitHTML(){
   if(!obSplitDraft) obSplitDraft = splitToDays(genericSplit());
-  SE.days = obSplitDraft; SE.target=-1; SE.pickerQuery=''; SE.container='se-wrap';
+  SE.days = obSplitDraft; SE.target=-1; SE.pickerQuery=''; SE.container='se-wrap'; SE.mode='onboarding';
   return '<div class="ob-head"><div class="ob-title">Build your split</div><div class="ob-desc">Add a day for each training session in your week, name it, and pick its exercises. Skip to start with a simple 3-day full-body split.</div></div>'+
     '<div id="se-wrap"></div>'+
     '<div class="ob-btn-row" style="margin-top:14px">'+
@@ -22706,10 +22984,27 @@ function obSkipSplit(){ obData.splitSkipped=true; obSplitDraft=null; obNext(); }
 
 // ── Settings overlay entry points ──
 function openSplitEditor(){
-  SE.days = splitToDays(splitCfg()); SE.target=-1; SE.pickerQuery=''; SE.container='split-editor-wrap';
+  SE.days = splitToDays(splitCfg()); SE.target=-1; SE.pickerQuery=''; SE.container='split-editor-wrap'; SE.mode='live'; SE.name=''; SE.customExercises=[];
+  seOpenEditor();
+}
+function openNewSplitEditor(){
+  SE.days=[{id:'d'+Date.now()+'_0',name:'Day 1',colorKey:'',barColor:SPLIT_PALETTE[0],exercises:[]}];
+  SE.target=-1; SE.pickerQuery=''; SE.container='split-editor-wrap'; SE.mode='new'; SE.name=''; SE.customExercises=[];
+  seOpenEditor();
+}
+function seEditorChrome(){
+  const creating=SE.mode==='new';
+  const title=document.getElementById('split-editor-title'),nameWrap=document.getElementById('split-editor-name-wrap'),name=document.getElementById('split-editor-name'),help=document.getElementById('split-editor-help');
+  if(title) title.textContent=creating?'Create split':'Edit split';
+  if(nameWrap) nameWrap.classList.toggle('hidden',!creating);
+  if(name) name.value=SE.name;
+  if(help) help.textContent=creating?'Name your split and add its training days. Saving adds it to Your splits; your current split stays in use.':'Each training day rotates in order. Changes apply to your current split when you save. Your saved workout history is never changed.';
+}
+function seOpenEditor(){
   const v=document.getElementById('view-split-editor'); if(!v) return;
   v.style.display='block';
   v.style.left=layoutIsDesktop()?'260px':'0';
+  seEditorChrome();
   renderSplitEditor('split-editor-wrap');
   setNavActive();
   if(typeof closeMenu==='function') closeMenu();
@@ -22718,12 +23013,22 @@ function closeSplitEditor(){ const v=document.getElementById('view-split-editor'
 function saveSplitEditor(){
   const cfg=daysToSplit(SE.days);
   if(!cfg.types.length){ closeSplitEditor(); return; }
-  splitConfig=cfg; saveSplit();
-  if(S.dayIdx>=scheduleLen()) S.dayIdx=0;
-  closeSplitEditor();
-  if(S.view==='log'&&typeof renderLog==='function') renderLog();
-  if(S.view==='home'&&typeof renderHome==='function') renderHome();
-  if(S.view==='stats'&&statsSubTab==='training'&&typeof renderTraining==='function') renderTraining();
+  if(SE.mode==='new'){
+    const name=String(SE.name||'').trim();
+    if(!name){ showToast('Name your split before saving'); document.getElementById('split-editor-name')?.focus(); return; }
+    if(plansSaveNewSplit(name,cfg)){ seSaveNewExercises(cfg); closeSplitEditor(); }
+    return;
+  }
+  if(JSON.stringify(cfg)===JSON.stringify(splitCfg())){ closeSplitEditor(); return; }
+  logConfirmSplitChange(()=>{
+    splitConfig=cfg; saveSplit();
+    logResetWorkoutForSplit();
+    closeSplitEditor();
+    if(typeof plansRefreshViews==='function') plansRefreshViews();
+    if(S.view==='log'&&typeof renderLog==='function') renderLog();
+    if(S.view==='home'&&typeof renderHome==='function') renderHome();
+    if(S.view==='stats'&&statsSubTab==='training'&&typeof renderTraining==='function') renderTraining();
+  });
 }
 
 // ── Budget structural editor (Settings → Budget) ──────────────────
@@ -23286,34 +23591,15 @@ function obWeatherUse(){
   const btn=document.getElementById('ob-weather-btn');
   const note=document.getElementById('ob-weather-note');
   if(btn){ btn.disabled=true; btn.textContent='Getting your location…'; }
-  if(!navigator.geolocation){
-    if(note) note.textContent='This browser cannot provide a location. You can still enable weather later in Settings → Weather.';
-    if(btn){ btn.disabled=false; btn.textContent='Use my location'; }
-    return;
-  }
-  navigator.geolocation.getCurrentPosition(
-    pos=>{
-      fetchWeatherAt(pos.coords.latitude,pos.coords.longitude)
-        .then(e=>{
-          weatherRecordSuccess(e);
-          obData.weather=true;
-          if(accentMode()==='weather'&&typeof applyDayColour==='function') applyDayColour();
-          renderObStep();          // redraws with the real card + a Continue button
-        })
-        .catch(()=>{
-          if(note) note.textContent='Found your location, but the weather service did not answer. You can try again later in Settings → Weather.';
-          if(btn){ btn.disabled=false; btn.textContent='Use my location'; }
-        });
-    },
-    err=>{
-      const denied=!!(err&&err.code===1);
-      if(note) note.textContent=denied
-        ? 'Location is blocked for this site. Your browser or iOS Settings controls that — you can allow it there and enable weather in Settings → Weather.'
-        : 'Could not get a location fix. You can try again anytime in Settings → Weather.';
+  return weatherRefresh({force:true,useCurrentLocation:true,reason:'onboarding'}).then(ok=>{
+    if(ok){
+      obData.weather=true;
+      renderObStep();
+    }else{
+      if(note) note.textContent=_weatherStatus.message||'Weather did not update. You can try again in Settings → Weather.';
       if(btn){ btn.disabled=false; btn.textContent='Use my location'; }
-    },
-    {maximumAge:0, enableHighAccuracy:false, timeout:15000}
-  );
+    }
+  });
 }
 // Keeps the preview honest if a reading arrived from elsewhere while the screen was open.
 function obWeatherRefreshPreview(){
@@ -28744,9 +29030,9 @@ function renderPlans(){
   // who saved one wondering whether it survived.
   if(programCount){
     h+='<div class="lg-card">'+
-      '<div class="lg-blank">Your '+programCount+' saved workout program'+(programCount===1?'':'s')+
-      ' moved to Log › Program.</div>'+
-      '<button type="button" class="lg-btn" onclick="logGoto(\'program\')">Open Log › Program</button>'+
+      '<div class="lg-blank">Your '+programCount+' saved training split'+(programCount===1?'':'s')+
+      ' are in Log › Splits.</div>'+
+      '<button type="button" class="lg-btn" onclick="logGoto(\'program\')">Open Log › Splits</button>'+
     '</div>';
   }
 
@@ -28996,8 +29282,11 @@ function renderLogToday(){
 // fingerprint Plans already compares with, so "training now" means the same thing in both.
 function logActiveProgram(){
   try{
-    const plans=(loadPlans().plans||[]).filter(planIsProgram);
-    return plans.find(p=>planAppliedState(p)==='active')||null;
+    const data=loadPlans();
+    const matches=(data.plans||[]).filter(p=>planAppliedState(p)==='active');
+    // Identical copies are still one live split. Applied time breaks ties only AFTER matching.
+    return matches.sort((a,b)=>(Number(b.lastAppliedAt)||0)-(Number(a.lastAppliedAt)||0) ||
+      Number(b.id===data.activePlanId)-Number(a.id===data.activePlanId))[0]||null;
   }catch(e){ return null; }
 }
 // The three latest saved sessions, newest first. Sorts a CLONE — S.sessions is the canonical
@@ -29047,7 +29336,7 @@ function logHeroHtml(b){
     act='View in history'; run="logGoto('history')";
   } else {
     sub='This training day has no exercises yet, so there is nothing to log.';
-    act='Set up program'; run="logGoto('program')";
+    act='Set up split'; run="logGoto('program')";
   }
   // The next rotation, named as its own line and clearly not the session just saved. It is
   // suggestDay()'s answer, which is exactly what the logger will open next time.
@@ -29127,7 +29416,7 @@ function logPlanCardHtml(b){
   const exs=(t&&t.exercises)||[];
   const title=isNext?'Up next':'Today’s plan';
   const head=cardHeader('medal',title,
-    '<button type="button" class="card-hd-act" onclick="logGoto(\'program\')">Program &rarr;</button>');
+    '<button type="button" class="card-hd-act" onclick="logGoto(\'program\')">Splits &rarr;</button>');
   if(!exs.length){
     return '<div class="lg-card">'+head+
       '<div class="lg-blank">'+escText(t&&t.name?t.name:'This training day')+
@@ -29232,112 +29521,133 @@ function logProgramSelected(){
   try{ const id=loadPlans().activePlanId; hit=list.find(p=>p.id===id); }catch(e){}
   return hit || list.find(p=>planAppliedState(p)==='active') || list[0];
 }
-function logProgSelect(id){ logProgSel=id; renderLogProgram(); }
-
+function logSplitRotation(cfg){
+  const types=cfg&&Array.isArray(cfg.types)?cfg.types:[];
+  const order=cfg&&Array.isArray(cfg.schedule)&&cfg.schedule.length?cfg.schedule:types.map((_,i)=>i);
+  return order.map(i=>types[i]).filter(Boolean).map(t=>t.name||'Training day');
+}
+function logSplitAction(fn,id){ return escAttr(fn+'('+JSON.stringify(id)+')'); }
+function logProgSelect(id){
+  if(!logProgramList().some(p=>p.id===id)) return;
+  logProgSel=id; logSplitPreviewId=id;
+  logSplitReturnFocus=document.activeElement;
+  const el=document.getElementById('view-split-preview'); if(!el) return;
+  aiHidePeerOverlays('view-split-preview');
+  el.style.display='block'; el.style.left=layoutIsDesktop()?'260px':'0';
+  renderLogSplitPreview(); el.scrollTop=0;
+  const back=el.querySelector('.back-btn'); if(back) back.focus({preventScroll:true});
+  setNavActive();
+}
+function logCloseSplitPreview(){
+  const el=document.getElementById('view-split-preview');
+  if(el){ el.style.display='none'; el.style.left='0'; }
+  logSplitPreviewId=null;
+  if(logSplitReturnFocus&&logSplitReturnFocus.isConnected) logSplitReturnFocus.focus({preventScroll:true});
+  logSplitReturnFocus=null; setNavActive();
+}
 function renderLogProgram(){
   const el=document.getElementById('log-program-content'); if(!el) return;
-  const types=splitTypes()||[], sched=splitSchedule()||[];
-  const list=logProgramList();
-  const sel=logProgramSelected();
-  const applied=sel?planAppliedState(sel)==='active':false;
-
-  let h='<div class="log-sec-head"><span class="log-sec-title">Program</span></div>';
-
-  // What the Log is actually running right now, and the way to change it.
-  h+='<div class="lg-card">'+
-    cardHeader('flame','Now training')+
-    (types.length
-      ? '<div class="lg-prog-now">'+escText(logActiveProgram()?logActiveProgram().name:'Current split')+'</div>'+
-        '<div class="lg-prog-meta">'+types.length+' day'+(types.length===1?'':'s')+' · '+
-          (sched.length||1)+'-day rotation</div>'+
-        '<div class="lg-day-list">'+types.map((t,i)=>
-          '<div class="lg-day"><span class="lg-day-n">'+(i+1)+'</span>'+
-          '<span class="lg-day-name">'+escText(t.name||('Day '+(i+1)))+'</span>'+
-          '<span class="lg-day-ex">'+((t.exercises||[]).length)+' ex</span></div>').join('')+
-        '</div>'
-      : '<div class="lg-blank">No training days yet. Add them in the editor below.</div>')+
-    // The split editor is a collection editor with its own top-bar Save, so it stays a
-    // full-screen push rather than being inlined here — the same rule Settings follows.
-    '<button type="button" class="lg-btn primary" onclick="openSplitEditor()">Edit days &amp; exercises</button>'+
-  '</div>';
-
-  // Saved snapshots.
-  h+='<div class="lg-card">'+
-    cardHeader('pin','Saved programs')+
-    (list.length
-      ? list.map(p=>{
-          const on=p.id===(sel&&sel.id);
-          const isLive=planAppliedState(p)==='active';
-          const dayCount=planIsProgram(p)?((p.cfg&&p.cfg.types||[]).length):0;
-          return '<button type="button" class="lg-row lg-pick'+(on?' on':'')+'" onclick="logProgSelect(\''+escAttr(p.id)+'\')">'+
-            '<span class="lg-row-l"><span class="lg-row-name">'+escText(p.name||'Untitled')+'</span>'+
-            '<span class="lg-row-meta">'+(planIsProgram(p)?dayCount+' day'+(dayCount===1?'':'s'):'Legacy workout plan')+'</span></span>'+
-            (isLive?'<span class="lg-live">Training now</span>':'<span class="lg-row-v">Select</span>')+
-          '</button>';
-        }).join('')
-      : '<div class="lg-blank">No saved programs yet. Save your current split below and you can switch back to it any time.</div>')+
-    '<button type="button" class="lg-btn" onclick="plansSaveCurrentAsProgram()">+ Save current split as a program</button>'+
-  '</div>';
-
-  // Actions for whichever snapshot is selected.
-  if(sel&&planIsProgram(sel)){
-    h+='<div class="lg-card">'+
-      cardHeader('pin',escText(sel.name||'Program'),(applied?'<span class="lg-live">Training now</span>':''))+
-      '<div class="lg-day-list">'+((sel.cfg&&sel.cfg.types)||[]).map((t,i)=>
-        '<div class="lg-day"><span class="lg-day-n">'+(i+1)+'</span>'+
-        '<span class="lg-day-name">'+escText(t.name||('Day '+(i+1)))+'</span>'+
-        '<span class="lg-day-ex">'+((t.exercises||[]).length)+' ex</span></div>').join('')+
-      '</div>'+
-      '<button type="button" class="lg-btn primary" onclick="plansApply(\''+escAttr(sel.id)+'\')"'+(applied?' disabled':'')+'>'+
-        (applied?'Currently training this':'Switch to this program')+'</button>'+
-      '<div class="lg-btn-row">'+
-        '<button type="button" class="lg-btn" onclick="plansUpdateFromCurrent(\''+escAttr(sel.id)+'\')">Save current split into this</button>'+
-        '<button type="button" class="lg-btn" onclick="plansRename(\''+escAttr(sel.id)+'\')">Rename</button>'+
-      '</div>'+
-      '<button type="button" class="lg-btn danger" onclick="plansDelete(\''+escAttr(sel.id)+'\')">Delete this program</button>'+
-    '</div>';
-  }else if(sel){
-    const dayNames=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    let legacyRows='';
-    if(Array.isArray(sel.exercises)){
-      legacyRows=sel.exercises.map(e=>{
-        const detail=e&&(e.detail||(e.sets&&e.reps?e.sets+'×'+e.reps:''));
-        return '<div class="lg-day"><span class="lg-day-name">'+escText(e&&e.name||'Exercise')+'</span>'+
-          '<span class="lg-day-ex">'+escText(detail||'')+'</span></div>';
-      }).join('');
-    }else{
-      legacyRows=dayNames.map((name,i)=>{
-        const day=sel.days&&sel.days[String(i)], exs=day&&Array.isArray(day.exercises)?day.exercises:[];
-        if(!day&&!exs.length) return '';
-        return '<div class="lg-day"><span class="lg-day-n">'+name+'</span><span class="lg-day-name">'+
-          escText(day&&day.name||name)+'</span><span class="lg-day-ex">'+exs.length+' ex</span></div>';
-      }).join('');
-    }
-    h+='<div class="lg-card">'+
-      cardHeader('note',escText(sel.name||'Legacy workout plan'))+
-      (sel.description?'<div class="lg-help">'+escText(sel.description)+'</div>':'')+
-      '<div class="lg-day-list">'+(legacyRows||'<div class="lg-blank">This older plan has no saved exercises.</div>')+'</div>'+
-      '<div class="lg-help">This older format is kept unchanged for reference and export. Save your current split as a new program to use the live workout logger.</div>'+
-      '<div class="lg-btn-row">'+
-        '<button type="button" class="lg-btn" onclick="plansRename(\''+escAttr(sel.id)+'\')">Rename</button>'+
-        '<button type="button" class="lg-btn" onclick="plansExportPlan(\''+escAttr(sel.id)+'\')">Export</button>'+
-      '</div>'+
-      '<button type="button" class="lg-btn danger" onclick="plansDelete(\''+escAttr(sel.id)+'\')">Delete this plan</button>'+
-    '</div>';
-  }
-
-  // Program transfer. HTML plan documents import in the Plans tab instead — this is workout
-  // data only, which is why the HTML button is not repeated here.
-  h+='<div class="lg-card">'+
-    cardHeader('down','Import &amp; export')+
-    '<div class="lg-btn-row">'+
-      '<button type="button" class="lg-btn" onclick="plansImport()">Import JSON</button>'+
-      '<button type="button" class="lg-btn" onclick="logProgramExport()"'+(sel?'':' disabled')+'>Export selected</button>'+
-    '</div>'+
-    '<div class="lg-help">Exports the selected program as JSON. Imported plan documents live in Plans.</div>'+
-  '</div>';
-
-  el.innerHTML=h;
+  const cfg=splitCfg(), list=logProgramList(), active=logActiveProgram();
+  const source=list.find(p=>p.id===loadPlans().activePlanId&&planIsProgram(p));
+  const rotation=logSplitRotation(cfg).join(' · ');
+  el.innerHTML='<div class="lg-split-picker">'+
+    '<div class="lg-card lg-split-current">'+cardHeader('flame','Current split')+
+      '<div class="lg-prog-now">'+escText(active?active.name:'Current split')+'</div>'+
+      '<p class="lg-split-rotation">'+escText(rotation||'No training days yet')+'</p>'+
+      (!active?'<p class="lg-help">'+(source?'Different from your saved copy “'+escText(source.name)+'”.':'Not saved in Your splits yet. You can still use and edit it.')+'</p>':'')+
+      '<div class="lg-split-actions"><button type="button" class="lg-btn primary" onclick="openSplitEditor()">Edit split</button>'+
+      ((cfg.types||[]).length?'<button type="button" class="lg-btn" onclick="plansSaveCurrentAsProgram()">Save as a new split</button>':'')+'</div></div>'+
+    '<section class="lg-split-collection" aria-label="Your splits">'+cardHeader('pin','Your splits')+
+      '<div class="lg-split-actions"><button type="button" class="lg-btn primary" onclick="openNewSplitEditor()">Create split</button>'+
+      '<button type="button" class="lg-btn" onclick="plansImport()">Import</button></div>'+
+      (list.length?'<div class="lg-split-grid">'+list.map(p=>'<div class="lg-card lg-split-item">'+
+        '<button type="button" class="lg-split-pick" onclick="'+logSplitAction('logProgSelect',p.id)+'" aria-label="'+escAttr('Preview split '+p.name)+'">'+
+          '<span class="lg-row-name">'+escText(p.name||'Untitled split')+'</span>'+
+          '<span class="lg-split-rotation">'+escText(planIsProgram(p)?logSplitRotation(p.cfg).join(' · '):'Older workout format')+'</span>'+
+          (active&&active.id===p.id?'<span class="lg-live">In use</span>':'')+'</button>'+
+        '<button type="button" class="lg-split-more" aria-label="'+escAttr('Actions for '+p.name)+'" onclick="'+logSplitAction('logSplitMenu',p.id)+'">•••</button></div>').join('')+'</div>':
+        '<div class="lg-card lg-blank">No saved splits yet. Create one, import one, or save your current split to choose from later.</div>')+'</section></div>';
+}
+function logSplitExerciseHtml(ex){
+  if(!ex) return '';
+  const details=[];
+  if(ex.sets) details.push(ex.sets+' sets');
+  if(ex.reps) details.push(ex.reps+' '+(ex.unit||'reps'));
+  else if(ex.unit) details.push(ex.unit);
+  if(ex.weight) details.push(ex.weight+' kg');
+  if(ex.rest) details.push(ex.rest+' rest');
+  const note=[ex.note,ex.detail].find(value=>typeof value==='string'&&value.trim());
+  return '<li><span class="lg-row-name">'+escText(ex.name||'Exercise')+'</span>'+
+    (details.length?'<span class="lg-split-rotation">'+escText(details.join(' · '))+'</span>':'')+
+    (note?'<span class="lg-help">'+escText(note)+'</span>':'')+'</li>';
+}
+function renderLogSplitPreview(){
+  const p=logProgramList().find(x=>x.id===logSplitPreviewId);
+  if(!p){ logCloseSplitPreview(); return; }
+  const title=document.getElementById('log-split-preview-title'); if(title) title.textContent=p.name||'Split preview';
+  const el=document.getElementById('log-split-preview-content'); if(!el) return;
+  const modern=planIsProgram(p), matching=modern&&planAppliedState(p)==='active';
+  let days=modern?p.cfg.types:Array.isArray(p.exercises)?[{name:p.name,exercises:p.exercises}]:
+    Object.keys(p.days||{}).map(k=>({...p.days[k],name:(p.days[k]&&p.days[k].name)||['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][Number(k)]||'Day'}));
+  el.innerHTML='<div class="lg-card">'+cardHeader('flame',modern?'Rotation order':'Older workout format')+
+    (modern?'<p class="lg-split-rotation">'+escText(logSplitRotation(p.cfg).join(' · '))+'</p>':
+      '<p class="lg-help">Kept for viewing and export. This older format cannot be used by the current workout logger.</p>')+
+    (p.description?'<p class="lg-help">'+escText(p.description)+'</p>':'')+
+    (modern?(matching?'<p class="lg-live lg-split-status">Currently in use</p>':
+      '<button type="button" class="lg-btn primary" onclick="'+logSplitAction('plansApply',p.id)+'">Use this split</button>'):'')+'</div>'+
+    days.map((day,i)=>'<div class="lg-card">'+cardHeader('calendar',escText(day.name||'Day '+(i+1)))+
+      '<ul class="lg-split-exercises">'+((day.exercises||[]).map(logSplitExerciseHtml).join('')||'<li class="lg-help">No exercises saved for this day.</li>')+'</ul></div>').join('');
+}
+function logSplitSheetOpen(title,html){
+  const ov=document.getElementById('log-split-sheet'), box=document.getElementById('log-split-sheet-box');
+  if(!ov||!box) return;
+  if(ov.classList.contains('hidden')) logSplitSheetFocus=document.activeElement;
+  box.innerHTML='<div class="lg-split-sheet-head"><h2 id="log-split-sheet-title">'+escText(title)+'</h2>'+
+    '<button type="button" class="lg-split-more" aria-label="Close split actions" onclick="logSplitSheetClose()">×</button></div>'+html;
+  ov.classList.remove('hidden'); box.scrollTop=0;
+  const first=box.querySelector('input,textarea,button'); if(first) first.focus({preventScroll:true});
+}
+function logSplitSheetClose(){
+  const ov=document.getElementById('log-split-sheet'); if(ov) ov.classList.add('hidden');
+  logSplitPendingSwitch=null;
+  if(logSplitSheetFocus&&logSplitSheetFocus.isConnected) logSplitSheetFocus.focus({preventScroll:true});
+  logSplitSheetFocus=null;
+}
+function logSplitDialogKeydown(event,preview){
+  if(event.key==='Escape'){ event.preventDefault(); preview?logCloseSplitPreview():logSplitSheetClose(); return; }
+  if(event.key!=='Tab') return;
+  const el=document.getElementById(preview?'view-split-preview':'log-split-sheet-box');
+  const controls=Array.from(el.querySelectorAll('button,input,textarea,select,[tabindex="0"]')).filter(x=>!x.disabled&&x.getClientRects().length);
+  const first=controls[0], last=controls[controls.length-1];
+  if(event.shiftKey&&document.activeElement===first){ event.preventDefault(); last.focus(); }
+  else if(!event.shiftKey&&document.activeElement===last){ event.preventDefault(); first.focus(); }
+}
+function logSplitMenu(id){
+  const p=logProgramList().find(x=>x.id===id); if(!p) return;
+  logProgSel=id;
+  logSplitSheetOpen(p.name||'Split actions',
+    [['Rename','plansRename'],['Duplicate','plansDuplicate'],['Export','plansExportPlan'],
+      ...(planIsProgram(p)?[['Update saved copy','plansUpdateFromCurrent']]:[]),['Delete','plansDelete']]
+      .map(([label,fn])=>'<button type="button" class="lg-btn'+(label==='Delete'?' danger':'')+'" onclick="'+logSplitAction(fn,id)+'">'+label+'</button>').join(''));
+}
+function logConfirmSplitChange(callback){
+  if(!logDraftIsMeaningful() || (logSavedToday().latest&&!logDraftTouchedSinceSave())){ callback(); return; }
+  logSplitSheetOpen('Keep your current workout?',
+    '<p class="lg-help">You have an unsaved workout. Switching splits will discard its sets, checks, note and timers. Saved workouts stay in history.</p>'+
+    '<button type="button" class="lg-btn primary" onclick="logCancelSplitSwitch()">Keep current workout</button>'+
+    '<button type="button" class="lg-btn danger" onclick="logDiscardAndSwitch()">Discard workout and switch</button>');
+  logSplitPendingSwitch=callback;
+}
+function logCancelSplitSwitch(){ logSplitSheetClose(); }
+function logDiscardAndSwitch(){
+  const apply=logSplitPendingSwitch;
+  logSplitSheetClose();
+  if(apply) apply();
+}
+function logResetWorkoutForSplit(){
+  logEditMode=false; activeExIdx=-1; exCollapsed.clear();
+  initDay(Math.max(0,Math.min(S.dayIdx,scheduleLen()-1)));
+  clearSetData(); rtResetAll(); dismissPostSaveWeight(); rtUpdateSessionLabels();
 }
 function logProgramExport(){
   const sel=logProgramSelected();
@@ -29348,6 +29658,8 @@ function plansRefreshViews(){
   if(S.view==='plans') renderPlans();
   if(S.view==='log'&&logSubTab==='program') renderLogProgram();
   if(S.view==='log'&&logSubTab==='today'&&logTodayView==='overview') renderLogOverview();
+  const preview=document.getElementById('view-split-preview');
+  if(preview&&preview.style.display!=='none'&&logSplitPreviewId) renderLogSplitPreview();
 }
 
 // ── Programs ───────────────────────────────────────────────────────
@@ -29376,103 +29688,147 @@ function planAppliedState(p){
   if(!planIsProgram(p)) return 'n/a';
   return planCfgFingerprint(p.cfg)===planCfgFingerprint(splitCfg())?'active':'inactive';
 }
+function plansNewId(data){
+  const base='plan_'+Date.now(); let id=base;
+  for(let n=1;(data.plans||[]).some(p=>p.id===id);n++) id=base+'_'+n;
+  return id;
+}
+function plansSaveNewSplit(name,cfg){
+  name=String(name||'').trim();
+  const clean=sanitizeSplit(JSON.parse(JSON.stringify(cfg)));
+  if(!name||!clean){ alert('Add a split name and at least one training day.'); return null; }
+  const data=loadPlans(), id=plansNewId(data);
+  data.plans.push({id,name,kind:'split',description:'',cfg:clean,createdAt:Date.now()});
+  savePlans(data); logProgSel=id; plansRefreshViews();
+  showToast('Saved “'+name+'” to Your splits');
+  return id;
+}
 function plansSaveCurrentAsProgram(){
   const cur=splitCfg();
   if(!cur||!Array.isArray(cur.types)||!cur.types.length){ alert('No training split to save yet.'); return; }
-  const name=(prompt('Name this program?', cur.types.length+'-day split')||'').trim();
-  if(!name) return;
-  const data=loadPlans();
-  const id='plan_'+Date.now();
-  data.plans.push({id,name,kind:'split',description:'',cfg:planSnapshotSplit(),createdAt:Date.now()});
-  data.activePlanId=id;
-  savePlans(data);
-  plansRefreshViews();
+  logSplitSheetOpen('Save as a new split',
+    '<label class="lg-split-label" for="log-split-name">Split name</label><input class="lg-split-input" id="log-split-name" value="'+escAttr(cur.types.length+'-day split')+'">'+
+    '<button type="button" class="lg-btn primary" onclick="plansConfirmSaveCurrent()">Save split</button>');
 }
-// Overwrite a saved program with whatever the split looks like now.
+function plansConfirmSaveCurrent(){
+  const name=document.getElementById('log-split-name').value.trim(); if(!name) return;
+  const id=plansSaveNewSplit(name,planSnapshotSplit());
+  if(id){ const data=loadPlans(); data.activePlanId=id; savePlans(data); logSplitSheetClose(); plansRefreshViews(); }
+}
 function plansUpdateFromCurrent(id){
-  const data=loadPlans();
-  const p=data.plans.find(x=>x.id===id); if(!planIsProgram(p)) return;
-  if(!confirm('Replace "'+p.name+'" with your current training split?')) return;
-  p.cfg=planSnapshotSplit(); p.updatedAt=Date.now();
-  savePlans(data);
-  plansRefreshViews();
+  const p=logProgramList().find(x=>x.id===id); if(!planIsProgram(p)) return;
+  logSplitSheetOpen('Update saved copy?',
+    '<p class="lg-help">Replace the saved days and exercises in “'+escText(p.name)+'” with your current split? This does not change your live workout or history.</p>'+
+    '<button type="button" class="lg-btn primary" onclick="'+logSplitAction('plansConfirmUpdate',id)+'">Update saved copy</button>');
 }
-// Write a program back into the Log's split. Mirrors the split editor's save path (9417):
-// assign, persist, clamp the day index, then re-render the Log.
+function plansConfirmUpdate(id){
+  const data=loadPlans(), p=data.plans.find(x=>x.id===id); if(!planIsProgram(p)) return;
+  p.cfg=planSnapshotSplit(); p.updatedAt=Date.now();
+  savePlans(data); logSplitSheetClose(); plansRefreshViews();
+}
+// The canonical apply path owns both the unsaved-workout decision and the intentional writes.
 function plansApply(id){
-  const data=loadPlans();
-  const p=data.plans.find(x=>x.id===id);
-  if(!planIsProgram(p)) return;
-  const clean=sanitizeSplit(JSON.parse(JSON.stringify(p.cfg)));
-  if(!clean){ alert('That program has no training days saved in it.'); return; }
-  if(!confirm('Switch your training split to "'+p.name+'"?\n\nThis changes the days and exercises the Log shows. Your logged sessions and history are not touched.')) return;
-  splitConfig=clean;
-  saveSplit();
-  if(S.dayIdx>=scheduleLen()) S.dayIdx=0;
-  p.lastAppliedAt=Date.now();
-  savePlans(data);
-  if(typeof applyDayColour==='function') applyDayColour();
-  if(S.view==='log'&&logSubTab==='today'&&logTodayView==='session') renderLog();
-  plansRefreshViews();
-  if(typeof showToast==='function') showToast('Now training "'+p.name+'"');
+  const selected=loadPlans().plans.find(x=>x.id===id);
+  if(!planIsProgram(selected)||planAppliedState(selected)==='active') return;
+  logConfirmSplitChange(()=>{
+    // Re-read after a decision: a saved item may have changed while the sheet was open.
+    const data=loadPlans(), p=data.plans.find(x=>x.id===id);
+    if(!planIsProgram(p)) return;
+    const clean=sanitizeSplit(JSON.parse(JSON.stringify(p.cfg)));
+    if(!clean){ alert('That split has no training days saved in it.'); return; }
+    splitConfig=clean; saveSplit();
+    logResetWorkoutForSplit();
+    p.lastAppliedAt=Date.now(); data.activePlanId=id; savePlans(data);
+    if(typeof applyDayColour==='function') applyDayColour();
+    logCloseSplitPreview();
+    if(S.view==='log'&&logSubTab==='today'&&logTodayView==='session') renderLog();
+    plansRefreshViews();
+    if(S.view==='home') renderHome();
+    showToast('Now using “'+p.name+'”');
+  });
 }
 function plansRename(id){
-  const data=loadPlans();
-  const p=data.plans.find(x=>x.id===id); if(!p) return;
-  const name=(prompt('Rename program', p.name)||'').trim();
-  if(!name) return;
-  p.name=name; savePlans(data); plansRefreshViews();
+  const p=loadPlans().plans.find(x=>x.id===id); if(!p) return;
+  if(p.type==='html'){
+    const name=(prompt('Rename plan',p.name)||'').trim(); if(!name) return;
+    const data=loadPlans(), found=data.plans.find(x=>x.id===id); if(!found) return;
+    found.name=name; savePlans(data); plansRefreshViews(); return;
+  }
+  logSplitSheetOpen('Rename split',
+    '<label class="lg-split-label" for="log-split-name">Split name</label><input class="lg-split-input" id="log-split-name" value="'+escAttr(p.name)+'">'+
+    '<button type="button" class="lg-btn primary" onclick="'+logSplitAction('plansConfirmRename',id)+'">Save name</button>');
+}
+function plansConfirmRename(id){
+  const name=document.getElementById('log-split-name').value.trim(); if(!name) return;
+  const data=loadPlans(), p=data.plans.find(x=>x.id===id); if(!p) return;
+  p.name=name; savePlans(data); logSplitSheetClose(); plansRefreshViews();
+}
+function plansDuplicate(id){
+  const data=loadPlans(), p=data.plans.find(x=>x.id===id); if(!planIsWorkoutSaved(p)) return;
+  const copy=JSON.parse(JSON.stringify(p));
+  copy.id=plansNewId(data); copy.name=(p.name||'Split')+' copy'; copy.createdAt=Date.now();
+  delete copy.lastAppliedAt; delete copy.updatedAt;
+  data.plans.push(copy); savePlans(data); logProgSel=copy.id;
+  logSplitSheetClose(); plansRefreshViews(); showToast('Created “'+copy.name+'”');
+  return copy.id;
 }
 function plansSetActive(id){
-  const data=loadPlans();
-  data.activePlanId=id;
-  savePlans(data);
-  plansRefreshViews();
+  const data=loadPlans(); data.activePlanId=id;
+  savePlans(data); plansRefreshViews();
 }
-
 function plansDelete(id){
-  if(!confirm('Delete this plan?')) return;
-  const data=loadPlans();
-  data.plans=data.plans.filter(p=>p.id!==id);
-  if(data.activePlanId===id) data.activePlanId=data.plans[0]?.id||null;
-  savePlans(data);
-  plansRefreshViews();
+  const p=loadPlans().plans.find(x=>x.id===id); if(!p) return;
+  if(p.type==='html'){ if(confirm('Delete this plan?')) plansConfirmDelete(id); return; }
+  logSplitSheetOpen('Delete “'+p.name+'”?',
+    '<p class="lg-help">'+(planAppliedState(p)==='active'?'This saved copy matches your current split. ':'')+
+    'Only the saved copy will be deleted. Your current split, exercises and workout history will stay.</p>'+
+    '<button type="button" class="lg-btn" onclick="logSplitSheetClose()">Keep split</button>'+
+    '<button type="button" class="lg-btn danger" onclick="'+logSplitAction('plansConfirmDelete',id)+'">Delete saved split</button>');
 }
-
-// plansNew() removed: it created a plan with seven empty days, and no screen anywhere could
-// add an exercise to it, so it could only ever produce an empty shell. Programs are captured
-// from the real training split now (plansSaveCurrentAsProgram), which is editable in the Log.
-
+function plansConfirmDelete(id){
+  const data=loadPlans(); data.plans=data.plans.filter(p=>p.id!==id);
+  if(data.activePlanId===id) data.activePlanId=data.plans[0]?.id||null;
+  savePlans(data); logSplitSheetClose(); plansRefreshViews();
+}
 function plansImport(){
-  const inp=document.createElement('input');
-  inp.type='file'; inp.accept='.json';
+  logSplitSheetOpen('Import split',
+    '<p class="lg-help">Paste workout JSON or choose a JSON file. Import adds it to Your splits; choose Use this split when you want to start using it. HTML documents belong in Plans.</p>'+
+    '<label class="lg-split-label" for="log-split-json">Workout JSON</label><textarea class="lg-split-input" id="log-split-json" rows="7" placeholder="Paste JSON here"></textarea>'+
+    '<p id="log-split-import-error" class="lg-split-error" role="alert"></p>'+
+    '<button type="button" class="lg-btn primary" onclick="plansImportPasted()">Import JSON</button>'+
+    '<button type="button" class="lg-btn" onclick="plansImportFile()">Choose JSON file</button>');
+}
+function plansImportText(text){
+  const plan=JSON.parse(text);
+  if(!plan||!String(plan.name||'').trim()||!planIsWorkoutSaved(plan)) throw new Error('Invalid workout JSON format');
+  if(planIsProgram(plan)){
+    const clean=sanitizeSplit(JSON.parse(JSON.stringify(plan.cfg)));
+    if(!clean) throw new Error('This split has no valid training days');
+    plan.cfg=clean;
+  }
+  const data=loadPlans();
+  // A repeated import adds a copy; it must not silently replace a saved split or HTML document.
+  if(!plan.id||data.plans.some(p=>p.id===plan.id)) plan.id=plansNewId(data);
+  data.plans.push(plan); savePlans(data); logProgSel=plan.id;
+  logSplitSheetClose(); plansRefreshViews(); showToast('Imported “'+plan.name+'”');
+  return plan.id;
+}
+function plansImportPasted(){
+  try{ plansImportText(document.getElementById('log-split-json').value); }
+  catch(err){ document.getElementById('log-split-import-error').textContent='Import failed: '+err.message; }
+}
+function plansImportFile(){
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='.json';
   inp.onchange=e=>{
     const file=e.target.files[0]; if(!file) return;
     const reader=new FileReader();
-    reader.onload=ev=>{
-      try{
-        const plan=JSON.parse(ev.target.result);
-        if(!plan||!plan.name||!planIsWorkoutSaved(plan)) throw new Error('Invalid workout program format');
-        if(planIsProgram(plan)){
-          const clean=sanitizeSplit(JSON.parse(JSON.stringify(plan.cfg)));
-          if(!clean) throw new Error('This program has no valid training days');
-          plan.kind='split';
-          plan.cfg={types:clean.types,schedule:clean.schedule};
-        }
-        const data=loadPlans();
-        if(!plan.id) plan.id='plan_'+Date.now();
-        data.plans=data.plans.filter(p=>p.id!==plan.id);
-        data.plans.push(plan);
-        if(!data.activePlanId) data.activePlanId=plan.id;
-        savePlans(data);
-        plansRefreshViews();
-      }catch(err){ alert('Import failed: '+err.message); }
-    };
+    reader.onload=ev=>{ try{ plansImportText(ev.target.result); }catch(err){
+      const error=document.getElementById('log-split-import-error'); if(error) error.textContent='Import failed: '+err.message;
+    } };
     reader.readAsText(file);
   };
   inp.click();
 }
-
 function plansImportHTML(){
   const inp=document.createElement('input');
   inp.type='file'; inp.accept='.html,.htm';
@@ -29703,8 +30059,6 @@ requestAnimationFrame(function(){ pinAppHeight(); nudgeLayout(); });
 window.addEventListener('resize', pinAppHeight);
 window.addEventListener('orientationchange', function(){ setTimeout(pinAppHeight,150); });
 window.addEventListener('load', function(){ nudgeLayout(); setTimeout(nudgeLayout,300); setTimeout(nudgeLayout,800);
-  if(typeof weatherEnsureFresh==='function') weatherEnsureFresh(); });
-document.addEventListener('visibilitychange', function(){ if(!document.hidden){ setTimeout(nudgeLayout,80);
-  if(typeof weatherEnsureFresh==='function') weatherEnsureFresh(); } });
-window.addEventListener('pageshow', function(){ setTimeout(nudgeLayout,80); if(typeof applyLogoDayColour==='function') applyLogoDayColour();
-  if(typeof weatherEnsureFresh==='function') weatherEnsureFresh(); });
+  if(typeof weatherEnsureFresh==='function') weatherEnsureFresh('launch'); });
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) setTimeout(nudgeLayout,80); });
+window.addEventListener('pageshow', function(){ setTimeout(nudgeLayout,80); if(typeof applyLogoDayColour==='function') applyLogoDayColour(); });
