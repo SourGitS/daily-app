@@ -590,16 +590,29 @@ test('This week is the hero primary action, and the only other control is quick 
   assert.ok(!/Open week/.test(html), 'the retired label is gone');
 });
 
-test('with no income the hero leads with setup, and This week follows it', () => {
+test('This week stays the primary action before anything is set up', () => {
   const html = hero({ ...WEEK, income: 0 });
   const buttons = html.match(/<button[^>]*>/g) || [];
-  assert.equal(buttons.length, 2, 'setup and the week — quick capture waits until there is a week to spend from');
-  assert.match(buttons[0], /openBudgetSetup\(\)/);
+  // ONE action. "Set up income & bills" used to take the lead pill here, which made the hero's
+  // main button change identity with state and sent a first-time reader somewhere other than
+  // the screen every later visit goes to.
+  assert.equal(buttons.length, 1, 'no second button may compete with This week');
+  assert.match(buttons[0], /setBudgetView\('week'\)/);
+  assert.match(buttons[0], /bov-act-primary/);
   assert.match(buttons[0], /bov-act-lead/);
-  assert.match(buttons[1], /setBudgetView\('week'\)/);
-  assert.ok(!/bov-act-primary/.test(buttons[1]));
+  assert.ok(!/openBudgetSetup/.test(html), 'setup is copy here, not a button');
+  // Setup is still explained, and still named where it actually lives.
+  assert.match(html, /Income, bills and your spending goal are set up in This week/);
+  assert.match(html, /Add this week’s income and fixed costs/);
   // The figure itself still refuses to present an unknown as $0.
   assert.match(html, /val="—"/);
+});
+
+test('setup stays reachable from Week, which is where it lives', () => {
+  // Week's own setup card and the Needs-attention row are the two ways in, and both survive.
+  assert.match(body('renderBudgetSetupCard'), /openBudgetSetup\(\)/);
+  assert.match(body('budOvAttention'), /openBudgetSetup\(\)/);
+  assert.match(source, /\{id:'setup'/, 'the setup card is still first in the Week layout');
 });
 
 test('the hero keeps every figure it already stated', () => {

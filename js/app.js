@@ -1644,16 +1644,13 @@ function setAccentMode(mode){
 }
 // Scene → accent. Deliberately darker/more saturated than the scene gradient itself: the
 // gradient only needs to look like sky, whereas the accent carries white text, so every one
-// of these is >=4.5:1 on white and hue-separated from --danger (a burnt orange at dawn read
-// too close to the error red, so dawn/dusk sit in amber instead).
+// of these is >=4.5:1 on white and hue-separated from --danger.
 const WEATHER_ACCENTS={
-  // Dusk is magenta, not amber, now that the dusk sky is pink rather than orange — the accent
-  // has to follow the scene or the app fights the card it came from. Both still clear the
-  // white-text floor (6.28:1 and 5.9:1) and sit FURTHER from --danger's hue 6 than the ambers
-  // they replace did: 45 and 51 degrees against the old 24 and 27. Dawn stays amber, which is
-  // now also what tells the two apart.
-  'clear-dawn':'#A05E18','clear-noon':'#0072EA','clear-day':'#0072EA','clear-dusk':'#9B3D7A','clear-night':'#2B3566',
-  'partly-dawn':'#96662F','partly-noon':'#3E6E99','partly-day':'#3E6E99','partly-dusk':'#8A4A78','partly-night':'#313B57',
+  // Dawn and dusk now use the same restrained violet family as their card scenes. The mode
+  // still follows weather exactly as before; only the two twilight hues change so the app does
+  // not return to pink while its weather card is purple.
+  'clear-dawn':'#4F3C7A','clear-noon':'#0072EA','clear-day':'#0072EA','clear-dusk':'#533B7E','clear-night':'#2B3566',
+  'partly-dawn':'#5D4E78','partly-noon':'#3E6E99','partly-day':'#3E6E99','partly-dusk':'#5B4A7C','partly-night':'#313B57',
   'cloudy-day':'#5C5C5C','cloudy-night':'#35393D','fog-day':'#5E6368','fog-night':'#39454F',
   'rain-day':'#3D5A70','rain-night':'#2A3A48','storm':'#4B3A66',
   'snow-day':'#4F6C82','snow-night':'#33454F'
@@ -2401,6 +2398,13 @@ const NAV_QUICK_ICONS={
   // buy and hold, and neither of those two said all four.
   food:'<path d="M4 12h16a8 8 0 0 1-8 8 8 8 0 0 1-8-8z"/><path d="M2 12h20"/><path d="M9 8c0-1.6 1.6-1.6 1.6-3.2"/><path d="M14 8c0-1.6 1.6-1.6 1.6-3.2"/>',
   stats:'<path d="M3 17l6-6 4 4 7-7"/><path d="M20 8v5h-5"/>',
+  // Journal and Accounts have no bottom-nav button to borrow from either, so like Settings
+  // below they are written out here rather than referenced: CARD_ICONS and SETTINGS_ICONS are
+  // both declared thousands of lines lower and `const` does not hoist.
+  notes:'<path d="M5 4h11l3 3v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M16 4v4h3"/><path d="M8 12h7M8 16h4"/>',
+  // A stack of balances, deliberately not the Finance card icon beside it — the two are pinned
+  // a few rows apart and must not read as the same destination twice.
+  accounts:'<path d="M3 20h18"/><path d="M12 3 3 8h18z"/><path d="M6 11v6M10 11v6M14 11v6M18 11v6"/>',
   // Settings has no bottom-nav button to borrow from, so this one is written out — it is
   // SETTINGS_ICONS.sliders, copied rather than referenced because that is declared thousands
   // of lines below this and `const` does not hoist. Keep them in step by eye if it is redrawn.
@@ -2410,10 +2414,25 @@ const NAV_QUICK_ICONS={
 // the desktop sidebar's pinned strip and the phone hamburger, and they must read the same as
 // the bottom-nav button beside them.
 const NAV_QUICK_LABELS={home:'Home', budget:'Finance', log:'Log', food:'Food',
-                        stats:'Stats', settings:'Settings'};
-const NAV_QUICK_EXTRA=['settings'];
+                        stats:'Stats', notes:'Journal', accounts:'Accounts', settings:'Settings'};
+// Journal and Accounts are pinned alongside Settings: three destinations worth one press that
+// are NOT deck tabs. The phone deck is NAV_ORDER and is untouched — there is still no sixth
+// bottom-nav button, and there is not going to be. Both keep their grouped rows below, which is
+// where you go when you are aiming at something specific inside Finance or More.
+const NAV_QUICK_EXTRA=['notes','accounts','settings'];
 const NAV_QUICK_VIEWS=NAV_ORDER.concat(NAV_QUICK_EXTRA);
-const NAV_QUICK=NAV_QUICK_VIEWS.map(v=>({view:v, label:NAV_QUICK_LABELS[v]||v, icon:NAV_QUICK_ICONS[v]||''}));
+// A quick item is normally just a view, and dispatches setView with NO sub-tab — exactly what
+// pressing the bottom-nav button does — so it lands you back wherever you were inside it.
+// Accounts is the one exception: it is a Finance VIEW (see BUD_VIEWS), not a top-level one, so
+// it carries a sub and needs an id of its own to stay distinct from Finance in both dispatch
+// and selection. That is why the strip is keyed by ID from here on, never by view.
+const NAV_QUICK_TARGETS={accounts:{view:'budget', sub:'accounts'}};
+const NAV_QUICK=NAV_QUICK_VIEWS.map(id=>{
+  const t=NAV_QUICK_TARGETS[id]||{view:id};
+  return {id, view:t.view, sub:t.sub||null, label:NAV_QUICK_LABELS[id]||id, icon:NAV_QUICK_ICONS[id]||''};
+});
+const NAV_QUICK_BY_ID={};
+NAV_QUICK.forEach(q=>{ NAV_QUICK_BY_ID[q.id]=q; });
 
 // ── Navigation registry ──────────────────────────────────────────
 // The ONE source for the desktop sidebar and the mobile hamburger. Six independently
@@ -2555,13 +2574,27 @@ function navCurrentRow(){
 // as navCurrentRow(): a pushed screen that is not a nav destination lights nothing.
 function navCurrentQuick(){
   if(NAV_NO_ROW_OVERLAYS.some(navShown)) return '';
-  // Accounts no longer clears this: it is inside Finance, so the Finance destination stays
-  // lit in the bottom nav and the sidebar exactly as it does on any other Finance view.
+  // Accounts is inside Finance, but its pinned shortcut is more specific than Finance and
+  // therefore lights itself. The five-item phone bar remains driven by NAV_ORDER separately.
   if(navShown('view-aihub')) return '';
   // Food's supporting screens deliberately do NOT clear this: they are inside the Food
   // experience, so Food stays lit here exactly as it stays lit in the bottom nav.
   const v=(typeof S!=='undefined'&&S&&S.view)||'home';
-  return NAV_QUICK_VIEWS.indexOf(v)>=0 ? v : '';
+  // Finance › Accounts lights Accounts rather than Finance: a quick item that names a sub-tab
+  // is a more specific answer to "where am I" than the view item beside it, and lighting both
+  // would say the strip holds one destination twice.
+  const exact=NAV_QUICK.find(q=>q.sub && q.view===v && navQuickSub(v)===q.sub);
+  if(exact) return exact.id;
+  const plain=NAV_QUICK.find(q=>!q.sub && q.view===v);
+  return plain?plain.id:'';
+}
+// The sub-tab the current view is showing, for the quick items that name one. Reads the same
+// state the screen itself reads, exactly as navCurrentRow() beside it does; Finance is the only
+// view with a pinned sub-tab today, and this answers '' for everything else rather than
+// pretending to know.
+function navQuickSub(view){
+  if(view==='budget') return (typeof budgetView!=='undefined')?budgetView:'';
+  return '';
 }
 
 const NAV_UI_KEY='daily_nav_ui';
@@ -2648,7 +2681,7 @@ function navBuildHtml(){
   // Headerless and never collapsible on purpose: a group header here would invite folding away
   // the one block that exists to be always reachable.
   const quick='<div class="nv-quick">'+NAV_QUICK.map(q=>
-    '<button type="button" class="nv-qrow" data-nav-quick="'+q.view+'">'+
+    '<button type="button" class="nv-qrow" data-nav-quick="'+q.id+'">'+
       '<svg class="nv-qico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '+
         'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+q.icon+'</svg>'+
       '<span>'+q.label+'</span></button>').join('')+'</div>';
@@ -2673,7 +2706,7 @@ function renderNav(){
         const hd=e.target.closest('[data-nav-group-hd]');
         if(hd){ navToggleGroup(hd.dataset.navGroupHd); return; }
         const q=e.target.closest('[data-nav-quick]');
-        if(q){ navGo(q.dataset.navQuick); return; }
+        if(q){ const t=NAV_QUICK_BY_ID[q.dataset.navQuick]; if(t) navGo(t.view,t.sub); return; }
         const r=e.target.closest('[data-nav-row]');
         if(r) navRowGo(r.dataset.navRow);
       });
@@ -14136,19 +14169,24 @@ function budOvMonthHtml(){
 function budOvHeroHtml(m){
   const setup=!(m.income>0);
   const sunday=new Date(m.monday.getFullYear(), m.monday.getMonth(), m.monday.getDate()+6);
-  // ONE primary action, and it is This week. The hero STATES the weekly position; Week is
-  // where every part of it is actually changed — the spending goal, the categories, the
-  // commitments, the close-out — so it is where almost every visit to this screen ends. Month,
-  // Bills, Accounts and Yearly are one press away on the tab strip above and do not compete for
-  // attention down here. The exception is a week with no income entered: there is nothing to act
-  // on in Week yet, so setup leads and This week follows it.
-  const week='<button type="button" class="bov-act'+(setup?'':' bov-act-primary bov-act-lead')+
-    '" onclick="setBudgetView(\'week\')">This week <span aria-hidden="true">→</span></button>';
-  const acts='<div class="bov-hero-acts">'+
-    (setup
-      ? '<button type="button" class="bov-act bov-act-primary bov-act-lead" onclick="openBudgetSetup()">Set up income &amp; bills</button>'+week
-      : week+'<button type="button" class="bov-act" onclick="openTxnModal()">'+
-          '<span aria-hidden="true">+</span> Add expense</button>')+
+  // ONE primary action, in EVERY state, and it is This week. The hero STATES the weekly
+  // position; Week is where every part of it is actually changed — income, the bills, the
+  // spending goal, the categories, the close-out — so it is where almost every visit to this
+  // screen ends. Month, Bills, Accounts and Yearly are one press away on the tab strip above and
+  // do not compete for attention down here.
+  // A week with no income used to be the exception: "Set up income & bills" took the lead pill
+  // and This week dropped to a quiet outline beside it. That made the hero's main button change
+  // identity depending on state, and it sent a first-time reader somewhere other than the screen
+  // every later visit goes to — when setup lives on that screen anyway, in Week's own setup card.
+  // It is supporting COPY now (see the note below), never a competing button.
+  const week='<button type="button" class="bov-act bov-act-primary bov-act-lead"'+
+    ' onclick="setBudgetView(\'week\')">This week <span aria-hidden="true">→</span></button>';
+  // Add expense is dropped while the week is unset up: with no categories yet the modal has
+  // nothing to file a purchase against, and a second pill would dilute the one action that
+  // matters here. It is unchanged everywhere else.
+  const acts='<div class="bov-hero-acts">'+week+
+    (setup?'':'<button type="button" class="bov-act" onclick="openTxnModal()">'+
+      '<span aria-hidden="true">+</span> Add expense</button>')+
   '</div>';
   const extra='<div class="bov-hero-range">This week · '+budRangeLabel(m.monday,sunday)+'</div>'+
     statsSplit([
@@ -14156,7 +14194,9 @@ function budOvHeroHtml(m){
       ['Committed', fmtMoney(m.committed)],
       ['Saved',     fmtMoney(m.saved)]
     ])+
-    '<div class="bov-hero-note">An allocation out of this week’s income — not a bank balance.</div>'+
+    '<div class="bov-hero-note">'+(setup
+      ? 'Income, bills and your spending goal are set up in This week.'
+      : 'An allocation out of this week’s income — not a bank balance.')+'</div>'+
     acts;
   return budHeroPanel([{
     icon:'wallet',
@@ -14164,7 +14204,7 @@ function budOvHeroHtml(m){
     lg:true,
     val: setup ? '—' : (m.available<0?'-':'')+'$'+Math.abs(m.available).toFixed(0),
     sub: setup
-      ? 'Enter this week’s income and your fixed costs and Daily will work out what is left.'
+      ? 'Add this week’s income and fixed costs and Daily will work out what is left.'
       : escText(budPaceText(m.available, varGoalDaysLeft())),
     chip: setup ? '' : (m.available<0
       ? tstat('neg','Over budget','alert',true)
@@ -20813,8 +20853,10 @@ function buildWeatherCard(){
           '<span class="weather-icon" id="home-weather-icon">'+weatherIcon('location')+'</span>'+
           '<span class="weather-temp" id="home-weather-temp"></span>'+
         '</div>'+
-        '<div class="weather-condition" id="home-weather-label">Loading…</div>'+
-        '<div class="weather-meta" id="home-weather-meta"></div>'+
+        '<div class="weather-read">'+
+          '<div class="weather-condition" id="home-weather-label">Loading…</div>'+
+          '<div class="weather-meta" id="home-weather-meta"></div>'+
+        '</div>'+
       '</div>'+
     '</div>'+
     // How old the reading is, why it is not newer, and the one action that can change that —

@@ -847,23 +847,26 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
    Clear and partly skies carry the full dawn→noon→day→dusk→night progression: "noon" is the
    lightest, high-sun look and "day" is the deeper blue of mid-morning/afternoon, so a 4pm
    sky doesn't render as bright as midday. Everything else stays day/night. */
-.home-weather-card[data-scene="clear-dawn"]{background:radial-gradient(ellipse 80% 150% at 20% 120%,rgba(255,186,132,.55),transparent 60%),linear-gradient(to bottom,#33407A 0%,#7A5490 32%,#BE6789 58%,#EE9370 84%,#F7B98C 100%)}
+/* Twilight is VIOLET, not rose. The old ramps ended on #F7B98C / #F2A0B8 — a candy-pink
+   horizon that fought Daily's own pink action colour for attention, and (because the accent can
+   follow the scene) took the whole app with it. Deep indigo at the top, through muted violet and
+   plum, to a restrained cool mauve at the horizon. The lightest stop is chosen for CONTRAST: the
+   clear scenes carry no legibility scrim on a desktop Grid banner, so white 10–11px copy sits
+   directly on it. #8A6B99 measures 4.5:1 against white where the old #F2A0B8 measured 1.8:1.
+   The sun's own glow stays warm gold — a gold sun in a violet sky is what the real thing looks
+   like, and it is what keeps the card from going monochrome. */
+.home-weather-card[data-scene="clear-dawn"]{background:radial-gradient(ellipse 80% 150% at 20% 120%,rgba(255,198,140,.42),transparent 60%),linear-gradient(to bottom,#141A3C 0%,#242A5C 32%,#3B3670 58%,#58497F 84%,#7D6B96 100%)}
 .home-weather-card[data-scene="clear-noon"]{background:radial-gradient(ellipse 70% 130% at 50% 122%,rgba(255,255,255,.34),transparent 62%),linear-gradient(to bottom,#2F8FD8 0%,#5FBAEC 46%,#84C8EA 78%,#91CCE8 100%)}
 .home-weather-card[data-scene="clear-day"]{background:radial-gradient(ellipse 70% 130% at 50% 122%,rgba(255,255,255,.28),transparent 62%),linear-gradient(to bottom,#1E6FD0 0%,#3F9BE0 44%,#6FC0EA 78%,#98D6F2 100%)}
-/* Dusk runs pink/magenta rather than orange. The previous ramp spent its bottom 40% in
-   #EC8A5C→#F5B27E, so the card read as an orange wash with a purple strip on top — and since
-   the accent follows the scene, the whole app went orange with it. Sunset is the one sky that
-   can be pink without looking wrong, and it keeps dusk distinct from dawn, which stays golden
-   (they were near-identical ramps before, only mirrored). The sun's own glow is left warm — a
-   gold sun in a pink sky is what the real thing looks like, and it stops the card going
-   monochrome. */
-.home-weather-card[data-scene="clear-dusk"]{background:radial-gradient(ellipse 80% 150% at 80% 120%,rgba(255,150,195,.5),transparent 60%),linear-gradient(to bottom,#21193F 0%,#452A75 26%,#7C3688 48%,#B4498C 70%,#E0709F 88%,#F2A0B8 100%)}
+/* Dusk carries a touch more plum than dawn and its glow sits at the other end of the card, so
+   the two stay tellable apart without either of them going pink. */
+.home-weather-card[data-scene="clear-dusk"]{background:radial-gradient(ellipse 80% 150% at 80% 120%,rgba(255,190,125,.38),transparent 60%),linear-gradient(to bottom,#171334 0%,#291F52 26%,#3E2C66 48%,#55397C 70%,#6F5090 88%,#8A6B99 100%)}
 .home-weather-card[data-scene="clear-night"]{background:radial-gradient(ellipse 100% 140% at 50% 128%,rgba(86,116,176,.26),transparent 66%),linear-gradient(to bottom,#070C1A 0%,#111B36 48%,#1C2A4C 100%)}
-.home-weather-card[data-scene="partly-dawn"]{background:radial-gradient(ellipse 80% 150% at 20% 120%,rgba(236,176,138,.45),transparent 60%),linear-gradient(to bottom,#3A4272 0%,#75568A 34%,#AE6E86 60%,#D49179 86%,#E0AE92 100%)}
+.home-weather-card[data-scene="partly-dawn"]{background:radial-gradient(ellipse 80% 150% at 20% 120%,rgba(240,196,150,.38),transparent 60%),linear-gradient(to bottom,#22264A 0%,#3A3A63 34%,#514A74 60%,#6A6184 86%,#837C97 100%)}
 .home-weather-card[data-scene="partly-noon"]{background:radial-gradient(ellipse 70% 130% at 50% 122%,rgba(255,255,255,.28),transparent 62%),linear-gradient(to bottom,#4C86B8 0%,#719FBE 46%,#8BB1C9 78%,#98BDD2 100%)}
 .home-weather-card[data-scene="partly-day"]{background:radial-gradient(ellipse 70% 130% at 50% 122%,rgba(255,255,255,.22),transparent 62%),linear-gradient(to bottom,#3E70A4 0%,#6A98C0 46%,#94B9D5 78%,#B2CCE0 100%)}
-/* Same pink dusk, muted — cloud cover greys the sky down rather than changing its hue. */
-.home-weather-card[data-scene="partly-dusk"]{background:radial-gradient(ellipse 80% 150% at 80% 120%,rgba(226,160,190,.42),transparent 60%),linear-gradient(to bottom,#2B2450 0%,#4E3670 30%,#78447E 52%,#A05C86 74%,#C4849E 90%,#D4A3B4 100%)}
+/* Same twilight, muted — cloud cover greys the sky down rather than changing its hue. */
+.home-weather-card[data-scene="partly-dusk"]{background:radial-gradient(ellipse 80% 150% at 80% 120%,rgba(245,190,140,.34),transparent 60%),linear-gradient(to bottom,#1E1B3E 0%,#332A57 30%,#473469 52%,#5B4478 74%,#746091 90%,#877B9E 100%)}
 .home-weather-card[data-scene="partly-night"]{background:radial-gradient(ellipse 100% 140% at 50% 128%,rgba(86,116,176,.22),transparent 66%),linear-gradient(to bottom,#0C1424 0%,#1A2740 48%,#26364F 100%)}
 .home-weather-card[data-scene="cloudy-day"]{background:linear-gradient(to bottom,#596873 0%,#74838E 52%,#8999A5 100%)}
 .home-weather-card[data-scene="cloudy-night"]{background:linear-gradient(to bottom,#12171C 0%,#242C34 56%,#353E47 100%)}
@@ -881,7 +884,8 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
    the BOTTOM of the tile above it, i.e. the gradient's last colour stop. On clear-dusk that
    last stop is #F2A0B8, which drew a bright pink hairline along the top edge of the card (the
    warmer scenes read as orange); the bottom strip had the same fault in reverse, showing the
-   dark first stop. Every .card in dark mode has this shape, but their gradients run
+   dark first stop (that stop is #8A6B99 now, and was a bright #F2A0B8 when this was found).
+   Every .card in dark mode has this shape, but their gradients run
    rgba(255,255,255,.15) to .09, so the swap is invisible -- only the weather scenes are
    high-contrast enough for it to show.
    This has to sit AFTER every [data-scene] rule: those all use the `background:` shorthand,
@@ -983,8 +987,9 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
 .home-weather-card[data-scene^="partly-"] .wfx-cloud-1{width:115%;left:-40%;top:calc(100% - 38px);height:62px;opacity:.6}
 .home-weather-card[data-scene^="partly-"] .wfx-cloud-3{width:130%;left:8%;top:calc(100% - 23px);height:48px;opacity:.38}
 .home-weather-card[data-scene="partly-night"] .wfx-cloud{--cloud-top:#71879f;--cloud-mid:#415a74;--cloud-low:#243c55}
-.home-weather-card[data-scene="partly-dawn"] .wfx-cloud{--cloud-top:#e2b9b4;--cloud-mid:#a085a0;--cloud-low:#69657f}
-.home-weather-card[data-scene="partly-dusk"] .wfx-cloud{--cloud-top:#dbabc9;--cloud-mid:#9d7f9f;--cloud-low:#665e83}
+/* Lit by a violet sky, so the banks are lavender rather than rose. */
+.home-weather-card[data-scene="partly-dawn"] .wfx-cloud{--cloud-top:#c9bcd6;--cloud-mid:#8b83ab;--cloud-low:#5b5878}
+.home-weather-card[data-scene="partly-dusk"] .wfx-cloud{--cloud-top:#c3b3d8;--cloud-mid:#8579a6;--cloud-low:#585073}
 .home-weather-card[data-scene="cloudy-night"] .wfx-cloud{--cloud-top:#788c9d;--cloud-mid:#4b6174;--cloud-low:#2b3d4e}
 /* All heavy-weather banks end above 58px, the unchanged rain-field origin, at every width. */
 .home-weather-card[data-scene^="rain-"] .wfx-cloud{--cloud-top:#849bac;--cloud-mid:#506b80;--cloud-low:#273e51}
@@ -1281,10 +1286,11 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
   #view-home .home-dash .home-weather-card:not([data-scene$="night"]){
     --village-ridge:#78929d;--village-city:#607c89;--village-house:#3c5867;
     --village-tree:#213f49;--village-roof:#8caaaf;--village-window:#a6c5cc}
+  /* Plum-lit rather than rose-lit, to match the sky above it. Lit windows stay warm gold. */
   #view-home .home-dash .home-weather-card[data-scene$="dusk"],
   #view-home .home-dash .home-weather-card[data-scene$="dawn"]{
-    --village-ridge:#82627f;--village-city:#584861;--village-house:#353447;
-    --village-tree:#242b38;--village-roof:#987087;--village-window:#ffd097}
+    --village-ridge:#6d5f8e;--village-city:#4e4568;--village-house:#332f4a;
+    --village-tree:#22203a;--village-roof:#8878a8;--village-window:#ffd097}
   #view-home .home-dash .home-weather-card[data-scene^="snow"]{--village-roof:#dde9ec}
   #view-home .home-dash .weather-legibility-left{display:block;width:80%;
     background:linear-gradient(90deg,rgba(7,17,32,.55),transparent)}
@@ -1314,12 +1320,23 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
   #view-home .weather-day,#view-home .weather-date{display:none}
   #view-home .weather-heading{margin-bottom:12px}
   #view-home .weather-city{font-size:12.5px;line-height:1.35}
-  #view-home .weather-right{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:14px;text-align:left;min-width:0}
-  #view-home .weather-temp-row{grid-row:1/3;justify-content:flex-start;gap:8px;align-self:center}
+  /* ONE reading cluster: icon, temperature, condition and the feels/high-low line, read left to
+     right as a single unit and left-aligned inside the card like everything else on it.
+     It was a two-column, two-row grid — the temperature spanning both rows, the condition
+     bottom-aligned to row 1 and the detail line top-aligned to row 2. Those rows are sized by
+     their own content, so the seam they met at was not the optical centre of the pair, and the
+     whole cluster looked a few pixels off however carefully each half was aligned. A flex row
+     with align-items:center centres the stack against the temperature itself, which is the
+     thing the eye actually measures against.
+     The icon keeps DOM order, ahead of the temperature: the retired order:1 put it after the
+     number, so the reading ran "19° ☁" and the cluster led with a digit. */
+  #view-home .weather-right{display:flex;align-items:center;gap:12px;text-align:left;min-width:0}
+  #view-home .weather-temp-row{flex:0 0 auto;justify-content:flex-start;gap:8px}
   #view-home .weather-temp{font-size:40px;line-height:1;font-weight:700}
-  #view-home .weather-icon{order:1;font-size:26px}
-  #view-home .weather-condition{grid-column:2;font-size:13.5px;line-height:1.35;margin-top:0;color:#fff;align-self:end}
-  #view-home .weather-meta{grid-column:2;white-space:normal;font-size:11.5px;line-height:1.45;margin-top:5px;align-self:start}
+  #view-home .weather-icon{font-size:26px}
+  #view-home .weather-read{min-width:0;display:flex;flex-direction:column;gap:4px}
+  #view-home .weather-condition{font-size:13.5px;line-height:1.35;margin-top:0;color:#fff}
+  #view-home .weather-meta{white-space:normal;font-size:11.5px;line-height:1.45;margin-top:0}
   #view-home .weather-feedback{margin-top:12px}
   #view-home .weather-preview{display:block;min-width:0;margin-top:12px}
   #view-home .weather-summary{font-size:11.5px;line-height:1.5;margin:0 0 4px}
@@ -1346,8 +1363,8 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
   #view-home .home-weather-card:not([data-scene$="night"]){--village-ridge:#78929d;--village-city:#607c89;
     --village-house:#3c5867;--village-tree:#213f49;--village-roof:#8caaaf;--village-window:#a6c5cc}
   #view-home .home-weather-card[data-scene$="dusk"],#view-home .home-weather-card[data-scene$="dawn"]{
-    --village-ridge:#82627f;--village-city:#584861;--village-house:#353447;--village-tree:#242b38;
-    --village-roof:#987087;--village-window:#ffd097}
+    --village-ridge:#6d5f8e;--village-city:#4e4568;--village-house:#332f4a;--village-tree:#22203a;
+    --village-roof:#8878a8;--village-window:#ffd097}
   #view-home .home-weather-card[data-scene^="snow"]{--village-roof:#dde9ec}
   #view-home .home-weather-card .wfx-sun,#view-home .home-weather-card .wfx-moon{left:78%;top:26%;width:38px;height:38px}
   #view-home .home-weather-card .wfx-stars{--star-moon-x:calc(78% + 19px);--star-moon-y:calc(26% + 19px)}

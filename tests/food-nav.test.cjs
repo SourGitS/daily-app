@@ -67,14 +67,17 @@ test('the deck is exactly the five phone tabs, with Log in the centre', () => {
 test('Stats is pinned once — a deck tab, not also a quick extra', () => {
   const c = ctx();
   assert.ok(!c.NAV_QUICK_EXTRA.includes('stats'), 'Stats is in NAV_ORDER now; listing it here shows it twice');
-  assert.deepEqual(c.NAV_QUICK_EXTRA, ['settings']);
+  assert.deepEqual(c.NAV_QUICK_EXTRA, ['notes', 'accounts', 'settings']);
+  // The pinned extras are NOT deck tabs: the phone keeps exactly five bottom-nav buttons.
+  c.NAV_QUICK_EXTRA.forEach(v => assert.ok(!c.NAV_ORDER.includes(v), v + ' must not join the deck'));
   assert.equal(c.NAV_QUICK_VIEWS.filter(v => v === 'stats').length, 1);
   assert.equal(c.NAV_QUICK_VIEWS.filter(v => v === 'food').length, 1);
   // Every pinned destination needs a label and an icon or the strip renders a raw view id.
   c.NAV_QUICK.forEach(q => {
-    assert.ok(q.label && q.label !== q.view, 'missing label for ' + q.view);
-    assert.ok(q.icon, 'missing icon for ' + q.view);
+    assert.ok(q.label && q.label !== q.id, 'missing label for ' + q.id);
+    assert.ok(q.icon, 'missing icon for ' + q.id);
   });
+  assert.equal(new Set(c.NAV_QUICK.map(q => q.id)).size, c.NAV_QUICK.length, 'duplicate pinned id');
 });
 
 test('the retired Nutrition and Kitchen views survive only as aliases', () => {

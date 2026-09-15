@@ -336,7 +336,10 @@
 // recorded facts from the existing readers — then the timeline, with Open Loops moved below it
 // and weekly reflection reduced to a quiet optional line. Home's Journal card opens the
 // dashboard and carries its own Write today.
-const CACHE_NAME = 'daily-v342';
+// v343: Twilight scenes are violet rather than pink, the phone weather reading is one balanced
+// cluster, Finance Overview always leads to This week, and Journal/Accounts are sidebar
+// favourites without changing the five-item phone bar.
+const CACHE_NAME = 'daily-v343';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

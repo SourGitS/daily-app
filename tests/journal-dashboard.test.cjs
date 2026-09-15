@@ -195,10 +195,10 @@ test('the Journal task changed no navigation', () => {
   const { NAV_ORDER, NAV_QUICK, NAV_TREE } = JSON.parse(JSON.stringify(ctx.__n));
   assert.deepEqual(NAV_ORDER, ['home', 'budget', 'log', 'food', 'stats'],
     'the five-item phone deck is untouched');
-  assert.deepEqual(NAV_QUICK.map(q => q.view),
-    ['home', 'budget', 'log', 'food', 'stats', 'settings']);
-  assert.ok(!NAV_QUICK.some(q => /journal|notes/i.test(q.view + q.label)),
-    'Journal must not join Quick Access');
+  assert.deepEqual(NAV_QUICK.map(q => q.id),
+    ['home', 'budget', 'log', 'food', 'stats', 'notes', 'accounts', 'settings']);
+  // Journal is pinned for reach; its route, its internal id and its grouped row are unchanged.
+  assert.ok(NAV_QUICK.some(q => q.id === 'notes' && q.view === 'notes' && q.label === 'Journal'));
   const journal = NAV_TREE.find(g => g.id === 'more').rows.find(r => r.id === 'journal');
   assert.equal(journal.view, 'notes', 'Journal keeps its row, its internal id and its route');
 });

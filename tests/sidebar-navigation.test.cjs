@@ -36,12 +36,15 @@ function fixture(savedOpen) {
   return {context, writes, calls, ...copy(context.registry)};
 }
 
-test('quick access stays separate from groups with six labelled destinations and stable group IDs', () => {
+test('quick access stays separate from groups with eight labelled destinations and stable group IDs', () => {
   const f = fixture();
-  assert.deepEqual(f.NAV_QUICK.map(q => [q.view, q.label]), [
-    ['home', 'Home'], ['budget', 'Finance'], ['log', 'Log'],
-    ['food', 'Food'], ['stats', 'Stats'], ['settings', 'Settings']
+  assert.deepEqual(f.NAV_QUICK.map(q => [q.id, q.label]), [
+    ['home', 'Home'], ['budget', 'Finance'], ['log', 'Log'], ['food', 'Food'],
+    ['stats', 'Stats'], ['notes', 'Journal'], ['accounts', 'Accounts'], ['settings', 'Settings']
   ]);
+  // Accounts is a Finance VIEW, so it is the one pinned item that carries a sub-tab.
+  assert.deepEqual(f.NAV_QUICK.filter(q => q.sub).map(q => [q.id, q.view, q.sub]),
+    [['accounts', 'budget', 'accounts']]);
   assert.ok(f.NAV_QUICK.every(q => q.icon), 'quick destinations retain their icons');
   assert.deepEqual(f.NAV_TREE.map(g => [g.id, g.label]), [
     ['today', 'Today'], ['training', 'Log'], ['money', 'Finance'],
@@ -50,7 +53,10 @@ test('quick access stays separate from groups with six labelled destinations and
   const markup = f.context.navBuildHtml();
   const [quick, groups] = markup.split('<div class="nv-groups">');
   assert.ok(quick.endsWith('</div>'), 'quick access is outside the grouped scroller');
-  assert.equal((quick.match(/data-nav-quick=/g) || []).length, 6);
+  assert.equal((quick.match(/data-nav-quick=/g) || []).length, 8);
+  // Keyed by ID, not by view: Finance and Accounts share a view and must stay distinct.
+  assert.ok(quick.includes('data-nav-quick="accounts"'));
+  assert.ok(quick.includes('data-nav-quick="notes"'));
   assert.ok(!quick.includes('data-nav-group'), 'quick access cannot be collapsed');
   assert.equal((groups.match(/data-nav-group=/g) || []).length, 6);
   assert.ok(!groups.includes('data-nav-quick'));
@@ -90,7 +96,9 @@ test('moved and reordered links dispatch through the same routes and retain scre
   c.navRowGo('accounts');
   assert.deepEqual(copy(f.calls), [['close'], ['view', 'budget'], ['budget', 'accounts']]);
   assert.equal(c.navCurrentRow(), 'accounts');
-  assert.equal(c.navCurrentQuick(), 'budget');
+  // Accounts is pinned in the quick strip now, so it lights ITSELF rather than Finance — one
+  // destination, one lit item, exactly as the row below it says.
+  assert.equal(c.navCurrentQuick(), 'accounts');
   c.setNavActive();
   assert.deepEqual([...c.navResolveOpen()], [], 'navigation must not open a closed group');
   assert.deepEqual(f.writes, [], 'navigation and selection are read-only');
@@ -164,12 +172,32 @@ test('the phone drawer keeps its 44px targets while gaining the same separation'
   assert.match(nav, /#side-menu\{position:fixed;/, 'the drawer itself is untouched');
 });
 
-test('Journal is still a row under More and never a quick destination', () => {
+test('Journal and Accounts are pinned AND keep their grouped rows', () => {
   const f = fixture();
-  assert.ok(!f.NAV_QUICK.some(q => /journal|notes/i.test(q.view + q.label)),
-    'Journal must not join quick access');
-  const more = f.NAV_TREE.find(g => g.id === 'more').rows;
-  const journal = more.find(r => r.id === 'journal' || /journal/i.test(r.label));
+  // Pinned for one-press reach...
+  assert.ok(f.NAV_QUICK.some(q => q.id === 'notes' && q.view === 'notes'));
+  assert.ok(f.NAV_QUICK.some(q => q.id === 'accounts' && q.view === 'budget' && q.sub === 'accounts'));
+  // ...and still listed below, which is where you go when aiming at something specific.
+  const journal = f.NAV_TREE.find(g => g.id === 'more').rows.find(r => r.id === 'journal');
   assert.ok(journal, 'Journal keeps its row under More');
   assert.equal(journal.view, 'notes', 'and its existing route');
+  const accounts = f.NAV_TREE.find(g => g.id === 'money').rows.find(r => r.sub === 'accounts');
+  assert.ok(accounts, 'Accounts keeps its row under Finance');
+  assert.equal(accounts.view, 'budget');
+});
+
+test('a pinned sub-tab lights instead of its parent view, never as well as it', () => {
+  const f = fixture(), c = f.context;
+  const go = (view, sub) => { c.S.view = view; if (sub) c.setBudgetView(sub); };
+  // budgetView is a top-level `let` inside the VM, so it is set through the sliced code
+  // rather than by assigning a context property, which would create a separate global.
+  go('budget', 'week');
+  assert.equal(c.navCurrentQuick(), 'budget', 'an ordinary Finance view lights Finance');
+  go('budget', 'accounts');
+  assert.equal(c.navCurrentQuick(), 'accounts', 'Accounts lights itself, not Finance');
+  assert.equal(c.navCurrentRow(), 'accounts', 'and the grouped row still answers too');
+  go('notes');
+  assert.equal(c.navCurrentQuick(), 'notes');
+  go('plans');
+  assert.equal(c.navCurrentQuick(), '', 'a destination that is not pinned lights nothing');
 });
