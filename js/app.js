@@ -2458,7 +2458,7 @@ const NAV_TREE=[
   // twice a hundred pixels apart, lit twice, read as a bug. Both are pinned above, always
   // visible and one press from anywhere. The other pinned items (Finance, Log, Food, Stats)
   // point at views whose tree rows name specific SUB-TABS, so those rows are different actions
-  // and stay — landing on Finance is not the same as landing on Finance › Month.
+  // and stay — landing on Finance is not the same as opening Finance › Plan.
   {id:'today', label:'Today', rows:[
     {id:'log-today', label:"Today's session",  view:'log',  sub:'today'},
     // The pinned Food item lands wherever you were; this one always opens the food log.
@@ -2473,10 +2473,9 @@ const NAV_TREE=[
     // Keep the labels and order aligned with the Finance tabs in BUD_VIEWS.
     {id:'bud-overview', label:'Overview',   view:'budget',   sub:'overview'},
     {id:'bud-week',   label:'Week',          view:'budget',   sub:'week'},
-    {id:'bud-month',  label:'Month',         view:'budget',   sub:'month'},
+    {id:'bud-plan',   label:'Plan',          view:'budget',   sub:'plan'},
     {id:'bud-bills',  label:'Bills',         view:'budget',   sub:'bills'},
     {id:'accounts',   label:'Accounts',      view:'budget',   sub:'accounts'},
-    {id:'bud-year',   label:'Yearly',        view:'budget',   sub:'year'},
   ]},
   // Was "Kitchen". The group is named for the destination it now holds, and Food library keeps
   // the place it already had here rather than becoming a fifth primary section.
@@ -10631,7 +10630,7 @@ const BUD_DONUT_COLOURS = [
 // ── Budget state ──────────────────────────────────────────────────
 let currentWeekIdx     = 0;
 let currentMonthOffset = 0;
-// ── The six Finance views ─────────────────────────────────────────
+// ── The five Finance views ────────────────────────────────────────
 // The user-facing destination is FINANCE. The internal view id stays 'budget', with it the
 // bud* prefixes, every DOM id, every storage key and the #budget route — this is a naming
 // change for the person using the app, not a namespace rewrite or a data migration.
@@ -10657,10 +10656,9 @@ let currentMonthOffset = 0;
 const BUD_VIEWS=[
   {id:'overview', btn:'bv-overview-btn', panel:'budget-overview-view', row:'bud-overview', render:'renderBudgetTab'},
   {id:'week',     btn:'bv-week-btn',     panel:'budget-week-view',     row:'bud-week',     render:'renderBudgetTab'},
-  {id:'month',    btn:'bv-month-btn',    panel:'budget-month-view',    row:'bud-month',    render:'renderMonth'},
+  {id:'plan',     btn:'bv-plan-btn',     panel:'budget-plan-view',     row:'bud-plan',     render:'renderPlan'},
   {id:'bills',    btn:'bv-bills-btn',    panel:'budget-bills-view',    row:'bud-bills',    render:'renderBillsView'},
   {id:'accounts', btn:'bv-accounts-btn', panel:'budget-accounts-view', row:'accounts',     render:'renderAccountsPage'},
-  {id:'year',     btn:'bv-year-btn',     panel:'budget-year-view',     row:'bud-year',     render:'renderYear'},
 ];
 // IN MEMORY, and 'overview' is where a fresh session lands: the current-position screen is the
 // answer to "how am I doing" and the week's editors are one press from it. Within a session
@@ -11893,6 +11891,9 @@ function fmtMonthLabel(d){ return d.toLocaleDateString('en-AU',{month:'long',yea
 // selected tab is revealed with segScrollToTab(). NEVER scrollIntoView(): #view-budget is a
 // .swipe-panel inside the transformed #swipe-deck and it would shove the deck sideways.
 function setBudgetView(v){
+  // Month and Yearly became Plan. Keep older in-app callers and any stale open view state
+  // usable rather than dropping them to Overview; neither alias writes or persists anything.
+  if(v==='month'||v==='year') v='plan';
   if(!BUD_VIEWS.some(x=>x.id===v)) v='overview';
   budgetView=v;
   const row=document.getElementById('budget-view-tabs');
@@ -12357,14 +12358,14 @@ function clearSourceReturn(){
 function showSourceReturn(view,tab){
   _sourceReturn={view,tab};
   const bar=document.getElementById('source-return-bar'); if(!bar) return;
-  bar.textContent=view==='notes'?'← Back to Journal':view==='budget'?'← Back to monthly breakdown':'← Back to Finance analysis';
+  bar.textContent=view==='notes'?'← Back to Journal':view==='budget'&&(['plan','month','year'].includes(tab||'plan'))?'← Back to Plan':'← Back to Finance analysis';
   bar.classList.remove('hidden');
 }
 function returnFromSourceView(){
   const dest=_sourceReturn; _sourceReturn=null;
   if(!dest) return;
   if(dest.view==='budget'){
-    setBudgetView(dest.tab||'month');
+    setBudgetView(dest.tab||'plan');
     clearSourceReturn();
     return;
   }
@@ -14124,7 +14125,7 @@ function budOvAccountsHtml(){
 // month to the same number of recorded weeks and says so in its own text.
 function budOvMonthHtml(){
   const monthDate=getMonthDate(0);
-  // openBudgetCurrentMonth(), not setBudgetView('month'): this card is labelled "This month"
+  // openBudgetCurrentMonth(), not setBudgetView('plan'): this card is labelled "This month"
   // and states the current month's figures, so its action has to open that month rather than
   // wherever Month happened to be left.
   const head=cardHeader('trend','This month',
@@ -14299,13 +14300,13 @@ function openBillsCalendar(){
   setView('budget');
   setBudgetView('bills');
 }
-// The ONE Month entry point that resets the month index, and it exists because of what its
+// The ONE Plan entry point that resets the month index, and it exists because of what its
 // caller says out loud. Budget › Overview's "This month" card always describes the CURRENT
 // calendar month (getMonthDate(0)), so its Open month action has to land on that month — with
-// the ordinary setBudgetView('month') it preserved currentMonthOffset, and after browsing back
+// the ordinary setBudgetView('plan') it preserved currentMonthOffset, and after browsing back
 // to June the September card opened June.
-// Every OTHER way into Month keeps the remembered offset, deliberately: the Month tab, the
-// History & tools link, Money › Month in the nav, returning from a source/evidence view and
+// Every OTHER way into Plan keeps the remembered offset, deliberately: the Plan tab, the
+// History & tools link, Money › Plan in the nav, returning from a source/evidence view and
 // ordinary movement between Budget views all refer to the Month WORKSPACE rather than to one
 // named month, and a control that silently rewound your position would be the worse bug.
 // In memory only, exactly like currentWeekIdx — nothing here is stored, stamped or synced.
@@ -14313,7 +14314,7 @@ function openBillsCalendar(){
 // openBudgetWeek() and its neighbours it deliberately does not call setView().
 function openBudgetCurrentMonth(){
   currentMonthOffset=0;
-  setBudgetView('month');
+  setBudgetView('plan');
 }
 // A new transaction is always dated today (openTxnModal defaults to getLocalDate()), so every
 // "log a purchase" affordance has to be gated on the CURRENT week being on screen — not on the
@@ -14955,6 +14956,7 @@ function renderBudgetTab(){
   // snapshot, a category edit, a week save — rather than adding a second call to fifteen
   // existing sites and leaving one of them behind. It never calls back into this function.
   if(budgetView==='overview') renderBudgetOverview();
+  else if(budgetView==='plan') renderPlan();
 }
 // Visual reminder only (never touches the leftover calc): for the week being viewed, surface
 // any debt account with statement tracking on whose due date falls Mon–Sun of that week.
@@ -15790,6 +15792,88 @@ function renderMonth(){
         '</div>'
       : '';
   }
+}
+
+// ── Budget › Plan: next 12 months of scheduled bills ──────────────
+// This is deliberately a schedule, not a balance prediction. Daily knows the exact dates of
+// dated recurring charges, but it does not know future income deposits, card balances or day-
+// to-day purchases. `billOccurrences()` already owns the calendar/DST-safe recurrence rules,
+// so Plan reads that one source instead of making a second, approximate annual calculator.
+function budPlanYearAhead(fromDate){
+  const from=localMidnight(fromDate||getLocalDate());
+  const to=new Date(from.getFullYear(),from.getMonth()+12,from.getDate()-1);
+  const all=billOccurrences(from,to);
+  const charges=all.filter(o=>o.kind==='charge');
+  const statements=all.filter(o=>o.kind==='statement');
+  const byMonth={};
+  charges.forEach(o=>{
+    const key=o.key.slice(0,7);
+    if(!byMonth[key]){
+      const d=new Date(o.date.getFullYear(),o.date.getMonth(),1);
+      byMonth[key]={key,label:d.toLocaleDateString('en-AU',{month:'long',year:'numeric'}),total:0,items:[]};
+    }
+    byMonth[key].total+=o.amount;
+    byMonth[key].items.push(o);
+  });
+  const months=Object.values(byMonth).sort((a,b)=>a.key.localeCompare(b.key));
+  const recurring=loadFixCats().filter(c=>billIsScheduled(c));
+  // A malformed date is no more schedulable than an absent one. Count both as an honest gap,
+  // while an anchor beyond this window simply has nothing due in it and is not an error.
+  const unscheduled=recurring.filter(c=>!catNextDue(c,from)).length;
+  return {
+    from,to,charges,statements,months,unscheduled,
+    total:charges.reduce((sum,o)=>sum+o.amount,0),
+    busiest:months.length?months.reduce((a,b)=>b.total>a.total?b:a):null
+  };
+}
+function budPlanRangeLabel(from,to){
+  const opts={day:'numeric',month:'short',year:'numeric'};
+  return from.toLocaleDateString('en-AU',opts)+' – '+to.toLocaleDateString('en-AU',opts);
+}
+function renderPlanAhead(){
+  const el=document.getElementById('plan-ahead-card'); if(!el) return;
+  const p=budPlanYearAhead();
+  const range=budPlanRangeLabel(p.from,p.to);
+  const hasCharges=p.charges.length>0;
+  const next=p.charges[0]||null;
+  const facts=hasCharges
+    ? '<div class="plan-ahead-facts">'+
+        '<div><span>Next due</span><strong>'+_billDayLabel(next.date)+' · '+fmtMoneyExact(next.amount)+'</strong><small>'+_catEscHtml(next.name)+'</small></div>'+
+        '<div><span>Busiest month</span><strong>'+_catEscHtml(p.busiest.label)+'</strong><small>'+fmtMoneyExact(p.busiest.total)+' scheduled</small></div>'+
+      '</div>'
+    : '';
+  const schedule=hasCharges
+    ? '<details class="plan-ahead-schedule">'+
+        '<summary>Month-by-month schedule <span>'+p.charges.length+' payment'+(p.charges.length===1?'':'s')+'</span></summary>'+
+        '<div class="plan-ahead-months">'+p.months.map(m=>
+          '<section class="plan-ahead-month" aria-label="'+_catEsc(m.label)+' scheduled bills">'+
+            '<div class="plan-ahead-month-head"><strong>'+_catEscHtml(m.label)+'</strong><span>'+fmtMoneyExact(m.total)+'</span></div>'+
+            m.items.map(billRowHtml).join('')+
+          '</section>').join('')+
+        '</div>'+
+      '</details>'
+    : '<div class="plan-ahead-empty">No dated recurring bills fall in this period. Add billing dates in Budget setup and they will appear here.</div>';
+  const statements=p.statements.length
+    ? '<div class="plan-ahead-statements"><div class="plan-ahead-subhead">Known card statements</div>'+p.statements.map(billRowHtml).join('')+
+        '<p>Shown separately because a statement balance is not a recurring bill or an annual forecast.</p></div>'
+    : '';
+  const unscheduled=p.unscheduled
+    ? '<div class="plan-ahead-warning">'+p.unscheduled+' active recurring charge'+(p.unscheduled===1?' needs':'s need')+
+      ' a usable billing date. '+(p.unscheduled===1?'It is':'They are')+' excluded from this schedule.</div>'
+    : '';
+  el.innerHTML='<div class="card plan-ahead-card">'+
+    cardHeader('calendar','Scheduled bills', '<button type="button" class="card-hd-act" onclick="openBillsCalendar()">Bills calendar →</button>')+
+    '<div class="plan-ahead-total-label">12-month total</div>'+
+    '<div class="plan-ahead-total">'+(hasCharges?fmtMoneyExact(p.total):'Nothing scheduled')+'</div>'+
+    '<div class="plan-ahead-caption">'+(hasCharges?p.charges.length+' dated recurring payment'+(p.charges.length===1?'':'s')+' · '+range:range)+'</div>'+
+    facts+schedule+statements+unscheduled+
+    '<p class="plan-ahead-note">Scheduled recurring charges only. Income, account balances and day-to-day spending are not forecast here.</p>'+
+  '</div>';
+}
+function renderPlan(){
+  renderMonth();
+  renderPlanAhead();
+  renderYear();
 }
 
 // ── Yearly budget view ────────────────────────────────────────────

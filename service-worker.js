@@ -341,7 +341,9 @@
 // favourites without changing the five-item phone bar.
 // v344: Home's Journal preview is its one way into Journal, without a competing Write today
 // button; desktop sidebar labels make Favourites and the detailed navigation distinct.
-const CACHE_NAME = 'daily-v344';
+// v345: Finance folds Month and Yearly into Plan, separating this month's facts from an honest
+// year-ahead recurring-bills schedule; generic hero glare bubbles are removed app-wide.
+const CACHE_NAME = 'daily-v345';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

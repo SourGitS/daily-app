@@ -2195,7 +2195,6 @@ button.aih-row{cursor:pointer}
   color:#fff;background:linear-gradient(145deg,var(--accent-hero,#4A4A52),var(--accent-hero-2,#26262C));
   box-shadow:0 16px 40px rgba(var(--accent-rgb),.26)}
 .aih-hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 15% -20%,rgba(255,255,255,.22),transparent 58%);pointer-events:none}
-.aih-hero::after{content:'';position:absolute;width:210px;height:210px;right:-72px;top:-120px;border-radius:50%;background:rgba(255,255,255,.09);pointer-events:none}
 .aih-hero>*{position:relative;z-index:1}
 .aih-hero-eyebrow{font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.74);margin-bottom:8px}
 .aih-hero h1{margin:0;font-size:clamp(26px,4.5vw,38px);line-height:1.08;letter-spacing:-.035em;color:#fff}

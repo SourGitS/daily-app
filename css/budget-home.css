@@ -324,7 +324,7 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .wx-coords{font-family:var(--font-num);font-size:13px;color:var(--text);padding:6px 0 0}
 
 /* ── Finance's top navigation row ──────────────────────────────────
-   SIX view tabs — Overview · Week · Month · Bills · Accounts · Yearly — in ONE role="tablist",
+   FIVE view tabs — Overview · Week · Plan · Bills · Accounts — in ONE role="tablist",
    pinned as one row. Accounts used to be a plain button OUTSIDE that list, because it was a
    full-screen overlay with no tab state; it is a real Finance view now, so the launcher and
    .bud-nav-act are gone and every destination on this row is a tab.
@@ -752,9 +752,9 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   .budget-setup-primary-fields.has-charge-type{grid-template-columns:minmax(180px,1fr) repeat(3,minmax(120px,.55fr))}
 }
 /* ── The hero SURFACE ───────────────────────────────────────────────────────────
-   Held apart from any one component's geometry: the gradient, the white text, the clipped
-   decorative circle and the top glare. Its only wearer now is .hero-panel — Accounts, Budget
-   > Month and Budget > Year — at .hero-wide's full width.
+   Held apart from any one component's geometry: the gradient, the white text and the soft
+   full-card sheen. Its only wearer now is .hero-panel — Accounts and Finance › Plan's
+   This month / Year so far — at .hero-wide's full width.
    Deliberately NOT bundled with .card: these surfaces open nothing, and .card would drag in
    the press-lift and cursor:pointer that made the old .sum-card rear up under a finger.
 
@@ -771,8 +771,6 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
    · The stops are SOLID. An rgba() ramp blends into --bg, so its pale end cannot carry a 9px
      white label in light mode — the reason .ov-hero and .budget-snapshot-card each needed a
      [data-theme="light"] floor before they were migrated too.
-   · The decorative circle is a ::before behind a z-indexed content layer, so it never crosses
-     a figure and never reads as an unexplained data line.
    Following the accent does NOT reopen the per-cell colour question. One accent-tinted surface
    holding hairline-divided cells is still ONE surface; what .hero-panel exists to prevent is
    six cells in four saturated colours reading as six unrelated announcements. */
@@ -782,16 +780,13 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   position:relative;overflow:hidden;border-radius:var(--radius-hero);color:#fff;
   background:linear-gradient(152deg,var(--hm-from) 0%,var(--hm-mid) 52%,var(--hm-to) 100%);
   box-shadow:0 6px 16px rgba(0,0,0,.18);text-shadow:0 1px 2px rgba(0,0,0,.18)}
-/* Sized to a compact surface — the old 148px circle was drawn for a 136px-tall hero and would
-   swamp one. .hero-wide re-scales it for the full-width panels, which is every caller today. */
-.hero-surface::before{content:'';position:absolute;width:96px;height:96px;right:-40px;top:-54px;border-radius:50%;background:rgba(255,255,255,.10);pointer-events:none}
 .hero-surface::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% -25%,rgba(255,255,255,.12),transparent 62%);pointer-events:none}
 .hero-surface>*{position:relative;z-index:1}
-.hero-wide::before{width:200px;height:200px;right:-70px;top:-108px}
 /* The .hm-* parts BELOW are shared: .hp-cell (the hero panel's cell) builds its markup from
    them. What is gone is the card that used to wear them — .hero-metric-grid, .hm-card and its
    six direction-coloured variants (.hm-income/.hm-good, .hm-expense/.hm-short, .hm-accent,
-   .hm-neutral). budHeroMetric() had no callers left after Budget > Month became a hero panel,
+   .hm-neutral). budHeroMetric() had no callers left after Finance › Plan's This month became a
+   hero panel,
    so the whole component was unreachable. Do not delete the rest of this block with it. */
 .hm-label{display:flex;align-items:center;gap:5px;font-size:9px;font-weight:800;letter-spacing:.075em;text-transform:uppercase;line-height:1.25;color:rgba(255,255,255,.82)}
 .hm-label .card-hd-ico{width:12px;height:12px;flex-shrink:0;color:inherit;opacity:.92}
@@ -848,7 +843,7 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .hero-panel .hp-cell .tstat svg{opacity:.95}
 @media (max-width:560px){
   .hp-grid{grid-template-columns:repeat(var(--hp-cols-sm,2),minmax(0,1fr))}
-  /* One cell may lead the panel full-width on a phone, so an odd count (Budget > Month's
+  /* One cell may lead the panel full-width on a phone, so an odd count (Plan's This month's
      three) does not leave a half-empty second row. Layout only — the panel still has no
      per-cell colour variant, which is the thing it exists to prevent. The divider borders
      need no special case: a spanning cell in the first row still has its top and left
@@ -1556,10 +1551,6 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   border:1px solid rgba(255,255,255,.13);
   box-shadow:0 18px 38px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.18)
 }
-.ob-pv-hero::after{
-  content:"";position:absolute;width:150px;height:150px;border-radius:50%;right:-56px;top:-82px;
-  background:rgba(255,255,255,.18);filter:blur(8px);pointer-events:none
-}
 .ob-pv-hero-label{font-size:8.5px}
 .ob-pv-hero-title{font-size:22px;letter-spacing:-.035em;margin-top:5px}
 .ob-pv-hero-meta{font-size:10.5px;margin-top:5px}
@@ -2212,4 +2203,69 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
     align-items:start}
   #budget-bills-view .bills-summary,
   #budget-bills-view .bills-chart-card{grid-column:1/-1}
+}
+
+/* ── Finance › Plan ───────────────────────────────────────────────
+   One page for the useful longer view of money: this month's recorded facts, then the next
+   12 months of bills Daily can actually schedule. At normal widths the sections stack so the
+   month remains the lead; a real wide desktop gives each an independent column instead of
+   squeezing the category rows or the bill schedule into an unreadable half-card. */
+.budget-plan-layout{display:flex;flex-direction:column;gap:22px;max-width:1240px}
+.budget-plan-section{min-width:0}
+.budget-plan-year{padding-top:22px;border-top:1px solid var(--border)}
+.budget-plan-heading{margin:0 0 15px}
+.budget-plan-eyebrow{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-text);margin-bottom:5px}
+.budget-plan-heading h2,.budget-plan-history-heading h3{margin:0;color:var(--text);letter-spacing:-.025em}
+.budget-plan-heading h2{font-size:24px;line-height:1.1}
+.budget-plan-heading p,.budget-plan-history-heading p{margin:6px 0 0;font-size:12px;font-weight:600;line-height:1.45;color:var(--muted)}
+.budget-plan-history-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+  margin:22px 0 15px;padding-top:18px;border-top:1px solid var(--border)}
+.budget-plan-history-heading h3{font-size:17px;line-height:1.15}
+.budget-plan-history-heading p{max-width:210px;text-align:right}
+
+/* The Year-ahead card is explicitly a schedule. It does not borrow the Finance hero treatment:
+   a total of bills is a useful fact, not an account balance or a success/failure verdict. */
+.plan-ahead-card{margin-bottom:0}
+.plan-ahead-total-label{margin-top:4px;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.plan-ahead-total{font-family:var(--font-num);font-size:31px;font-weight:800;letter-spacing:-.035em;line-height:1.05;color:var(--text);margin-top:4px;overflow-wrap:anywhere}
+.plan-ahead-caption{font-size:11.5px;font-weight:650;line-height:1.45;color:var(--muted);margin-top:5px}
+.plan-ahead-facts{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-top:15px;padding-top:12px;border-top:1px solid var(--border)}
+.plan-ahead-facts>div{min-width:0;padding-right:12px}
+.plan-ahead-facts>div+div{padding:0 0 0 12px;border-left:1px solid var(--border)}
+.plan-ahead-facts span,.plan-ahead-subhead{display:block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.plan-ahead-facts strong{display:block;font-family:var(--font-num);font-size:14px;font-weight:800;line-height:1.25;color:var(--text);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plan-ahead-facts small{display:block;font-size:10.5px;font-weight:600;line-height:1.35;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plan-ahead-schedule{margin-top:15px;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.plan-ahead-schedule summary{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;cursor:pointer;list-style:none;font-size:12.5px;font-weight:750;color:var(--accent-text);-webkit-tap-highlight-color:transparent}
+.plan-ahead-schedule summary::-webkit-details-marker{display:none}
+.plan-ahead-schedule summary::after{content:'⌄';font-size:16px;color:var(--muted);line-height:1;transition:transform .16s ease}
+.plan-ahead-schedule[open] summary::after{transform:rotate(180deg)}
+.plan-ahead-schedule summary span{font-family:var(--font-num);font-size:11px;font-weight:750;color:var(--muted);margin-left:auto}
+.plan-ahead-months{padding:0 0 2px}
+.plan-ahead-month{padding:12px 0;border-top:1px solid var(--border)}
+.plan-ahead-month:first-child{border-top:0}
+.plan-ahead-month-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding-bottom:4px}
+.plan-ahead-month-head strong{font-size:13px;font-weight:800;color:var(--text)}
+.plan-ahead-month-head span{font-family:var(--font-num);font-size:13px;font-weight:800;color:var(--text);white-space:nowrap}
+.plan-ahead-month .bill-row{padding:8px 0}
+.plan-ahead-empty{font-size:12.5px;font-weight:600;line-height:1.5;color:var(--muted);padding:14px 0 2px}
+.plan-ahead-statements{margin-top:15px;padding-top:13px;border-top:1px solid var(--border)}
+.plan-ahead-statements .bill-row{padding:8px 0}
+.plan-ahead-statements p,.plan-ahead-note{margin:8px 0 0;font-size:11px;font-weight:600;line-height:1.5;color:var(--muted)}
+.plan-ahead-warning{margin-top:14px;padding:10px 11px;border-radius:10px;border:1px solid var(--warn-border);background:var(--warn-bg);color:var(--warn-dark);font-size:11.5px;font-weight:650;line-height:1.45}
+.plan-ahead-note{padding-top:11px;border-top:1px solid var(--border)}
+@media (max-width:380px){
+  .budget-plan-heading h2{font-size:22px}
+  .budget-plan-history-heading{align-items:flex-start;flex-direction:column;gap:3px}
+  .budget-plan-history-heading p{max-width:none;text-align:left}
+  .plan-ahead-facts{grid-template-columns:1fr;gap:10px}
+  .plan-ahead-facts>div,.plan-ahead-facts>div+div{padding:0;border:0}
+  .plan-ahead-facts>div+div{padding-top:10px;border-top:1px solid var(--border)}
+}
+@media (min-width:1220px){
+  .budget-plan-layout{display:grid;grid-template-columns:minmax(0,1.18fr) minmax(360px,.82fr);gap:26px;align-items:start}
+  .budget-plan-year{padding:0 0 0 26px;border-top:0;border-left:1px solid var(--border)}
+}
+@media (prefers-reduced-motion:reduce){
+  .plan-ahead-schedule summary::after{transition:none}
 }

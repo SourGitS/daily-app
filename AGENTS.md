@@ -30,9 +30,12 @@ Four main areas plus supporting screens:
   This is the former **Kitchen** and **Nutrition** tabs merged (v321) — see the Food hub
   section below before touching navigation, and note that `nut*`/`kit*` functions, DOM ids and
   storage keys all kept their names.
-- **Finance** (internal view id `budget`) — six views: **Overview** (the landing screen: what
+- **Finance** (internal view id `budget`) — five views: **Overview** (the landing screen: what
   is available this week, what needs attention, what is due over the next fortnight, the
-  accounts position and the month so far), Week, Month, Bills, **Accounts** and Yearly.
+  accounts position and the month so far), Week, **Plan**, Bills and **Accounts**. Plan keeps
+  This month's recorded facts together with a Year-ahead schedule of dated recurring bills and
+  the existing Year-so-far actuals; it must never present income, balances or everyday spending
+  as a forecast.
   `BUD_VIEWS` in `js/app.js` is the single source for which views exist — id, tab button,
   panel, nav row and renderer. Weekly income/expense tracking, CSV export, charts.
   The DESTINATION is named Finance; the budgeting CONCEPT is still called the budget. The view
@@ -49,7 +52,7 @@ Four main areas plus supporting screens:
   Finance, Food, Stats and More; the renamed Log/Finance groups retain IDs `training`/`money`
   so existing `daily_nav_ui` expansion preferences survive. Only a header press toggles a
   group. Navigation and boot neither expand groups nor persist new defaults.
-- Finance children follow **Overview · Week · Month · Bills · Accounts · Yearly**. The single
+- Finance children follow **Overview · Week · Plan · Bills · Accounts**. The single
   **Weekly review** row (`wkr`, `stats/review`) now belongs to Stats after Overview. Today keeps
   Today's session and Food log; Log keeps Splits (`program`), Exercises and History. Food
   library, Nutrition Review, Journal/Notes, Plans and Daily AI remain reachable. Routing,

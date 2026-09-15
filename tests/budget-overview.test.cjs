@@ -41,10 +41,10 @@ function views() {
 
 // ── The view registry ─────────────────────────────────────────────
 
-test('Finance holds six views in order, and a fresh session lands on Overview', () => {
+test('Finance holds five views in order, and a fresh session lands on Overview', () => {
   const { BUD_VIEWS, budgetView } = views();
   assert.deepEqual(BUD_VIEWS.map(v => v.id),
-    ['overview', 'week', 'month', 'bills', 'accounts', 'year']);
+    ['overview', 'week', 'plan', 'bills', 'accounts']);
   assert.equal(budgetView, 'overview', 'a fresh session must enter Finance on the Overview');
   // Every entry is complete: a missing field is a view that lights no tab, shows no panel,
   // selects no sidebar row or renders nothing.
@@ -83,7 +83,7 @@ test('Accounts is a registered Finance view with exactly one tab and one panel',
   assert.equal(acct[0].panel, 'budget-accounts-view');
   assert.equal(acct[0].render, 'renderAccountsPage', 'the existing renderer, not a new one');
   assert.equal(acct[0].row, 'accounts', 'it keeps the nav row id it already had');
-  // Order: Overview · Week · Month · Bills · Accounts · Yearly.
+  // Order: Overview · Week · Plan · Bills · Accounts.
   assert.equal(BUD_VIEWS.findIndex(v => v.id === 'accounts'), 4);
   // One tab, inside the tablist, and one panel.
   assert.equal((html.match(/id="bv-accounts-btn"/g) || []).length, 1);
@@ -190,9 +190,9 @@ test('the destination is named Finance where the word means the place', () => {
   assert.match(html, /Export budget \(CSV\)/);
 });
 
-test('the six tabs use the scrolling segmented control, not the filling one', () => {
-  // .seg-fill's buttons are flex:1 0 auto and never shrink, so six labels would spill over
-  // each other on a phone instead of ellipsising. Stats' six tabs already scroll for this.
+test('the Finance tabs use the scrolling segmented control, not the filling one', () => {
+  // .seg-fill's buttons are flex:1 0 auto and never shrink, so labels would spill over
+  // each other on a phone instead of ellipsising.
   const strip = html.slice(html.indexOf('id="budget-view-tabs"') - 120, html.indexOf('id="budget-view-tabs"') + 40);
   assert.match(strip, /seg-tabs seg-scroll/);
   assert.ok(!/seg-tabs seg-fill" id="budget-view-tabs"/.test(html));
@@ -200,7 +200,7 @@ test('the six tabs use the scrolling segmented control, not the filling one', ()
 
 test('setBudgetView drives the registry and never calls scrollIntoView', () => {
   const fn = body('setBudgetView');
-  assert.match(fn, /BUD_VIEWS\.forEach/, 'the six views must come from the registry');
+  assert.match(fn, /BUD_VIEWS\.forEach/, 'the five views must come from the registry');
   assert.ok(!/scrollIntoView/.test(fn),
     '#view-budget is a .swipe-panel inside the transformed deck — use segScrollToTab');
   assert.match(fn, /segScrollToTab/, 'the selected tab has to be revealed in a scrolling strip');
@@ -213,7 +213,7 @@ test('setBudgetView drives the registry and never calls scrollIntoView', () => {
   assert.match(body('budRenderView'), /BUD_VIEWS\.find/);
 });
 
-test('selecting Yearly reveals its whole tab after the new panel restores the scrollbar', () => {
+test('selecting the last Finance tab reveals it after the panel restores the scrollbar', () => {
   const { BUD_VIEWS } = views();
   const elements = {};
   const measurements = [];
@@ -224,7 +224,7 @@ test('selecting Yearly reveals its whole tab after the new panel restores the sc
     get scrollLeft() { return scrollLeft; },
     set scrollLeft(value) { scrollLeft = Math.max(0, Math.min(360 - width, value)); },
     getBoundingClientRect() {
-      measurements.push({ width, rendered, yearHidden: elements['budget-year-view'].hidden });
+      measurements.push({ width, rendered, accountsHidden: elements['budget-accounts-view'].hidden });
       return { left: 16, width };
     }
   };
@@ -245,28 +245,28 @@ test('selecting Yearly reveals its whole tab after the new panel restores the sc
     document: { getElementById(id) { return elements[id] || null; } },
     setNavActive() {},
     budRenderView(view) {
-      assert.equal(view, 'year');
-      assert.equal(elements['budget-year-view'].hidden, false);
+      assert.equal(view, 'accounts');
+      assert.equal(elements['budget-accounts-view'].hidden, false);
       // Rendering the tall destination restores a 15px scrollbar after the old panel hid.
       rendered = true;
       width = 273;
     }
   });
   vm.runInContext(['segSetOn', 'segScrollToTab', 'setBudgetView'].map(extract).join('\n'), context);
-  context.setBudgetView('year');
+  context.setBudgetView('accounts');
 
-  assert.deepEqual(measurements, [{ width: 273, rendered: true, yearHidden: false }],
+  assert.deepEqual(measurements, [{ width: 273, rendered: true, accountsHidden: false }],
     'reveal must measure the final scrollport after the destination is shown and rendered');
   assert.equal(scrollLeft, 87, 'the browser clamp must use the final width, not leave 15px clipped');
-  const year = elements['bv-year-btn'].getBoundingClientRect();
-  assert.ok(year.left >= 16 && year.left + year.width <= 16 + width);
+  const accounts = elements['bv-accounts-btn'].getBoundingClientRect();
+  assert.ok(accounts.left >= 16 && accounts.left + accounts.width <= 16 + width);
   BUD_VIEWS.forEach(view => {
-    assert.equal(elements[view.btn]['aria-selected'], view.id === 'year' ? 'true' : 'false');
-    assert.equal(elements[view.panel].hidden, view.id !== 'year');
+    assert.equal(elements[view.btn]['aria-selected'], view.id === 'accounts' ? 'true' : 'false');
+    assert.equal(elements[view.panel].hidden, view.id !== 'accounts');
   });
 });
 
-test('the tab strip is a real tablist: six tabs, six panels, one control each', () => {
+test('the tab strip is a real tablist: five tabs, five panels, one control each', () => {
   const { BUD_VIEWS } = views();
   assert.match(html, /id="budget-view-tabs" role="tablist" aria-label="Finance views"/);
   BUD_VIEWS.forEach(v => {
@@ -325,10 +325,10 @@ test('Overview has its own entry point, and explicit Week and Bills links keep t
 
 // ── "This month" opens THIS month ─────────────────────────────────
 // The card always describes the current calendar month (getMonthDate(0)), so its action has to
-// land on that month. With a plain setBudgetView('month') it preserved currentMonthOffset, and
+// land on that month. With a plain Plan entry it preserved currentMonthOffset, and
 // after browsing back to June the September card opened June.
 
-test('openBudgetCurrentMonth resets the month index, then opens Month', () => {
+test('openBudgetCurrentMonth resets the month index, then opens Plan', () => {
   // Run the real helper against a stubbed setBudgetView, so the assertion is about behaviour
   // rather than about the source text.
   const context = vm.createContext({ console, currentMonthOffset: -3, opened: null });
@@ -338,8 +338,8 @@ test('openBudgetCurrentMonth resets the month index, then opens Month', () => {
   assert.equal(context.currentMonthOffset, 0, 'the month index must be reset to the current month');
   // JSON round-trip: the object is built inside the VM and carries that realm's prototype,
   // which assert/strict's deepEqual compares as well as the contents.
-  assert.deepEqual(JSON.parse(JSON.stringify(context.opened)), { view: 'month', offsetAtOpen: 0 },
-    'Month must open AFTER the reset, or it renders the browsed month once more');
+  assert.deepEqual(JSON.parse(JSON.stringify(context.opened)), { view: 'plan', offsetAtOpen: 0 },
+    'Plan must open AFTER the reset, or it renders the browsed month once more');
   // Idempotent, and it never walks forward past the current month.
   vm.runInContext('currentMonthOffset=0; openBudgetCurrentMonth();', context);
   assert.equal(context.currentMonthOffset, 0);
@@ -349,20 +349,20 @@ test('openBudgetCurrentMonth resets the month index, then opens Month', () => {
     assert.ok(!re.test(fn), 'openBudgetCurrentMonth must not contain ' + re));
 });
 
-test('only the "This month" card resets the offset — every other Month entry point remembers', () => {
+test('only the "This month" card resets the offset — every other Plan entry point remembers', () => {
   // The card's own action.
   assert.match(body('budOvMonthHtml'), /onclick="openBudgetCurrentMonth\(\)"/);
   assert.ok(!/onclick="setBudgetView\(\\'month\\'\)"/.test(body('budOvMonthHtml')));
-  // The Month tab and the History & tools link stay on the plain dispatcher: both mean "the
+  // The Plan tab and the History & tools link stay on the plain dispatcher: both mean "the
   // Month workspace", and a control that silently rewound your position is the worse bug.
-  assert.match(html, /id="bv-month-btn"[^>]*onclick="setBudgetView\('month'\)"/);
-  assert.match(html, /class="bud-tool-btn" onclick="setBudgetView\('month'\)"/);
+  assert.match(html, /id="bv-plan-btn"[^>]*onclick="setBudgetView\('plan'\)"/);
+  assert.match(html, /class="bud-tool-btn" onclick="setBudgetView\('plan'\)"/);
   assert.ok(!/openBudgetCurrentMonth/.test(html),
     'the reset helper belongs to the card that names a month, not to the markup');
-  // Money › Month in the nav, and returning from a source/evidence view.
+  // Money › Plan in the nav, and returning from a source/evidence view.
   assert.match(body('navGo'), /setBudgetView\(t\.sub\)/);
   assert.ok(!/openBudgetCurrentMonth/.test(body('navGo')));
-  assert.match(body('returnFromSourceView'), /setBudgetView\(dest\.tab\|\|'month'\)/);
+  assert.match(body('returnFromSourceView'), /setBudgetView\(dest\.tab\|\|'plan'\)/);
   assert.ok(!/openBudgetCurrentMonth/.test(body('returnFromSourceView')));
   // Ordinary movement between views restores the remembered one, offset included.
   assert.ok(!/openBudgetCurrentMonth/.test(body('setView')));
@@ -372,6 +372,26 @@ test('only the "This month" card resets the offset — every other Month entry p
   assert.equal((source.match(/openBudgetCurrentMonth/g) || [])
     .length - (source.match(/\/\/.*openBudgetCurrentMonth/g) || []).length, 2,
     'one declaration and one caller');
+});
+
+test('legacy Month and Yearly view values normalize to Plan rather than Overview', () => {
+  const { BUD_VIEWS } = views();
+  const elements = {};
+  BUD_VIEWS.forEach(view => {
+    elements[view.btn] = { classList: { toggle() {} }, setAttribute() {} };
+    elements[view.panel] = { classList: { toggle() {} } };
+  });
+  const calls=[];
+  const context=vm.createContext({
+    BUD_VIEWS, document:{getElementById:id=>elements[id]||null},
+    setNavActive(){}, budRenderView:view=>calls.push(view), segSetOn(){}, segScrollToTab(){}
+  });
+  vm.runInContext(extract('setBudgetView'), context);
+  vm.runInContext("setBudgetView('month');", context);
+  assert.equal(vm.runInContext('budgetView', context), 'plan');
+  vm.runInContext("setBudgetView('year');", context);
+  assert.equal(vm.runInContext('budgetView', context), 'plan');
+  assert.deepEqual(calls, ['plan','plan']);
 });
 
 // ── The canonical current-week figures ────────────────────────────

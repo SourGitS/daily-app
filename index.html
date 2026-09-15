@@ -191,13 +191,13 @@
     <!-- BUDGET VIEW -->
     <section id="view-budget" class="swipe-panel">
       <button id="source-return-bar" class="source-return-bar hidden" type="button" onclick="returnFromSourceView()"></button>
-      <!-- Finance's SIX views, one tablist, one selected state. Accounts used to be a
+      <!-- Finance's FIVE views, one tablist, one selected state. Accounts used to be a
            full-screen overlay launched from a button beside this strip — it is a real Finance
            view now, with a tab and a panel like every other, so the launcher is gone and the
-           tablist holds all six.
+           tablist holds all five.
            SEG-SCROLL, not seg-fill: .seg-fill's buttons are flex:1 0 auto and never shrink, so
-           six labels would spill over each other on a phone rather than ellipsising. Stats'
-           six tabs already scroll for exactly this reason — it is the app's existing answer,
+           the labels stay legible on a phone rather than squeezing together. Stats'
+           longer tabs already scroll for exactly this reason — it is the app's existing answer,
            and it keeps every label at full size and every touch target at full height.
            BUD_VIEWS in js/app.js is the single source for which views exist; every button here
            must have an entry there and vice versa (tests/budget-overview.test.cjs). -->
@@ -205,10 +205,9 @@
         <div class="seg-tabs seg-scroll" id="budget-view-tabs" role="tablist" aria-label="Finance views">
           <button id="bv-overview-btn" class="on" role="tab" aria-selected="true" aria-controls="budget-overview-view" onclick="setBudgetView('overview')">Overview</button>
           <button id="bv-week-btn" role="tab" aria-selected="false" aria-controls="budget-week-view" onclick="setBudgetView('week')">Week</button>
-          <button id="bv-month-btn" role="tab" aria-selected="false" aria-controls="budget-month-view" onclick="setBudgetView('month')">Month</button>
+          <button id="bv-plan-btn" role="tab" aria-selected="false" aria-controls="budget-plan-view" onclick="setBudgetView('plan')">Plan</button>
           <button id="bv-bills-btn" role="tab" aria-selected="false" aria-controls="budget-bills-view" onclick="setBudgetView('bills')">Bills</button>
           <button id="bv-accounts-btn" role="tab" aria-selected="false" aria-controls="budget-accounts-view" onclick="setBudgetView('accounts')">Accounts</button>
-          <button id="bv-year-btn" role="tab" aria-selected="false" aria-controls="budget-year-view" onclick="setBudgetView('year')">Yearly</button>
         </div>
       </div>
 
@@ -420,15 +419,14 @@
 
         <!-- HISTORY &amp; TOOLS — everything that used to sit at full size in the weekly
              workflow without being part of it. Previous weeks was eight rows always open; it is
-             one recent-week snapshot now, with Month and Yearly — the real historical analysis
-             — one press away. The calculator is a disclosure rather than a permanent keypad,
+             one recent-week snapshot now, with Plan — the longer-view of this month and the
+             year ahead — one press away. The calculator is a disclosure rather than a permanent keypad,
              and Accounts &amp; net worth moved down here off the hero. -->
         <div class="card bud-span-2" id="bud-tools-card" data-bud-key="tools">
           <div class="sec-label bud-toggle"><span class="bud-head-label"><svg class="card-hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/></svg><span>History &amp; tools</span></span><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
           <div id="prev-weeks-section"></div>
           <div class="bud-tools-acts">
-            <button type="button" class="bud-tool-btn" onclick="setBudgetView('month')">Month<span aria-hidden="true">→</span></button>
-            <button type="button" class="bud-tool-btn" onclick="setBudgetView('year')">Yearly<span aria-hidden="true">→</span></button>
+            <button type="button" class="bud-tool-btn" onclick="setBudgetView('plan')">Plan<span aria-hidden="true">→</span></button>
             <button type="button" class="bud-tool-btn" onclick="openAccounts()">Accounts &amp; net worth<span aria-hidden="true">→</span></button>
           </div>
           <!-- Standalone calculator. Deliberately NOT wired into the budget inputs: the previous
@@ -477,19 +475,74 @@
         </div><!-- /.budget-desktop-grid -->
       </div>
 
-      <!-- MONTH VIEW -->
-      <div id="budget-month-view" class="hidden" role="tabpanel" aria-labelledby="bv-month-btn">
-        <div class="week-nav" style="margin-bottom:16px">
-          <button class="week-nav-btn" onclick="changeMonth(-1)">&#8249;</button>
-          <div class="week-label"><div class="week-label-main" id="month-label-main">&#8212;</div><div class="week-label-sub" id="month-label-sub">&#8212;</div></div>
-          <button class="week-nav-btn" onclick="changeMonth(1)" id="month-next-btn">&#8250;</button>
+      <!-- PLAN VIEW -->
+      <!-- Month and Yearly used to be two separate destinations. Plan keeps the useful
+           information together: the current month's actual picture leads, while the year
+           ahead is a schedule of only the dated recurring bills Daily can genuinely know.
+           The existing month/year element ids stay in place so their proven renderers and
+           data readers remain unchanged. -->
+      <div id="budget-plan-view" class="hidden" role="tabpanel" aria-labelledby="bv-plan-btn">
+        <div class="budget-plan-layout">
+          <section class="budget-plan-section budget-plan-month" aria-labelledby="budget-plan-month-title">
+            <div class="budget-plan-heading">
+              <div class="budget-plan-eyebrow">Plan</div>
+              <h2 id="budget-plan-month-title">This month</h2>
+              <p>Review what came in, what went out, and the purchases behind it.</p>
+            </div>
+            <div id="budget-month-view" class="budget-plan-detail">
+              <div class="week-nav" style="margin-bottom:16px">
+                <button class="week-nav-btn" onclick="changeMonth(-1)">&#8249;</button>
+                <div class="week-label"><div class="week-label-main" id="month-label-main">&#8212;</div><div class="week-label-sub" id="month-label-sub">&#8212;</div></div>
+                <button class="week-nav-btn" onclick="changeMonth(1)" id="month-next-btn">&#8250;</button>
+              </div>
+              <div id="month-summary-grid"></div>
+              <div class="status-bar-wrap"><div class="status-bar-fill" id="month-bar" style="width:0%"></div></div>
+              <div class="status-text"><span id="month-bar-label-l"></span><span id="month-bar-label-r"></span></div>
+              <div class="card"><div class="sec-label" style="margin-bottom:10px">Weekly breakdown</div><div id="month-weeks-list"></div></div>
+              <div class="card month-spend-card"><div class="sec-label month-spend-title">Where your variable spending went</div><div id="month-categories"></div></div>
+              <div id="month-biggest"></div>
+            </div>
+          </section>
+
+          <section class="budget-plan-section budget-plan-year" aria-labelledby="budget-plan-year-title">
+            <div class="budget-plan-heading">
+              <div class="budget-plan-eyebrow">Forward plan</div>
+              <h2 id="budget-plan-year-title">Year ahead</h2>
+              <p>Known scheduled bills over the next 12 months, based only on dates you have set.</p>
+            </div>
+            <div id="plan-ahead-card"></div>
+            <div class="budget-plan-history-heading">
+              <div>
+                <div class="budget-plan-eyebrow">Actuals</div>
+                <h3>Year so far</h3>
+              </div>
+              <p>Recorded income, spending and savings—not a prediction.</p>
+            </div>
+            <div id="budget-year-view" class="budget-plan-detail">
+              <div class="week-nav" style="margin-bottom:16px">
+                <button class="week-nav-btn" onclick="changeBudgetYear(-1)">&#8249;</button>
+                <div class="week-label"><div class="week-label-main" id="year-label-main">&#8212;</div><div class="week-label-sub" id="year-label-sub">&#8212;</div></div>
+                <button class="week-nav-btn" onclick="changeBudgetYear(1)" id="year-next-btn">&#8250;</button>
+              </div>
+              <div id="year-summary-grid"></div>
+              <div class="card">
+                <div class="sec-label" style="margin-bottom:10px">Month by month</div>
+                <div id="year-months-list"></div>
+              </div>
+              <div id="year-trends"></div>
+              <div class="card">
+                <div class="sec-label" style="margin-bottom:10px">Monthly breakdown</div>
+                <div id="year-stack-legend" class="chart-legend"></div>
+                <div id="year-stack-wrap"><canvas id="year-stack-chart"></canvas></div>
+              </div>
+              <div class="card">
+                <div class="sec-label" style="margin-bottom:10px">Monthly CC / variable spending</div>
+                <div id="year-cc-legend" class="chart-legend"></div>
+                <div id="year-cc-wrap"><canvas id="year-cc-chart"></canvas></div>
+              </div>
+            </div>
+          </section>
         </div>
-        <div id="month-summary-grid"></div>
-        <div class="status-bar-wrap"><div class="status-bar-fill" id="month-bar" style="width:0%"></div></div>
-        <div class="status-text"><span id="month-bar-label-l"></span><span id="month-bar-label-r"></span></div>
-        <div class="card"><div class="sec-label" style="margin-bottom:10px">Weekly breakdown</div><div id="month-weeks-list"></div></div>
-        <div class="card month-spend-card"><div class="sec-label month-spend-title">Where your variable spending went</div><div id="month-categories"></div></div>
-        <div id="month-biggest"></div>
       </div>
 
       <!-- BILLS CALENDAR VIEW -->
@@ -517,32 +570,6 @@
         </div>
       </div>
 
-      <!-- YEARLY VIEW -->
-      <div id="budget-year-view" class="hidden" role="tabpanel" aria-labelledby="bv-year-btn">
-        <!-- Same nav pattern as the week and month views, which this previously lacked —
-             it was pinned to a rolling 12 months with no way to see a different year. -->
-        <div class="week-nav" style="margin-bottom:16px">
-          <button class="week-nav-btn" onclick="changeBudgetYear(-1)">&#8249;</button>
-          <div class="week-label"><div class="week-label-main" id="year-label-main">&#8212;</div><div class="week-label-sub" id="year-label-sub">&#8212;</div></div>
-          <button class="week-nav-btn" onclick="changeBudgetYear(1)" id="year-next-btn">&#8250;</button>
-        </div>
-        <div id="year-summary-grid"></div>
-        <div class="card">
-          <div class="sec-label" style="margin-bottom:10px">Month by month</div>
-          <div id="year-months-list"></div>
-        </div>
-        <div id="year-trends"></div>
-        <div class="card">
-          <div class="sec-label" style="margin-bottom:10px">Monthly breakdown</div>
-          <div id="year-stack-legend" class="chart-legend"></div>
-          <div id="year-stack-wrap"><canvas id="year-stack-chart"></canvas></div>
-        </div>
-        <div class="card">
-          <div class="sec-label" style="margin-bottom:10px">Monthly CC / variable spending</div>
-          <div id="year-cc-legend" class="chart-legend"></div>
-          <div id="year-cc-wrap"><canvas id="year-cc-chart"></canvas></div>
-        </div>
-      </div>
     </section>
 
     <!-- FOOD VIEW — Nutrition and Kitchen were two top-level destinations answering one
