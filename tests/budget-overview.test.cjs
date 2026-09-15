@@ -18,6 +18,7 @@ const { extract } = require('./harness.cjs');
 
 const source = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+const budgetCss = fs.readFileSync(path.join(__dirname, '../css/budget-home.css'), 'utf8');
 
 // BUD_VIEWS and NAV_TREE are `const`, not functions, so harness.extract() cannot reach them.
 // Slice between two anchors instead, and assert the anchors exist so renaming one fails here
@@ -196,6 +197,17 @@ test('the Finance tabs use the scrolling segmented control, not the filling one'
   const strip = html.slice(html.indexOf('id="budget-view-tabs"') - 120, html.indexOf('id="budget-view-tabs"') + 40);
   assert.match(strip, /seg-tabs seg-scroll/);
   assert.ok(!/seg-tabs seg-fill" id="budget-view-tabs"/.test(html));
+});
+
+test('the five Finance tabs fill a normal iPhone portrait row without changing the narrow-screen fallback', () => {
+  // The old six-tab layout left a conspicuous blank strip after Accounts at 375px. This is
+  // deliberately Finance-only: Stats still needs a real scrolling tab row, and the phone's
+  // five-item bottom navigation is a different control altogether.
+  assert.match(budgetCss,
+    /@media \(min-width:375px\) and \(max-width:480px\) and \(orientation:portrait\)\{\s*#budget-view-tabs > button\{flex:1 1 0;min-width:0;[^}]*text-align:center/);
+  assert.match(budgetCss,
+    /#budget-view-tabs > button\{flex:0 0 auto;padding-left:8px;padding-right:8px\}/,
+    'older 320px phones must retain the intrinsic-width scrolling fallback');
 });
 
 test('setBudgetView drives the registry and never calls scrollIntoView', () => {

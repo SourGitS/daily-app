@@ -342,9 +342,9 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 /* The strip inside gives up everything the wrapper owns. ID specificity so it also beats the
    landscape block's #view-budget .seg-tabs margin/shadow wherever that sits in the file;
    height is deliberately NOT set here, so landscape's exact --bud-switch-h still applies.
-   A .seg-scroll, because six labels do not fit a phone at .seg-fill's never-shrinking width —
-   Stats' six tabs scroll for the same reason, and scrolling keeps every label at full size and
-   every touch target at full height rather than squeezing either.
+   It stays a .seg-scroll so unusually narrow phones can keep every label readable. The five
+   current labels share the available row on normal iPhone portrait widths below; the scrolling
+   fallback is still safer than truncating them on an older 320px screen.
    flex:1 1 0 rather than the default basis:auto: it is now the only child, so the basis no
    longer decides a wrap, but zero is still what lets the strip take exactly the row it is
    given instead of overflowing the panel at the width of six labels. */
@@ -357,6 +357,13 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
    Keep Finance tabs intrinsic on phones; desktop's equal-width tabs stay unchanged. */
 @media (max-width:1023px), (orientation:landscape) and (max-height:600px) and (pointer:coarse){
   #budget-view-tabs > button{flex:0 0 auto;padding-left:8px;padding-right:8px}
+}
+/* Five labels fit across a standard iPhone portrait screen. Filling this one Finance strip
+   removes the dead area after Accounts without changing the global scroll treatment or the
+   five-item bottom navigation. Older 320px screens retain the intrinsic scrolling fallback
+   above so Overview and Accounts never have to be clipped. */
+@media (min-width:375px) and (max-width:480px) and (orientation:portrait){
+  #budget-view-tabs > button{flex:1 1 0;min-width:0;padding-left:3px;padding-right:3px;text-align:center}
 }
 
 /* Compact week navigation for short landscape. display:none everywhere else — the weekly

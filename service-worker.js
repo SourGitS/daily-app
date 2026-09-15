@@ -343,7 +343,8 @@
 // button; desktop sidebar labels make Favourites and the detailed navigation distinct.
 // v345: Finance folds Month and Yearly into Plan, separating this month's facts from an honest
 // year-ahead recurring-bills schedule; generic hero glare bubbles are removed app-wide.
-const CACHE_NAME = 'daily-v345';
+// v346: Finance's five-item picker fills the available space on normal iPhone portrait widths.
+const CACHE_NAME = 'daily-v346';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
