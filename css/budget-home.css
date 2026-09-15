@@ -246,6 +246,18 @@
 .txn-badge{display:inline-block;margin-left:7px;padding:2px 6px;border-radius:999px;
   background:var(--track);color:var(--muted);font-size:9px;font-weight:800;
   letter-spacing:.04em;text-transform:uppercase;vertical-align:middle}
+/* The same badge, tinted so a tagged expense is recognisable in a long list. Accent-as-TEXT,
+   so it reads on the card surface whatever accent the device is holding. */
+.txn-badge-need{background:rgba(var(--accent-rgb),.14);color:var(--accent-text)}
+/* Essential / need: a second reading of the same expenses, sitting under the breakdown it is
+   drawn from. Label, figure, and one line saying exactly what the figure covers. Flat, never a
+   nested card, and the amount stays --text because the tag is not a verdict about the money. */
+.bud-essential{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;
+  margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.bud-essential-l{font-size:12px;font-weight:700;color:var(--text)}
+.bud-essential-v{font-family:var(--font-num);font-size:14px;font-weight:800;color:var(--text);
+  grid-column:2;grid-row:1;text-align:right}
+.bud-essential-s{grid-column:1/-1;font-size:11px;font-weight:600;line-height:1.45;color:var(--muted)}
 .txn-item-carry-hint{white-space:normal;line-height:1.45;margin-top:3px;max-width:100%}
 .txn-item-meta{font-size:11px;font-weight:600;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .txn-item-amt{font-family:var(--font-num);font-size:14px;font-weight:800;color:var(--text);flex-shrink:0}
@@ -418,6 +430,18 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .txn-cat{padding:8px 13px;border-radius:999px;border:1.5px solid var(--border);background:transparent;
   color:var(--text);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .txn-cat.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.14);color:var(--accent-text);font-weight:700}
+/* "Essential / need" - an optional label on an expense. A real checkbox rather than another
+   .txn-cat pill, because it is a two-state fact about the purchase, not a choice among the
+   categories directly above it. :has() only tints the resting border; the checkbox itself
+   carries the state where :has() is unsupported. */
+.txn-flag-wrap{margin-top:12px}
+.txn-flag{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--border);
+  border-radius:12px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.txn-flag:has(input:checked){border-color:var(--accent);background:rgba(var(--accent-rgb),.12)}
+.txn-flag:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.txn-flag input{flex:0 0 auto;width:20px;height:20px;margin:0;accent-color:var(--accent);cursor:pointer}
+.txn-flag-t{font-size:14px;font-weight:600;color:var(--text)}
+.txn-flag-d{font-size:11.5px;font-weight:600;line-height:1.45;color:var(--muted);margin:6px 2px 0}
 .txn-recent{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .txn-chip{padding:6px 11px;border-radius:999px;border:1px solid var(--border);background:transparent;
   color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
@@ -1119,16 +1143,21 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   /* Declared ONCE. This used to be 160px with 12px rows and a border-left rail, and
      kitchen-extras.css declared it again at 260px with 14px pill rows — the second won on load
      order, so half of what was written here never rendered. These are the values that won. */
-  #desktop-sidebar{width:260px;flex-shrink:0;background:var(--card);border-right:0.5px solid var(--border);color:var(--text);display:flex;flex-direction:column;padding:12px 0;height:100vh;position:sticky;top:0;min-height:0;overflow:hidden}
+  #desktop-sidebar{width:260px;flex-shrink:0;background:var(--card);border-right:0.5px solid var(--border);color:var(--text);display:flex;flex-direction:column;padding:16px 0 0;height:100vh;position:sticky;top:0;min-height:0;overflow:hidden}
   /* The wordmark (see css/brand.css) — one span, inked with the live accent, the same mark
      the header and side menu show. Align its inset with the quick icons and group headers. */
-  .ds-logo{display:flex;flex:none;justify-content:flex-start;padding:0 20px 10px}
+  /* The brand is its own band, not the first item of the quick strip. It had 10px of air
+     under it against 24px of mark, so the wordmark and the first destination read as one
+     block; 20px separates them without pushing the strip down the column. The 22px inset is
+     the one every row below lines up on (.nv-qrow's 10px margin + 12px padding, .nv-hd's
+     22px), so brand and navigation share a single left edge. */
+  .ds-logo{display:flex;flex:none;justify-content:flex-start;padding:0 22px 20px}
   /* 24px, not 28: at 28 the framed block was 157.6 x 50px — 68% of the sidebar's usable
      width and taller than a nav row, so the one element carrying no information was the
      biggest thing in the column. At 24 it is 133.3 x 42px and still the clear brand block.
      The frame metrics come from .wordmark's own base in css/brand.css at this size. */
   .ds-logo .wordmark{height:24px}
-  .ds-profile{flex:none;margin-top:auto;padding:10px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px}
+  .ds-profile{flex:none;margin-top:auto;padding:14px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
   .ds-av{flex:none;width:24px;height:24px;border-radius:50%;background:rgba(var(--accent-rgb),0.25);color:var(--accent-text);font-size:9px;font-weight:600;display:flex;align-items:center;justify-content:center}
   .ds-av.has-photo{background:transparent}
   .ds-av img{display:block;width:100%;height:100%;object-fit:cover}
@@ -2107,6 +2136,11 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .bov-act-primary{background:#fff;border-color:#fff;color:var(--accent-hero,#26262C);
   text-shadow:none}
 .bov-act-primary:hover{background:rgba(255,255,255,.9)}
+/* The hero's one lead action. It takes the row it is on and pushes the second action below it
+   whenever both cannot sit side by side, so the primary destination is never the smaller of two
+   equal pills on a phone. Size and weight only — the white fill still comes from
+   .bov-act-primary above, so there is one filled treatment rather than two. */
+.bov-act-lead{flex:1 1 220px;min-height:46px;padding:0 20px;font-size:14px}
 /* The Accounts empty state's action sits on a card, not a hero. */
 .bov-act-wide{width:100%;margin-top:12px;background:transparent;border-color:var(--border);
   color:var(--accent-text);text-shadow:none}

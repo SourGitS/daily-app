@@ -545,3 +545,70 @@ test('the fortnight preview is truncated but its total is not', () => {
   assert.match(fn, /Nothing here is deducted from this week’s figures/,
     'an upcoming-payment total is not the weekly accrual and must say so');
 });
+
+// ── The hero's one primary action ─────────────────────────────────
+// The Overview STATES the weekly position; Week is where every part of it is actually changed,
+// so it is where almost every visit ends. The hero used to offer three equal pills — Add
+// expense, Open week, and Set up when there was no income — which is three answers to "what now".
+// Month, Bills, Accounts and Yearly stay on the tab strip and must not appear down here.
+
+function hero(m) {
+  const context = vm.createContext({ console, Date, Math, JSON });
+  vm.runInContext(`
+    function budHeroPanel(items,opts){ const i=items[0];
+      return '<panel cols="'+opts.cols+'" class="'+opts.className+'" val="'+i.val+'">'+
+        '<sub>'+i.sub+'</sub>'+i.chip+i.extra+'</panel>'; }
+    function statsSplit(rows){ return '<split>'+rows.map(r=>r[0]+'='+r[1]).join('|')+'</split>'; }
+    function budRangeLabel(){ return '7-13 Sept'; }
+    function budPaceText(){ return '$50 a day for 3 more days'; }
+    function varGoalDaysLeft(){ return 3; }
+    function tstat(kind,label){ return '<tstat kind="'+kind+'">'+label+'</tstat>'; }
+    function escText(s){ return String(s); }
+    function fmtMoney(n){ return '$'+Math.round(n); }
+  `, context);
+  vm.runInContext(extract('budOvHeroHtml'), context);
+  context.m = m;
+  return vm.runInContext('budOvHeroHtml(m)', context);
+}
+const WEEK = { monday: new Date(2026, 8, 7), income: 1200, available: 350, spent: 210, committed: 480, saved: 160 };
+
+test('This week is the hero primary action, and the only other control is quick capture', () => {
+  const html = hero(WEEK);
+  const buttons = html.match(/<button[^>]*>/g) || [];
+  assert.equal(buttons.length, 2, 'exactly two actions: the destination and quick capture');
+  assert.ok(buttons.every(b => /type="button"/.test(b)), 'real buttons, so they are keyboard reachable');
+  // Order and emphasis both say which one is primary.
+  assert.match(buttons[0], /bov-act-primary/);
+  assert.match(buttons[0], /bov-act-lead/);
+  assert.match(buttons[0], /setBudgetView\('week'\)/);
+  assert.match(html, />This week /);
+  assert.ok(!/bov-act-primary/.test(buttons[1]), 'quick capture must not compete with it');
+  assert.match(buttons[1], /openTxnModal\(\)/);
+  // The other Finance views belong to the tab strip.
+  ['month', 'bills', 'accounts', 'year'].forEach(v =>
+    assert.ok(!html.includes("setBudgetView('" + v + "')"), v + ' must not appear in the hero'));
+  assert.ok(!/Open week/.test(html), 'the retired label is gone');
+});
+
+test('with no income the hero leads with setup, and This week follows it', () => {
+  const html = hero({ ...WEEK, income: 0 });
+  const buttons = html.match(/<button[^>]*>/g) || [];
+  assert.equal(buttons.length, 2, 'setup and the week — quick capture waits until there is a week to spend from');
+  assert.match(buttons[0], /openBudgetSetup\(\)/);
+  assert.match(buttons[0], /bov-act-lead/);
+  assert.match(buttons[1], /setBudgetView\('week'\)/);
+  assert.ok(!/bov-act-primary/.test(buttons[1]));
+  // The figure itself still refuses to present an unknown as $0.
+  assert.match(html, /val="—"/);
+});
+
+test('the hero keeps every figure it already stated', () => {
+  const html = hero(WEEK);
+  assert.match(html, /Spent=\$210/);
+  assert.match(html, /Committed=\$480/);
+  assert.match(html, /Saved=\$160/);
+  assert.match(html, /val="\$350"/);
+  assert.match(html, /\$50 a day for 3 more days/, 'the shared pace line');
+  assert.match(html, /This week · 7-13 Sept/);
+  assert.match(html, /not a bank balance/, 'the allocation caveat stays');
+});

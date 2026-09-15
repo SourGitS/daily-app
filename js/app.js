@@ -6738,6 +6738,9 @@ function exportBudgetCSV(){
       fixSubs:fixActual(d,'subs'),
       varFood:varActual(d,'food',k), varPub:varActual(d,'pub',k), varPersonal:varActual(d,'personal',k),
       varByCat, totalVar, totalFixed, subsWeekly, totalOut, leftover, leftoverPct,
+      // A subset reading of the itemised expenses in this week, not a new total: it is never
+      // subtracted from Total Variable and never added to Total Out.
+      essential:weekEssentialSummary(k).total,
       notes:d.notes||''
     };
   });
@@ -6772,12 +6775,17 @@ function exportBudgetCSV(){
   // Income is fixed.
   const incHdr=incCats.map(c=>catLabel(c)+' Income');
   const hrsHdr=anyHours?incCats.map(c=>catLabel(c)+' Hours'):[];
+  // Same rule as the hours columns: emitted only if the tag has actually been used, so an
+  // export from an account that has never touched it is shaped exactly as it always was.
+  const anyEssential=weeks.some(w=>w.essential>0);
+  const needHdr=anyEssential?['Essential / Need']:[];
+  const needVals=w=>anyEssential?[w.essential]:[];
   const tail=['Saved','Savings Rate %','Running Savings Balance','Fixed Transport','Var Food','Var Pub',
-    'Var Personal','Total Variable','Total Fixed','Total Subscriptions','Total Out','Leftover','Leftover %','Notes'];
+    'Var Personal','Total Variable',...needHdr,'Total Fixed','Total Subscriptions','Total Out','Leftover','Leftover %','Notes'];
   const incVals=w=>incCats.map(c=>w.incByCat[c.id]);
   const hrsVals=w=>anyHours?incCats.map(c=>w.hrsByCat[c.id]):[];
   const tailVals=w=>[w.saved,w.savRate,w.runningBal,w.fixTransport,w.varFood,w.varPub,w.varPersonal,
-    w.totalVar,w.totalFixed,w.subsWeekly,w.totalOut,w.leftover,w.leftoverPct,w.notes];
+    w.totalVar,...needVals(w),w.totalFixed,w.subsWeekly,w.totalOut,w.leftover,w.leftoverPct,w.notes];
   rows.push(row(['Week',...incHdr,'Total Income',...hrsHdr,...tail]));
   weeks.forEach(w=>{ rows.push(row([w.label,...incVals(w),w.income,...hrsVals(w),...tailVals(w)])); });
   // Totals row: sums for flow columns; the blended (not naively-averaged) rate for rate
@@ -6787,14 +6795,16 @@ function exportBudgetCSV(){
     ...incCats.map(c=>sum(w=>w.incByCat[c.id])), totalIncome,
     ...(anyHours?incCats.map(c=>sum(w=>w.hrsByCat[c.id])):[]),
     totalSaved,blendedSavRate,finalRunningBal,sum(w=>w.fixTransport),totalFood,totalPub,totalPersonal,
-    totalVarAll,totalFixedAll,totalSubsAll,totalOutAll,totalLeftover,blendedLeftoverPct,'']));
+    totalVarAll,...(anyEssential?[sum(w=>w.essential)]:[]),
+    totalFixedAll,totalSubsAll,totalOutAll,totalLeftover,blendedLeftoverPct,'']));
   // Hours averages use avgRate (mean over only the weeks that recorded hours) — a plain avg
   // over all weeks would dilute the figure with pre-feature blank weeks.
   rows.push(row(['AVERAGES',
     ...incCats.map(c=>avg(w=>w.incByCat[c.id])), avg(w=>w.income),
     ...(anyHours?incCats.map(c=>avgRate(w=>w.hrsByCat[c.id])):[]),
     avg(w=>w.saved),avgRate(w=>w.savRate),'',avg(w=>w.fixTransport),avg(w=>w.varFood),avg(w=>w.varPub),
-    avg(w=>w.varPersonal),avg(w=>w.totalVar),avg(w=>w.totalFixed),avg(w=>w.subsWeekly),
+    avg(w=>w.varPersonal),avg(w=>w.totalVar),...(anyEssential?[avg(w=>w.essential)]:[]),
+    avg(w=>w.totalFixed),avg(w=>w.subsWeekly),
     avg(w=>w.totalOut),numWk?r2(totalLeftover/(leftoverWeeks.length||1)):'',avgRate(w=>w.leftoverPct),'']));
 
   // ── SECTION 2 — CATEGORY ANALYSIS ────────────────────────────────
@@ -7406,6 +7416,8 @@ function aiTransactionsScope(range){
       if(t.acctId) row.paymentAccountId=String(t.acctId);
       if(a&&a.name) row.paymentAccountName=String(a.name);
       if(t.note) row.note=String(t.note);
+      // Reported, never inferred: an expense without the field was simply not tagged.
+      if(txnIsEssential(t)) row.essential=true;
       // Gross stays the amount; net is DERIVED. Both are exported so an assistant can report
       // the real personal cost without ever being tempted to rewrite the expense.
       const reimbursed=(typeof ledgerReimbursedTotal==='function')?ledgerReimbursedTotal(t.id):0;
@@ -7989,10 +8001,17 @@ function renderDailyContextMarkdown(ctx){
       push('_No transactions recorded in this period._','');
     } else {
       const total=aiSum(d.transactions.map(t=>t.amount));
-      push(d.transactions.length+' transactions totalling '+aiMoney(total)+'.','');
-      push.apply(null,aiTable(['Date','Merchant','Category','Amount','Paid with','Note'],
+      // The Essential / need column appears only when something carries the tag, so an export
+      // from an account that has never used it reads exactly as it always did.
+      const anyNeed=d.transactions.some(t=>t.essential===true);
+      const need=aiSum(d.transactions.filter(t=>t.essential===true).map(t=>t.amount));
+      push(d.transactions.length+' transactions totalling '+aiMoney(total)+
+        (anyNeed?'. '+aiMoney(need)+' of that is tagged Essential / need':'')+'.','');
+      push.apply(null,aiTable(['Date','Merchant','Category','Amount','Paid with']
+          .concat(anyNeed?['Essential']:[]).concat(['Note']),
         d.transactions.map(t=>[t.date,t.merchant||'—',t.categoryName||t.categoryId||'—',
-          aiMoney(t.amount),t.paymentAccountName||(t.paymentAccountId?'(unknown account)':'—'),t.note||''])));
+          aiMoney(t.amount),t.paymentAccountName||(t.paymentAccountId?'(unknown account)':'—')]
+          .concat(anyNeed?[t.essential===true?'Yes':'']:[]).concat([t.note||'']))));
       blank();
     }
   }
@@ -8749,6 +8768,9 @@ function aiValExpense(d,id){
   // falls back to the action id exactly as before.
   const srcInfo=aiActSource(d);
   const pending=d.pending===true||aiActStr(d.status).toLowerCase()==='pending';
+  // Strictly true-only. Anything else — absent, "no", 0 — leaves the expense untagged rather
+  // than letting an assistant's guess classify someone's spending.
+  const essential=d.essential===true;
   const conflicts=[], infos=[];
   // A pending authorisation is accepted but never assumed to be final, and never ticked for
   // you: the settled row is the one the statement will keep.
@@ -8770,14 +8792,15 @@ function aiValExpense(d,id){
     'this really is a separate purchase from that merchant.');
   if(!acct.rec) infos.push('No payment account attributed.');
   const summary='Add '+fmtMoneyExact(amt)+(merchant?' '+merchant:'')+' expense to '+catLabel(cat.rec)+
-    ' on '+aiActFmtDate(date)+(acct.rec?', paid with '+acct.rec.name:'')+(pending?'. Held as PENDING':'')+'.';
+    ' on '+aiActFmtDate(date)+(acct.rec?', paid with '+acct.rec.name:'')+
+    (essential?', tagged Essential / need':'')+(pending?'. Held as PENDING':'')+'.';
   return {ok:true, summary, group:'expense', requiresConfirmation:pending,
     conflict:conflicts.filter(Boolean).join(' '), info:infos.join(' '),
     dupKey:txn=>!!txn&&((txn.aiActionId&&txn.aiActionId===id)||(!!srcInfo.key&&txn.srcKey===srcInfo.key)),
     collection:()=>txnData,
     apply:(meta)=>{
       const rec=txnCreateRecord({date, catId:cat.rec.id, amount:amt, merchant, note,
-        acctId:acct.rec?acct.rec.id:''}, meta);
+        acctId:acct.rec?acct.rec.id:'', essential}, meta);
       if(srcInfo.key){ rec.srcKey=srcInfo.key; if(srcInfo.src) rec.source=srcInfo.src; }
       if(pending) rec.pendingImport=true;
       saveTxns();
@@ -9490,6 +9513,13 @@ function aiValUpdateExpense(d,id){
     changes.push({field:'pendingImport', to:false});
     parts.push('pending → settled');
   }
+  // Only an explicit true/false touches the tag; any other value leaves it exactly as it is.
+  if(d.setEssential===true||d.setEssential===false){
+    if(txnIsEssential(txn)!==d.setEssential){
+      changes.push({field:'essential', to:d.setEssential});
+      parts.push(d.setEssential?'tagged Essential / need':'Essential / need tag removed');
+    }
+  }
   const reason=aiActStr(d.reason);
   if(aiActTooLong(reason)) return {ok:false, error:'"reason" is too long.'};
   const label=(txn.merchant||'expense')+' '+fmtMoneyExact(parseFloat(txn.amount)||0)+' of '+aiActFmtDate(txn.date);
@@ -10007,7 +10037,8 @@ function aiInboxCopySchema(){
     'Every financial action accepts data.source = { "file": "<exact file name>", "account": "<account id or name>", "row": <original row number>, "description": "<original bank description>" }.\n'+
     'Daily fingerprints that source row and refuses to import the same row twice, even if you regenerate the batch with different action ids. Without it, only the action id protects against duplicates, and a regenerated batch WILL duplicate.\n'+
     'Two identical purchases on the same day with the same merchant and amount are TWO purchases. Give each its own row number; never collapse them.\n\n'+
-    'add_expense data: amount (>0), date (YYYY-MM-DD), categoryName or categoryId, optional merchant, note, paymentAccountName, pending, source.\n'+
+    'add_expense data: amount (>0), date (YYYY-MM-DD), categoryName or categoryId, optional merchant, note, paymentAccountName, pending, essential, source.\n'+
+    '  Set essential: true ONLY when the user has told you the expense was unavoidable — medical, laundry, rent-related and the like. It is a label: it changes no category, no total and no schedule, and Daily reports the tagged total separately. Never infer it from a merchant name.\n'+
     '  Set pending: true ONLY for a charge your source shows as still pending. Daily marks it, leaves the row unticked, and matches the settled row back to it later. Everything else is treated as settled.\n'+
     'add_subscription data: name, amount (>0), cycle ("weekly", "monthly" or "yearly"), optional status (active/trial/paused/cancelled), nextBillingDate, website, paymentAccountName.\n'+
     'archive_subscription data: subscriptionId (the exact stable id from Daily\'s context export) and a user-confirmed confirmedEndDate (YYYY-MM-DD, today or earlier). Use it only after the user explicitly confirms that end date. Names are descriptive only and never accepted as targets. Daily shows this action unchecked; it preserves history and never permanently deletes the item.\n'+
@@ -10031,7 +10062,7 @@ function aiInboxCopySchema(){
     '  Daily checks what that week actually accrued for the item from its own frozen rates, and flags a payment against a week that accrued nothing. Today’s subscription settings are not evidence that the charge was active during the imported period — if you cannot tell, say so in "note" rather than assuming.\n'+
     'add_balance_snapshot data: accountId/Name, date (REQUIRED, explicit — Daily never assumes today), balance, balanceKind (REQUIRED: '+AI_BALANCE_KINDS.join('/')+').\n'+
     '  A balance is an observation. It never creates income or an expense. An "available" balance is recorded but never becomes the current balance, and an older reading never overwrites a newer one.\n'+
-    'update_expense data: expenseId (exact id), plus any of setCategoryId/setCategoryName, setMerchant, setNote, setAmount, setDate, clearPending, and a "reason".\n'+
+    'update_expense data: expenseId (exact id), plus any of setCategoryId/setCategoryName, setMerchant, setNote, setAmount, setDate, clearPending, setEssential (true or false), and a "reason".\n'+
     '  This CORRECTS the existing record in place. Never fix a mis-categorised expense by adding a second corrected one. Daily shows before and after and keeps an audit trail; the row starts unticked.\n'+
     'add_income_stream data: name. add_expense_category data: name.\n'+
     '  Only for something that genuinely does not exist. Both start unticked and need explicit approval. Check the id list above first — "Pub & Social" is not a new category if "Pub & social" already exists.\n\n'+
@@ -13080,6 +13111,10 @@ function openTxnModal(opts){
   document.getElementById('txn-amount').value = existing?existing.amount:'';
   document.getElementById('txn-merchant').value = existing?(existing.merchant||''):'';
   document.getElementById('txn-note').value = existing?(existing.note||''):'';
+  const essential=document.getElementById('txn-essential');
+  // A new expense never inherits the last one's tag, and an untagged historic record reads as
+  // unchecked rather than as an unknown.
+  if(essential) essential.checked = !!(existing&&txnIsEssential(existing));
   document.getElementById('txn-date').value = existing?existing.date:(o.date||getLocalDate());
   txnRenderAccounts(existing?existing.acctId:null);
   document.getElementById('txn-err').textContent='';
@@ -13163,9 +13198,51 @@ function txnRenderAccounts(selectedId){
 function txnCreateRecord(f, meta){
   const rec={id:genTxnId(), date:f.date, catId:f.catId, amount:f.amount,
     merchant:f.merchant||'', note:f.note||'', acctId:f.acctId||'', createdAt:Date.now()};
+  // Written only when true: an untagged expense keeps the exact record shape it always had.
+  if(f.essential===true) rec.essential=true;
   if(meta&&meta.aiActionId){ rec.aiActionId=meta.aiActionId; rec.aiSource=meta.aiSource||''; }
   txnData.push(rec);
   return rec;
+}
+// ── Essential / need ──────────────────────────────────────────────
+// An optional label the person logging an expense can set: this one was unavoidable — a
+// medical appointment, laundry, something rent-related. It is a LABEL and only that. It never
+// moves a transaction's category, the week's variable total, the spending goal, a bill
+// schedule or an account balance, and nothing derives a second budget from it.
+// The field is written ONLY when it is true, so an expense saved before the tag existed has no
+// value for it and reads as untagged — there is no migration, no backfill and no default write.
+function txnIsEssential(t){ return !!(t&&t.essential===true); }
+// Totals for a set of transactions. `logged` is every record in the set, so the share can be
+// stated against money that actually has a per-expense label — never against the week's
+// variable total, part of which can still be a typed weekly figure with no expenses behind it.
+function budEssentialSummary(txns){
+  const list=Array.isArray(txns)?txns:[];
+  const r2=n=>Math.round((n+Number.EPSILON)*100)/100;
+  let total=0, logged=0, count=0;
+  list.forEach(t=>{
+    const amt=parseFloat(t&&t.amount)||0;
+    logged+=amt;
+    if(txnIsEssential(t)){ total+=amt; count++; }
+  });
+  return {total:r2(total), logged:r2(logged), count, entries:list.length};
+}
+function weekEssentialSummary(mondayStr){ return budEssentialSummary(txnsForWeek(mondayStr)); }
+// The same Monday keys the month's own variable total is built from, so the two describe one
+// period. Weeks never overlap, so concatenating them cannot double-count a record.
+function monthEssentialSummary(keys){
+  return budEssentialSummary((keys||[]).reduce((all,k)=>all.concat(txnsForWeek(k)),[]));
+}
+// Stated beside the expenses it is drawn from, and only once something has been tagged — a
+// permanent "$0 essential" row would be noise for everyone who never uses the tag.
+function budEssentialLineHtml(e,scope){
+  if(!e||!e.count) return '';
+  const share=e.logged>0?' · '+Math.round(e.total/e.logged*100)+'% of '+fmtMoneyExact(e.logged)+' logged':'';
+  return '<div class="bud-essential">'+
+    '<span class="bud-essential-l">Essential / need</span>'+
+    '<span class="bud-essential-v">'+fmtMoneyExact(e.total)+'</span>'+
+    '<span class="bud-essential-s">'+e.count+' of '+e.entries+' logged expense'+(e.entries===1?'':'s')+
+      ' '+escText(scope)+share+'</span>'+
+  '</div>';
 }
 // A carry record is an old manual weekly total turned into a ledger line. New ones carry
 // explicit provenance; records written before that field existed can only be recognised by
@@ -13229,7 +13306,8 @@ function txnReadForm(){
     catId:_txnCatId, amount:amt,
     merchant:(document.getElementById('txn-merchant').value||'').trim(),
     note:(document.getElementById('txn-note').value||'').trim(),
-    acctId:(document.getElementById('txn-account')||{}).value||''};
+    acctId:(document.getElementById('txn-account')||{}).value||'',
+    essential:!!(document.getElementById('txn-essential')||{}).checked};
 }
 function txnSave(){
   const f=txnReadForm(); if(!f) return;
@@ -13303,6 +13381,9 @@ function txnCommitSave(f,mode){
     if(t){
       fromWk=txnWeekOf(t.date); fromCat=t.catId;
       t.amount=f.amount; t.catId=f.catId; t.date=f.date; t.merchant=f.merchant; t.note=f.note; t.acctId=f.acctId;
+      // Clearing the box removes the field rather than storing false, so an edited record is
+      // shaped exactly like one that was never tagged.
+      if(f.essential===true) t.essential=true; else delete t.essential;
     }
   } else {
     txnCreateRecord(f);
@@ -13441,7 +13522,8 @@ function budDayBodyHtml(wk){
         const meta=[catName(t.catId), acctName(t.acctId), t.note].filter(Boolean).map(_catEscHtml).join(' · ');
         return '<button type="button" class="txn-item" data-id="'+_catEsc(t.id)+'" onclick="openTxnModal({id:this.dataset.id})">'+
           '<span class="txn-item-l">'+
-            '<span class="txn-item-name">'+(t.merchant?_catEscHtml(t.merchant):'Expense')+'</span>'+
+            '<span class="txn-item-name">'+(t.merchant?_catEscHtml(t.merchant):'Expense')+
+              (txnIsEssential(t)?'<span class="txn-badge txn-badge-need">Essential</span>':'')+'</span>'+
             (meta?'<span class="txn-item-meta">'+meta+'</span>':'')+
           '</span>'+
           '<span class="txn-item-amt">'+fmtMoneyExact(parseFloat(t.amount)||0)+'</span>'+
@@ -14024,11 +14106,19 @@ function budOvMonthHtml(){
 function budOvHeroHtml(m){
   const setup=!(m.income>0);
   const sunday=new Date(m.monday.getFullYear(), m.monday.getMonth(), m.monday.getDate()+6);
+  // ONE primary action, and it is This week. The hero STATES the weekly position; Week is
+  // where every part of it is actually changed — the spending goal, the categories, the
+  // commitments, the close-out — so it is where almost every visit to this screen ends. Month,
+  // Bills, Accounts and Yearly are one press away on the tab strip above and do not compete for
+  // attention down here. The exception is a week with no income entered: there is nothing to act
+  // on in Week yet, so setup leads and This week follows it.
+  const week='<button type="button" class="bov-act'+(setup?'':' bov-act-primary bov-act-lead')+
+    '" onclick="setBudgetView(\'week\')">This week <span aria-hidden="true">→</span></button>';
   const acts='<div class="bov-hero-acts">'+
-    (setup?'<button type="button" class="bov-act bov-act-primary" onclick="openBudgetSetup()">Set up income &amp; bills</button>':'')+
-    '<button type="button" class="bov-act'+(setup?'':' bov-act-primary')+'" onclick="openTxnModal()">'+
-      '<span aria-hidden="true">+</span> Add expense</button>'+
-    '<button type="button" class="bov-act" onclick="setBudgetView(\'week\')">Open week →</button>'+
+    (setup
+      ? '<button type="button" class="bov-act bov-act-primary bov-act-lead" onclick="openBudgetSetup()">Set up income &amp; bills</button>'+week
+      : week+'<button type="button" class="bov-act" onclick="openTxnModal()">'+
+          '<span aria-hidden="true">+</span> Add expense</button>')+
   '</div>';
   const extra='<div class="bov-hero-range">This week · '+budRangeLabel(m.monday,sunday)+'</div>'+
     statsSplit([
@@ -14427,7 +14517,8 @@ function budVarRowsHtml(data,isCur){
         return '<button type="button" class="txn-item'+(carry?' txn-item-carry':'')+'" data-id="'+_catEsc(t.id)+'" onclick="openTxnModal({id:this.dataset.id})">'+
           '<span class="txn-item-l">'+
             '<span class="txn-item-name">'+(t.merchant?_catEscHtml(t.merchant):'Expense')+
-              (carry?'<span class="txn-badge">Converted weekly total</span>':'')+'</span>'+
+              (carry?'<span class="txn-badge">Converted weekly total</span>':'')+
+              (txnIsEssential(t)?'<span class="txn-badge txn-badge-need">Essential</span>':'')+'</span>'+
             '<span class="txn-item-meta">'+fmtDate(t.date)+
               (t.acctId?' · '+_catEscHtml(((accounts||[]).find(a=>a&&a.id===t.acctId)||{}).name||''):'')+
               (t.note?' · '+_catEscHtml(t.note):'')+'</span>'+
@@ -14551,6 +14642,9 @@ function renderSpendCard(data,isCur){
       '<span class="bud-head-right"><span class="bud-head-sum" id="sum-var"></span>'+BUD_CHEVRON+'</span></div>'+
     budVarGoalBlockHtml(data,isCur)+
     tools+seg+panel+
+    // Below the breakdown, never inside it: this is a second reading of the same expenses, not
+    // a category, and it is deliberately not subtracted from the goal or the weekly total.
+    budEssentialLineHtml(weekEssentialSummary(wk),'this week')+
   '</div>';
 }
 // The Income section of the Week plan card. Same rows, same ids, same hours-worked companion
@@ -15471,6 +15565,7 @@ function renderMonthSpendBreakdown(wrap,monthDate,keys,weekCount,isCurrent){
     '</div>'+
     '<div class="month-spend-strip" role="img" aria-label="Variable spending composition for '+_catEsc(breakdown.periodLabel)+'">'+strip+'</div>'+
     '<div class="month-spend-lead">'+_catEscHtml(leadNote)+'</div>'+
+    budEssentialLineHtml(monthEssentialSummary(keys),'this month')+
     '<div class="month-spend-list" role="list" aria-label="Variable spending categories">'+rows+'</div>'+
     issue+
     '<div class="month-spend-note"><span>Transfers recorded as variable categories are included in these totals.</span><button type="button" onclick="openBudgetEditor()">Review categories &rarr;</button></div>';
@@ -19899,9 +19994,14 @@ function getGreeting(){
 // WMO weather codes → controlled Tabler icon/label (https://open-meteo.com/en/docs —
 // "WMO Weather interpretation codes"). These are presentation values only; API text is
 // never inserted as markup.
+// Every class here must EXIST in the pinned Tabler webfont. ti-cloud-sun and ti-cloud-moon do
+// not: the font has no sun-behind-cloud or moon-behind-cloud glyph, so "Mainly clear" and
+// "Partly cloudy" — between them the most common conditions there are — rendered a zero-width
+// nothing beside the temperature and in every hourly column. Partly is an outline cloud and
+// overcast a filled one, which keeps them distinguishable where the strip prints no label.
 const WEATHER_ICONS={
-  sun:'ti-sun',moon:'ti-moon',partly:'ti-cloud-sun',partlyNight:'ti-cloud-moon',
-  cloud:'ti-cloud',fog:'ti-mist',rain:'ti-cloud-rain',snow:'ti-snowflake',
+  sun:'ti-sun',moon:'ti-moon',partly:'ti-cloud',partlyNight:'ti-haze-moon',
+  cloud:'ti-cloud-filled',fog:'ti-mist',rain:'ti-cloud-rain',snow:'ti-snowflake',
   storm:'ti-cloud-storm',location:'ti-map-pin',unknown:'ti-help-circle'
 };
 function weatherIcon(name){
@@ -20183,18 +20283,26 @@ function renderWeatherStatus(){
   const c=loadWeatherCache(), busy=_weatherStatus.state==='loading';
   const error=_weatherStatus.state==='error'||!!(c&&c.lastError);
   const offline=navigator.onLine===false;
+  const stale=!!(c&&!weatherIsFresh(c));
   fresh.textContent=c&&c.fetchedAt?'Updated '+weatherAgeLabel(c.fetchedAt):'No update yet';
+  // Retry is not an everyday control. Routine updates arrive on their own — weatherEnsureFresh
+  // runs on Home entry, resume, reconnection and the visible minute check — so a card holding a
+  // fresh successful reading has nothing to ask of anyone and shows no button at all. It appears
+  // only for a reading that is missing, stale, failed or unreachable, which is exactly what the
+  // notice beside it is explaining.
+  const needsRetry=!c||error||offline||stale;
   const button=document.getElementById('home-weather-refresh');
   if(button){
+    button.hidden=!needsRetry;
     button.disabled=busy;
-    button.setAttribute('aria-label',busy?'Updating weather':error?'Retry weather refresh':'Refresh weather');
-    button.querySelector('span').textContent=busy?'Updating…':error?'Retry':'Refresh';
+    button.setAttribute('aria-label',busy?'Updating weather':'Retry weather update');
+    button.querySelector('span').textContent=busy?'Updating…':'Retry';
   }
   const notice=document.getElementById('home-weather-notice');
   if(notice){
     let message=offline?(c?'Offline · showing saved weather.':'Offline · connect and retry.'):'';
     if(!message&&error) message=c?'May be out of date · refresh failed.':'Weather unavailable · retry or check location settings.';
-    if(!message&&c&&!weatherIsFresh(c)) message='May be out of date · showing the last update.';
+    if(!message&&stale) message='May be out of date · showing the last update.';
     if(!message&&c&&Number.isFinite(c.observedAt)&&Date.now()-c.observedAt>90*60000){
       message='Forecast conditions are from '+weatherAgeLabel(c.observedAt)+'.';
     }
@@ -20665,9 +20773,7 @@ function buildWeatherCard(){
     '<div class="weather-content">'+
       '<div class="weather-left">'+
         '<div class="weather-heading">'+
-          '<div class="weather-place"><button type="button" class="weather-city" id="home-weather-city" onclick="openSettingsSection(\'weather\')" aria-label="Weather details and location">Weather details</button>'+
-            '<span class="weather-freshness" id="home-weather-freshness">No update yet</span></div>'+
-          '<button type="button" class="weather-refresh" id="home-weather-refresh" onclick="weatherRefresh({force:true,reason:\'retry\'})" aria-label="Refresh weather"><i class="ti ti-refresh" aria-hidden="true"></i><span>Refresh</span></button>'+
+          '<div class="weather-place"><button type="button" class="weather-city" id="home-weather-city" onclick="openSettingsSection(\'weather\')" aria-label="Weather details and location">Weather details</button></div>'+
         '</div>'+
         '<div class="weather-day">'+dayLabel+'</div>'+
         '<div class="weather-date">'+dateLabel+'</div>'+
@@ -20681,7 +20787,15 @@ function buildWeatherCard(){
         '<div class="weather-meta" id="home-weather-meta"></div>'+
       '</div>'+
     '</div>'+
-    '<div class="weather-feedback"><p class="weather-notice" id="home-weather-notice" role="status" aria-live="polite" hidden></p>'+
+    // How old the reading is, why it is not newer, and the one action that can change that —
+    // one block rather than a refresh control competing with the location line above. Retry
+    // ships hidden; renderWeatherStatus reveals it only for a missing, stale or failed reading.
+    '<div class="weather-feedback">'+
+      '<div class="weather-status-row">'+
+        '<span class="weather-freshness" id="home-weather-freshness">No update yet</span>'+
+        '<button type="button" class="weather-retry" id="home-weather-refresh" onclick="weatherRefresh({force:true,reason:\'retry\'})" aria-label="Retry weather update" hidden><i class="ti ti-refresh" aria-hidden="true"></i><span>Retry</span></button>'+
+      '</div>'+
+      '<p class="weather-notice" id="home-weather-notice" role="status" aria-live="polite" hidden></p>'+
       '<button type="button" class="weather-use-location" id="home-weather-location" onclick="weatherUseCurrentLocation()" hidden>Use my location</button></div>'+
     '<div class="weather-preview" id="home-weather-preview">'+
       '<p class="weather-summary" id="home-weather-summary" hidden></p>'+

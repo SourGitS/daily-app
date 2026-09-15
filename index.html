@@ -1060,6 +1060,13 @@
         <input class="modal-input txn-amount" type="text" inputmode="decimal" id="txn-amount" placeholder="0.00">
         <label class="txn-lbl">Category</label>
         <div id="txn-cat-list" class="txn-cats"></div>
+        <!-- An optional LABEL on the expense, not a second category and not a budget of its
+             own: it records that the money was unavoidable. It changes no total, no category
+             and no schedule; an expense saved before it existed simply reads as unticked. -->
+        <div class="txn-flag-wrap">
+          <label class="txn-flag"><input type="checkbox" id="txn-essential" aria-describedby="txn-essential-help"><span class="txn-flag-t">Essential / need</span></label>
+          <p class="txn-flag-d" id="txn-essential-help">Tick for something you had to pay for — medical, laundry, rent-related. Daily totals these separately; it never changes the expense’s category or any budget figure.</p>
+        </div>
         <label class="txn-lbl" for="txn-merchant">Where / what <span class="txn-opt">optional</span></label>
         <input class="modal-input" type="text" id="txn-merchant" placeholder="e.g. Woolworths" autocomplete="off">
         <div id="txn-recent-merchants" class="txn-recent"></div>

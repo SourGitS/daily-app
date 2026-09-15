@@ -42,6 +42,7 @@ function fixture(theme = 'light', accent = '#5c5c5c') {
     statsWeekSpendQuality: () => ({ ambiguousLegacyVariable: false }),
     bsFinSummary: () => ({ incomeWeeks: 2 }),
     fmtMoney: n => '$' + n, fmtMoneyExact: n => '$' + n.toFixed(2), fmtDate: s => s,
+    escText: s => s, txnsForWeek: () => [],
     closeStatsEvidence: () => {}, openBudgetWeekFromStats: key => opened.push(key),
     _catEsc: s => s, _catEscHtml: s => s, escAttr: s => s,
     _monthSpendSelected: '',
@@ -52,6 +53,7 @@ function fixture(theme = 'light', accent = '#5c5c5c') {
   const names = ['hexToRgb', '_hslToHex', 'budIsDark', 'budIncomeHex', 'budExpenseHex',
     'budIncomeRgba', 'budExpenseRgba', 'budAccentHex', 'budPalette', 'budNeutralSpendPalette',
     'budRankShade', 'budChartLegend', 'budChartGridColors', 'renderMonth', 'renderBSTrend',
+    'txnIsEssential', 'budEssentialSummary', 'monthEssentialSummary', 'budEssentialLineHtml',
     'renderMonthSpendBreakdown'];
   vm.runInContext(money[0] + '\n' + names.map(extract).join('\n') +
     '\nconst BUD_CHART_COLORS=new Proxy({},{get:(t,k)=>budPalette()[k]});', ctx);

@@ -327,7 +327,12 @@
 // fixed quick access and reachable group scrolling at short viewport heights.
 // v340: Weather refreshes through one lifecycle coordinator with guarded requests and honest
 // freshness/retry states; the phone card adds a location-timezone hourly forecast and scene.
-const CACHE_NAME = 'daily-v340';
+// v341: Weather keeps its coordinator but drops the everyday refresh button for a Retry shown
+// only when a reading is missing, stale, failed or offline, and the phone card is given room to
+// breathe with a scrolling hourly strip; expenses gain an optional Essential / need label with
+// week and month totals; the sidebar separates brand, quick access, groups and footer; Finance
+// Overview's hero leads with one primary action, This week.
+const CACHE_NAME = 'daily-v341';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
