@@ -339,7 +339,9 @@
 // v343: Twilight scenes are violet rather than pink, the phone weather reading is one balanced
 // cluster, Finance Overview always leads to This week, and Journal/Accounts are sidebar
 // favourites without changing the five-item phone bar.
-const CACHE_NAME = 'daily-v343';
+// v344: Home's Journal preview is its one way into Journal, without a competing Write today
+// button; desktop sidebar labels make Favourites and the detailed navigation distinct.
+const CACHE_NAME = 'daily-v344';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

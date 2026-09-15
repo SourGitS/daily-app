@@ -53,6 +53,10 @@ test('quick access stays separate from groups with eight labelled destinations a
   const markup = f.context.navBuildHtml();
   const [quick, groups] = markup.split('<div class="nv-groups">');
   assert.ok(quick.endsWith('</div>'), 'quick access is outside the grouped scroller');
+  assert.match(quick, /nv-section-label nv-quick-label">Favourites</,
+    'the quick destinations have a clear visual label');
+  assert.match(groups, /nv-section-label nv-groups-label">All areas</,
+    'the detailed destinations have a clear visual label');
   assert.equal((quick.match(/data-nav-quick=/g) || []).length, 8);
   // Keyed by ID, not by view: Finance and Accounts share a view and must stay distinct.
   assert.ok(quick.includes('data-nav-quick="accounts"'));
@@ -146,6 +150,8 @@ test('the sidebar separates its four bands, keeping the 260px shell and one scro
     'the account footer stays pinned to the bottom, with room of its own');
   const nav = css('kitchen-extras.css');
   assert.match(nav, /#ds-nav \.nv-quick\{flex:none;margin:0;padding:0 0 14px;/);
+  assert.match(nav, /#ds-nav \.nv-section-label\{display:block;flex:none;margin:0 22px 8px;/,
+    'desktop exposes compact labels for the two navigation levels');
   assert.match(nav, /#ds-nav \.nv-groups\{flex:1;min-height:0;overflow-y:auto;/,
     'only the groups scroll; quick access and the footer do not');
   assert.match(nav, /#ds-nav \.nv-group\+\.nv-group\{margin-top:10px\}/);
@@ -161,11 +167,14 @@ test('a short desktop window trades the rhythm back for reachability', () => {
   assert.match(block, /#desktop-sidebar\{overflow-y:auto/, 'one whole-sidebar scroller');
   assert.match(block, /#ds-nav \.nv-groups\{flex:none;overflow:visible\}/);
   assert.match(block, /#desktop-sidebar \.ds-logo\{padding-bottom:10px\}/, 'the bands close up');
+  assert.match(short, /#ds-nav \.nv-section-label\{margin-bottom:4px;font-size:9px;line-height:12px\}/,
+    'the labels compact with the other sidebar bands');
   assert.match(block, /#ds-nav \.nv-group\+\.nv-group\{margin-top:4px\}/);
 });
 
 test('the phone drawer keeps its 44px targets while gaining the same separation', () => {
   const nav = css('kitchen-extras.css');
+  assert.match(nav, /\.nv-section-label\{display:none\}/, 'desktop-only labels do not crowd the drawer');
   assert.match(nav, /#side-menu-list \.nv-qrow\{min-height:44px;/);
   assert.match(nav, /#side-menu-list \.nv-row\{min-height:44px;/);
   assert.match(nav, /#side-menu-list \.nv-quick\{margin:0 0 10px;padding-bottom:10px\}/);

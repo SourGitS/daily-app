@@ -2679,13 +2679,14 @@ function navApplyState(row){
 function navBuildHtml(){
   const caret='<svg class="nv-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
   // Headerless and never collapsible on purpose: a group header here would invite folding away
-  // the one block that exists to be always reachable.
-  const quick='<div class="nv-quick">'+NAV_QUICK.map(q=>
+  // the one block that exists to be always reachable. The small section labels are orientation,
+  // not controls: they make the quick destinations and the detailed tree read as two levels.
+  const quick='<div class="nv-quick"><div class="nv-section-label nv-quick-label">Favourites</div>'+NAV_QUICK.map(q=>
     '<button type="button" class="nv-qrow" data-nav-quick="'+q.id+'">'+
       '<svg class="nv-qico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '+
         'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+q.icon+'</svg>'+
       '<span>'+q.label+'</span></button>').join('')+'</div>';
-  return quick+'<div class="nv-groups">'+NAV_TREE.map(g=>
+  return quick+'<div class="nv-groups"><div class="nv-section-label nv-groups-label">All areas</div>'+NAV_TREE.map(g=>
     '<div class="nv-group" data-nav-group="'+g.id+'">'+
       '<button type="button" class="nv-hd" data-nav-group-hd="'+g.id+'" aria-expanded="false">'+
         '<span>'+g.label+'</span>'+caret+'</button>'+
@@ -29106,8 +29107,8 @@ document.addEventListener('click',function(e){
 });
 
 // ── Home card ──
-// Its job is the one thing the Journal screen cannot do: get you into the write in one tap from
-// the screen you already have open. It deliberately does NOT list note titles — that duplicated
+// Its job is to get you into the Journal dashboard in one tap from the screen you already have
+// open. It deliberately does NOT list note titles — that duplicated
 // the destination it links to, which is what made Home feel busy without being informative.
 // No streak, no missed-day count, no guilt language.
 function buildHomeNotesCard(){
@@ -29124,18 +29125,14 @@ function buildHomeNotesCard(){
   // is most of why Journal read as a different family from the cards above and below it.
   h+=cardHeader('note','Journal',
       '<button class="card-hd-act" data-jrn-home="all">Open →</button>');
-  // Two jobs, two controls. The preview is a quiet way INTO the Journal dashboard; Write today
-  // is the one accent affordance and goes straight to the writing surface. The preview used to
-  // be the tinted composer and opened the editor itself, so the card had no way to reach the
-  // screen it is a shortcut to except the small header link.
+  // The preview and the header link both reach the same dashboard. One quiet invitation is
+  // enough here; writing stays in Journal itself rather than competing with the card's preview.
   const line=latest ? (String(latest.title||'').trim()||String(latest.body||'').trim().split('\n')[0]||'Untitled') : '';
   h+='<button class="jrn-composer is-peek" data-jrn-home="all">'+
       '<div class="jrn-comp-top"><span class="jrn-comp-eyebrow">'+(latest?'Today\'s entry':'Today')+'</span></div>'+
       '<div class="jrn-comp-line'+(latest?'':' is-empty')+'">'+(latest?escText(line):'Nothing written yet today.')+'</div>'+
       (mine.length>1?'<div class="jrn-comp-meta">'+mine.length+' entries today</div>':'')+
-    '</button>'+
-    '<button class="jrn-write-btn jrn-home-write" data-jrn-home="write">'+
-      (latest?'Continue today\u2019s entry':'Write today')+'</button>';
+    '</button>';
   if(rows.length){
     rows.forEach(n=>{
       const diff=notesDayDiff(String(n.dueDate||''), today);

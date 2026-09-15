@@ -176,10 +176,12 @@ test('the split point still agrees with the stylesheet', () => {
 
 // ── Home card ─────────────────────────────────────────────────────
 
-test('the Home card opens the dashboard, and Write today opens the write', () => {
+test('the Home card opens the dashboard without a duplicate Write today action', () => {
   const fn = extract('buildHomeNotesCard');
   assert.match(fn, /class="jrn-composer is-peek" data-jrn-home="all"/, 'the main area is the way in');
-  assert.match(fn, /data-jrn-home="write"/);
+  assert.match(fn, /card-hd-act" data-jrn-home="all"/, 'the header uses the same dashboard route');
+  assert.ok(!/data-jrn-home="write"/.test(fn), 'Home has no competing direct-to-editor route');
+  assert.ok(!/jrn-home-write|jrn-write-btn/.test(fn), 'the prominent duplicate control is gone');
   assert.ok(!/data-jrn-home="new"/.test(fn), 'the preview no longer opens the editor itself');
   assert.match(fn, /slice\(0,1\)/, 'at most one Open Loop — this is a shortcut, not a second screen');
   // The saved widget identity, and therefore every stored Home layout, is untouched.

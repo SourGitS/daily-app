@@ -96,7 +96,6 @@
 .jrn-composer.is-peek{border-color:var(--surface-card-border);background:var(--surface-card);
   box-shadow:var(--surface-card-top)}
 .jrn-composer.is-peek .jrn-comp-eyebrow{color:var(--text-2)}
-.jrn-home-write{margin-top:10px;align-self:flex-start}
 .jrn-home-quiet{font-size:13px;color:var(--muted);padding-top:10px}
 
 /* The reflection is optional and always available: one quiet line at the END of the page, plus

@@ -1169,6 +1169,7 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
    A quick item lights by VIEW across sub-tabs; a child link lights by the actual section.
    Desktop separates their selected treatments below; the phone keeps its tint and rail. */
 .nv-quick{display:flex;flex-direction:column;border-bottom:1px solid var(--border)}
+.nv-section-label{display:none}
 .nv-qrow{display:flex;align-items:center;gap:10px;width:100%;background:transparent;border:0;
   cursor:pointer;text-align:left;font-family:var(--font-ui);color:var(--muted);
   -webkit-tap-highlight-color:transparent;position:relative}
@@ -1203,6 +1204,8 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
   #ds-nav{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
   #ds-nav .nv-quick{flex:none;margin:0;padding:0 0 14px;
     background:linear-gradient(var(--card),var(--card)),var(--bg)}
+  #ds-nav .nv-section-label{display:block;flex:none;margin:0 22px 8px;font-size:10px;line-height:14px;
+    font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
   #ds-nav .nv-qrow{flex:none;min-height:38px;margin:0 10px;width:auto;border-radius:9px;
     padding:8px 12px;font-size:14px;line-height:20px;font-weight:600;color:var(--text);
     transition:background .15s,color .15s}
@@ -1241,6 +1244,7 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
   #desktop-sidebar .ds-profile{padding:10px 16px}
   #ds-nav .nv-quick{padding-bottom:8px}
   #ds-nav .nv-groups{padding:8px 0 4px}
+  #ds-nav .nv-section-label{margin-bottom:4px;font-size:9px;line-height:12px}
   #ds-nav .nv-group+.nv-group{margin-top:4px}
 }
 
