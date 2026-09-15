@@ -21694,11 +21694,6 @@ function renderHome(){
     wrap.innerHTML=_homeIds.map(_cardHtml).join('');
   }
   const _oldRecent=document.getElementById('home-recent-card'); if(_oldRecent) _oldRecent.innerHTML='';
-  if(!layoutReducedMotion()) document.querySelectorAll('#view-home .card').forEach((card, i) => {
-    card.style.animationDelay = (i * 45) + 'ms';
-    card.classList.add('home-card-enter');
-    setTimeout(() => card.classList.remove('home-card-enter'), 600 + i * 45);
-  });
   if(homeEditMode) applyHomeEditMode();
   applyHomeCardCaps();   // assigns grid spans too
 
@@ -23998,10 +23993,17 @@ function obSlideStart(box, outgoing, dir){
     stage.style.minHeight=Math.max(outgoing.offsetHeight||0, page.offsetHeight||0)+'px';
   }
   _obSlideEnd=()=>{
+    page.removeEventListener('animationend', settled);
+    if(motion&&motion.removeEventListener) motion.removeEventListener('change', motionChanged);
     if(outgoing&&outgoing.remove) outgoing.remove();
     stage.style.minHeight='';
     page.classList.remove('ob-enter-fwd','ob-enter-back');
   };
+  const settled=e=>{ if(e.target===page) obSlideSettle(); };
+  const motion=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
+  const motionChanged=e=>{ if(e.matches) obSlideSettle(); };
+  page.addEventListener('animationend', settled);
+  if(motion&&motion.addEventListener) motion.addEventListener('change', motionChanged);
   _obSlideTimer=setTimeout(obSlideSettle, OB_SLIDE_MS+60);
 }
 
@@ -24012,8 +24014,19 @@ function renderObStep(dir){
   obSlideSettle();
   const moving=!!dir;
   const animate=moving&&!obReduceMotion();
+  const active=document.activeElement;
+  const keepFocus=!moving&&active&&box.contains(active);
+  const focusId=keepFocus?active.id:'';
+  const focusAction=keepFocus?active.getAttribute('onclick'):null;
+  const selection=keepFocus&&typeof active.selectionStart==='number'
+    ? [active.selectionStart,active.selectionEnd,active.selectionDirection] : null;
   const outgoing=animate?box.querySelector('.ob-page'):null;
-  if(outgoing) outgoing.remove();   // detached, not destroyed: re-inserted by obSlideStart
+  if(outgoing){
+    // Welcome has a narrower desktop measure. Preserve its composition while leaving.
+    outgoing.style.width=outgoing.getBoundingClientRect().width+'px';
+    outgoing.style.maxWidth='100%';
+    outgoing.remove();
+  }
   const step=obCurrentStep();
   // Presentation hooks only: the approved flow still comes entirely from OB_CATALOGUE.
   // A step attribute lets the visual system give Welcome and Ready their own composition
@@ -24037,7 +24050,7 @@ function renderObStep(dir){
   // content travels. .ob-stage clips that travel horizontally and nothing else — no height is
   // fixed here and nothing is clipped vertically, so a long step simply makes the page longer.
   box.innerHTML=topbar+obProgressHTML()+
-    '<div class="ob-stage"><div class="ob-page" tabindex="-1">'+inner+'</div></div>';
+    '<div class="ob-stage"><div class="ob-page" data-ob-step="'+step+'" tabindex="-1">'+inner+'</div></div>';
   if(step==='split') renderSplitEditor('se-wrap');
   if(step==='appearance'&&document.getElementById('ob-weather-preview')) obWeatherRefreshPreview();
   if(step==='sync' && !(auth&&auth.currentUser)) obAttachAuthWatch();
@@ -24051,9 +24064,15 @@ function renderObStep(dir){
     // The name field wins on the focus step because it is the one thing that screen needs.
     const name=step==='focus'?document.getElementById('ob-name'):null;
     const target=(name&&!name.value)?name:box.querySelector('.ob-page');
-    if(target) setTimeout(()=>{ try{ target.focus({preventScroll:true}); }catch(e){ target.focus(); } },30);
-  } else if(step==='focus'){
-    setTimeout(()=>{ const el=document.getElementById('ob-name'); if(el&&!el.value&&document.activeElement!==el) el.focus(); },50);
+    if(target) target.focus({preventScroll:true});
+  } else if(keepFocus){
+    // Choice buttons are rebuilt in place; keep keyboard users on the same control.
+    const target=(focusId&&document.getElementById(focusId)) ||
+      (focusAction&&Array.from(box.querySelectorAll('[onclick]')).find(el=>el.getAttribute('onclick')===focusAction));
+    if(target){
+      target.focus({preventScroll:true});
+      if(selection&&target.setSelectionRange) target.setSelectionRange(...selection);
+    }
   }
 }
 // Where the user is, in words. The landing and the summary are deliberately not counted as
@@ -24139,6 +24158,7 @@ function obWelcomeHTML(){
 let _obRestoreTimer=null;
 // Close the overlay without saving any onboarding answers.
 function obDismiss(){
+  obSlideSettle();
   clearInterval(_obRestoreTimer);
   obDetachAuthWatch();
   const ov=document.getElementById('onboarding-overlay');
@@ -25894,15 +25914,20 @@ function kitRenderDetail(id,target){
 function kitSheetOpen(html){
   const ov=document.getElementById('kit-sheet-overlay'), box=document.getElementById('kit-sheet-box');
   if(!ov||!box) return;
+  const opening=ov.classList.contains('hidden');
   ov.classList.remove('kitpantry-item-sheet');
   ov.classList.toggle('kit-sheet-from-today',foodShowing('today'));
   box.innerHTML=html;
+  // Only opening moves: servings/protein changes replace this content in place.
+  box.classList.toggle('kit-sheet-enter',opening&&!layoutReducedMotion());
   ov.classList.remove('hidden');
   box.scrollTop=0;
   if(typeof updateKitFab==='function') updateKitFab();
 }
 function kitSheetClose(){
   const ov=document.getElementById('kit-sheet-overlay');
+  const box=document.getElementById('kit-sheet-box');
+  if(box) box.classList.remove('kit-sheet-enter');
   if(ov){ ov.classList.add('hidden'); ov.classList.remove('kitpantry-item-sheet','kit-sheet-from-today'); }
   if(typeof updateKitFab==='function') updateKitFab();
 }

@@ -260,12 +260,13 @@
 .ob-page-out{position:absolute;left:0;right:0;top:0;pointer-events:none}
 @keyframes ob-enter-fwd{from{opacity:0;transform:translateX(26px)}to{opacity:1;transform:translateX(0)}}
 @keyframes ob-enter-back{from{opacity:0;transform:translateX(-26px)}to{opacity:1;transform:translateX(0)}}
-@keyframes ob-leave-fwd{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(-26px)}}
-@keyframes ob-leave-back{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(26px)}}
+@keyframes ob-leave-fwd{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(-18px)}}
+@keyframes ob-leave-back{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(18px)}}
 .ob-enter-fwd{animation:ob-enter-fwd 250ms cubic-bezier(.22,.61,.36,1) both}
 .ob-enter-back{animation:ob-enter-back 250ms cubic-bezier(.22,.61,.36,1) both}
-.ob-leave-fwd{animation:ob-leave-fwd 250ms cubic-bezier(.22,.61,.36,1) both}
-.ob-leave-back{animation:ob-leave-back 250ms cubic-bezier(.22,.61,.36,1) both}
+/* Let the old text clear first, so two headings do not linger over one another. */
+.ob-leave-fwd{animation:ob-leave-fwd 140ms ease-out both}
+.ob-leave-back{animation:ob-leave-back 140ms ease-out both}
 /* Belt and braces: renderObStep already refuses to retain or animate anything when reduced
    motion is set, so a step simply replaces the one before it. */
 @media (prefers-reduced-motion:reduce){

@@ -110,6 +110,16 @@ Four main areas plus supporting screens:
 
 ## Onboarding, Food's hero and the Accounts canvas (v347)
 
+**Motion refinement (v348):** onboarding page styling now follows each `.ob-page`'s own
+`data-ob-step`, so an outgoing Welcome preview keeps its composition. The incoming page takes
+250ms and the outgoing text clears in 140ms. Animation-end cleanup has a timeout fallback;
+changing to reduced motion settles immediately. In-place choice updates preserve keyboard
+focus and text selection. `obDismiss()` clears transition resources. Home no longer staggers
+cards on render/startup. Food's shared sheet enters only when first opened (240ms), never on
+servings/protein refresh; closing still acts immediately. Toast entrance is 160ms without
+overshoot, with static reduced-motion feedback. Selected Food chips use `--accent-hero-2`
+for their small text. No save, sync, route, chart or onboarding-version changes.
+
 - **Onboarding: the story was refreshed, the machinery was not.** `OB_CATALOGUE`, the branching
   `obSteps()`, `obCaptureCurrent()` staging, `finishOnboarding()`'s seeding guards, the
   welcome-screen restore, `isEmbeddedBrowser()` guidance, the 12s blocked-popup watchdog and the
@@ -141,7 +151,7 @@ Four main areas plus supporting screens:
   uses `--accent-hero` / `--accent-hero-2` in the scoped `fo-*` block. Every id, handler,
   `foodOverviewState` field, filter rule and the DOM-preserving refresh are unchanged; the one JS
   change is the class name. Fields and unselected chips are darkened, not whitened (white text
-  measures 5.86-6.30:1 across accents); the selected chip is solid white inked in `--accent-hero`.
+  measures 5.86-6.30:1 across accents); the selected chip is solid white inked in `--accent-hero-2`.
   The rest of the screen stays matte. `.kitchen-hero-card` is untouched.
 - **Accounts takes the whole Finance canvas on desktop.** `#view-budget .accounts-wrap` is
   `max-width:none` from 1024px, so it ends on the same content edge as Overview, Week and Bills;

@@ -1551,6 +1551,11 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
 .kit-note-panel small{display:block;margin-top:4px;color:var(--text-3)}
 
 /* ── Action sheet (protein / servings / share) ── */
+@keyframes kit-sheet-enter{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+#kit-sheet-box.kit-sheet-enter{animation:kit-sheet-enter 240ms cubic-bezier(.22,.61,.36,1)}
+@media (prefers-reduced-motion:reduce){
+  #kit-sheet-box.kit-sheet-enter{animation:none}
+}
 .kit-sheet-head{margin-bottom:6px}
 .kit-sheet-title{font-size:17px;font-weight:800;letter-spacing:-.01em;color:var(--text)}
 .kit-sheet-sub{font-size:13px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
@@ -2347,11 +2352,10 @@ button.aih-row{cursor:pointer}
 .fo-categories{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 16px}
 .fo-categories button{border:1px solid var(--border);border-radius:9px;padding:8px 10px;min-height:36px;background:transparent;color:var(--text-2);font:inherit;font-size:11px;font-weight:700;cursor:pointer}
 .fo-categories button.active{background:rgba(var(--accent-rgb),.12);border-color:var(--accent);color:var(--accent-text)}
-/* Selected is a SOLID white chip inked in --accent-hero, the same pairing Home's hero action
-   uses: an accent tint over an accent surface is invisible on half the accents this app can
-   take, and a border-only difference is not enough to read at a glance. */
+/* The deeper hero stop clears 4.5:1 for these small labels, including red/green custom
+   accents whose lighter stop is tuned only to 4.2:1. The white chip stays distinct. */
 .fo-chooser .fo-categories button{border-color:rgba(255,255,255,.4);background:rgba(0,0,0,.18);color:#fff}
-.fo-chooser .fo-categories button.active{background:#fff;border-color:#fff;color:var(--accent-hero,#2c2c33);
+.fo-chooser .fo-categories button.active{background:#fff;border-color:#fff;color:var(--accent-hero-2,#26262C);
   font-weight:800;text-shadow:none}
 .fo-limits{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .fo-limits label{display:flex;flex-direction:column;justify-content:flex-end;gap:6px;min-width:0;color:var(--text-2);font-size:11px;font-weight:700;line-height:1.4}

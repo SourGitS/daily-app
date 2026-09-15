@@ -1,5 +1,29 @@
 # Daily — Project Reference
 
+## Motion refinement — v348
+
+Onboarding keeps a 250ms directional entrance while the outgoing text clears in 140ms.
+Each `.ob-page` owns its `data-ob-step` styling, including the retained outgoing page: changing
+the box's step used to recompose the Welcome preview before it left. Its outgoing width is
+captured before detaching, capped to the available width. Cleanup follows the incoming
+`animationend`, with a timeout fallback, and changing to reduced motion settles immediately.
+Every cleanup removes its listeners. Choice updates preserve focus by control ID or existing
+action, with text selection restored; navigation focuses the incoming step synchronously.
+Dismissal settles any pending transition. Replay still uses `replayOnboarding()` and restores
+the saved name and focus IDs; `showOnboarding()` alone is the fresh-start entry.
+
+Home renders its cards immediately on startup and refresh; the per-render stagger is removed.
+The shared Food action sheet has a 240ms, 16px entrance only when opened from hidden. Replacing
+servings/protein content does not replay it. Closing remains immediate because its callers may
+open another surface or invoke sharing in the same action. Toasts enter in 160ms without
+overshoot, with no movement or draining bar animation under reduced motion. Existing mobile
+deck gestures, detail-overlay transitions, menu motion and chart behaviour remain as before.
+No loading delay or startup animation, no new motion framework, no data or sync changes.
+
+Food's selected category text now uses the deeper `--accent-hero-2` on solid white. The lighter
+stop's 4.2:1 floor was insufficient for an 11px label; the tested red/green/blue/pale/neutral
+accents now exceed 7.9:1. The hero surface and global accent resolver are unchanged.
+
 ## Onboarding, refreshed — v347, 2026-09-15
 
 **The flow, the branching and every save guard are unchanged; the STORY was out of date.**
@@ -804,7 +828,7 @@ older summary — re-grep before assuming a fact from here is still true if it l
   carry white text, so a translucent white fill lifts the surface until white stops clearing
   4.5:1 — measured white-on-field 5.86–6.30:1 and placeholder 4.89–5.18:1 across the pale, red,
   blue, green and white accents. The SELECTED category is a solid white chip inked in
-  `--accent-hero` (4.21–9.29:1), the same pairing Home's hero action uses, because an accent
+  `--accent-hero-2` (since v348), because an accent
   tint over an accent surface is invisible on half the accents this app can take. And
   `.kitchen-hero-card` is the Recipe Book's featured-recipe surface and is untouched — do not
   reuse or restyle it here.

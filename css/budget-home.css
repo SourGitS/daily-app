@@ -1615,35 +1615,35 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .ob-pv-spark i{border-radius:3px}
 .ob-pv-weather{box-shadow:0 14px 30px rgba(20,95,135,.22),inset 0 1px 0 rgba(255,255,255,.2)}
 .ob-pv-temp{font-size:26px;letter-spacing:-.05em}
-#onboarding-box[data-ob-step="welcome"] .ob-preview{height:300px;position:relative;margin:12px 0 10px}
-#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-hero{
+#onboarding-box .ob-page[data-ob-step="welcome"] .ob-preview{height:300px;position:relative;margin:12px 0 10px}
+#onboarding-box .ob-page[data-ob-step="welcome"] .ob-preview>.ob-pv-hero{
   position:absolute;left:8px;right:8px;top:0;height:112px;transform:rotate(-1.2deg);z-index:3
 }
-#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row{
+#onboarding-box .ob-page[data-ob-step="welcome"] .ob-preview>.ob-pv-row{
   position:absolute;left:0;right:0;display:grid
 }
-#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(2){top:121px;z-index:2}
-#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(3){top:211px;left:9px;right:9px;z-index:1}
-#onboarding-box[data-ob-step="welcome"] .ob-pv-card{min-height:81px}
-#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(2)>.ob-pv-card:first-child{transform:rotate(1.2deg)}
-#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(2)>.ob-pv-card:last-child{transform:rotate(-1.4deg)}
-#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(3)>.ob-pv-card:first-child{transform:rotate(-.7deg)}
-#onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(3)>.ob-pv-card:last-child{transform:rotate(.8deg)}
-#onboarding-box[data-ob-step="appearance"] .ob-preview{gap:6px;margin-top:5px;margin-bottom:14px}
-#onboarding-box[data-ob-step="appearance"] .ob-pv-hero{padding:10px 13px;border-radius:17px}
-#onboarding-box[data-ob-step="appearance"] .ob-pv-hero-title{font-size:19px;margin-top:2px}
-#onboarding-box[data-ob-step="appearance"] .ob-pv-hero-meta{margin-top:2px}
-#onboarding-box[data-ob-step="appearance"] .ob-pv-card{padding:8px 10px;border-radius:15px}
-#onboarding-box[data-ob-step="appearance"] .ob-pv-fig{font-size:19px;margin-top:2px}
-#onboarding-box[data-ob-step="appearance"] .ob-pv-line{font-size:12px;margin-top:2px}
-#onboarding-box[data-ob-step="appearance"] .ob-pv-bar{margin-top:6px}
-#onboarding-box[data-ob-step="appearance"] .ob-pv-dots{margin-top:6px}
-#onboarding-box[data-ob-step="appearance"] .ob-pv-spark{height:16px;margin-top:6px;gap:3px}
+#onboarding-box .ob-page[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(2){top:121px;z-index:2}
+#onboarding-box .ob-page[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(3){top:211px;left:9px;right:9px;z-index:1}
+#onboarding-box .ob-page[data-ob-step="welcome"] .ob-pv-card{min-height:81px}
+#onboarding-box .ob-page[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(2)>.ob-pv-card:first-child{transform:rotate(1.2deg)}
+#onboarding-box .ob-page[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(2)>.ob-pv-card:last-child{transform:rotate(-1.4deg)}
+#onboarding-box .ob-page[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(3)>.ob-pv-card:first-child{transform:rotate(-.7deg)}
+#onboarding-box .ob-page[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(3)>.ob-pv-card:last-child{transform:rotate(.8deg)}
+#onboarding-box .ob-page[data-ob-step="appearance"] .ob-preview{gap:6px;margin-top:5px;margin-bottom:14px}
+#onboarding-box .ob-page[data-ob-step="appearance"] .ob-pv-hero{padding:10px 13px;border-radius:17px}
+#onboarding-box .ob-page[data-ob-step="appearance"] .ob-pv-hero-title{font-size:19px;margin-top:2px}
+#onboarding-box .ob-page[data-ob-step="appearance"] .ob-pv-hero-meta{margin-top:2px}
+#onboarding-box .ob-page[data-ob-step="appearance"] .ob-pv-card{padding:8px 10px;border-radius:15px}
+#onboarding-box .ob-page[data-ob-step="appearance"] .ob-pv-fig{font-size:19px;margin-top:2px}
+#onboarding-box .ob-page[data-ob-step="appearance"] .ob-pv-line{font-size:12px;margin-top:2px}
+#onboarding-box .ob-page[data-ob-step="appearance"] .ob-pv-bar{margin-top:6px}
+#onboarding-box .ob-page[data-ob-step="appearance"] .ob-pv-dots{margin-top:6px}
+#onboarding-box .ob-page[data-ob-step="appearance"] .ob-pv-spark{height:16px;margin-top:6px;gap:3px}
 /* The weather scene shares this page with a theme picker, three accent modes and the Home
    preview, so it is the atmosphere for a choice rather than a screen of its own. */
-#onboarding-box[data-ob-step="appearance"] .ob-pv-weather-lg{min-height:168px;margin:2px 0 10px;
+#onboarding-box .ob-page[data-ob-step="appearance"] .ob-pv-weather-lg{min-height:168px;margin:2px 0 10px;
   padding:18px 17px;border-radius:20px}
-#onboarding-box[data-ob-step="appearance"] .ob-pv-temp-lg{font-size:42px}
+#onboarding-box .ob-page[data-ob-step="appearance"] .ob-pv-temp-lg{font-size:42px}
 
 /* Selection and setup screens use quiet glass surfaces so the live outcomes remain the focus. */
 .ob-focus-grid{gap:9px}
@@ -1737,9 +1737,9 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   [data-theme="light"] #onboarding-box{background:rgba(255,255,255,.88);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px)}
   #onboarding-box[data-ob-step="welcome"]{max-width:500px;padding:34px 42px 38px}
   #onboarding-box[data-ob-step="done"]{max-width:560px}
-  #onboarding-box[data-ob-step="focus"] .ob-focus-grid{display:grid;grid-template-columns:1fr 1fr}
+  #onboarding-box .ob-page[data-ob-step="focus"] .ob-focus-grid{display:grid;grid-template-columns:1fr 1fr}
   #onboarding-box .ob-preview{max-width:390px}
-  #onboarding-box[data-ob-step="welcome"] .ob-preview{max-width:none}
+  #onboarding-box .ob-page[data-ob-step="welcome"] .ob-preview{max-width:none}
   #onboarding-box .ob-theme-grid{max-width:540px}
 }
 @media (max-width:420px){
@@ -1753,22 +1753,20 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   #onboarding-overlay{padding-top:18px;padding-bottom:24px}
   .ob-welcome-brand{margin-bottom:9px}
   .ob-welcome-title{font-size:29px}
-  #onboarding-box[data-ob-step="welcome"] .ob-preview{height:252px;margin-top:8px}
-  #onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-hero{height:94px;padding:12px 14px}
-  #onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(2){top:102px}
-  #onboarding-box[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(3){top:178px}
-  #onboarding-box[data-ob-step="welcome"] .ob-pv-card{min-height:68px;padding:9px 11px}
+  #onboarding-box .ob-page[data-ob-step="welcome"] .ob-preview{height:252px;margin-top:8px}
+  #onboarding-box .ob-page[data-ob-step="welcome"] .ob-preview>.ob-pv-hero{height:94px;padding:12px 14px}
+  #onboarding-box .ob-page[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(2){top:102px}
+  #onboarding-box .ob-page[data-ob-step="welcome"] .ob-preview>.ob-pv-row:nth-child(3){top:178px}
+  #onboarding-box .ob-page[data-ob-step="welcome"] .ob-pv-card{min-height:68px;padding:9px 11px}
   .ob-welcome .ob-btn-primary{margin-top:8px}
 }
 @media (prefers-reduced-motion:reduce){
   .ob-progress-fill,.ob-back,.ob-btn-primary,.ob-focus{transition:none}
 }
 
-/* ── Budget hero bar & home card enter animations ── */
+/* ── Budget hero bar animations ── */
 @keyframes count-up-flash{0%{opacity:0.4}100%{opacity:1}}
-@keyframes home-card-enter{0%{opacity:0;transform:translateY(16px)}100%{opacity:1;transform:translateY(0)}}
 .budget-hero-bar-fill-animate{width:0% !important;transition:width 0.65s cubic-bezier(0.22,0.61,0.36,1) !important}
-.home-card-enter{animation:home-card-enter 0.32s cubic-bezier(0.22,0.61,0.36,1) both}
 
 /* ── Weekly spending-goal card (Budget, between Fixed and Variable) ── */
 /* Left, not centred: every other figure in the Budget tab is left-aligned under its label
