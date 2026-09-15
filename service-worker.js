@@ -332,7 +332,11 @@
 // breathe with a scrolling hourly strip; expenses gain an optional Essential / need label with
 // week and month totals; the sidebar separates brand, quick access, groups and footer; Finance
 // Overview's hero leads with one primary action, This week.
-const CACHE_NAME = 'daily-v341';
+// v342: Journal leads with Today — an invitation, one Write today action and the day's
+// recorded facts from the existing readers — then the timeline, with Open Loops moved below it
+// and weekly reflection reduced to a quiet optional line. Home's Journal card opens the
+// dashboard and carries its own Write today.
+const CACHE_NAME = 'daily-v342';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

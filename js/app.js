@@ -2703,6 +2703,36 @@ let logSplitSheetFocus=null;
 let logSplitPendingSwitch=null;
 let plansDocSel=null;
 
+// ── Journal screen state ────────────────────────────────────────
+// Declared HERE for the same reason the Log hub state above it is: init() restores a #hash
+// view by calling setView(), and setView('notes') renders Journal. Function declarations
+// hoist; let/const do not — so with these sitting beside their renderers 27,000 lines lower,
+// opening the app on #notes threw "Cannot access 'JRN_SPLIT_MIN' before initialization" and
+// replaced the whole app with the boot-failure screen. It only ever fired when the URL
+// actually carried that hash, which is why it survived casual testing. Keep these above init.
+const JRN_MOODS=[{v:1,label:'Rough'},{v:2,label:'Low'},{v:3,label:'OK'},{v:4,label:'Good'},{v:5,label:'Great'}];
+let jrnQuery='';
+let jrnTab='timeline';      // timeline | notes | trash
+let jrnSearchOpen=false;
+let jrnSelId=null;          // desktop detail selection
+let jrnListsDirty=false;
+
+// Journal's two-pane split point, NOT the app's 1024px desktop line — the same reasoning as
+// STG_SPLIT_MIN in Settings, and for the same reason it is a different number.
+// At 1024 the 260px sidebar plus the section's 32px padding leave ~700px of content; a 400px
+// navigation list would take most of it and hand the writing surface about 225px. A 225px
+// editor is worse than no editor: the point of the desktop layout is that writing gets the
+// space. Below this the phone's list-first flow is used instead — a clean full-screen editor
+// beats a cramped pane.
+// THIS NUMBER IS DUPLICATED in the @media query in css/journal.css and the two must agree:
+// this function decides whether the editor mounts inline or as an overlay, and the CSS decides
+// whether the pane it would mount into exists at all.
+const JRN_SPLIT_MIN=1240;
+let jrnCalMonth=null;
+let jrnEdId=null, jrnEdPending=null, jrnEdTimer=null, jrnEdStatusTimer=null, jrnEdTagsOpen=false;
+const JRN_MEANINGFUL_KEYS=['mood','tags','pinned','title','body'];
+let _jrnResizeT=null;
+
 // ── Swipe deck (native-feel tab paging) ──────────────────────────
 // The five bottom-nav views sit side-by-side in #swipe-deck and track the finger in real
 // time; releasing spring-snaps to the nearest view. Mobile only — desktop pages via
@@ -27972,7 +28002,6 @@ function nudgeLayout(){
 // makes an entry, the + in the Open Loops header makes a note.
 // Ids stay "notes" throughout (view id, nav data-tab, Home widget id) because they are
 // persisted in the saved Home layout; only labels changed.
-const JRN_MOODS=[{v:1,label:'Rough'},{v:2,label:'Low'},{v:3,label:'OK'},{v:4,label:'Good'},{v:5,label:'Great'}];
 function jrnMoodLabel(m){ const x=JRN_MOODS.find(o=>o.v===m); return x?x.label:''; }
 
 // Whole days between two YYYY-MM-DD strings. Both sides parse as UTC midnight on purpose: the
@@ -27992,23 +28021,6 @@ function jrnNewRecord(kind){
     kind:kind||'note', createdAt:now, updatedAt:now, tags:kind==='entry'?[]:['personal']});
 }
 
-let jrnQuery='';
-let jrnTab='timeline';      // timeline | notes | trash
-let jrnSearchOpen=false;
-let jrnSelId=null;          // desktop detail selection
-let jrnListsDirty=false;
-
-// Journal's two-pane split point, NOT the app's 1024px desktop line — the same reasoning as
-// STG_SPLIT_MIN in Settings, and for the same reason it is a different number.
-// At 1024 the 260px sidebar plus the section's 32px padding leave ~700px of content; a 400px
-// navigation list would take most of it and hand the writing surface about 225px. A 225px
-// editor is worse than no editor: the point of the desktop layout is that writing gets the
-// space. Below this the phone's list-first flow is used instead — a clean full-screen editor
-// beats a cramped pane.
-// THIS NUMBER IS DUPLICATED in the @media query in css/journal.css and the two must agree:
-// this function decides whether the editor mounts inline or as an overlay, and the CSS decides
-// whether the pane it would mount into exists at all.
-const JRN_SPLIT_MIN=1240;
 function jrnIsDesktop(){ return window.innerWidth>=JRN_SPLIT_MIN; }
 function jrnEntries(){ return jrnLive().filter(r=>r.kind==='entry'); }
 function jrnNotesAll(){ return jrnLive().filter(r=>r.kind!=='entry'); }
@@ -28210,13 +28222,8 @@ function jrnWeekReflection(){
   }
   return {today,monday,days,facts,complete:localMidnight(today).getDay()===0};
 }
-function jrnReflectionHtml(compact){
+function jrnReflectionHtml(){
   const w=jrnWeekReflection();
-  if(compact){
-    return '<button class="jrn-reflect-card" data-jrn="reflect">'+
-      '<span><strong>Weekly reflection</strong><small>'+w.facts.length+' recorded area'+(w.facts.length===1?'':'s')+' ready to review</small></span><span aria-hidden="true">›</span>'+
-    '</button>';
-  }
   const rows=w.facts.length?w.facts.map(f=>
     '<div class="jrn-reflect-row"><span><strong>'+escText(f.label)+'</strong><small>'+escText(f.detail)+'</small></span><b>'+escText(f.value)+'</b></div>').join(''):
     '<div class="jrn-reflect-empty">There are no recorded workout, habit, spending, calorie or weight facts for this week yet.</div>';
@@ -28227,7 +28234,13 @@ function jrnReflectionHtml(compact){
     '<button class="jrn-reflect-write" data-jrn="reflect-write">Write a reflection</button>'+
   '</div>';
 }
-function jrnSundayReflectHtml(){ return localMidnight(getLocalDate()).getDay()===0?jrnReflectionHtml(true):''; }
+// Reflection is available every day and asks for nothing. It was a card at the top of the page
+// on Sundays, which is the shape of a weekly task; it is a quiet line at the end now, and the
+// header icon still opens the same sheet. Nothing is stored until Write is pressed and something
+// meaningful is typed (jrnStartReflection opens an ordinary unsaved entry).
+function jrnReflectLinkHtml(){
+  return '<button class="jrn-reflect-link" data-jrn="reflect">Weekly reflection<span aria-hidden="true">›</span></button>';
+}
 function jrnOpenReflection(){
   jrnEdFlush();
   const box=document.getElementById('paste-restore-box'), ov=document.getElementById('paste-restore-overlay');
@@ -28239,7 +28252,7 @@ function jrnOpenReflection(){
   ov.classList.add('jrn-sheet');
   box.innerHTML='<div class="modal-header"><button class="back-btn" data-back="jrnCloseReflection" aria-label="Back to Journal">'+
     (typeof BACK_CHEVRON!=='undefined'?BACK_CHEVRON:'&#8249;')+'</button><div class="modal-title">Weekly reflection</div></div>'+
-    '<div class="modal-body">'+jrnReflectionHtml(false)+'</div>';
+    '<div class="modal-body">'+jrnReflectionHtml()+'</div>';
   ov.classList.remove('hidden');
 }
 function jrnCloseReflection(){ const o=document.getElementById('paste-restore-overlay'); if(o){ o.classList.add('hidden'); o.classList.remove('jrn-sheet'); } }
@@ -28278,9 +28291,11 @@ function renderJournal(){
   // While a search is running the screen is a results view: the composer previews today's entry,
   // which is not a result, and showing it at the top of a search for something else reads as a
   // false match. It comes straight back when the query is cleared.
+  // Today, then the timeline, then Open Loops, then reflection. Loops used to sit above the
+  // timeline, which put a reminder list first on a screen whose subject is writing.
   const rail = desktop
     ? jrnHeadHtml()+jrnNavHtml()
-    : jrnHeadHtml()+(jrnQ()?'':jrnComposerHtml()+jrnSundayReflectHtml())+jrnLoopsHtml()+jrnBodyHtml();
+    : jrnHeadHtml()+(jrnQ()?'':jrnTodayHtml())+jrnBodyHtml()+jrnLoopsHtml()+(jrnQ()?'':jrnReflectLinkHtml());
   wrap.innerHTML = desktop
     ? '<div id="journal-root"><div class="jrn-rail">'+rail+'</div><div class="jrn-detail" id="jrn-detail"></div></div>'
     : '<div id="journal-root">'+rail+'</div>';
@@ -28291,11 +28306,12 @@ function renderJournal(){
 // The desktop left column. Sections, not cards: a heading, flat rows, quiet dividers.
 function jrnNavHtml(){
   let h='<div class="jrn-nav">';
-  if(!jrnQ() && jrnTab==='timeline') h+=jrnTodaySectionHtml()+jrnSundayReflectHtml();
-  // The All notes tab IS the list of loops, grouped; showing the Open Loops section above it
-  // printed the pinned rows twice, a few lines apart.
-  if(jrnTab!=='notes') h+=jrnLoopsHtml();
+  if(!jrnQ() && jrnTab==='timeline') h+=jrnTodaySectionHtml();
   h+=jrnBodyHtml();
+  // Below the entries, not above them. The All notes tab IS the list of loops, grouped, so
+  // repeating the section there printed the pinned rows twice a few lines apart.
+  if(jrnTab!=='notes') h+=jrnLoopsHtml();
+  if(!jrnQ()) h+=jrnReflectLinkHtml();
   return h+'</div>';
 }
 // Today is a ROW in the navigation list rather than the phone's tinted composer card — a card
@@ -28304,8 +28320,7 @@ function jrnNavHtml(){
 // It always offers a way in: "Start writing" when nothing has been written yet.
 function jrnTodaySectionHtml(){
   const today=getLocalDate();
-  const mine=jrnEntries().filter(r=>jrnEntryDay(r)===today)
-    .sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0));
+  const mine=jrnTodayEntries();
   // The unsaved "today" editor the desktop opens by default has no stored record to match on,
   // so the placeholder row carries the selected state on its behalf.
   const pendingToday = !!(jrnEdPending && jrnEdPending.id===jrnSelId);
@@ -28316,10 +28331,17 @@ function jrnTodaySectionHtml(){
         '<span class="jrn-row-ttl">Start writing</span>'+
         '<span class="jrn-row-prev">How was today?</span>'+
       '</button>';
-  return '<section class="jrn-sec">'+
+  return '<section class="jrn-sec jrn-sec-today">'+
     '<div class="jrn-sec-hd"><span class="jrn-sec-ttl">Today</span>'+
-      '<button class="jrn-sec-act" data-jrn="new-entry">+ New entry</button></div>'+
+      (mine.length?'<button class="jrn-sec-act" data-jrn="new-entry">+ New entry</button>':'')+'</div>'+
     rows+
+    // The rail already opens today in the detail pane, but the action still has to be visible
+    // and pressable: "the editor happens to be open over there" is not an invitation to write.
+    '<div class="jrn-today-acts">'+jrnWriteBtnHtml(!!mine.length)+'</div>'+
+    // No day-context chips HERE. The open entry's own "That day in Daily" block is on screen
+    // beside this rail at all times on desktop, and printing the same three facts twice, a few
+    // hundred pixels apart, is the duplication the phone layout does not have: there the editor
+    // is a separate screen, so Today is the only place those facts appear.
   '</section>';
 }
 // One flat row: date, title, a line of preview, quiet metadata. No shadow and no card edge —
@@ -28418,12 +28440,40 @@ function jrnHeadHtml(){
   }
   return h;
 }
-// Permanently present and always first. Shows today's entry when one exists, so returning to an
-// unfinished write is the same one tap as starting it.
-function jrnComposerHtml(){
+// Today's entries, newest first. One reader for every surface that asks the question.
+function jrnTodayEntries(){
   const today=getLocalDate();
-  const mine=jrnEntries().filter(r=>jrnEntryDay(r)===today)
+  return jrnEntries().filter(r=>jrnEntryDay(r)===today)
     .sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0));
+}
+// The page's primary action. It opens the writing surface for today: whatever has already been
+// written, or a fresh entry when nothing has. Continuing an unfinished write and starting one
+// are the same intent and the same single press; "+ Add another moment" is how a second,
+// separate entry for the same day is made.
+function jrnWriteBtnHtml(hasEntry){
+  return '<button class="jrn-write-btn" data-jrn="write-today">'+
+    (hasEntry?'Continue today’s entry':'Write today')+'</button>';
+}
+// The same facts the editor shows under an entry, from the same canonical reader. They are
+// read-only links back to the source screens: nothing here is copied onto a Journal record, and
+// an area with no record simply produces no chip — never a zero, a gap or an unticked box.
+function jrnTodayFactsHtml(ds){
+  const facts=jrnDayContext(ds);
+  if(!facts.length) return '';
+  return '<div class="jrn-today-facts">'+
+    '<div class="jrn-context-chips">'+facts.map(f=>
+      '<button class="jrn-context-chip" data-jrn="day-source" data-source="'+f.kind+'" data-date="'+ds+'" aria-label="Open '+escAttr(f.detail)+' source">'+
+        '<span class="jrn-context-value">'+escText(f.label)+'</span><span class="jrn-context-detail">'+escText(f.detail)+'</span><span aria-hidden="true">›</span>'+
+      '</button>').join('')+'</div>'+
+    '<p class="jrn-today-note">Recorded so far today. Anything not listed is unknown, not zero.</p>'+
+  '</div>';
+}
+// The phone's Today block, and the first thing on the page. Writing is the subject of the
+// screen, so the invitation and the button come before anything the app has recorded; the facts
+// below them are context for the write, never a checklist to complete.
+function jrnTodayHtml(){
+  const today=getLocalDate();
+  const mine=jrnTodayEntries();
   const latest=mine[0];
   const firstLine=latest ? (String(latest.title||'').trim() || String(latest.body||'').trim().split('\n')[0] || 'Untitled') : '';
   let meta='';
@@ -28431,17 +28481,22 @@ function jrnComposerHtml(){
     const bits=[];
     if(mine.length>1) bits.push(mine.length+' entries today');
     if(latest.mood) bits.push(jrnMoodLabel(latest.mood));
-    if(bits.length) meta='<div class="jrn-comp-meta">'+escText(bits.join(' · '))+'</div>';
+    if(bits.length) meta='<p class="jrn-today-meta">'+escText(bits.join(' · '))+'</p>';
   }
-  return '<button class="jrn-composer" data-jrn="'+(latest?'open':'new-entry')+'"'+(latest?' data-id="'+escAttr(latest.id)+'"':'')+'>'+
-    '<div class="jrn-comp-top">'+
-      '<span class="jrn-comp-eyebrow">'+(latest?"Today's entry":'Today')+'</span>'+
-      '<span class="jrn-comp-date">'+escText(jrnLongDay(today))+'</span>'+
+  return '<section class="jrn-today" aria-labelledby="jrn-today-hd">'+
+    '<div class="jrn-today-top">'+
+      '<h2 class="jrn-today-ttl" id="jrn-today-hd">Today</h2>'+
+      '<span class="jrn-today-date">'+escText(jrnLongDay(today))+'</span>'+
     '</div>'+
-    '<div class="jrn-comp-line'+(latest?'':' is-empty')+'">'+(latest?escText(firstLine):'How was today?')+'</div>'+
+    (latest
+      ? '<button class="jrn-today-peek" data-jrn="open" data-id="'+escAttr(latest.id)+'">'+escText(firstLine)+'</button>'
+      : '<p class="jrn-today-invite">A few lines about today is plenty. Nobody else reads this.</p>')+
     meta+
-  '</button>'+
-  (latest?'<button class="jrn-loops-btn" data-jrn="new-entry" style="align-self:flex-start;margin:-6px 0 0 2px">+ Add another moment today</button>':'');
+    '<div class="jrn-today-acts">'+jrnWriteBtnHtml(!!latest)+
+      (latest?'<button class="jrn-today-more" data-jrn="new-entry">+ Add another moment</button>':'')+
+    '</div>'+
+    jrnTodayFactsHtml(today)+
+  '</section>';
 }
 function jrnLoopRow(n, today){
   const diff=notesDayDiff(String(n.dueDate||''), today);
@@ -28507,8 +28562,9 @@ function jrnTimelineHtml(){
   if(q) list=list.filter(r=>jrnMatch(r,q));
   if(!list.length){
     return '<div class="jrn-empty">'+
-      '<div class="jrn-empty-ttl">'+(q?'No entries match':'No entries yet')+'</div>'+
-      '<div class="jrn-empty-sub">'+(q?'Try a different word, or check All notes.':'Tap the card above to write about today. Entries are grouped by the day they are about.')+'</div>'+
+      '<div class="jrn-empty-ttl">'+(q?'No entries match':'Your journal starts here')+'</div>'+
+      '<div class="jrn-empty-sub">'+(q?'Try a different word, or check All notes.':'Write today whenever you feel like it — a sentence counts. Entries are grouped by the day they are about, and days you skip are simply not shown.')+'</div>'+
+      (q?'':'<button class="jrn-write-btn" data-jrn="write-today">Write today</button>')+
     '</div>';
   }
   // Desktop groups by MONTH and renders flat rows carrying their own date, because a per-day
@@ -28600,7 +28656,6 @@ function jrnBodyHtml(){
 // Deliberately not the primary browse surface: a calendar optimises for "what happened on the
 // 14th", which is the rare question, and it renders every unwritten day as a visible hole.
 // Days WITH entries carry a dot; days without are simply undotted, never marked as missed.
-let jrnCalMonth=null;
 function jrnOpenCal(){
   jrnCalMonth=jrnCalMonth||getLocalDate().slice(0,7);
   const box=document.getElementById('paste-restore-box');
@@ -28664,7 +28719,6 @@ function jrnJumpTo(ds){
 }
 
 // ── The editor ──
-let jrnEdId=null, jrnEdPending=null, jrnEdTimer=null, jrnEdStatusTimer=null, jrnEdTagsOpen=false;
 function jrnEdRec(){
   if(!jrnEdId) return null;
   return loadNotes().find(r=>r.id===jrnEdId) || jrnEdPending || null;
@@ -28814,7 +28868,6 @@ function jrnEdRenderFoot(){
 // into storage; the ones that only describe an empty shell (which day it is about, whether it
 // is a reminder) do not, or the desktop's default-to-today editor would save a blank entry
 // the moment anything touched its date.
-const JRN_MEANINGFUL_KEYS=['mood','tags','pinned','title','body'];
 function jrnEdPatch(patch){
   if(!jrnEdId) return;
   const stored=loadNotes().find(r=>r.id===jrnEdId);
@@ -28910,7 +28963,6 @@ if(window.visualViewport){
 }
 document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden') jrnEdFlush(); });
 window.addEventListener('pagehide', jrnEdFlush);
-let _jrnResizeT=null;
 window.addEventListener('resize',function(){
   clearTimeout(_jrnResizeT);
   _jrnResizeT=setTimeout(function(){
@@ -28965,6 +29017,8 @@ document.addEventListener('click',function(e){
   const act=el.getAttribute('data-jrn');
   const id=el.getAttribute('data-id');
   if(act==='new-entry'){ jrnOpenEditor(null,'entry'); return; }
+  // Today's entry if there is one, a fresh one if not — one press either way.
+  if(act==='write-today'){ const t=jrnTodayEntries()[0]; jrnOpenEditor(t?t.id:null,'entry'); return; }
   if(act==='new-note'){ jrnOpenEditor(null,'note'); return; }
   if(act==='open'&&id){ jrnOpenEditor(id); return; }
   if(act==='restore'&&id){ jrnRestore(id); jrnRefreshLists(); return; }
@@ -29016,32 +29070,30 @@ document.addEventListener('click',function(e){
 // No streak, no missed-day count, no guilt language.
 function buildHomeNotesCard(){
   const today=getLocalDate();
-  const mine=jrnEntries().filter(r=>jrnEntryDay(r)===today)
-    .sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0));
+  const mine=jrnTodayEntries();
   const latest=mine[0];
   const L=jrnOpenLoops();
-  const rows=L.pinned.concat(L.due).slice(0,3);
+  // ONE loop, not three. This card is a way in, not a second Journal screen: the whole list is
+  // one press away and a stack of reminders here is what makes Home feel like a to-do app.
+  const rows=L.pinned.concat(L.due).slice(0,1);
   let h='<div class="card jrn-home-card">';
   // The shared card header, not a fourth private copy of the uppercase-label declaration.
   // This one was 13px/.05em/--muted while every other Home card is 11px/.06em/--text-2, which
   // is most of why Journal read as a different family from the cards above and below it.
   h+=cardHeader('note','Journal',
       '<button class="card-hd-act" data-jrn-home="all">Open →</button>');
-  if(latest){
-    const line=String(latest.title||'').trim()||String(latest.body||'').trim().split('\n')[0]||'Untitled';
-    h+='<button class="jrn-composer" data-jrn-home="open" data-id="'+escAttr(latest.id)+'" style="margin-bottom:'+(rows.length?'10px':'0')+'">'+
-      '<div class="jrn-comp-top"><span class="jrn-comp-eyebrow">Today\'s entry</span></div>'+
-      '<div class="jrn-comp-line">'+escText(line)+'</div>'+
+  // Two jobs, two controls. The preview is a quiet way INTO the Journal dashboard; Write today
+  // is the one accent affordance and goes straight to the writing surface. The preview used to
+  // be the tinted composer and opened the editor itself, so the card had no way to reach the
+  // screen it is a shortcut to except the small header link.
+  const line=latest ? (String(latest.title||'').trim()||String(latest.body||'').trim().split('\n')[0]||'Untitled') : '';
+  h+='<button class="jrn-composer is-peek" data-jrn-home="all">'+
+      '<div class="jrn-comp-top"><span class="jrn-comp-eyebrow">'+(latest?'Today\'s entry':'Today')+'</span></div>'+
+      '<div class="jrn-comp-line'+(latest?'':' is-empty')+'">'+(latest?escText(line):'Nothing written yet today.')+'</div>'+
       (mine.length>1?'<div class="jrn-comp-meta">'+mine.length+' entries today</div>':'')+
-    '</button>';
-  } else {
-    // is-new is what lets desktop shrink this to a button. On the phone it stays the familiar
-    // full-width tinted composer; on a desktop card the same element was a 60px pseudo-input
-    // spanning 780px to hold five words, which read as a text field that cannot be typed in.
-    h+='<button class="jrn-composer is-new" data-jrn-home="new" style="margin-bottom:'+(rows.length?'10px':'0')+'">'+
-      '<div class="jrn-comp-line is-empty">Write about today →</div>'+
-    '</button>';
-  }
+    '</button>'+
+    '<button class="jrn-write-btn jrn-home-write" data-jrn-home="write">'+
+      (latest?'Continue today\u2019s entry':'Write today')+'</button>';
   if(rows.length){
     rows.forEach(n=>{
       const diff=notesDayDiff(String(n.dueDate||''), today);
@@ -29056,10 +29108,8 @@ function buildHomeNotesCard(){
         right+
       '</button>';
     });
-  } else if(latest){
-    h+='<div style="font-size:13px;color:var(--muted);padding-top:2px">Nothing due.</div>';
-  } else {
-    h+='<div style="font-size:13px;color:var(--muted);padding-top:8px">Nothing due. Nothing written yet today.</div>';
+  } else if(L.all.length){
+    h+='<div class="jrn-home-quiet">Nothing due.</div>';
   }
   return h+'</div>';
 }
@@ -29072,8 +29122,11 @@ document.addEventListener('click',function(e){
   const el=e.target.closest('[data-jrn-home]'); if(!el) return;
   const act=el.getAttribute('data-jrn-home');
   setView('notes');
-  if(act==='new') jrnOpenEditor(null,'entry');
-  else { const id=el.getAttribute('data-id'); if(id) jrnOpenEditor(id); }
+  // 'all' deliberately opens nothing: it is the way to the dashboard. On a wide screen the
+  // Journal page still opens today in its detail pane, which is that layout's own behaviour.
+  if(act==='write'){ const t=jrnTodayEntries()[0]; jrnOpenEditor(t?t.id:null,'entry'); return; }
+  if(act==='new'){ jrnOpenEditor(null,'entry'); return; }
+  if(act==='open'){ const id=el.getAttribute('data-id'); if(id) jrnOpenEditor(id); }
 });
 
 // ── Plans ──────────────────────────────────────────────────────────
