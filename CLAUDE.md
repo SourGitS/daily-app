@@ -1,5 +1,77 @@
 # Daily — Project Reference
 
+## Onboarding, refreshed — v347, 2026-09-15
+
+**The flow, the branching and every save guard are unchanged; the STORY was out of date.**
+Onboarding still described a narrower app than the one that exists — "Kitchen", a Budget
+rather than Finance, no Food, no Stats — and its welcome preview printed a stranger's money.
+`OB_CATALOGUE`, `obSteps()`, `obCaptureCurrent()`, `finishOnboarding()`, the welcome-screen
+restore, the embedded-browser guidance, the blocked-popup watchdog and the `_cloudWorkoutReady`
+gate that blocks Finish while cloud data is still loading all behave exactly as before.
+**`OB_VERSION` is deliberately NOT bumped** — nothing here is worth re-showing an existing user.
+
+**The visible names are the app's current ones; the STORED ids are frozen.** `OB_FOCUS` now
+reads Log & workouts / Finance & accounts / Body & nutrition / **Food** / Habits & journal, and
+the ids behind them are still `training` / `budget` / `health` / **`kitchen`** / `habits`. A
+replayed profile's `profileData.focus` therefore keeps working untouched: this is a rename, not
+a migration, and the Budget setup card and any later release still read the same values. The
+word "Kitchen" is not shown to a new user anywhere.
+
+**The welcome preview states no figures at all.** It used to print "$378 left this week" and
+"$12.4k net worth" with an upward arrow, on the first screen someone with no data ever sees.
+Its five surfaces now NAME the destinations instead — an upcoming workout (hero), Cook tonight
+(Food), This week (Finance), Habits, and Progress / "Reviewed in Stats" — which is also how
+Stats is represented: as the place progress is reviewed, with no setup form of its own.
+`.ob-pv-line` and `.ob-pv-spark` are the two small additions to the existing `.ob-pv-*`
+vocabulary; the spark reads `--accent-text`, not `--accent`, or it disappears on the dark card
+under the default neutral accent.
+
+**The focus screen tailors the optional SETUP screens and says so.** It no longer implies a
+personalisation system: no tab is hidden, Home is not rearranged, and the note counts SETUP
+SCREENS rather than ticked areas — picking Food alone correctly says there is nothing to set
+up rather than promising a screen that does not exist.
+
+**Food collects nothing, and the finish says only what is true.** No recipe is seeded, nothing
+is selected for shopping, no pantry item is created, no meal is logged and no calorie target is
+invented. The finish's Food line is an AVAILABILITY statement — "Food is ready for recipes,
+shopping and pantry" — shown only to someone who ticked it. `obFocusPicked()` exists for this:
+`obFocusOn()` treats an unanswered focus screen as "everything", which is right for building the
+branch and wrong for reporting what was set up. Every other row still requires the step to have
+been shown AND the value to have been given.
+
+**Weather is part of Appearance now, not a screen.** The `weather` step is gone from
+`OB_CATALOGUE`; `obWeatherSectionHTML()` is revealed inside Appearance when the **Weather**
+accent mode is chosen, and Fixed / Training day / Weather are all still offered. The existing
+coordinator is reused exactly: `weatherRefresh({force:true,useCurrentLocation:true,...})` is
+called ONLY from the button, so the OS prompt always follows a press; request cancellation,
+stale-result protection, the failure message and the permission-status update are untouched;
+and there is no new store, provider, city picker, sync path or history. Choosing Weather and
+never pressing the button is a complete answer — the copy says the location is used only for
+the local forecast, stays on the device, is never uploaded, and points at Settings › Weather.
+
+**Only a real step change slides.** `renderObStep(dir)` takes a direction and `obGo()` is the
+only caller that passes one: forward enters from the right while the outgoing page leaves left,
+Back reverses, 250ms with a slight opacity change, no autoplay, bounce, parallax or swipe.
+Every in-place re-render — a focus card, a theme, an accent mode, a habit chip, the TDEE
+preview, a weather reading arriving — calls `renderObStep()` with no argument and does not
+move. `obCaptureCurrent()` still runs before anything is replaced, so typed fields, focus
+selections, split edits, habits, body fields and budget values survive Back and Continue.
+`obSlideSettle()` finishes any transition still running before the next one starts, so repeated
+presses cannot queue or overlap. The retained outgoing page is the REAL node, stripped of every
+`id`, `aria-hidden`, `inert`, untabbable and removed when the transition ends — the settled DOM
+holds exactly one interactive step. Under `prefers-reduced-motion: reduce` nothing is retained
+and nothing animates. `.ob-stage` clips the HORIZONTAL travel only (`overflow-x:clip`, y left
+visible): no fixed height, no vertical clipping, no horizontal page overflow, and a long step
+simply makes the page longer. A temporary `min-height` holds the stage open for the 250ms the
+out-of-flow copy exists, and is cleared after.
+**Known, pre-existing:** `#onboarding-box` carries `backdrop-filter` on desktop, which makes it
+the containing block for the split editor's `position:fixed` picker. The picker renders and
+works; it is anchored to the card rather than the viewport. `.ob-stage` was measured and does
+not contribute to that.
+
+Food › Today's chooser hero and the Accounts desktop canvas shipped in the same release; both
+are documented in their own sections below.
+
 ## Log › Splits — v336
 
 The visible **Splits** destination answers “Which training split do I want to use?” Its
@@ -716,6 +788,29 @@ older summary — re-grep before assuming a fact from here is still true if it l
   `foodSetTodayView()`. `openFoodToday()`, `nutOpen()`, Home calorie actions, the sidebar Food log
   row and legacy `#nutrition` / `#nutrition/today` explicitly reach the logger, including links
   highlighting a recorded entry. Do not redirect these logging shortcuts to the overview.
+
+  **The chooser IS Food › Today's hero — v347.** "What would you like to eat?" is the question
+  the screen exists to answer, so `.fo-chooser` dropped `.fo-card` and wears the app's own accent
+  hero tokens (`--accent-hero` / `--accent-hero-2`, white text, the restrained `.hero-surface`
+  depth) in the scoped `fo-*` block in `css/kitchen-extras.css`. **It is ONE hero and the rest of
+  the screen stays matte**: recipe options, the calorie goal, shopping and food-log summaries are
+  still quiet content cards, exactly as Home and Finance compose a screen. Every id, handler,
+  `foodOverviewState` field, filter rule and the DOM-preserving refresh are unchanged — the only
+  JS change was the section's class. It represents a CHOICE, never a recommendation: nothing is
+  preselected, no serving is scaled, no pantry sufficiency is inferred and nothing is logged or
+  marked cooked.
+  Three details are load-bearing. The fields and the unselected category chips are DARKENED
+  (`rgba(0,0,0,.2)` / `.18`) rather than whitened: every accent the app can hold is tuned to
+  carry white text, so a translucent white fill lifts the surface until white stops clearing
+  4.5:1 — measured white-on-field 5.86–6.30:1 and placeholder 4.89–5.18:1 across the pale, red,
+  blue, green and white accents. The SELECTED category is a solid white chip inked in
+  `--accent-hero` (4.21–9.29:1), the same pairing Home's hero action uses, because an accent
+  tint over an accent surface is invisible on half the accents this app can take. And
+  `.kitchen-hero-card` is the Recipe Book's featured-recipe surface and is untouched — do not
+  reuse or restyle it here.
+  The hero is only in Food's existing MAIN column on desktop (`.fo-columns` is unchanged), it
+  keeps the card's own compact height so Recipe options are still visible without scrolling on
+  a phone, and there is no second copy of the markup at any breakpoint.
 
   **The recipe chooser reads existing contracts.** `foodOverviewRecipe()` uses `kitResolve()`
   for default-option per-serving values and `nutRecipeState()` for manual/calculated/partial/
@@ -2195,10 +2290,32 @@ the accent or the theme must go through those, not set `--accent` directly.
   `style.display`, and `saveAccounts()` rebuilds the Overview's account card while Finance is
   the live view — a string build that writes nothing, so an edit made on the Accounts tab shows
   in the Overview immediately rather than only on its next render.
-  **`.accounts-wrap` is in normal flow now**: `max-width:1120px;margin:0`, LEFT-aligned like
-  every other Finance view. It was `max-width:520px;margin:0 auto` plus the overlay's inline
-  padding, which put a centred column in the middle of a canvas whose every other screen starts
-  at the content edge.
+  **`.accounts-wrap` is in normal flow, LEFT-aligned, and since v347 it takes the WHOLE Finance
+  canvas on desktop** (`#view-budget .accounts-wrap{max-width:none}` in the 1024px block) —
+  the same content edge Overview, Week and Bills end on, bounded by the app-wide 2200px
+  section cap and nothing else. Two superseded values, so neither is re-proposed: it was
+  `max-width:520px;margin:0 auto` as an overlay, a centred column in the middle of a canvas
+  whose every other screen starts at the content edge; and then `max-width:1120px;margin:0`,
+  which fixed the alignment but left Accounts stopping ~460px short of the other Finance views
+  at 1920 and ~1,000px short on an ultrawide monitor. That gutter was the thing people saw. The
+  1120px value survives as a base rule only because it never binds below 1024px, where the
+  panel is already narrower.
+  **The width is spent on content, not on one very wide row.** At ≥1500px `#accounts-list`
+  becomes a two-column grid and at ≥2000px a three-column one, so an account card stays about
+  700–790px whatever the monitor; `#accounts-addform` is capped at 460px there, because it is
+  an action and a short form rather than a thing to stretch; and the payoff hero's `.hm-sub`,
+  `.acct-payoff-math`, `.acct-payoff-kinds` and `.acct-payoff-note` keep a 720px reading
+  measure from 1024px up, the treatment `.acct-note` already had. The hero SURFACE and the
+  net-worth chart card span — they are the two things that gain from the width, and Chart.js's
+  own responsive resize fills the canvas without any new call (verified at 1024 / 1440 / 1920 /
+  2560, growing and shrinking).
+  **The column counts are explicit, not `auto-fill`.** `auto-fill` keeps reserving empty
+  tracks, so two accounts on an ultrawide monitor would sit in the left quarter of the row —
+  the same accidental void the change exists to remove.
+  **The Finance tab strip was deliberately NOT widened with it.** `#view-budget .bud-topnav`
+  keeps `max-width:760px`, which is the cap `.seg-tabs` takes on every desktop screen in the
+  app (Log and Stats included) — a segmented control sized to its five labels, not to the
+  canvas. Widening it would be the app-wide change this fix is scoped to avoid.
 - **"Available to spend" is defined ONCE, and three screens read it (v327).**
   `budAvailable(income, committed, spent, saved)` is the whole definition: income − committed −
   spent − saved, and **NULL rather than zero when no income has been entered**, because "nothing
@@ -2425,8 +2542,8 @@ the accent or the theme must go through those, not set `--accent` directly.
 - **Every Home card needs a real empty state**, and delta/trend UI must not treat missing data
   as zero (the review chips read "no last week" rather than inventing an improvement; the
   calorie strip hides itself under three logged days rather than drawing a chart of gaps).
-- **Specific hero-card gotchas** confirmed while consolidating these (2026-07-21, see
-  `Prompts/08-*`): `.card.hero-card` (Home) is a NEUTRAL card, not an accent one — its
+- **Specific hero-card gotchas** confirmed while consolidating these (2026-07-21):
+  `.card.hero-card` (Home) is a NEUTRAL card, not an accent one — its
   background is `var(--card)`, so don't assume every "hero" class wants white text.
   `.log-day-hero-card`'s gradient/shadow are set INLINE per-training-day in `js/app.js`
   (~line 1979), not in CSS — a fixed CSS gradient there would fight the dynamic day-colour
@@ -2437,9 +2554,7 @@ the accent or the theme must go through those, not set `--accent` directly.
 
 ## Workflow
 
-- Francois is not a developer. He runs prompts from the `Prompts/` folder
-  (`NN-MODEL-slug.md`, numbered sequentially, tagged with the model it's meant for) through
-  Claude Code himself. That folder is both the changelog of every past session and the format
-  to match for new prompts: codebase context → spec (with exact code where possible) →
-  a numbered verification checklist he can eyeball on his phone.
+- Francois is not a developer. When an implementation brief is useful, provide it plainly in
+  the conversation with clear scope and an eyeballable verification checklist. Do not save or
+  number a prompt file unless he explicitly asks for a reusable repository artifact.
 - Single git repo, deployed via GitHub Pages from `main`.

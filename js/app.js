@@ -22921,6 +22921,11 @@ const WHATS_NEW_LOG = [
 // area a step depends on; steps without one are always shown. This replaced a flat
 // OB_STEPS array — obSteps() is now the single source of "which screens does THIS user get",
 // and every index (obStep, Back, progress) is against that, never against the catalogue.
+// Weather is NOT a step of its own any more. It was a whole screen asking for a system
+// permission for one optional decoration, sitting between the setup screens and sync; it is
+// now the part of Appearance that appears when the Weather accent is chosen, which is the only
+// place in the flow that has any reason to want a location. The permission itself is unchanged:
+// nothing is requested until the button below the preview is pressed.
 const OB_CATALOGUE = [
   {id:'welcome',    phase:'start'},
   {id:'focus',      phase:'yours'},
@@ -22929,7 +22934,6 @@ const OB_CATALOGUE = [
   {id:'body',       phase:'setup',   when:'health'},
   {id:'budget',     phase:'setup',   when:'budget'},
   {id:'habits',     phase:'setup',   when:'habits'},
-  {id:'weather',    phase:'protect'},
   {id:'sync',       phase:'protect'},
   {id:'done',       phase:'ready'}
 ];
@@ -22939,17 +22943,21 @@ const OB_PHASES = [
   {key:'start',   label:'Welcome'},
   {key:'yours',   label:'Make it yours'},
   {key:'setup',   label:'Set up'},
-  {key:'protect', label:'Protect & enhance'},
+  {key:'protect', label:'Protect'},
   {key:'ready',   label:'Ready'}
 ];
 // What the Focus screen offers. Picking an area only decides which SETUP SCREENS appear —
 // nothing is hidden from the app afterwards, every tab and feature stays available.
+// The STORED ids are frozen: `kitchen` is what profileData.focus has always held and what a
+// replayed profile still carries, so the visible name changing to Food (the destination that
+// replaced Kitchen and Nutrition in v321) is a rename, not a migration. Same for `budget`,
+// whose destination is now called Finance, and `health`, which is Body & nutrition.
 const OB_FOCUS = [
-  {id:'training', icon:'trophy', label:'Training',           desc:'Workouts, your split, personal records'},
-  {id:'budget',   icon:'wallet', label:'Budget & accounts',  desc:'Weekly spending, savings, net worth'},
-  {id:'health',   icon:'scale',  label:'Health & nutrition', desc:'Body stats and a calorie target'},
-  {id:'kitchen',  icon:'pot',    label:'Kitchen',            desc:'Recipes, shopping list, pantry'},
-  {id:'habits',   icon:'check',  label:'Habits & journal',   desc:'Daily habits and a written diary'}
+  {id:'training', icon:'trophy', label:'Log & workouts',     desc:'Your split, sessions and personal records'},
+  {id:'budget',   icon:'wallet', label:'Finance & accounts', desc:'Weekly budget, bills, savings and net worth'},
+  {id:'health',   icon:'scale',  label:'Body & nutrition',   desc:'Body stats and a daily calorie target'},
+  {id:'kitchen',  icon:'pot',    label:'Food',               desc:'Recipes, shopping list and pantry'},
+  {id:'habits',   icon:'check',  label:'Habits & journal',   desc:'Daily habits and a written journal'}
 ];
 // Before the Focus screen has been answered nothing is filtered out, so the catalogue order
 // still reads correctly if anything renders early. An explicit empty selection DOES filter
@@ -22958,6 +22966,13 @@ function obFocusOn(area){
   const f=obData&&obData.focus;
   if(!Array.isArray(f)) return true;
   return f.indexOf(area)>=0;
+}
+// obFocusOn answers "does this user's branch include X", and treats an UNANSWERED focus screen
+// as "everything" so the catalogue still reads correctly before the question is asked. The
+// finish needs the opposite default: only an area the user actually ticked may be reported.
+function obFocusPicked(area){
+  const f=obData&&obData.focus;
+  return Array.isArray(f) && f.indexOf(area)>=0;
 }
 function obSteps(){
   return OB_CATALOGUE.filter(s=>!s.when||obFocusOn(s.when)).map(s=>s.id);
@@ -23815,11 +23830,16 @@ function accountMarkPaid(id){
 
 // ── Navigation ──
 function obGo(step){
+  // Every staged answer is read out of the DOM BEFORE anything is replaced, so Back and
+  // Continue both return to exactly what was typed. The transition below never sees a field:
+  // it animates markup that has already been captured.
   obCaptureCurrent();
   // Clamp against the ACTIVE step list: changing the focus selection changes how many screens
   // exist, and the catalogue length would let obStep run off the end of a branched flow.
+  const from=obStep;
   obStep = Math.max(0, Math.min(step, obSteps().length-1));
-  renderObStep();
+  // A clamped press (Back on the first screen) is not a page change and must not slide.
+  renderObStep(obStep===from?0:(obStep>from?1:-1));
 }
 function obNext(){ obGo(obStep+1); }
 function obBack(){ obGo(obStep-1); }
@@ -23934,9 +23954,66 @@ function obAttachAuthWatch(){
 }
 function obDetachAuthWatch(){ if(obAuthUnsub){ try{ obAuthUnsub(); }catch(e){} obAuthUnsub=null; } }
 
+// ── Step transitions ─────────────────────────────────────────────────────────
+// A real step change slides: the new page in from the right and the old one out to the left,
+// reversed going Back. NOTHING else slides. Tapping a focus card, a theme, an accent mode, a
+// habit chip, or a weather reading arriving all re-render this same step, and those must
+// settle in place — a screen that jumps sideways when you tick a box reads as a mis-tap.
+// The distinction is a DIRECTION argument, passed only by obGo(), not a guess made here.
+const OB_SLIDE_MS = 250;
+let _obSlideEnd = null, _obSlideTimer = null;
+function obReduceMotion(){
+  try{ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+  catch(e){ return false; }
+}
+// Settle any transition still running. Called before the next render starts, so pressing
+// Continue three times quickly runs three transitions in sequence rather than stacking three
+// retained copies of the flow on top of each other.
+function obSlideSettle(){
+  if(_obSlideTimer){ clearTimeout(_obSlideTimer); _obSlideTimer=null; }
+  const done=_obSlideEnd; _obSlideEnd=null;
+  if(done) done();
+}
+// The outgoing page is the REAL node, kept for one transition so half-typed fields and a
+// rendered split editor animate out looking like what was on screen. That makes it a second
+// copy of an interactive screen, so before it goes back into the document it loses every id
+// (nothing may resolve getElementById to the old page), is marked aria-hidden, and is made
+// inert so it can take neither focus nor a pointer. It is removed when the transition ends.
+function obSlideStart(box, outgoing, dir){
+  const stage=box.querySelector('.ob-stage'), page=stage&&stage.querySelector('.ob-page');
+  if(!stage||!page){ if(outgoing&&outgoing.remove) outgoing.remove(); return; }
+  page.classList.add(dir<0?'ob-enter-back':'ob-enter-fwd');
+  if(outgoing){
+    if(outgoing.id) outgoing.removeAttribute('id');
+    outgoing.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
+    outgoing.setAttribute('aria-hidden','true');
+    outgoing.setAttribute('inert','');
+    outgoing.setAttribute('tabindex','-1');
+    outgoing.classList.remove('ob-enter-fwd','ob-enter-back');
+    outgoing.classList.add('ob-page-out', dir<0?'ob-leave-back':'ob-leave-fwd');
+    stage.appendChild(outgoing);
+    // The retained copy is taken out of flow, so a taller outgoing page would hang below a
+    // shorter incoming one. A min-height for the length of the transition holds the stage open
+    // instead of clipping anything: the page still grows to whatever it needs afterwards.
+    stage.style.minHeight=Math.max(outgoing.offsetHeight||0, page.offsetHeight||0)+'px';
+  }
+  _obSlideEnd=()=>{
+    if(outgoing&&outgoing.remove) outgoing.remove();
+    stage.style.minHeight='';
+    page.classList.remove('ob-enter-fwd','ob-enter-back');
+  };
+  _obSlideTimer=setTimeout(obSlideSettle, OB_SLIDE_MS+60);
+}
+
 // ── Renderer ──
-function renderObStep(){
+// dir: 1 forward, -1 back, 0/absent for an in-place re-render of the same step.
+function renderObStep(dir){
   const box=document.getElementById('onboarding-box'); if(!box) return;
+  obSlideSettle();
+  const moving=!!dir;
+  const animate=moving&&!obReduceMotion();
+  const outgoing=animate?box.querySelector('.ob-page'):null;
+  if(outgoing) outgoing.remove();   // detached, not destroyed: re-inserted by obSlideStart
   const step=obCurrentStep();
   // Presentation hooks only: the approved flow still comes entirely from OB_CATALOGUE.
   // A step attribute lets the visual system give Welcome and Ready their own composition
@@ -23954,15 +24031,30 @@ function renderObStep(){
   else if(step==='body') inner=obBodyHTML();
   else if(step==='split') inner=obSplitHTML();
   else if(step==='habits') inner=obHabitsHTML();
-  else if(step==='weather') inner=obWeatherHTML();
   else if(step==='sync') inner=obSyncHTML();
   else inner=obDoneHTML();
-  box.innerHTML=topbar+obProgressHTML()+inner;
-  box.scrollTop=0;
-  if(step==='focus') setTimeout(()=>{ const el=document.getElementById('ob-name'); if(el&&!el.value) el.focus(); },50);
+  // The chrome (Back, phase, progress) is the frame and updates in place; only the step's own
+  // content travels. .ob-stage clips that travel horizontally and nothing else — no height is
+  // fixed here and nothing is clipped vertically, so a long step simply makes the page longer.
+  box.innerHTML=topbar+obProgressHTML()+
+    '<div class="ob-stage"><div class="ob-page" tabindex="-1">'+inner+'</div></div>';
   if(step==='split') renderSplitEditor('se-wrap');
-  if(step==='weather') obWeatherRefreshPreview();
+  if(step==='appearance'&&document.getElementById('ob-weather-preview')) obWeatherRefreshPreview();
   if(step==='sync' && !(auth&&auth.currentUser)) obAttachAuthWatch();
+  if(animate) obSlideStart(box, outgoing, dir);
+  if(moving){
+    // #onboarding-overlay is the scroller, not the box — box.scrollTop was a no-op, which is
+    // why a long step used to open halfway down. Only on a real step change: doing it on every
+    // render would yank the page to the top when you tick a focus card near the bottom.
+    if(overlay) overlay.scrollTop=0;
+    // Focus follows the step, or it would fall to <body> when the old page is destroyed.
+    // The name field wins on the focus step because it is the one thing that screen needs.
+    const name=step==='focus'?document.getElementById('ob-name'):null;
+    const target=(name&&!name.value)?name:box.querySelector('.ob-page');
+    if(target) setTimeout(()=>{ try{ target.focus({preventScroll:true}); }catch(e){ target.focus(); } },30);
+  } else if(step==='focus'){
+    setTimeout(()=>{ const el=document.getElementById('ob-name'); if(el&&!el.value&&document.activeElement!==el) el.focus(); },50);
+  }
 }
 // Where the user is, in words. The landing and the summary are deliberately not counted as
 // "steps" — being told "Step 1 of 8" before you have agreed to anything is the same problem
@@ -23988,29 +24080,37 @@ function obProgressHTML(){
 
 // A miniature of the real Home dashboard, in the app's own card vocabulary. The old welcome
 // screen listed four features in emoji bullets and described a narrower Daily than the one
-// that exists — no weather, accounts, journal, plans or AI. Showing a Home is both a truer
-// first impression and a shorter one.
+// that exists.
+// What each surface NAMES is the point: the workout that is next, something to cook, the week's
+// money, the routine, and the place progress is reviewed — Log, Food, Finance, Habits and
+// Stats, which is what the app's five destinations actually are.
+// It states no FIGURES. The previous version printed "$378 left this week" and "$12.4k net
+// worth" over a fake upward arrow, on a first-run screen belonging to someone with no data at
+// all — a mock-up of somebody else's money. These cards say what each one is for instead, so
+// nothing here can be mistaken for a reading. Sub-10px type inside a replica is deliberate
+// (see CLAUDE.md).
 function obHomePreviewHTML(){
-  const scene=(typeof weatherPlaceholderScene==='function')?weatherPlaceholderScene():'clear-day';
   return '<div class="ob-preview" aria-hidden="true">'+
     '<div class="ob-pv-hero">'+
       '<div class="ob-pv-hero-label">Today</div>'+
       '<div class="ob-pv-hero-title">Push Day</div>'+
-      '<div class="ob-pv-hero-meta">6 exercises · 45 min</div>'+
+      '<div class="ob-pv-hero-meta">Your next session, ready to log</div>'+
     '</div>'+
     '<div class="ob-pv-row">'+
-      '<div class="ob-pv-card ob-pv-weather" data-scene="'+scene+'">'+
-        '<div class="ob-pv-temp">19°</div><div class="ob-pv-cap">Partly cloudy</div></div>'+
       '<div class="ob-pv-card">'+
-        '<div class="ob-pv-k">Left this week</div><div class="ob-pv-fig">$378</div>'+
+        '<div class="ob-pv-k">Cook tonight</div><div class="ob-pv-line">Pick a recipe</div>'+
+        '<div class="ob-pv-cap">Food · shopping · pantry</div></div>'+
+      '<div class="ob-pv-card">'+
+        '<div class="ob-pv-k">This week</div><div class="ob-pv-line">Spending &amp; bills</div>'+
         '<div class="ob-pv-bar"><i style="width:38%"></i></div></div>'+
     '</div>'+
     '<div class="ob-pv-row">'+
       '<div class="ob-pv-card"><div class="ob-pv-k">Habits</div>'+
         '<div class="ob-pv-dots"><i class="on"></i><i class="on"></i><i></i><i></i></div>'+
-        '<div class="ob-pv-cap">2 of 4 today</div></div>'+
-      '<div class="ob-pv-card"><div class="ob-pv-k">Net worth</div>'+
-        '<div class="ob-pv-fig">$12.4k</div><div class="ob-pv-cap up">▲ $310 this month</div></div>'+
+        '<div class="ob-pv-cap">Today’s routine</div></div>'+
+      '<div class="ob-pv-card"><div class="ob-pv-k">Progress</div>'+
+        '<div class="ob-pv-spark"><i style="height:38%"></i><i style="height:56%"></i><i style="height:47%"></i><i style="height:74%"></i><i style="height:92%"></i></div>'+
+        '<div class="ob-pv-cap">Reviewed in Stats</div></div>'+
     '</div>'+
   '</div>';
 }
@@ -24021,7 +24121,7 @@ function obWelcomeHTML(){
     '</div>'+
     '<div class="ob-welcome-kicker">Everything that shapes today</div>'+
     '<div class="ob-welcome-title">Your whole day,<br>in one place.</div>'+
-    '<div class="ob-tagline">A Home that moves with your training, weather, money and routines.</div>'+
+    '<div class="ob-tagline">Log your workouts, decide what to cook, keep an eye on the week’s money and tick off your routine — with Stats to review how it is all going.</div>'+
     obHomePreviewHTML()+
     '<button class="ob-btn-primary" onclick="obNext()">Set up my Daily →</button>'+
     // Returning users could only sign in at the 'sync' step, second from last — six screens
@@ -24113,18 +24213,32 @@ function obFocusHTML(){
       '<span class="ob-focus-tick" aria-hidden="true">✓</span></button>';
   }).join('');
   const n=picked?picked.length:0;
+  // The count has to be of SETUP SCREENS, not of ticked areas: Food has nothing honest to ask
+  // for on a first run (see obDoneHTML), so "we'll set up 3 areas" would promise a screen that
+  // does not exist. Read the branch obSteps() actually produces.
+  const setups=obSteps().filter(id=>(OB_CATALOGUE.find(c=>c.id===id)||{}).phase==='setup').length;
+  const note = !n
+    ? 'Pick any that apply — or none, and set things up later from inside the app.'
+    : (setups
+        ? ('Next: '+setups+' short setup screen'+(setups===1?'':'s')+', and you can skip any of them.'+
+           (picked.indexOf('kitchen')>=0?' Food has nothing to set up — recipes, shopping and pantry are ready to use.':''))
+        : 'Nothing to set up for that — Food’s recipes, shopping list and pantry are ready to use.');
   return '<div class="ob-head"><div class="ob-title">First, the basics</div>'+
-      '<div class="ob-desc">Your name, and what you\u2019d like Daily to help with. This only decides which setup screens you see next \u2014 every part of the app stays available either way.</div></div>'+
+      '<div class="ob-desc">Your name, and what you’d like to set up first. This only chooses which of the optional setup screens come next. No tab is hidden, your Home is not rearranged and every part of Daily works the same either way — anything you skip can be set up later from inside the app.</div></div>'+
     '<div class="settings-field"><label for="ob-name">Your name <span style="color:var(--danger)">*</span></label>'+
       '<input type="text" id="ob-name" value="'+obEsc(v('name'))+'" placeholder="e.g. Alex" autocomplete="name"></div>'+
-    '<div class="ob-section-label">What should Daily help with?</div>'+
+    '<div class="ob-section-label">What would you like to set up?</div>'+
     '<div class="ob-focus-grid" role="group" aria-label="Areas to set up">'+cards+'</div>'+
-    '<div class="ob-focus-note">'+(n?('We\u2019ll set up '+n+' area'+(n===1?'':'s')+' next.'):'Pick any that apply \u2014 or none, and set things up later from inside the app.')+'</div>'+
+    '<div class="ob-focus-note">'+escText(note)+'</div>'+
     '<div id="ob-error" style="display:none;color:var(--danger);font-size:13px;margin:6px 0 0">Please enter your name to continue.</div>'+
     '<button class="ob-btn-primary" onclick="obFocusContinue()">Continue →</button>';
 }
 // Theme AND accent mode in one place. Accent modes (training-day colours, weather-driven)
 // existed but onboarding never mentioned them, so nobody discovered them.
+// Weather lives HERE now, as the part of this screen the Weather accent reveals, instead of
+// being a screen of its own between setup and sync. Only one of the three accent modes has
+// any use for a location, so only that one asks — and it still asks nothing until the button
+// is pressed. Choosing Weather and never pressing it is a complete, valid answer.
 function obAppearanceHTML(){
   const themeOpt=(val,label)=>{
     const sel=obData.theme===val;
@@ -24147,6 +24261,7 @@ function obAppearanceHTML(){
       modeBtn('day','Training day','Follows the day you\u2019re training.')+
       modeBtn('weather','Weather','Follows your local sky.')+
     '</div>'+
+    (mode==='weather'?obWeatherSectionHTML():'')+
     obHomePreviewHTML()+
     '<button class="ob-btn-primary" onclick="obNext()">Continue →</button>';
 }
@@ -24170,21 +24285,21 @@ function obBudgetHTML(){
     '<button class="ob-btn-primary" onclick="obNext()">Continue →</button>'+
     '<button class="ob-btn-link" onclick="obSkipBudget()">Skip for now</button>';
 }
-// The one screen that asks for a system permission, and it earns it: the sample card becomes
-// the user's real sky the moment they allow it. getCurrentPosition is called ONLY from the
-// button below — never on entering the screen — so the OS prompt always follows a tap.
-function obWeatherHTML(){
+// The one place in the flow that asks for a system permission, and it earns it: the sample
+// card becomes the user's real sky the moment they allow it. Revealed inside Appearance by
+// the Weather accent, never as a screen of its own. getCurrentPosition is called ONLY from
+// the button below — never on entering or re-rendering the screen — so the OS prompt
+// always follows a press, and declining leaves a working app with a sample sky.
+function obWeatherSectionHTML(){
   const c=(typeof loadWeatherCache==='function')?loadWeatherCache():null;
   const real=(typeof weatherIsReal==='function')&&weatherIsReal(c);
-  return '<div class="ob-head"><div class="ob-title">Bring Home to life</div>'+
-      '<div class="ob-desc">Daily can show your local weather and, if you like, colour the whole app to match the sky. Your location is used to fetch the forecast \u2014 it is kept on this device, never uploaded, and never kept as a history.</div></div>'+
+  return '<div class="ob-weather-block">'+
+    '<div class="ob-section-label">Local weather</div>'+
     '<div id="ob-weather-preview">'+obWeatherCardHTML()+'</div>'+
     (real
-      ? '<div class="ob-weather-ok">That\u2019s your local sky. You can change or clear this anytime in Settings \u2192 Weather.</div>'+
-        '<button class="ob-btn-primary" onclick="obNext()">Continue →</button>'
-      : '<button class="ob-btn-primary" id="ob-weather-btn" onclick="obWeatherUse()">Use my location</button>'+
-        '<button class="ob-btn-link" onclick="obNext()">Not now</button>'+
-        '<div class="ob-weather-note" id="ob-weather-note">Sample shown above. Nothing is requested until you tap.</div>');
+      ? '<div class="ob-weather-ok">That’s your local sky, and Daily’s colour follows it from here. Change or clear it any time in Settings → Weather.</div>'
+      : '<button class="ob-btn-skip ob-btn-block ob-weather-use" id="ob-weather-btn" onclick="obWeatherUse()">Use my location</button>'+
+        '<div class="ob-weather-note" id="ob-weather-note">A sample sky is shown above. Your location is used only to fetch the local forecast, it stays on this device and is never uploaded — and nothing is requested until you press the button. You can carry on without it and turn weather on later in Settings → Weather.</div>');
 }
 function obWeatherCardHTML(){
   const c=(typeof loadWeatherCache==='function')?loadWeatherCache():null;
@@ -24317,7 +24432,15 @@ function obDoneHTML(){
   const sav=obNum(obData.savings);
   if(obStepShown('budget') && sav!==undefined&&sav>0) add('wallet',fmtMoney(sav)+' weekly savings target');
   const habN=(obData.habits||[]).length;
-  if(obStepShown('habits') && habN) add('check',habN+' habit'+(habN===1?'':'s')+' added');
+  // "added" implied authorship the flow cannot claim: the habits screen opens with the app's
+  // five suggestions already ticked, so someone who simply pressed Continue was being told they
+  // had added five habits they never chose. What IS true either way is what they now have.
+  if(obStepShown('habits') && habN) add('check',habN+' daily habit'+(habN===1?'':'s')+' ready to tick off');
+  // Food has no first-run data to collect and none is invented here: no recipe is seeded,
+  // nothing is chosen for the shopping list, no pantry item is created and no meal is logged.
+  // So this line states AVAILABILITY, not configuration — it is the one true thing that can
+  // be said, and it is said only to someone who asked for Food on the focus screen.
+  if(obFocusPicked('kitchen')) add('pot','Food is ready for recipes, shopping and pantry');
   if(obData.weather) add('calendar','Local weather enabled');
   if(synced) add('bank','Cloud sync active');
   const list = rows.length
@@ -24329,6 +24452,10 @@ function obDoneHTML(){
     '<div class="ob-title" style="font-size:26px">You\'re all set'+(name?', '+escText(name):'')+'</div>'+
     '<div class="ob-desc" style="margin:8px 0 18px">Here\u2019s what\u2019s waiting for you.</div>'+
     list+
+    // Stats gets no setup form — there is nothing to configure and nothing yet to review.
+    // It is named here as the PLACE progress is reviewed, which is a fact about the app rather
+    // than a claim about this account.
+    '<div class="ob-done-foot">As you log, Stats is where you review how it is going.</div>'+
     '<button class="ob-btn-primary" onclick="finishOnboarding()">Open my Home →</button>'+
   '</div>';
 }
@@ -24773,7 +24900,7 @@ function foodOverviewLogHTML(model){
 function foodRenderOverview(){
   const root=document.getElementById('food-overview'); if(!root) return;
   // Keep the chooser DOM alive: a nutrition or pantry refresh must not interrupt typing.
-  if(!document.getElementById('fo-search')) root.innerHTML='<div class="fo-columns"><div class="fo-main"><section class="fo-card fo-chooser">'+cardHeader('pot','Choose something to cook','<button class="fo-link" onclick="foodGo(\'recipes\')">All recipes →</button>')+
+  if(!document.getElementById('fo-search')) root.innerHTML='<div class="fo-columns"><div class="fo-main"><section class="fo-chooser">'+cardHeader('pot','Choose something to cook','<button class="fo-link" onclick="foodGo(\'recipes\')">All recipes →</button>')+
     '<h1>What would you like to eat?</h1><label class="fo-search"><span class="sr-only">Search recipe names</span><input id="fo-search" type="search" placeholder="Search recipe names" oninput="foodOverviewSetFilter(\'search\',this.value)"></label>'+
     '<div class="fo-categories" aria-label="Recipe category">'+KIT_CATS.map(c=>'<button data-fo-category="'+kitEsc(c[0])+'" onclick="foodOverviewSetFilter(\'category\','+kitEsc(JSON.stringify(c[0]))+')">'+kitEsc(c[1])+'</button>').join('')+'</div>'+
     '<div class="fo-limits"><label>Max cooking time <span>(minutes)</span><input id="fo-maxMinutes" type="number" min="0" step="1" placeholder="Any time" oninput="foodOverviewSetFilter(\'maxMinutes\',this.value)"></label><label>Max kcal per serving<input id="fo-maxCalories" type="number" min="0" step="1" placeholder="Any calories" oninput="foodOverviewSetFilter(\'maxCalories\',this.value)"></label></div><button class="fo-link fo-reset" onclick="foodOverviewReset()">Reset filters</button></section><section id="fo-results" aria-label="Recipe options"></section></div><aside class="fo-support"><section class="fo-card" id="fo-goal"></section><section class="fo-card" id="fo-shopping"></section><section class="fo-card" id="fo-log-summary"></section></aside></div>';

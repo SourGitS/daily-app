@@ -344,7 +344,12 @@
 // v345: Finance folds Month and Yearly into Plan, separating this month's facts from an honest
 // year-ahead recurring-bills schedule; generic hero glare bubbles are removed app-wide.
 // v346: Finance's five-item picker fills the available space on normal iPhone portrait widths.
-const CACHE_NAME = 'daily-v346';
+// v347: onboarding describes the app that exists — Log, Finance, Food, Body & nutrition and
+// Habits & journal, a welcome preview that names each destination instead of printing invented
+// balances, weather folded into Appearance behind the Weather accent, a truthful Food line on
+// the finish, and a directional slide between real steps only. Food > Today's chooser becomes
+// the screen's accent hero, and Accounts takes the same Finance canvas the other views take.
+const CACHE_NAME = 'daily-v347';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

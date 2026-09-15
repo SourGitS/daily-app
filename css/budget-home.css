@@ -110,11 +110,12 @@
 /* Accounts is a Finance PANEL now (#budget-accounts-view inside #view-budget), not a fixed
    .app-overlay with its own top bar, Back button and inline padding. So the wrapper is in
    normal document flow: the panel starts under the shared Finance tab strip and takes the
-   deck panel's own padding, exactly like Week, Month, Bills and Yearly.
+   deck panel's own padding, exactly like Week, Plan and Bills.
    LEFT-aligned, not centred: every other Finance view begins at the content edge, and a
    520px column floating in the middle of the canvas was the one thing on this screen off
-   that line. The measure is the desktop cap below; on a phone the panel is already the
-   viewport's width, so it does nothing there. */
+   that line. This 1120px value is a PHONE/TABLET floor that never binds — the panel is
+   already narrower than it below 1024px. The desktop measure is in the 1024px block, where
+   Accounts takes the same Finance canvas Overview, Week and Bills take. */
 .accounts-wrap{max-width:1120px;margin:0}
 /* Per-account trend line + 30-day movement */
 .acct-spark-wrap{padding:2px 2px 6px}
@@ -1372,9 +1373,19 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      desktop-only — on mobile it's still the only way out. Scoped so the genuine drill-down
      backs (settings-detail, split / budget editors, exercise-detail) keep theirs.
      Accounts left this rule with its overlay: a Finance view has no top bar and no Back. */
-  /* Full-width stacked rather than two narrow columns: net worth, then the trend, then each
-     account — every card using the whole width. The cap is on .accounts-wrap itself now, so
-     it applies at every width rather than only here. */
+  /* Accounts takes the SAME Finance canvas Overview, Week and Bills take — its own 1120px
+     cap used to stop it ~460px short of them at 1920 and ~1,000px short on an ultrawide
+     monitor, so the tab strip, the payoff hero and the net-worth chart read as a narrow
+     column with a dead gutter beside it. The app-wide 2200px section cap is still what
+     bounds the canvas; nothing here raises that. */
+  #view-budget .accounts-wrap{max-width:none}
+  /* What the extra width must NOT do is stretch a sentence across it. The hero's surface
+     spans (it is one accent tint, like every other Finance hero); its text keeps a reading
+     measure. .acct-note already had the same treatment below. */
+  #accounts-hero .hm-sub,
+  #accounts-hero .acct-payoff-math,
+  #accounts-hero .acct-payoff-kinds,
+  #accounts-hero .acct-payoff-note{max-width:720px}
   /* Account cards: the balance row and the statement fields sit inline on a wide screen, so
      the extra width carries content instead of becoming a gap. */
   /* Net worth and debt payoff used to be two stacked full-width hero cards, each spreading
@@ -1420,6 +1431,28 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   #kit-recipes .kit-list-col{width:40%;flex-shrink:0}
   #kit-recipes .kit-detail-col{flex:1;display:block;position:sticky;top:0;align-self:flex-start;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;min-height:60vh}
   #kit-detail-overlay{display:none!important}
+}
+
+/* ── Accounts on a genuinely wide desktop ─────────────────────────────────────
+   Above ~1500px the Finance canvas is wider than one account card has any business being:
+   a name, a balance and a statement row spread across 1,600px is a table row, not a form.
+   The hero and the net-worth chart still span — they are the two things that GAIN from the
+   width — and the account cards flow into columns instead, so the canvas is filled by
+   content rather than by one very wide row and a gutter.
+   This supersedes the old "full-width stacked rather than two narrow columns" note: that was
+   written when the whole screen was capped at 1120px, where two columns really would have
+   been narrow. At 1920 these are ~780px each and at 2560 ~700px.
+   Column counts are explicit rather than auto-fill: auto-fill keeps reserving empty tracks,
+   so an account or two on an ultrawide monitor would sit in the left quarter of the row —
+   the same accidental void this whole change exists to remove. */
+@media (min-width:1500px){
+  #accounts-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+  #accounts-list>.card{margin-bottom:0}
+  /* An action and a short form, sized to themselves rather than to the canvas. */
+  #accounts-addform{max-width:460px}
+}
+@media (min-width:2000px){
+  #accounts-list{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 
 
@@ -1573,10 +1606,13 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 [data-theme="light"] .ob-pv-card:not(.ob-pv-weather){background:rgba(255,255,255,.88);border-color:rgba(0,0,0,.08)}
 .ob-pv-k{font-size:8.5px;letter-spacing:.11em}
 .ob-pv-fig{font-size:21px;margin-top:5px;letter-spacing:-.03em}
+.ob-pv-line{font-size:13.5px;margin-top:5px}
 .ob-pv-cap{font-size:10.5px;margin-top:4px}
 .ob-pv-bar{height:5px;margin-top:10px}
 .ob-pv-dots{gap:5px;margin-top:10px}
 .ob-pv-dots i{width:13px;height:13px;border-radius:5px}
+.ob-pv-spark{height:22px;margin-top:10px;gap:4px}
+.ob-pv-spark i{border-radius:3px}
 .ob-pv-weather{box-shadow:0 14px 30px rgba(20,95,135,.22),inset 0 1px 0 rgba(255,255,255,.2)}
 .ob-pv-temp{font-size:26px;letter-spacing:-.05em}
 #onboarding-box[data-ob-step="welcome"] .ob-preview{height:300px;position:relative;margin:12px 0 10px}
@@ -1599,8 +1635,15 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 #onboarding-box[data-ob-step="appearance"] .ob-pv-hero-meta{margin-top:2px}
 #onboarding-box[data-ob-step="appearance"] .ob-pv-card{padding:8px 10px;border-radius:15px}
 #onboarding-box[data-ob-step="appearance"] .ob-pv-fig{font-size:19px;margin-top:2px}
+#onboarding-box[data-ob-step="appearance"] .ob-pv-line{font-size:12px;margin-top:2px}
 #onboarding-box[data-ob-step="appearance"] .ob-pv-bar{margin-top:6px}
 #onboarding-box[data-ob-step="appearance"] .ob-pv-dots{margin-top:6px}
+#onboarding-box[data-ob-step="appearance"] .ob-pv-spark{height:16px;margin-top:6px;gap:3px}
+/* The weather scene shares this page with a theme picker, three accent modes and the Home
+   preview, so it is the atmosphere for a choice rather than a screen of its own. */
+#onboarding-box[data-ob-step="appearance"] .ob-pv-weather-lg{min-height:168px;margin:2px 0 10px;
+  padding:18px 17px;border-radius:20px}
+#onboarding-box[data-ob-step="appearance"] .ob-pv-temp-lg{font-size:42px}
 
 /* Selection and setup screens use quiet glass surfaces so the live outcomes remain the focus. */
 .ob-focus-grid{gap:9px}

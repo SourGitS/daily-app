@@ -242,6 +242,35 @@
 /* ── Onboarding ── */
 #onboarding-overlay{position:fixed;inset:0;background:var(--bg);z-index:300;overflow-y:auto;display:flex;align-items:flex-start;justify-content:center;padding:52px 20px 40px}
 #onboarding-box{width:100%;max-width:400px}
+
+/* ── Step transitions ──
+   A real page change slides: forward, the new step enters from the right while the old one
+   leaves to the left; Back reverses it. Nothing else moves — ticking a focus card, switching
+   theme or accent, adding a habit and a weather reading arriving all re-render the SAME step,
+   and renderObStep only animates when obGo passes it a direction.
+   .ob-stage clips the horizontal travel and NOTHING else: overflow-x:clip leaves the vertical
+   axis visible, so a long step still grows the page and can never be cut off or trapped in an
+   inner scroller. (overflow-x:hidden would force overflow-y to auto and do exactly that.) On a
+   browser without `clip` this falls back to visible, and the overlay's own overflow-x:hidden
+   still keeps the page from scrolling sideways.
+   The outgoing copy is taken out of flow for the 250ms it exists; obSlideStart holds the stage
+   open with a temporary min-height so nothing overlaps, and clears it when the step settles. */
+.ob-stage{position:relative;overflow-x:clip}
+.ob-page:focus{outline:none}
+.ob-page-out{position:absolute;left:0;right:0;top:0;pointer-events:none}
+@keyframes ob-enter-fwd{from{opacity:0;transform:translateX(26px)}to{opacity:1;transform:translateX(0)}}
+@keyframes ob-enter-back{from{opacity:0;transform:translateX(-26px)}to{opacity:1;transform:translateX(0)}}
+@keyframes ob-leave-fwd{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(-26px)}}
+@keyframes ob-leave-back{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(26px)}}
+.ob-enter-fwd{animation:ob-enter-fwd 250ms cubic-bezier(.22,.61,.36,1) both}
+.ob-enter-back{animation:ob-enter-back 250ms cubic-bezier(.22,.61,.36,1) both}
+.ob-leave-fwd{animation:ob-leave-fwd 250ms cubic-bezier(.22,.61,.36,1) both}
+.ob-leave-back{animation:ob-leave-back 250ms cubic-bezier(.22,.61,.36,1) both}
+/* Belt and braces: renderObStep already refuses to retain or animate anything when reduced
+   motion is set, so a step simply replaces the one before it. */
+@media (prefers-reduced-motion:reduce){
+  .ob-enter-fwd,.ob-enter-back,.ob-leave-fwd,.ob-leave-back{animation:none}
+}
 /* Named-phase progress replaced eight anonymous dots: the old indicator told you there were
    eight screens before you knew what any of them were, and its count did not change when the
    flow branched. The denominator here is THIS user's own branch length. */
@@ -270,6 +299,16 @@
 .ob-pv-unit{font-size:11px;font-weight:700;color:var(--muted);margin-left:3px}
 .ob-pv-cap{font-size:10px;font-weight:600;color:var(--muted);margin-top:2px}
 .ob-pv-cap.up{color:var(--success)}
+/* A card whose point is WHAT IT IS FOR rather than a figure. The welcome preview belongs to
+   somebody with no data, so it states no readings at all. */
+.ob-pv-line{font-size:12.5px;font-weight:800;color:var(--text);line-height:1.2;margin-top:4px;letter-spacing:-.01em}
+/* The Stats card's shape: a trend, not a number. */
+.ob-pv-spark{display:flex;align-items:flex-end;gap:3px;height:19px;margin:7px 0 2px}
+/* --accent-text, not --accent: the default accent is a neutral grey that all but disappears as
+   a 9px bar on the dark card, and this shape is the only thing the card has to look at. */
+.ob-pv-spark i{flex:1;min-width:0;border-radius:2px;background:var(--accent-text);opacity:.42}
+.ob-pv-spark i:nth-last-child(2){opacity:.7}
+.ob-pv-spark i:last-child{opacity:1}
 .ob-pv-bar{height:4px;border-radius:999px;background:var(--track);margin-top:7px;overflow:hidden}
 .ob-pv-bar i{display:block;height:100%;border-radius:999px;background:var(--success)}
 .ob-pv-dots{display:flex;gap:4px;margin:7px 0 3px}
@@ -313,9 +352,13 @@
 .ob-mode-label{font-size:13px;font-weight:700}
 .ob-mode-desc{font-size:10.5px;line-height:1.35;color:var(--muted)}
 
-/* ── Weather step ── */
+/* ── Weather, revealed inside Appearance by the Weather accent ── */
+.ob-weather-block{margin:0 0 16px}
 .ob-weather-note{font-size:11.5px;line-height:1.5;color:var(--muted);text-align:center;margin-top:10px}
-.ob-weather-ok{font-size:12.5px;line-height:1.5;color:var(--text-2);text-align:center;margin:0 0 16px}
+.ob-weather-ok{font-size:12.5px;line-height:1.5;color:var(--text-2);text-align:center;margin:0 0 4px}
+/* Continue is this page's primary action now, so asking for a location is a secondary one —
+   the bordered skip shape, but inked and weighted so it still reads as something to press. */
+.ob-weather-use{color:var(--accent-text);border-color:rgba(var(--accent-rgb),.5);font-weight:700}
 
 /* ── Personalised finish ── */
 .ob-done-list{list-style:none;padding:0;margin:0 0 30px;display:flex;flex-direction:column;gap:8px;text-align:left}
@@ -324,6 +367,8 @@
 .ob-done-ic{flex-shrink:0;width:28px;height:28px;border-radius:9px;display:flex;align-items:center;
   justify-content:center;background:rgba(var(--accent-rgb),.14);color:var(--accent-text)}
 .ob-done-ic .card-hd-ico{width:15px;height:15px;stroke-width:2.2}
+/* Not a list item: nothing was set up in Stats, and nothing needed to be. */
+.ob-done-foot{font-size:12.5px;line-height:1.55;color:var(--muted);margin:0 0 20px}
 .ob-opt{font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0}
 
 /* Theme thumbnails, rebuilt: the old ones embedded a legacy Budget hero with hardcoded

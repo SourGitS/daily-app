@@ -25,7 +25,8 @@ Four main areas plus supporting screens:
   Workout hub notes below and `CLAUDE.md` for the traps.
 - **Stats** — overview/review/training/body/nutrition/finance sub-tabs, charts, PRs.
 - **Food** — one destination for what is eaten, cooked, bought and held: Today (a recipe-first
-  overview with the existing food log as a secondary screen),
+  overview whose chooser is the screen's accent hero since v347, with the existing food log as a
+  secondary screen),
   Recipes, Shopping, Pantry, plus Food library and Nutrition Review as supporting screens.
   This is the former **Kitchen** and **Nutrition** tabs merged (v321) — see the Food hub
   section below before touching navigation, and note that `nut*`/`kit*` functions, DOM ids and
@@ -41,6 +42,7 @@ Four main areas plus supporting screens:
   The DESTINATION is named Finance; the budgeting CONCEPT is still called the budget. The view
   id, the `bud*` prefixes, the DOM ids, the storage keys and the `#budget` route are unchanged.
 - **Accounts** — net worth / debt payoff tracking. A FINANCE VIEW since v329, not an overlay.
+  Since v347 it uses the same desktop canvas the other Finance views use (see below).
 - **Plans**, **Notes**, **Settings** — secondary screens (see `CLAUDE.md` for full detail per
   area if you need it; not reproduced here). Plans holds imported HTML plan DOCUMENTS only —
   saved workout splits live in Log › Splits.
@@ -105,6 +107,49 @@ Four main areas plus supporting screens:
   and freshness stay legible. It has no clipping fixed height and respects reduced motion.
   Desktop geometry and saved compact/wide placements remain intact. Settings > Weather is the
   existing details destination; there is no duplicate weather overlay.
+
+## Onboarding, Food's hero and the Accounts canvas (v347)
+
+- **Onboarding: the story was refreshed, the machinery was not.** `OB_CATALOGUE`, the branching
+  `obSteps()`, `obCaptureCurrent()` staging, `finishOnboarding()`'s seeding guards, the
+  welcome-screen restore, `isEmbeddedBrowser()` guidance, the 12s blocked-popup watchdog and the
+  `_cloudWorkoutReady` / `_cloudReadFailed` gate on Finish are unchanged. **`OB_VERSION` stays at
+  2** — do not bump it to re-show this.
+- **Visible language is the app's current language; stored ids are frozen.** `OB_FOCUS` shows
+  Log & workouts, Finance & accounts, Body & nutrition, **Food** and Habits & journal while still
+  storing `training` / `budget` / `health` / **`kitchen`** / `habits`, so a replayed profile and
+  the Budget setup card keep working. This is a rename, not a migration. "Kitchen" is not shown.
+- **No invented data anywhere.** The welcome preview names destinations instead of printing
+  figures (it used to show a fabricated "$378 left this week" and "$12.4k net worth"). Food
+  collects nothing: no seeded recipe, no shopping selection, no pantry item, no logged meal, no
+  calorie target. The finish's Food line states availability, not configuration, and
+  `obFocusPicked()` — explicit tick required, unlike `obFocusOn()` — gates it. Stats is named as
+  where progress is reviewed and has no setup form.
+- **Weather is a part of Appearance, not a step.** Revealed by the Weather accent mode;
+  `weatherRefresh({force:true,useCurrentLocation:true})` is still called only from the button, so
+  geolocation always follows a press. No new store, provider, location source, city picker, sync
+  path or history; cancellation, stale-result protection, error copy and `_weatherPerm` updates
+  are untouched. Declining leaves a working app and points at Settings > Weather.
+- **Only real step changes animate.** `renderObStep(dir)` slides only when `obGo()` passes a
+  direction (250ms, slight opacity, no autoplay/bounce/parallax/swipe); every in-place re-render
+  passes nothing. `obSlideSettle()` prevents queued or overlapping transitions. A retained
+  outgoing page is stripped of all ids, `aria-hidden`, `inert` and untabbable, and is removed at
+  the end — the settled DOM has exactly one interactive step. `prefers-reduced-motion: reduce`
+  retains and animates nothing. `.ob-stage` clips horizontal travel only; no fixed height, no
+  vertical clipping, no horizontal page overflow.
+- **Food > Today's chooser is the screen's accent hero.** `.fo-chooser` dropped `.fo-card` and
+  uses `--accent-hero` / `--accent-hero-2` in the scoped `fo-*` block. Every id, handler,
+  `foodOverviewState` field, filter rule and the DOM-preserving refresh are unchanged; the one JS
+  change is the class name. Fields and unselected chips are darkened, not whitened (white text
+  measures 5.86-6.30:1 across accents); the selected chip is solid white inked in `--accent-hero`.
+  The rest of the screen stays matte. `.kitchen-hero-card` is untouched.
+- **Accounts takes the whole Finance canvas on desktop.** `#view-budget .accounts-wrap` is
+  `max-width:none` from 1024px, so it ends on the same content edge as Overview, Week and Bills;
+  the app-wide 2200px section cap is unchanged and the 760px `.bud-topnav` cap is deliberately
+  left alone. `#accounts-list` becomes two columns at 1500px and three at 2000px, the add form is
+  capped at 460px there, and the hero's text keeps a 720px measure — so the added width carries
+  the chart and the cards rather than one very wide form row. `daily_accounts`, account ids and
+  shapes, sync, history and every total are byte-identical; opening Accounts still writes nothing.
 
 ## Tech stack, hosting, structure
 
@@ -379,10 +424,9 @@ Before pushing to `main`:
 5. Check both light and dark theme if the change touches colour/CSS.
 6. Check mobile viewport (this is primarily a phone PWA) in addition to desktop if the change
    touches layout.
-7. Francois is not a developer — he runs prompt files from `Prompts/` (numbered,
-   `NN-MODEL-slug.md`) through the coding agent and verifies against a numbered checklist he
-   can eyeball on his phone. If you're producing a prompt file yourself, match that format:
-   codebase context → spec → numbered verification checklist.
+7. Francois is not a developer. When an implementation brief is useful, deliver it plainly in
+   the conversation with clear scope and an eyeballable verification checklist. Do not save or
+   number a prompt file unless he explicitly asks for a reusable repository artifact.
 
 No staging environment exists — a push to `main` is live immediately at
 `sourgits.github.io/daily-app`.
@@ -1448,8 +1492,7 @@ the fresh-profile sync risk the Weekly Review does. The Weekly Review's two stor
 (`daily_review_plan`, `daily_reviews`) still want a check against a real signed-in account
 with existing cloud data if that has not happened yet.
 
-`.claude/settings.local.json` and untracked files under `Prompts/` are local working files and
-are unrelated to the app implementation.
+`.claude/settings.local.json` is a local working file unrelated to the app implementation.
 
 ## Uncertain / not verified — flagging rather than guessing
 
