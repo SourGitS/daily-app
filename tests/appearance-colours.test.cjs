@@ -37,7 +37,7 @@ function fixture(mode = 'weather') {
     weatherEnsureFresh: () => assert.fail('Colour saving must not request location or weather'),
     weather: { lat: -33, fetchedAt: Date.now(), code: 0 }, scene: 'clear-dusk'
   });
-  const tables = ['DEFAULT_ACCENT', 'REST_COLOR_KEY', 'ACCENT_MODES', 'ACCENT_MODE_LABELS',
+  const tables = ['DEFAULT_ACCENT', 'REST_COLOR_KEY', 'ACCENT_PRESETS', 'ACCENT_MODES', 'ACCENT_MODE_LABELS',
     'WEATHER_ACCENTS', 'WEATHER_FRESH_MS', 'ACCENT_TEXT_TARGET'].map(extractConst);
   const names = ['loadDayColors', 'saveDayColors', 'restColor', 'dayColorFor', 'currentDayName',
     'accentMode', 'setAccentMode', 'setStaticAccent', 'weatherIsFresh', 'weatherIsReal',
@@ -58,6 +58,15 @@ test('saving the current weather colour does not save the dormant fixed colour o
   assert.equal(c.accentMode(), 'weather');
   assert.equal(c.restColor(), '#268000');
   assert.deepEqual(writes.map(w => [w.key, w.syncPath]), [['daily_accent_favourites', 'accentFavourites']]);
+});
+
+test('Purple replaces only the selectable green preset; the default and stored greens are untouched', () => {
+  const { c } = fixture();
+  const source = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
+  assert.match(source, /const DEFAULT_ACCENT = '#5C5C5C'/);
+  assert.match(extractConst('ACCENT_PRESETS'), /\{id:'purple',name:'Purple',hex:'#533B7E'\}/);
+  assert.doesNotMatch(extractConst('ACCENT_PRESETS'), /\{id:'green', name:'Green', hex:'#268000'\}/);
+  assert.equal(c.restColor(), '#268000');
 });
 
 test('a displayed colour is saved exactly even if weather changes before the click', () => {

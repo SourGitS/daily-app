@@ -366,7 +366,8 @@
 // v353: give Finance › Plan a phone-only This month / Year ahead lens while keeping the
 // desktop split view and the five-destination Finance picker unchanged.
 // v354: fix the Year ahead renderer when it reads scheduled recurring expenses.
-const CACHE_NAME = 'daily-v354';
+// v355: replace the selectable green appearance preset with the confirmed clear-dusk purple.
+const CACHE_NAME = 'daily-v355';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

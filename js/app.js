@@ -1453,17 +1453,15 @@ const REST_COLOR_KEY = '__rest__';
 // ── Brand accent palette ──────────────────────────────────────────
 // The app starts neutral grey and the user commits to a colour deliberately, rather than
 // inheriting the old orange (#FF6B35, retired) by default.
-// The red and green here are pulled AWAY from the status colours on purpose: --danger is
-// #E74C3C (orange-red) and --success #52B788 (muted sea green), so the accent red leans
-// crimson and the accent green leans grass. Without that offset an accent-coloured button
-// would read as an error, and a "done"/"on track" state would be indistinguishable from
-// ordinary accent furniture.
+// The red is pulled away from the status colours on purpose: --danger is #E74C3C
+// (orange-red), so the accent red leans crimson. Purple replaces the old grass-green preset
+// so ordinary accent furniture cannot be mistaken for a "done" or "on track" state.
 const DEFAULT_ACCENT = '#5C5C5C';   // pure neutral grey — 6.69:1 against white text
 const RETIRED_ACCENT = '#ff6b35';   // the old default; migrated away from once (lowercase for compares)
 const ACCENT_PRESETS = [
   {id:'gray',  name:'Grey',  hex:'#5C5C5C'},   // pure neutral (92,92,92); the old #6B7280 had a blue cast
   {id:'red',   name:'Red',   hex:'#C0304A'},
-  {id:'green', name:'Green', hex:'#268000'},   // 5.04:1 on white; 2.04 against --success, so it can't be mistaken for a "done" state
+  {id:'purple',name:'Purple',hex:'#533B7E'},   // clear-dusk purple; 8.61:1 on white, replacing only the selectable green preset
   {id:'blue',  name:'Blue',  hex:'#0072EA'},   // 4.57:1 on white — the old #3B82F6 was 3.68:1
 ];
 // One-time move off the retired orange — only for anyone still sitting on it untouched, so a

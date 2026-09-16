@@ -115,8 +115,8 @@ Four main areas plus supporting screens:
 - The custom picker lives in `#accent-picker-dialog`, outside rebuilt Settings content.
   Input/change only preview a draft; Apply saves, Cancel/Escape write nothing. Preserve its DOM
   and draft during weather/sync repaints. No new stores, sync paths or startup defaults.
-- `DEFAULT_ACCENT` and saved green choices are unchanged. Replacing the green preset awaits
-  the user's exact purple; do not pick a weather scene by inference. See appearance-colours tests.
+- The selectable green preset is now Purple (`#533B7E`). `DEFAULT_ACCENT` and saved green
+  choices are unchanged; this is not a migration. See appearance-colours tests.
 
 ## Cooking mode and recipe quantities (v349)
 

@@ -12,8 +12,9 @@
   content. Native input/change and hex editing only update its in-memory draft and local preview.
   Apply saves through the existing colour/mode paths; Cancel/Escape write nothing. Weather/sync
   repaints must not replace this editor or overwrite its draft. No new storage or sync path.
-- Regression coverage: `tests/appearance-colours.test.cjs`. The green preset replacement is
-  pending confirmation of the user's exact weather-purple hex; do not guess a scene's colour.
+- Regression coverage: `tests/appearance-colours.test.cjs`. The green selectable preset is
+  now Purple (`#533B7E`, the confirmed clear-dusk shade). This changes neither `DEFAULT_ACCENT`
+  nor saved green choices; it is a presentational preset replacement, not a migration.
 
 ## Cooking correctness and polish — v350
 
