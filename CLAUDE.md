@@ -1,5 +1,24 @@
 # Daily — Project Reference
 
+## Account-backed savings reconciliation — v356
+
+- A Budget week's `sav_amount` is a **Budget allocation**, not evidence that money entered a
+  savings account. The existing key, arithmetic, history and sync shape are deliberately
+  unchanged; visible plan language says Allocation throughout Finance, Home and the Budget
+  editor.
+- Actual savings comes only from Accounts assets explicitly marked **Savers**. The reader is
+  `savingsPeriodState(from,to)`: explicit transfers into/out of those accounts are preferred;
+  otherwise it compares dated balances when both endpoints are honestly known. It never writes,
+  guesses an opening balance or borrows today's balance for a historical period.
+- A range ending today always uses `account.current`, even when its most recent history entry is
+  older. This prevents a saver recently reconciled to $0 from appearing funded by stale history.
+  The Accounts reconciliation card simply focuses the existing balance input; updating it uses
+  the established dated `accountLogBalance()` and existing `daily_accounts` sync path. It does
+  not reset, migrate, delete or convert old allocations into transfers.
+- The Finance month/year and Stats financial picture show account-backed Saver balance/movement
+  beside the planned allocation. The legacy savings log no longer decides whether a credit-card
+  balance is covered. Regression coverage is `tests/savings-reconciliation.test.cjs`.
+
 ## Weather colour capture and custom preview — v351
 
 - Appearance and Weather show the resolved colour's hex and a Save to favourites action.

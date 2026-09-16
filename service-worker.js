@@ -367,7 +367,8 @@
 // desktop split view and the five-destination Finance picker unchanged.
 // v354: fix the Year ahead renderer when it reads scheduled recurring expenses.
 // v355: replace the selectable green appearance preset with the confirmed clear-dusk purple.
-const CACHE_NAME = 'daily-v355';
+// v356: account-backed savings reconciliation; Budget savings remains a plan allocation.
+const CACHE_NAME = 'daily-v356';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

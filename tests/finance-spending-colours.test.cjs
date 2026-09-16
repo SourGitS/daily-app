@@ -30,6 +30,8 @@ function fixture(theme = 'light', accent = '#5c5c5c') {
     Chart: function(canvas, config) { charts.push({ canvas, config }); this.destroy = () => {}; },
     budgetData: copy(records), monthWeekChart: null, bsChart: null, currentMonthOffset: -1,
     getMonthDate: () => new Date('2026-08-01T12:00:00'),
+    getLocalDate: () => '2026-09-16',
+    dateStr: d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),
     fmtMonthLabel: () => 'August 2026', getMondaysInMonth: () => keys,
     weekIncome: d => d?.income || 0,
     weekSavedAmt: d => d?.saved || 0,
@@ -42,6 +44,8 @@ function fixture(theme = 'light', accent = '#5c5c5c') {
     statsWeekSpendQuality: () => ({ ambiguousLegacyVariable: false }),
     bsFinSummary: () => ({ incomeWeeks: 2 }),
     fmtMoney: n => '$' + n, fmtMoneyExact: n => '$' + n.toFixed(2), fmtDate: s => s,
+    savingsPeriodState: () => ({ metric: null }),
+    savingsMetricLabel: () => 'Savings movement', savingsMetricDetail: () => 'No saver evidence',
     escText: s => s, txnsForWeek: () => [],
     closeStatsEvidence: () => {}, openBudgetWeekFromStats: key => opened.push(key),
     _catEsc: s => s, _catEscHtml: s => s, escAttr: s => s,
@@ -167,7 +171,7 @@ test('Month weekly chart retains figures and stack order while bars, hover fills
       ['Income', [1200, 0, 900], 'in', 0],
       ['Spent (variable)', [210, 30, 500], 'out', 1],
       ['Committed', [400, 300, 350], 'out', 2],
-      ['Saved', [150, 0, 100], 'out', 3]
+      ['Allocated', [150, 0, 100], 'out', 3]
     ]);
     const palette = ctx.budNeutralSpendPalette();
     assertSpending(ds[1], palette, false);
@@ -216,7 +220,7 @@ test('Money flow preserves missing-data gaps, independent stacks, tooltips and s
   }
 });
 
-test('unrelated expense colours stay red, income green and saved accent-driven', () => {
+test('unrelated expense colours stay red, income green and allocation accent-driven', () => {
   for (const theme of ['light', 'dark']) {
     const ctx = fixture(theme);
     const original = ctx.budPalette();

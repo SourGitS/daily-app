@@ -261,7 +261,7 @@
           <!-- Safe daily pace: the available figure divided by the days left. This is the
                number that actually governs a decision at the shop counter. -->
           <div id="bud-hero-pace" style="font-size:12px;font-weight:600;color:rgba(255,255,255,.75);margin-bottom:14px"></div>
-          <!-- SPENT / COMMITTED / SAVED, deliberately three separate words. "Spent" used to
+          <!-- SPENT / COMMITTED / ALLOCATED, deliberately three separate words. "Spent" used to
                include the accrued share of bills that had not actually been charged, which
                made a yearly rego bill look like it left the account every week. Committed is
                money reserved toward recurring costs; spent is money that has actually gone. -->
@@ -278,7 +278,7 @@
             <div style="width:1px;height:28px;background:rgba(255,255,255,.25)"></div>
             <div style="flex:1;text-align:center">
               <div id="bud-hero-saved" style="font-family:var(--font-num);font-size:20px;font-weight:700;color:#fff">$0</div>
-              <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.6);margin-top:2px;text-transform:uppercase">Saved</div>
+              <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.6);margin-top:2px;text-transform:uppercase">Allocated</div>
             </div>
           </div>
           <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:12px">
@@ -336,7 +336,7 @@
           <div id="bud-fix-body"></div>
         </div>
 
-        <!-- WEEK PLAN — how this week's money is allocated: Income, Savings, and the
+        <!-- WEEK PLAN — how this week's money is allocated: Income, Savings allocation, and the
              arithmetic those leave for variable spending. Fixed/committed is a card of its
              own directly below Spending; the row here is a quiet echo of its total so the
              subtraction can be read without leaving this card.
@@ -359,7 +359,7 @@
           </div>
           <div class="bud-sec" id="bud-plan-sav" data-sec="sav">
             <button type="button" class="bud-sec-hd" onclick="budSecToggle('sav')" aria-expanded="false" aria-controls="bud-plan-sav-body">
-              <span class="bud-sec-t"><svg class="card-hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 10v11M19 10v11M9.5 10v11M14.5 10v11M4 10h16L12 4z"/></svg><span>Savings</span></span>
+              <span class="bud-sec-t"><svg class="card-hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 10v11M19 10v11M9.5 10v11M14.5 10v11M4 10h16L12 4z"/></svg><span>Savings allocation</span></span>
               <!-- Whether the week's savings cleared the goal is a real judgement, so it is
                    stated as a tonal chip (budRecalc fills it) beside a figure that stays
                    neutral. The chip and the amount are in the HEADER because sav_amount IS
@@ -370,10 +370,10 @@
             <div class="bud-sec-body" id="bud-plan-sav-body" hidden>
               <div class="bud-row">
                 <div class="bud-row-left">
-                  <div class="bud-row-name">This week's savings</div>
+                  <div class="bud-row-name">Set aside in this plan</div>
                   <!-- Filled by budRecalc() from the user's saved goal; the text here is only a
                        pre-paint placeholder, not the value. -->
-                  <div class="bud-row-budget" id="sav-goal-label">Goal: $200 minimum</div>
+                  <div class="bud-row-budget" id="sav-goal-label">Allocation target: $200</div>
                 </div>
                 <input class="bud-row-input" type="number" inputmode="decimal" placeholder="$0" id="sav-amount" oninput="budRecalc();budSaveDraft()">
               </div>
@@ -573,6 +573,7 @@
       <div id="budget-accounts-view" class="hidden" role="tabpanel" aria-labelledby="bv-accounts-btn">
         <div class="accounts-wrap">
           <div id="accounts-hero"></div>
+          <div id="accounts-savers-reconcile"></div>
           <div id="accounts-chart"></div>
           <div id="accounts-list-head"></div>
           <div id="accounts-list"></div>

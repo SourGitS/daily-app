@@ -4852,7 +4852,7 @@ function buildWeekReviewHTML(){
     const leftover=inc>0?weekLeftover(bd):null;
     const col=leftover!==null&&leftover>=0?'var(--success)':'var(--danger)';
     budHTML='<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px"><span style="color:var(--muted)">Income</span><span style="font-weight:600;color:var(--success)">'+(inc>0?'$'+inc.toFixed(0):'—')+'</span></div>'
-      +'<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px"><span style="color:var(--muted)">Saved</span><span style="font-weight:600">$'+saved.toFixed(0)+'</span></div>'
+      +'<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px"><span style="color:var(--muted)">Allocated</span><span style="font-weight:600">$'+saved.toFixed(0)+'</span></div>'
       +'<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px"><span style="color:var(--muted)">Fixed expenses</span><span style="font-weight:600">$'+fixed.toFixed(0)+'</span></div>'
       +'<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px"><span style="color:var(--muted)">Variable expenses</span><span style="font-weight:600">$'+variable.toFixed(0)+'</span></div>'
       +'<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:14px;font-weight:700;border-top:1px solid var(--border);margin-top:4px"><span>Left over</span><span style="color:'+col+'">'+(leftover!==null?(leftover>=0?'+$':'-$')+Math.abs(leftover).toFixed(0):'—')+'</span></div>';
@@ -11731,6 +11731,68 @@ function accountsPayoffPosition(){ return (accountsAssetsTotal()-accountsSaverTo
 function accountsAssetsTotal(){ return accounts.filter(a=>a&&a.type==='asset').reduce((s,a)=>s+(parseFloat(a.current)||0),0); }
 function accountsDebtsTotal(){  return accounts.filter(a=>a&&a.type==='debt' ).reduce((s,a)=>s+(parseFloat(a.current)||0),0); }
 function accountsNetWorth(){ return accountsAssetsTotal()-accountsDebtsTotal(); }
+
+// Savings has two deliberately separate facts. `sav_amount` is the amount reserved in a
+// Budget week; it keeps the week's available-to-spend arithmetic honest, but it is not proof
+// that money reached an account. Actual savings comes from assets the person has explicitly
+// marked Savers. Transfers give the cleanest movement; dated balance observations are the
+// fallback. Neither reader writes a budget week or guesses an opening balance.
+function saverAccounts(){ return (accounts||[]).filter(acctIsSaver); }
+function savingsDateShift(date,days){
+  const d=localMidnight(date); d.setDate(d.getDate()+days); return dateStr(d);
+}
+function savingsPeriodState(from,to){
+  const today=getLocalDate();
+  const end=(!to||to>today)?today:to;
+  const start=from&&from<=end?from:end;
+  const savers=saverAccounts();
+  const result={from:start,to:end,hasSavers:!!savers.length,accounts:savers,
+    balance:savers.reduce((sum,a)=>sum+(parseFloat(a.current)||0),0),
+    closingBalance:null,openingBalance:null,balanceChange:null,
+    transfers:{contributions:0,withdrawals:0,net:0,transfers:0},metric:null,metricKind:null};
+  if(!savers.length) return result;
+
+  const prior=savingsDateShift(start,-1);
+  const ending=savers.map(a=>{
+    // The live Accounts balance is authoritative for a range ending today. A prior history
+    // row can be stale after a balance was corrected elsewhere, and must not make a drained
+    // saver appear funded. Historic ranges, on the other hand, need an actual dated row.
+    if(end===today) return parseFloat(a.current)||0;
+    const entry=accountEntryAt(a,end);
+    return entry ? (parseFloat(entry.balance)||0) : null;
+  });
+  const opening=savers.map(a=>{
+    const entry=accountEntryAt(a,prior);
+    return entry ? (parseFloat(entry.balance)||0) : null;
+  });
+  if(ending.every(v=>v!==null)) result.closingBalance=ending.reduce((sum,v)=>sum+v,0);
+  if(opening.every(v=>v!==null)) result.openingBalance=opening.reduce((sum,v)=>sum+v,0);
+  if(result.closingBalance!==null&&result.openingBalance!==null)
+    result.balanceChange=result.closingBalance-result.openingBalance;
+
+  if(typeof ledgerSavingsMovement==='function')
+    result.transfers=ledgerSavingsMovement(start,end);
+  if(result.transfers.transfers){
+    result.metric=result.transfers.net;
+    result.metricKind='transfer';
+  } else if(result.balanceChange!==null){
+    result.metric=result.balanceChange;
+    result.metricKind='balance';
+  }
+  return result;
+}
+function savingsMetricLabel(state){
+  return state&&state.metricKind==='transfer' ? 'Net moved to savings'
+    : state&&state.metricKind==='balance' ? 'Savers balance change' : 'Savings movement';
+}
+function savingsMetricDetail(state){
+  if(!state||!state.hasSavers) return 'Mark an asset as a Savers account in Accounts';
+  if(state.metricKind==='transfer')
+    return fmtMoneyExact(state.transfers.contributions)+' in · '+fmtMoneyExact(state.transfers.withdrawals)+' out';
+  if(state.metricKind==='balance')
+    return 'Based on recorded saver balances';
+  return 'Update saver balances or record transfers to measure this period';
+}
 // Chrome icons for the Accounts screen and its alerts. Deliberately NOT cardIcon(): that
 // applies .card-hd-ico, which pins colour to var(--text-2) — correct for a card header, wrong
 // here, where every one of these sits inside something already carrying a colour (an amber
@@ -14965,8 +15027,8 @@ function renderBudgetTab(){
     weekEditBtn.textContent = budPastEdit ? '✓ Done editing' : '✎ Edit week';
   }
 
-  // Savings: free per-week amount. New weeks store sav_amount; weeks saved under the old
-  // "target + extra" model are shown at their historical total so nothing reads as $0.
+  // Savings allocation: a per-week planning amount. It reserves money in the Budget maths;
+  // saver accounts and transfers are the separate evidence of actual saving.
   const savEl=document.getElementById('sav-amount');
   if(savEl){
     savEl.value=(data.sav_amount!==undefined&&data.sav_amount!=='')
@@ -15198,8 +15260,8 @@ function bcalcBack(){
   bcalcRender();
 }
 
-// Savings is a free per-week input (no auto-calc / no lock). The savings goal is SUGGESTIVE
-// only — it never fills in an amount, it just colours the savings figure once reached.
+// Savings allocation is a free per-week input (no auto-calc / no lock). The allocation target
+// never creates a transfer or balance update; it only helps plan what remains spendable.
 const SAVINGS_GOAL = 200; // default when the user hasn't set one
 function getSavingsGoal(){ const g=parseFloat(budDefaults&&budDefaults.savingsGoal); return isNaN(g)?SAVINGS_GOAL:g; }
 function savingsColor(amt){
@@ -15258,7 +15320,7 @@ function budRecalc(animate){
   const totalFixed=weekFixedTotal(_live);
   const totalVar=weekVarTotal(_live,_wkKey);
 
-  // Savings is a free per-week amount (no fixed target); the goal is display-only.
+  // Savings allocation is a free per-week amount (no fixed target); the goal is display-only.
   const totalSaved  = parseFloat(document.getElementById('sav-amount')?.value)||0;
   const totalOut    = totalSaved+totalFixed+totalVar;
   const leftover    = totalIncome>0?totalIncome-totalOut:null;
@@ -15271,7 +15333,7 @@ function budRecalc(animate){
 
   // The goal label was hardcoded as "Goal: $200 minimum" in index.html, so it kept showing
   // $200 no matter what the user set in Pay days & savings goal. Drive it from the saved value.
-  $('sav-goal-label','Goal: $'+getSavingsGoal().toLocaleString()+' minimum');
+  $('sav-goal-label','Allocation target: $'+getSavingsGoal().toLocaleString());
   // ── Week plan: the four figures of the weekly allocation ──
   // Each is a SECTION HEADER now rather than a collapsed-card summary, so all four read
   // without expanding anything. Same totals, same canonical readers, one place each.
@@ -15286,7 +15348,7 @@ function budRecalc(animate){
   // − savings = available), so whole dollars is what makes THAT sum add up on screen.
   $('sum-fix',fmtMoneyExact(totalFixed));
   $('plan-fix-sum','$'+totalFixed.toFixed(0));
-  // Header summary: this week's savings, which is the figure that matters week to week.
+  // Header summary: this week's allocation, not an asserted account transfer.
   $('sav-head-sum','$'+totalSaved.toFixed(0));
   // What the week leaves for variable spending — the ceiling the Spending card is measured
   // against. Arithmetic on the three totals above it, not a fourth reading of the week.
@@ -15742,41 +15804,34 @@ function renderMonth(){
   });
   const totalOut=totalSaved+totalSpending;
   const leftover=totalIncome>0?totalIncome-totalOut:null;
+  const monthStart=dateStr(new Date(monthDate.getFullYear(),monthDate.getMonth(),1));
+  const monthEnd=dateStr(new Date(monthDate.getFullYear(),monthDate.getMonth()+1,0));
+  const saverState=savingsPeriodState(monthStart,monthEnd);
+  const saverBalance=saverState.closingBalance;
+  const signedMoney=n=>(n>0?'+':'')+fmtMoneyExact(n);
+  const saverMovement=saverState.metric===null
+    ? savingsMetricDetail(saverState)
+    : savingsMetricLabel(saverState)+' '+signedMoney(saverState.metric)+' · '+savingsMetricDetail(saverState);
 
   document.getElementById('month-label-sub').textContent=weekCount>0?weekCount+' week'+(weekCount>1?'s':'')+' recorded':'No data saved yet';
 
   const sg=document.getElementById('month-summary-grid');
   if(sg){
-    // Income and Expenses rather than Saved and CC balance: the CC balance is a running debt
-    // that has nothing to do with the month being viewed, and Saved was already implied by
-    // the savings rate beside it. These three now describe the same month — what came in,
-    // what went out (fixed + variable), and what proportion stuck.
-    const savRate=totalIncome>0?(totalSaved/totalIncome*100).toFixed(0)+'%':'—';
-    // The verdict travels as a chip, not as the figure's colour — a red "Expenses" number
-    // asserts that spending is bad before anything has been compared. The CARD is coloured by
-    // direction (in / out / what stuck), which is a fact about the money rather than a
-    // judgement of it; the one genuine comparison here, the rate against a 20% target, is the
-    // only thing carrying an amber or a tick.
-    const rateChip = (weekCount>0 && totalIncome>0)
-      ? (totalSaved/totalIncome>=0.2 ? tstat('pos','On track','check',true)
-        : totalSaved>0 ? tstat('warn','Below 20%','flat',true)
-        : tstat('neg','Nothing saved','down',true))
-      : '';
-    // ONE hero panel, not three direction-coloured hero cards. Month opened with an accent
-    // slab, a green one and a red one side by side, which is three announcements where the
-    // screen has one thing to say; Year and Accounts had already been consolidated the same
-    // way. The rate leads full-width on a phone so the other two still pair beneath it.
+    // Budget allocations remain visible, but actual saving follows the accounts deliberately
+    // marked Savers. A drained account therefore reads as $0 rather than as old plan entries.
     sg.className='';
     sg.innerHTML=budHeroPanel([
-      {icon:'target', label:'Savings rate', val:savRate, lead:true,
-       sub:weekCount>0?'$'+Math.round(totalSaved).toLocaleString()+' saved this month':'No weeks saved yet', chip:rateChip},
+      {icon:'bank', label:saverState.to===getLocalDate()?'Savers balance':'Savers balance at period end', val:saverBalance===null?'—':fmtMoney(saverBalance), lead:true,
+       sub:saverMovement},
+      {icon:'target', label:'Budget allocation', val:weekCount>0?fmtMoney(totalSaved):'—',
+       sub:weekCount>0?(totalIncome>0?(totalSaved/totalIncome*100).toFixed(0)+'% of income reserved in the plan':'No income recorded'):'No weeks saved yet'},
       {icon:'wallet', label:'Income',
        val:weekCount>0?'$'+Math.round(totalIncome).toLocaleString():'—',
        sub:weekCount>0?'Across '+weekCount+' week'+(weekCount>1?'s':''):'Nothing recorded'},
       {icon:'receipt', label:'Expenses',
        val:weekCount>0?'$'+Math.round(totalSpending).toLocaleString():'—',
        sub:weekCount>0?'Committed + variable':'Nothing recorded'},
-    ],{cols:3,colsSm:2});
+    ],{cols:4,colsSm:2});
   }
 
   const barEl=document.getElementById('month-bar');
@@ -15819,7 +15874,7 @@ function renderMonth(){
         {c:BUD_CHART_COLORS.income,l:'Income'},
         {c:spend.variable,l:'Spent (variable)'},
         {c:spend.fixed,l:'Committed',ring:spend.fixedEdge},
-        {c:BUD_CHART_COLORS.saved,l:'Saved'},
+        {c:BUD_CHART_COLORS.saved,l:'Allocated'},
       ]);
       wl.innerHTML='<div class="chart-legend">'+legend+'</div><div id="month-weeks-chart-wrap" style="height:220px"><canvas id="month-weeks-chart"></canvas></div>';
       const ctx=document.getElementById('month-weeks-chart');
@@ -15834,7 +15889,7 @@ function renderMonth(){
             // Committed is a lighter grey with an outline — so the two
             // halves of "out" separate by fill AND edge, not by hue alone.
             {label:'Committed',data:data.map(weekFixed),backgroundColor:spend.fixed,hoverBackgroundColor:spend.fixedHover,borderColor:spend.fixedEdge,hoverBorderColor:spend.fixedHoverEdge,borderWidth:1,borderSkipped:false,borderRadius:3,stack:'out',order:2},
-            {label:'Saved',data:data.map(weekSavedAmt),backgroundColor:BUD_CHART_COLORS.saved,borderRadius:3,stack:'out',order:3},
+            {label:'Allocated',data:data.map(weekSavedAmt),backgroundColor:BUD_CHART_COLORS.saved,borderRadius:3,stack:'out',order:3},
           ]
         },
         options:{
@@ -16000,7 +16055,7 @@ layoutOnModeChange(function(){
 
 // ── Yearly budget view ────────────────────────────────────────────
 // ── Yearly view ────────────────────────────────────────────────────
-// This used to read a rolling 12 months for its charts while the "Saved this year" tile read
+// This used to read a rolling 12 months for its charts while the annual allocation tile read
 // the calendar year, so the headline figure and the chart described different spans. Now
 // everything is one calendar year, which is also what makes the year nav meaningful.
 let budgetYearOffset=0;   // 0 = this year, -1 = last year
@@ -16043,7 +16098,7 @@ function renderYear(){
   const points=months.map(m=>({label:m.label, income:m.income, saved:m.saved}));
   const fixedArr=months.map(m=>m.fixed);
   const varArr=months.map(m=>m.variable);
-  // null, not 0. A month with nothing recorded has no savings rate and no spending figure —
+  // null, not 0. A month with nothing recorded has no allocation rate and no spending figure —
   // and the current month is ALWAYS present here and usually still empty, so a zero drew a
   // cliff at the right-hand end of the year on both line charts every single time.
   const rateArr=months.map(m=>(m.weeks>0&&m.income>0)?(m.saved/m.income*100):null);
@@ -16064,46 +16119,36 @@ function renderYear(){
   if(sg){
     const totIncome=months.reduce((s,m)=>s+m.income,0);
     const totSaved=months.reduce((s,m)=>s+m.saved,0);
-    // Exactly the sum of the Out column in the month-by-month table below — same arrays, same
-    // definition (committed + variable). Saved is NOT spent, so it is never folded in here.
-    // budYearMonths() stops at the last lived month, so a future month cannot be projected
-    // from today's defaults into this figure.
+    // The planned allocation remains separate from actual saver-account movement.
     const totSpent=months.reduce((s,m)=>s+m.fixed+m.variable,0);
-    const avgRate=totIncome>0?(totSaved/totIncome*100):0;
-    // Best month by what was actually put away, which is the number worth chasing.
+    // Best month by what was reserved in the budget plan — not an asserted deposit.
     const best=withData.slice().sort((a,b)=>b.saved-a.saved)[0];
-    // The one genuine comparison on this screen — the year's average rate against a 20%
-    // target — is carried by a chip, not by recolouring the percentage itself.
-    const rateChip = withData.length
-      ? (avgRate>=20 ? tstat('pos','On track','check',true)
-        : avgRate>=10 ? tstat('warn','Below 20%','flat',true)
-        : tstat('neg','Well below 20%','down',true))
-      : '';
+    const yearStart=year+'-01-01', yearEnd=year+'-12-31';
+    const saverState=savingsPeriodState(yearStart,yearEnd);
+    const saverBalance=saverState.closingBalance;
+    const signedMoney=n=>(n>0?'+':'')+fmtMoneyExact(n);
+    const saverMovement=saverState.metric===null
+      ? savingsMetricDetail(saverState)
+      : savingsMetricLabel(saverState)+' '+signedMoney(saverState.metric)+' · '+savingsMetricDetail(saverState);
     const monthsSub=withData.length?'Across '+withData.length+' recorded month'+(withData.length===1?'':'s'):'Nothing recorded yet';
     const recurring=Math.round(loadFixCats().filter(c=>catIsRecurring(c)&&catIsCharging(c))
       .reduce((s,c)=>s+((parseFloat(catAmount(c))||0)*({weekly:52,monthly:12,yearly:1}[catCycle(c)]||0)),0));
-    // ONE hero panel, not six separately-coloured hero cards. The six used to be coloured by
-    // direction — green in, red out, the accent for saved, slate for the forward-looking
-    // recurring figure — which meant the year summary opened with four different saturated
-    // slabs and no single thing to look at first. One graphite surface, six cells, dividers
-    // between them: the figures are what differ, not the backgrounds. The only verdict on the
-    // screen (the rate against 20%) still travels as a chip.
+    // One neutral panel distinguishes plan allocations from the account-backed savings facts.
     sg.className='';
     sg.innerHTML=budHeroPanel([
       {icon:'wallet', label:'Money in · '+year,
        val:'$'+Math.round(totIncome).toLocaleString(), sub:monthsSub},
       {icon:'receipt', label:'Spent in '+year,
        val:'$'+Math.round(totSpent).toLocaleString(),
-       sub:withData.length?'Committed + variable · savings excluded':'Nothing recorded yet'},
-      {icon:'bank', label:'Saved in '+year,
+       sub:withData.length?'Committed + variable · allocation excluded':'Nothing recorded yet'},
+      {icon:'bank', label:saverState.to===getLocalDate()?'Savers balance':'Savers balance at year end',
+       val:saverBalance===null?'—':fmtMoney(saverBalance), sub:saverMovement},
+      {icon:'target', label:'Budget allocation',
        val:'$'+Math.round(totSaved).toLocaleString(),
-       sub:withData.length?'Put away, not spent':'Nothing recorded yet'},
-      {icon:'target', label:'Average savings rate',
-       val:avgRate.toFixed(0)+'%',
-       sub:withData.length?'Of $'+Math.round(totIncome).toLocaleString()+' earned':'No income recorded', chip:rateChip},
-      {icon:'trophy', label:'Best month',
+       sub:withData.length?(totIncome>0?(totSaved/totIncome*100).toFixed(0)+'% of income reserved in the plan':'No income recorded'):'Nothing recorded yet'},
+      {icon:'trophy', label:'Largest allocation month',
        val:best?best.label:'—',
-       sub:best?'$'+Math.round(best.saved).toLocaleString()+' saved':'No month recorded yet'},
+       sub:best?'$'+Math.round(best.saved).toLocaleString()+' reserved':'No month recorded yet'},
       // Annual cost of every recurring charge still running. Individually a subscription reads
       // as a few dollars a week and never looks worth cancelling; the yearly figure is the one
       // that makes the case either way, and it is the number nobody ever works out by hand.
@@ -16120,7 +16165,7 @@ function renderYear(){
   const ml=document.getElementById('year-months-list');
   if(ml){
     ml.innerHTML=withData.length
-      ? '<div class="year-mo-row year-mo-head"><span>Month</span><span>In</span><span>Out</span><span>Saved</span><span>Rate</span></div>'+
+      ? '<div class="year-mo-row year-mo-head"><span>Month</span><span>In</span><span>Out</span><span>Allocated</span><span>Plan %</span></div>'+
         withData.map(m=>{
           const out=m.fixed+m.variable;
           const rate=m.income>0?(m.saved/m.income*100):0;
@@ -16173,7 +16218,7 @@ function renderYear(){
     }
   }
 
-  // ── Stacked bar + savings-rate line ──
+  // ── Stacked bar + allocation-rate line ──
   if(yearStackChart){ yearStackChart.destroy(); yearStackChart=null; }
   const stackWrap=document.getElementById('year-stack-wrap');
   const stackLegend=document.getElementById('year-stack-legend');
@@ -16186,8 +16231,8 @@ function renderYear(){
       if(stackLegend) stackLegend.innerHTML=budChartLegend([
         {c:BUD_CHART_COLORS.fixed,l:'Fixed',ring:BUD_CHART_COLORS.fixedEdge},
         {c:BUD_CHART_COLORS.variable,l:'CC / variable'},
-        {c:BUD_CHART_COLORS.saved,l:'Saved'},
-        {c:BUD_CHART_COLORS.rate,l:'Savings rate %',dash:true},
+        {c:BUD_CHART_COLORS.saved,l:'Allocated'},
+        {c:BUD_CHART_COLORS.rate,l:'Allocation rate %',dash:true},
       ]);
       stackWrap.style.height='280px';
       stackWrap.innerHTML='<canvas id="year-stack-chart"></canvas>';
@@ -16198,17 +16243,17 @@ function renderYear(){
           datasets:[
             {label:'Fixed',data:fixedArr,backgroundColor:BUD_CHART_COLORS.fixed,borderColor:BUD_CHART_COLORS.fixedEdge,borderWidth:1,stack:'s'},
             {label:'CC / variable',data:varArr,backgroundColor:BUD_CHART_COLORS.variable,stack:'s'},
-            {label:'Saved',data:points.map(p=>p.saved),backgroundColor:BUD_CHART_COLORS.saved,stack:'s',borderRadius:{topLeft:4,topRight:4}},
-            // Same accent as the Saved bars — they are the same story — separated by being a
+            {label:'Allocated',data:points.map(p=>p.saved),backgroundColor:BUD_CHART_COLORS.saved,stack:'s',borderRadius:{topLeft:4,topRight:4}},
+            // Same accent as the allocation bars — they are the same planning story — separated by being a
             // dashed line with markers on a second axis rather than by a fifth unrelated hue.
-            {label:'Savings rate',data:rateArr,type:'line',yAxisID:'y2',borderColor:BUD_CHART_COLORS.rate,backgroundColor:BUD_CHART_COLORS.rate,borderWidth:2,borderDash:[5,4],pointRadius:3,pointStyle:'rectRot',pointBackgroundColor:BUD_CHART_COLORS.rate,tension:0.3,fill:false,spanGaps:false}
+            {label:'Allocation rate',data:rateArr,type:'line',yAxisID:'y2',borderColor:BUD_CHART_COLORS.rate,backgroundColor:BUD_CHART_COLORS.rate,borderWidth:2,borderDash:[5,4],pointRadius:3,pointStyle:'rectRot',pointBackgroundColor:BUD_CHART_COLORS.rate,tension:0.3,fill:false,spanGaps:false}
           ]
         },
         options:{
           responsive:true,maintainAspectRatio:false,
           plugins:{
             legend:{display:false},
-            tooltip:{callbacks:{label:c=>c.parsed.y==null?c.dataset.label+': not recorded':c.dataset.label==='Savings rate'?c.dataset.label+': '+c.parsed.y.toFixed(0)+'%':c.dataset.label+': $'+c.parsed.y.toFixed(0)}}
+            tooltip:{callbacks:{label:c=>c.parsed.y==null?c.dataset.label+': not recorded':c.dataset.label==='Allocation rate'?c.dataset.label+': '+c.parsed.y.toFixed(0)+'%':c.dataset.label+': $'+c.parsed.y.toFixed(0)}}
           },
           scales:{
             x:{stacked:true,grid:{display:false},ticks:{color:tc,font:{size:11},maxTicksLimit:12}},
@@ -16543,9 +16588,8 @@ function statsWeekIncomeKnown(d){
   return !!(d.snapshot&&typeof d.snapshot==='object'&&d.snapshot.income!==undefined&&d.snapshot.income!=='');
 }
 // One reduction over the selected weeks, used by every card in the shared range so they cannot
-// disagree. Spending comes from statsWeekParts() — the same resolver the Latest completed week
-// card and the category breakdown use — so fixed + variable always adds up to the expenses
-// figure shown beside them. Saved is never folded into expenses.
+// disagree. `saved` remains the legacy field name for the Budget allocation; it is never an
+// assertion of account movement. Actual savings is read independently from Savers accounts.
 function bsFinSummary(keys){
   let income=0,legacyIncomeExcluded=0,fixed=0,variable=0,saved=0,incomeWeeks=0,ambiguous=0,legacy=0,snapAgg=0;
   keys.forEach(k=>{
@@ -16590,8 +16634,8 @@ function renderBSFinRange(){
   '</div>';
 }
 // ── Financial picture ───────────────────────────────
-// Four primary facts for the selected range — earned, out, put away, and what is left after
-// both — with the breakdown that explains them underneath. Accent hero, because it summarises
+// Four primary budget facts for the selected range — earned, out, allocated, and what remains —
+// with account-backed saver context underneath. Accent hero, because it summarises
 // the user's own period rather than one direction of money; the per-figure green/red dots
 // carry the direction, so the card itself does not have to be painted one way or the other.
 function renderBSFinPicture(){
@@ -16603,6 +16647,11 @@ function renderBSFinPicture(){
     return;
   }
   const sum=bsFinSummary(keys);
+  const saverState=savingsPeriodState(sum.from,savingsDateShift(sum.to,6));
+  const signedMoney=n=>(n>0?'+':'')+fmtMoneyExact(n);
+  const saverNote=saverState.metric===null
+    ? savingsMetricDetail(saverState)
+    : savingsMetricLabel(saverState)+' '+signedMoney(saverState.metric)+' · '+savingsMetricDetail(saverState);
   const money=v=>'$'+Math.round(v).toLocaleString();
   const cell=(cue,label,val,sub)=>'<div class="fh-cell">'+
     '<div class="fh-l"><i class="fh-dot fh-'+cue+'"></i>'+label+'</div>'+
@@ -16622,16 +16671,16 @@ function renderBSFinPicture(){
     '<div class="fh-grid">'+
       cell('in','Money in',money(sum.income),money(sum.weeks?sum.income/sum.weeks:0)+' / week')+
       cell('out','Expenses',money(sum.expenses),money(sum.avgExpenses)+' / week')+
-      cell('save','Saved',money(sum.saved),sum.rate===null?'No income recorded':sum.rate.toFixed(0)+'% of income')+
-      cell('net','Net after expenses &amp; savings',money(sum.net),'Income − expenses − saved')+
+      cell('save','Budget allocation',money(sum.saved),sum.rate===null?'No income recorded':sum.rate.toFixed(0)+'% of income reserved')+
+      cell('net','Left after plan allocation',money(sum.net),'Income − expenses − allocation')+
     '</div>'+
     '<div class="fh-sub">'+
       sub('Committed / fixed',money(sum.fixed))+
       sub('Variable',money(sum.variable))+
       sub('Avg expenses / week',money(sum.avgExpenses))+
-      sub('Savings rate',sum.rate===null?'—':sum.rate.toFixed(0)+'%')+
+      sub('Allocation rate',sum.rate===null?'—':sum.rate.toFixed(0)+'%')+
     '</div>'+
-    '<div class="fh-foot">Completed weeks only, from saved budget data. This range also drives the money-flow chart and the category breakdown below.'+
+    '<div class="fh-foot">Completed weeks only, from saved budget data. This range also drives the money-flow chart and the category breakdown below. Saver accounts: '+escText(saverNote)+'.'+
       (notes.length?' '+notes.join(' '):'')+'</div>'+
   '</div>';
 }
@@ -16662,7 +16711,7 @@ function renderBSWeek(){
     statsSplit([
       ['Fixed',fmtMoney(Math.round(parts.fixed))],
       ['Variable',fmtMoney(Math.round(parts.variable))],
-      ['Saved',fmtMoney(Math.round(saved))]
+      ['Allocated',fmtMoney(Math.round(saved))]
     ])+
     '<div class="stats-data-note">'+
       (q.ambiguousLegacyVariable
@@ -21109,8 +21158,10 @@ function renderCCCard(){
     }
   }
 
-  // Covered if the current savings balance covers what's owed on the card
-  const savings=savingsLog.length?(parseFloat(savingsLog[savingsLog.length-1].balance)||0):0;
+  // Covered only by an account explicitly marked Savers. The legacy savings log was a
+  // duplicate balance record, so using it here could say the card was covered after the
+  // actual account had been drained.
+  const savings=accounts.some(acctIsSaver)?accountsSaverTotal():0;
   const statusEl=document.getElementById('home-cc-status');
   if(statusEl){
     if(balance>0){
@@ -21740,8 +21791,8 @@ function renderHome(){
     '<div class="card" onclick="setView(\'budget\')" style="cursor:pointer">'+
       cardHeader('wallet','This week\'s money')+
       '<div class="mt-grid">'+
-        '<div class="mt-cell"><div class="mt-val" style="color:var(--positive)">'+fmtMoney(thisWeekSaved)+'</div>'+
-          '<div class="mt-lbl">Saved this week</div></div>'+
+        '<div class="mt-cell"><div class="mt-val">'+fmtMoney(thisWeekSaved)+'</div>'+
+          '<div class="mt-lbl">Allocated this week</div></div>'+
         '<div class="mt-cell"><div class="mt-val">'+fmtMoney(Math.round(lastWeekPay))+'</div>'+
           '<div class="mt-lbl">Last week\'s pay</div></div>'+
         payDayTiles+
@@ -23626,11 +23677,51 @@ function renderAccountsHero(){
      sub:headline, chip:payoffChip, extra:mathLine+kindLine+saverLine},
   ],{cols:1,colsSm:1});
 }
+function savingsReconcileFocus(){
+  const first=saverAccounts()[0];
+  const input=first&&document.getElementById('acct-bal-'+first.id);
+  if(input){ input.focus({preventScroll:true}); input.select(); }
+}
+function renderSaversReconcileCard(){
+  const wrap=document.getElementById('accounts-savers-reconcile'); if(!wrap) return;
+  const today=getLocalDate();
+  const monthStart=today.slice(0,8)+'01';
+  const state=savingsPeriodState(monthStart,today);
+  if(!state.hasSavers){
+    wrap.innerHTML='<div class="card">'+
+      cardHeader('bank','Savings reconciliation',statsChip('neutral','No Savers account'))+
+      '<div class="stats-note-panel">Savings is tracked from Accounts. Mark the asset you use for savings as a Savers account; your existing balance becomes the current savings position. Budget allocations remain intact and are not converted into deposits.</div>'+
+      '<button type="button" class="stg-btn" onclick="acctToggleEdit()">Choose a Savers account</button>'+
+    '</div>';
+    return;
+  }
+  const signedMoney=n=>(n>0?'+':'')+fmtMoneyExact(n);
+  const movement=state.metric===null
+    ? savingsMetricDetail(state)
+    : savingsMetricLabel(state)+' '+signedMoney(state.metric)+' · '+savingsMetricDetail(state);
+  const rows=state.accounts.map(a=>{
+    const hist=(a.history||[]).filter(e=>e&&e.date).sort((x,y)=>x.date<y.date?-1:1);
+    const latest=hist[hist.length-1];
+    return '<div class="bud-row" style="padding:9px 0">'+
+      '<div class="bud-row-left"><div class="bud-row-name">'+_catEscHtml(a.name||'Savers')+'</div>'+
+        '<div class="bud-row-budget">'+(latest?'Last balance update '+fmtDate(latest.date):'No dated balance update yet')+'</div></div>'+
+      '<strong>'+fmtMoneyExact(parseFloat(a.current)||0)+'</strong></div>';
+  }).join('');
+  wrap.innerHTML='<div class="card">'+
+    cardHeader('bank','Savings reconciliation',statsChip('neutral','Account-backed'))+
+    '<div class="card-cols"><div><span class="card-fig">'+fmtMoney(state.balance)+'</span><span class="card-fig-u">current savers balance</span></div>'+
+      '<div class="card-cap">'+escText(movement)+'</div></div>'+
+    '<div class="stats-data-note">Reconcile by entering each account’s current balance below. This records today’s balance; it never deletes old budget allocations or invents a transfer.</div>'+
+    rows+
+    '<button type="button" class="stg-btn" onclick="savingsReconcileFocus()">Reconcile balances</button>'+
+  '</div>';
+}
 function renderAccountsPage(){
   // Net worth and the payoff position are one card built by one function — they used to be
   // two, with their figure sizing kept in step by a comment that had stopped being true (40 vs
   // 34 on mobile, 40 vs 52 on desktop). One .hero-panel sizes both from .hp-lg now.
   renderAccountsHero();
+  renderSaversReconcileCard();
   // One card per account
   // Section header carrying the Edit toggle — same .bud-edit-btn / "Edit"→"Done" convention as
   // the Budget tab's Income, Fixed and Variable cards.

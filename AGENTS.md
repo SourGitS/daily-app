@@ -42,7 +42,9 @@ Four main areas plus supporting screens:
   The DESTINATION is named Finance; the budgeting CONCEPT is still called the budget. The view
   id, the `bud*` prefixes, the DOM ids, the storage keys and the `#budget` route are unchanged.
 - **Accounts** — net worth / debt payoff tracking. A FINANCE VIEW since v329, not an overlay.
-  Since v347 it uses the same desktop canvas the other Finance views use (see below).
+  Since v347 it uses the same desktop canvas the other Finance views use (see below). Since
+  v356, assets deliberately marked **Savers** establish the real savings balance; the Budget's
+  `sav_amount` remains a weekly allocation plan, not a deposit claim.
 - **Plans**, **Notes**, **Settings** — secondary screens (see `CLAUDE.md` for full detail per
   area if you need it; not reproduced here). Plans holds imported HTML plan DOCUMENTS only —
   saved workout splits live in Log › Splits.
