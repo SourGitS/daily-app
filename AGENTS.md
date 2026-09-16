@@ -110,6 +110,16 @@ Four main areas plus supporting screens:
 
 ## Cooking mode and recipe quantities (v349)
 
+**v350 hardening:** all protein ingredient/extras import, export and editor amounts also use
+`kitQtyStore`. Counted/custom units preserve fractional counts above 10; shopping keeps repeated
+range/text contributions rather than deduplicating them. `nutIngResolve` accepts scalar fractions
+and honors confirmed gram resolutions only for their saved food, never guesses a range midpoint.
+The step bar and timer controls are now truly patched in place, including pause and completion.
+The other-step shortcut remains available when its timer finishes. Finish and replacing an active
+(including paused) timer use a scoped native `<dialog>` with app styling, safe initial focus and
+session/step validation. Repeated Next presses cannot write `lastCooked`; confirmation is required.
+No new stores, sync paths, seeds or food-log writes. Regression checks live in the cooking tests.
+
 - **The session shell is mounted once.** `kitCookMount()` builds the topbar, progress, full
   ingredient reference and Prev/Next; `kitCookRenderStep(dir)` patches them. The nav buttons are
   the same nodes for the whole session, so focus and an in-flight press survive a step change.

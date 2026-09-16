@@ -19,7 +19,8 @@ function el(id) {
     style: {}, classList: { toggle() {}, add() {}, remove() {}, contains: () => false },
     querySelector: () => null, querySelectorAll: () => [],
     setAttribute() {}, removeAttribute() {}, appendChild() {}, remove() {},
-    addEventListener() {}, removeEventListener() {}
+    addEventListener() {}, removeEventListener() {}, focus() {},
+    showModal() { this.open = true; }, close() { this.open = false; }
   };
 }
 
@@ -71,6 +72,7 @@ function context(recipes = [], opts = {}) {
     'kitOptionsOf', 'kitFindOption', 'kitDefaultOption', 'kitOptionsProblem', 'kitOptId',
     'kitIsProteinStep', 'kitStepText', 'kitStepTimer', 'kitResolve', 'kitStepIngredients',
     'kitCookResolve', 'kitStartCooking', 'kitExitCooking', 'kitCookFinish', 'kitCookGo',
+    'kitCookConfirmOpen', 'kitCookConfirmClose', 'kitCookConfirmAccept', 'kitFormBuildProtein',
     'kitCookTimerClear', 'kitCookStepMinutes', 'kitCookTimerSec', 'kitCookTimerActive',
     'kitCookFmtClock', 'kitCookStepName', 'kitCookTimerToggle', 'kitCookTimerReset', 'kitCookTick',
     'kitCookRingHTML', 'kitCookTimerHTML', 'kitCookRenderTimer', 'kitCookTimerPatch',
@@ -321,6 +323,50 @@ test('two selections of the same ingredient add their exact values', () => {
 
 // ── Step ingredients ─────────────────────────────────────────────
 
+test('large counts retain their fractional part in detail and shopping', () => {
+  const r = recipe({ ingredients: [{ name: 'Egg', amount: 100.5, unit: '' }] });
+  const c = context([r]);
+  for (const unit of ['', 'piece', 'cloves', 'custom scoop']) {
+    assert.equal(c.kitQtyFormat(100.5, unit), '100½');
+    assert.equal(c.kitQtyFormat(12.01, unit), '12.01');
+    assert.equal(c.kitQtyFormat(99.99, unit), '99.99');
+  }
+  assert.equal(c.kitQtyFormat(133.3333, 'g'), '133');
+  assert.equal(c.kitResolve(r, null, 4).ingredients[0].display, '100½');
+  assert.equal(c.kitShopRequirementText([{ hasNumeric: true, amount: 100.5, unit: '' }]), '100½');
+});
+
+test('shopping keeps every repeated range and written contribution', () => {
+  const r = recipe({ ingredients: [{ name: 'Chilli', amount: '2-3', unit: '' }] });
+  const c = context([r, { ...r, id: 'r2' }]);
+  c.kitShopSelected = [{ recipeId: 'r1', servings: 4 }, { recipeId: 'r2', servings: 4 }];
+  const item = c.kitShopComputeRecipeItems()[c.kitShopItemKey('Chilli', '')];
+  assert.deepEqual(plain(item.texts), ['2–3', '2–3']);
+  assert.equal(c.kitShopRequirementText([item]), '2–3 + 2–3');
+});
+
+test('nutrition resolves scalar fractions and explicit grams, never guessed ranges or densities', () => {
+  const c = context();
+  const nutSource = fs.readFileSync(path.join(__dirname, '../js/nutrition.js'), 'utf8');
+  const body = nutSource.slice(nutSource.indexOf('function nutIngResolve('), nutSource.indexOf('function nutRecipeAudit('));
+  c.nutPos = v => Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null;
+  c.nutFoodById = () => null;
+  c.nutRound = (v, p) => Number(v.toFixed(p));
+  c.nutCanon = v => String(v).toLowerCase();
+  vm.runInContext(body, c);
+  const food = { id: 'tofu', measures: [] };
+  for (const amount of [0.5, '1/2', '½']) {
+    assert.equal(c.nutIngResolve({ amount, unit: 'kg' }, food).grams, 500);
+    assert.equal(c.nutIngResolve({ amount, unit: '', foodId: 'tofu', resolvedGrams: 450 }, food).grams, 450);
+  }
+  for (const amount of ['2-3', 'to taste', '400g', '1/0', '', 0]) {
+    assert.equal(c.nutIngResolve({ amount, unit: 'kg' }, food).grams, null);
+  }
+  assert.equal(c.nutIngResolve({ amount: 'to taste', foodId: 'tofu', resolvedGrams: 5 }, food).grams, 5);
+  assert.equal(c.nutIngResolve({ amount: 'to taste', foodId: 'other', resolvedGrams: 5 }, food).grams, null);
+  assert.equal(c.nutIngResolve({ amount: '1/2', unit: 'cup' }, food).grams, null);
+});
+
 test('a step names an ingredient by its full name or an unambiguous last word', () => {
   const c = context();
   const ings = [{ name: 'Baby potatoes' }, { name: 'Butter' }];
@@ -393,6 +439,26 @@ test('the chosen protein expands in the authored position with its own temperatu
   assert.equal(chicken.steps[2].internalTempC, 74);
   assert.ok(c.kitCookPageHTML(chicken, 2).includes('74'), 'the supplied temperature is shown at its step');
   assert.ok(!c.kitCookPageHTML(chicken, 0).includes('74'), 'and nowhere else');
+});
+
+test('protein main ingredients and extras survive editor, export and import without partial parsing', () => {
+  for (const amount of ['1/2', '½', '1 1/2', '2-3', 'to taste', '400 g', '', 1.5]) {
+    const r = proteinRecipe(), c = context([r]);
+    const ingredient = { name: 'Firm tofu', amount, unit: 'kg', foodId: 'tofu', measureId: 'resolved', resolvedGrams: 500 };
+    r.proteinOptions[1].ingredient = { ...ingredient };
+    r.proteinOptions[1].extras = [{ ...ingredient, name: 'Sauce', unit: 'tbsp' }];
+    c.kitFormProtein = { enabled: true, options: r.proteinOptions, defaultId: 'tofu' };
+    const built = c.kitFormBuildProtein();
+    assert.ok(!built.error, built.error);
+    const outgoing = c.kitRecipeToExport({ ...r, proteinOptions: built.options });
+    const incoming = c.kitParseImport(JSON.stringify({ recipes: [outgoing] }));
+    assert.ok(!incoming.error, incoming.error);
+    for (const opts of [built.options, outgoing.proteinOptions, incoming.recipes[0].proteinOptions]) {
+      const tofu = opts.find(o => o.label === 'Tofu');
+      assert.deepEqual(plain(tofu.ingredient), ingredient);
+      assert.deepEqual(plain(tofu.extras[0]), { ...ingredient, name: 'Sauce', unit: 'tbsp' });
+    }
+  }
 });
 
 test('a protein step uses its explicit ingredient references, not text matching', () => {
@@ -473,7 +539,7 @@ test('a running timer keeps its own step when you read ahead, and says where it 
   assert.equal(c.kitCookState.timerRunning, true, 'browsing must not stop the countdown');
   assert.equal(c.kitCookState.timerStep, 0, 'and must not hand it to the step being viewed');
   assert.equal(c.kitCookTimerSec(), 540);
-  const chip = c.kitCookChipHTML(c.kitCookResolve());
+  const chip = c.__nodes['kit-cook-timer-chip'].textContent;
   assert.ok(/Step 1 of 3/.test(chip), chip);
   assert.ok(/09:00/.test(chip), chip);
 });
@@ -495,6 +561,8 @@ test('starting another step timer while one runs asks first, and only one ever r
   declined.kitCookTimerToggle();
   declined.kitCookGo(1);
   declined.kitCookTimerToggle();
+  assert.equal(declined.__nodes['kit-cook-confirm'].open, true);
+  declined.kitCookConfirmClose();
   assert.equal(declined.kitCookState.timerStep, 0, 'declining leaves the original timer alone');
   assert.equal(declined.kitCookState.timerRunning, true);
 
@@ -502,6 +570,8 @@ test('starting another step timer while one runs asks first, and only one ever r
   accepted.kitCookTimerToggle();
   accepted.kitCookGo(1);
   accepted.kitCookTimerToggle();
+  assert.equal(accepted.kitCookState.timerStep, 0, 'opening a confirmation does not replace it');
+  accepted.kitCookConfirmAccept();
   assert.equal(accepted.kitCookState.timerStep, 1, 'accepting replaces it');
   assert.equal(accepted.kitCookState.timerRunning, true);
   assert.equal(accepted.__timers.live.size, 1, 'never two intervals at once');
@@ -546,6 +616,65 @@ test('rapid navigation settles cleanly and leaves one step showing', () => {
   c.kitCookSlideSettle();
   c.kitCookSlideSettle();                        // idempotent
   assert.equal(c.kitCookState.step, 2);
+});
+
+test('rapid Next presses cannot mark a recipe cooked, including reduced motion', () => {
+  for (const reduceMotion of [false, true]) {
+    const r = timed(), c = cooking([r], { reduceMotion });
+    c.kitCookGo(1);
+    c.kitCookNext(); c.kitCookNext(); c.kitCookNext();
+    assert.equal(c.kitCookState.step, 2);
+    assert.equal(c.kitCookState.recipeId, 'r1');
+    assert.equal(c.__saved.length, 0);
+    assert.equal(r.lastCooked, undefined);
+    assert.equal(c.__nodes['kit-cook-confirm'].open, true);
+    c.kitCookConfirmClose();
+    assert.equal(c.__saved.length, 0);
+    c.kitCookNext();
+    c.kitCookConfirmAccept(); c.kitCookConfirmAccept();
+    assert.equal(c.__saved.length, 1, 'only the explicit confirmation records the cook, once');
+  }
+});
+
+test('timer ticks, completion and pause never rewrite control containers', () => {
+  const c = cooking([timed()]);
+  c.kitCookTimerToggle();
+  c.kitCookGo(1);
+  const chip = c.__nodes['kit-cook-timer-chip'];
+  for (const id of ['kit-cook-timer-chip', 'kit-cook-timer', 'kit-cook-stepbar']) {
+    Object.defineProperty(c.document.getElementById(id), 'innerHTML', { set() { assert.fail(id + ' was rebuilt'); } });
+  }
+  c.__advance(60); c.kitCookTick();
+  assert.equal(chip.textContent, '⏱ Step 1 of 3 · 09:00');
+  c.__advance(540); c.kitCookTick();
+  assert.equal(chip.hidden, false);
+  assert.match(chip.textContent, /Finished/);
+  c.kitCookTimerToggle(); c.kitCookTimerToggle();
+});
+
+test('replacement confirmation preserves a paused timer and a running countdown until accepted', () => {
+  const c = cooking([timed()]);
+  c.kitCookTimerToggle(); c.__advance(60); c.kitCookGo(1); c.kitCookTimerToggle();
+  c.__advance(10); c.kitCookTick();
+  assert.equal(c.kitCookTimerSec(), 530);
+  c.kitCookConfirmClose();
+  c.kitCookGo(-1); c.kitCookTimerToggle(); c.kitCookGo(1); c.kitCookTimerToggle();
+  assert.equal(c.kitCookState.confirmAction.kind, 'timer');
+  c.kitCookConfirmClose();
+  assert.equal(c.kitCookTimerSec(), 530);
+  c.kitCookTimerToggle(); c.kitCookConfirmAccept();
+  assert.equal(c.kitCookState.timerStep, 1);
+  assert.equal(c.kitCookTimerSec(), 600);
+  assert.equal(c.__timers.live.size, 1);
+});
+
+test('leaving a session invalidates a pending finish or timer replacement', () => {
+  const c = cooking([timed()]);
+  c.kitCookGo(1); c.kitCookGo(1); c.kitCookNext();
+  c.kitExitCooking(); c.kitStartCooking('r1'); c.kitCookConfirmAccept();
+  assert.equal(c.__saved.length, 0);
+  assert.equal(c.kitCookState.recipeId, 'r1');
+  assert.equal(c.kitCookState.step, 0);
 });
 
 test('exit clears the interval, the wake lock and the session, and records nothing', () => {

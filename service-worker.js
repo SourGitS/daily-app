@@ -357,7 +357,9 @@
 // the step that started it. Recipe quantities get one parse/scale/format path: "1/2" is a
 // half rather than 1, "2-3" scales both ends, "to taste" is shown as written and flagged, and
 // the editor, importer and exporter stop rewriting fractions.
-const CACHE_NAME = 'daily-v349';
+// v350: preserve protein quantities and shopping contributions; resolve nutrition fractions;
+// stable cooking controls, accessible confirmations and deliberate Finish.
+const CACHE_NAME = 'daily-v350';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

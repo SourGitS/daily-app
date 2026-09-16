@@ -1,5 +1,25 @@
 # Daily — Project Reference
 
+## Cooking correctness and polish — v350
+
+- Protein options were a remaining partial-parse path: main ingredients and extras now pass
+  through `kitQtyStore` in import, export and `kitFormBuildProtein`, preserving units and links.
+- `kitQtyFormat(n, unit)` uses count-aware formatting for empty, piece and unfamiliar units;
+  `100.5` eggs cannot become `101`. Measured units keep compact formatting, and shopping sums
+  exact values. Repeated range/written requirements retain each recipe's contribution.
+- Nutrition Review reads scalar fractions through `kitQtyParse`. A valid confirmed gram
+  resolution takes precedence over raw text only for that same food ID. Ranges and unsupported
+  measures stay unresolved without explicit confirmation; no new conversion or density guesses.
+- Cooking's step label, shortcut and timer buttons stay mounted. Ticks, pause/resume, reset and
+  completion patch text/state only. An elsewhere-finished timer remains reachable in the shortcut.
+- Finish opens an app-styled native modal dialog; only **Mark as cooked** records `lastCooked`.
+  Timer replacement uses that same session-guarded dialog, including paused timers. Cancel/Escape
+  preserve the timer and return focus; the countdown continues while the question is open. The
+  initial focus is the safe cancellation action, so rapid Next/Enter presses cannot finish.
+- Larger timer/shortcut targets, wrapping written amounts, opaque theme-aware confirmation
+  surfaces and visible keyboard focus are scoped to cooking. Existing slide timings and reduced
+  motion stay intact. No storage, sync, onboarding, navigation or food-log changes.
+
 ## Cooking mode and recipe quantities — v349
 
 **The cooking screen is a guided instruction, not a re-rendered page.** `kitCookMount()` builds

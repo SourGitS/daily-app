@@ -343,8 +343,12 @@ function nutDeleteCustomFood(id){const f=nutMyFoods.foods[id];if(!f||!confirm('D
 function nutCanon(v){return String(v||'').toLowerCase().replace(/\([^)]*\)/g,' ').replace(/[^a-z0-9]+/g,' ').trim();}
 function nutExactFood(name){const n=nutCanon(name),built=NUT_CATALOG.find(f=>nutCanon(f.name)===n||(f.aliases||[]).some(a=>nutCanon(a)===n));if(built)return Object.assign({kind:'catalog'},built);const mine=Object.values(nutMyFoods.foods).find(f=>!f.deletedAt&&(nutCanon(f.name)===n||(f.aliases||[]).some(a=>nutCanon(a)===n)));return mine?Object.assign({kind:'custom'},mine):null;}
 function nutIngResolve(ing,food){
-  food=food||nutFoodById(ing.foodId);if(!food)return {food:null,grams:null,reason:'No exact food match'};const amount=nutPos(ing.amount);if(!amount)return {food,grams:null,reason:'Quantity needs review'};
-  if(nutPos(ing.resolvedGrams))return {food,grams:nutPos(ing.resolvedGrams),reason:'Saved gram resolution'};
+  food=food||nutFoodById(ing.foodId);if(!food)return {food:null,grams:null,reason:'No exact food match'};
+  // A confirmed resolution belongs to its saved food, not a different search suggestion.
+  if(food.id===ing.foodId&&nutPos(ing.resolvedGrams))return {food,grams:nutPos(ing.resolvedGrams),reason:'Saved gram resolution'};
+  const qty=typeof kitQtyParse==='function'?kitQtyParse(ing.amount):null;
+  const amount=qty?(qty.kind==='number'?nutPos(qty.value):null):nutPos(ing.amount);
+  if(!amount)return {food,grams:null,reason:'Quantity needs review'};
   const unit=String(ing.unit||'').trim().toLowerCase();let grams=null,measureId=null;
   if(/^g(?:\s|$)/.test(unit)){grams=amount;measureId='g';}else if(unit==='kg'){grams=amount*1000;measureId='g';}else{const pack=unit.match(/^x\s*(\d+(?:\.\d+)?)\s*g$/);if(pack){grams=amount*Number(pack[1]);measureId='g';}}
   const measures=food.kind==='custom'?[{id:'serve',label:food.servingLabel||'serving',grams:nutPos(food.servingGrams)}]:(food.measures||[]);

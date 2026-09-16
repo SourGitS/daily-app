@@ -42,7 +42,7 @@ function fixture(){
     kitRenderDetail:(id,el)=>{el.recipeId=id;},
     kitCookState:{tickId:null,wakeLock:null,recipeId:null,session:0,timerStep:null},
     kitCookMount:()=>renders.push('cook'),kitCookRender:()=>renders.push('cook'),
-    kitCookTimerClear(){},kitCookSlideSettle(){},navigator:{},clearInterval(){},
+    kitCookTimerClear(){},kitCookSlideSettle(){},kitCookConfirmClose(){},navigator:{},clearInterval(){},
     kitResolve:(r,id)=>({variant:true,optionId:id||'chicken'}),showToast(){},kitCookChooseProtein(){},
     setTimeout:fn=>fn(),nutMeal:'snacks'
   });
