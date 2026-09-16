@@ -2481,6 +2481,9 @@ const NAV_QUICK_ICONS={
   // A stack of balances, deliberately not the Finance card icon beside it — the two are pinned
   // a few rows apart and must not read as the same destination twice.
   accounts:'<path d="M3 20h18"/><path d="M12 3 3 8h18z"/><path d="M6 11v6M10 11v6M14 11v6M18 11v6"/>',
+  // Reuse the Daily AI mark from its Settings card. It remains a distinct destination from
+  // Settings even though both are available from the same favourites strip.
+  aihub:'<path d="M12 3.5 13.9 8.6 19 10.5 13.9 12.4 12 17.5 10.1 12.4 5 10.5 10.1 8.6z"/><path d="M18 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/>',
   // Settings has no bottom-nav button to borrow from, so this one is written out — it is
   // SETTINGS_ICONS.sliders, copied rather than referenced because that is declared thousands
   // of lines below this and `const` does not hoist. Keep them in step by eye if it is redrawn.
@@ -2490,12 +2493,12 @@ const NAV_QUICK_ICONS={
 // the desktop sidebar's pinned strip and the phone hamburger, and they must read the same as
 // the bottom-nav button beside them.
 const NAV_QUICK_LABELS={home:'Home', budget:'Finance', log:'Log', food:'Food',
-                        stats:'Stats', notes:'Journal', accounts:'Accounts', settings:'Settings'};
-// Journal and Accounts are pinned alongside Settings: three destinations worth one press that
+                        stats:'Stats', notes:'Journal', aihub:'Daily AI', accounts:'Accounts', settings:'Settings'};
+// Journal, Daily AI and Accounts are pinned alongside Settings: destinations worth one press that
 // are NOT deck tabs. The phone deck is NAV_ORDER and is untouched — there is still no sixth
-// bottom-nav button, and there is not going to be. Both keep their grouped rows below, which is
+// bottom-nav button, and there is not going to be. All four keep their grouped rows below, which is
 // where you go when you are aiming at something specific inside Finance or More.
-const NAV_QUICK_EXTRA=['notes','accounts','settings'];
+const NAV_QUICK_EXTRA=['notes','aihub','accounts','settings'];
 const NAV_QUICK_VIEWS=NAV_ORDER.concat(NAV_QUICK_EXTRA);
 // A quick item is normally just a view, and dispatches setView with NO sub-tab — exactly what
 // pressing the bottom-nav button does — so it lands you back wherever you were inside it.
@@ -2651,7 +2654,7 @@ function navCurrentQuick(){
   if(NAV_NO_ROW_OVERLAYS.some(navShown)) return '';
   // Accounts is inside Finance, but its pinned shortcut is more specific than Finance and
   // therefore lights itself. The five-item phone bar remains driven by NAV_ORDER separately.
-  if(navShown('view-aihub')) return '';
+  if(navShown('view-aihub')) return 'aihub';
   // Food's supporting screens deliberately do NOT clear this: they are inside the Food
   // experience, so Food stays lit here exactly as it stays lit in the bottom nav.
   const v=(typeof S!=='undefined'&&S&&S.view)||'home';

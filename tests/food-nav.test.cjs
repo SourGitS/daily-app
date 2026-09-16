@@ -64,10 +64,10 @@ test('the deck is exactly the five phone tabs, with Log in the centre', () => {
   });
 });
 
-test('Stats is pinned once — a deck tab, not also a quick extra', () => {
+test('Stats stays in the deck while Daily AI is a sidebar-only favourite', () => {
   const c = ctx();
   assert.ok(!c.NAV_QUICK_EXTRA.includes('stats'), 'Stats is in NAV_ORDER now; listing it here shows it twice');
-  assert.deepEqual(c.NAV_QUICK_EXTRA, ['notes', 'accounts', 'settings']);
+  assert.deepEqual(c.NAV_QUICK_EXTRA, ['notes', 'aihub', 'accounts', 'settings']);
   // The pinned extras are NOT deck tabs: the phone keeps exactly five bottom-nav buttons.
   c.NAV_QUICK_EXTRA.forEach(v => assert.ok(!c.NAV_ORDER.includes(v), v + ' must not join the deck'));
   assert.equal(c.NAV_QUICK_VIEWS.filter(v => v === 'stats').length, 1);
@@ -78,6 +78,28 @@ test('Stats is pinned once — a deck tab, not also a quick extra', () => {
     assert.ok(q.icon, 'missing icon for ' + q.id);
   });
   assert.equal(new Set(c.NAV_QUICK.map(q => q.id)).size, c.NAV_QUICK.length, 'duplicate pinned id');
+  const ai = c.NAV_QUICK.find(q => q.id === 'aihub');
+  assert.deepEqual({id: ai.id, view: ai.view, sub: ai.sub, label: ai.label},
+    {id: 'aihub', view: 'aihub', sub: null, label: 'Daily AI'});
+});
+
+test('the mobile selection surface changes with the active page, without positional lag', () => {
+  const layout = fs.readFileSync(path.join(__dirname, '../css/layout.css'), 'utf8');
+  const extras = fs.readFileSync(path.join(__dirname, '../css/kitchen-extras.css'), 'utf8');
+  const geometry = /\b(?:left|width|top|height)\b/;
+  const pills = [...layout.matchAll(/#nav-pill\{[^}]*\}/g)].map(m => m[0]);
+  const indicator = layout.match(/#nav-indicator\{[^}]*\}/)?.[0] || '';
+  assert.ok(pills.length >= 2, 'portrait and landscape pill rules are present');
+  pills.forEach(rule => assert.ok(!geometry.test((rule.match(/transition:[^;}]+/) || [''])[0]),
+    'nav pill geometry must not animate after the active route changes'));
+  assert.ok(!geometry.test((indicator.match(/transition:[^;}]+/) || [''])[0]),
+    'nav underline geometry must not spring behind the active route');
+  const latePill = extras.match(/#nav-pill\{[^}]*\}/)?.[0] || '';
+  assert.ok(!geometry.test((latePill.match(/transition:[^;}]+/) || [''])[0]),
+    'the final CSS layer must not reintroduce a lagging pill');
+  const setView = extract('setView');
+  assert.match(setView, /classList\.toggle\('active',b\.dataset\.view===v\)/);
+  assert.match(setView, /updateNavPill\(v\)/);
 });
 
 test('the retired Nutrition and Kitchen views survive only as aliases', () => {

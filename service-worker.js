@@ -361,7 +361,9 @@
 // stable cooking controls, accessible confirmations and deliberate Finish.
 // v351: capture the displayed weather colour in favourites; preview custom colours in a
 // stable dialog, with explicit Apply/Cancel instead of saving on every picker movement.
-const CACHE_NAME = 'daily-v351';
+// v352: keep the phone navigation highlight attached to the active page, and pin Daily AI in
+// sidebar favourites without adding a sixth phone tab.
+const CACHE_NAME = 'daily-v352';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

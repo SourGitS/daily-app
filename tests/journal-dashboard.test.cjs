@@ -188,7 +188,7 @@ test('the Home card opens the dashboard without a duplicate Write today action',
   assert.match(extract('renderHomeNotesBubble'), /\[data-card-id="notes"\]/);
 });
 
-test('the Journal task changed no navigation', () => {
+test('Journal remains pinned while the five-item phone navigation stays intact', () => {
   const ctx = vm.createContext({ console });
   const from = source.indexOf('const NAV_ORDER=');
   const to = source.indexOf('// ── Journal screen state');
@@ -198,7 +198,7 @@ test('the Journal task changed no navigation', () => {
   assert.deepEqual(NAV_ORDER, ['home', 'budget', 'log', 'food', 'stats'],
     'the five-item phone deck is untouched');
   assert.deepEqual(NAV_QUICK.map(q => q.id),
-    ['home', 'budget', 'log', 'food', 'stats', 'notes', 'accounts', 'settings']);
+    ['home', 'budget', 'log', 'food', 'stats', 'notes', 'aihub', 'accounts', 'settings']);
   // Journal is pinned for reach; its route, its internal id and its grouped row are unchanged.
   assert.ok(NAV_QUICK.some(q => q.id === 'notes' && q.view === 'notes' && q.label === 'Journal'));
   const journal = NAV_TREE.find(g => g.id === 'more').rows.find(r => r.id === 'journal');

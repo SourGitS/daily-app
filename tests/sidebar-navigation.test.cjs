@@ -12,8 +12,9 @@ function slice(from, to) {
   assert.ok(start >= 0 && end > start, 'missing navigation fixture anchors');
   return source.slice(start, end);
 }
-function fixture(savedOpen) {
+function fixture(savedOpen, visible) {
   const writes = [], calls = [];
+  const shown = new Set(visible || []);
   const context = vm.createContext({
     console, calls, S: {view: 'home'}, logSubTab: 'today', statsSubTab: 'overview',
     _bootPhase: false,
@@ -21,7 +22,7 @@ function fixture(savedOpen) {
       getItem: () => savedOpen === undefined ? null : JSON.stringify({open: savedOpen}),
       setItem: (key, value) => writes.push([key, JSON.parse(value)])
     },
-    document: {getElementById: () => null, querySelectorAll: () => []},
+    document: {getElementById: id => shown.has(id) ? {style: {display: 'block'}} : null, querySelectorAll: () => []},
     closeMenu: () => calls.push(['close']),
     openAIHub: () => calls.push(['aihub'])
   });
@@ -36,11 +37,11 @@ function fixture(savedOpen) {
   return {context, writes, calls, ...copy(context.registry)};
 }
 
-test('quick access stays separate from groups with eight labelled destinations and stable group IDs', () => {
+test('quick access stays separate from groups with nine labelled destinations and stable group IDs', () => {
   const f = fixture();
   assert.deepEqual(f.NAV_QUICK.map(q => [q.id, q.label]), [
     ['home', 'Home'], ['budget', 'Finance'], ['log', 'Log'], ['food', 'Food'],
-    ['stats', 'Stats'], ['notes', 'Journal'], ['accounts', 'Accounts'], ['settings', 'Settings']
+    ['stats', 'Stats'], ['notes', 'Journal'], ['aihub', 'Daily AI'], ['accounts', 'Accounts'], ['settings', 'Settings']
   ]);
   // Accounts is a Finance VIEW, so it is the one pinned item that carries a sub-tab.
   assert.deepEqual(f.NAV_QUICK.filter(q => q.sub).map(q => [q.id, q.view, q.sub]),
@@ -57,10 +58,11 @@ test('quick access stays separate from groups with eight labelled destinations a
     'the quick destinations have a clear visual label');
   assert.match(groups, /nv-section-label nv-groups-label">All areas</,
     'the detailed destinations have a clear visual label');
-  assert.equal((quick.match(/data-nav-quick=/g) || []).length, 8);
+  assert.equal((quick.match(/data-nav-quick=/g) || []).length, 9);
   // Keyed by ID, not by view: Finance and Accounts share a view and must stay distinct.
   assert.ok(quick.includes('data-nav-quick="accounts"'));
   assert.ok(quick.includes('data-nav-quick="notes"'));
+  assert.ok(quick.includes('data-nav-quick="aihub"'));
   assert.ok(!quick.includes('data-nav-group'), 'quick access cannot be collapsed');
   assert.equal((groups.match(/data-nav-group=/g) || []).length, 6);
   assert.ok(!groups.includes('data-nav-quick'));
@@ -181,15 +183,19 @@ test('the phone drawer keeps its 44px targets while gaining the same separation'
   assert.match(nav, /#side-menu\{position:fixed;/, 'the drawer itself is untouched');
 });
 
-test('Journal and Accounts are pinned AND keep their grouped rows', () => {
+test('Journal, Daily AI and Accounts are pinned AND keep their grouped rows', () => {
   const f = fixture();
   // Pinned for one-press reach...
   assert.ok(f.NAV_QUICK.some(q => q.id === 'notes' && q.view === 'notes'));
+  assert.ok(f.NAV_QUICK.some(q => q.id === 'aihub' && q.view === 'aihub'));
   assert.ok(f.NAV_QUICK.some(q => q.id === 'accounts' && q.view === 'budget' && q.sub === 'accounts'));
   // ...and still listed below, which is where you go when aiming at something specific.
   const journal = f.NAV_TREE.find(g => g.id === 'more').rows.find(r => r.id === 'journal');
   assert.ok(journal, 'Journal keeps its row under More');
   assert.equal(journal.view, 'notes', 'and its existing route');
+  const ai = f.NAV_TREE.find(g => g.id === 'more').rows.find(r => r.id === 'aihub');
+  assert.ok(ai, 'Daily AI keeps its row under More');
+  assert.equal(ai.view, 'aihub', 'and its existing route');
   const accounts = f.NAV_TREE.find(g => g.id === 'money').rows.find(r => r.sub === 'accounts');
   assert.ok(accounts, 'Accounts keeps its row under Finance');
   assert.equal(accounts.view, 'budget');
@@ -209,4 +215,10 @@ test('a pinned sub-tab lights instead of its parent view, never as well as it', 
   assert.equal(c.navCurrentQuick(), 'notes');
   go('plans');
   assert.equal(c.navCurrentQuick(), '', 'a destination that is not pinned lights nothing');
+});
+
+test('Daily AI lights its favourite and its existing More row when its screen is open', () => {
+  const f = fixture([], ['view-aihub']), c = f.context;
+  assert.equal(c.navCurrentRow(), 'aihub');
+  assert.equal(c.navCurrentQuick(), 'aihub');
 });
