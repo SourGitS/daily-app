@@ -15904,7 +15904,7 @@ function budPlanYearAhead(fromDate){
   const recurring=loadFixCats().filter(c=>billIsScheduled(c));
   // A malformed date is no more schedulable than an absent one. Count both as an honest gap,
   // while an anchor beyond this window simply has nothing due in it and is not an error.
-  const unscheduled=recurring.filter(c=>!catNextDue(c,from)).length;
+  const unscheduled=recurring.filter(c=>!catNextDue(c,dateStr(from))).length;
   return {
     from,to,charges,statements,months,unscheduled,
     total:charges.reduce((sum,o)=>sum+o.amount,0),

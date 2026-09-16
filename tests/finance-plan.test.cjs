@@ -15,10 +15,11 @@ const planCss = fs.readFileSync(path.join(__dirname, '../css/budget-home.css'), 
 const body = name => extract(name);
 
 function planFixture() {
-  const calls=[];
+  const calls=[], dueInputs=[];
   const context=vm.createContext({
     Date, Object, console, calls,
     getLocalDate:()=> '2026-09-15',
+    dateStr:d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),
     localMidnight:value=>{
       const d=value instanceof Date ? value : new Date(String(value)+'T12:00:00');
       return new Date(d.getFullYear(),d.getMonth(),d.getDate());
@@ -38,15 +39,19 @@ function planFixture() {
       {id:'not-recurring', scheduled:false, next:null}
     ],
     billIsScheduled:cat=>cat.scheduled,
-    catNextDue:cat=>cat.next ? new Date(cat.next+'T12:00:00') : null
+    catNextDue:(cat,from)=>{
+      dueInputs.push(from);
+      if(typeof from!=='string') throw new TypeError('catNextDue needs YYYY-MM-DD');
+      return cat.next ? new Date(cat.next+'T12:00:00') : null;
+    }
   });
   vm.runInContext(body('budPlanYearAhead'),context);
-  return {context,calls};
+  return {context,calls,dueInputs};
 }
 
 test('Year ahead is a 12-month schedule of recurring charges, with statements separate', () => {
-  const {context,calls}=planFixture();
-  const raw=vm.runInContext("budPlanYearAhead(new Date(2026,8,15))",context);
+  const {context,calls,dueInputs}=planFixture();
+  const raw=vm.runInContext('budPlanYearAhead()',context);
   const p=JSON.parse(JSON.stringify(raw));
   assert.equal(calls.length,1);
   assert.deepEqual([calls[0].from.getFullYear(),calls[0].from.getMonth(),calls[0].from.getDate()], [2026,8,15]);
@@ -61,6 +66,8 @@ test('Year ahead is a 12-month schedule of recurring charges, with statements se
   ]);
   assert.deepEqual([p.busiest.key,p.busiest.total],['2026-10',70]);
   assert.equal(p.unscheduled,1, 'an active recurring charge without a usable date is named, never guessed');
+  assert.deepEqual(dueInputs,['2026-09-15','2026-09-15'],
+    'the scheduled-date reader receives its YYYY-MM-DD contract, so an unscheduled bill cannot abort Plan');
 });
 
 test('Plan renders the selected phone lens and both fact scopes on desktop', () => {
