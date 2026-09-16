@@ -481,7 +481,17 @@
            ahead is a schedule of only the dated recurring bills Daily can genuinely know.
            The existing month/year element ids stay in place so their proven renderers and
            data readers remain unchanged. -->
-      <div id="budget-plan-view" class="hidden" role="tabpanel" aria-labelledby="bv-plan-btn">
+      <div id="budget-plan-view" class="hidden" role="tabpanel" aria-labelledby="bv-plan-btn" data-plan-lens="year">
+        <div id="budget-plan-lens" class="budget-plan-lens" role="group" aria-label="Plan focus">
+          <button type="button" data-plan-lens="month" aria-pressed="false" onclick="setBudgetPlanLens('month')">
+            <span class="budget-plan-lens-k">Recorded</span>
+            <strong>This month</strong>
+          </button>
+          <button type="button" class="on" data-plan-lens="year" aria-pressed="true" onclick="setBudgetPlanLens('year')">
+            <span class="budget-plan-lens-k">Forward plan</span>
+            <strong>Year ahead</strong>
+          </button>
+        </div>
         <div class="budget-plan-layout">
           <section class="budget-plan-section budget-plan-month" aria-labelledby="budget-plan-month-title">
             <div class="budget-plan-heading">

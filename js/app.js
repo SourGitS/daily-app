@@ -10709,6 +10709,9 @@ const BUD_DONUT_COLOURS = [
 // ── Budget state ──────────────────────────────────────────────────
 let currentWeekIdx     = 0;
 let currentMonthOffset = 0;
+// The Plan selector is a presentational lens, not a Finance destination or saved preference.
+// A fresh phone leads with the agreed Year ahead schedule; an in-session choice is retained.
+let budgetPlanLens     = 'year';
 // ── The five Finance views ────────────────────────────────────────
 // The user-facing destination is FINANCE. The internal view id stays 'budget', with it the
 // bud* prefixes, every DOM id, every storage key and the #budget route — this is a naming
@@ -11971,8 +11974,10 @@ function fmtMonthLabel(d){ return d.toLocaleDateString('en-AU',{month:'long',yea
 // .swipe-panel inside the transformed #swipe-deck and it would shove the deck sideways.
 function setBudgetView(v){
   // Month and Yearly became Plan. Keep older in-app callers and any stale open view state
-  // usable rather than dropping them to Overview; neither alias writes or persists anything.
-  if(v==='month'||v==='year') v='plan';
+  // usable rather than dropping them to Overview; keep the specific lens they originally
+  // named, without writing or persisting either alias.
+  if(v==='month'){ budgetPlanLens='month'; v='plan'; }
+  else if(v==='year'){ budgetPlanLens='year'; v='plan'; }
   if(!BUD_VIEWS.some(x=>x.id===v)) v='overview';
   budgetView=v;
   const row=document.getElementById('budget-view-tabs');
@@ -14386,13 +14391,14 @@ function openBillsCalendar(){
 // to June the September card opened June.
 // Every OTHER way into Plan keeps the remembered offset, deliberately: the Plan tab, the
 // History & tools link, Money › Plan in the nav, returning from a source/evidence view and
-// ordinary movement between Budget views all refer to the Month WORKSPACE rather than to one
-// named month, and a control that silently rewound your position would be the worse bug.
+// ordinary movement between Budget views all refer to the Plan workspace rather than to one
+// named month or lens, and a control that silently rewound your position would be the worse bug.
 // In memory only, exactly like currentWeekIdx — nothing here is stored, stamped or synced.
 // Not a "take me to Budget" helper either: it is called from inside Budget, so unlike
 // openBudgetWeek() and its neighbours it deliberately does not call setView().
 function openBudgetCurrentMonth(){
   currentMonthOffset=0;
+  budgetPlanLens='month';
   setBudgetView('plan');
 }
 // A new transaction is always dated today (openTxnModal defaults to getLocalDate()), so every
@@ -15949,11 +15955,50 @@ function renderPlanAhead(){
     '<p class="plan-ahead-note">Scheduled recurring charges only. Income, account balances and day-to-day spending are not forecast here.</p>'+
   '</div>';
 }
+function budPlanApplyLens(){
+  const lens=budgetPlanLens==='month'?'month':'year';
+  const panel=document.getElementById('budget-plan-view');
+  if(panel) panel.dataset.planLens=lens;
+  document.querySelectorAll('#budget-plan-lens [data-plan-lens]').forEach(btn=>{
+    const on=btn.dataset.planLens===lens;
+    btn.classList.toggle('on',on);
+    btn.setAttribute('aria-pressed',on?'true':'false');
+  });
+}
+function setBudgetPlanLens(lens){
+  budgetPlanLens=lens==='month'?'month':'year';
+  budPlanApplyLens();
+  // The inactive phone pane is display:none. Render after the new pane is visible so Chart.js
+  // measures the real width; desktop deliberately keeps both panes current.
+  if(!layoutIsDesktop()&&typeof S!=='undefined'&&S.view==='budget'&&budgetView==='plan') renderPlan();
+}
+function budPlanClearMonthChart(){
+  if(monthWeekChart){ monthWeekChart.destroy(); monthWeekChart=null; }
+}
+function budPlanClearYearCharts(){
+  if(yearStackChart){ yearStackChart.destroy(); yearStackChart=null; }
+  if(yearCCChart){ yearCCChart.destroy(); yearCCChart=null; }
+}
 function renderPlan(){
+  budPlanApplyLens();
+  if(!layoutIsDesktop()){
+    if(budgetPlanLens==='month'){
+      budPlanClearYearCharts();
+      renderMonth();
+    } else {
+      budPlanClearMonthChart();
+      renderPlanAhead();
+      renderYear();
+    }
+    return;
+  }
   renderMonth();
   renderPlanAhead();
   renderYear();
 }
+layoutOnModeChange(function(){
+  if(typeof S!=='undefined'&&S.view==='budget'&&budgetView==='plan') renderPlan();
+});
 
 // ── Yearly budget view ────────────────────────────────────────────
 // ── Yearly view ────────────────────────────────────────────────────

@@ -363,7 +363,9 @@
 // stable dialog, with explicit Apply/Cancel instead of saving on every picker movement.
 // v352: keep the phone navigation highlight attached to the active page, and pin Daily AI in
 // sidebar favourites without adding a sixth phone tab.
-const CACHE_NAME = 'daily-v352';
+// v353: give Finance › Plan a phone-only This month / Year ahead lens while keeping the
+// desktop split view and the five-destination Finance picker unchanged.
+const CACHE_NAME = 'daily-v353';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

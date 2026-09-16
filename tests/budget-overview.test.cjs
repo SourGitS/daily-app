@@ -340,14 +340,15 @@ test('Overview has its own entry point, and explicit Week and Bills links keep t
 // land on that month. With a plain Plan entry it preserved currentMonthOffset, and
 // after browsing back to June the September card opened June.
 
-test('openBudgetCurrentMonth resets the month index, then opens Plan', () => {
+test('openBudgetCurrentMonth resets the month index, selects its lens, then opens Plan', () => {
   // Run the real helper against a stubbed setBudgetView, so the assertion is about behaviour
   // rather than about the source text.
-  const context = vm.createContext({ console, currentMonthOffset: -3, opened: null });
+  const context = vm.createContext({ console, currentMonthOffset: -3, budgetPlanLens: 'year', opened: null });
   vm.runInContext('function setBudgetView(v){ opened={view:v, offsetAtOpen:currentMonthOffset}; }', context);
   vm.runInContext(extract('openBudgetCurrentMonth'), context);
   vm.runInContext('openBudgetCurrentMonth();', context);
   assert.equal(context.currentMonthOffset, 0, 'the month index must be reset to the current month');
+  assert.equal(context.budgetPlanLens, 'month', 'the card names the monthly lens, not the remembered Plan lens');
   // JSON round-trip: the object is built inside the VM and carries that realm's prototype,
   // which assert/strict's deepEqual compares as well as the contents.
   assert.deepEqual(JSON.parse(JSON.stringify(context.opened)), { view: 'plan', offsetAtOpen: 0 },
@@ -395,14 +396,16 @@ test('legacy Month and Yearly view values normalize to Plan rather than Overview
   });
   const calls=[];
   const context=vm.createContext({
-    BUD_VIEWS, document:{getElementById:id=>elements[id]||null},
+    BUD_VIEWS, budgetPlanLens:'year', document:{getElementById:id=>elements[id]||null},
     setNavActive(){}, budRenderView:view=>calls.push(view), segSetOn(){}, segScrollToTab(){}
   });
   vm.runInContext(extract('setBudgetView'), context);
   vm.runInContext("setBudgetView('month');", context);
   assert.equal(vm.runInContext('budgetView', context), 'plan');
+  assert.equal(vm.runInContext('budgetPlanLens', context), 'month');
   vm.runInContext("setBudgetView('year');", context);
   assert.equal(vm.runInContext('budgetView', context), 'plan');
+  assert.equal(vm.runInContext('budgetPlanLens', context), 'year');
   assert.deepEqual(calls, ['plan','plan']);
 });
 

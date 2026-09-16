@@ -11,6 +11,7 @@ const { extract } = require('./harness.cjs');
 
 const source = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+const planCss = fs.readFileSync(path.join(__dirname, '../css/budget-home.css'), 'utf8');
 const body = name => extract(name);
 
 function planFixture() {
@@ -62,10 +63,24 @@ test('Year ahead is a 12-month schedule of recurring charges, with statements se
   assert.equal(p.unscheduled,1, 'an active recurring charge without a usable date is named, never guessed');
 });
 
-test('Plan renders actual month and year data alongside the explicit forward schedule', () => {
+test('Plan renders the selected phone lens and both fact scopes on desktop', () => {
   const render=body('renderPlan');
-  assert.ok(render.indexOf('renderMonth()') < render.indexOf('renderPlanAhead()'));
-  assert.ok(render.indexOf('renderPlanAhead()') < render.indexOf('renderYear()'));
+  const run=(lens, desktop)=>{
+    const calls=[];
+    const context=vm.createContext({
+      budgetPlanLens:lens, layoutIsDesktop:()=>desktop,
+      budPlanApplyLens:()=>calls.push('apply'),
+      budPlanClearMonthChart:()=>calls.push('clear-month'),
+      budPlanClearYearCharts:()=>calls.push('clear-year'),
+      renderMonth:()=>calls.push('month'), renderPlanAhead:()=>calls.push('ahead'), renderYear:()=>calls.push('year')
+    });
+    vm.runInContext(render,context);
+    vm.runInContext('renderPlan()',context);
+    return calls;
+  };
+  assert.deepEqual(run('month',false), ['apply','clear-year','month']);
+  assert.deepEqual(run('year',false), ['apply','clear-month','ahead','year']);
+  assert.deepEqual(run('year',true), ['apply','month','ahead','year']);
   const ahead=body('renderPlanAhead');
   assert.match(ahead, /12-month total/);
   assert.match(ahead, /Next due/);
@@ -88,11 +103,70 @@ test('Plan replaces Month and Yearly in the Finance UI while Bills stays separat
   assert.match(html, /id="plan-ahead-card"/);
 });
 
+test('Plan has a separate, prominent phone lens rather than extra Finance tabs', () => {
+  const start=html.indexOf('id="budget-plan-view"');
+  const end=html.indexOf('<!-- BILLS CALENDAR VIEW',start);
+  assert.ok(start>0 && end>start, 'Plan panel anchors');
+  const panel=html.slice(start,end);
+  const lensAt=panel.indexOf('id="budget-plan-lens"');
+  assert.ok(lensAt>=0 && lensAt<panel.indexOf('class="budget-plan-layout"'),
+    'the Plan lens sits above its month/year content');
+  assert.match(panel, /id="budget-plan-view"[^>]*data-plan-lens="year"/);
+  assert.match(panel, /id="budget-plan-lens"[^>]*role="group"[^>]*aria-label="Plan focus"/);
+  assert.match(panel, /data-plan-lens="month"[^>]*aria-pressed="false"[^>]*onclick="setBudgetPlanLens\('month'\)"/);
+  assert.match(panel, /data-plan-lens="year"[^>]*aria-pressed="true"[^>]*onclick="setBudgetPlanLens\('year'\)"/);
+  assert.match(panel, /Recorded[\s\S]{0,120}?This month/);
+  assert.match(panel, /Forward plan[\s\S]{0,120}?Year ahead/);
+  assert.match(planCss, /\.budget-plan-lens\{display:none\}/,
+    'desktop keeps its existing split view rather than adding another selector');
+  const phoneStart=planCss.indexOf('@media (max-width:1023px)',planCss.indexOf('Finance › Plan'));
+  const phoneEnd=planCss.indexOf('@media (max-width:380px)',phoneStart);
+  const phone=planCss.slice(phoneStart,phoneEnd);
+  assert.match(phone, /\.budget-plan-lens\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\);/);
+  assert.match(phone, /\.budget-plan-lens button\{[^}]*min-height:64px/);
+  assert.match(phone, /\.budget-plan-lens button\.on\{[^}]*linear-gradient\(150deg,var\(--accent-hero\),var\(--accent-hero-2\)\)/);
+  assert.match(phone, /data-plan-lens="month"\] \.budget-plan-year,[\s\S]{0,100}?data-plan-lens="year"\] \.budget-plan-month\{display:none\}/);
+  assert.match(phone, /data-plan-lens="year"\] \.budget-plan-year\{padding-top:0;border-top:0\}/);
+});
+
+test('changing the Plan lens is in-memory, preserves its data positions and updates its controls', () => {
+  const panel={dataset:{}};
+  const makeButton=lens=>{
+    const classes=new Set(lens==='year'?['on']:[]);
+    return {
+      dataset:{planLens:lens}, classes, attrs:{},
+      classList:{toggle(name,on){ if(on) classes.add(name); else classes.delete(name); }},
+      setAttribute(name,value){ this.attrs[name]=String(value); }
+    };
+  };
+  const month=makeButton('month'), year=makeButton('year'), calls=[];
+  const context=vm.createContext({
+    budgetPlanLens:'year', budgetView:'plan', currentMonthOffset:-2, budgetYearOffset:-1, S:{view:'budget'},
+    document:{getElementById:id=>id==='budget-plan-view'?panel:null, querySelectorAll:()=>[month,year]},
+    layoutIsDesktop:()=>false, renderPlan:()=>calls.push('render')
+  });
+  vm.runInContext(body('budPlanApplyLens')+'\n'+body('setBudgetPlanLens'),context);
+  vm.runInContext("setBudgetPlanLens('month')",context);
+  assert.equal(vm.runInContext('budgetPlanLens',context),'month');
+  assert.equal(vm.runInContext('budgetView',context),'plan');
+  assert.equal(vm.runInContext('currentMonthOffset',context),-2);
+  assert.equal(vm.runInContext('budgetYearOffset',context),-1);
+  assert.equal(panel.dataset.planLens,'month');
+  assert.equal(month.attrs['aria-pressed'],'true');
+  assert.equal(year.attrs['aria-pressed'],'false');
+  assert.ok(month.classes.has('on') && !year.classes.has('on'));
+  assert.deepEqual(calls,['render'], 'the newly visible phone pane is rendered after selection');
+  const fn=body('setBudgetPlanLens')+'\n'+body('budPlanApplyLens');
+  [/localStorage/, /lsSave/, /lsSaveTS/, /Date\.now\(/, /firebase/, /history/, /setBudgetView\(/].forEach(re =>
+    assert.ok(!re.test(fn), 'the Plan lens must not contain ' + re));
+});
+
 test('the Plan schedule is read-only and retains legacy Month/Yearly entry compatibility', () => {
   const schedule=body('budPlanYearAhead')+'\n'+body('renderPlanAhead');
   [/localStorage/, /lsSave/, /lsSaveTS/, /Date\.now\(/, /firebase/, /saveAccounts\(/].forEach(re =>
     assert.ok(!re.test(schedule), 'the schedule must not contain ' + re));
   const toggle=body('setBudgetView');
-  assert.match(toggle, /if\(v==='month'\|\|v==='year'\) v='plan';/,
-    'stale in-memory callers must land on Plan rather than Overview');
+  assert.match(toggle, /if\(v==='month'\)\{ budgetPlanLens='month'; v='plan'; \}/);
+  assert.match(toggle, /else if\(v==='year'\)\{ budgetPlanLens='year'; v='plan'; \}/,
+    'stale in-memory callers retain their matching Plan lens rather than landing on Overview');
 });

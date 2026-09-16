@@ -2261,6 +2261,7 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .budget-plan-layout{display:flex;flex-direction:column;gap:22px;max-width:1240px}
 .budget-plan-section{min-width:0}
 .budget-plan-year{padding-top:22px;border-top:1px solid var(--border)}
+.budget-plan-lens{display:none}
 .budget-plan-heading{margin:0 0 15px}
 .budget-plan-eyebrow{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-text);margin-bottom:5px}
 .budget-plan-heading h2,.budget-plan-history-heading h3{margin:0;color:var(--text);letter-spacing:-.025em}
@@ -2302,6 +2303,23 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .plan-ahead-statements p,.plan-ahead-note{margin:8px 0 0;font-size:11px;font-weight:600;line-height:1.5;color:var(--muted)}
 .plan-ahead-warning{margin-top:14px;padding:10px 11px;border-radius:10px;border:1px solid var(--warn-border);background:var(--warn-bg);color:var(--warn-dark);font-size:11.5px;font-weight:650;line-height:1.45}
 .plan-ahead-note{padding-top:11px;border-top:1px solid var(--border)}
+@media (max-width:1023px){
+  /* This deliberately reads as two destination cards, not a second small Finance tab strip. */
+  .budget-plan-lens{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 18px}
+  .budget-plan-lens button{min-width:0;min-height:64px;padding:10px 12px;border:1px solid var(--card-border);
+    border-radius:14px;background:var(--card);box-shadow:var(--card-top);color:var(--text);font:inherit;
+    text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .budget-plan-lens-k{display:block;font-size:9px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--muted);margin-bottom:4px}
+  .budget-plan-lens strong{display:block;font-size:14px;font-weight:800;line-height:1.15;letter-spacing:-.01em}
+  .budget-plan-lens button.on{border-color:transparent;background:linear-gradient(150deg,var(--accent-hero),var(--accent-hero-2));
+    box-shadow:0 10px 22px rgba(var(--accent-rgb),.24);color:#fff}
+  .budget-plan-lens button.on .budget-plan-lens-k{color:rgba(255,255,255,.72)}
+  .budget-plan-lens button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  #budget-plan-view[data-plan-lens="month"] .budget-plan-year,
+  #budget-plan-view[data-plan-lens="year"] .budget-plan-month{display:none}
+  #budget-plan-view[data-plan-lens="year"] .budget-plan-year{padding-top:0;border-top:0}
+}
 @media (max-width:380px){
   .budget-plan-heading h2{font-size:22px}
   .budget-plan-history-heading{align-items:flex-start;flex-direction:column;gap:3px}
