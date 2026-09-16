@@ -352,7 +352,12 @@
 // v348: onboarding preserves outgoing composition and keyboard focus, settles with the
 // animation, and honours live reduced-motion changes. Food sheets enter once, toasts are
 // quieter, Home renders immediately, and selected Food chips use the deeper hero ink.
-const CACHE_NAME = 'daily-v348';
+// v349: cooking mode is a guided screen — the instruction leads at a reading measure, the
+// chrome is mounted once and only patched, steps slide directionally, and a timer belongs to
+// the step that started it. Recipe quantities get one parse/scale/format path: "1/2" is a
+// half rather than 1, "2-3" scales both ends, "to taste" is shown as written and flagged, and
+// the editor, importer and exporter stop rewriting fractions.
+const CACHE_NAME = 'daily-v349';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

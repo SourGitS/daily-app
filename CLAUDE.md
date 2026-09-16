@@ -1,5 +1,81 @@
 # Daily — Project Reference
 
+## Cooking mode and recipe quantities — v349
+
+**The cooking screen is a guided instruction, not a re-rendered page.** `kitCookMount()` builds
+the session shell ONCE — topbar, protein, servings, progress bar, the full ingredient reference
+and the Prev/Next row — and `kitCookRenderStep(dir)` only ever patches it. That is what keeps a
+scroll position, and what stops a button being replaced under the finger that is pressing it:
+the same `#kit-cook-prev` / `#kit-cook-next` nodes live for the whole session and change only
+their label, `disabled` and `finish` class. `kitCookRender()` survives as a full repaint for a
+caller that needs one; it re-mounts only when the stage is missing.
+**The instruction leads, left-aligned at a 62ch measure.** It was a centred 20px block capped at
+480px. Authored wording and order are untouched: `kitCookInstructionHTML()` splits on line
+breaks the AUTHOR already wrote and nothing else — no sentence splitting, no rewriting, and no
+number inside the text is ever scaled, because no safe rule separates 180°C or a 20 cm tin from
+a quantity. When servings differ from the recipe's own, `.kit-cook-scale-note` says exactly
+that out loud.
+**One scroll region on a phone**, the whole `.kit-cook-main`: instruction → For this step → All
+ingredients, so the full list is reachable without leaving the step. The old layout had three
+scrollers (a 24vh list, a 20vh list and the body between them). Desktop and short landscape use
+two columns with the reference list sticky beside the method; the desktop grid is capped at
+1200px so the width becomes the aside, not a longer line.
+**Only a real step change slides.** `kitCookRenderStep(dir)` takes a direction and `kitCookGo()`
+is the only caller that passes one; a timer tick, a same-step repaint or a resize patches in
+place. 240ms in, 150ms out, ±22px, reduced motion retains and animates nothing (including a
+preference change mid-transition). The retained outgoing page is the real node, stripped of
+every `id`, `aria-hidden`, `inert`, untabbable, removed on `animationend` with a timeout
+fallback. `kitCookSlideSettle()` runs before the next transition starts, so repeated presses
+cannot queue. `.kit-cook-stage` clips the HORIZONTAL travel only.
+**A timer belongs to the step that started it — `kitCookState.timerStep`, not its duration.**
+Two consecutive 10-minute steps used to share one countdown, and navigating away used to kill
+it. Now it keeps running while you read ahead and `kitCookChipHTML()` states its step and
+remaining time in the stationary step bar. There is at most ONE timer: starting another step's
+requires an explicit confirmation to replace the running one. `kitCookTick()` PATCHES the clock
+and the ring and never rebuilds the buttons; the countdown sits outside any live region
+(`role="timer" aria-live="off"`) while `#kit-cook-announce` announces step changes. A render
+never starts, resets or duplicates a timer. A finished timer says the timer finished — never
+that the food is cooked — and the supplied temperature stays on its own step. Session-only: no
+storage key, notification or background service.
+**`kitExitCooking()` and `kitCookFinish()` both clear the interval, the slide and the wake
+lock**, and the session token (`kitCookState.session`) rises so a wake-lock promise resolving
+after the cook ended releases instead of being kept. Finish is still the ONLY thing that writes
+`lastCooked`. The session owns its protein AND its servings from the moment it starts, so the
+detail view's selector can no longer reach into a cook underway.
+
+**`kitQty*` is the ONE recipe-quantity path, and it is a correctness fix.** `parseFloat("1/2")`
+is 1 and `parseFloat("2-3")` is 2 — a silent partial parse that scaled the wrong number and,
+through `kitSaveForm`, `kitParseImport` and `kitRecipeToExport`, WROTE it back. Opening a recipe
+and pressing Save turned "1/2 lemon" into "1 lemon". The same class of fault as the unit
+`<select>` bug in AGENTS.md.
+- `kitQtyValue()` reads one token completely or returns null: whole numbers, decimals, `1/2`,
+  `1 1/2`, `½`, `1½`. **Never a partial read** — `400 g`, `1/0` and `1.5½` are null, not 400, 1
+  and 1.
+- `kitQtyParse()` gives `none | number | range | text`. A range needs BOTH ends to parse, so
+  "Salt to taste" stays text while "2-3" and "2 to 3" become a range.
+- `kitQtyScale()` always works from the ORIGINAL parsed value, so 4→6→4 servings returns the
+  author's own figure and rounding never compounds.
+- `kitQtyFormat()` prints kitchen quantities: familiar fractions below 10, short decimals above,
+  **never a small positive rounded to "0"**, never a countable rounded to a whole item, and an
+  explicit `0` stays distinct from a missing amount.
+- `kitQtyStore()` is what the editor, importer and exporter save: a plain number stays a number,
+  everything else keeps the author's characters.
+`kitResolve()` sets `scaledNum` (exact, for arithmetic — shopping sums it) apart from `display`
+(formatted). An amount that cannot be scaled carries `amountUnscaled` and is labelled *as
+written* rather than presented as adjusted. **Do not route this through `kitTrim()`** — that
+prints cook times, calories, servings and temperatures for Food, Home and Stats and keeps its
+own one-decimal rounding. Units are unchanged: the recipe's own, including countable `""`, `kg`,
+`L` and custom ones. No metric/imperial preference, no density guessing, no cup→gram conversion.
+Shopping carries un-summable amounts through as `texts` instead of dropping them; exact-unit
+grouping and pantry matching are untouched.
+**`kitStepIngredients()` is conservative on purpose.** Full-name matches always count; the
+last-word fallback fires only when the word is ≥4 letters, is not in `KIT_GENERIC_ING_WORDS`,
+and is not shared with another ingredient in the same recipe — so "heat the oil" claims neither
+Olive oil nor Sesame oil, and "add the butter" does not claim Peanut butter. A protein step uses
+its explicit `ingredientNames`. An empty match says the step names no ingredient from the list
+and points at the full one; it never claims the step needs none. Listed amounts are labelled
+**recipe totals**, because the format has no per-step allocation to read.
+
 ## Motion refinement — v348
 
 Onboarding keeps a 250ms directional entrance while the outgoing text clears in 140ms.

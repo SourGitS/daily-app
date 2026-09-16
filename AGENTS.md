@@ -108,6 +108,34 @@ Four main areas plus supporting screens:
   Desktop geometry and saved compact/wide placements remain intact. Settings > Weather is the
   existing details destination; there is no duplicate weather overlay.
 
+## Cooking mode and recipe quantities (v349)
+
+- **The session shell is mounted once.** `kitCookMount()` builds the topbar, progress, full
+  ingredient reference and Prev/Next; `kitCookRenderStep(dir)` patches them. The nav buttons are
+  the same nodes for the whole session, so focus and an in-flight press survive a step change.
+- **Only a real step change animates** (240ms in / 150ms out, ±22px). The retained outgoing page
+  has its ids stripped and is `aria-hidden`, `inert` and untabbable, removed on `animationend`
+  with a timeout fallback; `kitCookSlideSettle()` prevents queued transitions; reduced motion
+  retains nothing, including a preference change mid-transition.
+- **A timer belongs to `kitCookState.timerStep`, not to a duration.** Equal-duration steps no
+  longer share a countdown, browsing away keeps it running with a chip naming its step, and only
+  one timer exists — replacing it needs an explicit confirmation. Ticks patch the clock and ring
+  only. Exit and Finish clear the interval, the slide and the wake lock; a wake lock resolving
+  after the session ended is released via the `session` token. Finish is still the only writer of
+  `lastCooked`, and the session owns its protein and servings.
+- **`kitQty*` replaces `parseFloat` for recipe amounts.** `kitQtyValue` / `kitQtyParse` /
+  `kitQtyScale` / `kitQtyFormat` / `kitQtyStore` handle numbers, decimals, `1/2`, `1 1/2`, `½`,
+  ranges and written amounts, and refuse to read an expression partially. `kitSaveForm`,
+  `kitParseImport` and `kitRecipeToExport` now store through `kitQtyStore`, so opening and saving
+  a recipe no longer rewrites "1/2" as 1. `scaledNum` stays exact for shopping; `display` is the
+  formatted string; `amountUnscaled` marks what could not be adjusted. **Do not reroute this
+  through `kitTrim()`** — that serves Food/Home/Stats figures and keeps its own rounding.
+- **`kitStepIngredients()` will not match on a shared or generic word.** See `CLAUDE.md` for the
+  rule and the traps; `tests/cooking-mode.test.cjs` covers all of the above.
+- `tests/harness.cjs` `extract()` now skips regex literals — it used to read the `"` inside
+  `kitEsc`'s `.replace(/"/g, …)` as a string and swallow the rest of the file. `extractConst()`
+  pulls a real top-level `const` so fixtures use the app's own tables.
+
 ## Onboarding, Food's hero and the Accounts canvas (v347)
 
 **Motion refinement (v348):** onboarding page styling now follows each `.ob-page`'s own

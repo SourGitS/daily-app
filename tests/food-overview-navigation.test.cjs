@@ -40,7 +40,9 @@ function fixture(){
     nutRenderFoods:()=>renders.push('library'),nutRenderRecipes:()=>renders.push('review'),
     kitFindOption:(r,id)=>r.proteinOptions.find(x=>x.id===id),kitDefaultOption:r=>r.proteinOptions[0],
     kitRenderDetail:(id,el)=>{el.recipeId=id;},
-    kitCookState:{tickId:null,wakeLock:null,recipeId:null},kitCookRender:()=>renders.push('cook'),navigator:{},clearInterval(){},
+    kitCookState:{tickId:null,wakeLock:null,recipeId:null,session:0,timerStep:null},
+    kitCookMount:()=>renders.push('cook'),kitCookRender:()=>renders.push('cook'),
+    kitCookTimerClear(){},kitCookSlideSettle(){},navigator:{},clearInterval(){},
     kitResolve:(r,id)=>({variant:true,optionId:id||'chicken'}),showToast(){},kitCookChooseProtein(){},
     setTimeout:fn=>fn(),nutMeal:'snacks'
   });

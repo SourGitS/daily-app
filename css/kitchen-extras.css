@@ -1653,6 +1653,7 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
 
 /* ── Cook mode ── */
 .kit-cook-protein{display:block;font-size:11px;font-weight:700;color:var(--accent-text);margin-top:2px;overflow-wrap:anywhere}
+.kit-cook-scale-note{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--muted);max-width:56ch}
 .kit-cook-step-who{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--accent-text);margin-bottom:6px}
 .kit-cook-temp{margin-top:12px;padding:10px 13px;border-radius:11px;background:var(--warn-bg);border:1px solid var(--warn-border);
   color:var(--warn-dark);font-size:14px;font-weight:650}
@@ -1686,62 +1687,120 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
 .kit-f-save-btn:active{opacity:0.88}
 .kit-fi-unit-sel{width:72px;flex-shrink:0;height:40px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:13px;padding:0 4px;-webkit-appearance:none;appearance:none}
 
-/* ── Cooking mode overlay ─────────────────────────────────────── */
+/* ── Cooking mode overlay ───────────────────────────────────────
+   Read standing back from a counter with messy hands, so the CURRENT INSTRUCTION is the
+   centre of attention and everything else is reference. The shell (topbar, progress, the
+   full ingredient list and Prev/Next) is built once per session by kitCookMount() and only
+   patched afterwards — it never moves, never rebuilds and never loses its scroll position.
+   ONE scroll region at phone and tablet widths: the old layout had three (a 24vh list, a
+   20vh list and the body between them), which is what made a long recipe feel like a set of
+   competing little windows. */
 #kit-cook-overlay{display:none}
-.kit-cook-topbar{display:flex;align-items:center;justify-content:space-between;padding:8px 16px 12px;flex-shrink:0}
-.kit-cook-exit{height:36px;padding:0 14px;background:rgba(255,255,255,.08);border:none;border-radius:999px;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.kit-cook-recipe-name{font-size:14px;font-weight:600;color:var(--muted);text-align:center;flex:1;padding:0 8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.kit-cook-progress-bar{height:4px;background:var(--border);margin:0 16px 6px;border-radius:var(--radius-bar);flex-shrink:0}
+.kit-cook-topbar{display:flex;align-items:flex-start;gap:10px;padding:2px 16px 10px;flex-shrink:0}
+.kit-cook-exit{height:36px;padding:0 14px;flex-shrink:0;background:rgba(127,127,127,.16);border:none;border-radius:999px;
+  color:var(--text);font-size:13px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kit-cook-topbar-end{width:62px;flex-shrink:0}
+.kit-cook-head{flex:1;min-width:0;text-align:center}
+/* A long recipe name wraps to two lines and then truncates. It must never push the exit
+   button or the nav row off the screen. */
+.kit-cook-recipe-name{font-size:14px;font-weight:700;color:var(--text);line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.kit-cook-head-meta{display:flex;flex-wrap:wrap;gap:4px 10px;justify-content:center;margin-top:2px}
+.kit-cook-protein{font-size:11px;font-weight:700;color:var(--accent-text);overflow-wrap:anywhere}
+.kit-cook-head-serv{font-size:11px;font-weight:600;color:var(--muted)}
+.kit-cook-progress-bar{height:4px;background:var(--border);margin:0 16px;border-radius:var(--radius-bar);flex-shrink:0}
 .kit-cook-progress-fill{height:100%;background:var(--accent);border-radius:var(--radius-bar);transition:width .35s ease}
-.kit-cook-step-label{text-align:center;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:16px;flex-shrink:0}
-/* Holds the ingredients-all panel, the step body, and the ingredients-for-this-step panel.
-   Column (stacked) on mobile — `order` puts the step first, then what THIS step needs, then
-   the full list, since that's the priority order when space is scarce. Row (side-by-side) on
-   desktop, `order` reset to DOM order (all | step | for-this-step) — see the min-width:1024px
-   block below. */
-.kit-cook-content{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
-.kit-cook-body{flex:1;overflow-y:auto;padding:0 24px 16px;display:flex;flex-direction:column;align-items:center;gap:24px;min-height:0;order:1}
-.kit-cook-step-text{font-size:20px;font-weight:600;line-height:1.5;color:var(--text);text-align:center;max-width:480px}
-/* Both stay on screen through every step — the point was to never have to leave the method
-   view to check a measurement. Real cards now (background/border/shadow/radius from the app's
-   shared .card, see CLAUDE.md's card vocabulary note) rather than a flush hairline-bordered
-   strip, so they read as distinct surfaces instead of a leftover panel bolted to the edge.
-   .card sets its own padding for a normal single-block card; overridden to 0 here because
-   THIS card is a header (fixed) + a separately scrolling row list (.kit-cook-ing-rows) — the
-   header must stay in view above a capped max-height even when the list itself scrolls. */
-.kit-cook-ing-panel.card{flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;padding:0;margin:0 16px 12px}
-.kit-cook-ing-panel .card-hd{padding:14px 16px 0}
-.kit-cook-ing-rows{overflow-y:auto;padding:8px 16px 14px}
-.kit-cook-ing-all{max-height:24vh;order:3}
-.kit-cook-ing-step{max-height:20vh;order:2}
-.kit-cook-ing-servings{font-size:12px;font-weight:700;color:var(--muted)}
-.kit-cook-ing-row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13.5px;color:var(--text)}
-.kit-cook-ing-row:last-child{border-bottom:none}
-.kit-cook-ing-amt{color:var(--accent-text);font-weight:700;flex-shrink:0;text-align:right;font-family:'Space Grotesk',sans-serif}
-/* This step's ingredients are the ones actually in play right now — carry a touch more weight
-   than the reference list so the two cards don't read as duplicates of each other. */
-.kit-cook-ing-step .kit-cook-ing-row{font-weight:700}
-.kit-cook-ing-empty{font-size:13px;color:var(--muted);font-style:italic}
-@media(min-width:1024px){
-  .kit-cook-content{flex-direction:row;align-items:stretch}
-  .kit-cook-ing-panel.card{max-height:none;width:270px;margin:20px}
-  .kit-cook-ing-all{order:1}
-  .kit-cook-body{order:2}
-  .kit-cook-ing-step{order:3}
+@media (prefers-reduced-motion:reduce){ .kit-cook-progress-fill{transition:none} }
+.kit-cook-main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:14px 16px 20px}
+.kit-cook-col{min-width:0}
+.kit-cook-stepbar{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:26px;margin-bottom:10px}
+.kit-cook-step-label{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2)}
+/* A timer running on a step you have browsed away from stays visible and reachable. */
+.kit-cook-chip{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:999px;
+  padding:4px 11px;font-size:11.5px;font-weight:700;font-family:var(--font-num);cursor:pointer;
+  -webkit-tap-highlight-color:transparent;white-space:nowrap}
+/* Clips the HORIZONTAL travel of a step change and nothing else: no fixed height, no vertical
+   clipping, so a long step simply makes the page longer. */
+.kit-cook-stage{position:relative;overflow-x:clip}
+.kit-cook-page{display:flex;flex-direction:column;gap:18px}
+.kit-cook-page-out{position:absolute;left:0;right:0;top:0;pointer-events:none}
+@keyframes kit-cook-enter-fwd{from{opacity:0;transform:translateX(22px)}to{opacity:1;transform:translateX(0)}}
+@keyframes kit-cook-enter-back{from{opacity:0;transform:translateX(-22px)}to{opacity:1;transform:translateX(0)}}
+@keyframes kit-cook-leave-fwd{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(-16px)}}
+@keyframes kit-cook-leave-back{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(16px)}}
+.kit-cook-enter-fwd{animation:kit-cook-enter-fwd 240ms cubic-bezier(.22,.61,.36,1) both}
+.kit-cook-enter-back{animation:kit-cook-enter-back 240ms cubic-bezier(.22,.61,.36,1) both}
+.kit-cook-leave-fwd{animation:kit-cook-leave-fwd 150ms ease-out both}
+.kit-cook-leave-back{animation:kit-cook-leave-back 150ms ease-out both}
+/* Belt and braces: kitCookRenderStep already refuses to retain or animate anything when
+   reduced motion is set, so a step simply replaces the one before it. */
+@media (prefers-reduced-motion:reduce){
+  .kit-cook-enter-fwd,.kit-cook-enter-back,.kit-cook-leave-fwd,.kit-cook-leave-back{animation:none}
 }
+/* The instruction, left-aligned at a reading measure. It was a centred 20px block capped at
+   480px, which turns a four-line method step into a ragged poster. */
+.kit-cook-instruction{max-width:62ch}
+.kit-cook-instruction-p{margin:0 0 12px;font-size:19px;font-weight:600;line-height:1.55;color:var(--text);overflow-wrap:anywhere}
+.kit-cook-instruction-p:last-child{margin-bottom:0}
+.kit-cook-step-who{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--accent-text);margin-bottom:8px}
+.kit-cook-temp{padding:11px 14px;border-radius:12px;background:var(--warn-bg);border:1px solid var(--warn-border);
+  color:var(--warn-text);font-size:13.5px;font-weight:600;line-height:1.45;max-width:62ch}
+.kit-cook-timer{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.kit-cook-timer:empty{display:none}
 .kit-cook-timer-ring{position:relative;width:80px;height:80px;display:inline-flex;align-items:center;justify-content:center}
 .kit-cook-timer-ring svg{position:absolute;inset:0;width:80px;height:80px}
-.kit-cook-timer-time{font-size:18px;font-weight:700;font-family:'Space Grotesk',sans-serif;color:var(--text);position:relative;z-index:1}
+.kit-cook-timer-time{font-size:18px;font-weight:700;font-family:var(--font-num);color:var(--text);position:relative;z-index:1}
 .kit-cook-timer-time.done{color:var(--danger)}
-.kit-cook-timer-btns{display:flex;gap:8px;margin-top:10px}
-.kit-cook-tbtn{height:36px;padding:0 16px;border-radius:999px;border:1.5px solid var(--accent);background:transparent;color:var(--accent-text);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kit-cook-timer-btns{display:flex;flex-wrap:wrap;gap:8px}
+.kit-cook-tbtn{height:36px;padding:0 16px;border-radius:999px;border:1.5px solid var(--accent);background:transparent;
+  color:var(--accent-text);font-size:13px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kit-cook-tbtn.secondary{border-color:var(--border);color:var(--muted)}
-.kit-cook-nav{display:flex;gap:10px;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));flex-shrink:0;border-top:1px solid var(--border)}
-.kit-cook-nav-btn{flex:1;padding:14px;border-radius:12px;border:1.5px solid var(--border);background:transparent;color:var(--text);font-size:15px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kit-cook-tbtn:disabled{opacity:.4;cursor:default}
+/* A finished timer is a finished timer — not a claim that the food is cooked. */
+.kit-cook-timer-done{font-size:12.5px;font-weight:600;line-height:1.45;color:var(--warn-text);max-width:52ch}
+.kit-cook-timer-note{font-size:12px;color:var(--muted);line-height:1.45}
+.kit-cook-ing-panel.card{padding:0;margin:0;display:flex;flex-direction:column;overflow:hidden}
+.kit-cook-ing-panel .card-hd{padding:14px 16px 0}
+.kit-cook-ing-rows{padding:8px 16px 14px}
+.kit-cook-ing-servings{font-size:11px;font-weight:700;color:var(--muted)}
+.kit-cook-ing-row{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13.5px;color:var(--text)}
+.kit-cook-ing-row:last-child{border-bottom:none}
+.kit-cook-ing-name{min-width:0;overflow-wrap:anywhere}
+.kit-cook-ing-amt{color:var(--accent-text);font-weight:700;flex-shrink:0;text-align:right;font-family:var(--font-num)}
+/* An amount that could not be scaled says so rather than looking adjusted. */
+.kit-cook-ing-flag{display:block;font-family:var(--font-ui);font-size:9.5px;font-weight:700;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--muted)}
+.kit-cook-ing-step .kit-cook-ing-row{font-weight:700}
+.kit-cook-ing-note{margin:9px 0 0;font-size:11.5px;line-height:1.45;color:var(--muted)}
+.kit-cook-ing-empty{margin:0;font-size:13px;line-height:1.5;color:var(--muted)}
+.kit-cook-aside{margin-top:18px;min-width:0}
+.kit-cook-nav{display:flex;gap:10px;padding:12px 16px 14px;flex-shrink:0;border-top:1px solid var(--border)}
+.kit-cook-nav-btn{flex:1;padding:14px;border-radius:12px;border:1.5px solid var(--border);background:transparent;
+  color:var(--text);font-size:15px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kit-cook-nav-btn:disabled{opacity:0.35;cursor:default}
 .kit-cook-nav-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
 .kit-cook-nav-btn.finish{background:var(--positive);color:#fff;border-color:var(--positive)}
-#kit-cook-timer{display:flex;flex-direction:column;align-items:center;gap:4px}
+.kit-cook-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+/* Desktop: the width carries the instruction AND a standing ingredient reference, rather than
+   stretching one column across the monitor. The instruction keeps its own reading measure, so
+   the extra room becomes the aside, not a longer line. */
+@media(min-width:1024px){
+  .kit-cook-topbar{padding:4px 28px 12px;max-width:1200px;margin:0 auto;width:100%}
+  .kit-cook-topbar-end{width:74px}
+  .kit-cook-recipe-name{font-size:16px}
+  .kit-cook-progress-bar{margin:0 auto;max-width:1144px;width:100%}
+  .kit-cook-main{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:28px;align-items:start;
+    padding:20px 28px 28px;max-width:1200px;margin:0 auto;width:100%}
+  .kit-cook-instruction-p{font-size:21px}
+  .kit-cook-stepbar{margin-bottom:14px}
+  /* The reference list stays put while the method scrolls beside it. */
+  .kit-cook-aside{margin-top:0;position:sticky;top:0}
+  .kit-cook-aside .kit-cook-ing-panel.card{max-height:72vh}
+  .kit-cook-aside .kit-cook-ing-rows{overflow-y:auto}
+  .kit-cook-nav{padding:14px 28px 18px;max-width:1200px;margin:0 auto;width:100%;justify-content:space-between}
+  .kit-cook-nav-btn{flex:0 1 260px}
+}
+
 
 /* ── Toast ──────────────────────────────────────────────────────── */
 .kit-toast{position:fixed;bottom:calc(90px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);background:rgba(30,30,30,.95);color:#fff;padding:11px 22px;border-radius:999px;font-size:14px;font-weight:600;z-index:300;white-space:nowrap;opacity:0;transition:opacity .25s;pointer-events:none;display:none}
@@ -1908,23 +1967,26 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
      standing back from the counter. The stacked mobile column does not fit in 390px, so it goes
      side-by-side like the desktop layout: step text in the middle, ingredients beside it. Next
      and Previous keep full height — they are the controls most likely to be hit with a knuckle. */
-  .kit-cook-content{flex-direction:row;align-items:stretch;gap:10px}
-  .kit-cook-body{order:2;flex:1;min-width:0;padding:0 12px 8px;gap:10px;justify-content:flex-start}
-  .kit-cook-step-text{font-size:16px;line-height:1.4;max-width:none}
-  .kit-cook-ing-panel.card{width:230px;flex-shrink:0;max-height:none;margin:0}
-  .kit-cook-ing-all{order:1;margin-left:12px !important}
-  .kit-cook-ing-step{order:3;margin-right:12px !important}
+  .kit-cook-topbar{padding:2px 12px 6px}
+  .kit-cook-exit{height:32px}
+  .kit-cook-recipe-name{-webkit-line-clamp:1}
+  .kit-cook-progress-bar{margin:0 12px}
+  /* Two columns on a short landscape screen for the same reason desktop has them: stacked,
+     the instruction and the reference list would each get a sliver of a 430px-tall viewport. */
+  .kit-cook-main{display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:12px;align-items:start;padding:8px 12px 12px}
+  .kit-cook-page{gap:10px}
+  .kit-cook-instruction-p{font-size:16px;line-height:1.45;margin-bottom:8px}
+  .kit-cook-stepbar{margin-bottom:6px;min-height:0}
+  .kit-cook-aside{margin-top:0}
   .kit-cook-ing-rows{padding:6px 12px 10px}
   .kit-cook-ing-row{font-size:12.5px;padding:5px 0}
   .kit-cook-ing-panel .card-hd{padding:10px 12px 0}
-  .kit-cook-topbar{padding:5px 12px 6px}
-  .kit-cook-exit{height:32px}
-  .kit-cook-step-label{margin-bottom:6px;font-size:11px}
-  .kit-cook-progress-bar{margin:0 12px 5px}
   .kit-cook-timer-ring,.kit-cook-timer-ring svg{width:60px;height:60px}
   .kit-cook-timer-time{font-size:15px}
   .kit-cook-tbtn{height:32px;padding:0 13px}
-  .kit-cook-nav{padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));gap:8px}
+  /* No env(safe-area-inset-bottom) here: #kit-cook-overlay already reserves it in the inline
+     style kitStartCooking writes, and adding it again double-counted the notch inset. */
+  .kit-cook-nav{padding:8px 12px 10px;gap:8px}
   .kit-cook-nav-btn{padding:12px;font-size:15px}
 
   /* ── Shared overlay / detail-screen shell ──

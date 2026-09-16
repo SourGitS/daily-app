@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
-const { extract } = require('./harness.cjs');
+const { extract, extractConst } = require('./harness.cjs');
 
 const source = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
 const nutritionSource = fs.readFileSync(path.join(__dirname, '../js/nutrition.js'), 'utf8');
@@ -56,9 +56,11 @@ function context(recipes = []) {
   });
   const names = ['kitOptionsOf', 'kitFindOption', 'kitDefaultOption', 'kitOptionsProblem',
     'kitNum', 'kitIngCopy', 'kitTrim', 'kitIsProteinStep', 'kitStepText', 'kitStepTimer',
+    'kitQtyValue', 'kitQtyParse', 'kitQtyScale', 'kitQtyFormat', 'kitQtyText', 'kitQtyResolve',
     'kitResolve', 'kitShopCountLeft', 'kitCardEmoji', 'kitEsc'];
   const overviewNames = [...source.matchAll(/^function (foodOverview\w*|foodRenderOverview)\(/gm)].map(m => m[1]);
-  vm.runInContext(names.concat(overviewNames).map(extract).join('\n') + '\n' +
+  const tables = ['KIT_VULGAR_FRACTIONS', 'KIT_QTY_GLYPHS', 'KIT_QTY_EPS'].map(extractConst).join('\n');
+  vm.runInContext(tables + '\n' + names.concat(overviewNames).map(extract).join('\n') + '\n' +
     ['nutNum', 'nutRound', 'nutEntries', 'nutDaySummary', 'nutRecipeState'].map(nutrition).join('\n'), c);
   c.calls = calls;
   c.writes = writes;
