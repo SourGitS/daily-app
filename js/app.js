@@ -1694,6 +1694,7 @@ function applyDayColour(){
   const rtBar = document.getElementById('rt-bar');
   const hex = currentAccentHex();
   applyAccent(hex);
+  renderAccentCurrent();
   if(hero){ hero.style.background=''; hero.style.boxShadow=''; }
   if(rtBar) rtBar.style.boxShadow = mode!=='static' ? ('0 8px 24px rgba('+hexToRgb(hex)+',.30)') : '';
   // The Budget period tiles and the Finance picture hero take their accent from
@@ -1740,10 +1741,10 @@ function renderDayColorPickers(){
     const cur=restColor()||DEFAULT_ACCENT;
     const curLc=String(cur).toLowerCase();
     const isPreset=ACCENT_PRESETS.some(p=>p.hex.toLowerCase()===curLc);
-    wrap.innerHTML=
+    wrap.innerHTML=accentCurrentHTML('app')+
       '<div class="accent-preset-row">'+
         ACCENT_PRESETS.map(p=>
-          '<button class="accent-preset'+(p.hex.toLowerCase()===curLc?' active':'')+'" '+
+          '<button class="accent-preset'+(accentMode()==='static'&&p.hex.toLowerCase()===curLc?' active':'')+'" '+
             'onclick="setStaticAccent(\''+p.hex+'\');renderDayColorPickers()" aria-label="'+p.name+' accent">'+
             '<span class="accent-preset-dot" style="background:'+p.hex+'"></span>'+
             '<span class="accent-preset-name">'+p.name+'</span>'+
@@ -1751,19 +1752,15 @@ function renderDayColorPickers(){
       '</div>'+
       '<div style="display:flex;align-items:center;gap:14px;padding:10px 0 4px">' +
         '<label style="font-size:14px;color:var(--text);font-weight:500;flex:1">Custom colour'+
-          (isPreset?'':' <span style="font-size:12px;color:var(--accent-text);font-weight:700">· in use</span>')+'</label>' +
-        '<input type="color" id="static-accent-input" value="'+cur+'" ' +
-          'style="width:44px;height:44px;border:none;border-radius:10px;cursor:pointer;background:none;padding:0" ' +
-          'oninput="setStaticAccent(this.value)" ' +
-          'onchange="setStaticAccent(this.value);renderDayColorPickers()">' +
+          (accentMode()!=='static'||isPreset?'':' <span style="font-size:12px;color:var(--accent-text);font-weight:700">· in use</span>')+'</label>' +
+        '<button type="button" id="static-accent-open" class="stg-btn" onclick="openAccentPicker()">Choose colour…</button>' +
       '</div>' +
-      '<p style="font-size:12px;color:var(--muted);margin:8px 0 0;line-height:1.4">This colour is used as the app accent everywhere. Enable Dynamic day colours above to set a colour per training day.</p>';
+      '<p class="stg-help">Presets and favourites use a fixed colour. Custom colours can be previewed before you apply them.</p>';
     const favs=loadAccentFavourites();
     wrap.innerHTML +=
       '<div style="margin-top:14px">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
           '<span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px">Favourites</span>'+
-          '<button onclick="saveCurrentAccentAsFavourite()" style="font-size:12px;font-weight:700;color:var(--accent-text);background:none;border:none;cursor:pointer;padding:0">+ Save current colour</button>'+
         '</div>'+
         (favs.length
           ? '<div class="fav-list">'+favs.filter(h=>/^#[0-9a-fA-F]{6}$/.test(h)).map(hex=>
@@ -1772,11 +1769,12 @@ function renderDayColorPickers(){
                 '<div class="fav-face" role="button" tabindex="0" onclick="favRowActivate(this,\''+hex+'\')" aria-label="Use '+hex+' as accent">'+
                   '<span class="fav-dot" style="background:'+hex+'"></span>'+
                   '<span class="fav-hex">'+hex.toUpperCase()+'</span>'+
-                  (hex.toLowerCase()===curLc?'<span class="fav-inuse">In use</span>':'')+
+                  (accentMode()==='static'&&hex.toLowerCase()===curLc?'<span class="fav-inuse">In use</span>':'')+
                 '</div>'+
               '</div>').join('')+'</div>'
           : '<p style="font-size:12px;color:var(--muted)">No favourites saved yet.</p>')+
       '</div>';
+    renderAccentCurrent();
     return;
   }
 
@@ -1801,19 +1799,97 @@ function setStaticAccent(hex){
   const m=loadDayColors();
   m[REST_COLOR_KEY]=hex;
   saveDayColors(m);
-  applyDayColour();
+  if(accentMode()!=='static') setAccentMode('static');
+  else applyDayColour();
+}
+// Snapshot the displayed colour, not the dormant fixed preference beneath Weather mode.
+function accentCurrentHTML(source){
+  return '<div class="stg-accent-current" data-accent-current="'+source+'">'+
+    '<div class="stg-row"><span class="stg-row-txt"><span class="stg-row-label" data-accent-label></span><code data-accent-hex></code></span>'+
+      '<span class="stg-accent-swatch" data-accent-swatch aria-hidden="true"></span></div>'+
+    '<div class="stg-actions"><button type="button" class="stg-btn" data-accent-save onclick="saveCurrentAccentAsFavourite(this.dataset.hex)">Save to favourites</button>'+
+      '<button type="button" class="stg-btn" data-accent-use onclick="setStaticAccent(this.dataset.hex);renderDayColorPickers()">Use as fixed colour</button></div>'+
+    '<p class="stg-help">Saving a favourite keeps your current colour mode.</p></div>';
+}
+function renderAccentCurrent(){
+  document.querySelectorAll('[data-accent-current]').forEach(el=>{
+    const weather=el.dataset.accentCurrent==='weather';
+    const mode=accentMode(), scene=weatherAppearanceScene();
+    el.hidden=weather&&!scene;
+    if(el.hidden) return;
+    const hex=weather?weatherAccentHex():currentAccentHex();
+    if(!/^#[0-9a-fA-F]{6}$/.test(hex||'')) return;
+    const followsWeather=weather||mode==='weather';
+    el.querySelector('[data-accent-label]').textContent=followsWeather
+      ? (scene?'Weather colour · '+scene.replace(/-/g,' '):'Current colour · weather fallback')
+      : 'Current '+(mode==='day'?'training':'fixed')+' colour';
+    el.querySelector('[data-accent-hex]').textContent=hex.toUpperCase();
+    el.querySelector('[data-accent-swatch]').style.background=hex;
+    el.querySelector('[data-accent-save]').dataset.hex=hex;
+    const use=el.querySelector('[data-accent-use]');
+    use.dataset.hex=hex; use.hidden=!weather&&mode==='static';
+  });
+}
+let _accentPickerHex=null;
+function openAccentPicker(){
+  const dialog=document.getElementById('accent-picker-dialog'); if(!dialog||dialog.open) return;
+  previewAccentPicker(currentAccentHex());
+  dialog.showModal();
+}
+function previewAccentPicker(value){
+  const raw=String(value||'').trim();
+  const hex=/^#?[0-9a-fA-F]{6}$/.test(raw)?'#'+raw.replace('#','').toLowerCase():null;
+  _accentPickerHex=hex;
+  const apply=document.getElementById('accent-picker-apply');
+  if(apply) apply.disabled=!hex;
+  const field=document.getElementById('accent-picker-hex');
+  if(field) field.setAttribute('aria-invalid',String(!hex));
+  const status=document.getElementById('accent-picker-status');
+  if(status) status.textContent=hex?'Preview only — your app colour has not changed.':'Enter a six-digit hex colour, such as #533B7E.';
+  if(!hex) return;
+  const input=document.getElementById('static-accent-input');
+  if(input&&input.value!==hex) input.value=hex;
+  if(field&&document.activeElement!==field) field.value=hex.toUpperCase();
+  const sample=document.getElementById('accent-picker-preview');
+  if(sample){
+    const stops=heroStopsFor(hex);
+    sample.style.background='linear-gradient(135deg,'+stops.from+','+stops.to+')';
+    sample.querySelector('code').textContent=hex.toUpperCase();
+  }
+}
+function closeAccentPicker(){
+  _accentPickerHex=null;
+  const dialog=document.getElementById('accent-picker-dialog');
+  if(dialog&&dialog.open){
+    dialog.close();
+    const opener=document.getElementById('static-accent-open');
+    if(opener) opener.focus({preventScroll:true});
+  }
+}
+function applyAccentPicker(){
+  const hex=_accentPickerHex;
+  if(!hex) return;
+  closeAccentPicker();
+  setStaticAccent(hex);
+  renderDayColorPickers();
+  const opener=document.getElementById('static-accent-open');
+  if(opener) opener.focus({preventScroll:true});
+  showToast('Fixed colour applied');
 }
 // A small bank of accent colours the user liked, so they can compare candidates before
-// committing to a new default. Static-mode only (see renderDayColorPickers). Same list-blob
+// committing to a new default. Shared by Fixed and Weather. Same list-blob
 // storage + Firebase-sync pattern as every other small preference list.
 function loadAccentFavourites(){ return lsLoad('daily_accent_favourites', [], Array.isArray); }
 function saveAccentFavourites(list){ lsSave('daily_accent_favourites', list, 'accentFavourites'); }
-function saveCurrentAccentAsFavourite(){
-  const hex=(restColor()||DEFAULT_ACCENT).toLowerCase();
+function saveCurrentAccentAsFavourite(value){
+  const hex=String(value||currentAccentHex()||DEFAULT_ACCENT).toLowerCase();
+  if(!/^#[0-9a-f]{6}$/.test(hex)) return;
   const favs=loadAccentFavourites();
-  if(!favs.includes(hex)) favs.push(hex);
+  if(favs.some(h=>String(h).toLowerCase()===hex)){ showToast('Colour already in favourites'); return; }
+  favs.push(hex);
   saveAccentFavourites(favs);
   renderDayColorPickers();
+  showToast('Colour saved to favourites');
 }
 function removeAccentFavourite(hex){
   saveAccentFavourites(loadAccentFavourites().filter(h=>h!==hex));
@@ -6113,7 +6189,7 @@ const SETTINGS_SEARCH=[
   {s:'habits',  label:'Daily habits',       sub:'Habits',    a:'stg-card-habits', keys:'checklist streak add remove reorder routine'},
   {s:'appearance', label:'Dark mode',       sub:'Theme',     a:'stg-card-theme', keys:'light night theme black white appearance'},
   {s:'appearance', label:'App colour',      sub:'Theme',     a:'stg-card-theme', keys:'accent tint fixed training weather colour brand hue'},
-  {s:'appearance', label:'Training day colours', sub:'Day colours', a:'stg-card-daycolours', keys:'per day colour push pull legs rest custom picker'},
+  {s:'appearance', label:'Colours & favourites', sub:'App colours', a:'stg-card-daycolours', keys:'training per day colour push pull legs rest fixed weather favourite custom picker hex'},
   {s:'weather',    label:'Use my location', sub:'Location',  a:'stg-card-wx-location', keys:'gps coordinates permission city suburb allow forecast region'},
   {s:'weather',    label:'Weather source',  sub:'Right now', a:'stg-card-wx-now', keys:'temperature condition scene stale refresh live reading'},
   {s:'weather',    label:'Clear saved weather', sub:'Danger zone', a:'stg-card-wx-danger', keys:'delete remove coordinates location privacy wipe'},
@@ -20771,6 +20847,7 @@ function renderWeatherSection(){
     '<div class="stg-card" id="stg-card-wx-now">'+
       stgCardHead('cloud','Right now', escText(src.d))+
       '<div class="stg-status'+(app.ok?' ok':'')+'">'+escText(app.reason)+'</div>'+
+      accentCurrentHTML('weather')+
       row('Source','<strong>'+escText(src.t)+'</strong>')+
       row('Condition', c?escText((look&&look[1])||'—'):'—')+
       row('Scene Daily reads', '<code>'+escText(scene)+'</code>')+
@@ -20809,6 +20886,7 @@ function renderWeatherSection(){
         '<button type="button" class="stg-btn danger"'+(!c?' disabled':'')+' onclick="weatherClearSaved()">Clear saved weather &amp; location</button>'+
       '</div>'+
     '</div>';
+  renderAccentCurrent();
 }
 // iOS can suspend timers for hours. Resume, Home entry and reconnection all check now;
 // the visible timer is only a fallback for a page left open. Rendering installs nothing.

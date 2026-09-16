@@ -359,7 +359,9 @@
 // the editor, importer and exporter stop rewriting fractions.
 // v350: preserve protein quantities and shopping contributions; resolve nutrition fractions;
 // stable cooking controls, accessible confirmations and deliberate Finish.
-const CACHE_NAME = 'daily-v350';
+// v351: capture the displayed weather colour in favourites; preview custom colours in a
+// stable dialog, with explicit Apply/Cancel instead of saving on every picker movement.
+const CACHE_NAME = 'daily-v351';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

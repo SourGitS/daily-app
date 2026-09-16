@@ -853,7 +853,7 @@
               <span class="stg-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>
               <div class="stg-card-head-txt">
                 <div class="stg-card-title">Theme &amp; app colour</div>
-                <div class="stg-card-desc">Both apply the moment you pick them &#8212; there is nothing to save here.</div>
+                <div class="stg-card-desc">Theme and colour mode apply immediately. Custom colours have a preview and an Apply button.</div>
               </div>
             </div>
             <div class="stg-row">
@@ -876,8 +876,8 @@
             <div class="stg-card-head">
               <span class="stg-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18 2 2 0 0 0 2-2 2 2 0 0 1 2-2h1.5a3.5 3.5 0 0 0 3.5-3.5C21 7.4 17 3 12 3z"/><circle cx="7.5" cy="12" r="1"/><circle cx="10" cy="8" r="1"/><circle cx="15" cy="8.5" r="1"/></svg></span>
               <div class="stg-card-head-txt">
-                <div class="stg-card-title">Training day colours</div>
-                <div class="stg-card-desc">A colour per training day (and rest days), used for the accent and the day cards.</div>
+                <div class="stg-card-title">Colours &amp; favourites</div>
+                <div class="stg-card-desc">Keep a colour you love, choose a fixed accent, or set colours for your training days.</div>
               </div>
             </div>
             <div id="day-colors-list"></div>
@@ -1399,6 +1399,17 @@
   </div>
   <div id="side-menu-list"></div>
 </aside>
+<dialog id="accent-picker-dialog" class="stg-accent-dialog" aria-labelledby="accent-picker-title" aria-describedby="accent-picker-help" oncancel="event.preventDefault();closeAccentPicker()">
+  <h2 id="accent-picker-title">Choose a colour</h2>
+  <p id="accent-picker-help" class="stg-help">Experiment freely. Apply uses your choice as a fixed colour; Cancel leaves everything unchanged.</p>
+  <div id="accent-picker-preview" class="stg-accent-preview"><strong>Daily, in your colour</strong><code></code></div>
+  <div class="stg-accent-fields">
+    <div class="stg-field"><label for="static-accent-input">Colour picker</label><input type="color" id="static-accent-input" oninput="previewAccentPicker(this.value)" onchange="previewAccentPicker(this.value)"></div>
+    <div class="stg-field"><label for="accent-picker-hex">Hex colour</label><input type="text" id="accent-picker-hex" maxlength="7" spellcheck="false" autocomplete="off" oninput="previewAccentPicker(this.value)" aria-describedby="accent-picker-status"></div>
+  </div>
+  <p id="accent-picker-status" class="stg-help" role="status"></p>
+  <div class="stg-actions"><button type="button" class="stg-btn" onclick="closeAccentPicker()">Cancel</button><button type="button" id="accent-picker-apply" class="stg-btn primary" onclick="applyAccentPicker()">Apply colour</button></div>
+</dialog>
 <div id="kit-cook-overlay"></div>
 <div id="kit-toast" class="kit-toast"></div>
 

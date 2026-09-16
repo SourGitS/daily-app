@@ -1,5 +1,20 @@
 # Daily — Project Reference
 
+## Weather colour capture and custom preview — v351
+
+- Appearance and Weather show the resolved colour's hex and a Save to favourites action.
+  Saving snapshots the displayed colour into the existing `daily_accent_favourites` store;
+  it does not switch modes or save the dormant fixed colour underneath Weather. Stale/sample
+  weather is not represented as a live weather shade. Duplicate favourites are case-insensitive.
+- Use as fixed colour, presets and favourites explicitly select Fixed. Training-day entries
+  survive. The original `DEFAULT_ACCENT` and saved colours are unchanged.
+- The custom colour editor is a native modal `#accent-picker-dialog` outside rebuilt Settings
+  content. Native input/change and hex editing only update its in-memory draft and local preview.
+  Apply saves through the existing colour/mode paths; Cancel/Escape write nothing. Weather/sync
+  repaints must not replace this editor or overwrite its draft. No new storage or sync path.
+- Regression coverage: `tests/appearance-colours.test.cjs`. The green preset replacement is
+  pending confirmation of the user's exact weather-purple hex; do not guess a scene's colour.
+
 ## Cooking correctness and polish — v350
 
 - Protein options were a remaining partial-parse path: main ingredients and extras now pass

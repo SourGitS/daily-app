@@ -108,6 +108,16 @@ Four main areas plus supporting screens:
   Desktop geometry and saved compact/wide placements remain intact. Settings > Weather is the
   existing details destination; there is no duplicate weather overlay.
 
+## Weather colour capture and custom preview (v351)
+
+- Save to favourites snapshots the displayed resolved colour using the existing favourites
+  store, without changing Weather mode. Use as fixed colour is a separate explicit action.
+- The custom picker lives in `#accent-picker-dialog`, outside rebuilt Settings content.
+  Input/change only preview a draft; Apply saves, Cancel/Escape write nothing. Preserve its DOM
+  and draft during weather/sync repaints. No new stores, sync paths or startup defaults.
+- `DEFAULT_ACCENT` and saved green choices are unchanged. Replacing the green preset awaits
+  the user's exact purple; do not pick a weather scene by inference. See appearance-colours tests.
+
 ## Cooking mode and recipe quantities (v349)
 
 **v350 hardening:** all protein ingredient/extras import, export and editor amounts also use

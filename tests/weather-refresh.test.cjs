@@ -418,7 +418,8 @@ function settingsFixture(seed) {
   f.doc.getElementById = id => id === 'settings-weather-section' ? wrap : null;
   Object.assign(f.ctx, { weatherAppearanceStatus: () => ({ ok: false, reason: 'Waiting for weather' }),
     weatherLook: () => ['sun', 'Clear'], weatherScene: () => 'clear-day',
-    weatherPlaceholderScene: () => 'clear-day', escText: value => String(value), stgCardHead: () => '' });
+    weatherPlaceholderScene: () => 'clear-day', escText: value => String(value), stgCardHead: () => '',
+    accentCurrentHTML: () => '', renderAccentCurrent: () => {} });
   vm.runInContext(source.match(/const WEATHER_PERM_LABEL=.*?;/)[0] + '\n' +
     ['weatherAgeLabel', 'weatherSourceLabel', 'renderWeatherSection'].map(extract).join('\n'), f.ctx);
   return { ...f, wrap, coordinates };
