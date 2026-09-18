@@ -20410,6 +20410,12 @@ function weatherPhase(entry){
   const sr=new Date(entry.sunrise).getTime(), ss=new Date(entry.sunset).getTime();
   if(isNaN(sr)||isNaN(ss)) return fallback;
   const now=Date.now(), EDGE=45*60*1000;
+  // The daily forecast can survive a sleep/resume across midnight. Its sun times then belong
+  // to yesterday, and comparing today's afternoon to yesterday's sunset makes the card night
+  // until a network refresh succeeds. A real local solar day is never more than 12 hours from
+  // its midpoint; allow a little provider slack, then use the device clock rather than stale
+  // astronomical data.
+  if(Math.abs(now-(sr+ss)/2)>16*60*60*1000) return weatherClockPhase();
   if(now<sr-EDGE||now>ss+EDGE) return 'night';
   if(Math.abs(now-sr)<=EDGE) return 'dawn';
   if(Math.abs(now-ss)<=EDGE) return 'dusk';

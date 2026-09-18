@@ -368,7 +368,8 @@
 // v354: fix the Year ahead renderer when it reads scheduled recurring expenses.
 // v355: replace the selectable green appearance preset with the confirmed clear-dusk purple.
 // v356: account-backed savings reconciliation; Budget savings remains a plan allocation.
-const CACHE_NAME = 'daily-v356';
+// v357: ignore stale daily solar times when deciding the live weather scene.
+const CACHE_NAME = 'daily-v357';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

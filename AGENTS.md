@@ -71,6 +71,13 @@ Four main areas plus supporting screens:
 
 ## Weather refresh and Home card (v340)
 
+- **Daily solar times must be current before they choose a scene.** `weatherPhase()` may render
+  from cached weather while a request recovers, but sunrise/sunset values whose midpoint is more
+  than 16 hours from now belong to a different forecast day. Fall back to the existing local
+  clock phase in that case; never let yesterday's sunset make a daytime card look like night.
+  Do not change the device-local cache, explicit location rule, provider or freshness policy to
+  solve this presentation problem.
+
 - **One coordinator, one device cache.** `weatherRefresh()` owns sample-city, saved-coordinate,
   retry and explicit current-location requests. `WEATHER_FRESH_MS` remains one hour for both
   refresh eligibility and weather-driven appearance. `daily_weather_cache` stays device-local,

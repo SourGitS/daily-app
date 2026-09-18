@@ -8,6 +8,12 @@ const { extract, copy } = require('./harness.cjs');
 const source = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
 const HOUR = 3600000;
 const START = Date.parse('2026-09-14T02:20:00Z');
+function weatherPhaseAt(now) {
+  class Clock extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } }
+  const ctx = vm.createContext({ Date: Clock });
+  vm.runInContext('function weatherClockPhase(){ return "day"; }\n'+extract('weatherPhase'), ctx);
+  return entry => vm.runInContext('weatherPhase('+JSON.stringify(entry)+')', ctx);
+}
 function cached(overrides = {}) {
   return { lat: -33.8688, lon: 151.2093, city: 'Sydney', tempC: 20, code: 1,
     fetchedAt: START - 10 * 60000, ...overrides };
@@ -389,6 +395,21 @@ test('provider parsing keeps unavailable hourly values null and uses absolute fo
   assert.equal(result.hourly[0].time, START + HOUR);
   assert.equal(result.hourly[0].rainProbability, 0, 'reported zero stays zero');
   for (const key of ['tempC', 'code', 'isDay', 'rainProbability', 'precipitation']) assert.equal(result.hourly[1][key], null, key);
+});
+
+test('stale solar times cannot leave the daytime weather card stuck at night', () => {
+  const now=Date.parse('2026-09-18T03:20:00Z'); // 1:20 pm Sydney
+  const phase=weatherPhaseAt(now);
+  assert.equal(phase({
+    isDay: 0,
+    sunrise: '2026-09-16T20:00:00.000Z',
+    sunset: '2026-09-17T08:00:00.000Z'
+  }), 'day', 'yesterday\'s sunset is not evidence that today is night');
+  assert.equal(phase({
+    isDay: 1,
+    sunrise: '2026-09-17T20:00:00.000Z',
+    sunset: '2026-09-18T08:00:00.000Z'
+  }), 'noon', 'today\'s real solar window still sets the detailed phase');
 });
 
 test('invalid provider data and HTTP failures cannot replace a usable cache', async () => {

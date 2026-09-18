@@ -1,5 +1,15 @@
 # Daily — Project Reference
 
+## Weather scene date-boundary correction — v357
+
+- `weatherPhase()` uses a forecast day's sunrise/sunset only while their solar midpoint is
+  plausibly today. A device waking after midnight can still hold yesterday's daily forecast;
+  comparing a daytime `Date.now()` to that previous sunset used to keep the Home scene at night.
+  When those times are over 16 hours from the current midpoint, Daily falls back to the existing
+  local clock phase instead. The weather cache, location, provider query, freshness policy and
+  weather-derived accent behavior are otherwise unchanged. Regression coverage is in
+  `tests/weather-refresh.test.cjs`.
+
 ## Account-backed savings reconciliation — v356
 
 - A Budget week's `sav_amount` is a **Budget allocation**, not evidence that money entered a
