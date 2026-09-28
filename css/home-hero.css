@@ -1,16 +1,17 @@
 /* One Home surface; the weather keeps its own existing scene inside an inset window. */
 #view-home .home-mega{
   --mega-line:rgba(255,255,255,.18);--mega-muted:rgba(255,255,255,.82);
-  display:grid;grid-template-columns:minmax(0,1fr);isolation:isolate;
+  display:grid;grid-template-columns:minmax(0,1fr);isolation:isolate;overflow:hidden;
   background:linear-gradient(135deg,var(--accent-hero),var(--accent-hero-2));
   border:1px solid rgba(255,255,255,.18);border-radius:var(--radius-hero);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 12px 32px rgba(0,0,0,.1);
   color:#fff;margin:0 0 16px;min-width:0;
 }
 #view-home .home-mega>*{min-width:0}
+#view-home .home-mega-session,#view-home .home-mega-budget,#view-home .home-mega-footer{position:relative;z-index:1}
 #view-home .home-mega .hero-workout-card{
   display:grid;grid-template-columns:minmax(0,1fr) auto;
-  grid-template-areas:"label label" "title action" "meta meta" "prog prog" "track track";
+  grid-template-areas:"label label" "title action" "summary summary" "training training";
   background:none;box-shadow:none;border:0;border-radius:0;padding:22px 22px 20px;margin:0;overflow:visible;
 }
 #view-home .home-mega .hero-workout-card::before{display:none}
@@ -18,16 +19,35 @@
   letter-spacing:.12em;line-height:1.5;margin:0 0 16px;color:var(--mega-muted)}
 #view-home .home-mega .hero-label svg{width:16px;height:16px;flex:none}
 #view-home .home-mega .hero-date{margin-left:auto;letter-spacing:0;text-transform:none;font-size:11px}
-#view-home .home-mega .hero-workout-title{font-size:clamp(27px,7.5vw,34px);line-height:1.12;
+#view-home .home-mega .hero-workout-title{font-size:clamp(27px,7.5vw,34px);line-height:1.16;
   font-weight:800;letter-spacing:-.045em;margin:0;max-width:20ch;overflow-wrap:anywhere;text-wrap:balance}
-#view-home .home-mega .hero-meta{font-size:12px;line-height:1.5;margin:10px 0 16px;color:var(--mega-muted)}
+#view-home .home-mega .home-workout-summary{grid-area:summary;display:grid;
+  grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"meta prog" "track track";gap:10px 12px;margin-top:20px;align-items:baseline}
+#view-home .home-mega .hero-meta{font-size:12px;line-height:1.5;font-weight:500;margin:0;color:var(--mega-muted)}
+#view-home .home-mega .home-workout-summary.has-record{grid-template-areas:"meta meta" "prog prog" "track track"}
+#view-home .home-mega .home-workout-summary.has-record .hero-progress-pct::before{display:none}
+#view-home .home-mega .hero-flat .home-workout-summary{display:block}
 #view-home .home-mega .hero-play-btn{width:46px;height:46px;margin:0 0 0 12px;align-self:center;
   color:var(--accent-hero-2);box-shadow:none;background:#fff}
-#view-home .home-mega .hero-progress-row{margin:0 0 7px}
+#view-home .home-mega .hero-progress-row{margin:0;gap:8px;align-items:baseline;white-space:nowrap}
+#view-home .home-mega .hero-progress-pct::before{content:"·";margin-right:8px;color:rgba(255,255,255,.45)}
 #view-home .home-mega .hero-progress-text,#view-home .home-mega .hero-progress-pct{font-size:11px;color:var(--mega-muted)}
 #view-home .home-mega .hero-progress-track{height:4px;background:rgba(255,255,255,.18)}
-#view-home .home-mega-budget{padding:18px 22px 20px}
-#view-home .home-mega-session+.home-mega-budget{border-top:1px solid var(--mega-line);background:rgba(0,0,0,.07)}
+#view-home .home-training-strip{grid-area:training;min-width:0;margin-top:22px}
+#view-home .home-training-caption{display:flex;justify-content:space-between;gap:12px;
+  font-size:11px;line-height:1.5;color:var(--mega-muted)}
+#view-home .home-training-caption>span:first-child{font-weight:700}
+#view-home .home-training-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));
+  gap:8px;list-style:none;margin:12px 0 0;padding:0}
+#view-home .home-training-day{display:flex;flex-direction:column;align-items:center;gap:7px;min-width:0}
+#view-home .home-training-mark{display:flex;align-items:center;justify-content:center;
+  width:30px;height:30px;max-width:100%;border-radius:9px;background:rgba(255,255,255,.12);color:var(--accent-hero-2)}
+#view-home .home-training-day.trained .home-training-mark{background:#fff}
+#view-home .home-training-day.today .home-training-mark{outline:2px solid #fff;outline-offset:3px}
+#view-home .home-training-label{font-size:10px;line-height:1;color:var(--mega-muted)}
+#view-home .home-mega-budget{padding:20px 22px 12px}
+#view-home .home-mega-session+.home-mega-budget{position:relative}
+#view-home .home-mega-session+.home-mega-budget::before{content:"";position:absolute;top:0;left:22px;right:22px;height:1px;background:var(--mega-line)}
 #view-home .home-mega .budget-snapshot-card{margin:0;padding:0;border:0;border-radius:0;box-shadow:none;background:none}
 #view-home .home-mega .card-hd{margin:0 0 12px;gap:8px;flex-wrap:wrap}
 #view-home .home-mega .card-label{color:var(--mega-muted)}
@@ -37,29 +57,35 @@
 #view-home .home-mega .budget-snap-pill.over{color:#ffd3ce}
 #view-home .home-mega .budget-snap-pill::before{content:'•';margin-right:5px}
 .home-budget-position{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px}
-.home-budget-figure{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0}
-#view-home .home-mega .card-fig{font-family:var(--font-num);font-size:36px;line-height:1.1;color:#fff;letter-spacing:-.04em;overflow-wrap:anywhere;max-width:100%}
+.home-budget-figure{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.7fr);align-items:end;gap:16px;min-width:0}
+.home-budget-value,.home-budget-income{display:flex;flex-direction:column;gap:5px;min-width:0}
+.home-budget-income strong{font:500 22px/1.2 var(--font-num);color:#fff;letter-spacing:-.025em;overflow-wrap:anywhere}
+.home-budget-income span{font-size:11px;line-height:1.5;color:var(--mega-muted)}
+.home-budget-spending{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:20px;font-size:11px;line-height:1.5;color:var(--mega-muted)}
+.home-budget-spending strong{margin-left:3px;color:#fff;font-weight:600;font-variant-numeric:tabular-nums}
+#view-home .home-mega .card-fig{font-family:var(--font-num);font-size:38px;line-height:1.05;color:#fff;letter-spacing:-.04em;overflow-wrap:anywhere;max-width:100%}
 #view-home .home-mega .card-fig.is-negative{color:#ffd3ce}
 #view-home .home-mega .card-fig-u{display:block;margin:0;font-size:11px;line-height:1.5;color:var(--mega-muted)}
-.home-budget-figure small{display:block;font-size:10px}
-.home-budget-link{flex:none;padding:8px 0;min-height:44px;border:0;background:none;color:rgba(255,255,255,.85);font:600 11px var(--font-ui);cursor:pointer}
-#view-home .home-mega .card-bar{margin-top:12px;background:rgba(255,255,255,.17);height:4px}
+.home-budget-link{flex:none;margin-left:auto;padding:10px 0;min-height:44px;border:0;background:none;color:rgba(255,255,255,.85);font:600 11px var(--font-ui);cursor:pointer}
+#view-home .home-mega .card-bar{margin-top:8px;background:rgba(255,255,255,.17);height:4px}
 #view-home .home-mega .card-bar-fill{background:#bce6d0}
 #view-home .home-mega .card-bar-fill.warn{background:#ffda96}
 #view-home .home-mega .card-bar-fill.over{background:#ffb7ae}
 #view-home .home-mega .card-bar-pace{background:#fff}
 #view-home .home-mega .card-cap{font-size:11px;line-height:1.5;color:var(--mega-muted);margin-top:8px}
 #view-home .home-mega .txn-quick{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;max-width:none;
-  min-height:44px;margin:0;padding:10px 16px;border:1px solid rgba(255,255,255,.3);border-radius:10px;
-  color:#fff;background:rgba(255,255,255,.1);font-size:13px;font-weight:700;cursor:pointer}
+  min-height:46px;margin:0;padding:10px 16px;border:0;border-radius:12px;
+  color:var(--accent-hero-2);background:#fff;font-size:13px;font-weight:700;cursor:pointer}
 #view-home .home-mega .txn-quick span{font-size:20px;font-weight:400;line-height:1}
-#view-home .home-mega .txn-quick:hover{background:rgba(255,255,255,.18)}
+#view-home .home-mega .txn-quick:hover{background:rgba(255,255,255,.9)}
 .home-budget-empty{font-size:17px;font-weight:700;line-height:1.4}
 .home-budget-empty span{display:block;font-size:12px;font-weight:400;margin-top:4px;color:var(--mega-muted)}
 #view-home .home-mega button:focus-visible,#view-home .home-mega summary:focus-visible{outline:2px solid #fff;outline-offset:3px}
-#view-home .home-mega-weather{padding:0 5px 5px}
-#view-home .home-mega .home-weather-card{margin:0;padding:14px 16px 0;border:0;
-  border-radius:calc(var(--radius-hero) - 6px);box-shadow:0 1px 0 rgba(255,255,255,.08);
+#view-home .home-mega-weather{position:relative;z-index:0;padding:0 5px 5px}
+.home-weather-window{display:flex;flex-direction:column;flex:1;min-width:0;padding:0;
+  position:relative;isolation:isolate;border-radius:20px;background:none;box-shadow:none}
+#view-home .home-mega .home-weather-card{flex:1;margin:0;padding:14px 16px 0;border:0;
+  border-radius:20px;box-shadow:none;overflow:visible;
   --wfx-fall-n:2.5;--wfx-snow-n:2.5;
   --village-ridge:#31445c;--village-city:#24354b;--village-house:#16263b;
   --village-tree:#0d1b2d;--village-roof:#3e536b;--village-window:#f3c482}
@@ -111,22 +137,24 @@
   #view-home .home-mega{max-width:1600px;margin-left:auto;margin-right:auto;border-radius:28px}
   #view-home .home-mega.has-main.has-weather{grid-template-columns:minmax(0,1.16fr) minmax(0,1fr);grid-template-rows:1fr auto}
   #view-home .home-mega-session{grid-column:1;grid-row:1}
-  #view-home .home-mega-budget{grid-column:1;grid-row:2;padding:22px 32px 28px}
-  #view-home .home-mega .hero-workout-card{height:100%;box-sizing:border-box;min-height:280px;padding:32px;
-    grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr auto auto auto auto;
-    grid-template-areas:"label" "title" "meta" "action" "prog" "track"}
-  #view-home .home-mega .hero-label{margin-bottom:24px;font-size:11px}
-  #view-home .home-mega .hero-workout-title{font-size:clamp(32px,3.4vw,56px);align-self:center;max-width:19ch}
-  #view-home .home-mega .hero-meta{font-size:13px;margin:12px 0 20px}
-  #view-home .home-mega .hero-play-btn{justify-self:start;width:auto;height:auto;min-height:44px;padding:12px 18px;
-    border-radius:10px;margin:0 0 24px;gap:10px;font:700 13px var(--font-ui)}
-  #view-home .home-mega .hero-act-txt{display:inline}
+  #view-home .home-mega-budget{grid-column:1;grid-row:2;padding:24px 32px 18px}
+  #view-home .home-mega-session+.home-mega-budget::before{left:32px;right:32px}
+  #view-home .home-mega .hero-workout-card{height:100%;box-sizing:border-box;min-height:240px;padding:30px 32px 26px;
+    grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto 1fr auto auto;
+    grid-template-areas:"label label" "title action" "summary summary" "training training"}
+  #view-home .home-mega .hero-label{margin-bottom:20px;font-size:11px}
+  #view-home .home-mega .hero-workout-title{font-size:clamp(30px,3vw,46px);align-self:center;max-width:19ch}
+  #view-home .home-mega .hero-meta{font-size:12px;margin:0}
+  #view-home .home-mega .hero-play-btn{width:48px;height:48px;padding:0;border-radius:50%;margin:0 0 0 20px}
+  #view-home .home-mega .hero-act-txt{display:none}
   #view-home .home-mega .hero-progress-text,#view-home .home-mega .hero-progress-pct{font-size:12px}
-  #view-home .home-mega .card-fig{font-size:42px}
+  #view-home .home-mega .card-fig{font-size:44px}
+  .home-budget-income strong{font-size:26px}
+  .home-budget-income span,.home-budget-spending{font-size:12px}
   #view-home .home-mega .card-fig-u{font-size:12px}
   #view-home .home-mega .budget-snap-pill,#view-home .home-mega .card-cap{font-size:12px}
   #view-home .home-mega-weather{grid-column:2;grid-row:1 / span 2;display:flex;padding:8px 8px 8px 0}
-  #view-home .home-mega .home-weather-card{display:flex;flex-direction:column;width:100%;padding:22px 24px 0;border-radius:20px;min-width:0;--wfx-fall-n:5;--wfx-snow-n:4}
+  #view-home .home-mega .home-weather-card{display:flex;flex-direction:column;width:auto;padding:22px 24px 0;border-radius:20px;min-width:0;--wfx-fall-n:5;--wfx-snow-n:4}
   #view-home .home-mega .weather-content{flex:1}
   #view-home .home-mega .weather-heading{margin-bottom:24px}
   #view-home .home-mega .weather-city{font-size:13px}
@@ -162,7 +190,9 @@
 #view-home .home-mega .hero-label .card-hd-ico{color:inherit}
 @media(max-width:359px){
   #view-home .home-mega .hero-label{margin-bottom:12px}
-  #view-home .home-mega .hero-meta{margin:6px 0 10px}
+  #view-home .home-mega .home-workout-summary{column-gap:8px}
+  #view-home .home-mega .hero-progress-row{gap:6px}
+  #view-home .home-mega .hero-progress-pct::before{margin-right:6px}
   #view-home .home-mega-budget{padding-top:14px}
   #view-home .home-mega .card-hd{margin-bottom:6px}
 }
@@ -170,11 +200,11 @@
 #view-home .home-mega .home-budget-add{display:flex;align-items:center;justify-content:center;
   width:46px;height:46px;padding:0;border:0;border-radius:50%;cursor:pointer;
   background:#fff;color:var(--accent-hero-2);box-shadow:none}
-.home-budget-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:4px}
+.home-budget-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:2px}
 #view-home .home-mega .home-budget-footer .card-cap{margin:0;min-width:0}
 .home-budget-empty{min-width:0;overflow-wrap:anywhere}
-#view-home .home-mega-footer{padding:14px 22px 20px;border-top:1px solid var(--mega-line);
-  border-radius:0 0 var(--radius-hero) var(--radius-hero);background:rgba(0,0,0,.07)}
+#view-home .home-mega-footer{padding:10px 16px 16px;
+  border-radius:0 0 var(--radius-hero) var(--radius-hero)}
 @media(min-width:1024px){
   #view-home .home-mega-footer{display:none}
   #view-home .home-mega-budget{border-radius:0 0 0 28px}
@@ -187,15 +217,34 @@
   #view-home .home-mega-footer{padding:12px 18px 16px}
 }
 
-/* The hero casts a shadow INTO the opening; only the lower lip catches light. */
-#view-home .home-mega .home-weather-card::before,
+/* The selected hero colour mediates the join, even when it differs from the weather. */
+#view-home .home-mega .home-weather-card{
+  --wx-surround:var(--accent-hero-2);
+  --wx-ambient-far:var(--accent-hero);--wx-ambient-top:var(--accent-hero-2);--wx-ambient-bottom:var(--accent-hero-2)
+}
+@supports(background:color-mix(in srgb,#000,#fff)){
+  #view-home .home-mega .home-weather-card{
+    --wx-surround:color-mix(in srgb,var(--accent-hero) 30%,var(--accent-hero-2));
+    --wx-ambient-far:color-mix(in srgb,var(--wx-surround) 70%,var(--wx-far));
+    --wx-ambient-top:color-mix(in srgb,var(--wx-surround) 70%,var(--wx-water-top));
+    --wx-ambient-bottom:color-mix(in srgb,var(--wx-surround) 70%,var(--wx-water-bottom))
+  }
+}
+#view-home .home-mega .home-weather-card::before{content:"";position:absolute;
+  inset:-16px -8px -18px -16px;z-index:-1;border-radius:36px;pointer-events:none;
+  background:radial-gradient(ellipse at 30% 30%,var(--wx-ambient-far),transparent 65%),
+    linear-gradient(160deg,var(--wx-ambient-top),var(--wx-ambient-bottom));filter:blur(20px);opacity:.65}
 #view-home .home-mega .home-weather-card::after{content:"";position:absolute;inset:0;
-  border-radius:inherit;pointer-events:none}
-#view-home .home-mega .home-weather-card::before{z-index:1;
-  background:linear-gradient(128deg,rgba(255,255,255,.035),transparent 35%,transparent 70%,rgba(255,255,255,.015));}
-#view-home .home-mega .home-weather-card::after{z-index:3;
-  box-shadow:inset 0 2px 4px rgba(0,0,0,.4),inset 2px 0 4px rgba(0,0,0,.16),
-    inset 0 12px 18px -12px rgba(0,0,0,.7),inset 0 -1px 0 rgba(255,255,255,.04);}
+  z-index:1;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(to bottom,var(--wx-surround),transparent 30px);
+  box-shadow:none}
+#view-home .home-mega .weather-fx{border-radius:inherit;transform:none}
+#view-home .home-mega .weather-legibility{border-radius:inherit}
+#view-home .home-mega .weather-preview{border-radius:0 0 20px 20px}
+@media(min-width:1024px){
+  #view-home .home-mega .home-weather-card::before{inset:-14px -14px -18px -30px;filter:blur(26px);opacity:.7}
+  #view-home .home-mega .home-weather-card::after{background:linear-gradient(to right,var(--wx-surround),transparent 48px)}
+}
 
 /* Daily outlooks inherit the existing weather sky and precipitation above them. */
 #view-home .home-mega .home-weather-card{

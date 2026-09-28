@@ -1,5 +1,28 @@
 # Daily — Project Reference
 
+## Home composition and training days — v360
+
+Workout count, completion and percentage share one summary row. Saved records retain their
+duration, exercise count and working sets; partial and empty states still have no progress bar.
+Budget now separates remaining money from income and groups variable spending against its
+spending goal; the existing pace status, marker and Finance link remain. The shared surface
+has an inset divider rather than a separately shaded budget section. Both workout layouts
+use the round play action; its accessible name still follows the canonical training state.
+Weather blends its edge with the resolved hero colour, so fixed grey, warm accents and weather
+accents all keep a restrained transition. The narrow ambient layer mixes 70% surrounding colour
+with 30% scenery colour; browsers without colour mixing retain the hero-colour fallback.
+The adjoining scene edge fades towards that colour below the text: top on mobile, left on desktop.
+Only the decorative ambient layer is blurred; scenery, readings and controls stay sharp.
+The mobile footer uses a white Add expense button. Desktop retains its compact muted +.
+The wrapper is decorative: weather ids, patching, freshness, scenery and disclosure stay intact.
+Home's workout section also includes a compact rolling seven-day training strip. It reads saved
+sessions, including partial saves, using local calendar dates (today plus the previous six days).
+A filled, ticked square marks a day with at least one saved workout; today has an outline.
+Multiple sessions on one date count as one trained day. Drafts and dates outside the window do
+not count, and an empty day says only that no workout was logged. Each square has an accessible
+full date and saved-workout count. No targets or invented attendance records.
+No data, storage, sync or budget calculation changes. `CACHE_NAME` is `daily-v360`.
+
 ## Desktop Home expense action — v359
 
 At 1024px and wider, the Home hero hides its full-width Add expense footer. The existing

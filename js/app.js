@@ -21623,6 +21623,37 @@ function homeSavingsInner(){
   }
 }
 
+function homeTrainingDays(sessions,today){
+  const counts=new Map();
+  (sessions||[]).forEach(s=>{
+    if(s&&s.date) counts.set(s.date,(counts.get(s.date)||0)+1);
+  });
+  const end=localMidnight(today),days=[];
+  // Calendar arithmetic keeps one cell per local day across daylight-saving changes.
+  for(let i=6;i>=0;i--){
+    const d=new Date(end); d.setDate(end.getDate()-i);
+    const date=dateStr(d);
+    days.push({date,label:d.toLocaleDateString('en-AU',{weekday:'narrow'}),
+      count:counts.get(date)||0,isToday:date===today});
+  }
+  return days;
+}
+function homeTrainingStrip(){
+  const days=homeTrainingDays(S.sessions,getLocalDate());
+  const trained=days.filter(d=>d.count>0).length;
+  return '<div class="home-training-strip">'+
+    '<div class="home-training-caption"><span>Last 7 days</span><span>'+trained+' day'+(trained===1?'':'s')+' trained</span></div>'+
+    '<ol class="home-training-days" role="list" aria-label="Saved workouts over the last seven days">'+
+      days.map(d=>{
+        const label=fmtDate(d.date)+(d.isToday?' (today)':'')+': '+(d.count?d.count+' saved workout'+(d.count===1?'':'s'):'No workout logged');
+        return '<li class="home-training-day'+(d.count?' trained':'')+(d.isToday?' today':'')+'"'+(d.isToday?' aria-current="date"':'')+' title="'+escAttr(label)+'">'+
+          '<span class="home-training-mark" role="img" aria-label="'+escAttr(label)+'">'+
+            (d.count?'<svg width="14" height="14" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4 9l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>':'')+
+          '</span><span class="home-training-label" aria-hidden="true">'+escText(d.label)+'</span></li>';
+      }).join('')+
+    '</ol></div>';
+}
+
 function renderHome(){
   const wrap=document.getElementById('home-content'); if(!wrap) return;
   const name=profileData.name||S.personalInfo.name||'';
@@ -21755,23 +21786,24 @@ function renderHome(){
   // total nobody recorded. .hero-flat closes the gap .hero-meta leaves when nothing follows it.
   const heroProgress=mShowProgress
     ? '<div class="hero-progress-row">'+
-        '<span class="hero-progress-text" id="hero-progress-text">'+mDone+' of '+mExCount+' done</span>'+
+        '<span class="hero-progress-text" id="hero-progress-text">'+mDone+' done</span>'+
         '<span class="hero-progress-pct" id="hero-progress-pct">'+mPct+'%</span>'+
       '</div>'+
       '<div class="hero-progress-track"><div class="hero-progress-fill" id="hero-progress-fill" style="width:'+mPct+'%;"></div></div>'
     : '';
-  // Flat grid children preserve the original top-row round play action on both layouts.
-  // Its accessible name still reflects workout progress even though the visible label is hidden.
+  // Both layouts keep the same action and facts; saved-session metadata stays intact.
   const heroCard=
     '<div class="hero-workout-card'+(mShowProgress?'':' hero-flat')+'">'+
       '<span class="hero-label">'+cardIcon('target')+heroEyebrow+'<span class="hero-date">'+heroDateLabel+'</span></span>'+
       '<p class="hero-workout-title" id="hero-day-name">'+escText(mBrief.dayName)+'</p>'+
-      '<p class="hero-meta" id="hero-meta">'+escText(heroMeta)+'</p>'+
       '<button class="hero-play-btn" aria-label="'+heroActLabel+'" onclick="setView(\'log\')">'+
         '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M5 3.5l10 5.5-10 5.5V3.5z" fill="currentColor"/></svg>'+
         '<span class="hero-act-txt">'+heroActLabel+'</span>'+
       '</button>'+
-      heroProgress+
+      '<div class="home-workout-summary'+(mBrief.state==='saved'?' has-record':'')+'"><p class="hero-meta" id="hero-meta">'+escText(heroMeta)+'</p>'+
+        heroProgress+
+      '</div>'+
+      homeTrainingStrip()+
     '</div>';
   const statsSplit=
     '<div class="card stats-split-card">'+
@@ -21798,24 +21830,25 @@ function renderHome(){
   const budPillTxt2=mBudOver?'Over budget':budOverGoal?'Over spending goal':budBehind?'Spending fast':budHasGoal?'On pace':'';
   const budPillCls2=mBudOver||budOverGoal?' over':budBehind?' warn':'';
   const budCaption=budHasGoal
-    ? fmtMoney(budVarSpent)+' of '+fmtMoney(budGoal)+' spending goal'
-    : fmtMoney(budVarSpent)+' spent'+(mBudIncome>0?' · No spending goal set':' this week');
+    ? '<span>Spending goal</span><span><strong>'+fmtMoney(budVarSpent)+'</strong> / '+fmtMoney(budGoal)+'</span>'
+    : '<span>Variable spending <strong>'+fmtMoney(budVarSpent)+'</strong></span><span>No spending goal set</span>';
   const budgetSnapshot=
     '<div class="budget-snapshot-card">'+
-      cardHeader('wallet','Weekly budget',
-        budPillTxt2?'<span class="budget-snap-pill'+budPillCls2+'" id="home-bud-status">'+budPillTxt2+'</span>':'')+
+      cardHeader('wallet','Weekly budget','')+
       '<div class="home-budget-position">'+
         (mBudIncome>0
-          ? '<div class="home-budget-figure"><span class="card-fig'+(mBudOver?' is-negative':'')+'" id="home-bud-remaining">'+
+          ? '<div class="home-budget-figure"><div class="home-budget-value"><span class="card-fig'+(mBudOver?' is-negative':'')+'" id="home-bud-remaining">'+
             (mBudRem>=0?'':'-')+fmtMoney(Math.abs(Math.round(mBudRem)))+'</span>'+
-            '<span class="card-fig-u" id="home-bud-label">'+(mBudOver?'over budget':'left this week')+
-            '<small>of '+fmtMoney(Math.round(mBudIncome))+' income</small></span></div>'
+            '<span class="card-fig-u" id="home-bud-label">'+(mBudOver?'over budget':'left this week')+'</span></div>'+
+            '<div class="home-budget-income"><strong>'+fmtMoney(Math.round(mBudIncome))+'</strong><span>Income</span></div></div>'
           : '<div class="home-budget-empty">No income recorded<span>Add this week’s income in Finance.</span></div>')+
         '<button type="button" class="home-budget-add" onclick="openTxnModal({date:getLocalDate()})" aria-label="Add expense"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 3v12M3 9h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>'+
       '</div>'+
+      '<div class="home-budget-spending">'+budCaption+'</div>'+
       (budHasGoal?'<div class="card-bar" aria-hidden="true"><div class="card-bar-fill'+budPillCls2+'" id="home-bud-bar" style="width:'+Math.min(budVarPct,100)+'%"></div>'+
         '<div class="card-bar-pace" style="left:calc('+budPacePct+'% - 1px)" title="Today’s point in the week"></div></div>':'')+
-      '<div class="home-budget-footer"><div class="card-cap">'+budCaption+'</div>'+
+      '<div class="home-budget-footer">'+
+        (budPillTxt2?'<span class="budget-snap-pill'+budPillCls2+'" id="home-bud-status">'+budPillTxt2+'</span>':'')+
         '<button type="button" class="home-budget-link" onclick="homeOpenBudgetWeek()" aria-label="Open this week in Finance">View week ↗</button>'+'</div>'+
     '</div>';
 
@@ -22024,7 +22057,8 @@ function buildHomeMegaHero(cards,visible){
   if(!ids.length) return '';
   return '<section class="home-mega'+(ids.includes('weather')?' has-weather':'')+
     (ids.some(id=>id!=='weather')?' has-main':'')+'" aria-label="Your day at a glance">'+
-    ids.map(id=>'<div class="home-mega-'+id+'" data-hero-section="'+id+'">'+cards[id]+'</div>').join('')+
+    ids.map(id=>'<div class="home-mega-'+id+'" data-hero-section="'+id+'">'+
+      (id==='weather'?'<div class="home-weather-window">'+cards[id]+'</div>':cards[id])+'</div>').join('')+
     (ids.includes('budget')?'<div class="home-mega-footer">'+
       '<button type="button" class="txn-quick" onclick="openTxnModal({date:getLocalDate()})"><span aria-hidden="true">＋</span> Add expense</button>'+'</div>':'')+'</section>';
 }
