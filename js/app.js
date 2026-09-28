@@ -20604,6 +20604,7 @@ function renderWeatherInto(entry){
   const card=document.querySelector('.home-weather-card');
   if(card){
     card.dataset.scene=weatherScene(entry.code,entry);
+    applyWeatherLandscape(card);
     applyWeatherIntensity(card,entry.code);
     applyWeatherMotion(card,entry);
   }
@@ -20701,6 +20702,7 @@ function setWeatherPlaceholderScene(){
   const card=document.querySelector('.home-weather-card');
   if(card){
     card.dataset.scene=weatherPlaceholderScene();
+    applyWeatherLandscape(card);
     delete card.dataset.rain;
     delete card.dataset.snow;
   }
@@ -21072,7 +21074,154 @@ function weatherForecastSummary(entry,now=Date.now()){
     (!i||h.time-hours[i-1].time===60*60*1000))) return 'Clear through the next few hours.';
   return '';
 }
-function buildWeatherCard(){
+const _homeWeatherExpanded={mobile:null,desktop:null};
+function homeWeatherToggle(disclosure){
+  if(disclosure.isConnected) _homeWeatherExpanded[disclosure.dataset.mode]=disclosure.open;
+}
+// A calendar date, not elapsed 24-hour periods: DST and reloads keep the day's view stable.
+function weatherDailyView(date=getLocalDate()){
+  const parts=date.split('-').map(Number);
+  const day=Math.floor(Date.UTC(parts[0],parts[1]-1,parts[2])/86400000);
+  return ['harbour','coast','terraces'][((day%3)+3)%3];
+}
+function applyWeatherLandscape(card){
+  const art=card.querySelector('.weather-landscape');
+  if(!art) return;
+  const view=weatherDailyView();
+  if(art.dataset.view===view) return;
+  art.dataset.view=view;
+  art.innerHTML=weatherLandscapeSvg(view);
+}
+function weatherSceneryWindows(x,y,cols,rows,dx=10,dy=13){
+  let dark='',light='';
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+    const tile='M'+(x+c*dx)+' '+(y+r*dy)+'h3v5h-3z';
+    if((r*7+c*3+x)%5<2) light+=tile; else dark+=tile;
+  }
+  return '<path class="wx-window-dark" d="'+dark+'"/><path class="wx-window-lit" d="'+light+'"/>';
+}
+function weatherSceneryTree(x,y,size,flower=false){
+  return '<g transform="translate('+x+' '+y+') scale('+size+')">'+
+    '<path class="wx-trunk" d="M-3 0L-1-57H3L4 0ZM0-26L-20-45L-18-47L1-34L19-55L22-52L3-23Z"/>'+
+    '<path class="'+(flower?'wx-flower':'wx-foliage')+'" d="M-31-46Q-42-63-27-72Q-30-87-12-87Q-3-104 10-88Q29-94 31-76Q49-66 31-51Q18-39 4-47Q-14-36-31-46Z"/>'+
+    '<path class="wx-leaf-light" d="M-28-70Q-18-83-7-78M2-88Q15-82 18-75M12-61Q25-68 32-59"/></g>';
+}
+function weatherLandscapeSvg(view){
+  const defs='<defs><linearGradient id="wx-water" x2="0" y2="1"><stop stop-color="var(--wx-water-top)"/><stop offset="1" stop-color="var(--wx-water-bottom)"/></linearGradient>'+
+    '<linearGradient id="wx-stone" x2=".6" y2="1"><stop stop-color="var(--wx-stone-light)"/><stop offset="1" stop-color="var(--wx-stone-dark)"/></linearGradient>'+
+    '<linearGradient id="wx-glimmer" x2="0" y2="1"><stop stop-color="var(--wx-glint)" stop-opacity=".5"/><stop offset="1" stop-color="var(--wx-glint)" stop-opacity="0"/></linearGradient></defs>';
+  const ripples='<g class="wx-ripples" fill="none" stroke="var(--wx-glint)" stroke-linecap="round">'+
+    '<path opacity=".18" d="M0 270h87m21 0h36m66 8h104m46-6h41m97 2h75m51 9h95M36 302h111m33 9h70m120-14h86m43 17h90m31-12h64M0 345h79m34-5h91m56 8h123m44-9h92m41 14h116M70 383h147m48-13h42m71 17h142m32-9h142"/>'+
+    '<path opacity=".3" stroke-width="2" d="M244 289h38m23 6h53m-15 30h36m-151 14h63m101 28h69m75-39h49M75 322h32m472-28h30m-412 96h55"/></g>';
+  let art='';
+  if(view==='harbour'){
+    const city=[[38,199,24,55],[67,179,23,75],[94,187,29,67],[127,151,26,103],[159,190,19,64],[182,203,22,51]];
+    const skyline=city.map(([x,y,w,h])=>'<rect class="wx-building" x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'"/>'+weatherSceneryWindows(x+5,y+8,2,Math.floor((h-12)/13))).join('');
+    const hangers=Array.from({length:15},(_,i)=>{
+      const x=222+i*13, y=131+Math.pow((x-314)/104,2)*109;
+      return '<path d="M'+x+' '+y.toFixed(1)+'V242"/>';
+    }).join('');
+    const truss=Array.from({length:29},(_,i)=>{
+      const x=215+i*7, y=(i%2?149:131)+Math.pow((x-314)/104,2)*(i%2?93:109);
+      return (i?'L':'M')+x+' '+y.toFixed(1);
+    }).join('');
+    art='<path class="wx-farland" d="M0 217Q85 168 160 208T326 206Q415 187 479 217Q599 154 720 190V273H0Z"/>'+
+      '<g class="wx-distance">'+skyline+'<path class="wx-building" d="M137 151V132h3v19M55 199v-11h7v11"/></g>'+
+      '<path class="wx-land" d="M0 248Q74 234 144 248L210 251L449 252Q490 235 522 243L569 244Q640 226 720 237V285H0Z"/>'+
+      '<g class="wx-wharves"><path class="wx-house" d="M4 248v-15h32v15m11 0v-18h42v18m13 1v-15h30v15m484-5v-16h42v16m9 2v-21h42v21"/>'+
+      '<path class="wx-roof" d="M1 233l19-9 19 9m5-3 23-11 25 11m520-2 23-11 23 11m6-3 24-12 24 12"/>'+
+      '<path class="wx-window-lit" d="M9 240h21v2H9zm44-2h27v2H53zm566-3h33v2h-33zm51-3h32v2h-32z"/></g>'+
+      '<path fill="url(#wx-water)" d="M0 257Q170 253 339 258T720 251V420H0Z"/>'+
+      '<g class="wx-bridge"><path class="wx-bridge-arch" d="M210 240Q312 22 418 240M214 242Q313 55 414 242"/>'+
+      '<g class="wx-bridge-wire">'+hangers+'<path d="'+truss+'"/></g>'+
+      '<path class="wx-bridge-deck" d="M178 242H449v7H178z"/>'+
+      '<path class="wx-pylon" d="M198 249V192h21v57M409 249V192h21v57"/>'+
+      '<path class="wx-edge" d="M196 192h25m186 0h25M201 199h15m-15 5h15m196-5h15m-15 5h15"/></g>'+
+      '<path class="wx-masonry" d="M201 213h15m-15 9h15m-15 9h15m196-18h15m-15 9h15m-15 9h15M208 204v9m211-9v9m-213 9v9m210-9v9"/>'+
+      '<path class="wx-quay" d="M431 262l32-12h142l23 10-2 7H431Z"/>'+
+      '<g class="wx-opera"><path class="wx-shell-shadow" d="M450 249Q456 215 469 204Q489 214 500 249ZM483 249Q491 192 506 170Q532 190 548 249ZM521 249Q544 193 562 187Q579 216 585 249ZM559 249Q581 217 596 212Q603 238 601 249Z"/>'+
+      '<path class="wx-shell" d="M450 249Q460 216 469 204L490 249ZM483 249Q496 195 506 170L529 249ZM521 249Q548 205 562 187L566 249ZM559 249Q585 223 596 212L588 249Z"/>'+
+      '<path class="wx-shell-seam" d="M458 247l11-43m27 43l10-77m29 77l27-60m12 60l22-35"/>'+
+      '<path class="wx-shell-ribs" d="M462 246q0-23 7-40m9 40-9-40m33 40 4-74m15 74-15-74m37 74 19-57m-4 57 4-57m18 57 16-32"/>'+
+      '<path class="wx-opera-base" d="M447 249h158v5H447z"/></g>'+
+      '<path class="wx-fine-light" d="M446 257h159m-150 3h155M620 261h72m-67 0v7m16-7v7m16-7v7m16-7v7m16-7v7"/>'+
+      '<g class="wx-reflections"><path fill="url(#wx-glimmer)" d="M462 270l-15 87h30l-3-87Zm35-1l-8 113h41l-17-113Zm53 0l-7 76h34l-8-76Z"/>'+
+      '<path d="M69 263l-7 50h12l3-50m58 0l-4 71h14l-3-71m55 0l-4 36h11l-2-36"/></g>'+ripples+
+      '<g class="wx-ferry"><path class="wx-wake" d="M266 322q-39 8-76 3m75 2q-38 9-82 8"/>'+
+      '<path class="wx-ferry-hull" d="M270 316h61l-8 12h-45Z"/><path class="wx-ferry-top" d="M279 300h41l9 15h-53Z"/>'+
+      '<path class="wx-ferry-stripe" d="M278 315h50v4h-50Z"/><path class="wx-ferry-window" d="M284 304h8v6h-8zm12 0h8v6h-8zm12 0h8v6h-8z"/>'+
+      '<path class="wx-edge" d="M299 300v-12m0 3h9"/></g>'+
+      '<g class="wx-small-boats"><path class="wx-shell" d="M525 328v-28l-17 26Zm4-4v-18l12 18Z"/>'+
+      '<path class="wx-boat-hull" d="M505 330h38l-6 5h-25Z"/><path class="wx-wake" d="M499 339h49m-30 4h35"/>'+
+      '<path class="wx-ferry-top" d="M367 276h18l5 7h-27Z"/><path class="wx-ferry-stripe" d="M360 283h32l-5 5h-22Z"/>'+
+      '<path class="wx-wake" d="M352 290h44"/><path class="wx-buoy" d="M439 312l3-8 3 8-3 3Z"/></g>'+
+      '<path class="wx-birds" d="M581 165q5-5 10 0 5-5 10 0m-26-14q4-4 8 0 4-4 8 0"/>'+
+      '<path class="wx-foreground" d="M0 393Q61 361 127 394L162 420H0ZM639 420Q642 399 661 402Q661 378 679 387Q695 366 712 390L720 387V420Z"/>';
+  } else if(view==='coast'){
+    art='<path class="wx-farland" d="M0 237Q78 201 162 229T324 220Q453 172 546 215T720 189V284H0Z"/>'+
+      '<path fill="url(#wx-water)" d="M0 243H720V420H0Z"/>'+ripples+
+      '<path class="wx-distant-cliff" d="M443 251L469 211L500 206L525 224L557 202L588 215L603 247L650 269Z"/>'+
+      '<path class="wx-cliff" d="M442 420L455 350L503 320L516 280L555 267L557 232L601 211L651 199L720 187V420Z"/>'+
+      '<path class="wx-grass" d="M516 281l28-34 13-18 45-24 49-11 69-13v21l-65 6-49 16-25 17-9 33-44 17Z"/>'+
+      '<path class="wx-cliff-lines" d="M572 283l45-18 69-5m-154 53l47-17 71-13m-166 65l72-18 54-8m-102 43l77-17 75-10m-110-89l8 47m47-67l-8 39m-75 39l-13 49"/>'+
+      '<path class="wx-rock-facet" d="M557 278l32-21 28 8-44 18-17 47-25 3Zm67 15l26-10 31 7-36 7-14 38-25 3Z"/>'+
+      '<path class="wx-rock-shelf" d="M433 393l16-20 20 5 18-5 15 8-12 14-41 8ZM483 347l16-14 18 2 7 9-13 8Z"/>'+
+      '<path class="wx-surf" d="M491 318q8 12-13 23l-38 18-16 37m112-102q-29 0-32 17m-67 57q-25 18-29 35"/>'+
+      '<path class="wx-surf-fine" d="M419 365q-6 12-17 21m-13-11q18-17 28-21m-39-8q29 6 53-2m-111-18q35-5 57-1m-92 20q23 4 44 0M419 404q20 10 45 2m-49 9q28 9 54 0"/>'+
+      '<path class="wx-coast-path" d="M706 204q-43 11-55 4t-35 15q-31 26-49 27"/>'+
+      '<path class="wx-fence" d="M570 249l15-5 16-12 16-11m-46 28v-6m13 2v-7m16-5v-7m15-4v-7"/>'+
+      '<g class="wx-lighthouse"><path class="wx-shell-shadow" d="M609 207l8-75h19l8 75Z"/>'+
+      '<path class="wx-shell" d="M609 207l8-75h10l-2 75Z"/><path class="wx-roof" d="M611 133h31v-5h-31Zm1-26l15-12 15 12Z"/>'+
+      '<path class="wx-lantern" d="M616 109h22v18h-22Z"/><path class="wx-edge" d="M619 109v18m8-18v18m8-18v18M608 133h36m-32-12h30"/>'+
+      '<path class="wx-fine-light" d="M610 125v-7h34v7m-27-7v7m7-7v7m7-7v7m7-7v7M616 168h21M647 210h38"/>'+
+      '<path class="wx-window-dark" d="M625 152h5v10h-5zm-2 29h7v25h-7z"/>'+
+      '<path class="wx-house" d="M648 185h32v22h-32Z"/><path class="wx-roof" d="M644 185l20-15 20 15Z"/></g>'+
+      weatherSceneryWindows(652,190,3,1,9,13)+weatherSceneryTree(684,213,.24)+weatherSceneryTree(590,244,.18)+
+      '<path class="wx-birds" d="M460 157q6-5 12 0 6-5 12 0m19 15q4-4 8 0 4-4 8 0m-79 5q3-3 6 0 3-3 6 0"/>'+
+      '<g class="wx-sailboat"><path class="wx-wake" d="M201 302h61m-57 5h35"/>'+
+      '<path class="wx-shell" d="M232 298v-53l-29 49Zm5-5v-38l20 38Z"/><path class="wx-boat-hull" d="M202 299h56l-9 7h-37Z"/>'+
+      '<path class="wx-edge" d="M234 244v56"/></g>'+
+      '<path class="wx-foreground" d="M0 357l23-13 24 11 21-7 35 32 41 12 24 28H0Z"/>'+
+      weatherSceneryTree(27,406,1.22)+weatherSceneryTree(704,393,.8)+
+      '<path class="wx-grass-blades" d="M91 413l-7-34m8 34l11-27m-5 30l17-12m555 13l-9-28m10 28l9-40m-5 38l18-17"/>';
+  } else {
+    const buildings=Array.from({length:10},(_,i)=>{
+      const x=80+i*51,y=208-(i%4)*15,w=38+(i%2)*7;
+      return '<rect class="wx-building" x="'+x+'" y="'+y+'" width="'+w+'" height="'+(285-y)+'"/>'+weatherSceneryWindows(x+7,y+9,3,3);
+    }).join('');
+    const houses=Array.from({length:6},(_,i)=>{
+      const x=135+i*72,y=279+(i%3)*5;
+      return '<g><path class="wx-house" d="M'+x+' '+y+'h68v101h-68Z"/>'+
+        '<path class="wx-house-side" d="M'+(x+57)+' '+y+'h11v101h-11Z"/>'+
+        '<path class="wx-roof" d="M'+(x-5)+' '+y+'l39-28 39 28Z"/>'+
+        '<path class="wx-roof-seam" d="M'+x+' '+y+'l34-22 33 22M'+(x+49)+' '+(y-14)+'v-15h8v21"/>'+
+        '<path class="wx-trim" d="M'+(x+5)+' '+(y+5)+'h57v5h-57Zm0 47h57v4h-57Z"/>'+
+        '<path class="wx-door" d="M'+(x+28)+' '+(y+67)+'h15v34h-15Z"/>'+
+        '<path class="wx-house-detail" d="M'+(x+14)+' '+(y-11)+'h41m-32-7h22M'+(x+31)+' '+(y+97)+'v-25h9v25M'+(x+9)+' '+(y+17)+'h9v10h-9m17-10h9v10h-9m17-10h9v10h-9"/>'+
+        '<path class="wx-awnings" d="M'+(x+7)+' '+(y+58)+'h55l-4 5h-47Z"/>'+
+        weatherSceneryWindows(x+12,y+18,3,1,17,13)+weatherSceneryWindows(x+12,y+67,1,1)+
+        '<path class="wx-veranda" d="M'+(x+8)+' '+(y+41)+'h51m-51 9h51m-50-9v60m49-60v60m-41-60v9m8-9v9m8-9v9m8-9v9m8-9v9"/>'+
+        '<path class="wx-balcony-scroll" d="M'+(x+10)+' '+(y+43)+'q5 9 10 0t10 0t10 0t10 0"/>'+
+        '<path class="wx-pot" d="M'+(x+46)+' '+(y+94)+'h8l-1 7h-6Z"/>'+
+        '<path class="wx-foliage" d="M'+(x+50)+' '+(y+95)+'q-10-8-2-9 1-10 5-3 9-2 2 8Z"/></g>';
+    }).join('');
+    art='<path class="wx-farland" d="M0 219Q85 171 174 207T327 218T522 207T720 192V342H0Z"/>'+
+      '<g class="wx-distance">'+buildings+'</g><path class="wx-land" d="M0 287Q107 242 220 277T467 267T720 270V420H0Z"/>'+
+      weatherSceneryTree(161,318,.65)+weatherSceneryTree(558,320,.8)+houses+
+      '<path class="wx-road" d="M0 382Q323 366 720 384V420H0Z"/><path class="wx-kerb" d="M0 384Q334 369 720 386"/>'+
+      '<path class="wx-fence" d="M223 375v-16m8 16v-16m8 16v-16m8 16v-16m8 16v-16m8 16v-16m8 16v-16m-52 6h55M509 376v-16m8 16v-16m8 16v-16m8 16v-16m8 16v-16m8 16v-16m8 16v-16m-52 6h55"/>'+
+      '<g class="wx-bike"><circle cx="357" cy="381" r="7"/><circle cx="382" cy="381" r="7"/><path d="M357 381l10-12 7 12h-17m17 0 7-17 5 1m-13 16h9l-7-12h-12m0-3h8"/></g>'+
+      '<path class="wx-footpath" d="M223 384l-2 6m29-7 1 6m28-7 1 6m27-7 2 6m116-6 2 6m28-5 3 6m-163-2h55"/>'+
+      '<g class="wx-streetlamp"><path class="wx-trunk" d="M463 397V293h4v104Zm-10-105v-3h23v3Z"/>'+
+      '<path class="wx-lantern" d="M457 291h15l-3 16h-9Z"/><path class="wx-roof" d="M453 289l12-7 12 7Z"/>'+
+      '<ellipse class="wx-lamp-pool" cx="466" cy="396" rx="31" ry="5"/></g>'+
+      weatherSceneryTree(111,393,1.25,true)+weatherSceneryTree(638,409,1.4)+weatherSceneryTree(36,422,1.05)+
+      '<path class="wx-foreground" d="M0 420v-14q20-18 40-5 19-22 37-5 26-10 37 24ZM578 420q6-20 22-13 14-22 34-5 23-18 41 1 27-17 45 1v16Z"/>';
+  }
+  return '<svg viewBox="0 0 720 420" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">'+defs+art+'</svg>';
+}
+
+function buildWeatherCard(inHero){
   const d=localMidnight(getLocalDate());
   const dayLabel=d.toLocaleDateString('en-AU',{weekday:'long'});
   const dateLabel=d.toLocaleDateString('en-AU',{day:'numeric',month:'long'});
@@ -21088,6 +21237,7 @@ function buildWeatherCard(){
       '<div class="wfx-moon"></div>'+
       '<div class="wfx-stars">'+stars+'</div>'+
       clouds+
+      (inHero?'<div class="weather-landscape" data-view="'+weatherDailyView()+'">'+weatherLandscapeSvg(weatherDailyView())+'</div>':
       '<svg class="weather-neighbourhood" viewBox="0 0 640 240" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">'+
         '<path class="weather-ridge" d="M0 115Q90 55 180 110T360 95T540 100T720 85V240H0Z"/>'+
         '<path class="weather-cityscape" d="M0 155V118H30V95H54V145H80V109H110V73H132V60H140V73H155V135H184V100H218V143H250V112H269V84H290V65H298V84H316V120H350V98H376V131H400V80H428V110H449V58H473V45H480V58H502V130H527V93H554V119H587V72H620V135H640V240H0Z"/>'+
@@ -21095,7 +21245,7 @@ function buildWeatherCard(){
         '<path class="weather-roofs" d="M-5 158L47 125L98 158M110 154L162 116L215 154M238 163L292 128L345 163M359 157L413 119L467 157M485 167L539 127L595 167"/>'+
         '<path class="weather-windows" d="M34 163h9v14h-9zM51 163h9v14h-9zM147 157h10v15h-10zM167 157h10v15h-10zM279 167h10v14h-10zM299 167h10v14h-10zM399 159h10v15h-10zM419 159h10v15h-10zM525 170h10v14h-10zM545 170h10v14h-10zM119 90h5v8h-5zM281 103h5v8h-5zM460 78h5v8h-5zM485 97h5v8h-5z"/>'+
         '<path class="weather-trees" d="M0 218Q8 175 27 195Q24 162 44 174Q54 139 68 174Q91 160 87 196Q110 176 118 216L118 240H0ZM557 240V217Q560 190 579 202Q574 162 594 176Q603 146 617 177Q638 159 640 190V240Z"/>'+
-      '</svg>'+
+      '</svg>')+
       '<div class="wfx-fog wfx-fog-1"></div>'+
       '<div class="wfx-fog wfx-fog-2"></div>'+
       '<div class="wfx-rain">'+drops+'</div>'+
@@ -21133,11 +21283,12 @@ function buildWeatherCard(){
       '</div>'+
       '<p class="weather-notice" id="home-weather-notice" role="status" aria-live="polite" hidden></p>'+
       '<button type="button" class="weather-use-location" id="home-weather-location" onclick="weatherUseCurrentLocation()" hidden>Use my location</button></div>'+
+    (inHero?'<details class="home-weather-disclosure"'+((_homeWeatherExpanded[layoutMode()]===null?layoutIsDesktop():_homeWeatherExpanded[layoutMode()])?' open':'')+' data-mode="'+layoutMode()+'" ontoggle="homeWeatherToggle(this)"><summary>Hourly forecast <span aria-hidden="true">⌄</span></summary>':'')+
     '<div class="weather-preview" id="home-weather-preview">'+
       '<p class="weather-summary" id="home-weather-summary" hidden></p>'+
       '<div class="weather-hours" id="home-weather-hours" role="list" aria-label="Next six hours at the forecast location" tabindex="0" ontouchstart="event.stopPropagation()" ontouchmove="event.stopPropagation()" hidden></div>'+
       '<p class="weather-forecast-empty" id="home-weather-forecast-empty">Hourly forecast unavailable</p>'+
-    '</div>'+
+    '</div>'+(inHero?'</details>':'')+
   '</div>';
 }
 // ── Credit card tracker (Home card + Budget input) ───────────────
@@ -21508,7 +21659,7 @@ function renderHome(){
     if(!e||!e.category) return;
     mealTotals[e.category]=(mealTotals[e.category]||0)+(parseFloat(e.kcal)||0);
   });
-  const heroContent=homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt,
+  const heroContent=homeHeroContent(goalCals,kcalTotal,null,budPillCls,budPillTxt,
     nutToday&&nutToday.status==='partial'?nutToday.unknown:0,
     nutToday?nutToday.status:'missing', mealTotals);
 
@@ -21544,10 +21695,8 @@ function renderHome(){
   const lastWk=budgetData[weekKey(getMondayOf(-1))];
   const lastWeekPay=lastWk?weekIncome(lastWk):0;
 
-  const hasNutrition=nutToday&&nutToday.status!=='missing';
-  const heroHdrCol=(goalCals||hasNutrition)?'#52B788':budLeft!==null?'#FF6B35':'#64748b';
-  const heroHdrTxt=(goalCals||hasNutrition)?'Nutrition today':budLeft!==null?'Budget summary':'Overview';
-  const heroHdrIcon=(goalCals||hasNutrition)?'flame':budLeft!==null?'wallet':'check';
+  const heroHdrTxt='Nutrition today';
+  const heroHdrIcon='flame';
 
   // ── Momentum redesign: top-of-Home cards (display only; reuse existing data) ──
   // The session hero reads logTodayBrief() — the SAME canonical training state Log › Today's
@@ -21576,10 +21725,7 @@ function renderHome(){
   let mSegs=''; for(let i=0;i<mGoal;i++){ mSegs+='<div class="session-seg'+(i<mSessions?' done':'')+'"></div>'; }
   const mBudIncome=incTot>0?incTot:0;
   const mBudRem=incTot>0?budLeft:0;
-  const mBudSpent=incTot>0?(incTot-budLeft):0;
-  const mBudPct=mBudIncome>0?Math.min(mBudSpent/mBudIncome*100,100):0;
   const mBudOver=mBudRem<0;
-  const mBudCol=mBudOver?'var(--danger)':'var(--positive)';
   const heroDateLabel=localMidnight(today).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
   // The button goes to Log > Today, which is the workout OVERVIEW — it does not start or
   // resume a set, so "Start workout" would be a lie, and it must not bypass the overview or
@@ -21618,7 +21764,7 @@ function renderHome(){
   // Its accessible name still reflects workout progress even though the visible label is hidden.
   const heroCard=
     '<div class="hero-workout-card'+(mShowProgress?'':' hero-flat')+'">'+
-      '<span class="hero-label">'+heroEyebrow+' · '+heroDateLabel+'</span>'+
+      '<span class="hero-label">'+cardIcon('target')+heroEyebrow+'<span class="hero-date">'+heroDateLabel+'</span></span>'+
       '<p class="hero-workout-title" id="hero-day-name">'+escText(mBrief.dayName)+'</p>'+
       '<p class="hero-meta" id="hero-meta">'+escText(heroMeta)+'</p>'+
       '<button class="hero-play-btn" aria-label="'+heroActLabel+'" onclick="setView(\'log\')">'+
@@ -21641,57 +21787,36 @@ function renderHome(){
         '<div class="sessions-bar-row" id="home-sessions-bar">'+mSegs+'</div>'+
       '</div>'+
     '</div>';
-  // ── Weekly budget ──
-  // No longer an accent-gradient hero. It used the same 90%→35% accent gradient, white text and
-  // glow as the session hero, so the two were indistinguishable in peripheral vision — and a
-  // budget readout is not an action the way "start today's session" is. Full accent now means
-  // "press this", and only the session card gets it.
-  // Its colour is SEMANTIC instead: --positive / --warn / --danger on the pill and the bar fill.
-  // That survives the accent being any hue (grey, indigo or bright blue depending on
-  // weather/settings), and green-vs-red answers the question before you read the number.
+  // Remaining money and variable-spending pace answer different questions.
   const budGoal=getWeekVarGoal(curWk);
   const budVarSpent=curWk?weekVarTotal(curWk):0;
-  // The bar tracks VARIABLE spending against the weekly goal, not total spend against income,
-  // because variable spend is the half that accrues day by day and the half still in your
-  // control. Total spend can't be paced — a fixed cost lands in one lump, so a pace marker
-  // against income would read "behind" every week the rent came out.
   const budHasGoal=budGoal!==null&&budGoal>0;
   const budVarPct=budHasGoal?budVarSpent/budGoal*100:0;
-  const budBarPct=budHasGoal?Math.min(budVarPct,100):mBudPct;
-  // Days elapsed this week including today (Mon=1 … Sun=7). varGoalDaysLeft() counts days
-  // REMAINING, so elapsed is 8 minus that.
   const budPacePct=budHasGoal?Math.round((8-varGoalDaysLeft())/7*100):null;
   const budBehind=budHasGoal&&budVarPct>budPacePct+2;
   const budOverGoal=budHasGoal&&budVarSpent>budGoal;
-  const budBarCol=(budHasGoal?budOverGoal:mBudOver)?'var(--danger)':budBehind?'#f59e0b':'var(--positive)';
-  const budPillTxt2=mBudOver?'Over budget':budBehind?'Spending fast':'On track';
-  const budPillCls2=mBudOver?' over':budBehind?' warn':'';
+  const budPillTxt2=mBudOver?'Over budget':budOverGoal?'Over spending goal':budBehind?'Spending fast':budHasGoal?'On pace':'';
+  const budPillCls2=mBudOver||budOverGoal?' over':budBehind?' warn':'';
   const budCaption=budHasGoal
-    ? fmtMoney(budVarSpent)+' of '+fmtMoney(budGoal)+' spending goal · '+(budBehind?'ahead of pace':'on pace')
-    : (mBudIncome>0?'Set a weekly spending goal to track pace':'');
+    ? fmtMoney(budVarSpent)+' of '+fmtMoney(budGoal)+' spending goal'
+    : fmtMoney(budVarSpent)+' spent'+(mBudIncome>0?' · No spending goal set':' this week');
   const budgetSnapshot=
-    '<div class="card budget-snapshot-card" onclick="setView(\'budget\')" style="cursor:pointer">'+
+    '<div class="budget-snapshot-card">'+
       cardHeader('wallet','Weekly budget',
-        '<span class="budget-snap-pill'+budPillCls2+'" id="home-bud-status">'+budPillTxt2+'</span>')+
-      // What is left, beside how the week is pacing. .card-cols is transparent below the
-      // reflow threshold, so the phone keeps figure → bar → caption stacked; .card-cols-b
-      // groups the bar with the caption that describes it, since the two are one region.
-      '<div class="card-cols">'+
-        '<div><span class="card-fig" id="home-bud-remaining" style="color:'+(mBudOver?'var(--danger)':'var(--text)')+'">'+
-          (mBudRem>=0?'':'-')+fmtMoney(Math.abs(Math.round(mBudRem)))+'</span>'+
-          '<span class="card-fig-u" id="home-bud-label">left of '+fmtMoney(Math.round(mBudIncome))+'</span></div>'+
-        '<div class="card-cols-b">'+
-          '<div class="card-bar">'+
-            '<div class="card-bar-fill" id="home-bud-bar" style="width:'+budBarPct+'%;background:'+budBarCol+'"></div>'+
-            (budPacePct!==null?'<div class="card-bar-pace" style="left:calc('+budPacePct+'% - 1px)" title="Where you should be today"></div>':'')+
-          '</div>'+
-          (budCaption?'<div class="card-cap">'+budCaption+'</div>':'')+
-        '</div>'+
+        budPillTxt2?'<span class="budget-snap-pill'+budPillCls2+'" id="home-bud-status">'+budPillTxt2+'</span>':'')+
+      '<div class="home-budget-position">'+
+        (mBudIncome>0
+          ? '<div class="home-budget-figure"><span class="card-fig'+(mBudOver?' is-negative':'')+'" id="home-bud-remaining">'+
+            (mBudRem>=0?'':'-')+fmtMoney(Math.abs(Math.round(mBudRem)))+'</span>'+
+            '<span class="card-fig-u" id="home-bud-label">'+(mBudOver?'over budget':'left this week')+
+            '<small>of '+fmtMoney(Math.round(mBudIncome))+' income</small></span></div>'
+          : '<div class="home-budget-empty">No income recorded<span>Add this week’s income in Finance.</span></div>')+
+        '<button type="button" class="home-budget-add" onclick="openTxnModal({date:getLocalDate()})" aria-label="Add expense"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 3v12M3 9h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>'+
       '</div>'+
-      // Capture from Home as well as Budget. A spending tracker is only as good as how fast a
-      // purchase can be logged, and Home is the screen that is actually open when you walk out
-      // of a shop. stopPropagation because the card itself navigates to the Budget tab.
-      '<button class="txn-quick card-act-inline" onclick="event.stopPropagation();openTxnModal()">+ Add expense</button>'+
+      (budHasGoal?'<div class="card-bar" aria-hidden="true"><div class="card-bar-fill'+budPillCls2+'" id="home-bud-bar" style="width:'+Math.min(budVarPct,100)+'%"></div>'+
+        '<div class="card-bar-pace" style="left:calc('+budPacePct+'% - 1px)" title="Today’s point in the week"></div></div>':'')+
+      '<div class="home-budget-footer"><div class="card-cap">'+budCaption+'</div>'+
+        '<button type="button" class="home-budget-link" onclick="homeOpenBudgetWeek()" aria-label="Open this week in Finance">View week ↗</button>'+'</div>'+
     '</div>';
 
   // Calorie / overview card
@@ -21705,10 +21830,8 @@ function renderHome(){
   // (.card-hd-act, the same as Manage → and History →) rather than Budget's footer button —
   // that one opens a MODAL and captures a purchase without leaving Home, which is a different
   // kind of action. In the header it also costs the card no height, which is what keeps the
-  // phone composition the size it was. Omitted on the budget-leftover fallback, where this
-  // card is not showing food at all.
-  const heroFoodAct=(goalCals||kcalTotal>0||(nutToday&&nutToday.unknown)||budLeft===null)
-    ? '<button type="button" class="card-hd-act" onclick="event.stopPropagation();nutOpen()">Log food →</button>' : '';
+  // phone composition the size it was. Its empty state stays about food; the hero owns money.
+  const heroFoodAct='<button type="button" class="card-hd-act" onclick="event.stopPropagation();nutOpen()">Log food →</button>';
   const overviewCard=
     '<div class="card hero-card" onclick="openFoodToday()" style="margin-bottom:12px;cursor:pointer">'+
       cardHeader(heroHdrIcon,heroHdrTxt,heroFoodAct)+
@@ -21809,7 +21932,7 @@ function renderHome(){
   // so a reorder survives the next renderHome. (Recent workout + Stats render separately.)
   const homeCards={
     session: heroCard,
-    weather: buildWeatherCard(),
+    weather: buildWeatherCard(true),
     streak: statsSplit,
     calories: overviewCard,
     review: buildWeekSummaryCard(),
@@ -21828,7 +21951,9 @@ function renderHome(){
   // (e.g. Recent Workout before any session exists) so edit mode has no invisible boxes.
   const _homeMode=layoutMode();
   const _homeLayout=homeLayout(_homeMode);
-  const _homeIds=effectiveHomeWidgetIds(homeCards,_homeMode).filter(k=>homeCards[k]);
+  const _visibleIds=effectiveHomeWidgetIds(homeCards,_homeMode).filter(k=>homeCards[k]);
+  const _homeIds=_visibleIds.filter(k=>!HOME_HERO_IDS.includes(k));
+  const _mega=buildHomeMegaHero(homeCards,_visibleIds);
   // Cards that span both desktop columns are a saved per-card preference now, not a hardcoded
   // list. The class is emitted on every layout but only means anything inside the desktop
   // media query, where the grid lives.
@@ -21851,7 +21976,7 @@ function renderHome(){
     // An empty group is left out entirely rather than rendered as a heading over nothing.
     const _sections=HOME_DASH_COLS.map(c=>({c,ids:_cols[c.id].filter(id=>_has.has(id))}))
       .filter(x=>x.ids.length);
-    wrap.innerHTML='<div class="home-dash-wrap"><div class="home-dash'+
+    wrap.innerHTML=_mega+'<div class="home-dash-wrap"><div class="home-dash'+
       (_sections.length<2?' home-dash-1col':'')+'">'+
       _sections.map(x=>'<section class="home-dash-col" data-dash-col="'+x.c.id+'" '+
         'aria-labelledby="home-dash-h-'+x.c.id+'">'+
@@ -21870,9 +21995,9 @@ function renderHome(){
     // Landscape uses the SAME wrapper and the same two-column rule rather than a parallel
     // layout: a phone on its side has desktop's problem (width to spend, order to preserve)
     // at phone scale, and .home-card-wide has to keep spanning both columns in both.
-    wrap.innerHTML='<div class="home-grid-cols">'+_homeIds.map(_cardHtml).join('')+'</div>';
+    wrap.innerHTML=_mega+'<div class="home-grid-cols">'+_homeIds.map(_cardHtml).join('')+'</div>';
   } else {
-    wrap.innerHTML=_homeIds.map(_cardHtml).join('');
+    wrap.innerHTML=_mega+_homeIds.map(_cardHtml).join('');
   }
   const _oldRecent=document.getElementById('home-recent-card'); if(_oldRecent) _oldRecent.innerHTML='';
   if(homeEditMode) applyHomeEditMode();
@@ -21883,7 +22008,25 @@ function renderHome(){
   // #home-weather-temp for the result to land in anyway.
   // Not gated on the card being present: weather appearance needs fresh data whether or not
   // the widget is on Home. weatherEnsureFresh throttles, so this stays cheap on every render.
-  if(_homeIds.includes('weather')) loadWeatherWidget(); else weatherEnsureFresh();
+  if(_visibleIds.includes('weather')) loadWeatherWidget(); else weatherEnsureFresh();
+}
+
+// The hero is a read-only presentation of three existing widgets. Keep their saved layout
+// slots intact so grouping never becomes a migration or a new synced preference.
+const HOME_HERO_IDS=['session','budget','weather'];
+function homeOpenBudgetWeek(){
+  currentWeekIdx=0;
+  budPastEdit=false;
+  openBudgetWeek();
+}
+function buildHomeMegaHero(cards,visible){
+  const ids=HOME_HERO_IDS.filter(id=>visible.includes(id)&&cards[id]);
+  if(!ids.length) return '';
+  return '<section class="home-mega'+(ids.includes('weather')?' has-weather':'')+
+    (ids.some(id=>id!=='weather')?' has-main':'')+'" aria-label="Your day at a glance">'+
+    ids.map(id=>'<div class="home-mega-'+id+'" data-hero-section="'+id+'">'+cards[id]+'</div>').join('')+
+    (ids.includes('budget')?'<div class="home-mega-footer">'+
+      '<button type="button" class="txn-quick" onclick="openTxnModal({date:getLocalDate()})"><span aria-hidden="true">＋</span> Add expense</button>'+'</div>':'')+'</section>';
 }
 
 // ── Home widget system ────────────────────────────────────────────
@@ -22302,9 +22445,9 @@ function saveHomeOrder(){
   }
   const order=[...document.querySelectorAll('#home-content [data-card-id]')].map(c=>c.dataset.cardId);
   if(!order.length) return;
-  // Hidden widgets aren't in the DOM — keep them in the order list (after the visible ones)
-  // so toggling one back on doesn't strand it outside the saved order.
-  l.order=order.concat(HOME_DEFAULT_ORDER.filter(k=>order.indexOf(k)<0));
+  // Hidden widgets and grouped hero sections are absent from the drag surface. Retain
+  // their saved slots instead of treating their absence as a request to reorder them.
+  l.order=homeDashMergeAbsent(homeLayoutOrderIds(l),order,new Set(order));
   saveHomeLayout(l,mode);
 }
 // A drag can empty a column. Nothing re-renders Home on drop (that would restart the entry
@@ -22416,7 +22559,8 @@ function homeWidgetMove(id,direction,mode){
   const l=hlDraftOf(mode);
   const order=homeLayoutOrderIds(l);
   const from=order.indexOf(id);
-  const to=from+direction;
+  let to=from+direction;
+  while(to>=0&&to<order.length&&HOME_HERO_IDS.includes(order[to])) to+=direction;
   if(from<0||to<0||to>=order.length) return;
   const moved=order[to]; order[to]=order[from]; order[from]=moved;
   l.order=order;
@@ -22430,8 +22574,10 @@ function homeDashMove(id,direction){
   const cols=homeDashColumns(l);
   const col=HOME_DASH_COLS.filter(c=>cols[c.id].indexOf(id)>=0)[0]; if(!col) return;
   const arr=cols[col.id];
-  const from=arr.indexOf(id), to=from+direction;
-  if(to<0||to>=arr.length) return;
+  const from=arr.indexOf(id);
+  let to=from+direction;
+  while(to>=0&&to<arr.length&&HOME_HERO_IDS.includes(arr[to])) to+=direction;
+  if(from<0||to<0||to>=arr.length) return;
   arr[from]=arr[to]; arr[to]=id;
   l.dashboard=cols;
   _hlFocus=id+':'+(direction<0?'up':'down');
@@ -22539,17 +22685,20 @@ function hlPvShown(layout){
   return function(id){ const w=HOME_WIDGETS.filter(x=>x.id===id)[0]; return (w&&w.fixed)||!hidden.has(id); };
 }
 function hlPreview(mode,layout){
-  const shown=hlPvShown(layout);
+  const baseShown=hlPvShown(layout);
+  const hero=HOME_HERO_IDS.filter(baseShown);
+  const heroHtml=hero.length?'<div class="hl-pv-mega"><strong>Home hero</strong>'+hero.map(id=>hlPvTile(id)).join('')+'</div>':'';
+  const shown=id=>baseShown(id)&&!HOME_HERO_IDS.includes(id);
   if(mode==='mobile'){
     const ids=homeLayoutOrderIds(layout).filter(shown);
     return '<div class="hl-pv hl-pv-phone" role="group" aria-label="iPhone Home preview">'+
-      '<span class="hl-pv-bar"></span>'+
+      '<span class="hl-pv-bar"></span>'+heroHtml+
       '<div class="hl-pv-stack">'+ids.map(id=>hlPvTile(id,id==='session'?' is-hero':'')).join('')+'</div>'+
     '</div>';
   }
   if(homeDashOn(layout)){
     const cols=homeDashColumns(layout);
-    return '<div class="hl-pv hl-pv-dash" role="group" aria-label="Desktop Dashboard preview">'+
+    return heroHtml+'<div class="hl-pv hl-pv-dash" role="group" aria-label="Desktop Dashboard preview">'+
       HOME_DASH_COLS.map(function(c){
         const ids=cols[c.id].filter(shown);
         return '<div class="hl-pv-col hl-pv-'+c.id+'"><span class="hl-pv-h">'+c.label+'</span>'+
@@ -22560,7 +22709,7 @@ function hlPreview(mode,layout){
   }
   const ids=homeLayoutOrderIds(layout).filter(shown);
   const wide=new Set(layout.wide);
-  return '<div class="hl-pv hl-pv-grid" role="group" aria-label="Desktop Grid preview">'+
+  return heroHtml+'<div class="hl-pv hl-pv-grid" role="group" aria-label="Desktop Grid preview">'+
     ids.map(id=>hlPvTile(id,(wide.has(id)?' is-wide':'')+(id==='session'?' is-hero':''))).join('')+
   '</div>';
 }
@@ -22569,6 +22718,7 @@ function hlWidgetRow(id,index,count,mode,ctx){
   const w=HOME_WIDGETS.filter(x=>x.id===id)[0]; if(!w) return '';
   const off=!w.fixed&&ctx.hidden.has(id);
   const isWide=ctx.wide.has(id);
+  const inHero=HOME_HERO_IDS.includes(id);
   const other=ctx.dash?HOME_DASH_COLS.filter(c=>c.id!==ctx.col)[0]:null;
   const mv=ctx.dash?'homeDashMove(\''+id+'\',':'homeWidgetMove(\''+id+'\',';
   const mvEnd=ctx.dash?')':',\''+mode+'\')';
@@ -22583,7 +22733,7 @@ function hlWidgetRow(id,index,count,mode,ctx){
           '<span class="toggle-slider"></span></span></label>')+
     '</div>'+
     '<div class="hl-widget-preview">'+(w.preview?w.preview():'')+'</div>'+
-    '<div class="hl-widget-actions">'+
+    (inHero?'<p class="stg-help">When enabled, appears in the Home hero. Its saved position and width are retained.</p>':'<div class="hl-widget-actions">'+
       '<div class="hl-order-actions">'+
         '<button type="button" data-hl-focus="'+id+':up" aria-label="Move '+w.label+' up" '+
           'onclick="'+mv+'-1'+mvEnd+'"'+(index===0?' disabled':'')+'>↑</button>'+
@@ -22599,7 +22749,7 @@ function hlWidgetRow(id,index,count,mode,ctx){
               'aria-pressed="'+(isWide?'true':'false')+'" onclick="homeWidgetWidth(\''+id+'\','+(!isWide)+',\'desktop\')">'+
               '<span>Desktop</span><strong>'+(isWide?'Full row':'Half row')+'</strong></button>'
           : '')+
-    '</div>'+
+    '</div>')+
   '</article>';
 }
 function renderHomeLayoutSection(){
@@ -22611,7 +22761,7 @@ function renderHomeLayoutSection(){
              wide:new Set(mode==='desktop'?layout.wide:[]),
              dash:dash, col:null};
   const visibleCount=HOME_WIDGETS.filter(w=>w.fixed||!ctx.hidden.has(w.id)).length;
-  const wideCount=HOME_WIDGETS.filter(w=>ctx.wide.has(w.id)).length;
+  const wideCount=HOME_WIDGETS.filter(w=>!HOME_HERO_IDS.includes(w.id)&&ctx.wide.has(w.id)).length;
   const dirty=hlDirty(mode), stale=hlStale(mode);
   const label=HL_PROFILE_LABEL[mode], otherMode=mode==='mobile'?'desktop':'mobile';
   const tab=function(m,text){
@@ -22631,7 +22781,7 @@ function renderHomeLayoutSection(){
     ? (function(){
         const cols=homeDashColumns(layout);
         return HOME_DASH_COLS.map(function(c){
-          const ids=cols[c.id];
+          const ids=cols[c.id].filter(id=>!HOME_HERO_IDS.includes(id));
           return '<div class="hl-col-group">'+
             '<h3 class="hl-col-h">'+c.label+' <span>'+ids.length+' card'+(ids.length===1?'':'s')+'</span></h3>'+
             '<div class="hl-layout-list is-desktop">'+
@@ -22642,7 +22792,7 @@ function renderHomeLayoutSection(){
         }).join('');
       })()
     : (function(){
-        const ids=homeLayoutOrderIds(layout);
+        const ids=homeLayoutOrderIds(layout).filter(id=>!HOME_HERO_IDS.includes(id));
         return '<div class="hl-layout-list is-'+mode+'">'+
           ids.map(function(id,i){ return hlWidgetRow(id,i,ids.length,mode,ctx); }).join('')+'</div>';
       })();
@@ -22653,6 +22803,7 @@ function renderHomeLayoutSection(){
       '<div class="seg-tabs seg-fill hl-seg" role="tablist" aria-label="Home layout profile">'+
         tab('mobile','iPhone')+tab('desktop','Desktop')+
       '</div>'+
+      '<p class="stg-help">The Home hero groups your visible session, weekly budget and weather, in that order on iPhone. Show or hide each below. Other cards keep the layout chosen here.</p>'+
       '<p class="hl-editing">You are editing the <strong>'+label+'</strong> layout'+
         (mode===layoutMode()?' — the device you are on now.':'. It applies when Daily is opened on '+
           (mode==='mobile'?'a phone.':'a desktop or laptop.'))+'</p>'+
@@ -22699,6 +22850,8 @@ function renderHomeLayoutSection(){
         '<button type="button" class="stg-btn quiet" onclick="homeLayoutReset()">Reset to recommended</button>'+
       '</div>'+
     '</div>'+
+    '<div class="hl-col-group"><h3 class="hl-col-h">Home hero</h3><div class="hl-layout-list is-'+mode+'">'+
+      HOME_HERO_IDS.map((id,i)=>hlWidgetRow(id,i,3,mode,{hidden:ctx.hidden,wide:ctx.wide,dash:false,col:null})).join('')+'</div></div>'+
     lists;
 
   if(_hlFocus){

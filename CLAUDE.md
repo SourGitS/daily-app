@@ -1,5 +1,45 @@
 # Daily — Project Reference
 
+## Home hero and daily weather outlooks — v358
+
+Home composes its visible `session`, `budget` and `weather` widgets into one accent surface.
+The inset weather now rotates Harbour / Coast / Terraces by the device-local calendar day.
+`weatherDailyView()` uses calendar components in UTC arithmetic so DST does not skip a view.
+No stored choice or extra timer: existing weather rendering patches only the decorative SVG
+on the next visible lifecycle check after midnight. Sky, conditions, provider, freshness and
+location stay independent of these Sydney-inspired illustrations. All outlooks use the existing
+`data-scene` for atmosphere: overcast greys, rain slate, mist, storm violet, icy snow and
+day/night/twilight. The app-wide `WEATHER_ACCENTS` mapping and user-selected accent mode
+remain unchanged. Reduced motion stops the ferry and water; forecast disclosure and nearby
+focus survive daily changes. Harbour includes wharves, bridge trusses, sail ribs and boats;
+Coast includes sandstone shelves, paths and a lighthouse; Terraces includes veranda ironwork,
+chimneys and planting. Every detail inherits the weather palette.
+
+Desktop places workout above budget beside an inset weather scene; mobile reads workout,
+budget, weather, then a full-width Add expense footer inside the hero. A round + beside
+the budget figure opens the same existing expense flow. The remaining Grid or
+Dashboard layout is unchanged. `HOME_HERO_IDS` is presentation only: existing hidden flags
+still apply and no store, schema or migration is added. The editor exposes hero visibility
+separately; their saved order/width/column fields remain available, without controlling the
+grouped rendering. Dragging remaining widgets retains absent ids.
+
+Weather retains its existing sky effects, ids, coordinator and DOM patching. The inset window
+sits close to the hero edge, with shadows cast inward and a faint lower lip highlight.
+It has no outward drop shadow or uniform white outline. A native hourly
+disclosure defaults closed on mobile and open on desktop, remembering choices in memory
+per layout mode. Freshness and failure notices remain outside it. `homeOpenBudgetWeek()`
+resets the viewed Finance week before using its existing entry point; Add expense explicitly
+passes today to the existing modal. The nutrition widget uses its nutrition empty state so
+it does not repeat the hero’s remaining-budget figure. CSS is appended in `home-hero.css`.
+
+Verification: 412 automated tests pass, including visibility/layout preservation and daily
+scene rollover across DST, month and year boundaries. Browser checks use synthetic,
+memory-only data with Firebase disabled and cover mobile/desktop layouts, all three outlooks,
+weather-linked accents, forecast disclosure and existing expense/workout actions. The preview
+fixture and scene controls are external development files, not shipped assets. No production
+account or physical iPhone has been tested. Auth, sync, backup and stored defaults are unchanged.
+`CACHE_NAME` is `daily-v358`; `css/home-hero.css` is appended and precached.
+
 ## Weather scene date-boundary correction — v357
 
 - `weatherPhase()` uses a forecast day's sunrise/sunset only while their solar midpoint is

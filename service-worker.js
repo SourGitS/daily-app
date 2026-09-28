@@ -369,7 +369,8 @@
 // v355: replace the selectable green appearance preset with the confirmed clear-dusk purple.
 // v356: account-backed savings reconciliation; Budget savings remains a plan allocation.
 // v357: ignore stale daily solar times when deciding the live weather scene.
-const CACHE_NAME = 'daily-v357';
+// v358: Home’s shared hero, in-card expense actions and daily Sydney weather outlooks.
+const CACHE_NAME = 'daily-v358';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
@@ -387,6 +388,7 @@ const ASSETS = [
   './css/settings.css',
   './css/review.css',
   './css/brand.css',
+  './css/home-hero.css',
   './js/app.js',
   './js/nutrition.js',
   // Runtime brand assets only. The masters, the export script and the ZIP under
