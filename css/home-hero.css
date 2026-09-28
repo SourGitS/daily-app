@@ -217,6 +217,30 @@
   #view-home .home-mega-footer{padding:12px 18px 16px}
 }
 
+/* Phone Finance is an ordinary card; the desktop hero keeps its existing treatment. */
+@media(max-width:1023px){
+  #view-home .home-budget-card{border-radius:var(--radius-card)}
+  #view-home .home-budget-card .home-budget-position{display:block}
+  #view-home .home-budget-card .home-budget-figure{grid-template-columns:minmax(0,1fr) minmax(0,.7fr)}
+  #view-home .home-budget-card .card-fig{font-size:32px;line-height:1.1;overflow-wrap:anywhere}
+  #view-home .home-budget-card .card-fig.is-negative{color:var(--danger)}
+  #view-home .home-budget-card .card-fig-u{display:block;margin:0;font-size:12px;line-height:1.5}
+  #view-home .home-budget-card .home-budget-income strong{font-size:24px;color:var(--text)}
+  #view-home .home-budget-card .home-budget-income span,
+  #view-home .home-budget-card .home-budget-empty span{color:var(--muted)}
+  #view-home .home-budget-card .home-budget-spending{color:var(--muted);font-size:12px}
+  #view-home .home-budget-card .home-budget-spending strong{color:var(--text)}
+  #view-home .home-budget-card .card-bar{height:6px;margin-top:8px}
+  #view-home .home-budget-card .card-bar-fill{background:var(--positive)}
+  #view-home .home-budget-card .card-bar-fill.warn{background:#f59e0b}
+  #view-home .home-budget-card .card-bar-fill.over{background:var(--danger)}
+  #view-home .home-budget-card .card-bar-pace{height:12px}
+  #view-home .home-budget-card .home-budget-link{color:var(--accent-text);font-size:12px}
+  #view-home .home-budget-card .txn-quick{display:flex;align-items:center;justify-content:center;
+    gap:6px;min-height:44px;margin-top:8px}
+  #view-home .home-budget-card .txn-quick span{font-size:18px;font-weight:400;line-height:1}
+}
+
 /* The selected hero colour mediates the join, even when it differs from the weather. */
 #view-home .home-mega .home-weather-card{
   --wx-surround:var(--accent-hero-2);

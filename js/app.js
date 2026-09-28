@@ -21656,6 +21656,7 @@ function homeTrainingStrip(){
 
 function renderHome(){
   const wrap=document.getElementById('home-content'); if(!wrap) return;
+  const _homeMode=layoutMode();
   const name=profileData.name||S.personalInfo.name||'';
 
   // Calories
@@ -21833,7 +21834,7 @@ function renderHome(){
     ? '<span>Spending goal</span><span><strong>'+fmtMoney(budVarSpent)+'</strong> / '+fmtMoney(budGoal)+'</span>'
     : '<span>Variable spending <strong>'+fmtMoney(budVarSpent)+'</strong></span><span>No spending goal set</span>';
   const budgetSnapshot=
-    '<div class="budget-snapshot-card">'+
+    '<div class="'+(_homeMode==='mobile'?'card home-budget-card ':'')+'budget-snapshot-card">'+
       cardHeader('wallet','Weekly budget','')+
       '<div class="home-budget-position">'+
         (mBudIncome>0
@@ -21842,7 +21843,7 @@ function renderHome(){
             '<span class="card-fig-u" id="home-bud-label">'+(mBudOver?'over budget':'left this week')+'</span></div>'+
             '<div class="home-budget-income"><strong>'+fmtMoney(Math.round(mBudIncome))+'</strong><span>Income</span></div></div>'
           : '<div class="home-budget-empty">No income recorded<span>Add this week’s income in Finance.</span></div>')+
-        '<button type="button" class="home-budget-add" onclick="openTxnModal({date:getLocalDate()})" aria-label="Add expense"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 3v12M3 9h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>'+
+        (_homeMode==='desktop'?'<button type="button" class="home-budget-add" onclick="openTxnModal({date:getLocalDate()})" aria-label="Add expense"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 3v12M3 9h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>':'')+
       '</div>'+
       '<div class="home-budget-spending">'+budCaption+'</div>'+
       (budHasGoal?'<div class="card-bar" aria-hidden="true"><div class="card-bar-fill'+budPillCls2+'" id="home-bud-bar" style="width:'+Math.min(budVarPct,100)+'%"></div>'+
@@ -21850,6 +21851,7 @@ function renderHome(){
       '<div class="home-budget-footer">'+
         (budPillTxt2?'<span class="budget-snap-pill'+budPillCls2+'" id="home-bud-status">'+budPillTxt2+'</span>':'')+
         '<button type="button" class="home-budget-link" onclick="homeOpenBudgetWeek()" aria-label="Open this week in Finance">View week ↗</button>'+'</div>'+
+      (_homeMode==='mobile'?'<button type="button" class="txn-quick" onclick="openTxnModal({date:getLocalDate()})"><span aria-hidden="true">＋</span> Add expense</button>':'')+
     '</div>';
 
   // Calorie / overview card
@@ -21982,11 +21984,10 @@ function renderHome(){
   };
   // Ordered + visibility-filtered widget list; skip widgets whose HTML is empty right now
   // (e.g. Recent Workout before any session exists) so edit mode has no invisible boxes.
-  const _homeMode=layoutMode();
   const _homeLayout=homeLayout(_homeMode);
   const _visibleIds=effectiveHomeWidgetIds(homeCards,_homeMode).filter(k=>homeCards[k]);
-  const _homeIds=_visibleIds.filter(k=>!HOME_HERO_IDS.includes(k));
-  const _mega=buildHomeMegaHero(homeCards,_visibleIds);
+  const _homeIds=homeRegularWidgetIds(_visibleIds,_homeMode);
+  const _mega=buildHomeMegaHero(homeCards,_visibleIds,_homeMode);
   // Cards that span both desktop columns are a saved per-card preference now, not a hardcoded
   // list. The class is emitted on every layout but only means anything inside the desktop
   // media query, where the grid lives.
@@ -22044,16 +22045,22 @@ function renderHome(){
   if(_visibleIds.includes('weather')) loadWeatherWidget(); else weatherEnsureFresh();
 }
 
-// The hero is a read-only presentation of three existing widgets. Keep their saved layout
-// slots intact so grouping never becomes a migration or a new synced preference.
+// Grouping is presentation only. Phone Finance returns to its saved ordinary-card slot.
 const HOME_HERO_IDS=['session','budget','weather'];
+function homeHeroIds(mode){
+  return HOME_HERO_IDS.filter(id=>mode!=='mobile'||id!=='budget');
+}
+function homeRegularWidgetIds(ids,mode){
+  const hero=homeHeroIds(mode);
+  return ids.filter(id=>!hero.includes(id));
+}
 function homeOpenBudgetWeek(){
   currentWeekIdx=0;
   budPastEdit=false;
   openBudgetWeek();
 }
-function buildHomeMegaHero(cards,visible){
-  const ids=HOME_HERO_IDS.filter(id=>visible.includes(id)&&cards[id]);
+function buildHomeMegaHero(cards,visible,mode){
+  const ids=homeHeroIds(mode).filter(id=>visible.includes(id)&&cards[id]);
   if(!ids.length) return '';
   return '<section class="home-mega'+(ids.includes('weather')?' has-weather':'')+
     (ids.some(id=>id!=='weather')?' has-main':'')+'" aria-label="Your day at a glance">'+
@@ -22594,7 +22601,7 @@ function homeWidgetMove(id,direction,mode){
   const order=homeLayoutOrderIds(l);
   const from=order.indexOf(id);
   let to=from+direction;
-  while(to>=0&&to<order.length&&HOME_HERO_IDS.includes(order[to])) to+=direction;
+  while(to>=0&&to<order.length&&homeHeroIds(mode).includes(order[to])) to+=direction;
   if(from<0||to<0||to>=order.length) return;
   const moved=order[to]; order[to]=order[from]; order[from]=moved;
   l.order=order;
@@ -22720,9 +22727,9 @@ function hlPvShown(layout){
 }
 function hlPreview(mode,layout){
   const baseShown=hlPvShown(layout);
-  const hero=HOME_HERO_IDS.filter(baseShown);
+  const hero=homeHeroIds(mode).filter(baseShown);
   const heroHtml=hero.length?'<div class="hl-pv-mega"><strong>Home hero</strong>'+hero.map(id=>hlPvTile(id)).join('')+'</div>':'';
-  const shown=id=>baseShown(id)&&!HOME_HERO_IDS.includes(id);
+  const shown=id=>baseShown(id)&&!homeHeroIds(mode).includes(id);
   if(mode==='mobile'){
     const ids=homeLayoutOrderIds(layout).filter(shown);
     return '<div class="hl-pv hl-pv-phone" role="group" aria-label="iPhone Home preview">'+
@@ -22752,7 +22759,7 @@ function hlWidgetRow(id,index,count,mode,ctx){
   const w=HOME_WIDGETS.filter(x=>x.id===id)[0]; if(!w) return '';
   const off=!w.fixed&&ctx.hidden.has(id);
   const isWide=ctx.wide.has(id);
-  const inHero=HOME_HERO_IDS.includes(id);
+  const inHero=homeHeroIds(mode).includes(id);
   const other=ctx.dash?HOME_DASH_COLS.filter(c=>c.id!==ctx.col)[0]:null;
   const mv=ctx.dash?'homeDashMove(\''+id+'\',':'homeWidgetMove(\''+id+'\',';
   const mvEnd=ctx.dash?')':',\''+mode+'\')';
@@ -22789,13 +22796,14 @@ function hlWidgetRow(id,index,count,mode,ctx){
 function renderHomeLayoutSection(){
   const wrap=document.getElementById('settings-homelayout-section'); if(!wrap) return;
   const mode=homeLayoutEditorMode();
+  const heroIds=homeHeroIds(mode);
   const layout=hlView(mode);
   const dash=mode==='desktop'&&homeDashOn(layout);
   const ctx={hidden:new Set(layout.hidden),
              wide:new Set(mode==='desktop'?layout.wide:[]),
              dash:dash, col:null};
   const visibleCount=HOME_WIDGETS.filter(w=>w.fixed||!ctx.hidden.has(w.id)).length;
-  const wideCount=HOME_WIDGETS.filter(w=>!HOME_HERO_IDS.includes(w.id)&&ctx.wide.has(w.id)).length;
+  const wideCount=HOME_WIDGETS.filter(w=>!heroIds.includes(w.id)&&ctx.wide.has(w.id)).length;
   const dirty=hlDirty(mode), stale=hlStale(mode);
   const label=HL_PROFILE_LABEL[mode], otherMode=mode==='mobile'?'desktop':'mobile';
   const tab=function(m,text){
@@ -22815,7 +22823,7 @@ function renderHomeLayoutSection(){
     ? (function(){
         const cols=homeDashColumns(layout);
         return HOME_DASH_COLS.map(function(c){
-          const ids=cols[c.id].filter(id=>!HOME_HERO_IDS.includes(id));
+          const ids=cols[c.id].filter(id=>!heroIds.includes(id));
           return '<div class="hl-col-group">'+
             '<h3 class="hl-col-h">'+c.label+' <span>'+ids.length+' card'+(ids.length===1?'':'s')+'</span></h3>'+
             '<div class="hl-layout-list is-desktop">'+
@@ -22826,7 +22834,7 @@ function renderHomeLayoutSection(){
         }).join('');
       })()
     : (function(){
-        const ids=homeLayoutOrderIds(layout).filter(id=>!HOME_HERO_IDS.includes(id));
+        const ids=homeRegularWidgetIds(homeLayoutOrderIds(layout),mode);
         return '<div class="hl-layout-list is-'+mode+'">'+
           ids.map(function(id,i){ return hlWidgetRow(id,i,ids.length,mode,ctx); }).join('')+'</div>';
       })();
@@ -22837,7 +22845,7 @@ function renderHomeLayoutSection(){
       '<div class="seg-tabs seg-fill hl-seg" role="tablist" aria-label="Home layout profile">'+
         tab('mobile','iPhone')+tab('desktop','Desktop')+
       '</div>'+
-      '<p class="stg-help">The Home hero groups your visible session, weekly budget and weather, in that order on iPhone. Show or hide each below. Other cards keep the layout chosen here.</p>'+
+      '<p class="stg-help">'+(mode==='mobile'?'The Home hero groups your visible session and weather. Weekly Budget is a regular card below, with its own Add expense button.':'The Home hero groups your visible session, weekly budget and weather.')+' Show or hide each below. Other cards keep the layout chosen here.</p>'+
       '<p class="hl-editing">You are editing the <strong>'+label+'</strong> layout'+
         (mode===layoutMode()?' — the device you are on now.':'. It applies when Daily is opened on '+
           (mode==='mobile'?'a phone.':'a desktop or laptop.'))+'</p>'+
@@ -22885,7 +22893,7 @@ function renderHomeLayoutSection(){
       '</div>'+
     '</div>'+
     '<div class="hl-col-group"><h3 class="hl-col-h">Home hero</h3><div class="hl-layout-list is-'+mode+'">'+
-      HOME_HERO_IDS.map((id,i)=>hlWidgetRow(id,i,3,mode,{hidden:ctx.hidden,wide:ctx.wide,dash:false,col:null})).join('')+'</div></div>'+
+      heroIds.map((id,i)=>hlWidgetRow(id,i,heroIds.length,mode,{hidden:ctx.hidden,wide:ctx.wide,dash:false,col:null})).join('')+'</div></div>'+
     lists;
 
   if(_hlFocus){

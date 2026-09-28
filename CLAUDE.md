@@ -1,5 +1,16 @@
 # Daily — Project Reference
 
+## Smaller iPhone Home hero — v362
+
+The mobile Home hero contains the workout and weather only. Weather keeps its existing scene,
+size and forecast disclosure. Weekly Budget returns to the mobile profile's regular-card order
+(below activity cards in the recommended layout), with the shared matte card surface and a
+quiet full-width Add expense button. Its figures, spending goal, pace and Finance link are
+unchanged. Desktop keeps the v360 hero composition and compact expense action.
+`homeHeroIds(mode)` defines the presentation membership for Home and the layout editor; mobile
+Budget is movable again and hidden flags still apply. Existing saved order and visibility are
+read as-is: no migration, new store or startup write. Service-worker cache: `daily-v362`.
+
 ## Settings icon treatment — v361
 
 Settings navigation, search results and detail headings share accent-tinted tiles with a fine
