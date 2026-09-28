@@ -176,7 +176,12 @@
 #view-home .home-mega-footer{padding:14px 22px 20px;border-top:1px solid var(--mega-line);
   border-radius:0 0 var(--radius-hero) var(--radius-hero);background:rgba(0,0,0,.07)}
 @media(min-width:1024px){
-  #view-home .home-mega-footer{grid-column:1 / -1;grid-row:3;padding:18px 32px 22px}
+  #view-home .home-mega-footer{display:none}
+  #view-home .home-mega-budget{border-radius:0 0 0 28px}
+  #view-home .home-mega:not(.has-weather) .home-mega-budget{border-bottom-right-radius:28px}
+  #view-home .home-mega .home-budget-add{width:44px;height:44px;box-sizing:border-box;
+    border:4px solid transparent;background:rgba(255,255,255,.12);background-clip:padding-box;color:#fff}
+  #view-home .home-mega .home-budget-add:hover{background-color:rgba(255,255,255,.22)}
 }
 @media(max-width:359px){
   #view-home .home-mega-footer{padding:12px 18px 16px}

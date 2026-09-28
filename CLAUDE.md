@@ -1,5 +1,13 @@
 # Daily — Project Reference
 
+## Desktop Home expense action — v359
+
+At 1024px and wider, the Home hero hides its full-width Add expense footer. The existing
+round + remains beside the budget figure with a muted 36px disc inside a 44px hit target;
+the workout action keeps its stronger emphasis. Mobile retains both its round + and the
+thumb-friendly footer. This is CSS only; the existing expense handler and data are unchanged.
+`CACHE_NAME` is `daily-v359`.
+
 ## Home hero and daily weather outlooks — v358
 
 Home composes its visible `session`, `budget` and `weather` widgets into one accent surface.

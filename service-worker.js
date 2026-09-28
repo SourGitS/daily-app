@@ -370,7 +370,8 @@
 // v356: account-backed savings reconciliation; Budget savings remains a plan allocation.
 // v357: ignore stale daily solar times when deciding the live weather scene.
 // v358: Home’s shared hero, in-card expense actions and daily Sydney weather outlooks.
-const CACHE_NAME = 'daily-v358';
+// v359: keep desktop expense entry compact; retain the mobile thumb-access footer.
+const CACHE_NAME = 'daily-v359';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
