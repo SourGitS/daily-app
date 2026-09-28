@@ -15,8 +15,9 @@ Four main areas plus supporting screens:
 - **Home** — dashboard of independently show/hideable widget cards (session hero, budget
   snapshot, calorie ring, net worth, notes, habits, etc.)
 - **Log** — the workout hub: four sections behind one sub-tab strip (Today / Splits /
-  Exercises / History). **Today is a training BRIEFING** — a state-aware hero, Today's plan (or
-  Up next), Last 7 days and Recent sessions — and it opens the set logger from there.
+  Exercises / History). **Today is a training BRIEFING** — a state-aware hero containing
+  Last 7 days, followed by Today's plan (or Up next) and Recent sessions — and it opens the
+  set logger from there.
   `logTodayBrief()` is the ONE canonical training-state reader behind it, shared with Home's
   session hero. Splits is the current split and a compact collection to preview and choose from;
   Exercises and History
@@ -900,10 +901,12 @@ every logger, session and sync helper was byte-compared against the previous com
 - **`logOpenPlannedDay(idx)`** prepares the advertised day without `selectDay()`'s discard
   semantics — it initialises only when no meaningful draft exists and the logger is not already
   on that day.
-- **The overview is hero → Today's plan → Last 7 days → Recent sessions**, one mobile stack and
-  two independent desktop columns (`.lg-cols`, plus a two-column grid in the landscape block,
-  where `#log-overview` now also scrolls inside its column — `#view-log` is `overflow:hidden`
-  there, so a tall overview was previously cut off).
+- **v364: the state-aware hero and Last 7 days share one accent surface.** Current workout
+  above history on phones; side by side on desktop and short landscape screens. The plan and
+  recent sessions follow in independent `.lg-cols` columns, stacked on phones. Workout actions
+  close the combined hero, after the history in DOM and reading order. Seven-day
+  calculations, history links and workout actions are unchanged; rendering writes nothing.
+  `#log-overview` retains its own landscape scroller because `#view-log` is `overflow:hidden`.
 - **Removed, with an audit confirming no other caller:** `renderLogWeightCard()`,
   `logTodayWeight()`, `renderLogImprovementCard()`, `logImprovementSuggestions()`,
   `renderLogConsistencyCard()` (replaced by `logWeekCardHtml()`), `#log-weight-input`, every

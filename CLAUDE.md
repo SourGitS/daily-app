@@ -409,8 +409,11 @@ timestamp, backup/restore, history and session-save safeguards remain in place.
 ## Log › Today, rebuilt — v330, 2026-09-13 (corrected in v331–v333)
 
 **Log › Today is a training BRIEFING and the entry point to the set logger**, answering four
-questions in this order: what am I training now, what should I prepare for, what have I done
-this week, what did I do recently. Longer-term analysis stays in **Stats › Training**, split
+questions: what am I training now, what have I done this week, what should I prepare for,
+what did I do recently. **Since v364 the current workout and Last 7 days share one hero**,
+stacked on phones and side by side on desktop/short landscape screens. The plan and recent
+sessions remain independent cards underneath. Workout actions close the hero after its history
+in DOM and reading order. Longer-term analysis stays in **Stats › Training**, split
 editing in **Log › Splits**, body weight in **Stats › Body** — this screen deliberately holds
 none of them.
 
@@ -975,10 +978,11 @@ older summary — re-grep before assuming a fact from here is still true if it l
 - **Log** (was "Train") — **the workout hub**, four sections behind one sub-tab strip
   (`setLogTab()`, `LOG_TABS`): **Today**, **Splits**, **Exercises**, **History**.
   - **Today** lands on an OVERVIEW (`renderLogOverview()`), not the set logger — a training
-    briefing, rebuilt in v330: a state-aware hero from `logTodayBrief()`, **Today's plan** (or
-    **Up next** after a saved session), **Last 7 days** and **Recent sessions**. One mobile
-    stack; two INDEPENDENT desktop columns (hero + plan | last 7 days + recent), the same
-    composition Finance › Overview uses and for the same reason. `logOpenSession()`
+    briefing, rebuilt in v330: a state-aware hero from `logTodayBrief()` combined with
+    **Last 7 days** since v364, then **Today's plan** (or **Up next** after a saved session)
+    and **Recent sessions**. One mobile stack; the hero spans both desktop columns with
+    current workout and history side by side, followed by independent plan/recent columns.
+    `logOpenSession()`
     swaps in the logger; `logBackToOverview()` and re-tapping the active Today tab come back.
     `setView('log')` resets `logTodayView` to `'overview'` whenever you arrive from another
     view — that reset lives in setView because it is the only place that can tell a genuine
@@ -1738,8 +1742,9 @@ the accent or the theme must go through those, not set `--accent` directly.
     `showPOModal()` now also reads — one constant, two printers. **Do not invent a second
     progression formula**, and do not label every previous result a target.
   - **`.lg-cols` is two flex stacks becoming a two-column grid at 1024px**, plus a two-column
-    grid in the landscape-phone block. Never a row grid: the plan card is as long as the day
-    has exercises, and Last 7 days beside it would inherit that height.
+    grid in the landscape-phone block. Since v364 it holds the plan and recent sessions below
+    the combined hero. Their independent stacks prevent the shorter card inheriting the
+    height of a long plan.
   - **`#log-overview` scrolls inside its own column in landscape.** `#view-log` is
     `overflow:hidden` there and the overview is a plain block child of `#log-sub-today`, so
     anything taller than the short viewport was simply cut off with no way to reach it — the

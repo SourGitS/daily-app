@@ -892,9 +892,10 @@ test('Home and Log read one canonical state, and Home does not start a workout',
 
 test('the overview is one stack on a phone and two independent columns on desktop', () => {
   const fn = body('renderLogOverview');
-  // DOM order IS the mobile reading order: hero → plan → last 7 days → recent.
-  assert.match(fn, /lg-col-main">'\+logHeroHtml\(b\)\+logPlanCardHtml\(b\)/);
-  assert.match(fn, /lg-col-side">'\+logWeekCardHtml\(\)\+logRecentCardHtml\(\)/);
+  // The hero includes the seven-day history before the independent plan/recent columns.
+  assert.match(fn, /logHeroHtml\(b,logWeekCardHtml\(\)\)/);
+  assert.match(fn, /lg-col-main">'\+logPlanCardHtml\(b\)/);
+  assert.match(fn, /lg-col-side">'\+logRecentCardHtml\(\)/);
   assert.ok(!/order:/.test(fn), 'no CSS order — the DOM is the order');
   // Two flex stacks, becoming a grid of two independent columns at the desktop boundary.
   assert.match(css, /\.lg-cols\{display:flex;flex-direction:column\}/);

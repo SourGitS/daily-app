@@ -30635,13 +30635,12 @@ function logRecentSessions(n){
 }
 
 // ── Log › Today ─────────────────────────────────────────────────
-// A training BRIEFING and the entry point to the set logger, answering four questions in
-// order: what am I training now, what should I prepare for, what have I done this week, and
-// what did I do recently. Longer-term analysis stays in Stats › Training, program editing in
-// Log › Program and body weight in Stats › Body — this screen deliberately holds none of them.
+// A training BRIEFING and the entry point to the set logger: the current workout and the
+// last seven days share a hero, followed by the plan and recent sessions. Longer-term analysis
+// stays in Stats › Training, split editing in Log › Splits and body weight in Stats › Body.
 // Every figure comes from logTodayBrief() or an existing canonical reader, and rendering it
 // writes nothing.
-function logHeroHtml(b){
+function logHeroHtml(b,weekHtml){
   const lead=b.state==='inprogress' ? 'In progress'
             : b.state==='saved' ? (b.completed?'Completed today':'Saved today')
             : b.state==='empty' ? 'No exercises yet'
@@ -30684,13 +30683,17 @@ function logHeroHtml(b){
     ? '<button type="button" class="lg-hero-btn lg-hero-secondary" onclick="logContinueSavedWorkout()">Continue saved workout &rarr;</button>'
     : '';
   return '<div class="lg-hero">'+
+    '<div class="lg-hero-current">'+
     '<div class="lg-hero-lead">'+escText(lead)+'</div>'+
     '<div class="lg-hero-title">'+escText(b.dayName)+'</div>'+
     '<div class="lg-hero-sub">'+sub+'</div>'+
     more+
+    upNext+
+    '</div>'+(weekHtml||'')+
+    '<div class="lg-hero-actions">'+
     '<button type="button" class="lg-hero-btn" onclick="'+escAttr(run)+'">'+escText(act)+' &rarr;</button>'+
     resume+
-    upNext+
+    '</div>'+
   '</div>';
 }
 
@@ -30791,17 +30794,18 @@ function logWeekCardHtml(){
   // Only when something actually recorded a duration — a column of em dashes is not a fact.
   if(mins>0) cells.push(['Logged time',fmtDuration(mins)]);
   const range=budRangeLabel(localMidnight(days[0].date), today);
-  return '<div class="lg-card">'+
+  return '<section class="lg-hero-week" aria-label="Last 7 days">'+
     cardHeader('calendar','Last 7 days',
       '<button type="button" class="card-hd-act" onclick="logGoto(\'history\')">All history &rarr;</button>')+
     statsSplit(cells)+
     '<div class="lg-consistency" role="group" aria-label="Saved sessions on each of the last seven days">'+
       days.map(d=>'<button type="button" class="lg-consistency-day'+(d.date===getLocalDate()?' today':'')+'" '+
+        (d.date===getLocalDate()?'aria-current="date" ':'')+
         'aria-label="'+escAttr(fmtDate(d.date)+(d.saved?': '+d.saved.count+' saved session'+(d.saved.count===1?'':'s'):': no saved session'))+'" '+
         'onclick="logGoto(\'history\')"><span>'+escText(d.label)+'</span><i'+(d.saved?' class="done" style="background:'+escAttr(d.color)+'"':'')+'></i></button>').join('')+
     '</div>'+
     '<div class="lg-help">'+escText(range)+' — today and the six calendar days before it.</div>'+
-  '</div>';
+  '</section>';
 }
 
 function logRecentCardHtml(){
@@ -30831,9 +30835,10 @@ function renderLogOverview(){
   const el=document.getElementById('log-overview'); if(!el) return;
   const b=logTodayBrief();
   el.innerHTML=
+    logHeroHtml(b,logWeekCardHtml())+
     '<div class="lg-cols">'+
-      '<div class="lg-col lg-col-main">'+logHeroHtml(b)+logPlanCardHtml(b)+'</div>'+
-      '<div class="lg-col lg-col-side">'+logWeekCardHtml()+logRecentCardHtml()+'</div>'+
+      '<div class="lg-col lg-col-main">'+logPlanCardHtml(b)+'</div>'+
+      '<div class="lg-col lg-col-side">'+logRecentCardHtml()+'</div>'+
     '</div>';
 }
 
