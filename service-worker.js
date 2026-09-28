@@ -374,7 +374,8 @@
 // v360: unified Home summaries, seven training days and a soft weather-colour surround.
 // v361: Settings icon tiles follow the resolved app accent.
 // v362: keep phone Finance in a regular card below the workout and weather hero.
-const CACHE_NAME = 'daily-v362';
+// v363: independent step timers, clearer methods, recipe-review guidance and validated protein-step positions.
+const CACHE_NAME = 'daily-v363';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

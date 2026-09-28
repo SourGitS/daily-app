@@ -158,6 +158,15 @@ account or physical iPhone has been tested. Auth, sync, backup and stored defaul
 
 ## Cooking mode and recipe quantities — v349
 
+**v363 supersedes the single-timer notes below:** `kitCookState.timers` holds one countdown per
+step for the current session. Timers can run together, retain paused/finished state on return,
+and share one repaint interval. A stationary strip links to other steps' timers; ticks never
+replace its buttons. Reset affects only the current step. Exit and confirmed Finish clear all
+timers. Closing/reloading still ends the session; no persistence or notifications were added.
+Short, unpunctuated first lines become authored headings in detail and cooking views; remaining
+line breaks stay paragraphs. Ingredient references are collapsed initially and retain the
+recipe-total warning. The editor/AI guidance describes this format; no quantities are inferred.
+
 **The cooking screen is a guided instruction, not a re-rendered page.** `kitCookMount()` builds
 the session shell ONCE — topbar, protein, servings, progress bar, the full ingredient reference
 and the Prev/Next row — and `kitCookRenderStep(dir)` only ever patches it. That is what keeps a

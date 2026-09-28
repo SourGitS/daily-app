@@ -64,23 +64,23 @@ function context(recipes = [], opts = {}) {
   const slideVars = source.match(/^let _kitCookSlideEnd.*$/m);
   assert.ok(slideVars, 'the slide handles must stay module-level lets');
   const tables = ['KIT_VULGAR_FRACTIONS', 'KIT_QTY_GLYPHS', 'KIT_QTY_EPS',
-    'KIT_GENERIC_ING_WORDS', 'KIT_IMPORT_CATS', 'KIT_COOK_SLIDE_MS', 'kitCookState']
+    'KIT_GENERIC_ING_WORDS', 'KIT_IMPORT_CATS', 'KIT_UNITS', 'KIT_STANDARD_TAGS', 'KIT_COOK_SLIDE_MS', 'kitCookState']
     .map(extractConst).concat(slideVars[0]).join('\n');
   const names = ['kitEsc', 'kitTrim', 'kitNum', 'kitIngCopy',
     'kitQtyValue', 'kitQtyParse', 'kitQtyScale', 'kitQtyFormat', 'kitQtyText', 'kitQtyResolve',
     'kitQtyStore', 'kitScaledAmount',
     'kitOptionsOf', 'kitFindOption', 'kitDefaultOption', 'kitOptionsProblem', 'kitOptId',
-    'kitIsProteinStep', 'kitStepText', 'kitStepTimer', 'kitResolve', 'kitStepIngredients',
+    'kitIsProteinStep', 'kitProteinStepProblem', 'kitStepText', 'kitStepTimer', 'kitResolve', 'kitStepIngredients',
     'kitCookResolve', 'kitStartCooking', 'kitExitCooking', 'kitCookFinish', 'kitCookGo',
     'kitCookConfirmOpen', 'kitCookConfirmClose', 'kitCookConfirmAccept', 'kitFormBuildProtein',
-    'kitCookTimerClear', 'kitCookStepMinutes', 'kitCookTimerSec', 'kitCookTimerActive',
+    'kitCookTimerClear', 'kitCookTimerSchedule', 'kitCookStepMinutes', 'kitCookTimerSec', 'kitCookTimerActive',
     'kitCookFmtClock', 'kitCookStepName', 'kitCookTimerToggle', 'kitCookTimerReset', 'kitCookTick',
     'kitCookRingHTML', 'kitCookTimerHTML', 'kitCookRenderTimer', 'kitCookTimerPatch',
     'kitCookChipHTML', 'kitCookJumpToTimer', 'kitCookReduceMotion', 'kitCookSlideSettle',
     'kitCookSlideStart', 'kitCookStepIngredients', 'kitCookIngRowHTML', 'kitCookInstructionHTML',
     'kitCookPageHTML', 'kitCookStepbarHTML', 'kitCookMount', 'kitCookNext', 'kitCookRenderStep',
     'kitCookRender', 'kitShopComputeRecipeItems', 'kitShopAddRequirement', 'kitShopRequirementText',
-    'kitRecipeToExport', 'kitParseImport'];
+    'kitRecipeToExport', 'kitBuildExportText', 'kitParseImport', 'kitSaveForm'];
   vm.runInContext(tables + '\n' + names.map(extract).join('\n'), c);
   // `const` bindings are lexical inside a VM script, so the session object is not a property
   // of the context. Hand the very same object out, so a test reads and writes what the module
@@ -427,6 +427,70 @@ const proteinRecipe = () => recipe({
   defaultProteinOptionId: 'chicken'
 });
 
+test('import rejects a missing protein position instead of placing cooking after serving', () => {
+  const r = proteinRecipe();
+  r.steps = ['Make the sauce.', 'Plate up.'];
+  const c = context([r]);
+  const before = JSON.stringify(r);
+  const imported = c.kitParseImport(JSON.stringify({ recipes: [recipe(), r] }));
+  assert.match(imported.error, /Add a protein step/);
+  assert.equal(imported.recipes, undefined, 'a bad recipe rejects the whole paste');
+  assert.equal(JSON.stringify(r), before, 'validation never repairs the saved recipe');
+  assert.deepEqual(c.__saved, []);
+});
+
+test('import rejects orphaned and repeated protein slots with actionable errors', () => {
+  const c = context();
+  const orphan = recipe({ steps: [{ type: 'protein' }] });
+  assert.match(c.kitParseImport(JSON.stringify(orphan)).error, /no protein options/);
+  const repeated = proteinRecipe();
+  repeated.steps.push({ type: 'protein' });
+  assert.match(c.kitParseImport(JSON.stringify(repeated)).error, /exactly one/);
+  const ordinary = c.kitParseImport(JSON.stringify(recipe()));
+  assert.ok(!ordinary.error, ordinary.error);
+});
+
+test('AI export round trip preserves quantities, units and each protein method in place', () => {
+  const r = proteinRecipe(), c = context();
+  r.ingredients = [
+    { name: 'Red wine vinegar', amount: '1/2', unit: 'tbsp' },
+    { name: 'Lemon', amount: '1/2', unit: '' },
+    { name: 'Rice', amount: '2-3', unit: 'custom scoop' }
+  ];
+  const before = JSON.stringify(r);
+  const text = c.kitBuildExportText([r], 'Review this recipe.');
+  const fenced = text.match(/```json\n([\s\S]*?)\n```/);
+  assert.ok(fenced, 'the exported recipe remains a single importable payload');
+  const imported = c.kitParseImport(fenced[1]);
+  assert.ok(!imported.error, imported.error);
+  assert.deepEqual(plain(imported.recipes[0].ingredients), r.ingredients);
+  for (const option of imported.recipes[0].proteinOptions) {
+    const method = plain(c.kitResolve(imported.recipes[0], option.id, 2).steps).map(s => s.text);
+    assert.deepEqual(method, ['Warm the sauce.', option.prep, option.cook, 'Plate up.']);
+  }
+  assert.equal(JSON.stringify(r), before);
+  assert.deepEqual(c.__saved, []);
+});
+
+test('editor blocks an invalid protein position before changing or saving a recipe', () => {
+  for (const orphan of [false, true]) {
+    const r = proteinRecipe(), c = context([r]);
+    const before = JSON.stringify(r), alerts = [];
+    c.alert = msg => alerts.push(msg);
+    c.document.getElementById('kit-f-name').value = r.name;
+    c.document.getElementById('kit-f-id').value = r.id;
+    c.kitFormProtein = { enabled: !orphan, options: r.proteinOptions, defaultId: 'chicken' };
+    c.document.querySelectorAll = selector => selector === '#kit-f-steps .kit-f-step-row'
+      ? [{ classList: { contains: () => orphan }, querySelector: sel => ({ value: sel === '.kit-fs-text' ? 'Serve.' : '' }) }]
+      : [];
+    c.kitSaveForm();
+    assert.equal(alerts.length, 1);
+    assert.match(alerts[0], orphan ? /no protein options/ : /Add a protein step/);
+    assert.equal(JSON.stringify(r), before);
+    assert.deepEqual(c.__saved, []);
+  }
+});
+
 test('the chosen protein expands in the authored position with its own temperature', () => {
   const r = proteinRecipe();
   const c = context([r]);
@@ -525,21 +589,21 @@ test('a render never starts, resets or duplicates a timer', () => {
   c.kitCookRenderStep(1);
   c.kitCookRender();
   assert.equal(c.__timers.set, before, 'rendering must not create an interval');
-  assert.equal(c.kitCookState.timerRunning, false);
-  assert.equal(c.kitCookState.timerStep, null);
+  assert.equal(!!c.kitCookState.timers[0]?.running, false);
+  assert.deepEqual(plain(c.kitCookState.timers), {});
 });
 
 test('a running timer keeps its own step when you read ahead, and says where it came from', () => {
   const c = cooking([timed()]);
   c.kitCookTimerToggle();                       // start step 1's 10 minutes
-  assert.equal(c.kitCookState.timerRunning, true);
-  assert.equal(c.kitCookState.timerStep, 0);
+  assert.equal(c.kitCookState.timers[0].running, true);
+  assert.ok(c.kitCookState.timers[0]);
   c.__advance(60);
   c.kitCookGo(1);                               // browse to step 2 — also 10 minutes
-  assert.equal(c.kitCookState.timerRunning, true, 'browsing must not stop the countdown');
-  assert.equal(c.kitCookState.timerStep, 0, 'and must not hand it to the step being viewed');
-  assert.equal(c.kitCookTimerSec(), 540);
-  const chip = c.__nodes['kit-cook-timer-chip'].textContent;
+  assert.equal(c.kitCookState.timers[0].running, true, 'browsing must not stop the countdown');
+  assert.equal(c.kitCookState.timers[1], undefined, 'and must not hand it to the step being viewed');
+  assert.equal(c.kitCookTimerSec(0), 540);
+  const chip = c.__nodes['kit-cook-timer-chip-0'].textContent;
   assert.ok(/Step 1 of 3/.test(chip), chip);
   assert.ok(/09:00/.test(chip), chip);
 });
@@ -553,28 +617,20 @@ test('consecutive equal-duration steps do not share a countdown', () => {
   const html = c.kitCookTimerHTML();
   assert.ok(/Start 10 min/.test(html), html);
   assert.ok(/10:00/.test(html), html);
-  assert.equal(c.kitCookTimerSec(), 480, 'step 1 is still counting down its own time');
+  assert.equal(c.kitCookTimerSec(0), 480, 'step 1 is still counting down its own time');
 });
 
-test('starting another step timer while one runs asks first, and only one ever runs', () => {
-  const declined = cooking([timed()], { confirm: false });
-  declined.kitCookTimerToggle();
-  declined.kitCookGo(1);
-  declined.kitCookTimerToggle();
-  assert.equal(declined.__nodes['kit-cook-confirm'].open, true);
-  declined.kitCookConfirmClose();
-  assert.equal(declined.kitCookState.timerStep, 0, 'declining leaves the original timer alone');
-  assert.equal(declined.kitCookState.timerRunning, true);
-
-  const accepted = cooking([timed()], { confirm: true });
-  accepted.kitCookTimerToggle();
-  accepted.kitCookGo(1);
-  accepted.kitCookTimerToggle();
-  assert.equal(accepted.kitCookState.timerStep, 0, 'opening a confirmation does not replace it');
-  accepted.kitCookConfirmAccept();
-  assert.equal(accepted.kitCookState.timerStep, 1, 'accepting replaces it');
-  assert.equal(accepted.kitCookState.timerRunning, true);
-  assert.equal(accepted.__timers.live.size, 1, 'never two intervals at once');
+test('each step retains its timer when another starts, with one shared interval', () => {
+  const c = cooking([timed()]);
+  c.kitCookTimerToggle(); c.__advance(60);
+  c.kitCookGo(1); c.kitCookTimerToggle(); c.__advance(30);
+  assert.equal(c.kitCookState.confirmAction, null);
+  assert.equal(c.kitCookTimerSec(0), 510);
+  assert.equal(c.kitCookTimerSec(1), 570);
+  c.kitCookGo(-1);
+  assert.equal(c.kitCookTimerSec(), 510, 'going back restores the original elapsed countdown');
+  assert.match(c.kitCookTimerHTML(), /08:30/);
+  assert.equal(c.__timers.live.size, 1, 'only one repaint interval for all timers');
 });
 
 test('pause, resume and reset behave from elapsed time, not from tick counting', () => {
@@ -582,7 +638,7 @@ test('pause, resume and reset behave from elapsed time, not from tick counting',
   c.kitCookTimerToggle();
   c.__advance(90);
   c.kitCookTimerToggle();                       // pause
-  assert.equal(c.kitCookState.timerRunning, false);
+  assert.equal(!!c.kitCookState.timers[0]?.running, false);
   assert.equal(c.kitCookTimerSec(), 510);
   c.__advance(600);                             // time passes while paused
   assert.equal(c.kitCookTimerSec(), 510, 'a paused timer does not drain');
@@ -590,7 +646,7 @@ test('pause, resume and reset behave from elapsed time, not from tick counting',
   c.__advance(10);
   assert.equal(c.kitCookTimerSec(), 500);
   c.kitCookTimerReset();
-  assert.equal(c.kitCookState.timerRunning, false);
+  assert.equal(!!c.kitCookState.timers[0]?.running, false);
   assert.equal(c.kitCookTimerSec(), 600);
   assert.equal(c.__timers.live.size, 0, 'reset releases the interval');
 });
@@ -600,7 +656,7 @@ test('a finished timer stops, says so, and claims nothing about the food', () =>
   c.kitCookTimerToggle();
   c.__advance(600);
   c.kitCookTick();
-  assert.equal(c.kitCookState.timerRunning, false);
+  assert.equal(!!c.kitCookState.timers[0]?.running, false);
   assert.equal(c.kitCookTimerSec(), 0);
   assert.equal(c.__timers.live.size, 0);
   assert.ok(c.__toasts.some(t => /Timer finished/.test(t)), JSON.stringify(c.__toasts));
@@ -640,8 +696,8 @@ test('timer ticks, completion and pause never rewrite control containers', () =>
   const c = cooking([timed()]);
   c.kitCookTimerToggle();
   c.kitCookGo(1);
-  const chip = c.__nodes['kit-cook-timer-chip'];
-  for (const id of ['kit-cook-timer-chip', 'kit-cook-timer', 'kit-cook-stepbar']) {
+  const chip = c.__nodes['kit-cook-timer-chip-0'];
+  for (const id of ['kit-cook-timer-chip-0', 'kit-cook-timer', 'kit-cook-stepbar']) {
     Object.defineProperty(c.document.getElementById(id), 'innerHTML', { set() { assert.fail(id + ' was rebuilt'); } });
   }
   c.__advance(60); c.kitCookTick();
@@ -652,23 +708,42 @@ test('timer ticks, completion and pause never rewrite control containers', () =>
   c.kitCookTimerToggle(); c.kitCookTimerToggle();
 });
 
-test('replacement confirmation preserves a paused timer and a running countdown until accepted', () => {
+test('paused, reset and completed timers remain independent across navigation', () => {
   const c = cooking([timed()]);
-  c.kitCookTimerToggle(); c.__advance(60); c.kitCookGo(1); c.kitCookTimerToggle();
-  c.__advance(10); c.kitCookTick();
-  assert.equal(c.kitCookTimerSec(), 530);
-  c.kitCookConfirmClose();
-  c.kitCookGo(-1); c.kitCookTimerToggle(); c.kitCookGo(1); c.kitCookTimerToggle();
-  assert.equal(c.kitCookState.confirmAction.kind, 'timer');
-  c.kitCookConfirmClose();
-  assert.equal(c.kitCookTimerSec(), 530);
-  c.kitCookTimerToggle(); c.kitCookConfirmAccept();
-  assert.equal(c.kitCookState.timerStep, 1);
+  c.kitCookTimerToggle(); c.__advance(60); c.kitCookTimerToggle();
+  c.kitCookGo(1); c.kitCookTimerToggle(); c.__advance(120);
+  c.kitCookJumpToTimer(0);
+  assert.equal(c.kitCookState.step, 0);
+  assert.equal(c.kitCookTimerSec(), 540, 'paused timer keeps its remaining time');
+  assert.match(c.kitCookTimerHTML(), /Resume/);
+  c.kitCookTimerReset();
   assert.equal(c.kitCookTimerSec(), 600);
-  assert.equal(c.__timers.live.size, 1);
+  assert.equal(c.kitCookTimerSec(1), 480, 'reset affects only the viewed step');
+  assert.equal(c.__timers.live.size, 1, 'other timer keeps ticking');
+  c.__advance(500); c.kitCookTick();
+  const finished = c.__toasts.length;
+  c.kitCookTick();
+  assert.equal(c.__toasts.length, finished, 'completion announces once');
+  c.kitCookGo(1); c.kitCookGo(-1); c.kitCookGo(1);
+  assert.equal(c.kitCookTimerSec(), 0, 'completed timer never silently restarts on return');
+  assert.match(c.kitCookTimerHTML(), /Restart/);
+  assert.equal(c.__timers.live.size, 0);
 });
 
-test('leaving a session invalidates a pending finish or timer replacement', () => {
+test('background elapsed time completes multiple timers and leaves untimed steps alone', () => {
+  const c = cooking([timed()]);
+  c.kitCookTimerToggle(); c.kitCookGo(1); c.kitCookTimerToggle();
+  c.kitCookGo(1); c.__advance(700); c.kitCookTick();
+  assert.equal(c.kitCookTimerSec(0), 0);
+  assert.equal(c.kitCookTimerSec(1), 0);
+  assert.equal(c.kitCookTimerHTML(), '');
+  assert.match(c.__toasts.at(-1), /steps 1, 2/);
+  assert.equal(c.__timers.live.size, 0);
+  c.kitExitCooking(); c.kitStartCooking('r1');
+  assert.deepEqual(plain(c.kitCookState.timers), {});
+});
+
+test('leaving a session invalidates a pending finish', () => {
   const c = cooking([timed()]);
   c.kitCookGo(1); c.kitCookGo(1); c.kitCookNext();
   c.kitExitCooking(); c.kitStartCooking('r1'); c.kitCookConfirmAccept();
@@ -688,7 +763,7 @@ test('exit clears the interval, the wake lock and the session, and records nothi
   assert.equal(c.__timers.live.size, 0, 'the tick interval is cleared');
   assert.equal(released, 1, 'the wake lock is released');
   assert.equal(c.kitCookState.recipeId, null);
-  assert.equal(c.kitCookState.timerStep, null);
+  assert.deepEqual(plain(c.kitCookState.timers), {});
   assert.equal(c.kitCookState.wakeLock, null);
   assert.equal(r.lastCooked, undefined, 'exiting is not cooking');
   assert.equal(c.__saved.length, 0, 'and writes nothing');
@@ -755,4 +830,18 @@ test('the three storage paths read amounts through kitQtyStore, not parseFloat',
     assert.ok(!amountLines.some(l => /parseFloat\s*\(\s*(v|ing\.amount|i\.amount)/.test(l)),
       fn + ' must not read an ingredient amount with parseFloat: ' + amountLines.join(' | '));
   }
+});
+
+
+test('authored step headings render consistently and all content is escaped', () => {
+  const c = context();
+  const text = 'Prepare the sauce\nMeasure 15 mL vinegar.\nUse half first <then taste>.';
+  const cook = c.kitCookInstructionHTML(text);
+  const detail = c.kitCookInstructionHTML(text, true);
+  assert.match(cook, /<h2 class="kit-instruction-title">Prepare the sauce<\/h2>/);
+  assert.match(detail, /<h3 class="kit-instruction-title">Prepare the sauce<\/h3>/);
+  assert.equal((cook.match(/<p /g) || []).length, 2);
+  assert.ok(cook.includes('15 mL'));
+  assert.ok(cook.includes('&lt;then taste&gt;'));
+  assert.ok(!cook.includes('<then taste>'));
 });

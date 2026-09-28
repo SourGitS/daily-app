@@ -129,6 +129,16 @@ Four main areas plus supporting screens:
 
 ## Cooking mode and recipe quantities (v349)
 
+**v363 update:** each cooking step now owns an independent timer in `kitCookState.timers`.
+Starting another step's timer preserves running, paused and finished timers. A single interval
+patches all clocks, and the stationary strip keeps other steps' timers reachable while scrolling.
+Reset affects only the viewed step; Exit/Finish clear the session. There is no timer persistence
+across closing or reloading the app, new store, sync path or background notification service.
+The earlier single-timer/replacement-confirmation notes below are superseded by this behavior.
+Authored short headings and line breaks render in both the recipe detail and cooking guide;
+ingredient references are expandable and remain labelled as recipe totals.
+Import/editor saves reject missing, duplicate or orphaned protein slots before writing.
+
 **v350 hardening:** all protein ingredient/extras import, export and editor amounts also use
 `kitQtyStore`. Counted/custom units preserve fractional counts above 10; shopping keeps repeated
 range/text contributions rather than deduplicating them. `nutIngResolve` accepts scalar fractions

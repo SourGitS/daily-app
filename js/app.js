@@ -25737,6 +25737,14 @@ function kitOptId(){
 function kitOptionsOf(r){ return (r&&Array.isArray(r.proteinOptions))?r.proteinOptions.filter(o=>o&&typeof o==='object'):[]; }
 function kitHasOptions(r){ return kitOptionsOf(r).length>0; }
 function kitIsProteinStep(s){ return !!(s&&typeof s==='object'&&s.type==='protein'); }
+// Validate an explicit edit/import, never repair a saved recipe during read or boot.
+function kitProteinStepProblem(steps,options){
+  const slots=(steps||[]).filter(kitIsProteinStep).length;
+  if(slots>1) return 'Use exactly one protein step, where the chosen protein is prepared and cooked.';
+  if((options||[]).length&&!slots) return 'Add a protein step where the chosen protein should be prepared and cooked. Its position cannot be guessed.';
+  if(!(options||[]).length&&slots) return 'This method has a protein step but no protein options. Add the options, or replace that step with written instructions.';
+  return null;
+}
 function kitFindOption(r,id){ return kitOptionsOf(r).find(o=>o.id===id)||null; }
 function kitDefaultOption(r){
   const opts=kitOptionsOf(r); if(!opts.length) return null;
@@ -25931,13 +25939,10 @@ function kitStepIngredients(text, ingredients){
 }
 // proteinOptionId is LOCKED for the session. The detail view's selector keeps browsing; a
 // cook already underway must not change protein under the user's hands halfway through.
-// timerStep is the index of the step the running timer BELONGS to. Keying the countdown on
-// the step rather than on its duration is what stops two consecutive 10-minute steps sharing
-// one countdown, and what lets a timer keep running while you read ahead.
-// `session` rises on every start so a wake-lock promise that resolves after the cook ended
-// can tell that it is stale and release immediately.
-const kitCookState={recipeId:null,proteinOptionId:null,servings:null,step:0,
-  timerStep:null,timerTotal:0,timerRemaining:0,timerStart:null,timerRunning:false,
+// Each step owns its countdown for the entire session, including paused and finished timers.
+// Elapsed wall time survives background throttling; one interval repaints every active timer.
+// The session token also rejects wake locks that arrive after the cook ends.
+const kitCookState={recipeId:null,proteinOptionId:null,servings:null,step:0,timers:{},
   wakeLock:null,tickId:null,session:0,confirmAction:null};
 // The resolved view the whole session reads: ingredients, steps, timers, temperature.
 // The SESSION owns its servings and its protein — browsing another recipe, or changing the
@@ -26053,16 +26058,15 @@ function kitCookGo(dir){
 // Capture the session and step so an old confirmation can never act on a new cook.
 function kitCookConfirmOpen(kind){
   const rv=kitCookResolve(), dialog=document.getElementById('kit-cook-confirm');
-  if(!rv||!dialog||kitCookState.confirmAction) return;
-  const finish=kind==='finish';
-  if(finish&&kitCookState.step!==rv.steps.length-1) return;
-  kitCookState.confirmAction={kind,session:kitCookState.session,step:kitCookState.step,owner:kitCookState.timerStep};
-  document.getElementById('kit-cook-confirm-title').textContent=finish?'Finished cooking?':'Replace the other timer?';
-  document.getElementById('kit-cook-confirm-copy').textContent=finish
-    ? 'Mark this recipe as cooked and close the cooking guide. This does not log food eaten.'+(kitCookTimerActive()?' Your active timer will stop.':'')
-    : kitCookStepName(rv,kitCookState.timerStep)+' has '+kitCookFmtClock(kitCookTimerSec())+' left'+(kitCookState.timerRunning?'.':' (paused).')+' Starting this step’s timer will replace it.';
-  document.getElementById('kit-cook-confirm-accept').textContent=finish?'Mark as cooked':'Replace timer';
-  document.getElementById('kit-cook-confirm-cancel').textContent=finish?'Keep cooking':'Keep existing timer';
+  if(!rv||!dialog||kitCookState.confirmAction||kind!=='finish') return;
+  if(kitCookState.step!==rv.steps.length-1) return;
+  kitCookState.confirmAction={kind,session:kitCookState.session,step:kitCookState.step};
+  document.getElementById('kit-cook-confirm-title').textContent='Finished cooking?';
+  document.getElementById('kit-cook-confirm-copy').textContent=
+    'Mark this recipe as cooked and close the cooking guide. This does not log food eaten.'+
+    (kitCookTimerActive()?' Your active timers will stop.':'');
+  document.getElementById('kit-cook-confirm-accept').textContent='Mark as cooked';
+  document.getElementById('kit-cook-confirm-cancel').textContent='Keep cooking';
   dialog.showModal();
   document.getElementById('kit-cook-confirm-cancel').focus({preventScroll:true});
 }
@@ -26078,97 +26082,77 @@ function kitCookConfirmAccept(){
   if(pending.kind==='finish'){
     const rv=kitCookResolve();
     if(rv&&kitCookState.step===rv.steps.length-1) kitCookFinish();
-  } else if(pending.kind==='timer'&&pending.owner===kitCookState.timerStep){
-    kitCookTimerClear();
-    kitCookTimerToggle();
   }
 }
 // ── Timer ────────────────────────────────────────────────────────
-// Session-only. No storage key, no notification, no background service, and never more than
-// one countdown — a second one would be a timer manager, which this is not.
+// Session-only: no storage, sync, notifications or background service.
 function kitCookTimerClear(){
   if(kitCookState.tickId){ clearInterval(kitCookState.tickId); kitCookState.tickId=null; }
-  kitCookState.timerStep=null;
-  kitCookState.timerRunning=false;
-  kitCookState.timerStart=null;
-  kitCookState.timerTotal=0;
-  kitCookState.timerRemaining=0;
+  kitCookState.timers={};
 }
 function kitCookStepMinutes(rv,idx){
   const st=(rv&&rv.steps&&rv.steps[idx])||null;
   const m=st?kitNum(st.timerMinutes):null;
   return (m!=null&&m>0)?m:0;
 }
-// Remaining seconds, derived from a timestamp rather than counted in ticks — a throttled or
-// backgrounded tab resumes with the correct time instead of a slow one.
-function kitCookTimerSec(){
-  if(kitCookState.timerStep==null) return 0;
-  if(!kitCookState.timerRunning) return Math.max(0,kitCookState.timerRemaining);
-  return Math.max(0,kitCookState.timerRemaining-Math.floor((Date.now()-kitCookState.timerStart)/1000));
+function kitCookTimerSec(idx=kitCookState.step){
+  const t=kitCookState.timers[idx];
+  if(!t) return kitCookStepMinutes(kitCookResolve(),idx)*60;
+  return Math.max(0,t.remaining-(t.running?Math.floor((Date.now()-t.startedAt)/1000):0));
 }
-function kitCookTimerActive(){ return kitCookState.timerStep!=null&&(kitCookState.timerRunning||kitCookTimerSec()>0); }
+function kitCookTimerActive(){
+  return Object.keys(kitCookState.timers).some(idx=>kitCookTimerSec(idx)>0);
+}
+function kitCookTimerSchedule(){
+  const running=Object.values(kitCookState.timers).some(t=>t.running);
+  if(running&&!kitCookState.tickId) kitCookState.tickId=setInterval(kitCookTick,250);
+  if(!running&&kitCookState.tickId){ clearInterval(kitCookState.tickId); kitCookState.tickId=null; }
+}
 function kitCookFmtClock(sec){
   const s=Math.max(0,Math.floor(sec));
   return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
 }
-function kitCookStepName(rv,idx){ return 'Step '+(idx+1)+' of '+((rv&&rv.steps||[]).length||1); }
+function kitCookStepName(rv,idx){ return 'Step '+(Number(idx)+1)+' of '+((rv&&rv.steps||[]).length||1); }
 function kitCookTimerToggle(){
   if(kitCookState.confirmAction) return;
   const rv=kitCookResolve(); if(!rv) return;
-  const idx=kitCookState.step;
-  const mins=kitCookStepMinutes(rv,idx); if(!mins) return;
-  const owner=kitCookState.timerStep;
-  if(owner!=null&&owner!==idx&&kitCookTimerActive()){
-    kitCookConfirmOpen('timer');
-    return;
-  }
-  if(kitCookState.timerRunning&&owner===idx){
-    kitCookState.timerRemaining=kitCookTimerSec();
-    kitCookState.timerRunning=false;
-    kitCookState.timerStart=null;
-    if(kitCookState.tickId){ clearInterval(kitCookState.tickId); kitCookState.tickId=null; }
+  const idx=kitCookState.step, mins=kitCookStepMinutes(rv,idx); if(!mins) return;
+  let t=kitCookState.timers[idx];
+  if(t&&t.running){
+    t.remaining=kitCookTimerSec(idx);
+    t.running=false;
+    t.startedAt=null;
   } else {
-    // A fresh start for this step, or a resume of its own paused countdown.
-    if(kitCookState.timerStep!==idx||kitCookTimerSec()<=0){
-      kitCookState.timerStep=idx;
-      kitCookState.timerTotal=mins*60;
-      kitCookState.timerRemaining=mins*60;
-    }
-    kitCookState.timerStart=Date.now();
-    kitCookState.timerRunning=true;
-    if(kitCookState.tickId) clearInterval(kitCookState.tickId);
-    kitCookState.tickId=setInterval(kitCookTick,250);
+    if(!t||kitCookTimerSec(idx)<=0) t=kitCookState.timers[idx]={total:mins*60,remaining:mins*60,running:false,startedAt:null};
+    t.startedAt=Date.now();
+    t.running=true;
   }
+  kitCookTimerSchedule();
   kitCookTimerPatch();
 }
 function kitCookTimerReset(){
-  if(kitCookState.confirmAction) return;
-  const rv=kitCookResolve(); if(!rv) return;
-  const idx=kitCookState.step;
-  const mins=kitCookStepMinutes(rv,idx);
-  if(kitCookState.timerStep!=null&&kitCookState.timerStep!==idx&&kitCookTimerActive()) return;
-  if(kitCookState.tickId){ clearInterval(kitCookState.tickId); kitCookState.tickId=null; }
-  kitCookState.timerStep=mins?idx:null;
-  kitCookState.timerRunning=false;
-  kitCookState.timerStart=null;
-  kitCookState.timerTotal=mins*60;
-  kitCookState.timerRemaining=mins*60;
+  if(kitCookState.confirmAction||!kitCookResolve()) return;
+  delete kitCookState.timers[kitCookState.step];
+  kitCookTimerSchedule();
   kitCookTimerPatch();
 }
-// Patches the countdown; never rebuilds the buttons, so a finger already on Pause is not
-// holding a node that has been replaced underneath it.
 function kitCookTick(){
-  if(!kitCookState.timerRunning){ if(kitCookState.tickId){ clearInterval(kitCookState.tickId); kitCookState.tickId=null; } return; }
-  const sec=kitCookTimerSec();
-  if(sec<=0){
-    clearInterval(kitCookState.tickId); kitCookState.tickId=null;
-    kitCookState.timerRunning=false;
-    kitCookState.timerRemaining=0;
-    kitCookTimerPatch();
+  const finished=[];
+  Object.keys(kitCookState.timers).forEach(idx=>{
+    const t=kitCookState.timers[idx];
+    if(t.running&&kitCookTimerSec(idx)<=0){
+      t.running=false; t.remaining=0; t.startedAt=null;
+      finished.push(Number(idx)+1);
+    }
+  });
+  kitCookTimerSchedule();
+  kitCookTimerPatch();
+  if(finished.length){
+    const msg='Timer finished — step'+(finished.length>1?'s ':' ')+finished.join(', ')+'. Check the food.';
     if(navigator.vibrate) try{ navigator.vibrate([300,100,300]); }catch(e){}
-    kitShowToast('Timer finished ⏰');
-  } else {
-    kitCookTimerPatch();
+    kitShowToast(msg);
+    const say=document.getElementById('kit-cook-announce');
+    if(say) say.textContent=msg;
   }
 }
 function kitCookRingHTML(pct,done,sec){
@@ -26179,85 +26163,74 @@ function kitCookRingHTML(pct,done,sec){
     'stroke-dasharray="213.6" stroke-dashoffset="'+off+'" stroke-linecap="round" transform="rotate(-90 40 40)"/></svg>'+
     '<div class="kit-cook-timer-time'+(done?' done':'')+'">'+kitCookFmtClock(sec)+'</div></div>';
 }
-// The timer block for the step being shown. A countdown belonging to ANOTHER step is not
-// drawn here — it keeps its own chip in the stationary step bar (see kitCookStepbarHTML).
+// Controls belong to the viewed step; other timers stay in the stationary strip.
 function kitCookTimerHTML(){
   const rv=kitCookResolve(); if(!rv) return '';
-  const idx=kitCookState.step;
-  const mins=kitCookStepMinutes(rv,idx);
+  const idx=kitCookState.step, mins=kitCookStepMinutes(rv,idx);
   if(!mins) return '';
-  const owned=kitCookState.timerStep===idx;
-  const sec=owned?kitCookTimerSec():mins*60;
-  const total=owned?(kitCookState.timerTotal||mins*60):mins*60;
-  const done=owned&&sec===0&&kitCookState.timerTotal>0;
-  const pct=total>0?Math.round((1-sec/total)*100):0;
-  const elsewhere=kitCookTimerActive()&&kitCookState.timerStep!==idx;
-  return kitCookRingHTML(pct,done,sec)+
+  const t=kitCookState.timers[idx], sec=kitCookTimerSec(idx), total=t?t.total:mins*60;
+  const done=!!t&&sec===0;
+  return '<div class="kit-cook-timer-controls">'+kitCookRingHTML(total?100*(1-sec/total):0,done,sec)+
+    '<div class="kit-cook-timer-actions"><span class="kit-cook-timer-label">Step '+(idx+1)+' timer</span>'+
     '<div class="kit-cook-timer-btns">'+
       '<button id="kit-cook-timer-toggle" class="kit-cook-tbtn" onclick="kitCookTimerToggle()">'+
-        ((owned&&kitCookState.timerRunning)?'⏸ Pause':(owned&&sec>0&&sec<total)?'▶ Resume':'▶ Start '+mins+' min')+'</button>'+
-      '<button id="kit-cook-timer-reset" class="kit-cook-tbtn secondary" onclick="kitCookTimerReset()"'+(elsewhere?' disabled':'')+'>↺ Reset</button>'+
-    '</div>'+
+        (t&&t.running?'⏸ Pause':done?'↻ Restart':t?'▶ Resume':'▶ Start '+mins+' min')+'</button>'+
+      '<button id="kit-cook-timer-reset" class="kit-cook-tbtn secondary" onclick="kitCookTimerReset()"'+(!t?' disabled':'')+'>↺ Reset</button>'+
+    '</div></div></div>'+
     '<div id="kit-cook-timer-done" class="kit-cook-timer-done"'+(done?'':' hidden')+'>Timer finished — check the food before moving on. A finished timer does not mean it is cooked through.</div>'+
-    '<div id="kit-cook-timer-note" class="kit-cook-timer-note"'+(elsewhere?'':' hidden')+'></div>';
+    '<div class="kit-cook-timer-note">Keeps counting when you move between steps.</div>';
 }
 function kitCookRenderTimer(){
   const wrap=document.getElementById('kit-cook-timer');
   if(wrap) wrap.innerHTML=kitCookTimerHTML();
   kitCookTimerPatch();
 }
-// Text-only update: the clock, the ring and the running-elsewhere chip. Nothing interactive
-// is replaced, and nothing here is in a live region — a countdown announced every second is
-// unusable with a screen reader.
+// Ticks patch clocks and controls in place, preserving keyboard focus and in-flight presses.
 function kitCookTimerPatch(){
   const rv=kitCookResolve(); if(!rv) return;
-  const idx=kitCookState.step;
-  const owned=kitCookState.timerStep===idx;
-  const mins=kitCookStepMinutes(rv,idx);
+  const idx=kitCookState.step, mins=kitCookStepMinutes(rv,idx), timer=kitCookState.timers[idx];
   if(mins){
-    const sec=owned?kitCookTimerSec():mins*60;
-    const total=owned?(kitCookState.timerTotal||mins*60):mins*60;
-    const done=owned&&sec===0&&kitCookState.timerTotal>0;
-    const t=document.querySelector('#kit-cook-timer .kit-cook-timer-time');
-    if(t){ t.textContent=kitCookFmtClock(sec); t.classList.toggle('done',done); }
+    const sec=kitCookTimerSec(idx), total=timer?timer.total:mins*60, done=!!timer&&sec===0;
+    const clock=document.querySelector('#kit-cook-timer .kit-cook-timer-time');
+    if(clock){ clock.textContent=kitCookFmtClock(sec); clock.classList.toggle('done',done); }
     const ring=document.querySelector('#kit-cook-timer .kit-cook-ring-fill');
     if(ring&&total>0){
       ring.setAttribute('stroke-dashoffset',String(Math.round((sec/total)*213.6)));
       ring.setAttribute('stroke',done?'var(--danger)':'var(--accent)');
     }
-    const elsewhere=kitCookTimerActive()&&kitCookState.timerStep!==idx;
     const toggle=document.getElementById('kit-cook-timer-toggle');
-    if(toggle) toggle.textContent=owned&&kitCookState.timerRunning?'⏸ Pause':owned&&sec>0&&sec<total?'▶ Resume':'▶ Start '+mins+' min';
+    if(toggle) toggle.textContent=timer&&timer.running?'⏸ Pause':done?'↻ Restart':timer?'▶ Resume':'▶ Start '+mins+' min';
     const reset=document.getElementById('kit-cook-timer-reset');
-    if(reset) reset.disabled=elsewhere;
+    if(reset) reset.disabled=!timer;
     const finished=document.getElementById('kit-cook-timer-done');
     if(finished) finished.hidden=!done;
-    const note=document.getElementById('kit-cook-timer-note');
-    if(note){
-      note.hidden=!elsewhere;
-      note.textContent=elsewhere?'A timer from '+kitCookStepName(rv,kitCookState.timerStep)+' is '+(kitCookState.timerRunning?'still running.':'paused.'):'';
-    }
   }
-  const chip=document.getElementById('kit-cook-timer-chip');
-  if(chip){
-    const owner=kitCookState.timerStep;
-    chip.hidden=owner==null||owner===idx;
+  let visible=0;
+  rv.steps.forEach((st,i)=>{
+    const chip=document.getElementById('kit-cook-timer-chip-'+i); if(!chip) return;
+    const t=kitCookState.timers[i];
+    chip.hidden=!t||i===idx;
     if(!chip.hidden){
-      const sec=kitCookTimerSec();
-      chip.textContent='⏱ '+kitCookStepName(rv,owner)+' · '+(sec<=0?'Finished':kitCookFmtClock(sec)+(kitCookState.timerRunning?'':' (paused)'));
+      visible++;
+      const sec=kitCookTimerSec(i);
+      chip.textContent='⏱ '+kitCookStepName(rv,i)+' · '+(sec<=0?'Finished':kitCookFmtClock(sec)+(t.running?'':' (paused)'));
+      chip.classList.toggle('is-done',sec<=0);
     }
-  }
+  });
+  const tray=document.getElementById('kit-cook-timers');
+  if(tray) tray.hidden=!visible;
 }
-// Where a timer running on another step stays visible: its step and its remaining time.
 function kitCookChipHTML(rv){
-  return '<button id="kit-cook-timer-chip" class="kit-cook-chip" onclick="kitCookJumpToTimer()" hidden></button>';
+  return '<div id="kit-cook-timers" class="kit-cook-timers" aria-label="Timers from other steps" hidden>'+rv.steps.map((st,i)=>
+    kitCookStepMinutes(rv,i)?'<button id="kit-cook-timer-chip-'+i+'" class="kit-cook-chip" onclick="kitCookJumpToTimer('+i+')" hidden></button>':''
+  ).join('')+'</div>';
 }
-function kitCookJumpToTimer(){
-  if(kitCookState.confirmAction) return;
-  const owner=kitCookState.timerStep; if(owner==null) return;
-  const dir=owner>kitCookState.step?1:owner<kitCookState.step?-1:0;
+function kitCookJumpToTimer(idx){
+  if(kitCookState.confirmAction||!Number.isInteger(idx)||!kitCookState.timers[idx]) return;
+  const rv=kitCookResolve(); if(!rv||idx<0||idx>=rv.steps.length) return;
+  const dir=idx>kitCookState.step?1:idx<kitCookState.step?-1:0;
   if(!dir) return;
-  kitCookState.step=owner;
+  kitCookState.step=idx;
   kitCookRenderStep(dir);
   const toggle=document.getElementById('kit-cook-timer-toggle');
   if(toggle) toggle.focus({preventScroll:true});
@@ -26339,10 +26312,14 @@ function kitCookIngRowHTML(i){
 // breaks the author already put there — no sentence splitting, no rewriting, and no number
 // inside the text is touched, because a broad substitution cannot tell 180°C or a 20 cm tin
 // from an ingredient quantity.
-function kitCookInstructionHTML(text){
+function kitCookInstructionHTML(text,compact){
   const parts=String(text==null?'':text).split(/\r?\n+/).map(s=>s.trim()).filter(Boolean);
   if(!parts.length) return '<p class="kit-cook-instruction-p">—</p>';
-  return parts.map(p=>'<p class="kit-cook-instruction-p">'+kitEsc(p)+'</p>').join('');
+  // A short, unpunctuated first line is an authored heading. Never split prose into guessed actions.
+  const heading=parts.length>1&&parts[0].length<=70&&!/[.!?:;]$/.test(parts[0])?parts.shift():'';
+  const tag=compact?'h3':'h2';
+  return (heading?'<'+tag+' class="kit-instruction-title">'+kitEsc(heading)+'</'+tag+'>':'')+
+    parts.map(p=>'<p class="kit-cook-instruction-p">'+kitEsc(p)+'</p>').join('');
 }
 function kitCookPageHTML(rv,idx){
   const st=rv.steps[idx]||{text:'',timerMinutes:null,kind:'shared'};
@@ -26371,15 +26348,15 @@ function kitCookPageHTML(rv,idx){
       '<div class="kit-cook-instruction">'+who+kitCookInstructionHTML(st.text)+scaledNote+'</div>'+
       temp+
       '<div id="kit-cook-timer" class="kit-cook-timer"></div>'+
-      '<section class="kit-cook-ing-panel kit-cook-ing-step card">'+
-        cardHeader('check','For this step')+
+      '<details class="kit-cook-ing-panel kit-cook-ing-step card">'+
+        '<summary>Ingredients mentioned <span>'+stepIngs.length+'</span></summary>'+
         '<div class="kit-cook-ing-rows">'+ingBody+'</div>'+
-      '</section>'+
+      '</details>'+
     '</div>';
 }
 function kitCookStepbarHTML(rv,idx){
   const total=rv.steps.length;
-  return '<span id="kit-cook-step-label" class="kit-cook-step-label">Step '+(idx+1)+' of '+total+'</span>'+kitCookChipHTML(rv);
+  return '<span id="kit-cook-step-label" class="kit-cook-step-label">Step '+(idx+1)+' of '+total+'</span>';
 }
 // Builds the session shell ONCE. Everything stationary — recipe name, protein, servings,
 // progress, the full ingredient reference and the Prev/Next row — is created here and then
@@ -26408,6 +26385,7 @@ function kitCookMount(){
       '<div class="kit-cook-topbar-end"></div>'+
     '</div>'+
     '<div class="kit-cook-progress-bar"><div class="kit-cook-progress-fill" id="kit-cook-progress" style="width:0%"></div></div>'+
+    kitCookChipHTML(rv)+
     '<div class="kit-cook-main" id="kit-cook-main">'+
       '<div class="kit-cook-col">'+
         '<div class="kit-cook-stepbar" id="kit-cook-stepbar">'+kitCookStepbarHTML(rv,0)+'</div>'+
@@ -26730,7 +26708,7 @@ function kitRenderDetail(id,target){
     const temp=st.internalTempC?kitTempBadge(st.internalTempC):'';
     const who=isProt&&rv.optionLabel?'<span class="kit-step-who">'+kitEsc(rv.optionLabel)+'</span>':'';
     return '<div class="kit-step-row'+(isProt?' kit-step-protein':'')+'"><span class="kit-step-n">'+(i+1)+'</span>'+
-      '<div class="kit-step-body">'+who+'<span>'+kitEsc(st.text)+'</span>'+timer+temp+'</div></div>';
+      '<div class="kit-step-body">'+who+'<div class="kit-step-copy">'+kitCookInstructionHTML(st.text,true)+'</div>'+timer+temp+'</div></div>';
   }).join('');
   const tags=(r.tags||[]).map(t=>'<span class="kit-tag">'+kitEsc(t)+'</span>').join('');
   // Per serving, always — the stored numbers ARE per-serving values (which is what the
@@ -27192,6 +27170,8 @@ function kitParseImport(text){
         proteinOptions=built;
       }
     }
+    const methodProblem=kitProteinStepProblem(steps,proteinOptions);
+    if(methodProblem) return {error:'"'+name+'": '+methodProblem};
     const rec={
       name, emoji:String(r.emoji||'🍽️').trim()||'🍽️',
       category:KIT_IMPORT_CATS.indexOf(cat)>=0?cat:'dinner',
@@ -27260,11 +27240,31 @@ function kitBuildExportText(recipes,intro){
   return [
     intro,
     '',
+    'Recipe review before rewriting:',
+    '- Preserve servings, ingredients and quantities unless I explicitly ask to change them. A clearer method is not permission to rebalance the dish.',
+    '- Check the original recipe as well as your revision. Flag contradictions or implausible quantities; do not silently preserve a suspected error as approved, or invent its replacement.',
+    '- Pay particular attention to vinegar, citrus, salt, soy sauce, chilli and other concentrated ingredients. Check their purpose and quantity against the whole dish and a trusted source; there is no universal safe flavour ratio.',
+    '- If a quantity, conversion, sequence or safety-critical instruction cannot be established, explain the issue and ask before returning that recipe as ready to import.',
+    '- Outside the JSON, briefly list substantive changes, their sources where used, and anything still unverified. Never describe an AI review as a kitchen test.',
+    '',
+    'Measurements and method:',
+    '- Use practical kitchen measures: tsp or tbsp for small seasonings, ml or L for liquids, g or kg for weighed ingredients, counts for whole items and °C for temperatures. Cups may be retained where useful, such as rice. State the spoon/cup volume when a conversion depends on it; never guess an existing recipe\'s standard.',
+    '- Never assume which tablespoon or cup standard a source uses. Establish its volume before converting; do not infer it from the cook\'s country. Never convert volume to grams without ingredient-specific evidence.',
+    '- Keep fractions, ranges, countable units and written amounts intact. Do not substitute a range midpoint or round a small seasoning amount up to a convenient spoonful.',
+    '- Put necessary preparation before the step that needs it: wash, chop, measure and mix; then cook, finish and serve. State any deliberate overlap explicitly and allow enough time for it.',
+    '- Give each step one main task. For a heading, use a short first line without ending punctuation, then a line break and the instruction. Separate distinct actions with authored line breaks; avoid a single dense paragraph covering several cooking stages.',
+    '- Name the exact ingredient or prepared mixture, the action, equipment and heat, and the completion cue. Include a supported time where useful; a timer alone does not establish doneness.',
+    '- Account for every ingredient, including garnishes and option extras. Do not introduce an ingredient only in the method. Explain reservations and later uses so nothing is added twice.',
+    '- Daily scales the ingredient list, but NOT numbers written in instruction text. In rewritten steps refer to the listed amount or an explicit fraction of it instead of repeating a fixed ingredient quantity. Keep temperatures, timings and equipment sizes distinct.',
+    '- When an ingredient is divided, identify each portion and its later use; the portions must add up to the listed total. Do not mistake a recipe total displayed beside a step for the amount to add at that step.',
+    '- For flavour adjustments that are appropriate to the dish, specify an initial portion and a reserved portion, then a tasting point when the food is safe to taste. Do not invent amounts or apply this approach to safety-critical preserving or baking formulas.',
+    '- Verify food-safety instructions against an authoritative source for the exact ingredient and method. Do not guess internal temperatures, rely on colour alone, or claim a time guarantees safety.',
+    '',
     'Rules for any version you give back:',
     '- Reply with ONE ```json code block in exactly this shape and nothing else inside the fences.',
     '- category must be one of: '+KIT_IMPORT_CATS.join(', ')+'.',
     '- tags must come from: '+KIT_STANDARD_TAGS.map(t=>t.val).join(', ')+'.',
-    '- amount is a number and the unit goes in "unit" (one of: '+KIT_UNITS.join(', ')+', or "" for countable things).',
+    '- amount may be a number, a fraction/range/written string, or "". Keep the unit separate (for new recipes: '+KIT_UNITS.join(', ')+', or "" for countable things); preserve an existing custom unit.',
     '- Name ingredients as they would be BOUGHT ("Onion", not "finely diced onion") — my shopping list merges identical names.',
     '- calories/protein/carbs/fat are PER SERVING, numbers only. Use null rather than guessing.',
     '- steps are plain strings, or {"text": "...", "timerMinutes": N} for a timed step.',
@@ -27284,6 +27284,8 @@ function kitBuildExportText(recipes,intro){
     '  is not one — never invent a food-safety number.',
     '- Put {"type": "protein"} in "steps" exactly once, at the point in the shared method where',
     '  the chosen protein is prepared and cooked. The shared steps are written once.',
+    '- This slot inserts prep immediately followed by cook. Check the expanded sequence for EVERY option. If preparation must happen earlier with shared work in between, use separate complete recipes rather than forcing an incoherent sequence into one slot.',
+    '- Without protein options, use ordinary written steps and no protein slot.',
     '',
     '```json',
     JSON.stringify(payload,null,2),
@@ -27299,8 +27301,8 @@ function kitCopyText(text,msg){
 function kitCopyRecipe(id){
   const r=kitRecipes.find(x=>x.id===id); if(!r) return;
   kitCopyText(kitBuildExportText([r],
-    'Here is one recipe from my recipe app. Suggest improvements, adapt it, or scale it as I ask — '+
-    'then give it back in the same format so I can import it straight back.'),
+    'Here is one recipe from my recipe app. Review the quantities and method first, then improve the instructions or adapt it as I ask. '+
+    'Return an importable version only when material questions are resolved.'),
     'Recipe copied — paste it into your AI chat');
 }
 function kitCopyAllRecipes(){
@@ -27343,7 +27345,7 @@ _catEscHtml(KIT_IMPORT_EXAMPLE)+'</pre></details>'+
 }
 function kitCloseImport(){ const o=document.getElementById('kit-import-overlay'); if(o) o.classList.add('hidden'); if(typeof updateKitFab==='function') updateKitFab(); }
 const KIT_IMPORT_EXAMPLE=
-'{\n  "recipes": [\n    {\n      "name": "Lemon Garlic Chicken",\n      "emoji": "🍗",\n      "category": "dinner",\n      "servings": 2,\n      "description": "One-pan roast chicken thighs.",\n      "cookTime": 35,\n      "ingredients": [\n        { "name": "Chicken thighs", "amount": 4, "unit": "" },\n        { "name": "Lemon", "amount": 1, "unit": "" },\n        { "name": "Olive oil", "amount": 2, "unit": "tbsp" }\n      ],\n      "steps": [\n        "Heat oven to 200C.",\n        { "text": "Roast until cooked through.", "timerMinutes": 30 }\n      ],\n      "tags": ["quick"],\n      "calories": 520, "protein": 42, "carbs": 6, "fat": 34\n    }\n  ]\n}';
+'{\n  "recipes": [\n    {\n      "name": "Yoghurt and Berry Bowl",\n      "emoji": "🫐",\n      "category": "breakfast",\n      "servings": 2,\n      "description": "Plain yoghurt with fresh berries.",\n      "cookTime": null,\n      "ingredients": [\n        { "name": "Plain yoghurt", "amount": 300, "unit": "g" },\n        { "name": "Fresh blueberries", "amount": 150, "unit": "g" }\n      ],\n      "steps": [\n        "Rinse the fresh blueberries under running water, drain and pat dry.",\n        "Divide the listed plain yoghurt evenly between the serving bowls.",\n        "Top each bowl with an equal share of the blueberries and serve immediately."\n      ],\n      "tags": ["vegetarian"],\n      "calories": null, "protein": null, "carbs": null, "fat": null\n    }\n  ]\n}';
 function kitDoImport(){
   const msg=document.getElementById('kit-import-msg');
   const res=kitParseImport(document.getElementById('kit-import-text')?.value);
@@ -27488,7 +27490,7 @@ function kitFormAddStep(data){
   const timer=kitStepTimer(data);
   row.className='kit-f-step-row';
   row.innerHTML=
-    '<textarea class="kit-fs-text" rows="2" placeholder="Describe this step">'+kitEsc(text)+'</textarea>'+
+    '<textarea class="kit-fs-text" rows="3" placeholder="Short heading on the first line&#10;Then the instruction, heat and doneness check.">'+kitEsc(text)+'</textarea>'+
     '<input class="kit-fs-timer" type="number" inputmode="numeric" min="0" placeholder="⏱ min" value="'+(timer||'')+'" title="Timer (minutes)">'+
     '<button class="kit-f-del" onclick="this.parentElement.remove()" aria-label="Remove">✕</button>';
   wrap.appendChild(row);
@@ -27774,6 +27776,8 @@ function kitSaveForm(){
   };
   const pr=kitFormBuildProtein();
   if(pr.error){ alert(pr.error); return; }
+  const methodProblem=kitProteinStepProblem(steps,pr.options);
+  if(methodProblem){ alert(methodProblem); return; }
   if(pr.options){
     data.proteinOptions=pr.options;
     data.defaultProteinOptionId=pr.defaultId;
