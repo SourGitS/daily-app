@@ -1,5 +1,14 @@
 # Daily — Project Reference
 
+## Settings icon treatment — v361
+
+Settings navigation, search results and detail headings share accent-tinted tiles with a fine
+border and monochrome line icons. Rounded-square geometry and glyph paths are unchanged.
+The active desktop section uses the contrast-checked hero fill with a white glyph. All colours
+follow the existing resolved accent tokens; category tints are removed from `SETTINGS_SECTIONS`.
+Destructive-action headings retain their semantic red. No settings, navigation, storage or
+sync behaviour changes. `CACHE_NAME` is `daily-v361`.
+
 ## Home composition and training days — v360
 
 Workout count, completion and percentage share one summary row. Saved records retain their
@@ -1618,7 +1627,8 @@ the accent or the theme must go through those, not set `--accent` directly.
 
 - **Settings is registry-driven — never hardcode a settings row, title or label again.**
   `SETTINGS_SECTIONS` / `SETTINGS_GROUPS` / `SETTINGS_SEARCH` in `js/app.js` are the single
-  source for every label, icon, tint, `open()` target, row summary and search subtitle.
+  source for every label, icon, `open()` target, row summary and search subtitle. Icon colours
+  use the resolved app accent from CSS, rather than per-section tints.
   Before this, the SAME ten things lived in four hand-maintained lists (literal rows in
   `index.html`, `SETTINGS_TITLES`, `MENU_SECTIONS`, `renderQuickSettingsMenu()`) — which is
   how "Export" survived being renamed everywhere else. The landing page is rendered by

@@ -372,7 +372,8 @@
 // v358: Home’s shared hero, in-card expense actions and daily Sydney weather outlooks.
 // v359: keep desktop expense entry compact; retain the mobile thumb-access footer.
 // v360: unified Home summaries, seven training days and a soft weather-colour surround.
-const CACHE_NAME = 'daily-v360';
+// v361: Settings icon tiles follow the resolved app accent.
+const CACHE_NAME = 'daily-v361';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

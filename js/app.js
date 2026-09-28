@@ -6005,7 +6005,7 @@ function renderExerciseDetail(name){
 // (both of those lists are gone now — the app's navigation reads NAV_TREE, and the two
 // Settings shortcuts they carried were folded back into this registry's own landing page).
 // Renaming a section meant editing four places, and search had nothing to read at all.
-// Everything below — labels, icons, colours, what opens, the row summaries, the search
+// Everything below — labels, icons, what opens, the row summaries, the search
 // subtitles — now comes from SETTINGS_SECTIONS / SETTINGS_GROUPS / SETTINGS_SEARCH.
 //
 // Section KEYS are persisted (deep links, the hamburger), so they never
@@ -6072,7 +6072,7 @@ const SETTINGS_GROUPS=[
 // called inside a try/catch by settingsNavRow(), so a summary can never break the list.
 const SETTINGS_SECTIONS={
   account:{
-    label:'Account & sync', icon:'user', tint:'#8E8E93',
+    label:'Account & sync', icon:'user',
     open:function(a){ openSettingsSection('account',a); },
     summary:function(){
       const u=(firebaseReady&&auth)?auth.currentUser:null;
@@ -6080,7 +6080,7 @@ const SETTINGS_SECTIONS={
     }
   },
   health:{
-    label:'Health & goals', icon:'heart', tint:'#FF3B30',
+    label:'Health & goals', icon:'heart',
     open:function(a){ openSettingsSection('health',a); },
     summary:function(){
       const bits=[]; const c=calcGoalCals();
@@ -6095,7 +6095,7 @@ const SETTINGS_SECTIONS={
     // links, and this is the path anyone who learned it will still try. Only the destination
     // moved — days and exercises are edited from Log > Program now, next to the saved
     // programs that snapshot them.
-    label:'Training splits', icon:'dumbbell', tint:'#FF9500',
+    label:'Training splits', icon:'dumbbell',
     open:function(){ logGoto('program'); },
     summary:function(){
       const n=splitTypes().length;
@@ -6103,7 +6103,7 @@ const SETTINGS_SECTIONS={
     }
   },
   budget:{
-    label:'Budget setup', icon:'card', tint:'#34C759',
+    label:'Budget setup', icon:'card',
     open:function(){ openBudgetEditor(); },
     summary:function(){
       const n=['inc','fix','var'].reduce(function(a,t){ return a+activeCats(BUD_CAT_LOAD[t]()).length; },0);
@@ -6111,19 +6111,19 @@ const SETTINGS_SECTIONS={
     }
   },
   habits:{
-    label:'Habits', icon:'check', tint:'#30B0C7',
+    label:'Habits', icon:'check',
     open:function(a){ openSettingsSection('habits',a); },
     summary:function(){ const n=(habitsData||[]).length; return n ? (n+' active') : 'None yet'; }
   },
   appearance:{
-    label:'Appearance', icon:'moon', tint:'#AF52DE',
+    label:'Appearance', icon:'moon',
     open:function(a){ openSettingsSection('appearance',a); },
     summary:function(){
       return (S.theme==='dark'?'Dark':'Light')+' · '+ACCENT_MODE_LABELS[accentMode()].label+' colour';
     }
   },
   weather:{
-    label:'Weather', icon:'cloud', tint:'#0A84FF',
+    label:'Weather', icon:'cloud',
     open:function(a){ openSettingsSection('weather',a); },
     summary:function(){
       const c=loadWeatherCache();
@@ -6133,7 +6133,7 @@ const SETTINGS_SECTIONS={
     }
   },
   homelayout:{
-    label:'Home Layout', icon:'grid', tint:'#FF9F0A',
+    label:'Home Layout', icon:'grid',
     open:function(a){ openSettingsSection('homelayout',a); },
     summary:function(){
       const mobile=new Set(homeLayout('mobile').hidden);
@@ -6143,12 +6143,12 @@ const SETTINGS_SECTIONS={
     }
   },
   export:{
-    label:'Data & backup', icon:'download', tint:'#647588',
+    label:'Data & backup', icon:'download',
     open:function(a){ openSettingsSection('export',a); },
     summary:function(){ return 'Backup, restore, CSV'; }
   },
   replay:{
-    label:'Run setup again', icon:'replay', tint:'#5E5CE6',
+    label:'Run setup again', icon:'replay',
     open:function(){ replayOnboarding(); },
     summary:function(){ return 'Walk through the welcome flow'; }
   }
@@ -6246,7 +6246,7 @@ function settingsSearchResults(q){
   return '<div class="stg-results">'+hits.slice(0,14).map(function(h){
     const args="'"+h.it.s+"'"+(h.it.a?",'"+h.it.a+"'":'');
     return '<button class="stg-result" type="button" onclick="settingsOpen('+args+')">'+
-      '<span class="stg-result-ico" style="background:'+h.sec.tint+';color:#fff">'+stgIcon(h.sec.icon)+'</span>'+
+      '<span class="stg-result-ico">'+stgIcon(h.sec.icon)+'</span>'+
       '<span class="stg-result-txt">'+
         '<span class="stg-result-label">'+stgHighlight(h.it.label,toks)+'</span>'+
         '<span class="stg-result-path">'+escText(h.path)+'</span>'+
@@ -6291,7 +6291,7 @@ function settingsNavRow(key){
   const on=stgSplit()&&_activeSettingsKey===key;
   return '<button class="stg-nav-row'+(on?' active':'')+'" type="button" data-stg-key="'+key+'"'+
     (on?' aria-current="page"':'')+' onclick="settingsOpen(\''+key+'\')">'+
-    '<span class="stg-nav-icon" style="background:'+s.tint+';color:#fff">'+stgIcon(s.icon)+'</span>'+
+    '<span class="stg-nav-icon">'+stgIcon(s.icon)+'</span>'+
     '<span class="stg-nav-txt"><span class="stg-nav-label">'+s.label+'</span>'+
       (sum?'<span class="stg-nav-sum">'+escText(sum)+'</span>':'')+'</span>'+
     '<svg class="stg-nav-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'+
