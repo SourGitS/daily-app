@@ -377,7 +377,8 @@
 // v363: independent step timers, clearer methods, recipe-review guidance and validated protein-step positions.
 // v364: give Log's seven-day workout history a shared hero with the current workout.
 // v365: compact recipe actions and a contained desktop weather blend.
-const CACHE_NAME = 'daily-v365';
+// v366: remove the remaining desktop weather edge highlight.
+const CACHE_NAME = 'daily-v366';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

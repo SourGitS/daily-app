@@ -1,5 +1,13 @@
 # Daily — Project Reference
 
+## Matte desktop weather edge — v366
+
+Both edge-blend pseudo-elements on the desktop Home hero weather card are now hidden.
+The v365 inner fade still made a bright vertical strip beside the weather icon because it
+overlaid the darker scene with the hero colour. The existing rounded inset card now defines
+the edge; the scene's text-contrast layer remains. Phone blending is unchanged.
+Service-worker cache: `daily-v366`.
+
 ## Compact recipe actions and desktop weather edge — v365
 
 Recipe details keep Cook recipe and Log meal together in a sticky two-button footer.
