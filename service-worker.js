@@ -378,7 +378,8 @@
 // v364: give Log's seven-day workout history a shared hero with the current workout.
 // v365: compact recipe actions and a contained desktop weather blend.
 // v366: remove the remaining desktop weather edge highlight.
-const CACHE_NAME = 'daily-v366';
+// v367: unified compact mobile overview with visible Today / Week weather forecasts.
+const CACHE_NAME = 'daily-v367';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

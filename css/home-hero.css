@@ -441,3 +441,67 @@
 #view-home .home-mega .home-weather-card[data-scene^="snow"] .wx-birds,
 #view-home .home-mega .home-weather-card[data-scene^="fog"] .wx-birds,
 #view-home .home-mega .home-weather-card[data-scene="storm"] .wx-birds{display:none}
+
+/* Mobile uses one overview with a visible forecast, within the existing weather scene. */
+@media(max-width:1023px){
+  #view-home .home-brief-body{padding:12px 17px 0}
+  #view-home .home-brief-date{font-size:11px;line-height:1.4;font-weight:700;min-width:0}
+  #view-home .home-brief-focus{display:flex;align-items:center;gap:12px;padding:7px 0 5px}
+  #view-home .home-brief-copy{flex:1;min-width:0}
+  #view-home .home-brief-label{display:flex;align-items:center;gap:6px;
+    font-size:11px;font-weight:800;line-height:1.4;letter-spacing:.07em;color:var(--mega-muted)}
+  #view-home .home-brief-label .card-hd-ico{color:inherit;width:14px;height:14px}
+  #view-home .home-brief-title{font-family:var(--font-num);font-size:23px;font-weight:700;letter-spacing:-.035em;
+    line-height:1.16;margin:5px 0 0;overflow-wrap:anywhere}
+  #view-home .home-brief-meta{font-size:11px;line-height:1.5;color:var(--mega-muted);margin:5px 0 0}
+  #view-home .home-brief-action{flex:0 0 88px;min-height:44px;padding:8px 9px;border:0;border-radius:12px;background:#fff;
+    color:var(--accent-hero-2);font:800 11px/1.4 var(--font-ui);cursor:pointer}
+  #view-home .home-brief-rows{display:flex;gap:12px;border-top:1px solid var(--mega-line);padding:6px 0}
+  #view-home .home-brief-row{flex:1;min-width:0;min-height:44px;padding:1px 0;border:0;background:none;color:#fff;
+    text-align:left;font:500 11px/1.4 var(--font-ui);cursor:pointer;overflow-wrap:anywhere}
+  #view-home .home-brief-row+.home-brief-row{border-left:1px solid var(--mega-line);padding-left:12px}
+  #view-home .home-brief-row strong{display:block;font-size:12px;font-weight:700}
+  #view-home .home-brief-row>span{display:block;margin-top:4px;color:var(--mega-muted)}
+  #view-home .home-brief .home-mega-weather{padding:0}
+  #view-home .home-brief .home-weather-window{border-radius:0}
+  #view-home .home-brief .home-weather-card{padding:7px 17px 0;border-radius:0;overflow:hidden}
+  #view-home .home-brief .home-weather-card::before,
+  #view-home .home-brief .home-weather-card::after{display:none}
+  #view-home .home-brief .weather-heading{margin:0}
+  #view-home .home-brief .weather-city{min-height:44px;max-width:58%;text-align:left;overflow-wrap:anywhere;padding:4px 0}
+  #view-home .home-brief .weather-right{gap:12px;padding:2px 0 5px}
+  #view-home .home-brief .weather-temp{font-size:38px}
+  #view-home .home-brief .weather-icon{font-size:23px}
+  #view-home .home-brief .weather-read{flex:1;text-align:right;min-width:105px}
+  #view-home .home-brief .weather-condition{font-size:12px}
+  #view-home .home-brief .weather-meta{font-size:11px;margin-top:3px}
+  #view-home .home-brief .weather-feedback{margin:0;position:static}
+  #view-home .home-brief .weather-feedback>*{position:relative;z-index:2}
+  #view-home .home-brief .weather-status-row{position:absolute;z-index:2;top:7px;right:17px;max-width:39%;min-height:44px;display:flex;justify-content:flex-end;align-items:center;gap:6px;text-align:right;flex-wrap:wrap}
+  #view-home .home-brief .weather-feedback:has(.weather-retry:not([hidden])) .weather-status-row{position:relative;top:auto;right:auto;max-width:none;justify-content:space-between;text-align:left}
+  #view-home .home-brief .weather-notice{padding:4px 0;margin:0}
+  #view-home .home-brief .weather-use-location{margin:3px 0}
+  #view-home .home-brief .weather-preview{margin:0 -17px;padding:0 17px 12px;background:rgba(7,17,32,.16)}
+  #view-home .home-brief .weather-hours{border:0;padding-top:7px;gap:3px}
+  #view-home .home-brief .weather-hour{gap:4px;padding:0;flex:1 0 43px}
+  #view-home .home-brief .weather-hour .ti{font-size:18px;line-height:1}
+  #view-home .home-brief .weather-hour-temp{font-size:12px}
+  #view-home .home-brief .weather-day-low{font-size:11px;color:rgba(255,255,255,.8)}
+  #view-home .home-brief .weather-hours.weather-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));overflow:visible}
+  #view-home .home-brief .weather-week .weather-hour-chance{display:none}
+  #view-home .home-brief .weather-summary{padding:5px 0;font-size:11px}
+  #view-home .home-brief .weather-mobile-controls{position:relative;z-index:2;display:flex;justify-content:space-between;align-items:center;gap:6px;min-height:44px}
+  #home-weather-periods{display:flex;gap:3px}
+  #home-weather-periods button{min-height:44px;min-width:54px;padding:8px;border:0;border-bottom:2px solid transparent;
+    background:none;color:rgba(255,255,255,.8);font:700 11px/1.4 var(--font-ui);cursor:pointer}
+  #home-weather-periods button[aria-pressed="true"]{color:#fff;border-bottom-color:#fff}
+  #home-weather-forecast-caption{font-size:11px;line-height:1.4;text-align:right;color:rgba(255,255,255,.8)}
+  #view-home .home-brief .weather-forecast-retry{min-height:44px;padding:8px 12px;background:none;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;font:600 12px var(--font-ui)}
+}
+@media(max-width:359px){
+  #view-home .home-brief-body{padding-left:13px;padding-right:13px}
+  #view-home .home-brief-title{font-size:21px}
+  #view-home .home-brief-action{flex-basis:78px}
+  #view-home .home-brief .home-weather-card{padding-left:13px;padding-right:13px}
+  #view-home .home-brief .weather-preview{margin:0 -13px;padding-left:13px;padding-right:13px}
+}

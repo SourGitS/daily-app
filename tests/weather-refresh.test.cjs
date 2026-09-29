@@ -384,7 +384,7 @@ test('provider parsing keeps unavailable hourly values null and uses absolute fo
   const f = fixture();
   const pending = f.ctx.fetchWeatherAt(-33.8, 151.2);
   assert.match(f.requests[0].url, /timeformat=unixtime/);
-  assert.match(f.requests[0].url, /forecast_days=2/);
+  assert.match(f.requests[0].url, /forecast_days=7/);
   assert.match(f.requests[0].url, /hourly=temperature_2m,weather_code,is_day,precipitation_probability,precipitation/);
   f.requests[0].respond();
   const result = await pending;
@@ -395,6 +395,19 @@ test('provider parsing keeps unavailable hourly values null and uses absolute fo
   assert.equal(result.hourly[0].time, START + HOUR);
   assert.equal(result.hourly[0].rainProbability, 0, 'reported zero stays zero');
   for (const key of ['tempC', 'code', 'isDay', 'rainProbability', 'precipitation']) assert.equal(result.hourly[1][key], null, key);
+});
+
+test('weekly provider fields are real optional daily values in the same cache response',async()=>{
+  const f=fixture();
+  const pending=f.ctx.fetchWeatherAt(-33.8,151.2);
+  assert.match(f.requests[0].url,/daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset/);
+  f.requests[0].respond(provider(23,{daily:{time:[START/1000,START/1000+86400],
+    temperature_2m_max:[25,null],temperature_2m_min:[0,null],weather_code:[61],precipitation_probability_max:[0,null]}}));
+  const result=await pending;
+  assert.deepEqual(copy(result.daily),[
+    {time:START,tempMax:25,tempMin:0,code:61,rainProbability:0},
+    {time:START+86400000,tempMax:null,tempMin:null,code:null,rainProbability:null}
+  ]);
 });
 
 test('stale solar times cannot leave the daytime weather card stuck at night', () => {

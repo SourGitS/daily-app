@@ -72,6 +72,16 @@ Four main areas plus supporting screens:
 
 ## Weather refresh and Home card (v340)
 
+**v367 phone presentation:** below 1024px, one compact overview combines the briefing and the
+existing weather scene. The briefing reuses `logTodayBrief()` with its action beside it and
+at most two supporting summaries: the visible budget's weekly remainder,
+its next scheduled bill, or the saved training-day count. Bill schedules are not unpaid status.
+Today / Week stays visible above the forecast. The in-memory selection survives Home entry and
+weather repaints; old caches show Today until Week is requested or daily data arrives. Week
+requests use the same coordinator and saved location. Daily fields are optional in the existing
+device cache and use forecast-city calendar dates, including DST. Unknown values stay unknown.
+Desktop composition/disclosure, saved visibility/order/width, freshness policy and sync stay intact.
+
 - **Daily solar times must be current before they choose a scene.** `weatherPhase()` may render
   from cached weather while a request recovers, but sunrise/sunset values whose midpoint is more
   than 16 hours from now belong to a different forecast day. Fall back to the existing local
@@ -105,7 +115,7 @@ Four main areas plus supporting screens:
   scroll. `observedAt` is the provider's model-valid instant, not a measured observation or the
   time of download; stale model data remains distinguishable from a newly successful fetch.
 - **Forecasts are optional cache fields.** Open-Meteo returns epoch timestamps with
-  `timeformat=unixtime`, timezone/offset and two days of hourly data to cover midnight. Missing
+  `timeformat=unixtime`, timezone/offset and seven days of hourly and daily data. Missing
   values remain null. `weatherForecastHours()` selects up to six upcoming hours;
   `weatherForecastTime()` uses the forecast timezone (including DST), then an explicit offset,
   never the device timezone as a guess. `weatherForecastSummary()` distinguishes precipitation

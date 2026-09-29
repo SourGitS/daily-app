@@ -1,5 +1,31 @@
 # Daily — Project Reference
 
+## Unified phone briefing and Today / Week forecasts — v367
+
+Below 1024px, Home starts with one compact overview: the date, the existing `logTodayBrief()`
+workout state and a labelled action beside it, followed by at most two side-by-side summaries.
+When Weekly Budget is enabled, those summaries show its existing weekly remainder and the next
+scheduled bill in the existing fourteen-day window. A schedule never implies an unpaid bill.
+The saved training-day count fills a spare row; no tasks or priorities are invented.
+
+Weather is the lower part of that same card, retaining its existing scene, location, freshness
+and retry. Today shows the next six hours; Week shows seven daily high/low temperatures. The
+forecast is always visible on mobile. The switch stays selected in memory across Home entry
+and refreshes without replacing its controls. The first view uses Week when daily data exists,
+otherwise Today; pressing Week with an old cache asks the existing coordinator for an update.
+Desktop retains its combined hero and existing hourly disclosure.
+
+The existing Open-Meteo request now asks for seven days and caches optional daily epoch times,
+high/low temperatures, weather codes and precipitation probabilities. Forecast dates use the
+provider timezone (including DST), then an explicit offset; never the device timezone as a
+guess. Missing measurements remain unknown, and old days are excluded. No new location request,
+cache, listener or forecast preference store was introduced. The one-hour freshness policy is
+unchanged. API fields follow https://open-meteo.com/en/docs.
+Session/weather visibility and the regular budget card still follow the saved layout; the
+layout editor describes the unified phone card. No sync paths or layout timestamps change.
+Regression coverage: `tests/home-mobile-brief.test.cjs`, `tests/weather-week.test.cjs` and the
+existing weather refresh/forecast suites. Service-worker cache: `daily-v367`.
+
 ## Matte desktop weather edge — v366
 
 Both edge-blend pseudo-elements on the desktop Home hero weather card are now hidden.

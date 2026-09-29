@@ -176,7 +176,7 @@ test('rendering the Accounts panel writes nothing', () => {
 
 test('the destination is named Finance where the word means the place', () => {
   // The bottom nav, the sidebar's pinned strip and the tablist all say Finance…
-  assert.match(html, /data-view="budget"[\s\S]{0,400}?\n\s*Finance\n/);
+  assert.match(html, /data-view="budget"[\s\S]{0,400}?\r?\n\s*Finance\r?\n/);
   assert.match(slice('const NAV_QUICK_LABELS=', 'const NAV_QUICK_EXTRA'), /budget:'Finance'/);
   assert.match(html, /aria-label="Finance views"/);
   assert.match(body('buildFinanceCheckinCard'), /Open Finance →/);

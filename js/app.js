@@ -20648,6 +20648,7 @@ function renderWeatherStatus(){
 function renderWeatherForecast(entry){
   const preview=document.getElementById('home-weather-preview');
   if(!preview) return;
+  if(document.getElementById('home-weather-periods')){ renderMobileWeatherForecast(entry); return; }
   const hours=weatherForecastHours(entry);
   const sentence=weatherForecastSummary(entry);
   const summary=document.getElementById('home-weather-summary');
@@ -20713,7 +20714,7 @@ function fetchWeatherAt(lat,lon,signal){
   return fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+
         '&current=temperature_2m,apparent_temperature,weather_code,is_day,cloud_cover,wind_speed_10m,wind_direction_10m'+
         '&hourly=temperature_2m,weather_code,is_day,precipitation_probability,precipitation'+
-        '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=2&timezone=auto&timeformat=unixtime',
+        '&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset&forecast_days=7&timezone=auto&timeformat=unixtime',
         signal?{signal}:undefined)
     .then(r=>{ if(!r.ok) throw new Error('weather HTTP '+r.status); return r.json(); })
     .then(data=>{
@@ -20735,6 +20736,10 @@ function fetchWeatherAt(lat,lon,signal){
         // Provider/model validity and successful retrieval are distinct clocks. Unix times
         // avoid interpreting the forecast city's local hour in the handset's timezone.
         observedAt:instant(c.time),
+        daily:(Array.isArray(d.time)?d.time:[]).map((time,i)=>({
+          time:instant(time),tempMax:at(d.temperature_2m_max,i),tempMin:at(d.temperature_2m_min,i),
+          code:at(d.weather_code,i),rainProbability:at(d.precipitation_probability_max,i)
+        })).filter(day=>day.time!==null),
         hourly:(Array.isArray(h.time)?h.time:[]).map((time,i)=>({
           time:instant(time),tempC:at(h.temperature_2m,i),code:at(h.weather_code,i),
           isDay:at(h.is_day,i),rainProbability:at(h.precipitation_probability,i),
@@ -21075,6 +21080,85 @@ function weatherForecastSummary(entry,now=Date.now()){
   return '';
 }
 const _homeWeatherExpanded={mobile:null,desktop:null};
+let _homeWeatherPeriod=null;
+function weatherForecastDate(entry,time){
+  if(!entry||!Number.isFinite(time)||time<=0) return '';
+  let date=new Date(time),zone=entry.timezone;
+  if(!Number.isFinite(date.getTime())) return '';
+  try{
+    if(!zone) throw new Error('No forecast timezone');
+    new Intl.DateTimeFormat('en-AU',{timeZone:zone}).format(date);
+  }catch(e){
+    if(!Number.isFinite(entry.utcOffsetSeconds)||Math.abs(entry.utcOffsetSeconds)>86400) return '';
+    date=new Date(time+entry.utcOffsetSeconds*1000); zone='UTC';
+  }
+  if(!Number.isFinite(date.getTime())) return '';
+  const parts=new Intl.DateTimeFormat('en-AU',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);
+  const part=type=>parts.find(p=>p.type===type).value;
+  return part('year')+'-'+part('month')+'-'+part('day');
+}
+function weatherForecastDays(entry,now=Date.now()){
+  if(!entry||!Array.isArray(entry.daily)) return [];
+  const today=weatherForecastDate(entry,now); if(!today) return [];
+  const end=new Date(Date.parse(today+'T12:00:00Z')+6*864e5).toISOString().slice(0,10),seen=new Set();
+  const number=n=>Number.isFinite(n)?n:null;
+  return entry.daily.filter(d=>d&&Number.isFinite(d.time)&&d.time>0).slice().sort((a,b)=>a.time-b.time)
+    .map(d=>({...d,date:weatherForecastDate(entry,d.time)})).filter(d=>{
+      if(!d.date||d.date<today||d.date>end||seen.has(d.date)) return false;
+      seen.add(d.date); return true;
+    }).map(d=>{
+      const date=new Date(d.date+'T12:00:00Z');
+      const fullDate=date.toLocaleDateString('en-AU',{timeZone:'UTC',weekday:'long',day:'numeric',month:'short'});
+      const inverted=Number.isFinite(d.tempMax)&&Number.isFinite(d.tempMin)&&d.tempMax<d.tempMin;
+      return {time:d.time,date:d.date,day:d.date===today?'Today':date.toLocaleDateString('en-AU',{timeZone:'UTC',weekday:'short'}),fullDate,
+        tempMax:inverted?null:number(d.tempMax),tempMin:inverted?null:number(d.tempMin),code:Number.isInteger(d.code)?d.code:null,
+        rainProbability:Number.isFinite(d.rainProbability)&&d.rainProbability>=0&&d.rainProbability<=100?d.rainProbability:null};
+    });
+}
+function homeWeatherPeriod(entry){
+  // Old device caches keep their useful hourly forecast until the next ordinary refresh.
+  return _homeWeatherPeriod||(weatherForecastDays(entry).length?'week':'today');
+}
+function homeSetWeatherPeriod(period){
+  if(period!=='today'&&period!=='week') return;
+  _homeWeatherPeriod=period;
+  const entry=loadWeatherCache();
+  renderWeatherForecast(entry);
+  if(period==='week'&&!weatherForecastDays(entry).length) weatherRefresh({force:true,reason:'week-forecast'});
+}
+function renderMobileWeatherForecast(entry){
+  const week=homeWeatherPeriod(entry)==='week';
+  for(const period of ['today','week']) document.getElementById('home-weather-'+period).setAttribute('aria-pressed',String(week===(period==='week')));
+  const rows=week?weatherForecastDays(entry):weatherForecastHours(entry);
+  const strip=document.getElementById('home-weather-hours');
+  const temp=n=>Number.isFinite(n)?Math.round(n)+'°':'—';
+  const html=rows.map(row=>{
+    const look=WEATHER_CODES[row.code]||['unknown','Condition unavailable'];
+    let icon=look[0];
+    if(!week&&row.isDay===0){ if(row.code===0) icon='moon'; else if(row.code===1||row.code===2) icon='partlyNight'; }
+    const time=week?row.day:weatherForecastTime(entry,row.time)||'—';
+    const values=week?'high '+temp(row.tempMax)+', low '+temp(row.tempMin):temp(row.tempC);
+    const chance=row.rainProbability===null?'':row.rainProbability+'%';
+    const label=(week?row.fullDate:time)+', '+look[1]+', '+values+(chance?', '+row.rainProbability+' percent chance of precipitation':'');
+    return '<div class="weather-hour" role="listitem" aria-label="'+escAttr(label)+'">'+
+      '<span class="weather-hour-time">'+escText(time)+'</span>'+weatherIcon(icon)+
+      '<span class="weather-hour-temp">'+temp(week?row.tempMax:row.tempC)+'</span>'+
+      (week?'<span class="weather-day-low">'+temp(row.tempMin)+'</span>':'')+
+      '<span class="weather-hour-chance">'+(row.rainProbability>=20?chance:'')+'</span></div>';
+  }).join('');
+  // Switching and live refresh retain the controls and strip nodes, including focus.
+  if(strip.innerHTML!==html) strip.innerHTML=html;
+  strip.classList.toggle('weather-week',week);
+  strip.setAttribute('aria-label',week?'Daily high and low temperatures for the next seven days':'Next six hours at the forecast location');
+  strip.hidden=!rows.length;
+  const summary=document.getElementById('home-weather-summary');
+  summary.textContent=week?'':weatherForecastSummary(entry); summary.hidden=!summary.textContent;
+  const caption=document.getElementById('home-weather-forecast-caption');
+  caption.textContent=week?'Daily high / low · °C':'Next six hours · °C'; caption.hidden=!rows.length;
+  const empty=document.getElementById('home-weather-forecast-empty');
+  empty.hidden=!!rows.length; empty.textContent=week?'Weekly forecast unavailable. Try refreshing weather.':'Hourly forecast unavailable.';
+  document.getElementById('home-weather-forecast-retry').hidden=!!rows.length;
+}
 function homeWeatherToggle(disclosure){
   if(disclosure.isConnected) _homeWeatherExpanded[disclosure.dataset.mode]=disclosure.open;
 }
@@ -21222,6 +21306,7 @@ function weatherLandscapeSvg(view){
 }
 
 function buildWeatherCard(inHero){
+  const mobile=inHero&&!layoutIsDesktop();
   const d=localMidnight(getLocalDate());
   const dayLabel=d.toLocaleDateString('en-AU',{weekday:'long'});
   const dateLabel=d.toLocaleDateString('en-AU',{day:'numeric',month:'long'});
@@ -21283,12 +21368,17 @@ function buildWeatherCard(inHero){
       '</div>'+
       '<p class="weather-notice" id="home-weather-notice" role="status" aria-live="polite" hidden></p>'+
       '<button type="button" class="weather-use-location" id="home-weather-location" onclick="weatherUseCurrentLocation()" hidden>Use my location</button></div>'+
-    (inHero?'<details class="home-weather-disclosure"'+((_homeWeatherExpanded[layoutMode()]===null?layoutIsDesktop():_homeWeatherExpanded[layoutMode()])?' open':'')+' data-mode="'+layoutMode()+'" ontoggle="homeWeatherToggle(this)"><summary>Hourly forecast <span aria-hidden="true">⌄</span></summary>':'')+
+    (mobile?'<div class="weather-mobile-controls"><div id="home-weather-periods" role="group" aria-label="Forecast period">'+
+      '<button type="button" id="home-weather-today" aria-pressed="false" aria-controls="home-weather-preview" onclick="homeSetWeatherPeriod(\'today\')">Today</button>'+
+      '<button type="button" id="home-weather-week" aria-pressed="false" aria-controls="home-weather-preview" onclick="homeSetWeatherPeriod(\'week\')">Week</button></div>'+
+      '<span id="home-weather-forecast-caption"></span></div>':
+      inHero?'<details class="home-weather-disclosure"'+((_homeWeatherExpanded[layoutMode()]===null?layoutIsDesktop():_homeWeatherExpanded[layoutMode()])?' open':'')+' data-mode="'+layoutMode()+'" ontoggle="homeWeatherToggle(this)"><summary>Hourly forecast <span aria-hidden="true">⌄</span></summary>':'')+
     '<div class="weather-preview" id="home-weather-preview">'+
       '<p class="weather-summary" id="home-weather-summary" hidden></p>'+
       '<div class="weather-hours" id="home-weather-hours" role="list" aria-label="Next six hours at the forecast location" tabindex="0" ontouchstart="event.stopPropagation()" ontouchmove="event.stopPropagation()" hidden></div>'+
       '<p class="weather-forecast-empty" id="home-weather-forecast-empty">Hourly forecast unavailable</p>'+
-    '</div>'+(inHero?'</details>':'')+
+      (mobile?'<button type="button" class="weather-forecast-retry" id="home-weather-forecast-retry" onclick="weatherRefresh({force:true,reason:\'forecast-retry\'})" hidden>Refresh forecast</button>':'')+
+    '</div>'+(inHero&&!mobile?'</details>':'')+
   '</div>';
 }
 // ── Credit card tracker (Home card + Budget input) ───────────────
@@ -21987,7 +22077,10 @@ function renderHome(){
   const _homeLayout=homeLayout(_homeMode);
   const _visibleIds=effectiveHomeWidgetIds(homeCards,_homeMode).filter(k=>homeCards[k]);
   const _homeIds=homeRegularWidgetIds(_visibleIds,_homeMode);
-  const _mega=buildHomeMegaHero(homeCards,_visibleIds,_homeMode);
+  const _mega=buildHomeMegaHero(homeCards,_visibleIds,_homeMode,{
+    title:mBrief.dayName,eyebrow:heroEyebrow,action:heroActLabel,date:heroDateLabel,
+    meta:heroMeta+(mBrief.state==='inprogress'?' · '+mDone+' done':''),remaining:budLeft
+  });
   // Cards that span both desktop columns are a saved per-card preference now, not a hardcoded
   // list. The class is emitted on every layout but only means anything inside the desktop
   // media query, where the grid lives.
@@ -22045,7 +22138,7 @@ function renderHome(){
   if(_visibleIds.includes('weather')) loadWeatherWidget(); else weatherEnsureFresh();
 }
 
-// Grouping is presentation only. Phone Finance returns to its saved ordinary-card slot.
+// Featured positions are presentation only; the phone briefing and weather share one card.
 const HOME_HERO_IDS=['session','budget','weather'];
 function homeHeroIds(mode){
   return HOME_HERO_IDS.filter(id=>mode!=='mobile'||id!=='budget');
@@ -22059,9 +22152,49 @@ function homeOpenBudgetWeek(){
   budPastEdit=false;
   openBudgetWeek();
 }
-function buildHomeMegaHero(cards,visible,mode){
+function homeBriefRows(visible,remaining){
+  const rows=[];
+  if(visible.includes('budget')){
+    rows.push({run:'homeOpenBudgetWeek()',title:remaining===null?'No income recorded':fmtMoneyExact(Math.abs(remaining))+(remaining<0?' over budget':' left'),detail:'This week',text:remaining===null
+      ?'No income recorded this week'
+      :fmtMoneyExact(Math.abs(remaining))+(remaining<0?' over budget':' left this week')});
+    const win=budTimelineWindow(),bill=billOccurrences(win.from,win.to)[0];
+    if(bill){
+      const days=Math.round((bill.date-win.from)/864e5);
+      const when=days===0?'today':days===1?'tomorrow':bill.date.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
+      // A schedule is not evidence of an unpaid bill. Keep the calendar's facts and wording.
+      rows.push({run:'openBillsCalendar()',title:bill.name+' · '+when,detail:bill.kind==='statement'?'Statement due':'Scheduled bill',text:bill.name+
+        (bill.kind==='statement'?' statement due ':' scheduled ')+when});
+    }
+  }
+  if(rows.length<2){
+    const trained=homeTrainingDays(S.sessions,getLocalDate()).filter(d=>d.count>0).length;
+    const count=trained+' day'+(trained===1?'':'s')+' trained';
+    rows.push({run:"setView('log')",title:count,detail:'Last 7 days',text:'Last 7 days · '+count});
+  }
+  return rows;
+}
+function buildHomeMobileBrief(brief,visible){
+  return '<div class="home-brief-body">'+
+    '<div class="home-brief-date">Today · '+escText(brief.date)+'</div>'+
+    '<div class="home-brief-focus"><div class="home-brief-copy">'+
+    '<div class="home-brief-label">'+cardIcon('target')+escText(brief.eyebrow)+'</div>'+
+    '<h2 class="home-brief-title" id="hero-day-name">'+escText(brief.title)+'</h2>'+
+    '<p class="home-brief-meta" id="hero-meta">'+escText(brief.meta)+'</p></div>'+
+    '<button type="button" class="home-brief-action" onclick="setView(\'log\')">'+escText(brief.action)+' <span aria-hidden="true">→</span></button></div>'+
+    '<div class="home-brief-rows">'+homeBriefRows(visible,brief.remaining).map(row=>
+      '<button type="button" class="home-brief-row" onclick="'+escAttr(row.run)+'" aria-label="'+escAttr(row.text)+'">'+
+        '<strong>'+escText(row.title)+'</strong><span>'+escText(row.detail)+'</span></button>').join('')+'</div>'+
+  '</div>';
+}
+function buildHomeMegaHero(cards,visible,mode,brief){
   const ids=homeHeroIds(mode).filter(id=>visible.includes(id)&&cards[id]);
   if(!ids.length) return '';
+  if(mode==='mobile'){
+    return '<section class="home-mega home-brief'+(ids.includes('session')?' has-main':'')+(ids.includes('weather')?' has-weather':'')+'" aria-label="Your day at a glance">'+
+      (ids.includes('session')?'<div data-hero-section="session">'+(brief?buildHomeMobileBrief(brief,visible):cards.session)+'</div>':'')+
+      (ids.includes('weather')?'<div class="home-mega-weather" data-hero-section="weather"><div class="home-weather-window">'+cards.weather+'</div></div>':'')+'</section>';
+  }
   return '<section class="home-mega'+(ids.includes('weather')?' has-weather':'')+
     (ids.some(id=>id!=='weather')?' has-main':'')+'" aria-label="Your day at a glance">'+
     ids.map(id=>'<div class="home-mega-'+id+'" data-hero-section="'+id+'">'+
@@ -22732,8 +22865,9 @@ function hlPreview(mode,layout){
   const shown=id=>baseShown(id)&&!homeHeroIds(mode).includes(id);
   if(mode==='mobile'){
     const ids=homeLayoutOrderIds(layout).filter(shown);
+    const briefHtml=hero.length?'<div class="hl-pv-mega"><strong>Daily overview</strong>'+hero.map(id=>hlPvTile(id)).join('')+'</div>':'';
     return '<div class="hl-pv hl-pv-phone" role="group" aria-label="iPhone Home preview">'+
-      '<span class="hl-pv-bar"></span>'+heroHtml+
+      '<span class="hl-pv-bar"></span>'+briefHtml+
       '<div class="hl-pv-stack">'+ids.map(id=>hlPvTile(id,id==='session'?' is-hero':'')).join('')+'</div>'+
     '</div>';
   }
@@ -22774,7 +22908,9 @@ function hlWidgetRow(id,index,count,mode,ctx){
           '<span class="toggle-slider"></span></span></label>')+
     '</div>'+
     '<div class="hl-widget-preview">'+(w.preview?w.preview():'')+'</div>'+
-    (inHero?'<p class="stg-help">When enabled, appears in the Home hero. Its saved position and width are retained.</p>':'<div class="hl-widget-actions">'+
+    (inHero?'<p class="stg-help">'+(mode==='mobile'
+      ?id==='weather'?'When enabled, appears inside the daily overview with a visible Today / Week forecast.':'When enabled, leads the compact daily overview at the top of Home.'
+      :'When enabled, appears in the Home hero.')+' Its saved position and width are retained.</p>':'<div class="hl-widget-actions">'+
       '<div class="hl-order-actions">'+
         '<button type="button" data-hl-focus="'+id+':up" aria-label="Move '+w.label+' up" '+
           'onclick="'+mv+'-1'+mvEnd+'"'+(index===0?' disabled':'')+'>↑</button>'+
@@ -22845,7 +22981,7 @@ function renderHomeLayoutSection(){
       '<div class="seg-tabs seg-fill hl-seg" role="tablist" aria-label="Home layout profile">'+
         tab('mobile','iPhone')+tab('desktop','Desktop')+
       '</div>'+
-      '<p class="stg-help">'+(mode==='mobile'?'The Home hero groups your visible session and weather. Weekly Budget is a regular card below, with its own Add expense button.':'The Home hero groups your visible session, weekly budget and weather.')+' Show or hide each below. Other cards keep the layout chosen here.</p>'+
+      '<p class="stg-help">'+(mode==='mobile'?'One compact overview brings together your workout and weather, with a visible Today / Week forecast. When Weekly Budget is shown, its summary also appears here; the full budget card keeps its position below.':'The Home hero groups your visible session, weekly budget and weather.')+' Show or hide each below. Other cards keep the layout chosen here.</p>'+
       '<p class="hl-editing">You are editing the <strong>'+label+'</strong> layout'+
         (mode===layoutMode()?' — the device you are on now.':'. It applies when Daily is opened on '+
           (mode==='mobile'?'a phone.':'a desktop or laptop.'))+'</p>'+
@@ -22892,7 +23028,7 @@ function renderHomeLayoutSection(){
         '<button type="button" class="stg-btn quiet" onclick="homeLayoutReset()">Reset to recommended</button>'+
       '</div>'+
     '</div>'+
-    '<div class="hl-col-group"><h3 class="hl-col-h">Home hero</h3><div class="hl-layout-list is-'+mode+'">'+
+    '<div class="hl-col-group"><h3 class="hl-col-h">'+(mode==='mobile'?'Top of Home':'Home hero')+'</h3><div class="hl-layout-list is-'+mode+'">'+
       heroIds.map((id,i)=>hlWidgetRow(id,i,heroIds.length,mode,{hidden:ctx.hidden,wide:ctx.wide,dash:false,col:null})).join('')+'</div></div>'+
     lists;
 
