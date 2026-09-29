@@ -266,8 +266,9 @@
 #view-home .home-mega .weather-legibility{border-radius:inherit}
 #view-home .home-mega .weather-preview{border-radius:0 0 20px 20px}
 @media(min-width:1024px){
-  #view-home .home-mega .home-weather-card::before{inset:-14px -14px -18px -30px;filter:blur(26px);opacity:.7}
-  #view-home .home-mega .home-weather-card::after{background:linear-gradient(to right,var(--wx-surround),transparent 48px)}
+  /* Keep the desktop blend on the scene instead of casting a blurred band across the join. */
+  #view-home .home-mega .home-weather-card::before{display:none}
+  #view-home .home-mega .home-weather-card::after{background:linear-gradient(to right,var(--wx-surround),transparent 84px)}
 }
 
 /* Daily outlooks inherit the existing weather sky and precipitation above them. */

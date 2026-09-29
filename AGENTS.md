@@ -130,6 +130,11 @@ Four main areas plus supporting screens:
 
 ## Cooking mode and recipe quantities (v349)
 
+**v365 presentation:** recipe details use a sticky Cook recipe / Log meal footer and a
+header More disclosure for Edit, Share and Delete. Existing handlers and confirmations are
+unchanged. Portrait detail overlays clear the measured bottom navigation height, which
+already includes the safe area. No data, quantities, stores or sync paths change.
+
 **v363 update:** each cooking step now owns an independent timer in `kitCookState.timers`.
 Starting another step's timer preserves running, paused and finished timers. A single interval
 patches all clocks, and the stationary strip keeps other steps' timers reachable while scrolling.

@@ -79,9 +79,9 @@
 .kit-fab:active{transform:scale(0.94)}
 
 /* Recipe detail */
-#kit-detail-overlay{position:fixed;inset:0;background:var(--bg);z-index:150;overflow-y:auto;padding:16px;padding-bottom:40px;flex-direction:column}
+#kit-detail-overlay{position:fixed;inset:0;background:var(--bg);z-index:150;overflow-y:auto;padding:16px 16px 0;flex-direction:column}
 #kit-detail-overlay-inner{width:100%}
-.kit-detail-head{display:flex;align-items:center;margin-bottom:14px}
+.kit-detail-head{display:flex;align-items:center;gap:8px;margin-bottom:14px}
 .kit-detail-name{font-size:24px;font-weight:800;line-height:1.2;letter-spacing:-0.5px;color:var(--text);margin-bottom:8px}
 .kit-tag{font-size:11px;font-weight:600;color:var(--muted);background:var(--border);padding:2px 8px;border-radius:999px}
 .kit-scaler{display:flex;align-items:center;justify-content:center;gap:18px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:16px}
@@ -110,6 +110,19 @@
 .kit-act{width:100%;padding:13px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kit-act-primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .kit-act-danger{color:var(--danger)}
+.kit-detail-more{position:relative;z-index:6}
+.kit-detail-more summary{display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:8px 10px;border-radius:10px;list-style:none;color:var(--text);font-size:13px;font-weight:700;cursor:pointer}
+.kit-detail-more summary::-webkit-details-marker{display:none}
+.kit-detail-more summary span{font-size:20px;line-height:1}
+.kit-detail-more[open] summary{background:var(--card)}
+.kit-detail-menu{position:absolute;right:0;top:calc(100% + 6px);width:200px;padding:6px;background:var(--bg);border:1px solid var(--border);border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.24)}
+.kit-detail-menu button{display:block;width:100%;min-height:44px;padding:11px 12px;border:0;border-radius:8px;background:transparent;color:var(--text);font:inherit;font-size:13px;font-weight:600;text-align:left;cursor:pointer}
+.kit-detail-menu button:hover{background:var(--card)}
+.kit-detail-menu .kit-act-danger{margin-top:4px;border-top:1px solid var(--border);border-radius:0 0 8px 8px;color:var(--danger)}
+.kit-detail-more summary:focus-visible,.kit-detail-menu button:focus-visible,.kit-detail-footer button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.kit-detail-footer{position:sticky;bottom:0;z-index:4;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:10px;margin-top:22px;padding:12px 0;background:var(--bg);border-top:1px solid var(--border)}
+.kit-detail-footer .kit-act{min-height:48px;padding:12px 8px;border-radius:13px;font-weight:700;white-space:nowrap}
+.kit-detail-footer .kit-act-primary{background:var(--accent-hero);border-color:var(--accent-hero)}
 
 /* Add/edit form */
 .kit-macro-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
@@ -2503,7 +2516,7 @@ button.aih-row{cursor:pointer}
 /* Recipe split panes are only in Recipes; Today uses the existing detail overlay. */
 #kit-detail-overlay.kit-detail-from-today[style*="display: flex"]{display:flex!important}
 @media(max-width:1023px) and (orientation:portrait){
-  #kit-detail-overlay.kit-detail-from-today{padding-bottom:calc(var(--nav-height,90px) + 20px)}
+  #kit-detail-overlay,#kit-detail-overlay.kit-detail-from-today{padding-bottom:var(--nav-height,calc(80px + env(safe-area-inset-bottom,0px)))}
 }
 @media(min-width:600px){.fo-chooser h1{font-size:30px}}
 @media(min-width:1200px){.fo-recipes{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -2514,7 +2527,7 @@ button.aih-row{cursor:pointer}
   .fo-card{padding:20px}
   /* The hero belongs to the MAIN column only — the supporting summaries stay matte cards. */
   .fo-chooser{padding:22px 22px 20px}
-  #kit-detail-overlay.kit-detail-from-today{left:260px;padding:24px 32px}
+  #kit-detail-overlay.kit-detail-from-today{left:260px;padding:24px 32px 0}
   #kit-sheet-overlay.kit-sheet-from-today{left:260px}
   #kit-detail-overlay.kit-detail-from-today #kit-detail-overlay-inner{max-width:900px;margin:0 auto}
 }

@@ -26679,6 +26679,21 @@ function kitTempBadge(c){
   const n=kitNum(c);
   return (n==null||n<=0)?'':'<span class="kit-temp-badge" title="Safe internal temperature">🌡 '+kitTrim(n)+'°C internal</span>';
 }
+function kitDetailMoreHTML(id){
+  const arg=kitEsc(JSON.stringify(id));
+  return '<details class="kit-detail-more" onkeydown="if(event.key===\'Escape\'){this.open=false;this.querySelector(\'summary\').focus();event.stopPropagation();}">'+
+    '<summary><span aria-hidden="true">⋯</span> More</summary>'+
+    '<div class="kit-detail-menu">'+
+      '<button type="button" aria-label="Edit recipe" onclick="this.closest(\'details\').open=false;kitOpenForm('+arg+')">Edit recipe</button>'+
+      '<button type="button" aria-label="Share recipe" onclick="this.closest(\'details\').open=false;kitOpenShareSheet('+arg+')">Share recipe</button>'+
+      '<button type="button" class="kit-act-danger" aria-label="Delete recipe" onclick="this.closest(\'details\').open=false;kitDeleteRecipe('+arg+')">Delete recipe</button>'+
+    '</div></details>';
+}
+document.addEventListener('click',function(e){
+  document.querySelectorAll('.kit-detail-more[open]').forEach(menu=>{
+    if(!menu.contains(e.target)) menu.open=false;
+  });
+});
 function kitRenderDetail(id,target){
   if(!target) return;
   const r=kitRecipes.find(x=>x.id===id);
@@ -26725,14 +26740,13 @@ function kitRenderDetail(id,target){
       // thing you are looking at, and it is a header control, not a card face.
       '<button class="kit-fav'+(r.favourite?' on':'')+'" onclick="kitToggleFav(\''+r.id+'\')" style="margin-left:auto" '+
         'aria-pressed="'+(r.favourite?'true':'false')+'" aria-label="'+(r.favourite?'Remove from favourites':'Add to favourites')+'">'+
-        (r.favourite?'★':'☆')+'</button>'+
+        (r.favourite?'★':'☆')+'</button>'+kitDetailMoreHTML(r.id)+
     '</div>'+
     (r.emoji?'<div class="kit-detail-emoji">'+r.emoji+'</div>':'')+
     '<div class="kit-detail-name">'+kitEsc(r.name)+'</div>'+
     '<div class="kit-card-meta" style="margin-bottom:14px"><span class="kit-cat-tag kit-cat-'+r.category+'">'+r.category+'</span>'+(r.batchPrep?'<span class="kit-batch-badge">🍱 Batch</span>':'')+cookInfo+tags+'</div>'+
     (r.description?'<div class="kit-card-desc" style="margin-bottom:16px">'+kitEsc(r.description)+'</div>':'')+
     chooser+
-    '<button class="kit-start-cooking-btn" onclick="kitStartCooking(\''+r.id+'\')">▶ Start Cooking</button>'+
     '<div class="kit-scaler">'+
       '<button class="kit-scale-btn" onclick="kitScale(-1)" aria-label="Fewer servings">−</button>'+
       '<div class="kit-scale-val"><div class="kit-scale-num">'+cur+'</div><div class="kit-scale-lbl">servings</div></div>'+
@@ -26741,11 +26755,9 @@ function kitRenderDetail(id,target){
     macros+
     '<div class="kit-sec-label">Ingredients'+(rv.variant?' <span class="kit-sec-note">shared + your protein</span>':'')+'</div><div class="kit-ing-list">'+ingRows+'</div>'+
     '<div class="kit-sec-label">Method</div><div class="kit-step-list">'+stepRows+'</div>'+
-    '<div class="kit-detail-actions">'+
-      '<button class="kit-act kit-act-primary" onclick="kitLogMeal(\''+r.id+'\')">🍴 Log this meal</button>'+
-      '<button class="kit-act" onclick="kitOpenForm(\''+r.id+'\')">✏️ Edit</button>'+
-      '<button class="kit-act" onclick="kitOpenShareSheet(\''+r.id+'\')">📤 Share…</button>'+
-      '<button class="kit-act kit-act-danger" onclick="kitDeleteRecipe(\''+r.id+'\')">🗑️ Delete</button>'+
+    '<div class="kit-detail-footer" role="group" aria-label="Recipe actions">'+
+      '<button type="button" class="kit-act kit-act-primary" onclick="kitStartCooking(\''+r.id+'\')"><span aria-hidden="true">▶</span> Cook recipe</button>'+
+      '<button type="button" class="kit-act" onclick="kitLogMeal(\''+r.id+'\')">Log meal</button>'+
     '</div>';
 }
 // ── Shared action sheet ───────────────────────────────────────────

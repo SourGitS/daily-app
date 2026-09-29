@@ -1,5 +1,19 @@
 # Daily — Project Reference
 
+## Compact recipe actions and desktop weather edge — v365
+
+Recipe details keep Cook recipe and Log meal together in a sticky two-button footer.
+Edit, Share and Delete live in the header's native More disclosure; Escape returns focus
+to its summary and clicking outside closes it. The existing action handlers and delete/log
+confirmations are unchanged. Portrait overlays clear the measured bottom navigation height
+(which already includes the safe area); Recipes split panes and Today overlays share the
+same controls. No recipe data, quantities, stores or sync paths change.
+
+At desktop widths the Home weather card's external blurred pseudo-element is hidden.
+The hero-colour blend instead fades 84px into the scene, within the existing card edge and
+below its text. Phone styling and all weather data/lifecycle behaviour stay unchanged.
+Service-worker cache: `daily-v365`.
+
 ## Smaller iPhone Home hero — v362
 
 The mobile Home hero contains the workout and weather only. Weather keeps its existing scene,
