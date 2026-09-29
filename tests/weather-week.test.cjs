@@ -11,7 +11,7 @@ function entry(){return {timezone:'Australia/Sydney',utcOffsetSeconds:36000,
   hourly:[{time:NOW+HOUR,tempC:18,code:0,isDay:0,rainProbability:0,precipitation:0}]};}
 function fixture(cache=entry()){
   const nodes={},calls=[];
-  for(const id of ['periods','today','week','hours','summary','forecast-caption','forecast-empty','forecast-retry','preview']){
+  for(const id of ['periods','today','week','hours','summary','forecast-caption','forecast-empty','forecast-retry','preview','forecast-toggle','forecast-toggle-label']){
     nodes['home-weather-'+id]={hidden:false,textContent:'',innerHTML:'',attrs:{},classes:new Set(),
       setAttribute(k,v){this.attrs[k]=v;},classList:{toggle(k,on){nodes['home-weather-'+id].classes[on?'add':'delete'](k);}}};
   }
@@ -20,9 +20,9 @@ function fixture(cache=entry()){
   const ctx=vm.createContext({Date:Clock,Intl,Number,Set,console,
     document:{getElementById:id=>nodes[id]||null},loadWeatherCache:()=>cache,
     weatherRefresh:args=>{calls.push(args);},escText:esc,escAttr:esc,weatherIcon:icon=>'<i>'+icon+'</i>'});
-  vm.runInContext(extractConst('WEATHER_CODES')+'\nlet _homeWeatherPeriod=null;\n'+[
+  vm.runInContext(extractConst('WEATHER_CODES')+'\nlet _homeWeatherPeriod=null;const _homeWeatherExpanded={mobile:null,desktop:false};\n'+[
     'weatherForecastDate','weatherForecastDays','weatherForecastHours','weatherForecastTime','weatherForecastSummary',
-    'homeWeatherPeriod','homeSetWeatherPeriod','renderMobileWeatherForecast','renderWeatherForecast'
+    'homeWeatherPeriod','homeSetWeatherPeriod','homeToggleWeatherForecast','renderMobileWeatherDisclosure','renderMobileWeatherForecast','renderWeatherForecast'
   ].map(extract).join('\n'),ctx);
   return {ctx,nodes,calls,put:value=>{cache=value;}};
 }
@@ -98,4 +98,39 @@ test('unavailable or expired forecasts show an honest empty state rather than re
   assert.equal(nodes['home-weather-hours'].hidden,true);assert.equal(nodes['home-weather-forecast-caption'].hidden,true);
   assert.match(nodes['home-weather-forecast-empty'].textContent,/Weekly forecast unavailable/);
   ctx.renderWeatherForecast(null);assert.equal(nodes['home-weather-hours'].innerHTML,'');
+});
+
+test('hiding the mobile forecast survives repaints and keeps its period without requests or desktop changes',()=>{
+  const {ctx,nodes,calls}=fixture();
+  const toggle=nodes['home-weather-forecast-toggle'],preview=nodes['home-weather-preview'];
+  ctx.homeSetWeatherPeriod('today');
+  ctx.homeToggleWeatherForecast();
+  assert.equal(toggle.attrs['aria-expanded'],'false');
+  assert.equal(preview.attrs['aria-hidden'],'true');assert.equal(preview.inert,true);
+  assert.equal(nodes['home-weather-forecast-toggle-label'].textContent,'Show forecast');
+  const fresh=entry();fresh.hourly[0].tempC=16;
+  ctx.renderWeatherForecast(fresh);
+  assert.equal(toggle.attrs['aria-expanded'],'false');assert.equal(preview.inert,true);
+  assert.equal(nodes['home-weather-today'].attrs['aria-pressed'],'true');
+  ctx.homeToggleWeatherForecast();
+  assert.equal(toggle.attrs['aria-expanded'],'true');assert.equal(preview.inert,false);
+  assert.equal(preview.attrs['aria-hidden'],'false');
+  assert.match(nodes['home-weather-hours'].innerHTML,/16°/);
+  assert.equal(nodes['home-weather-forecast-toggle'],toggle);
+  assert.equal(vm.runInContext('_homeWeatherExpanded.desktop',ctx),false);
+  assert.equal(calls.length,0);
+});
+
+test('selecting a period reveals a hidden forecast and missing data stays accessible after reopening',()=>{
+  const {ctx,nodes}=fixture();
+  ctx.renderWeatherForecast(entry());ctx.homeToggleWeatherForecast();
+  ctx.homeSetWeatherPeriod('today');
+  assert.equal(nodes['home-weather-forecast-toggle'].attrs['aria-expanded'],'true');
+  assert.equal(nodes['home-weather-preview'].inert,false);
+  ctx.homeToggleWeatherForecast();ctx.renderWeatherForecast(null);
+  assert.equal(nodes['home-weather-preview'].inert,true);
+  assert.equal(nodes['home-weather-forecast-empty'].hidden,false);
+  ctx.homeToggleWeatherForecast();
+  assert.equal(nodes['home-weather-preview'].inert,false);
+  assert.equal(nodes['home-weather-forecast-retry'].hidden,false);
 });

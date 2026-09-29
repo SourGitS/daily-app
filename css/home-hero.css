@@ -495,7 +495,11 @@
   #home-weather-periods button{min-height:44px;min-width:54px;padding:8px;border:0;border-bottom:2px solid transparent;
     background:none;color:rgba(255,255,255,.8);font:700 11px/1.4 var(--font-ui);cursor:pointer}
   #home-weather-periods button[aria-pressed="true"]{color:#fff;border-bottom-color:#fff}
-  #home-weather-forecast-caption{font-size:11px;line-height:1.4;text-align:right;color:rgba(255,255,255,.8)}
+  #view-home .home-brief .weather-forecast-toggle{display:flex;align-items:center;gap:6px;min-height:44px;padding:8px 0 8px 8px;border:0;
+    background:none;color:#fff;font:600 11px/1.4 var(--font-ui);cursor:pointer}
+  #view-home .home-brief .weather-forecast-toggle[aria-expanded="true"] .ti{transform:rotate(180deg)}
+  #view-home .home-brief .weather-preview[aria-hidden="true"]{visibility:hidden;pointer-events:none}
+  #home-weather-forecast-caption{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
   #view-home .home-brief .weather-forecast-retry{min-height:44px;padding:8px 12px;background:none;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;font:600 12px var(--font-ui)}
 }
 @media(max-width:359px){

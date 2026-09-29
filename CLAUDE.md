@@ -1,5 +1,16 @@
 # Daily — Project Reference
 
+## Phone forecast scenery disclosure — v368
+
+Home's mobile weather now has a 44px Hide / Show forecast button beside Today / Week.
+The forecast starts open. Hiding it removes the numbers and backing overlay while keeping
+their natural layout space, revealing the landscape without growing or shrinking the hero.
+The hidden preview is inert and aria-hidden. Both the button and forecast nodes stay mounted;
+weather updates retain the choice. Today / Week reopens the forecast when pressed.
+The existing `_homeWeatherExpanded.mobile` holds the choice for this app session, independently
+of the desktop disclosure. No new store, location request or weather refresh policy change.
+The scene and current conditions remain visible in both states. Service-worker cache: `daily-v368`.
+
 ## Unified phone briefing and Today / Week forecasts — v367
 
 Below 1024px, Home starts with one compact overview: the date, the existing `logTodayBrief()`
@@ -10,7 +21,7 @@ The saved training-day count fills a spare row; no tasks or priorities are inven
 
 Weather is the lower part of that same card, retaining its existing scene, location, freshness
 and retry. Today shows the next six hours; Week shows seven daily high/low temperatures. The
-forecast is always visible on mobile. The switch stays selected in memory across Home entry
+forecast starts visible on mobile (v368 adds an optional scenery disclosure). The switch stays selected in memory across Home entry
 and refreshes without replacing its controls. The first view uses Week when daily data exists,
 otherwise Today; pressing Week with an old cache asks the existing coordinator for an update.
 Desktop retains its combined hero and existing hourly disclosure.

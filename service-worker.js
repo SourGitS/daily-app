@@ -379,7 +379,8 @@
 // v365: compact recipe actions and a contained desktop weather blend.
 // v366: remove the remaining desktop weather edge highlight.
 // v367: unified compact mobile overview with visible Today / Week weather forecasts.
-const CACHE_NAME = 'daily-v367';
+// v368: hide the phone forecast to reveal its scenery without resizing the hero.
+const CACHE_NAME = 'daily-v368';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

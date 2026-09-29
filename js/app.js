@@ -21122,11 +21122,29 @@ function homeWeatherPeriod(entry){
 function homeSetWeatherPeriod(period){
   if(period!=='today'&&period!=='week') return;
   _homeWeatherPeriod=period;
+  _homeWeatherExpanded.mobile=true;
   const entry=loadWeatherCache();
   renderWeatherForecast(entry);
   if(period==='week'&&!weatherForecastDays(entry).length) weatherRefresh({force:true,reason:'week-forecast'});
 }
+function homeToggleWeatherForecast(){
+  if(!document.getElementById('home-weather-forecast-toggle')) return;
+  _homeWeatherExpanded.mobile=_homeWeatherExpanded.mobile===false;
+  renderMobileWeatherDisclosure();
+}
+function renderMobileWeatherDisclosure(){
+  const toggle=document.getElementById('home-weather-forecast-toggle');
+  const preview=document.getElementById('home-weather-preview');
+  if(!toggle||!preview) return;
+  const open=_homeWeatherExpanded.mobile!==false;
+  toggle.setAttribute('aria-expanded',String(open));
+  document.getElementById('home-weather-forecast-toggle-label').textContent=open?'Hide forecast':'Show forecast';
+  // Keep the scene's space while hiding the forecast from sight, focus and assistive technology.
+  preview.setAttribute('aria-hidden',String(!open));
+  preview.inert=!open;
+}
 function renderMobileWeatherForecast(entry){
+  renderMobileWeatherDisclosure();
   const week=homeWeatherPeriod(entry)==='week';
   for(const period of ['today','week']) document.getElementById('home-weather-'+period).setAttribute('aria-pressed',String(week===(period==='week')));
   const rows=week?weatherForecastDays(entry):weatherForecastHours(entry);
@@ -21371,9 +21389,10 @@ function buildWeatherCard(inHero){
     (mobile?'<div class="weather-mobile-controls"><div id="home-weather-periods" role="group" aria-label="Forecast period">'+
       '<button type="button" id="home-weather-today" aria-pressed="false" aria-controls="home-weather-preview" onclick="homeSetWeatherPeriod(\'today\')">Today</button>'+
       '<button type="button" id="home-weather-week" aria-pressed="false" aria-controls="home-weather-preview" onclick="homeSetWeatherPeriod(\'week\')">Week</button></div>'+
-      '<span id="home-weather-forecast-caption"></span></div>':
+      '<button type="button" class="weather-forecast-toggle" id="home-weather-forecast-toggle" aria-expanded="'+(_homeWeatherExpanded.mobile!==false)+'" aria-controls="home-weather-preview" onclick="homeToggleWeatherForecast()"><span id="home-weather-forecast-toggle-label">'+(_homeWeatherExpanded.mobile===false?'Show forecast':'Hide forecast')+'</span><i class="ti ti-chevron-down" aria-hidden="true"></i></button></div>':
       inHero?'<details class="home-weather-disclosure"'+((_homeWeatherExpanded[layoutMode()]===null?layoutIsDesktop():_homeWeatherExpanded[layoutMode()])?' open':'')+' data-mode="'+layoutMode()+'" ontoggle="homeWeatherToggle(this)"><summary>Hourly forecast <span aria-hidden="true">⌄</span></summary>':'')+
-    '<div class="weather-preview" id="home-weather-preview">'+
+    '<div class="weather-preview" id="home-weather-preview"'+(mobile?' aria-hidden="'+(_homeWeatherExpanded.mobile===false)+'"'+(_homeWeatherExpanded.mobile===false?' inert':''):'')+'>'+
+      (mobile?'<span id="home-weather-forecast-caption" class="weather-forecast-caption"></span>':'')+
       '<p class="weather-summary" id="home-weather-summary" hidden></p>'+
       '<div class="weather-hours" id="home-weather-hours" role="list" aria-label="Next six hours at the forecast location" tabindex="0" ontouchstart="event.stopPropagation()" ontouchmove="event.stopPropagation()" hidden></div>'+
       '<p class="weather-forecast-empty" id="home-weather-forecast-empty">Hourly forecast unavailable</p>'+

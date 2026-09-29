@@ -76,7 +76,11 @@ Four main areas plus supporting screens:
 existing weather scene. The briefing reuses `logTodayBrief()` with its action beside it and
 at most two supporting summaries: the visible budget's weekly remainder,
 its next scheduled bill, or the saved training-day count. Bill schedules are not unpaid status.
-Today / Week stays visible above the forecast. The in-memory selection survives Home entry and
+Today / Week stays visible above the forecast. **v368:** Hide / Show forecast removes its overlay
+to reveal the scenery without resizing the card. Hidden content is inert and excluded from
+assistive technology; the existing in-memory mobile disclosure choice survives Home entry and
+weather repaints. Selecting Today or Week reopens it. No saved preference was added.
+The in-memory period selection survives Home entry and
 weather repaints; old caches show Today until Week is requested or daily data arrives. Week
 requests use the same coordinator and saved location. Daily fields are optional in the existing
 device cache and use forecast-city calendar dates, including DST. Unknown values stay unknown.
