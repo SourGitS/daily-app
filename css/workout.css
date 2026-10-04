@@ -1237,3 +1237,23 @@ button.ov-day{cursor:pointer}
 @media(max-width:480px){
   #log-weight-dialog{padding:18px 16px max(18px,env(safe-area-inset-bottom));max-height:calc(100dvh - 16px)}
 }
+@media(max-width:1023px){
+  .lg-hero-with-weight .lg-hero-title{font-size:28px}
+  .lg-training-brief .lg-hero-week{margin-top:14px;padding-top:8px}
+  .lg-training-brief .lg-hero-week .card-hd{margin-bottom:2px}
+  .lg-training-brief .lg-hero-week .card-split-v{font-size:20px}
+  .lg-training-brief .lg-consistency{margin-top:10px}
+  .lg-training-brief .lg-consistency-day{min-height:48px;gap:5px}
+  .lg-training-brief .lg-hero-week .lg-help{margin-top:8px;font-size:10px}
+  .lg-training-brief .lg-hero-actions{margin-top:12px}
+  .lg-body-weight{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 12px;margin-top:16px;padding-top:12px}
+  .lg-body-weight .card-hd{grid-column:1/-1;margin-bottom:4px}
+  .lg-weight-readings,.lg-weight-mode{display:none}
+  .lg-weight-now{grid-column:1;gap:2px 10px}
+  .lg-weight-now>strong{font-size:28px}
+  .lg-weight-now>span{font-size:11px}
+  .lg-weight-empty{grid-column:1;font-size:14px;line-height:1.4;margin:0}
+  .lg-body-weight>.lg-hero-btn{grid-column:2;grid-row:2;width:auto;margin:0;min-height:44px;padding:10px 14px;font-size:13px}
+  .lg-weight-goal{grid-column:1/-1;grid-row:3;border:0;padding:0;font-size:12px}
+  .lg-weight-goal button{min-height:44px}
+}

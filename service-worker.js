@@ -386,7 +386,8 @@
 // v372: transparent weather forecast, compact Home budget, preserved Accounts chart history.
 // v373: unified income setup and confirmed pay autofill, focused expenses and compact recipe choices.
 // v374: expense, Journal, Log weight and Settings presentation refinements.
-const CACHE_NAME = 'daily-v374';
+// v375: compact phone weight summary inside the Log briefing.
+const CACHE_NAME = 'daily-v375';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

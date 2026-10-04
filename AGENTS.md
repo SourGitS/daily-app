@@ -1,5 +1,14 @@
 # Daily — Agent Handoff
 
+## v375 phone Log refinement — release authorised, 2026-10-04
+
+Below 1024px, the Log hero's Weight & goal section shows the latest reading and date beside
+Log weight, followed by the target/Edit goal row. The recent-readings strip and calorie-plan
+caption remain on desktop. Phone training spacing is tighter without removing its facts or
+actions. This is responsive CSS only: all readers, writers, history, training states and editor
+actions are unchanged. Cache prepared as `daily-v375`. The 59 targeted tests and diff check pass;
+browser checks covered a populated 390px phone, empty 320px phone and retained desktop history.
+
 ## v374 UI refinements — release authorised, 2026-10-04
 
 - Log › Today now includes Weight & goal inside the briefing hero. `logWeightSummaryHtml()`
