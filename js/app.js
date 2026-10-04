@@ -5210,21 +5210,21 @@ function renderWeightSection(){
         <div class="stg-field"><label for="weight-date">Date</label><input type="date" id="weight-date" value="${today}"></div>
         <div class="stg-field"><label for="weight-input">Weight (kg)</label><input type="number" id="weight-input" inputmode="decimal" min="30" max="250" step="0.1" placeholder="kg"></div>
       </div>
-      <div class="stg-actions"><button class="stg-btn primary" onclick="logWeight()">Log weight</button></div>
-      <div style="margin-top:14px"></div>
+      <div class="stg-actions weight-entry-actions"><button class="stg-btn primary" onclick="logWeight()">Log weight</button></div>
+      <div class="weight-entry-divider"></div>
       ${sorted.length ? `
-        <div class="stats-grid" style="margin-bottom:12px">
+        <div class="stats-grid weight-entry-stats">
           <div class="stat-card"><div class="stat-val">${cur}kg</div><div class="stat-lbl">Current</div></div>
           <div class="stat-card"><div class="stat-val">${lo}kg</div><div class="stat-lbl">Lowest</div></div>
           <div class="stat-card"><div class="stat-val">${hi}kg</div><div class="stat-lbl">Highest</div></div>
         </div>
-        ${sorted.length>=2?`<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px"><canvas id="weight-chart" style="max-height:360px"></canvas></div>`:''}
-        <div style="max-height:160px;overflow-y:auto">
+        ${sorted.length>=2?`<div class="weight-entry-chart"><canvas id="weight-chart" role="img" aria-label="Recorded weight over time; readings listed below"></canvas></div>`:''}
+        <h3 class="weight-entry-history-title">Recent weigh-ins</h3><div class="weight-entry-history">
           ${[...sorted].reverse().map(w=>`
             <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
               <span style="font-size:13px;color:var(--muted)">${fmtDate(w.date)}</span>
               <span style="font-size:14px;font-weight:600">${w.weight}kg</span>
-              <button onclick="deleteWeight('${w.date}')" style="font-size:12px;color:var(--danger);background:none;border:none;cursor:pointer;padding:0 4px">✕</button>
+              <button class="weight-entry-delete" onclick="deleteWeight('${w.date}')" aria-label="Delete weigh-in from ${fmtDate(w.date)}">✕</button>
             </div>`).join('')}
         </div>` :
         // Not emptyState(): its 40px emoji is card chrome, which cannot follow the theme or
@@ -5240,14 +5240,15 @@ function renderWeightSection(){
     const isDark = S.theme==='dark';
     const gc=isDark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)';
     const tc=isDark?'#888':'#94a3b8';
+    const accent=getComputedStyle(document.documentElement).getPropertyValue('--accent-text').trim();
     S.weightChart=new Chart(ctx,{
       type:'line',
       data:{
         labels:sorted.map(w=>fmtDate(w.date)),
         datasets:[{
           data:sorted.map(w=>w.weight),
-          borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,0.08)',
-          borderWidth:2.5,pointRadius:4,pointBackgroundColor:'#6366f1',
+          borderColor:accent,backgroundColor:'transparent',
+          borderWidth:2.5,pointRadius:3,pointBackgroundColor:accent,
           fill:true,tension:0.3
         }]
       },
@@ -31744,8 +31745,8 @@ function openLogWeight(mode){
   document.getElementById('health-weight-section').hidden=goal;
   document.getElementById('health-weight-goal-section').hidden=!goal;
   document.getElementById('log-weight-dialog-title').textContent=goal?'Weight goal':'Log weight';
-  if(goal) renderWeightGoal(); else renderWeightSection();
   if(!dialog.open) dialog.showModal();
+  if(goal) renderWeightGoal(); else renderWeightSection();
   document.getElementById(goal?'wg-target':'weight-input')?.focus();
 }
 function logWeightSummaryHtml(){

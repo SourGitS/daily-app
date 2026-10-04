@@ -30,6 +30,14 @@
 #bud-spend-card .tstat.warn{color:#a34b20;background:rgba(217,123,69,.12);border-color:rgba(217,123,69,.3)}
 [data-theme="dark"] #bud-spend-card .tstat.warn{color:#edac84;background:rgba(217,123,69,.14)}
 #view-home .home-budget-card .card-bar-fill.warn,#view-home .home-mega .card-bar-fill.warn{background:#df8c5b}
+#view-home .budget-snapshot-card .tstat.warn{color:#9a451d;background:rgba(217,123,69,.12);border-color:rgba(217,123,69,.3)}
+[data-theme="dark"] #view-home .budget-snapshot-card .tstat.warn{color:#edac84;background:rgba(217,123,69,.14)}
+#view-home .home-mega .budget-snapshot-card .tstat.warn{color:#ffc5a3;background:rgba(0,0,0,.18)}
+@media(max-width:1023px){
+  #view-home .home-budget-card .home-budget-footer{flex-direction:column;align-items:stretch;gap:4px}
+  #view-home .home-budget-card .home-budget-add-labelled,#view-home .home-budget-card .txn-quick{width:100%;box-sizing:border-box;min-height:46px;font-size:14px}
+  #view-home .home-budget-card .home-budget-link{align-self:flex-end;min-height:36px}
+}
 
 /* One anchored forecast drawer on every Home composition. Its space stays reserved. */
 #view-home .weather-forecast-dock{position:relative;z-index:3;display:grid;grid-template-rows:minmax(130px,auto) auto;margin-top:auto;overflow:hidden;isolation:isolate}

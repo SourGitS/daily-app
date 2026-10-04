@@ -1253,7 +1253,44 @@ button.ov-day{cursor:pointer}
   .lg-weight-now>strong{font-size:28px}
   .lg-weight-now>span{font-size:11px}
   .lg-weight-empty{grid-column:1;font-size:14px;line-height:1.4;margin:0}
-  .lg-body-weight>.lg-hero-btn{grid-column:2;grid-row:2;width:auto;margin:0;min-height:44px;padding:10px 14px;font-size:13px}
+  .lg-body-weight>.lg-hero-btn{grid-column:1/-1;grid-row:4;width:100%;margin:6px 0 0;min-height:46px;padding:10px 14px;font-size:14px;background:var(--accent-hero);color:#fff}
   .lg-weight-goal{grid-column:1/-1;grid-row:3;border:0;padding:0;font-size:12px}
   .lg-weight-goal button{min-height:44px}
+}
+
+/* The phone briefing and weight summary have their own surfaces, using the same content. */
+@media(max-width:1023px){
+  .lg-hero.lg-hero-with-weight{padding:0;background:none;box-shadow:none;border-radius:0}
+  .lg-hero-with-weight .lg-training-brief{padding:18px 18px 16px;border-radius:var(--radius-hero);background:linear-gradient(150deg,var(--accent-hero),var(--accent-hero-2));box-shadow:0 12px 30px rgba(var(--accent-rgb),.2)}
+  .lg-body-weight{padding:16px 18px;margin-top:14px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius-card);color:var(--text);grid-template-columns:minmax(0,1fr)}
+  .lg-body-weight .card-label,.lg-body-weight .card-hd-l svg{color:var(--muted)}
+  .lg-body-weight .card-hd-act,.lg-weight-goal button{color:var(--accent-text)}
+  .lg-weight-now>span{color:var(--muted)}
+  .lg-body-weight button:focus-visible{outline-color:var(--accent-text)}
+}
+#log-weight-dialog .stg-2col{padding:16px;border-radius:16px;background:linear-gradient(130deg,rgba(var(--accent-rgb),.12),rgba(var(--accent-rgb),.03));border:1px solid var(--border);gap:12px}
+#log-weight-dialog .stg-field{margin:0;min-width:0}
+#log-weight-dialog #weight-input{font:600 24px var(--font-num)}
+#log-weight-dialog #weight-date{text-align:left;min-width:0;width:100%;box-sizing:border-box;-webkit-appearance:none}
+#weight-date::-webkit-date-and-time-value{text-align:left}
+#log-weight-dialog .weight-entry-actions{display:block;margin-top:12px}
+#log-weight-dialog .weight-entry-actions .stg-btn{width:100%;min-height:48px;font-size:15px}
+.weight-entry-divider{margin-top:22px}
+#log-weight-dialog .weight-entry-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin-bottom:18px}
+#log-weight-dialog .weight-entry-stats .stat-card{background:none;border:0;border-radius:0;padding:0 10px;box-shadow:none;border-left:1px solid var(--border)}
+#log-weight-dialog .weight-entry-stats .stat-card:first-child{border-left:0;padding-left:0}
+#log-weight-dialog .weight-entry-stats .stat-val{font-size:22px;letter-spacing:-.03em}
+#log-weight-dialog .weight-entry-stats .stat-lbl{font-size:11px;margin-top:4px}
+.weight-entry-chart{position:relative;height:220px;width:100%;min-width:0;margin:0 0 20px}
+.weight-entry-history-title{font-size:12px;color:var(--muted);margin:0 0 4px;font-weight:700}
+.weight-entry-history{max-height:180px;overflow:auto}
+.weight-entry-delete{min-width:44px;min-height:44px;font-size:13px;color:var(--muted);background:none;border:0;cursor:pointer}
+.weight-entry-delete:hover{color:var(--danger)}
+@media(max-width:480px){
+  .weight-entry-chart{height:190px}
+  #log-weight-dialog .stg-2col{padding:12px;grid-template-columns:1fr 1fr}
+  #log-weight-dialog .weight-entry-stats .stat-val{font-size:19px}
+}
+@media(max-width:359px){
+  #log-weight-dialog .stg-2col{grid-template-columns:minmax(0,1fr)}
 }

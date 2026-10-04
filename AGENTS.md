@@ -1,5 +1,17 @@
 # Daily — Agent Handoff
 
+## v377 weight and phone Budget polish — release authorised, 2026-10-05
+
+On phones, the existing Log training and weight content use separate gradient and ordinary
+card surfaces; desktop retains the shared hero. Log weight and Home's Add expense use full-width
+phone actions. Home warning badges also use orange, including the shared `tstat.warn` variant.
+The weight editor has compact summary/history styling and a dedicated responsive chart container.
+`openLogWeight()` opens the dialog before chart creation so Chart.js measures visible geometry.
+Existing weigh-in/goal writers, history and sync are unchanged. Cache prepared as `daily-v377`.
+Validation: 512 tests pass, including visible-dialog chart initialization on open/reopen.
+Browser checks cover 320/390px phone fields, chart sizing, a synthetic weigh-in save, full-width
+Home expense action and the preserved light desktop hero. Physical iPhone was not exercised.
+
 ## v376 phone weather disclosure — release authorised, 2026-10-04
 
 The phone forecast dock now contracts to a 48px scenery strip when hidden instead of reserving

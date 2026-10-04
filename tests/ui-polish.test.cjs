@@ -3,6 +3,18 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const {extract}=require('./harness.cjs');
 
+test('weight chart is rendered only after the editor is visible, including reopen',()=>{
+  const dialog={open:false,showModal(){this.open=true;},onclose:null};
+  const fields={'log-weight-dialog':dialog,'health-weight-section':{},'health-weight-goal-section':{},'log-weight-dialog-title':{},'weight-input':{focus(){}},'wg-target':{focus(){}}};
+  const renders=[];
+  const ctx=vm.createContext({document:{getElementById:id=>fields[id]},closeSettingsSection(){},logGoto(){},renderLogToday(){},
+    renderWeightSection(){assert.equal(dialog.open,true);assert.equal(fields['health-weight-section'].hidden,false);renders.push('weight');},
+    renderWeightGoal(){assert.equal(dialog.open,true);assert.equal(fields['health-weight-goal-section'].hidden,false);renders.push('goal');}});
+  vm.runInContext(extract('openLogWeight'),ctx);
+  ctx.openLogWeight();dialog.open=false;ctx.openLogWeight('goal');dialog.open=false;ctx.openLogWeight();
+  assert.deepEqual(renders,['weight','goal','weight']);
+});
+
 function weightFixture(weights=[],goal={},calorieGoal='maintain'){
   const ctx=vm.createContext({S:{weights,personalInfo:{goal:calorieGoal}},weightGoal:goal,Date,Math,Number,String,parseFloat,isNaN,
     getLocalDate:()=> '2026-10-04',localMidnight:d=>new Date(d+'T00:00:00'),
