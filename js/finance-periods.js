@@ -1,6 +1,6 @@
 'use strict';
 
-const BUD_PERIOD_FREQUENCIES=[['weekly','Weekly'],['fortnightly','Fortnightly'],['monthly','Monthly'],['custom','Custom dates']];
+const BUD_PERIOD_FREQUENCIES=[['weekly','Weekly'],['fortnightly','Fortnightly'],['monthly','Monthly'],['semimonthly','Twice monthly'],['custom','Custom dates']];
 let budPeriodOffset=0, budPeriodSelected='', budLegacyOpen=false;
 function budDateValid(value){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(value||''))return false;
@@ -21,7 +21,18 @@ function budPeriodRange(config,today,offset){
   if(!config||!budDateValid(config.anchor)||!budDateValid(today))return null;
   const anchor=config.anchor,shift=Number(offset)||0;
   let start,end;
-  if(config.frequency==='monthly'){
+  if(config.frequency==='semimonthly'){
+    const first=Number(anchor.slice(8)),second=Number(config.secondDay);
+    if(!Number.isInteger(second)||second<1||second>31||second===first)return null;
+    const base=today.slice(0,7)+'-01',dates=new Set();
+    for(let n=-2-Math.abs(shift);n<=2+Math.abs(shift);n++){
+      const month=budDateMonth(base,n),last=Number(budDateAdd(budDateMonth(month,1),-1).slice(8));
+      [first,second].forEach(day=>dates.add(month.slice(0,8)+String(Math.min(day,last)).padStart(2,'0')));
+    }
+    const ordered=[...dates].sort(),i=ordered.findLastIndex(d=>d<=today)+shift;
+    start=ordered[i];end=ordered[i+1]&&budDateAdd(ordered[i+1],-1);
+    if(!start||!end)return null;
+  }else if(config.frequency==='monthly'){
     const a=new Date(anchor+'T12:00:00Z'),d=new Date(today+'T12:00:00Z');
     let n=(d.getUTCFullYear()-a.getUTCFullYear())*12+d.getUTCMonth()-a.getUTCMonth();
     if(budDateMonth(anchor,n)>today)n--;
@@ -38,7 +49,12 @@ function budPeriodRange(config,today,offset){
 }
 function budCyclesLoad(){
   const v=lsLoad('daily_budget_cycles',null);
-  return v&&typeof v==='object'&&!Array.isArray(v)?{config:v.config||null,periods:v.periods||{}}:{config:null,periods:{}};
+  const store=v&&typeof v==='object'&&!Array.isArray(v)?{config:v.config||null,periods:v.periods||{}}:{config:null,periods:{}};
+  if(store.config?.sourceId){
+    const source=activeCats(loadIncCats()).find(c=>c.id===store.config.sourceId),follow=source&&budIncomePeriodConfig(source);
+    if(follow)store.config={...store.config,...follow};
+  }
+  return store;
 }
 function budCyclesSave(v){lsSave('daily_budget_cycles',v,'budgetCycles');}
 function budPeriodActive(){return !!budPeriodCurrent();}
@@ -124,23 +140,141 @@ function budPeriodDialog(title,html){
   if(!d.open)d.showModal();return d;
 }
 function budPeriodError(message){document.getElementById('bp-error').textContent=message;}
+function budIncomeMode(c){return c.payMode||((Number(c.payAmount)>0&&!getHourlyRate(c.id))?'fixed':'variable');}
+function budIncomePeriodConfig(c){
+  const frequency=incomePayCycle(c);
+  if(!budDateValid(c.payDate)||!['weekly','fortnightly','monthly','semimonthly'].includes(frequency))return null;
+  const config={frequency,anchor:c.payDate,secondDay:c.paySecondDay||'',sourceId:c.id};
+  return budPeriodRange(config,getLocalDate(),0)?config:null;
+}
+function budIncomeManage(){
+  const cats=activeCats(loadIncCats());
+  const d=budPeriodDialog('Income & paydays','<p class="bp-note">Set up your usual pay here. Record it in Budget when the money arrives.</p>'+
+    cats.map(c=>{const next=incomeNextPay(c);return '<div class="bp-row"><span>'+escText(catLabel(c))+'<small>'+
+      (budIncomeMode(c)==='fixed'&&Number(c.payAmount)>0?fmtMoneyExact(c.payAmount)+' · ':'Amount varies · ')+
+      escText(INC_PAY_CYCLES.find(x=>x.id===incomePayCycle(c))?.label||'No schedule')+
+      (next?' · Next '+escText(fmtDate(dateStr(next))):'')+'</small></span><button type="button" class="stg-btn" data-source="'+escAttr(c.id)+'" onclick="budIncomeEdit(this.dataset.source)">Edit</button></div>';}).join('')+
+    (!cats.length?'<p>No income sources yet. Add your wage, salary or another source of income.</p>':'')+
+    '<button type="button" class="add-cat-btn" onclick="budIncomeEdit()">+ Add income source</button>'+
+    (loadIncCats().some(catIsArchived)?'<details><summary>Archived sources</summary>'+loadIncCats().filter(catIsArchived).map(c=>'<div class="bp-row"><span>'+escText(catLabel(c))+'</span><button class="stg-btn" type="button" data-source="'+escAttr(c.id)+'" onclick="budIncomeArchive(this.dataset.source,false)">Restore</button></div>').join('')+'</details>':''));
+  d.querySelector('.bp-actions').innerHTML='<button type="button" class="stg-btn" onclick="document.getElementById(\'bud-period-dialog\').close()">Done</button>';
+}
+function budIncomeEdit(id){
+  const cats=loadIncCats(),c=cats.find(x=>x.id===id)||{id:genCatId('inc'),name:'',payCycle:'fortnightly',payMode:'fixed'};
+  const baseline=JSON.stringify(cats),store=budCyclesLoad(),cycleBaseline=JSON.stringify(store.config),savedRate=getHourlyRate(c.id);
+  const date=c.payDate||(incomeNextPay(c)?dateStr(incomeNextPay(c)):'');
+  const d=budPeriodDialog(id?'Edit income source':'Add income source',
+    '<label>Source name<input name="name" maxlength="80" required placeholder="e.g. My salary" value="'+escAttr(c.name)+'"></label>'+
+    '<label>Payment amount<select name="mode" onchange="budIncomeFields()"><option value="fixed"'+(budIncomeMode(c)==='fixed'?' selected':'')+'>Same amount each payday</option><option value="variable"'+(budIncomeMode(c)==='variable'?' selected':'')+'>Amount varies</option></select></label>'+
+    '<label id="bi-fixed">Usual take-home pay<input name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" value="'+(Number(c.payAmount)>0?Number(c.payAmount):'')+'" placeholder="0.00"><small>Prefilled when you record a payment. You can change it before saving.</small></label>'+
+    '<label>How often are you paid?<select name="cycle" onchange="budIncomeFields()">'+INC_PAY_CYCLES.map(x=>'<option value="'+x.id+'"'+(x.id===incomePayCycle(c)?' selected':'')+'>'+x.label+'</option>').join('')+'</select></label>'+
+    '<label id="bi-date">A payday in your schedule<input name="payDate" type="date" value="'+escAttr(date)+'"><small>Your next payday, or a previous payday you know.</small></label>'+
+    '<label id="bi-second">Second payday of the month<input name="secondDay" type="number" min="1" max="31" value="'+(Number(c.paySecondDay)||'')+'"><small>For example, the 15th and the last day (31).</small></label>'+
+    '<details id="bi-variable"><summary>Optional hourly estimate</summary><label>Hourly rate<input name="rate" type="number" inputmode="decimal" min="0" step="0.01" value="'+(getHourlyRate(c.id)||'')+'"><small>Hours × rate is only an estimate. Check the actual take-home amount when recording pay.</small></label></details>'+
+    '<label class="bi-follow"><input name="follow" type="checkbox"'+(!store.config||store.config.sourceId===c.id?' checked':'')+'> <span>Follow this payday for my budget<small>Budget dates run from one payday to the day before the next. Other income can keep its own schedule.</small></span></label>');
+  budIncomeFields();
+  d.querySelector('.bp-actions button[type="submit"]').textContent='Save income source';
+  if(id){
+    const archive=document.createElement('button');archive.type='button';archive.className='bud-edit-btn';archive.textContent='Archive source';
+    archive.onclick=()=>budIncomeArchive(id,true);d.querySelector('.bp-actions').before(archive);
+  }
+  document.getElementById('bp-form').onsubmit=e=>{
+    e.preventDefault();
+    if(JSON.stringify(loadIncCats())!==baseline||JSON.stringify(budCyclesLoad().config)!==cycleBaseline||getHourlyRate(c.id)!==savedRate){budPeriodError('Income settings changed elsewhere. Close and reopen this form to use the latest settings.');return;}
+    const f=new FormData(e.target),mode=f.get('mode'),cycle=f.get('cycle'),amount=Number(f.get('amount'));
+    if(!String(f.get('name')).trim()||(mode==='fixed'&&!(Number.isFinite(amount)&&amount>0))){budPeriodError('Enter a name and a positive take-home amount for fixed pay.');return;}
+    const next={...c,name:String(f.get('name')).trim(),payMode:mode,payCycle:cycle,payDate:f.get('payDate'),paySecondDay:f.get('secondDay')};
+    next.payAmount=mode==='fixed'?budMoneyRound(amount):'';
+    if(cycle!=='irregular'&&!budDateValid(next.payDate)){budPeriodError('Choose a payday to anchor this schedule.');return;}
+    const config=budIncomePeriodConfig(next),follow=f.has('follow');
+    if(cycle==='semimonthly'&&!config){budPeriodError('Choose two different calendar days for twice-monthly pay.');return;}
+    if(follow&&!config){budPeriodError('A regular payday is needed to follow this income. Untick Follow this payday to keep your current budget dates.');return;}
+    const previous=budPeriodCurrent();
+    store.periods=budCyclesLoad().periods;
+    saveIncCats(id?cats.map(x=>x.id===id?next:x):[...cats,next]);
+    if(mode==='variable'){setHourlyRate(c.id,f.get('rate'));localStorage.setItem('daily_budget_defaults',JSON.stringify(budDefaults));syncBudDefaultsToFirebase();}
+    if(follow||store.config?.sourceId===c.id){
+      if(previous&&!store.periods[previous.id])store.periods[previous.id]={start:previous.start,end:previous.end,updatedAt:Date.now()};
+      store.config=follow?config:{...store.config};
+      if(!follow)delete store.config.sourceId;
+      budCyclesSave(store);budPeriodOffset=0;budPeriodSelected='';
+    }
+    renderBudgetConfig();budPeriodRefresh();budIncomeManage();showToast('Income source saved');
+  };
+}
+function budIncomeArchive(id,on){
+  const store=budCyclesLoad();
+  if(on&&store.config?.sourceId===id){delete store.config.sourceId;budCyclesSave(store);}
+  catArchive('inc',id,on);budPeriodRefresh();budIncomeManage();
+}
+function budIncomeFields(){
+  const f=document.getElementById('bp-form'),fixed=f.elements.mode.value==='fixed',cycle=f.elements.cycle.value;
+  document.getElementById('bi-fixed').hidden=!fixed;f.elements.amount.disabled=!fixed;f.elements.amount.required=fixed;
+  document.getElementById('bi-variable').hidden=fixed;f.elements.rate.disabled=fixed;
+  document.getElementById('bi-date').hidden=cycle==='irregular';f.elements.payDate.required=cycle!=='irregular';
+  document.getElementById('bi-second').hidden=cycle!=='semimonthly';f.elements.secondDay.disabled=cycle!=='semimonthly';f.elements.secondDay.required=cycle==='semimonthly';
+  f.elements.follow.disabled=cycle==='irregular';if(cycle==='irregular')f.elements.follow.checked=false;
+}
+function budIncomeSection(range,weekly){
+  const events=ledgerOf('income').filter(x=>x.date>=range.start&&x.date<=range.end);
+  const cats=loadIncCats().filter(c=>!catIsArchived(c)||Number(weekly?.['inc_'+c.id])||events.some(x=>x.streamId===c.id));
+  return '<div class="bi-caption">Received '+(weekly?'this week':'in this period')+'</div>'+
+    cats.map(c=>{
+      const rows=events.filter(x=>x.streamId===c.id),received=weekly?Number(weekly['inc_'+c.id]||0):rows.reduce((s,x)=>s+Number(x.amount||0),0),next=catIsArchived(c)?null:incomeNextPay(c);
+      return '<div class="bi-source"><div class="bp-row"><span>'+escText(catLabel(c))+'<small>'+
+        (next?'Next expected '+escText(fmtDate(dateStr(next)))+(budIncomeMode(c)==='fixed'&&Number(c.payAmount)>0?' · '+fmtMoneyExact(c.payAmount):''):'No payday scheduled')+'</small></span><strong>'+fmtMoneyExact(received)+'</strong></div>'+
+        rows.map(x=>'<button class="bud-edit-btn" data-entry-id="'+escAttr(x.id)+'" onclick="budPeriodEdit(this.dataset.entryId)">'+escText(fmtDate(x.date))+' · '+fmtMoneyExact(x.amount)+'</button>').join('')+'</div>';
+    }).join('')+(!cats.length?'<p class="bp-note">Add your income source to set up paydays and quickly record your pay.</p>':'')+
+    (weekly&&weekIncome(weekly)-events.reduce((s,x)=>s+Number(x.amount||0),0)>.005?'<button class="bud-edit-btn" onclick="budLegacyOpen=true;renderBudgetTab()">Review older weekly totals</button>':'')+
+    '<div class="bi-actions">'+(cats.length?'<button class="stg-btn primary" onclick="budPeriodRecord(\'income\')">Record income</button>':'')+'<button class="bud-edit-btn" onclick="budIncomeManage()">'+(cats.length?'Income & paydays':'+ Set up income')+'</button></div>';
+}
+function budIncomeRecordFill(){
+  const f=document.getElementById('bp-form'),c=activeCats(loadIncCats()).find(x=>x.id===f.elements.category.value);
+  if(!c)return;
+  f.elements.amount.value=budIncomeMode(c)==='fixed'&&Number(c.payAmount)>0?budMoneyRound(c.payAmount):'';
+  const estimate=document.getElementById('bi-estimate');
+  if(estimate){estimate.hidden=budIncomeMode(c)!=='variable';estimate.open=false;f.elements.hours.value='';}
+  const hint=document.getElementById('bi-record-hint');
+  if(hint)hint.textContent=budIncomeMode(c)==='fixed'?'Your usual take-home pay is filled in. Check the amount and date, then confirm it arrived.':'Enter the take-home amount you actually received.';
+}
+function budIncomeEstimate(){
+  const f=document.getElementById('bp-form'),rate=getHourlyRate(f.elements.category.value),hours=Number(f.elements.hours.value);
+  const out=document.getElementById('bi-estimate-result');
+  if(!(rate>0&&hours>0)){out.textContent='Add an hourly rate in Income & paydays and enter your hours.';return;}
+  f.elements.amount.value=budMoneyRound(rate*hours);out.textContent='Estimate applied. Check deductions and confirm your actual take-home pay.';
+}
 function budPeriodSetup(){
   const store=budCyclesLoad(),config=store.config||{};
-  const main=activeCats(loadIncCats()).find(c=>c.payDate&&['weekly','fortnightly','monthly'].includes(c.payCycle));
+  const baseline=JSON.stringify(store.config);
+  const sources=activeCats(loadIncCats()).filter(c=>budIncomePeriodConfig(c));
+  const main=sources[0];
   const frequency=config.frequency||main?.payCycle||'weekly',anchor=config.anchor||main?.payDate||dateStr(getMondayOf(0));
   budPeriodDialog('Choose your budget period','<p>Choose the dates your spending budget covers. Your income sources can each have their own pay schedule.</p>'+
-    '<label>Budget frequency<select name="frequency">'+BUD_PERIOD_FREQUENCIES.map(([id,label])=>'<option value="'+id+'"'+(frequency===id?' selected':'')+'>'+label+'</option>').join('')+'</select></label>'+
+    '<label>Budget dates<select name="source" onchange="budPeriodSetupFields()"><option value="">Choose my own dates</option>'+sources.map(c=>'<option value="'+escAttr(c.id)+'"'+((config.sourceId===c.id||!store.config&&main===c)?' selected':'')+'>Follow '+escText(catLabel(c))+' payday</option>').join('')+'</select></label><div id="bp-custom-dates">'+
+    '<label>Budget frequency<select name="frequency" onchange="budPeriodSetupFields()">'+BUD_PERIOD_FREQUENCIES.map(([id,label])=>'<option value="'+id+'"'+(frequency===id?' selected':'')+'>'+label+'</option>').join('')+'</select></label>'+
     '<label>Starting date<input type="date" name="anchor" required value="'+escAttr(anchor)+'"></label>'+
-    '<label>Ending date <small>For custom dates only</small><input type="date" name="end" value="'+escAttr(config.end||'')+'"></label>'+
-    '<p class="bp-note">Weekly history stays available. Changing the schedule keeps saved period plans and never divides old weekly totals into invented dates.</p>');
+    '<label id="bp-second-day">Second day of each month<input type="number" name="secondDay" min="1" max="31" value="'+(Number(config.secondDay)||'')+'"></label>'+
+    '<label id="bp-end-date">Ending date<input type="date" name="end" value="'+escAttr(config.end||'')+'"></label></div>'+
+    '<p class="bp-note">Your saved budgets and weekly history stay available.</p>');
+  budPeriodSetupFields();
   document.getElementById('bp-form').onsubmit=e=>{
-    e.preventDefault();const f=new FormData(e.target),next={frequency:f.get('frequency'),anchor:f.get('anchor'),end:f.get('end')};
+    e.preventDefault();const f=new FormData(e.target),source=activeCats(loadIncCats()).find(c=>c.id===f.get('source'));
+    const latest=budCyclesLoad();
+    if(JSON.stringify(latest.config)!==baseline){budPeriodError('Budget dates changed elsewhere. Close and reopen to use the latest schedule.');return;}
+    store.periods=latest.periods;
+    const next=source?budIncomePeriodConfig(source):{frequency:f.get('frequency'),anchor:f.get('anchor'),end:f.get('end'),secondDay:f.get('secondDay')};
     if(!budPeriodRange(next,getLocalDate(),0)){budPeriodError('Choose valid dates. Custom periods can cover 1–366 days.');return;}
     const previous=budPeriodCurrent();
     if(previous&&!store.periods[previous.id])store.periods[previous.id]={start:previous.start,end:previous.end,updatedAt:Date.now()};
     store.config=next;budCyclesSave(store);budPeriodOffset=0;budPeriodSelected='';budLegacyOpen=false;
     document.getElementById('bud-period-dialog').close();setView('budget');setBudgetView('week');budPeriodRefresh();
   };
+}
+function budPeriodSetupFields(){
+  const f=document.getElementById('bp-form'),follow=!!f.elements.source.value,wrap=document.getElementById('bp-custom-dates');
+  wrap.hidden=follow;wrap.querySelectorAll('input,select').forEach(el=>el.disabled=follow);
+  document.getElementById('bp-second-day').hidden=f.elements.frequency.value!=='semimonthly';
+  document.getElementById('bp-end-date').hidden=f.elements.frequency.value!=='custom';
 }
 function budPeriodAdjust(){
   const p=budPeriodViewed();if(!p)return budPeriodSetup();
@@ -162,18 +296,30 @@ function budPeriodAdjust(){
 }
 function budPeriodRecord(kind){
   const income=kind==='income',cats=activeCats(income?loadIncCats():loadFixCats());
-  if(!cats.length){showToast(income?'Add an income source in Budget setup first.':'Add a bill in Budget setup first.');openBudgetEditor();return;}
+  if(!cats.length){if(income)budIncomeManage();else{showToast('Add a bill in Budget setup first.');openBudgetEditor();}return;}
   const hasUndatedIncome=income&&Object.entries(budgetData).some(([week,w])=>budDateValid(week)&&
     weekIncome(w)-ledgerOf('income').filter(x=>x.date>=week&&x.date<=budDateAdd(week,6)).reduce((sum,x)=>sum+Number(x.amount||0),0)>.005);
   budPeriodDialog(income?'Record received income':'Record a bill payment',
     '<label>'+(income?'Income source':'Bill')+'<select name="category">'+cats.map(c=>'<option value="'+escAttr(c.id)+'">'+escText(catLabel(c))+'</option>').join('')+'</select></label>'+
     '<label>Amount received / paid<input name="amount" type="number" min="0.01" step="0.01" required inputmode="decimal"></label>'+
     '<label>Date<input name="date" type="date" required max="'+getLocalDate()+'" value="'+getLocalDate()+'"></label>'+
-    (hasUndatedIncome?'<label>Is this income already in weekly history?<select name="weekMode"><option value="">New payment (usual choice)</option><option value="add">Additional to an older weekly total</option><option value="record_only">Already included — add its payment date only</option></select></label>':'')+
+    (hasUndatedIncome?'<label id="bi-history" hidden>This week already includes income without dates<select name="weekMode"><option value="">Choose how to record this payment</option><option value="add">It is an additional payment</option><option value="record_only">It is already included — add its date only</option></select></label>':'')+
+    (income?'<p id="bi-record-hint" class="bp-note"></p><details id="bi-estimate" hidden><summary>Estimate from hours</summary><label>Hours worked<input name="hours" type="number" min="0" step="0.01" inputmode="decimal"></label><button class="stg-btn" type="button" onclick="budIncomeEstimate()">Use hours × saved rate</button><p id="bi-estimate-result" class="bp-note">Check deductions before recording take-home pay.</p></details><label id="bi-duplicate" class="bi-follow" hidden><input name="duplicate" type="checkbox"><span>This is another payment on the same date<small>A payment from this source is already recorded for this day.</small></span></label>':'')+
     '<label>Note<input name="note" maxlength="200"></label><p class="bp-note">Record actual '+(income?'money received':'payments')+'. Account balances remain your separately recorded balances.</p>');
+  let submitted=false;
+  if(income){
+    budIncomeRecordFill();budIncomeRecordReview();
+    const form=document.getElementById('bp-form');
+    form.elements.category.onchange=()=>{budIncomeRecordFill();budIncomeRecordReview();};
+    form.elements.date.onchange=budIncomeRecordReview;
+    form.querySelector('button[type="submit"]').textContent='Confirm received';
+  }
   document.getElementById('bp-form').onsubmit=e=>{
-    e.preventDefault();const f=new FormData(e.target),amount=budMoneyRound(f.get('amount')),date=f.get('date'),id=f.get('category');
-    if(!(amount>0)||!budDateValid(date)||date>getLocalDate()){budPeriodError('Enter a positive amount and a date on or before today.');return;}
+    e.preventDefault();if(submitted)return;
+    const f=new FormData(e.target),amount=budMoneyRound(f.get('amount')),date=f.get('date'),id=f.get('category');
+    if(!(amount>0)||!Number.isFinite(amount)||!budDateValid(date)||date>getLocalDate()){budPeriodError('Enter a positive amount and a date on or before today.');return;}
+    if(!activeCats(income?loadIncCats():loadFixCats()).some(c=>c.id===id)){budPeriodError('This source is no longer active. Close and reopen to choose a current source.');return;}
+    if(income&&ledgerOf('income').some(x=>x.streamId===id&&x.date===date)&&!f.has('duplicate')){budIncomeRecordReview();budPeriodError('A payment is already recorded for this date. Confirm this is another payment before saving.');return;}
     const wk=txnWeekOf(date),field='inc_'+id,w=budgetData[wk]||{},before=Number(w[field])||0;
     let mode=f.get('weekMode')||'add';
     const dated=ledgerOf('income').filter(x=>x.streamId===id&&txnWeekOf(x.date)===wk).reduce((sum,x)=>sum+Number(x.amount||0),0);
@@ -182,12 +328,20 @@ function budPeriodRecord(kind){
     const entry={id:genLedgerId(),kind,date,amount,note:f.get('note'),createdAt:Date.now(),manual:true};
     if(income){entry.streamId=id;entry.weekKey=wk;entry.weekMode=mode;entry.weekBefore=before;entry.weekAfter=mode==='add'?budMoneyRound(before+amount):before;}
     else entry.fixCatId=id;
-    ledgerData.push(entry);saveLedger();
+    submitted=true;ledgerData.push(entry);saveLedger();
     if(income&&mode==='add'){
       budgetData[wk]={...w,wk,[field]:String(entry.weekAfter),draft:!w.saved,updatedAt:Date.now()};budSaveData(wk);
     }
     document.getElementById('bud-period-dialog').close();budPeriodRefresh();
   };
+}
+function budIncomeRecordReview(){
+  const f=document.getElementById('bp-form'),id=f.elements.category.value,date=f.elements.date.value;
+  if(!budDateValid(date))return;
+  const wk=txnWeekOf(date),received=Number(budgetData[wk]?.['inc_'+id]||0),events=ledgerOf('income');
+  const undated=received-events.filter(x=>x.streamId===id&&txnWeekOf(x.date)===wk).reduce((s,x)=>s+Number(x.amount||0),0);
+  const history=document.getElementById('bi-history');if(history){history.hidden=undated<=.005;f.elements.weekMode.value='';}
+  const duplicate=document.getElementById('bi-duplicate');duplicate.hidden=!events.some(x=>x.streamId===id&&x.date===date);f.elements.duplicate.checked=false;
 }
 function budPeriodRollover(){
   const p=budPeriodViewed(),m=p&&budPeriodMoney(p);if(!m)return;
@@ -486,13 +640,8 @@ function budPeriodRenderCards(){
   document.getElementById('bud-fix-body').innerHTML=budPeriodFixedRows(m);
   document.querySelector('#bud-fixed-card .bud-head-unit').textContent='/period';
   document.querySelector('#bud-plan-card .bud-head-label span').textContent='Budget plan';
-  const sources=activeCats(loadIncCats()),incomeRows=sources.map(c=>{
-    const rows=m.rows.filter(x=>x.kind==='income'&&x.streamId===c.id);
-    return '<div class="bud-row">'+budCatNameHtml('inc',c,true,budEditMode.inc)+'<div class="bud-row-calc">'+fmtMoneyExact(rows.reduce((s,x)=>s+Number(x.amount||0),0))+'</div>'+rows.map(x=>'<button class="bud-edit-btn" data-entry-id="'+escAttr(x.id)+'" onclick="budPeriodEdit(this.dataset.entryId)">'+escText(fmtDate(x.date))+'</button>').join('')+(budEditMode.inc?'<button class="delete-cat-btn" data-type="inc" data-id="'+escAttr(c.id)+'" aria-label="Remove income source">×</button>':'')+'</div>';
-  }).join('');
-  document.getElementById('bud-plan-inc').innerHTML=budPlanSection('inc','wallet','Income','sum-inc',incomeRows+
-    (m.legacyIncome?'<p class="bp-note">'+fmtMoneyExact(m.legacyIncome)+' recorded in complete weekly totals.</p>':'')+
-    '<button class="add-cat-btn" onclick="budPeriodRecord(\'income\')">+ Record received income</button><button class="bud-edit-btn" onclick="openBudgetEditor()">Income sources & paydays</button>'+(budEditMode.inc?'<button class="add-cat-btn" data-type="inc">+ Add income source</button>':''),'inc',true);
+  document.getElementById('bud-plan-inc').innerHTML=budPlanSection('inc','wallet','Income','sum-inc',budIncomeSection(p,null)+
+    (m.legacyIncome?'<p class="bp-note">'+fmtMoneyExact(m.legacyIncome)+' recorded in complete weekly totals.</p>':''),null,true);
   const sav=document.getElementById('sav-amount');sav.disabled=false;sav.value=r.savings||'';sav.style.opacity='1';
   document.getElementById('sav-status').innerHTML='';
   const notes=document.getElementById('week-notes');notes.disabled=false;notes.value=r.notes||'';notes.placeholder='What happened this period?';

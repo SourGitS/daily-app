@@ -13384,6 +13384,8 @@ function openTxnModal(opts){
   document.getElementById('txn-amount').value = existing?existing.amount:'';
   document.getElementById('txn-merchant').value = existing?(existing.merchant||''):'';
   document.getElementById('txn-note').value = existing?(existing.note||''):'';
+  const details=document.getElementById('txn-details');
+  if(details)details.open=!!(existing&&(existing.note||txnIsEssential(existing)));
   const essential=document.getElementById('txn-essential');
   // A new expense never inherits the last one's tag, and an untagged historic record reads as
   // unchecked rather than as an unknown.
@@ -14940,6 +14942,10 @@ function renderSpendCard(data,isCur){
 // inputs it always had; the card wrapper and its own "Total income" row are gone because the
 // section header already carries the figure budRecalc writes into #sum-inc.
 function renderPlanIncSection(data,isCur){
+  if(typeof budIncomeSection==='function'&&!budLegacyOpen&&isCur&&currentWeekIdx===0){
+    const start=weekKey(getMondayOf(currentWeekIdx));
+    return budPlanSection('inc','wallet','Income','sum-inc',budIncomeSection({start,end:budDateAdd(start,6)},data),null,true);
+  }
   const editing=budEditMode.inc && isCur;
   const counted=new Set(weekIncomeKeys(data));
   // Keep genuine archived history visible on a past week. It still counts and can be edited
@@ -14966,6 +14972,7 @@ function renderPlanIncSection(data,isCur){
   // earning is a good outcome, which is a judgement the app has not made and cannot make
   // from one figure. It lives in the section header (#sum-inc) rather than as a last row.
   const body=(rows||'<div class="bud-sec-none is-empty">No income sources yet. Add one and every figure on this page becomes yours.</div>')+
+    (budLegacyOpen&&isCur&&currentWeekIdx===0?'<button class="bud-edit-btn" onclick="budSaveDraft();budLegacyOpen=false;renderBudgetTab()">Back to received income</button>':'')+
     (editing?'<button class="add-cat-btn" data-type="inc">+ Add income source</button>':'');
   return budPlanSection('inc','wallet','Income','sum-inc',body,'inc',isCur);
 }
@@ -15218,44 +15225,8 @@ const BUD_DAY_NAMES=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday'
 function renderBudgetConfig(){
   const sg=document.getElementById('bud-cfg-savings-goal');
   if(sg) sg.value=budDefaults.savingsGoal??'';
-  // One pay-day selector per actual income source (loadIncCats — the list used for weekly
-  // entries), so adding/renaming/removing a source updates these automatically.
   const wrap=document.getElementById('bud-payday-rows');
-  if(wrap){
-    const dayOpts=(cur)=>'<option value=""'+(cur==null?' selected':'')+'>Not set</option>'+BUD_DAY_NAMES.map((d,v)=>'<option value="'+v+'"'+(v===cur?' selected':'')+'>'+d+'</option>').join('');
-    const cats=activeCats(loadIncCats());
-    wrap.innerHTML = cats.length
-      ? cats.map(c=>{
-          const name=catIsUnnamed(c)?'Income source':c.name.trim();
-          const rate=getHourlyRate(c.id);
-          const cycle=incomePayCycle(c);
-          const expected=parseFloat(c.payAmount);
-          return '<div class="bud-row">'+
-            '<div class="bud-row-left"><div class="bud-row-name">'+_catEscHtml(name)+' pay frequency</div></div>'+
-            '<select class="bud-row-input" id="bud-paycycle-'+c.id+'" aria-label="'+_catEsc(name)+' pay frequency" style="width:160px;text-align:left" onchange="budSaveConfig()">'+INC_PAY_CYCLES.map(o=>'<option value="'+o.id+'"'+(o.id===cycle?' selected':'')+'>'+o.label+'</option>').join('')+'</select>'+
-          '</div>'+
-          (cycle==='irregular'?'':'<div class="bud-row">'+
-            '<div class="bud-row-left"><div class="bud-row-name">'+_catEscHtml(name)+' pay date</div><div class="bud-row-budget" id="bud-paynext-'+c.id+'">'+incomePayDateHint(c)+'</div></div>'+
-            '<input class="bud-row-input" type="date" id="bud-paydate-'+c.id+'" aria-label="'+_catEsc(name)+' pay date" style="width:160px" value="'+_catEsc(c.payDate||'')+'" onchange="budSaveConfig()">'+
-          '</div>')+
-          (cycle==='semimonthly'?'<div class="bud-row"><div class="bud-row-left"><div class="bud-row-name">Second payday of each month</div><div class="bud-row-budget">Two calendar dates, not every 14 days. Dates beyond a month’s end use its last day.</div></div><input class="bud-row-input" type="number" min="1" max="31" id="bud-paysecond-'+c.id+'" aria-label="Second payday of month" value="'+(c.paySecondDay||'')+'" onchange="budSaveConfig()"></div>':'')+
-          (cycle==='weekly'&&!c.payDate?'<div class="bud-row">'+
-            '<div class="bud-row-left"><div class="bud-row-name">'+_catEscHtml(name)+' pay day</div></div>'+
-            '<select class="bud-row-input" id="bud-payday-'+c.id+'" style="width:140px;text-align:left;padding:0 8px;-webkit-appearance:menulist;appearance:menulist" onchange="budSaveConfig()">'+dayOpts(getPayDay(c.id))+'</select>'+
-          '</div>':'')+
-          '<div class="bud-row">'+
-            '<div class="bud-row-left"><div class="bud-row-name">Expected take-home per payment</div><div class="bud-row-budget" id="bud-payhint-'+c.id+'">'+incomePayHint(c)+'</div></div>'+
-            '<input class="bud-row-input" type="number" inputmode="decimal" min="0" step="0.01" id="bud-payamount-'+c.id+'" aria-label="'+_catEsc(name)+' expected take-home per payment" placeholder="$" value="'+(isNaN(expected)?'':expected)+'" onchange="budSaveConfig()">'+
-          '</div>'+
-          // Optional $/hr — lets the weekly Income card pre-fill hours × rate as a starting
-          // estimate. Blank = off; actual pay entry stays manual either way.
-          '<div class="bud-row">'+
-            '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">'+_catEscHtml(name)+' hourly rate</div></div>'+
-            '<input class="bud-row-input" type="number" inputmode="decimal" id="bud-rate-'+c.id+'" placeholder="$/hr" value="'+(rate||'')+'" onchange="budSaveConfig()">'+
-          '</div>';
-        }).join('')
-      : '<div class="bud-row"><div class="bud-row-left"><div class="bud-row-budget">Add an income source above to set its pay day.</div></div></div>';
-  }
+  if(wrap) wrap.innerHTML='<button class="stg-btn" onclick="budIncomeManage()">Manage income &amp; paydays</button>';
 }
 function budSaveConfig(){
   const sg=document.getElementById('bud-cfg-savings-goal');
@@ -24052,7 +24023,8 @@ function openBudgetEditor(){
 }
 function renderBudgetEditor(){
   // Categories, not budgetConfig — this screen sets each category's planning values directly.
-  renderCatBudgetList('be-inc','inc');
+  const income=document.getElementById('be-inc');
+  if(income)income.innerHTML='';
   renderCatBudgetList('be-fix-weekly','fix','weekly');
   renderCatBudgetList('be-fix-recur','fix','recurring');
   renderCatBudgetList('be-var','var');
@@ -25754,18 +25726,20 @@ function foodOverviewRecipeHTML(item){
   const arg=kitEsc(JSON.stringify(item.id));
   const category=(KIT_CATS.find(c=>c[0]===item.category)||[])[1]||'Recipe';
   const time=item.minutes==null?'Cooking time unknown':kitTrim(item.minutes)+' min';
-  const nutrition=item.nutritionState==='calculated'?'Calculated values':item.nutritionState==='manual'?'Manual values':item.nutritionState==='partial'?'Partial nutrition':'Nutrition missing';
   const selected=foodOverviewState.compareId===item.id;
+  const values=[];
+  if(item.calories!=null)values.push('<span><strong>'+kitTrim(item.calories)+'</strong> kcal</span>');
+  if(item.protein!=null)values.push('<span><strong>'+kitTrim(item.protein)+'</strong> g protein</span>');
   return '<article class="fo-recipe'+(selected?' is-compared':'')+'">'+
-    '<div class="fo-recipe-top"><div class="fo-recipe-art" aria-hidden="true">'+kitEsc(kitCardEmoji(item.recipe))+'</div><div class="fo-recipe-title"><span class="fo-eyebrow">'+kitEsc(category)+'</span><h3>'+kitEsc(item.name)+'</h3>'+
+    '<div class="fo-recipe-top"><div class="fo-recipe-art" aria-hidden="true">'+kitEsc(kitCardEmoji(item.recipe))+'</div><div class="fo-recipe-title"><h3><button class="fo-recipe-open" onclick="foodOverviewView('+arg+')">'+kitEsc(item.name)+'</button></h3>'+
+    '<div class="fo-time">'+kitEsc(category)+' · '+time+(item.minutes==null&&item.proteinMinutes!=null?' · Protein step: '+kitTrim(item.proteinMinutes)+' min':'')+'</div>'+
     (item.optionLabel?'<div class="fo-option">'+kitEsc(item.optionLabel)+' option</div>':'')+'</div></div>'+
-    '<div class="fo-time">'+time+(item.minutes==null&&item.proteinMinutes!=null?' · Protein step: '+kitTrim(item.proteinMinutes)+' min':'')+'</div>'+
-    '<div class="fo-nutrition"><span>'+(item.calories==null?'Calories unknown':'<strong>'+kitTrim(item.calories)+'</strong> kcal')+'</span><span>'+(item.protein==null?'Protein unknown':'<strong>'+kitTrim(item.protein)+'</strong> g protein')+'</span><small>per serving</small></div>'+
-    '<div class="fo-provenance">'+nutrition+(item.partialReview&&item.nutritionState!=='partial'?' · Partial nutrition review':'')+'</div>'+
+    '<div class="fo-nutrition">'+(values.length?values.join('<span aria-hidden="true">·</span>')+'<small>per serving</small>':'<span class="fo-nutrition-missing">Nutrition not added</span>')+'</div>'+
+    (values.length&&(item.nutritionState==='partial'||item.partialReview||item.calories==null||item.protein==null)?'<div class="fo-partial">Partial nutrition</div>':'')+
     (!item.resolved.ok?'<p class="fo-note">Review this recipe’s protein options before cooking.</p>':'')+
-    '<div class="fo-recipe-actions"><button class="fo-btn" onclick="foodOverviewView('+arg+')">View recipe</button><button class="fo-btn fo-btn-primary" onclick="foodOverviewCook('+arg+')"'+(!item.resolved.ok?' disabled':'')+'>Cook</button></div>'+
-    '<button class="fo-link fo-compare" aria-pressed="'+selected+'" onclick="foodOverviewCompare('+arg+')">'+(selected?'Serving selected ✓':'Compare a serving')+'</button></article>';
+    '<div class="fo-recipe-actions"><button class="fo-link fo-compare" aria-pressed="'+selected+'" onclick="foodOverviewCompare('+arg+')">'+(selected?'Selected ✓':'Compare a serving')+'</button><button class="fo-btn fo-btn-primary" onclick="foodOverviewCook('+arg+')"'+(!item.resolved.ok?' disabled':'')+'>Cook</button></div></article>';
 }
+
 function foodOverviewResultsHTML(model){
   const heading='<div class="fo-results-hd"><h2>Recipe options</h2><span>'+model.matched.length+' match'+(model.matched.length===1?'':'es')+(model.matched.length>6?' · showing 6':'')+'</span></div>';
   if(!model.total) return heading+'<div class="fo-card fo-empty"><h3>Your recipes, ready when you are</h3><p>Add a favourite or import recipes to start choosing something to cook.</p><div class="fo-actions"><button class="fo-btn fo-btn-primary" onclick="kitOpenForm()">Add recipe</button><button class="fo-btn" onclick="kitOpenImport()">Import recipes</button></div></div>';
@@ -27089,7 +27063,9 @@ function kitRenderDetail(id,target){
       '<div class="kit-scale-val"><div class="kit-scale-num">'+cur+'</div><div class="kit-scale-lbl">servings</div></div>'+
       '<button class="kit-scale-btn" onclick="kitScale(1)" aria-label="More servings">+</button>'+
     '</div>'+
-    macros+
+    macros+'<p class="kit-batch-line">'+(Object.values(rv.nutrition).every(v=>v==null)?'Nutrition not added':
+      (rv.option||r).nutritionBasis==='calculated'?'Calculated nutrition':
+      (rv.option||r).nutritionBasis==='partial'||r.nutritionBasis==='partial'?'Partial nutrition — review before relying on these values':'Manually entered nutrition')+'</p>'+
     '<div class="kit-sec-label">Ingredients'+(rv.variant?' <span class="kit-sec-note">shared + your protein</span>':'')+'</div><div class="kit-ing-list">'+ingRows+'</div>'+
     '<div class="kit-sec-label">Method</div><div class="kit-step-list">'+stepRows+'</div>'+
     '<div class="kit-detail-footer" role="group" aria-label="Recipe actions">'+

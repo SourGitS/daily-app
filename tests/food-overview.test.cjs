@@ -287,8 +287,8 @@ test('missing, partial, manual and explicitly accepted calculated nutrition stay
     assert.equal(item.calories, calories, 'unaccepted calculations cannot replace saved values');
   });
   const missing = c.foodOverviewRecipeHTML(c.foodOverviewRecipe(cases[3][0]));
-  assert.match(missing, /Calories unknown/);
-  assert.match(missing, /Protein unknown/);
+  assert.match(missing, /Nutrition not added/);
+  assert.doesNotMatch(missing, /Calories unknown|Protein unknown/);
   assert.doesNotMatch(missing, /<strong>0<\/strong>/);
 });
 

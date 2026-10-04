@@ -433,7 +433,7 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .txn-lbl:first-of-type{margin-top:0}
 .txn-opt{text-transform:none;letter-spacing:0;font-weight:600;opacity:.7}
 /* Amount is the one field that matters most, so it is typed at figure scale. */
-.txn-amount{font-family:var(--font-num);font-size:26px !important;font-weight:800;text-align:center}
+.txn-amount{font-family:var(--font-num);font-size:26px;font-weight:800;text-align:center}
 .txn-cats{display:flex;flex-wrap:wrap;gap:6px}
 .txn-cat{padding:8px 13px;border-radius:999px;border:1.5px solid var(--border);background:transparent;
   color:var(--text);font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}

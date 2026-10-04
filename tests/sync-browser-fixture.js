@@ -23,6 +23,14 @@
     profile:{name:'Sync test',onboardingVersion:999,lastSeenWhatsNew:999}
   };
   const selectedUid=memory.get('fixture-user')||'fixture';
+  if(params.has('polish')){
+    stores.profile.budgetRhythmSeen=2;
+    stores.kitRecipes={v:JSON.stringify([
+      ['tacos','Birria Tacos',600,null,null],['pasta','Cajun Chicken Alfredo',50,1530,63],
+      ['fish','Parmentier de Poisson',75,null,null],['lasagne','Beef Lasagne',120,1290,68],
+      ['toast','Burnt-Butter Brioche French Toast',45,null,null],['prawns','Butter Garlic Prawns',15,380,36]
+    ].map(([id,name,cookTime,calories,protein])=>({id,name,category:id==='toast'?'breakfast':'dinner',servings:4,cookTime: cookTime+' min',calories,protein,nutritionBasis:'manual',ingredients:[{name:'Test ingredient',amount:400,unit:'g'}],steps:['Prepare the ingredients.','Cook and serve.']}))),t:500};
+  }
   if(params.has('onboarding'))stores.profile={};
   const fresh=params.has('fresh')||selectedUid==='fresh-fixture';
   if(params.has('fresh')) Object.keys(stores).filter(k=>k!=='profile').forEach(k=>delete stores[k]);

@@ -1,5 +1,27 @@
 # Finance periods and Home — local validation
 
+## v373 — release authorised, 2026-10-04
+
+502 automated tests pass. Added coverage for fixed-pay prefill without writes, editable actual
+receipts, double-submit/same-day duplicate protection, future-date and removed-source rejection,
+dating legacy income without counting it twice, optional hours estimates, twice-monthly ranges
+across month ends, read-only linked schedules, stale income drafts and concurrent period retention.
+
+Synthetic browser checks used `tests/sync-browser.html?polish&preview` (add `&light` for light
+mode). The fixture supplies six representative recipes and a saved fortnightly salary; it
+cannot contact production Firebase. Verified fixed pay setup follows the source's dates but
+leaves received income at zero; confirming a $2,000 receipt adds it once, and repeating it asks
+for explicit acknowledgement. Variable pay stays blank until entered or estimated; 32 hours
+at $30 produces an editable $960 draft. Expense save records $24.50 correctly. Recipe title,
+Cook and Compare actions remain functional, including missing nutrition and long names.
+
+Inspected light/dark layouts at desktop and phone widths (1440/1280/390/320). Recipe cards have
+no internal horizontal overflow. At 390x430 the expense body scrolls and Save stays above the
+viewport bottom; this is a short-viewport check, not physical iOS keyboard verification. Fixed
+the dialog centering and mobile footer wrapping found during visual checks. No application
+console errors observed. No production account, live Firebase restore or physical phone tested.
+The user authorised commit and push after these verification limits were disclosed.
+
 ## v372 — 2026-10-04
 
 **495 tests passed.** Four new chart regressions verify late-start accounts, undated current

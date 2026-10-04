@@ -1,5 +1,29 @@
 # Daily — Agent Handoff
 
+## v373 implementation — release authorised, 2026-10-04
+
+- Income & paydays is one shared Finance dialog, also linked from Settings' Budget setup.
+  Fixed/variable choice is `payMode` on the existing income category; fixed pay uses `payAmount`
+  to prefill a received-payment draft. Only explicit confirmation writes a ledger event and
+  updates the matching legacy weekly total. Duplicate same-day entries need acknowledgement;
+  future dates and stale settings are rejected. Hours × saved rate is an optional estimate.
+- Budget config can follow an income category via `sourceId`, resolved read-only on load.
+  Twice-monthly periods use `secondDay` and clamp/deduplicate month-end days. Saved periods and
+  old weekly totals remain available. Archiving a followed source freezes its current dates.
+  These are additive fields in existing registered stores; no new key, migration or boot write.
+- The native current-week Income section uses the same received-payment flow. Undated weekly
+  totals retain a review/edit path; past weekly history keeps its original controls.
+- Add expense has a prominent amount, compact category choices, paired account/date fields,
+  and optional Note/Essential details. Existing viewport/keyboard handling and save paths stay.
+- Food Today recipe options use smaller icons, linked titles, compact nutrition and Cook/Compare
+  actions. Missing nutrition is stated once; partial nutrition stays labelled. Provenance is
+  shown in recipe details. No recipe, nutrition or cooking data behavior changes.
+- `daily-v373` prepared locally. 502 tests pass, including new income/period regressions.
+  Synthetic browser checks covered fixed and variable pay, confirmation/duplicate handling,
+  expense entry, recipe view/cook/compare, and light/dark desktop/phone layouts. No production
+  Firebase account or physical iPhone was tested. The user authorised commit and push after
+  those remaining verification limits were disclosed.
+
 ## v372 corrections — 2026-10-04
 
 - Weather forecast text/icons and controls sit directly over the scene: no inner background

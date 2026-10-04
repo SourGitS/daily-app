@@ -384,7 +384,8 @@
 // and reliable light/dark onboarding logo artwork.
 // v370: account-scoped storage, dated budget periods, release banner and compact desktop briefing.
 // v372: transparent weather forecast, compact Home budget, preserved Accounts chart history.
-const CACHE_NAME = 'daily-v372';
+// v373: unified income setup and confirmed pay autofill, focused expenses and compact recipe choices.
+const CACHE_NAME = 'daily-v373';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
