@@ -1,5 +1,28 @@
 # Daily — Agent Handoff
 
+## v374 UI refinements — release authorised, 2026-10-04
+
+- Log › Today now includes Weight & goal inside the briefing hero. `logWeightSummaryHtml()`
+  reads `weightGoalAnalysis()` and shows at most three actual readings, oldest to newest.
+  The saved calorie mode is a separate label; weight targets do not choose calorie settings.
+  This supersedes the older “weight is not in Log” guidance below.
+- `openLogWeight()` opens the single existing weigh-in/goal forms, now housed in
+  `#log-weight-dialog`. Settings and Stats shortcuts reach them; the existing weight and goal
+  writers, post-workout prompt, stores, sync and Stats charts remain. Goal/weight changes refresh
+  the visible Log summary. No forms or IDs were duplicated.
+- Journal retains its 1240px two-pane breakpoint and phone editor. One writing CTA, one optional
+  reflection link, labelled optional title/body prompt, labelled Add note and quieter recorded
+  context. Local save feedback stays visible and verifies the edited values exist in local storage;
+  autosave debounce and flush timing are unchanged.
+- Expense categories precede the amount; note/essential fields are always visible. The date uses
+  explicit left alignment, including WebKit date internals. Settings rows omit most subtitles.
+- Fixture: `tests/sync-browser.html?preview&ui=journal`, optional `light`, `weights=0..4`,
+  `nogoal`; `ui=empty` leaves Journal empty. Synthetic data only. Cache prepared as `daily-v374`.
+- Validation: 511 automated tests pass, JavaScript syntax and diff checks pass. Browser checks
+  covered desktop/narrow desktop/phone layouts, Journal autosave, weigh-in and goal saves, Settings
+  shortcuts and expense fields. Physical iPhone/Safari, real Firebase and installed-PWA updates
+  were not exercised. Francois authorised committing and pushing this pass after local review.
+
 ## v373 implementation — release authorised, 2026-10-04
 
 - Income & paydays is one shared Finance dialog, also linked from Settings' Budget setup.

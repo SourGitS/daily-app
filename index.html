@@ -841,8 +841,7 @@
           <!-- Own card now: the calorie targets were tucked under a divider inside the form
                card above, which made them look like part of the same save. -->
           <div id="tdee-section"></div>
-          <div id="health-weight-section"></div>
-          <div id="health-weight-goal-section"></div>
+          <div class="stg-card"><div class="stg-actions"><button class="stg-btn" onclick="openLogWeight()">Log weight →</button><button class="stg-btn" onclick="openLogWeight('goal')">Weight goal →</button></div><p class="stg-status">Weigh-ins and weight goals now live in Log › Today.</p></div>
         </div>
 
         <div id="settings-habits-section" class="hidden">
@@ -1036,13 +1035,21 @@
     </div>
     <div class="jrn-ed-scroll">
       <div class="jrn-ed-inner">
+        <label class="jrn-field-label" for="jrn-ed-title">Title <span>optional</span></label>
         <input id="jrn-ed-title" class="jrn-ed-title" placeholder="Title (optional)" autocomplete="off">
+        <label class="jrn-body-label" id="jrn-body-label" for="jrn-ed-body">How was today?</label>
         <textarea id="jrn-ed-body" class="jrn-ed-body" placeholder="How was today?"></textarea>
         <div id="jrn-ed-context"></div>
       </div>
     </div>
     <div class="jrn-ed-foot" id="jrn-ed-foot"></div>
   </div>
+
+  <dialog id="log-weight-dialog" aria-labelledby="log-weight-dialog-title">
+    <div class="log-weight-dialog-head"><h2 id="log-weight-dialog-title">Log weight</h2><button type="button" class="stg-btn" onclick="document.getElementById('log-weight-dialog').close()" aria-label="Close weight editor">Done</button></div>
+    <div id="health-weight-section"></div>
+    <div id="health-weight-goal-section" hidden></div>
+  </dialog>
 
   <!-- Kitchen: recipe detail (mobile full-screen overlay) -->
   <div id="kit-detail-overlay" style="display:none"><div id="kit-detail-overlay-inner"></div></div>
@@ -1094,12 +1101,12 @@
            it wherever the scroll happened to be — floating across the Date and Note fields
            while the keyboard was up. As a real footer it can never cover a field. -->
       <div class="txn-modal-body" id="txn-modal-body">
+        <div class="txn-category-wrap"><span class="txn-lbl" id="txn-category-label">Category</span>
+          <div id="txn-cat-list" class="txn-cats" role="group" aria-labelledby="txn-category-label"></div>
+        </div>
         <div class="txn-amount-wrap">
           <label class="txn-lbl" for="txn-amount">Amount</label>
           <div class="txn-amount-entry"><span aria-hidden="true">$</span><input class="modal-input txn-amount" type="text" inputmode="decimal" id="txn-amount" aria-label="Amount in dollars" placeholder="0.00"></div>
-        </div>
-        <div class="txn-category-wrap"><span class="txn-lbl" id="txn-category-label">Category</span>
-          <div id="txn-cat-list" class="txn-cats" role="group" aria-labelledby="txn-category-label"></div>
         </div>
         <label class="txn-lbl" for="txn-merchant">Where / what <span class="txn-opt">optional</span></label>
         <input class="modal-input" type="text" id="txn-merchant" placeholder="e.g. Woolworths" autocomplete="off">
@@ -1108,14 +1115,14 @@
           <div><label class="txn-lbl" for="txn-account">Paid with <span class="txn-opt">optional</span></label><select class="modal-input" id="txn-account"></select></div>
           <div><label class="txn-lbl" for="txn-date">Date</label><input class="modal-input" type="date" id="txn-date"></div>
         </div>
-        <details id="txn-details" class="txn-details"><summary>More details <span>Note &amp; essential spending</span></summary>
+        <div id="txn-details" class="txn-details">
           <label class="txn-lbl" for="txn-note">Note <span class="txn-opt">optional</span></label>
           <input class="modal-input" type="text" id="txn-note" placeholder="Anything worth remembering">
           <div class="txn-flag-wrap">
             <label class="txn-flag"><input type="checkbox" id="txn-essential" aria-describedby="txn-essential-help"><span class="txn-flag-t">Essential / need</span></label>
-            <p class="txn-flag-d" id="txn-essential-help">Mark an unavoidable cost. It keeps its category and is also included in your essential spending summary.</p>
+            <p class="txn-flag-d" id="txn-essential-help">Include this cost in essential spending. Its category stays the same.</p>
           </div>
-        </details>
+        </div>
         <div id="txn-err" class="txn-err" role="alert" aria-live="polite"></div>
         <button class="txn-delete hidden" id="txn-delete-btn" onclick="txnDeleteCurrent()">Delete this expense</button>
       </div>

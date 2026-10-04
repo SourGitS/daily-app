@@ -181,8 +181,6 @@
 #txn-modal .txn-field-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
 #txn-modal .txn-field-pair>div{min-width:0}
 #txn-modal .txn-details{border-top:1px solid var(--border);margin-top:22px;padding-top:4px}
-#txn-modal .txn-details summary{cursor:pointer;padding:14px 0;font-size:13px;font-weight:650;min-height:44px;box-sizing:border-box}
-#txn-modal .txn-details summary span{display:inline;color:var(--muted);font-weight:400;font-size:11px;margin-left:8px}
 #txn-modal .txn-flag-wrap{margin:16px 0 0;padding:0;border:0;background:none}
 #txn-modal .txn-modal-footer{background:var(--surface-card);border-top:1px solid var(--border);padding-top:14px;margin-top:14px}
 #txn-modal .txn-modal-footer .secondary{flex:0 0 auto;border:0;padding-inline:18px;color:var(--muted)}
@@ -204,7 +202,6 @@
 }
 @media(max-width:359px){
   #txn-modal .txn-field-pair{grid-template-columns:minmax(0,1fr)}
-  #txn-modal .txn-details summary span{display:block;margin:4px 0 0}
 }
 .bp-dialog{position:fixed;inset:0;margin:auto}
 .bp-dialog .bp-actions{gap:8px}
@@ -213,3 +210,12 @@
 #txn-modal .txn-amount::placeholder{color:var(--muted);opacity:1}
 [data-theme="dark"] #txn-modal input[type="date"],[data-theme="dark"] .bp-dialog input[type="date"]{color-scheme:dark}
 .bp-dialog .bp-actions button[type="submit"]{flex:1;white-space:normal}
+
+/* Expense fields stay open; depth comes from the amount surface and input edges. */
+#txn-modal .txn-category-wrap>.txn-lbl{margin-top:0}
+#txn-modal .txn-amount-wrap{background:linear-gradient(135deg,rgba(var(--accent-rgb),.18),rgba(var(--accent-rgb),.05));border:1px solid rgba(var(--accent-rgb),.2);box-shadow:0 5px 18px rgba(0,0,0,.06);margin-bottom:16px}
+#txn-modal .modal-input:not(.txn-amount){box-shadow:inset 0 1px 2px rgba(0,0,0,.035)}
+#txn-modal #txn-date{display:block;width:100%;box-sizing:border-box;text-align:left;padding-inline:12px;min-height:46px;-webkit-appearance:none}
+#txn-date::-webkit-date-and-time-value{text-align:left;margin:0}
+#txn-date::-webkit-datetime-edit{padding:0;text-align:left}
+#txn-modal .txn-details{margin-top:16px;padding-top:0}

@@ -23,6 +23,17 @@
     profile:{name:'Sync test',onboardingVersion:999,lastSeenWhatsNew:999}
   };
   const selectedUid=memory.get('fixture-user')||'fixture';
+  if(params.has('ui')){
+    stores.profile.budgetRhythmSeen=2;
+    const count=Math.max(0,Math.min(4,Number(params.get('weights')??3)));
+    stores.weights=Object.fromEntries(['2026-09-19','2026-09-25','2026-10-01','2026-10-04'].slice(0,count).map((date,i)=>[date,{date,weight:80+i*.2}]));
+    if(!params.has('nogoal')) stores.weightGoal={target:84,startedAt:'2026-09-19',startWeight:80};
+    stores.personalInfo={age:30,height:180,weight:80,sex:'male',activity:1.55,goal:'maintain'};
+    if(params.get('ui')==='journal') stores.notes={
+      sample:{id:'sample',kind:'entry',title:'A little more space',body:'A walk before work helped me slow down.\n\nI want to make time for that again tomorrow.',dateAbout:'2026-10-03',createdAt:1790982000000,updatedAt:1790982000000,tags:['Outside'],mood:4,schemaVersion:2},
+      reminder:{id:'reminder',kind:'note',title:'Book the bike service',body:'Ask about the brakes.',dueDate:'2026-10-08',dateType:'reminder',createdAt:1790982000000,updatedAt:1790982000000,tags:[],pinned:true,schemaVersion:2}
+    };
+  }
   if(params.has('polish')){
     stores.profile.budgetRhythmSeen=2;
     stores.kitRecipes={v:JSON.stringify([

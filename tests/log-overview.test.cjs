@@ -73,6 +73,7 @@ function ctx(state) {
   vm.runInContext('var escText=s=>String(s==null?"":s); var escAttr=s=>String(s==null?"":s);', context);
   vm.runInContext(FNS.map(extract).join('\n'), context);
   context.splitCfg = () => SPLIT;
+  context.logWeightSummaryHtml = () => '<section aria-label="Weight and goal"></section>';
   // Swapped per case: wt_setdata marks set/check edits after saving; a fresh note, timer or
   // session-only exercise can be recognised in memory. Readers never write this marker.
   context.localStorage = { getItem: () => null };
@@ -851,11 +852,11 @@ test('Last 7 days reports facts, with no target and no consistency judgement', (
     'only the comment explaining its removal may still name it');
 });
 
-test('weight left Log › Today, and every canonical weight path stayed', () => {
+test('weight shares the Log hero while every canonical weight path stays', () => {
   ['renderLogWeightCard', 'logTodayWeight'].forEach(n =>
     assert.ok(!source.includes('function ' + n + '('), n + ' should be gone'));
   assert.ok(!/log-weight-input/.test(source) && !/log-weight-input/.test(html));
-  assert.ok(!/lg-weight-/.test(css.replace(/\/\*[\s\S]*?\*\//g, '')), 'its CSS left with it');
+  assert.match(body('logHeroHtml'), /logWeightSummaryHtml\(\)/);
   const ov = slice('function renderLogOverview(){', '\n}');
   assert.ok(!/weight/i.test(ov));
   // …while the canonical weight functionality is untouched.

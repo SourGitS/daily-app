@@ -485,6 +485,7 @@ if(firebaseReady){
         localStorage.setItem('wt_personalinfo', JSON.stringify(S.personalInfo));
         renderSettings();
         foodRefreshToday();
+        if(S.view==='log'&&logSubTab==='today'&&logTodayView==='overview') renderLogOverview();
       });
     });
 
@@ -626,7 +627,8 @@ if(firebaseReady){
     // Sync weight goal
     fbReconcile('weightGoal','daily_weight_goal',
       ()=>weightGoal, v=>{ weightGoal=v||{}; },
-      ()=>{ if(S.view==='stats') refreshStatsForData(['overview','review','body']); },
+      ()=>{ if(S.view==='stats') refreshStatsForData(['overview','review','body']);
+        if(S.view==='log'&&logSubTab==='today'&&logTodayView==='overview') renderLogOverview(); },
       ()=>!!weightGoal.target);
 
     // Subscriptions are retired as a separate list (folded into fixed categories), but the
@@ -4137,7 +4139,7 @@ function openWeightEvidence(date){
     : 'No active goal episode.';
   openStatsEvidence('Weight check-in · '+fmtDate(date),
     '<div class="stats-source-list"><div class="stats-source-row"><div class="stats-source-top"><span>Recorded weight</span><span>'+(entry?_catEscHtml(String(entry.weight))+' kg':'Unavailable')+'</span></div><div class="stats-source-meta">'+goalText+'</div></div></div>'+
-    statsSourceActions(['<button onclick="closeStatsEvidence();openHealthSettings()">Open Health check-ins →</button>']));
+    statsSourceActions(['<button onclick="closeStatsEvidence();openLogWeight()">Open weigh-ins →</button>']));
 }
 function openNutritionEvidence(date){
   const today=getLocalDate();
@@ -5108,7 +5110,7 @@ function logWeight(){
   const inputEl = document.getElementById('weight-input');
   const weight  = parseFloat(inputEl.value);
   const date    = dateEl.value;
-  if(!weight || !date) return;
+  if(!weight || !date || !inputEl.checkValidity() || !dateEl.checkValidity()) return;
   addWeightEntry(date, weight);
   inputEl.value='';
   renderWeightSection();
@@ -5188,6 +5190,7 @@ function deleteWeight(date){
   S.weights = S.weights.filter(w=>w.date!==date);
   persistWeights([],[date]);
   renderWeightSection();
+  if(S.view==='log'&&logSubTab==='today'&&logTodayView==='overview') renderLogOverview();
 }
 function renderWeightSection(){
   const wrap = document.getElementById('health-weight-section');
@@ -5280,6 +5283,7 @@ function saveWeightGoal(){
   localStorage.setItem('daily_weight_goal', JSON.stringify(weightGoal));
   syncWeightGoalToFirebase();
   renderWeightGoal();
+  if(S.view==='log'&&logSubTab==='today'&&logTodayView==='overview') renderLogOverview();
   // After the re-render — renderWeightGoal() rebuilds the card, so a tick shown before it
   // would be thrown away with the old markup.
   stgSaved('wg-saved');
@@ -5390,7 +5394,7 @@ function renderBodyInsight(){
   const a=weightGoalAnalysis();
   if(S.bodyWeightChart){ S.bodyWeightChart.destroy(); S.bodyWeightChart=null; }
   if(!a.cur){
-    weightWrap.innerHTML=emptyState('⚖️','No weight trend yet','Record check-ins in Health before Stats can assess change','Open Health →','openHealthSettings()');
+    weightWrap.innerHTML=emptyState('⚖️','No weight trend yet','Log a weigh-in to start your trend','Log weight →','openLogWeight()');
     goalWrap.innerHTML=''; return;
   }
   const recent=a.sorted.slice(-30);
@@ -5401,7 +5405,7 @@ function renderBodyInsight(){
   const hi=Math.max(...recent.map(w=>parseFloat(w.weight)));
   const freshChip=a.staleDays>14?statsChip('warn',a.staleDays+' days old'):statsChip(a.staleDays===0?'good':'neutral',a.staleDays===0?'Today':a.staleDays+'d ago');
   weightWrap.innerHTML='<div class="card">'+
-    cardHeader('scale','Measured weight',freshChip+'<button class="card-hd-act" onclick="openHealthSettings()">Check-ins &rarr;</button>')+
+    cardHeader('scale','Measured weight',freshChip+'<button class="card-hd-act" onclick="openLogWeight()">Log weight &rarr;</button>')+
     statsFigure(parseFloat(a.cur.weight),'kg','Latest check-in · '+fmtDate(a.cur.date))+
     statsSplit([
       ['Change · 28 days',win?(win.delta>0?'+':win.delta<0?'−':'')+Math.abs(win.delta)+' kg':'—'],
@@ -5424,10 +5428,10 @@ function renderBodyInsight(){
     S.bodyWeightChart=new Chart(ctx,{type:'line',data:{labels:recent.map(w=>fmtDate(w.date)),datasets:sets},options:{responsive:true,maintainAspectRatio:false,onClick:(event,elements)=>{if(elements.length&&elements[0].datasetIndex===0)openWeightEvidence(recent[elements[0].index].date);},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y+' kg'}}},scales:{x:{grid:{display:false},ticks:{color:tc,maxTicksLimit:6,maxRotation:0}},y:{grid:{color:gc},ticks:{color:tc,callback:v=>v+'kg'},beginAtZero:false}}}});
   }
 
-  const goalHead=cardHeader('target','Goal episode','<button class="card-hd-act" onclick="openHealthSettings()">Edit in Health &rarr;</button>');
+  const goalHead=cardHeader('target','Goal episode','<button class="card-hd-act" onclick="openLogWeight(\'goal\')">Edit goal &rarr;</button>');
   let goalHtml='';
   if(!a.hasGoal){
-    goalHtml='<div class="stats-note-panel">No active weight goal. Set one in Health and Stats will assess direction and pace against it.</div>';
+    goalHtml='<div class="stats-note-panel">No weight goal yet. Set one in Log › Today.</div>';
   }else if(a.legacy){
     goalHtml='<div class="stats-note-panel">This goal predates goal episodes, so it has no trusted starting point. Open Health and save it again to begin pace tracking — old weigh-ins are never rewritten.</div>';
   }else{
@@ -6080,8 +6084,8 @@ function stgSaved(id,ms){
 const SETTINGS_GROUPS=[
   {label:'Personal',         keys:['account','health']},
   {label:'Planning',         keys:['training','budget','habits']},
-  {label:'App experience',   keys:['appearance','weather','homelayout']},
-  {label:'Data and support', keys:['export','replay']}
+  {label:'App',   keys:['appearance','weather','homelayout']},
+  {label:'Support', keys:['export','replay']}
 ];
 
 // summary() is the optional value shown beside a row ("Sydney", "5 active"). Every one is
@@ -6164,12 +6168,13 @@ const SETTINGS_SECTIONS={
     summary:function(){ return 'Backup, restore, CSV'; }
   },
   replay:{
-    label:'Run setup again', icon:'replay',
+    label:'Setup tour', icon:'replay',
     open:function(){ replayOnboarding(); },
     summary:function(){ return 'Walk through the welcome flow'; }
   }
 };
 function settingsOpen(key,anchor){
+  if(key==='health'&&(anchor==='stg-card-weight'||anchor==='stg-card-weightgoal')){ openLogWeight(anchor==='stg-card-weightgoal'?'goal':'weight'); return; }
   const s=SETTINGS_SECTIONS[key];
   if(s&&s.open) s.open(anchor);
 }
@@ -6303,7 +6308,8 @@ function stgSyncNavActive(){
 }
 function settingsNavRow(key){
   const s=SETTINGS_SECTIONS[key]; if(!s) return '';
-  let sum=''; try{ sum=s.summary?(s.summary()||''):''; }catch(e){ sum=''; }
+  let sum='';
+  if(key==='account') sum=(firebaseReady&&auth&&auth.currentUser)?'Connected':'This device only';
   const on=stgSplit()&&_activeSettingsKey===key;
   return '<button class="stg-nav-row'+(on?' active':'')+'" type="button" data-stg-key="'+key+'"'+
     (on?' aria-current="page"':'')+' onclick="settingsOpen(\''+key+'\')">'+
@@ -13384,8 +13390,6 @@ function openTxnModal(opts){
   document.getElementById('txn-amount').value = existing?existing.amount:'';
   document.getElementById('txn-merchant').value = existing?(existing.merchant||''):'';
   document.getElementById('txn-note').value = existing?(existing.note||''):'';
-  const details=document.getElementById('txn-details');
-  if(details)details.open=!!(existing&&(existing.note||txnIsEssential(existing)));
   const essential=document.getElementById('txn-essential');
   // A new expense never inherits the last one's tag, and an untagged historic record reads as
   // unchecked rather than as an unknown.
@@ -29646,14 +29650,13 @@ function jrnDayContext(ds){
 function jrnDayContextHtml(ds){
   const facts=jrnDayContext(ds);
   if(!facts.length) return '';
-  return '<section class="jrn-context" aria-label="That day in Daily">'+
-    '<div class="jrn-context-head"><span>That day in Daily</span><span>'+escText(jrnLongDay(ds))+'</span></div>'+
+  return '<details class="jrn-context" aria-label="That day in Daily">'+
+    '<summary class="jrn-context-head"><span>Recorded day context</span><span>'+escText(jrnLongDay(ds))+'</span></summary>'+
     '<div class="jrn-context-chips">'+facts.map(f=>
       '<button class="jrn-context-chip" data-jrn="day-source" data-source="'+f.kind+'" data-date="'+ds+'" aria-label="Open '+escAttr(f.detail)+' source">'+
         '<span class="jrn-context-value">'+escText(f.label)+'</span><span class="jrn-context-detail">'+escText(f.detail)+'</span><span aria-hidden="true">›</span>'+
       '</button>').join('')+'</div>'+
-    '<div class="jrn-context-note">Recorded facts only. Missing areas are unknown, not zero.</div>'+
-  '</section>';
+  '</details>';
 }
 function jrnRenderDayContext(){
   const el=document.getElementById('jrn-ed-context'); if(!el) return;
@@ -29731,10 +29734,10 @@ function jrnReflectionHtml(){
 }
 // Reflection is available every day and asks for nothing. It was a card at the top of the page
 // on Sundays, which is the shape of a weekly task; it is a quiet line at the end now, and the
-// header icon still opens the same sheet. Nothing is stored until Write is pressed and something
+// labelled link opens the sheet. Nothing is stored until Write is pressed and something
 // meaningful is typed (jrnStartReflection opens an ordinary unsaved entry).
 function jrnReflectLinkHtml(){
-  return '<button class="jrn-reflect-link" data-jrn="reflect">Weekly reflection<span aria-hidden="true">›</span></button>';
+  return '<button class="jrn-reflect-link" data-jrn="reflect"><span>Weekly reflection <small>optional</small></span><span aria-hidden="true">›</span></button>';
 }
 function jrnOpenReflection(){
   jrnEdFlush();
@@ -29823,7 +29826,7 @@ function jrnTodaySectionHtml(){
     ? mine.map(r=>jrnEntryRow(r, jrnLongDay(today))).join('')
     : '<button class="jrn-row jrn-row-start'+(pendingToday?' sel':'')+'" data-jrn="new-entry">'+
         '<span class="jrn-row-top"><span class="jrn-row-date">'+escText(jrnLongDay(today))+'</span></span>'+
-        '<span class="jrn-row-ttl">Start writing</span>'+
+        '<span class="jrn-row-ttl">Today’s entry</span>'+
         '<span class="jrn-row-prev">How was today?</span>'+
       '</button>';
   return '<section class="jrn-sec jrn-sec-today">'+
@@ -29917,10 +29920,8 @@ function jrnMountDetail(){
 function jrnHeadHtml(){
   const searchIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
   const calIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
-  const reflectIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M4 12h10M4 19h7"/><path d="m17 16 2 2 4-5"/></svg>';
   let h='<div class="jrn-head">'+
     '<div class="jrn-head-title">Journal</div>'+
-    '<button class="jrn-head-btn" data-jrn="reflect" aria-label="Weekly reflection" title="Weekly reflection">'+reflectIco+'</button>'+
     '<button class="jrn-head-btn'+(jrnSearchOpen?' on':'')+'" data-jrn="search-toggle" aria-label="Search Journal" aria-pressed="'+(jrnSearchOpen?'true':'false')+'">'+searchIco+'</button>'+
     '<button class="jrn-head-btn" data-jrn="cal" aria-label="Jump to a date">'+calIco+'</button>'+
   '</div>';
@@ -29985,7 +29986,7 @@ function jrnTodayHtml(){
     '</div>'+
     (latest
       ? '<button class="jrn-today-peek" data-jrn="open" data-id="'+escAttr(latest.id)+'">'+escText(firstLine)+'</button>'
-      : '<p class="jrn-today-invite">A few lines about today is plenty. Nobody else reads this.</p>')+
+      : '<p class="jrn-today-invite">A few lines about today is plenty.</p>')+
     meta+
     '<div class="jrn-today-acts">'+jrnWriteBtnHtml(!!latest)+
       (latest?'<button class="jrn-today-more" data-jrn="new-entry">+ Add another moment</button>':'')+
@@ -30026,11 +30027,11 @@ function jrnLoopsHtml(){
       (rows.length&&!dk?'<span class="jrn-loops-n">'+rows.length+'</span>':'')+
       '<span class="jrn-loops-act">'+
         (total?'<button class="jrn-loops-btn" data-jrn="tab" data-tab-id="notes">All notes</button>':'')+
-        '<button class="jrn-loops-btn" data-jrn="new-note" aria-label="New note">+</button>'+
+        '<button class="jrn-loops-btn" data-jrn="new-note" aria-label="New note">Add note</button>'+
       '</span>'+
-    '</div>';
+    '</div><p class="jrn-loops-desc">Reminders and reference notes</p>';
   if(!shown.length){
-    h+='<div class="jrn-loops-empty">'+(total?'Nothing pinned or due.':'Nothing due. Add a reminder with +')+'</div>';
+    h+='<div class="jrn-loops-empty">'+(total?'Nothing pinned or due.':'No reminders yet.')+'</div>';
   } else {
     shown.forEach(n=>{ h+=jrnLoopRow(n, today); });
     if(rows.length>shown.length) h+='<button class="jrn-loops-btn" data-jrn="tab" data-tab-id="notes" style="padding-left:2px">'+(rows.length-shown.length)+' more →</button>';
@@ -30059,7 +30060,6 @@ function jrnTimelineHtml(){
     return '<div class="jrn-empty">'+
       '<div class="jrn-empty-ttl">'+(q?'No entries match':'Your journal starts here')+'</div>'+
       '<div class="jrn-empty-sub">'+(q?'Try a different word, or check All notes.':'Write today whenever you feel like it — a sentence counts. Entries are grouped by the day they are about, and days you skip are simply not shown.')+'</div>'+
-      (q?'':'<button class="jrn-write-btn" data-jrn="write-today">Write today</button>')+
     '</div>';
   }
   // Desktop groups by MONTH and renders flat rows carrying their own date, because a per-day
@@ -30220,12 +30220,18 @@ function jrnEdRec(){
 }
 function jrnEdStatus(txt){
   const el=document.getElementById('jrn-ed-status'); if(!el) return;
+  const previous=el.textContent;
   clearTimeout(jrnEdStatusTimer);
-  el.textContent=txt; el.style.opacity='1';
-  // Fades rather than sitting there: a permanent "Saved" badge is noise, and a "Saving…"
-  // that appears on every keystroke is a flicker.
-  jrnEdStatusTimer=setTimeout(()=>{ el.style.opacity='0'; }, 1400);
+  el.textContent=txt==='Saved'?'Saved on this device':txt;
+  el.style.opacity='1';
+  if(txt==='Copied') jrnEdStatusTimer=setTimeout(()=>jrnEdStatus(previous),1400);
 }
+function jrnEdSaved(patch){
+  const stored=loadNotes().find(r=>r.id===jrnEdId);
+  const saved=stored&&Object.keys(patch).every(k=>JSON.stringify(stored[k])===JSON.stringify(patch[k]));
+  jrnEdStatus(saved?'Saved':'Couldn’t save on this device');
+}
+
 // Loading the editor's FIELDS is separated from PRESENTING it, because the desktop pane has to
 // be filled from inside renderJournal() (which is what draws the pane) and cannot re-enter it.
 // Returns false if the id no longer resolves.
@@ -30253,7 +30259,9 @@ function jrnLoadEditor(id, kind){
     isEntry ? jrnLongDay(r.dateAbout||getLocalDate()) : 'Note';
   // "How was today?" is the prompt, so it belongs on the writing surface rather than on a
   // small card in the list column.
-  t.placeholder=isEntry?'How was today?':'Title';
+  t.placeholder='Add a title';
+  const prompt=document.getElementById('jrn-body-label');
+  if(prompt) prompt.textContent=isEntry?'How was today?':'Details';
   b.placeholder=isEntry?'Write about your day…':'Details';
   t.value=String(r.title||'');
   b.value=String(r.body||'');
@@ -30261,8 +30269,7 @@ function jrnLoadEditor(id, kind){
   if(del) del.style.display = rec ? '' : 'none';
   jrnEdRenderFoot();
   jrnRenderDayContext();
-  jrnEdStatus('');
-  const status=document.getElementById('jrn-ed-status'); if(status) status.style.opacity='0';
+  jrnEdStatus(rec?'Saved':'Not saved yet');
   return true;
 }
 function jrnOpenEditor(id, kind){
@@ -30366,7 +30373,7 @@ function jrnEdRenderFoot(){
 function jrnEdPatch(patch){
   if(!jrnEdId) return;
   const stored=loadNotes().find(r=>r.id===jrnEdId);
-  if(stored){ jrnPut(Object.assign({}, stored, patch)); }
+  if(stored){ jrnPut(Object.assign({}, stored, patch)); jrnEdSaved(patch); }
   else {
     jrnEdPending=jrnNormalise(Object.assign({}, jrnEdPending||{}, patch));
     const meaningful=Object.keys(patch).some(k=>JRN_MEANINGFUL_KEYS.indexOf(k)>=0);
@@ -30381,7 +30388,7 @@ function jrnEdPatch(patch){
       jrnPut(jrnEdPending);
       jrnEdPending=null;
       const del=document.getElementById('jrn-ed-del'); if(del) del.style.display='';
-      jrnEdStatus('Saved');
+      jrnEdSaved(patch);
     }
   }
   jrnEdRenderFoot();
@@ -30403,7 +30410,7 @@ function jrnEdWrite(){
     jrnEdPending=null;
     const del=document.getElementById('jrn-ed-del'); if(del) del.style.display='';
   }
-  jrnEdStatus('Saved');
+  jrnEdSaved({title,body});
   jrnRefreshLists();
 }
 function jrnEdQueue(){ clearTimeout(jrnEdTimer); jrnEdTimer=setTimeout(jrnEdWrite, 600); }
@@ -31007,7 +31014,7 @@ function logHeroHtml(b,weekHtml){
   const resume=(b.state==='saved'&&logCanContinueSaved(b.session))
     ? '<button type="button" class="lg-hero-btn lg-hero-secondary" onclick="logContinueSavedWorkout()">Continue saved workout &rarr;</button>'
     : '';
-  return '<div class="lg-hero">'+
+  return '<div class="lg-hero lg-hero-with-weight"><div class="lg-training-brief">'+
     '<div class="lg-hero-current">'+
     '<div class="lg-hero-lead">'+escText(lead)+'</div>'+
     '<div class="lg-hero-title">'+escText(b.dayName)+'</div>'+
@@ -31018,7 +31025,7 @@ function logHeroHtml(b,weekHtml){
     '<div class="lg-hero-actions">'+
     '<button type="button" class="lg-hero-btn" onclick="'+escAttr(run)+'">'+escText(act)+' &rarr;</button>'+
     resume+
-    '</div>'+
+    '</div></div>'+logWeightSummaryHtml()+
   '</div>';
 }
 
@@ -31725,3 +31732,31 @@ window.addEventListener('load', function(){ nudgeLayout(); setTimeout(nudgeLayou
   if(typeof weatherEnsureFresh==='function') weatherEnsureFresh('launch'); });
 document.addEventListener('visibilitychange', function(){ if(!document.hidden) setTimeout(nudgeLayout,80); });
 window.addEventListener('pageshow', function(){ setTimeout(nudgeLayout,80); if(typeof applyLogoDayColour==='function') applyLogoDayColour(); });
+
+// One editor and the existing writers serve Log, Settings shortcuts and Stats links.
+function openLogWeight(mode){
+  closeSettingsSection();
+  logGoto('today');
+  logTodayView='overview';
+  renderLogToday();
+  const goal=mode==='goal', dialog=document.getElementById('log-weight-dialog');
+  dialog.onclose=()=>document.querySelector(goal?'.lg-weight-goal button':'.lg-body-weight>.lg-hero-btn')?.focus();
+  document.getElementById('health-weight-section').hidden=goal;
+  document.getElementById('health-weight-goal-section').hidden=!goal;
+  document.getElementById('log-weight-dialog-title').textContent=goal?'Weight goal':'Log weight';
+  if(goal) renderWeightGoal(); else renderWeightSection();
+  if(!dialog.open) dialog.showModal();
+  document.getElementById(goal?'wg-target':'weight-input')?.focus();
+}
+function logWeightSummaryHtml(){
+  const g=weightGoalAnalysis(), recent=g.sorted.slice(-3);
+  const mode=({bulk:'Bulk',cut:'Cut',maintain:'Maintain'})[(S.personalInfo||{}).goal];
+  return '<section class="lg-body-weight" aria-label="Weight and goal">'+
+    cardHeader('scale','Weight & goal','<button class="card-hd-act" onclick="setView(\'stats\');setStatsTab(\'body\')">Trends &rarr;</button>')+
+    (g.cur?'<div class="lg-weight-now"><strong>'+escText(String(g.cur.weight))+'<small> kg</small></strong><span>'+escText(fmtDate(g.cur.date))+'</span></div>':'<p class="lg-weight-empty">Log your first weigh-in.</p>')+
+    (recent.length?'<div class="lg-weight-readings">'+recent.map((w,i)=>'<div'+(i===recent.length-1?' class="latest"':'')+'><span>'+escText(fmtDate(w.date))+'</span><strong>'+escText(String(w.weight))+' <small>kg</small></strong></div>').join('')+'</div>':'')+
+    '<div class="lg-weight-goal"><span>'+(g.hasGoal?'Target <strong>'+g.target+' kg</strong>':'Set a weight goal when you’re ready.')+'</span><button onclick="openLogWeight(\'goal\')">'+(g.hasGoal?'Edit goal':'Set goal')+'</button></div>'+
+    (mode?'<p class="lg-weight-mode">Calorie plan · '+mode+'</p>':'')+
+    '<button class="lg-hero-btn" onclick="openLogWeight()">Log weight</button>'+
+  '</section>';
+}

@@ -1195,3 +1195,45 @@ button.ov-day{cursor:pointer}
   #rt-fs-laps{grid-area:laps;width:100%;max-height:88px;margin-top:0;align-self:end}
   .rt-lap-row{padding:6px 0;font-size:12px}
 }
+
+/* Weight shares the briefing hero without changing training state or actions. */
+.lg-hero.lg-hero-with-weight{display:block}
+.lg-training-brief{min-width:0}
+.lg-body-weight{min-width:0;border-top:1px solid rgba(255,255,255,.24);margin-top:22px;padding-top:20px}
+.lg-body-weight .card-label,.lg-body-weight .card-hd-l svg,.lg-body-weight .card-hd-act{color:#fff}
+.lg-body-weight .card-hd{margin-bottom:14px}
+.lg-weight-now{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px}
+.lg-weight-now>strong{font:700 38px var(--font-num);letter-spacing:-1px}
+.lg-weight-now small{font-size:17px;font-weight:500;letter-spacing:0}
+.lg-weight-now>span,.lg-weight-mode{font-size:12px;color:rgba(255,255,255,.82)}
+.lg-weight-readings{display:flex;margin:20px 0;gap:0}
+.lg-weight-readings>div{flex:1;min-width:0;padding:0 10px;border-left:1px solid rgba(255,255,255,.22)}
+.lg-weight-readings>div:first-child{padding-left:0;border:0}
+.lg-weight-readings span{display:block;font-size:10px;color:rgba(255,255,255,.8);margin-bottom:7px}
+.lg-weight-readings strong{font:500 18px var(--font-num)}
+.lg-weight-readings small{font:400 11px var(--font-body)}
+.lg-weight-readings .latest strong{font-weight:800}
+.lg-weight-goal{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:13px;border-top:1px solid rgba(255,255,255,.22);padding-top:8px}
+.lg-weight-goal button{background:none;border:0;color:#fff;text-decoration:underline;text-underline-offset:4px;font:inherit;min-height:44px;white-space:nowrap;cursor:pointer}
+.lg-weight-mode{margin:4px 0 0}
+.lg-weight-empty{font-size:18px;margin:18px 0}
+.lg-body-weight button:focus-visible{outline:2px solid white;outline-offset:3px}
+#log-weight-dialog{position:fixed;inset:0;margin:auto;box-sizing:border-box;width:min(620px,calc(100% - 24px));max-height:calc(100dvh - 32px);padding:22px;border:1px solid var(--border);border-radius:22px;background:var(--surface-card);color:var(--text);overflow:auto}
+#log-weight-dialog::backdrop{background:rgba(0,0,0,.55)}
+.log-weight-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.log-weight-dialog-head h2{font-size:22px;margin:0}
+#log-weight-dialog .stg-card{background:none;padding:0;border:0;box-shadow:none;margin:0}
+#log-weight-dialog .stg-card-head{display:none}
+#log-weight-dialog [hidden]{display:none!important}
+#log-weight-dialog input{font-size:16px;min-width:0}
+@media(min-width:1024px){
+  .lg-training-brief .lg-hero-week{margin-top:20px;padding:14px 0 0;border-left:0;border-top:1px solid rgba(255,255,255,.24)}
+  .lg-training-brief .lg-hero-actions{margin-top:18px;max-width:none}
+}
+@media(min-width:1180px){
+  .lg-hero.lg-hero-with-weight{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr);align-items:start;gap:32px}
+  .lg-body-weight{margin:0;padding:0 0 0 32px;border-top:0;border-left:1px solid rgba(255,255,255,.24)}
+}
+@media(max-width:480px){
+  #log-weight-dialog{padding:18px 16px max(18px,env(safe-area-inset-bottom));max-height:calc(100dvh - 16px)}
+}
