@@ -270,6 +270,25 @@ for their small text. No save, sync, route, chart or onboarding-version changes.
   static files over HTTP works; `file://` will break the service worker and Firebase auth
   popup origin checks.
 
+## Finance setup and cadence (v369)
+
+- Fresh Finance setup has no personal income sources, fixed bills or amounts. Missing
+  category lists recover only ids evidenced by saved weekly fields/defaults; existing saved
+  lists are preserved. Do not reintroduce the author's employers or memberships as defaults.
+- Billing supports weekly, fortnightly, monthly and yearly. A current fixed charge's weekly
+  equivalent comes from its billed `amount` and `cycle`; historical `fixRates` remain frozen.
+  Empty amounts stay empty. Cycle changes retain the original billed amount.
+- Income schedules use `payCycle`, `payDate` and optional `payAmount` in the existing income
+  category blob. Legacy weekly weekday settings remain readable. Expected pay never creates
+  deposits or weekly income. Unspecified schedules do not invent a payday.
+- Read-time `_budgetType` tags are non-enumerable and never enter storage/backup/sync JSON;
+  billing metadata retained after moving a category out of Fixed is inactive there.
+- Category sections may be empty. Archiving the last category preserves historical amounts;
+  deletion keeps the existing warning and stored weekly fields.
+- Regression checks: `tests/finance-cadence.test.cjs`; `tests/sync-browser.html?fresh` checks
+  a new synthetic account, and the default fixture checks restoration of saved Finance data.
+  These fixtures do not replace a real Firebase fresh-profile test before release.
+
 ## Firebase
 
 Config lives in plaintext at the top of `js/app.js` (lines ~4–13) — this is normal for a

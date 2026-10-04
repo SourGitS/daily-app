@@ -594,12 +594,6 @@ if(firebaseReady){
           } else {
             syncApply(()=>{
               budgetConfig=cloudCfg;
-              if(!budgetConfig.incomeStreams.length||!budgetConfig.fixedExpenses.length||!budgetConfig.variableExpenses.length){
-                const def=loadBudgetConfig();
-                if(!budgetConfig.incomeStreams.length) budgetConfig.incomeStreams=def.incomeStreams;
-                if(!budgetConfig.fixedExpenses.length) budgetConfig.fixedExpenses=def.fixedExpenses;
-                if(!budgetConfig.variableExpenses.length) budgetConfig.variableExpenses=def.variableExpenses;
-              }
               incomeStreams=budgetConfig.incomeStreams;
               localStorage.setItem('daily_budget_config',JSON.stringify(budgetConfig));
               if(S.view==='budget') renderBudgetTab();
@@ -7040,7 +7034,7 @@ function exportBudgetCSV(){
   // weekly equivalent — going via the weekly figure compounds its 2dp rounding, which made a
   // $790 yearly charge export an annual cost of $789.88. A yearly charge's annual cost must be
   // exactly what is charged.
-  const PER_YEAR={weekly:52, monthly:12, yearly:1};
+  const PER_YEAR={weekly:52, fortnightly:26, monthly:12, yearly:1};
   recurCats.forEach(c=>{
     const cyc=catCycle(c);
     const charged=parseFloat(catAmount(c))||0;
@@ -9328,7 +9322,7 @@ function aiValIncome(d,id){
   // Pay day is stored as a DAY OF WEEK per stream and drives the "until next pay" forecast. A
   // deposit landing on another weekday is worth saying out loud and is never acted on: one
   // early payment and a permanently moved payday look identical from a single deposit.
-  const payDow=(typeof getPayDay==='function')?getPayDay(stream.rec.id):null;
+  const payDow=incomePayCycle(stream.rec)==='weekly'&&!stream.rec.payDate?getPayDay(stream.rec.id):null;
   let gotDow=NaN;
   try{ gotDow=localMidnight(date).getDay(); }catch(e){}
   if(incomeType==='salary'&&payDow!=null&&!isNaN(payDow)&&!isNaN(gotDow)&&payDow!==gotDow)
@@ -10180,7 +10174,7 @@ function aiInboxCopySchema(){
     'add_expense data: amount (>0), date (YYYY-MM-DD), categoryName or categoryId, optional merchant, note, paymentAccountName, pending, essential, source.\n'+
     '  Set essential: true ONLY when the user has told you the expense was unavoidable — medical, laundry, rent-related and the like. It is a label: it changes no category, no total and no schedule, and Daily reports the tagged total separately. Never infer it from a merchant name.\n'+
     '  Set pending: true ONLY for a charge your source shows as still pending. Daily marks it, leaves the row unticked, and matches the settled row back to it later. Everything else is treated as settled.\n'+
-    'add_subscription data: name, amount (>0), cycle ("weekly", "monthly" or "yearly"), optional status (active/trial/paused/cancelled), nextBillingDate, website, paymentAccountName.\n'+
+    'add_subscription data: name, amount (>0), cycle ("weekly", "fortnightly", "monthly" or "yearly"), optional status (active/trial/paused/cancelled), nextBillingDate, website, paymentAccountName.\n'+
     'archive_subscription data: subscriptionId (the exact stable id from Daily\'s context export) and a user-confirmed confirmedEndDate (YYYY-MM-DD, today or earlier). Use it only after the user explicitly confirms that end date. Names are descriptive only and never accepted as targets. Daily shows this action unchecked; it preserves history and never permanently deletes the item.\n'+
     'add_recipe data: one recipe object — name, category (breakfast/lunch/dinner/dessert), servings, ingredients [{name, amount, unit}], steps [].\n'+
     '  calories/protein/carbs/fat are PER SERVING. steps are strings, {text, timerMinutes}, or one {"type":"protein"} slot.\n'+
@@ -10355,7 +10349,7 @@ function aiReconReport(){
   Object.keys(byStream).forEach(sid=>{
     const b=byStream[sid];
     const cat=loadIncCats().find(c=>c&&String(c.id)===String(sid));
-    const set=(typeof getPayDay==='function')?getPayDay(sid):null;
+    const set=cat&&incomePayCycle(cat)==='weekly'&&!cat.payDate?getPayDay(sid):null;
     const top=Object.keys(b.days).sort((x,y)=>b.days[y]-b.days[x])[0];
     if(top==null||set==null||parseInt(top,10)===set) return;
     payLines.push((cat?catLabel(cat):sid)+' — Daily says '+BUD_DAY_NAMES[set]+', but '+b.days[top]+' of '+b.n+
@@ -10692,13 +10686,13 @@ function fallbackCopy(text,done){
 // Still referenced by loadFixCats defaults (fine/subs/gym/transport) and the Section-2 budget
 // targets (food/pub/personal). DEFAULT_SAVINGS and the old 8-key BUD_CATS list were removed —
 // both were dead (the live categories come from loadFixCats/loadVarCats and per-week data).
-const DEFAULT_FINE      = 25;
-const DEFAULT_SUBS      = 17;
-const DEFAULT_GYM       = 27;
-const DEFAULT_TRANSPORT = 50;
-const DEFAULT_FOOD      = 70;
-const DEFAULT_PUB       = 100;
-const DEFAULT_PERSONAL  = 60;
+const DEFAULT_FINE      = 0;
+const DEFAULT_SUBS      = 0;
+const DEFAULT_GYM       = 0;
+const DEFAULT_TRANSPORT = 0;
+const DEFAULT_FOOD      = 0;
+const DEFAULT_PUB       = 0;
+const DEFAULT_PERSONAL  = 0;
 const BUD_DONUT_COLOURS = [
   '#FF6B35','rgba(255,107,53,.6)','rgba(255,107,53,.35)',
   '#52B788','#3B82F6','#8B5CF6','#f59e0b','#ec4899',
@@ -10758,22 +10752,10 @@ function loadBudgetConfig(){
   // Build defaults, migrating any pre-existing (separate) income streams
   let income=null;
   try{ const s=JSON.parse(localStorage.getItem('daily_income_streams')||'null'); if(Array.isArray(s)&&s.length) income=s; }catch(e){}
-  const bd=(typeof budDefaults==='object'&&budDefaults)?budDefaults:{};
   return {
-    incomeStreams: income || [
-      {id:'1',name:'Fujifilm',weeklyAmount:507},
-      {id:'2',name:"McDonald's",weeklyAmount:278},
-    ],
-    fixedExpenses: [
-      {id:'f1',name:'Fine payment',weeklyAmount:bd.fine??25},
-      {id:'f2',name:'Subscriptions',weeklyAmount:bd.subs??17},
-      {id:'f3',name:'Transport',weeklyAmount:bd.transport??50},
-      {id:'f4',name:'Gym',weeklyAmount:bd.gym??27},
-    ],
-    variableExpenses: [
-      {id:'v1',name:'Food / Social',weeklyAmount:150},
-      {id:'v2',name:'Personal / Misc',weeklyAmount:68},
-    ],
+    incomeStreams: income || [],
+    fixedExpenses: [],
+    variableExpenses: [],
   };
 }
 let budgetConfig = loadBudgetConfig();
@@ -10925,7 +10907,6 @@ function renderCatBudgetList(containerId, type, kind){
         '<label class="budget-setup-field"><span>Website<small>Optional — also helps Daily find a recognisable logo</small></span><input class="bud-edit-site" value="'+_catEsc(c.site||'')+'" placeholder="example.com" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'site\',this.value)"></label>'+
         (last?'<div class="bud-edit-pricehist">Previous price: '+fmtMoneyExact(last.from)+' until '+fmtDate(last.date)+' · now '+fmtMoneyExact(last.to)+(last.to>last.from?' <span class="ph-up">↑</span>':' <span class="ph-down">↓</span>')+'</div>':'');
     }
-    const canArchive=activeCats(all).length>1;
     const open=catIsUnnamed(c)||_budgetSetupOpen.has(type+':'+c.id);
     return '<details class="budget-setup-item'+(recurring&&!catIsCharging(c)?' inactive':'')+'" data-cat-key="'+type+':'+_catEsc(c.id)+'"'+(open?' open':'')+'>'+
       '<summary class="budget-setup-summary" onclick="budgetSetupToggle(\''+type+'\',\''+c.id+'\',this.parentElement)">'+
@@ -10942,7 +10923,7 @@ function renderCatBudgetList(containerId, type, kind){
         '</div>'+recurFields+
         '<div class="budget-setup-actions">'+
           '<select class="bud-edit-move" onchange="catMoveTo(\''+type+'\',\''+c.id+'\',this.value)" aria-label="Move category"><option value="">Move to…</option>'+moveOpts+'</select>'+
-          '<button type="button" class="budget-setup-archive" onclick="catArchive(\''+type+'\',\''+c.id+'\',true)"'+(canArchive?'':' disabled')+'>Archive</button>'+
+          '<button type="button" class="budget-setup-archive" onclick="catArchive(\''+type+'\',\''+c.id+'\',true)">Archive</button>'+
           '<button type="button" class="budget-setup-delete" onclick="catRemoveItem(\''+type+'\',\''+c.id+'\')">Delete permanently</button>'+
         '</div>'+
       '</div></details>';
@@ -11009,11 +10990,12 @@ function catNextDue(c, fromDate){
   if(isNaN(anchor.getTime())) return null;
   const today=localMidnight(fromDate||getLocalDate());
   if(anchor>=today) return anchor;               // dated in the future: it starts then
-  if(cyc==='weekly'){
+  if(cyc==='weekly'||cyc==='fortnightly'){
     // (y, m, d + 7k) rather than millisecond arithmetic, so a DST boundary in between can't
     // walk the result off local midnight.
-    const k=Math.ceil(Math.round((today-anchor)/864e5)/7);
-    return new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate()+7*k);
+    const period=cyc==='fortnightly'?14:7;
+    const k=Math.ceil(Math.round((today-anchor)/864e5)/period);
+    return new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate()+period*k);
   }
   const on = cyc==='yearly' ? _billYearlyOn : _billMonthlyOn;
   let k = cyc==='yearly'
@@ -11067,13 +11049,14 @@ function catOccurrencesBetween(c, from, to){
   if(isNaN(anchor.getTime())||anchor>to) return out;
   const cyc=catCycle(c);
   const push=d=>{ if(d>=from&&d>=anchor&&d<=to) out.push(d); };
-  if(cyc==='weekly'){
+  if(cyc==='weekly'||cyc==='fortnightly'){
     // Built with (y, m, d + 7k) rather than millisecond arithmetic so a DST boundary inside
     // the window can't walk the series off local midnight.
     const gap=Math.round((from-anchor)/864e5);
-    let k=gap>0?Math.ceil(gap/7):0;
+    const period=cyc==='fortnightly'?14:7;
+    let k=gap>0?Math.ceil(gap/period):0;
     for(let guard=0; guard<80; guard++, k++){
-      const d=new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate()+7*k);
+      const d=new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate()+period*k);
       if(d>to) break;
       push(d);
     }
@@ -11151,29 +11134,52 @@ function billsMonths(){
   return months;
 }
 // ── Pay cycle ─────────────────────────────────────────────────────
-// Pay day is stored as a DAY OF WEEK per income source (budDefaults.payDays), not a date, so
-// "next pay" is the soonest upcoming occurrence across every named source. With two weekly
-// sources that is rarely more than three days out, which is why the forecast so often reads
-// "no scheduled bills before your next pay" — that is the truth about a short window, not a
-// failure to find the bills.
-// Returns null when no income source is named at all, which is the only honest reading of
-// "no pay day configured": getPayDay() falls back to Friday for any source that exists, so
-// the presence of a day never means the user actually chose one.
+// Anchored pay dates support weekly, fortnightly and month-end schedules. Legacy weekly
+// weekday choices remain readable; an unspecified schedule never invents a Friday payday.
 function nextPayInfo(){
   const today=localMidnight(getLocalDate());
-  const dow=today.getDay();
+  const tomorrow=new Date(today); tomorrow.setDate(today.getDate()+1);
   let best=null;
   activeCats(loadIncCats()).forEach(c=>{
     if(!String(c.name||'').trim()) return;         // unnamed source = nothing configured
-    const day=getPayDay(c.id);
-    if(day==null||isNaN(day)) return;
-    // Paid today means the NEXT one is a week out, not zero days away.
-    const inDays=((day-dow+7)%7)||7;
+    const date=incomeNextPay(c,dateStr(tomorrow));
+    if(!date) return;
+    const inDays=Math.round((date-today)/864e5);
     if(!best||inDays<best.inDays) best={inDays, name:String(c.name).trim()};
   });
   if(!best) return null;
   return {inDays:best.inDays, name:best.name,
           date:new Date(today.getFullYear(), today.getMonth(), today.getDate()+best.inDays)};
+}
+const INC_PAY_CYCLES=[
+  {id:'weekly',label:'Weekly'},
+  {id:'fortnightly',label:'Fortnightly'},
+  {id:'monthly',label:'Monthly'},
+  {id:'irregular',label:'Irregular / no fixed schedule'}
+];
+function incomePayCycle(c){ return c&&c.payCycle||'weekly'; }
+function incomePayHint(c){
+  const cycle=incomePayCycle(c), amount=parseFloat(c&&c.payAmount);
+  const weekly=cycle!=='irregular'&&!isNaN(amount)?catWeeklyFromAmount(amount,cycle):null;
+  return (weekly!=null?'≈ '+fmtMoneyExact(weekly)+'/week · ':'')+'For reference; record received income in Week';
+}
+function incomePayDateHint(c){
+  const next=incomeNextPay(c);
+  return next?'Next: '+fmtDate(dateStr(next)):'Set a date from your pay cycle';
+}
+function incomeNextPay(c, fromDate){
+  if(!c||!INC_PAY_CYCLES.some(o=>o.id===incomePayCycle(c))||incomePayCycle(c)==='irregular') return null;
+  const from=fromDate||getLocalDate();
+  if(c.payDate){
+    const anchor=localMidnight(c.payDate);
+    if(isNaN(anchor.getTime())||dateStr(anchor)!==c.payDate) return null;
+    return catNextDue({cycle:incomePayCycle(c),dueDate:c.payDate},from);
+  }
+  if(incomePayCycle(c)!=='weekly') return null;
+  const day=getPayDay(c.id);
+  if(day==null||isNaN(day)||day<0||day>6) return null;
+  const start=localMidnight(from), gap=(day-start.getDay()+7)%7;
+  return new Date(start.getFullYear(),start.getMonth(),start.getDate()+gap);
 }
 // The object budRecalc() derives the hero's "Available to spend" from, for callers that have
 // no budget inputs on screen to read (Home's Finance check-in).
@@ -11268,6 +11274,7 @@ function catUpdateField(type,id,field,val){
   const details=document.querySelector('.budget-setup-item[data-cat-key="'+type+':'+CSS.escape(String(id))+'"]');
   if(details&&details.open) _budgetSetupOpen.add(type+':'+id);
   const prevAmount=(field==='amount')?parseFloat(catAmount(c)):null;
+  const billedAmount=catAmount(c);
   const inferredChargeType=type==='fix'?catChargeType(c):'';
   // Empty stays empty rather than becoming 0 — "no target set" and "target of zero" are
   // different things, and only the first should leave the field blank next time.
@@ -11278,6 +11285,7 @@ function catUpdateField(type,id,field,val){
   // `budget` is the weekly figure the rest of the app reads, so keep it derived from the
   // billed amount + cycle rather than asking anything downstream to understand cycles.
   if(type==='fix'&&(field==='amount'||field==='cycle')){
+    if(field==='cycle') c.amount=billedAmount;
     const a=catAmount(c);
     c.budget=(a===''||a==null)?'':catWeeklyFromAmount(a,catCycle(c));
   }
@@ -11362,7 +11370,7 @@ function catMoveTo(fromType,id,toType){
 }
 function catRemoveItem(type,id){
   const cats=BUD_CAT_LOAD[type]();
-  if(cats.length<=1) return;   // never leave a section with nothing to enter against
+  if(!cats.some(c=>c.id===id)) return;
   // Deleting a category removes it from the LIST only — every week's saved amount stays in
   // storage under `<type>_<id>`. Nothing reads those keys once the category is gone, so past
   // weeks silently lose that income/spend and look wrong (see budScanOrphans, which finds
@@ -11407,8 +11415,6 @@ function catArchive(type,id,on){
   if(!load||!save) return;
   const cats=load();
   const c=cats.find(x=>x.id===id); if(!c) return;
-  // Never archive the last remaining active category — the section needs somewhere to type.
-  if(on && activeCats(cats).length<=1) return;
   // A manual archive or restore supersedes any still-available AI undo, while the durable
   // action history remains so re-pasting the same action id is still idempotent.
   delete c.aiArchiveActiveActionId;
@@ -11931,11 +11937,15 @@ function getWeeklySavings(){ return 0; } // weekly-savings target was removed; n
 // Reads budDefaults.payDays first, then falls back to the original hardcoded fuji/mcd fields
 // so existing saved settings keep working until the user changes them via the new selectors.
 function getPayDay(id){
+  if(budDefaults.payDays&&Object.prototype.hasOwnProperty.call(budDefaults.payDays,id)){
+    const value=budDefaults.payDays[id];
+    return value==null||value===''?null:parseInt(value);
+  }
   const pd = budDefaults.payDays && budDefaults.payDays[id];
   if(pd!=null && !isNaN(pd)) return parseInt(pd);
   if(id==='fuji') return budDefaults.fujifilmPayDay ?? 4;   // legacy: Thursday
   if(id==='mcd')  return budDefaults.mcdonaldsPayDay ?? 2;  // legacy: Tuesday
-  return 5; // sensible default (Friday) for newly-added sources
+  return null;
 }
 function setPayDay(id, day){
   if(!budDefaults.payDays || typeof budDefaults.payDays!=='object') budDefaults.payDays={};
@@ -12182,29 +12192,42 @@ function recoverBudgetData(){
 // Category ids match the legacy field suffixes (fine/food/…) so per-week storage
 // d['fix_'+id] / d['var_'+id] stays compatible with existing saved weeks.
 function loadFixCats(){
-  return lsLoad('daily_budget_fix_cats', [
-    {id:'fine',      name:'⚖️ Fine repayment',     default:budDefaults.fine??25},
-    {id:'subs',      name:'📱 Subscriptions',       default:budDefaults.subs??17},
-    {id:'transport', name:'🚌 Transport (Opal)',    default:budDefaults.transport??50},
-    {id:'gym',       name:'🏋️ Anytime Fitness',     default:budDefaults.gym??27},
-  ], Array.isArray);
+  return budCategoryTypes(lsLoad('daily_budget_fix_cats', null, Array.isArray)||budLegacyCats('fix'),'fix');
 }
 function saveFixCats(cats){ lsSaveTS('daily_budget_fix_cats', cats, 'daily_budget_fix_cats_ts', 'budgetFixCats'); }
 function loadVarCats(){
-  return lsLoad('daily_budget_var_cats', [
+  return budCategoryTypes(lsLoad('daily_budget_var_cats', [
     {id:'food',     name:'🍔 Food'},
     {id:'pub',      name:'🍺 Pub & social'},
     {id:'personal', name:'👜 Personal'},
-  ], Array.isArray);
+  ], Array.isArray),'var');
 }
 function saveVarCats(cats){ lsSaveTS('daily_budget_var_cats', cats, 'daily_budget_var_cats_ts', 'budgetVarCats'); }
 // Income sources — ids match the legacy field suffixes (fuji/mcd) so per-week storage
 // d['inc_'+id] stays compatible with existing saved weeks (d.inc_fuji / d.inc_mcd).
 function loadIncCats(){
-  return lsLoad('daily_budget_inc_cats', [
-    {id:'fuji', name:'Fujifilm'},
-    {id:'mcd',  name:"McDonald's"},
-  ], Array.isArray);
+  return budCategoryTypes(lsLoad('daily_budget_inc_cats', null, Array.isArray)||budLegacyCats('inc'),'inc');
+}
+function budCategoryTypes(cats,type){
+  // Billing metadata survives a move out of Fixed, but must not drive its new weekly target.
+  // This read-only tag is deliberately excluded from storage, backup and cloud JSON.
+  cats.forEach(c=>{ if(c&&typeof c==='object') Object.defineProperty(c,'_budgetType',{value:type,enumerable:false,configurable:true}); });
+  return cats;
+}
+// Recover rows only from saved evidence. A fresh install must never inherit the author's
+// employers, memberships or amounts, while old per-week ids must remain readable.
+function budLegacyCats(type){
+  const ids=new Set();
+  Object.values(budgetData||{}).forEach(w=>{
+    Object.keys(w||{}).forEach(k=>{
+      if(k.startsWith(type+'_')&&w[k]!==''&&w[k]!=null) ids.add(k.slice(type.length+1));
+    });
+    if(type==='fix') Object.keys(w&&w.fixRates||{}).forEach(id=>ids.add(id));
+  });
+  const labels={fine:'Fine repayment',subs:'Subscriptions',transport:'Transport',gym:'Gym'};
+  if(type==='fix') Object.keys(labels).forEach(id=>{ if(budDefaults[id]!=null) ids.add(id); });
+  return [...ids].map((id,i)=>({id,name:labels[id]||(type==='inc'?'Income source ':'Fixed expense ')+(i+1),
+    ...(type==='fix'&&budDefaults[id]!=null?{default:budDefaults[id]}:{})}));
 }
 function saveIncCats(cats){ lsSaveTS('daily_budget_inc_cats', cats, 'daily_budget_inc_cats_ts', 'budgetIncCats'); }
 function genCatId(prefix){ return prefix+'_'+Date.now(); }
@@ -12227,6 +12250,7 @@ const BUD_CFG_KEY={fix:'fixedExpenses', var:'variableExpenses', inc:'incomeStrea
 // same annual cost agree to the cent.
 const CAT_CYCLES=[
   {id:'weekly',  label:'Weekly',  suffix:'/wk', perWeek:1},
+  {id:'fortnightly', label:'Fortnightly', suffix:'/fortnight', perWeek:1/2},
   {id:'monthly', label:'Monthly', suffix:'/mo', perWeek:12/52},
   {id:'yearly',  label:'Yearly',  suffix:'/yr', perWeek:1/52},
 ];
@@ -12240,7 +12264,7 @@ function catWeeklyFromAmount(amount,cycle){
 // categories that predate cycles (they're weekly by definition).
 function catAmount(c){
   if(!c) return '';
-  if(c.amount!=null&&c.amount!=='') return c.amount;
+  if(c.amount!=null) return c.amount;
   if(c.budget!=null&&c.budget!=='') return c.budget;
   return (c.default!=null&&c.default!=='')?c.default:'';
 }
@@ -12313,6 +12337,9 @@ function catIconHtml(c,size){
 }
 function catBudget(c){
   if(!c) return 0;
+  // The stored weekly cache can lag a billed amount (legacy imports/moves). Derive it at
+  // read time; historical fixRates still use their own frozen figures, without a migration.
+  if(c.amount!=null&&c.cycle&&(!c._budgetType||c._budgetType==='fix')) return Number(catWeeklyFromAmount(c.amount,c.cycle))||0;
   if(c.budget!=null&&c.budget!=='') return parseFloat(c.budget)||0;
   return parseFloat(c.default)||0;   // pre-migration fixed categories
 }
@@ -12359,10 +12386,10 @@ function migrateSubscriptionsToFixedOnce(){
       const existing=new Set(cats.map(c=>norm(c.name)).filter(Boolean));
       const skipped=[];
       subs.forEach((s,i)=>{
-        const cycle=(s&&s.cycle==='yearly')?'yearly':'monthly';
+        const cycle=CAT_CYCLES.some(c=>c.id===(s&&s.cycle))?s.cycle:'monthly';
         // originalCost is what was actually billed for that cycle; monthlyCost is derived.
         const raw=parseFloat(s&&s.originalCost);
-        const amount=isNaN(raw)?(parseFloat(s&&s.monthlyCost)||0):raw;
+        const amount=isNaN(raw)?((parseFloat(s&&s.monthlyCost)||0)*12/(52*cyclePerWeek(cycle))):raw;
         const name=((s&&s.emoji?s.emoji+' ':'')+((s&&s.name)||'Subscription')).trim();
         if(existing.has(norm(name))){ skipped.push(name); return; }
         cats.push({id:'sub'+Date.now()+'_'+i, name, amount, cycle, chargeType:'subscription',
@@ -15140,15 +15167,29 @@ function renderBudgetConfig(){
   // entries), so adding/renaming/removing a source updates these automatically.
   const wrap=document.getElementById('bud-payday-rows');
   if(wrap){
-    const dayOpts=(cur)=>BUD_DAY_NAMES.map((d,v)=>'<option value="'+v+'"'+(v===cur?' selected':'')+'>'+d+'</option>').join('');
+    const dayOpts=(cur)=>'<option value=""'+(cur==null?' selected':'')+'>Not set</option>'+BUD_DAY_NAMES.map((d,v)=>'<option value="'+v+'"'+(v===cur?' selected':'')+'>'+d+'</option>').join('');
     const cats=activeCats(loadIncCats());
     wrap.innerHTML = cats.length
       ? cats.map(c=>{
           const name=catIsUnnamed(c)?'Income source':c.name.trim();
           const rate=getHourlyRate(c.id);
+          const cycle=incomePayCycle(c);
+          const expected=parseFloat(c.payAmount);
           return '<div class="bud-row">'+
+            '<div class="bud-row-left"><div class="bud-row-name">'+_catEscHtml(name)+' pay frequency</div></div>'+
+            '<select class="bud-row-input" id="bud-paycycle-'+c.id+'" aria-label="'+_catEsc(name)+' pay frequency" style="width:160px;text-align:left" onchange="budSaveConfig()">'+INC_PAY_CYCLES.map(o=>'<option value="'+o.id+'"'+(o.id===cycle?' selected':'')+'>'+o.label+'</option>').join('')+'</select>'+
+          '</div>'+
+          (cycle==='irregular'?'':'<div class="bud-row">'+
+            '<div class="bud-row-left"><div class="bud-row-name">'+_catEscHtml(name)+' pay date</div><div class="bud-row-budget" id="bud-paynext-'+c.id+'">'+incomePayDateHint(c)+'</div></div>'+
+            '<input class="bud-row-input" type="date" id="bud-paydate-'+c.id+'" aria-label="'+_catEsc(name)+' pay date" style="width:160px" value="'+_catEsc(c.payDate||'')+'" onchange="budSaveConfig()">'+
+          '</div>')+
+          (cycle==='weekly'&&!c.payDate?'<div class="bud-row">'+
             '<div class="bud-row-left"><div class="bud-row-name">'+_catEscHtml(name)+' pay day</div></div>'+
             '<select class="bud-row-input" id="bud-payday-'+c.id+'" style="width:140px;text-align:left;padding:0 8px;-webkit-appearance:menulist;appearance:menulist" onchange="budSaveConfig()">'+dayOpts(getPayDay(c.id))+'</select>'+
+          '</div>':'')+
+          '<div class="bud-row">'+
+            '<div class="bud-row-left"><div class="bud-row-name">Expected take-home per payment</div><div class="bud-row-budget" id="bud-payhint-'+c.id+'">'+incomePayHint(c)+'</div></div>'+
+            '<input class="bud-row-input" type="number" inputmode="decimal" min="0" step="0.01" id="bud-payamount-'+c.id+'" aria-label="'+_catEsc(name)+' expected take-home per payment" placeholder="$" value="'+(isNaN(expected)?'':expected)+'" onchange="budSaveConfig()">'+
           '</div>'+
           // Optional $/hr — lets the weekly Income card pre-fill hours × rate as a starting
           // estimate. Blank = off; actual pay entry stays manual either way.
@@ -15164,14 +15205,43 @@ function budSaveConfig(){
   const sg=document.getElementById('bud-cfg-savings-goal');
   if(sg){ const n=parseFloat(sg.value); budDefaults.savingsGoal = isNaN(n)?undefined:n; }
   // Read every generated pay-day selector back into budDefaults.payDays (keyed by source id).
-  activeCats(loadIncCats()).forEach(c=>{
+  const cats=loadIncCats(); let changed=false, rebuild=false;
+  const focusedId=document.activeElement&&document.activeElement.id;
+  activeCats(cats).forEach(c=>{
+    const before=JSON.stringify(c);
+    const oldCycle=incomePayCycle(c), hadDate=!!c.payDate;
+    const cycleEl=document.getElementById('bud-paycycle-'+c.id);
+    if(cycleEl&&INC_PAY_CYCLES.some(o=>o.id===cycleEl.value)) c.payCycle=cycleEl.value;
+    const dateEl=document.getElementById('bud-paydate-'+c.id);
+    if(dateEl) c.payDate=dateEl.value;
+    const amountEl=document.getElementById('bud-payamount-'+c.id);
+    if(amountEl) c.payAmount=amountEl.value===''?'':Math.max(0,parseFloat(amountEl.value)||0);
+    if(oldCycle!==incomePayCycle(c)||hadDate!==!!c.payDate) rebuild=true;
+    if(JSON.stringify(c)!==before) changed=true;
+    const hint=document.getElementById('bud-payhint-'+c.id);
+    if(hint) hint.textContent=incomePayHint(c);
+    const next=document.getElementById('bud-paynext-'+c.id);
+    if(next) next.textContent=incomePayDateHint(c);
     const el=document.getElementById('bud-payday-'+c.id);
-    if(el){ const v=parseInt(el.value); if(!isNaN(v)) setPayDay(c.id, v); }
+    if(el){
+      const v=parseInt(el.value);
+      if(!isNaN(v)) setPayDay(c.id, v);
+      else{
+        if(!budDefaults.payDays) budDefaults.payDays={};
+        budDefaults.payDays[c.id]=null;
+      }
+    }
     const rateEl=document.getElementById('bud-rate-'+c.id);
     if(rateEl) setHourlyRate(c.id, rateEl.value); // blank/0 clears the rate
   });
   localStorage.setItem('daily_budget_defaults', JSON.stringify(budDefaults));
   syncBudDefaultsToFirebase();
+  if(changed) saveIncCats(cats);
+  if(rebuild){
+    renderBudgetConfig();
+    const focused=focusedId&&document.getElementById(focusedId);
+    if(focused) focused.focus({preventScroll:true});
+  }
   // Repaint the savings card so a changed goal shows on its label (and recolours the figure)
   // straight away rather than waiting for the next Budget render.
   if(typeof budRecalc==='function') budRecalc();
@@ -16132,7 +16202,7 @@ function renderYear(){
       : savingsMetricLabel(saverState)+' '+signedMoney(saverState.metric)+' · '+savingsMetricDetail(saverState);
     const monthsSub=withData.length?'Across '+withData.length+' recorded month'+(withData.length===1?'':'s'):'Nothing recorded yet';
     const recurring=Math.round(loadFixCats().filter(c=>catIsRecurring(c)&&catIsCharging(c))
-      .reduce((s,c)=>s+((parseFloat(catAmount(c))||0)*({weekly:52,monthly:12,yearly:1}[catCycle(c)]||0)),0));
+      .reduce((s,c)=>s+((parseFloat(catAmount(c))||0)*({weekly:52,fortnightly:26,monthly:12,yearly:1}[catCycle(c)]||0)),0));
     // One neutral panel distinguishes plan allocations from the account-backed savings facts.
     sg.className='';
     sg.innerHTML=budHeroPanel([
@@ -21821,10 +21891,12 @@ function renderHome(){
 
   // Pay day countdown tiles — one per named income source (loadIncCats), no hardcoded names.
   // Cells of the money card (see quickTiles) rather than free-floating mini-cards.
-  const payDayTiles=loadIncCats()
+  const payDayTiles=activeCats(loadIncCats())
     .filter(c=>(c.name||'').trim())
     .map(c=>{
-      const str=daysUntil(getPayDay(c.id),today);
+      const next=incomeNextPay(c);
+      const days=next?Math.round((next-localMidnight(getLocalDate()))/864e5):null;
+      const str=days===null?'Not scheduled':days===0?'Today! 🎉':days===1?'Tomorrow':days+' days';
       const nm=_catEscHtml(c.name.trim());
       const soon=str==='Today! 🎉';
       return '<div class="mt-cell"><div class="mt-val'+(soon?' mt-val-sm':' mt-val-sm')+'" style="color:'+

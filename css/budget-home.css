@@ -710,7 +710,12 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .budget-setup-subheading{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2);margin:18px 0 8px}
 .budget-setup-config{border-top:1px solid var(--border)}
 .budget-setup-config .bud-row{padding:11px 0;gap:10px}
+.budget-setup-config .bud-row-left{display:block}
 .budget-setup-config .bud-row-input{width:128px;flex-shrink:0}
+@media(max-width:480px){
+  .budget-setup-config .bud-row{flex-direction:column;align-items:stretch}
+  .budget-setup-config .bud-row-input{width:100%!important}
+}
 .budget-setup-field-row{display:flex!important;flex-direction:row!important;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)}
 .budget-setup-field-row>span{flex:1;min-width:0}
 .budget-setup-field-row>input{width:104px!important;flex:0 0 104px}

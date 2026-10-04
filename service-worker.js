@@ -380,7 +380,9 @@
 // v366: remove the remaining desktop weather edge highlight.
 // v367: unified compact mobile overview with visible Today / Week weather forecasts.
 // v368: hide the phone forecast to reveal its scenery without resizing the hero.
-const CACHE_NAME = 'daily-v368';
+// v369: empty personal Finance defaults, consistent recurring amounts, fortnightly pay/bills,
+// and reliable light/dark onboarding logo artwork.
+const CACHE_NAME = 'daily-v369';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

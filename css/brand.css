@@ -65,6 +65,15 @@
 }
 .ob-center .wordmark{width:calc(100% - 48px)}
 .ob-welcome-brand{height:auto;min-height:44px;padding-inline:6px}
+/* Keep the welcome artwork visible on browsers that fail to paint the PNG mask. */
+.ob-welcome .wordmark::before{
+  -webkit-mask:none;
+  mask:none;
+  background:transparent url("../assets/brand/daily-wordmark-dark.png") center / contain no-repeat;
+}
+[data-theme="light"] .ob-welcome .wordmark::before{
+  background-image:url("../assets/brand/daily-wordmark-light.png");
+}
 @media (max-width:1023px) and (orientation:landscape) and (max-height:600px){
   #header-title .wordmark{
     --wordmark-pad-y:6px;
