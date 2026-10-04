@@ -42,6 +42,11 @@
     stores.profile.budgetRhythmSeen=2;
   }
   if(params.has('accent'))memory.set('daily-account:user%3Afixture:daily_accent_color','#'+params.get('accent'));
+  if(params.has('accounts'))stores.accounts={v:JSON.stringify([
+    {id:'cash',name:'Test cash',type:'asset',current:1500,history:[{date:'2026-08-01',balance:1000},{date:'2026-09-01',balance:1500}]},
+    {id:'card',name:'Test card',type:'debt',current:200,history:[{date:'2026-09-15',balance:200}]},
+    {id:'new',name:'Test new account',type:'asset',current:300,history:[]}
+  ]),t:500};
   const initial=clone(stores),listeners=new Map(),writes=[],errors=[];
   window.addEventListener('error',e=>errors.push(e.message));
   window.addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));

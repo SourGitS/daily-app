@@ -1,5 +1,21 @@
 # Daily — Agent Handoff
 
+## v372 corrections — 2026-10-04
+
+- Weather forecast text/icons and controls sit directly over the scene: no inner background
+  or rounded panel. Period changes slide 24px over 320ms; reduced-motion behavior stays static.
+- Home's period budget pairs remaining money and received income, keeps progress together and
+  places both actions on one row. The desktop section no longer stretches its content to fill
+  the hero height. No money calculation or stored layout changes.
+- `nwHistoryPoints()` preserves every dated account-history point even when a newer account
+  lacks dates or starts later. Only balances recorded on/before each date are included; missing
+  histories never fall back to current balances. Partial totals are labelled, coverage changes
+  use dashed joins, and changes across different account coverage are not compared. Existing
+  account records and the separate Stats growth calculations are untouched.
+- `daily-v372` cache; 495 tests pass. Accounts chart regression tests and the synthetic
+  `?accounts` browser fixture cover delayed/undated accounts, zero balances and full history.
+  The user explicitly authorised commit and push of these three corrections.
+
 ## v371 local correction — 2026-10-04
 
 The user rejected v370's presentation overhaul, then authorised committing and pushing the

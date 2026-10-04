@@ -19637,6 +19637,19 @@ function accountsHistoryDates(){
   accounts.forEach(a=>(a&&a.history||[]).forEach(e=>{ if(e&&e.date) set.add(e.date); }));
   return [...set].sort((x,y)=>x<y?-1:1);
 }
+function nwHistoryPoints(){
+  const tracked=accounts.filter(Boolean);
+  return accountsHistoryDates().map(date=>{
+    let assets=0,debts=0,assetCount=0,debtCount=0;const covered=[];
+    tracked.forEach((a,i)=>{
+      const e=accountEntryAt(a,date);
+      if(!e||e.balance===null||e.balance===''||!Number.isFinite(Number(e.balance)))return;
+      covered.push(i);
+      if(a.type==='debt'){debts+=Number(e.balance);debtCount++;}else{assets+=Number(e.balance);assetCount++;}
+    });
+    return {date,assets,debts,assetCount,debtCount,net:assets-debts,count:covered.length,total:tracked.length,coverage:covered.join(',')};
+  }).filter(p=>p.count>0);
+}
 // Rendered in two places — Stats → Finance and the Accounts page — so it's parametrised by
 // container rather than hardcoded to one. One function means the two can't drift apart; the
 // Chart instances are tracked per container so re-rendering one never destroys the other's.
@@ -19672,34 +19685,32 @@ function renderNetWorthChartInto(wrapId){
   const wrap=document.getElementById(wrapId); if(!wrap) return;
   if(_nwCharts[wrapId]){ _nwCharts[wrapId].destroy(); _nwCharts[wrapId]=null; }
   const canvasId=wrapId+'-nwcanvas';
-  const allDates=accountsHistoryDates();
-  const chartAccounts=accounts.filter(a=>a);
-  const unrecorded=chartAccounts.filter(a=>!(a.history||[]).some(e=>e&&e.date));
-  const completeDates=unrecorded.length?[]:allDates.filter(d=>chartAccounts.every(a=>accountEntryAt(a,d)));
-  if(completeDates.length<2){
-    const why=unrecorded.length
-      ? 'Log a starting balance for '+_catEscHtml(unrecorded.map(a=>a_name(a)).join(', '))+' before calculating net worth history.'
-      : 'Record balances on at least 2 common dates in Accounts to see a comparable trend.';
+  const history=nwHistoryPoints();
+  if(!history.length){
+    const why='Record a dated balance in Accounts to start your net worth history. Current balances alone cannot establish past values.';
     wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+acctIcon('trend',13)+'Net worth over time</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">'+why+'</div></div>';
     return;
   }
-  const dates=nwChartDates(completeDates);
+  const dates=nwChartDates(history.map(p=>p.date));
+  const points=dates.map(d=>history.find(p=>p.date===d));
+  const partial=points.some(p=>p.count<p.total);
   // Assets, debts and net worth at each recorded date (each account carried forward from its
   // last known balance on/before that date — same convention as the old CC line).
   const assetAccts=accounts.filter(a=>a&&a.type==='asset'), debtAccts=accounts.filter(a=>a&&a.type==='debt');
-  const assetsData=dates.map(d=>assetAccts.reduce((s,a)=>s+accountBalanceAt(a,d),0));
-  const debtsData =dates.map(d=>debtAccts.reduce((s,a)=>s+accountBalanceAt(a,d),0));
-  const netData   =dates.map((d,i)=>assetsData[i]-debtsData[i]);
+  const assetsData=points.map(p=>assetAccts.length&&!p.assetCount?null:p.assets);
+  const debtsData=points.map(p=>debtAccts.length&&!p.debtCount?null:p.debts);
+  const netData=points.map(p=>p.net);
   const curNet=netData[netData.length-1];
-  // The chart's OWN last common-coverage point, not accountsNetWorth()/accountsAssetsTotal().
-  // Those are live; this is where the line beneath actually ends, and a card must state the
-  // figure its own chart draws or the two disagree by whatever has been recorded since.
+  // The heading describes the last dated chart point, not undated current balances.
+  // Partial coverage remains visible and labelled instead of hiding everybody's history.
   const curAssets=assetsData[assetsData.length-1], curDebts=debtsData[debtsData.length-1];
-  const nwChip=curNet>=0?tstat('pos','In the black','check',true):tstat('neg','Under water','down',true);
+  const latestPointInfo=points[points.length-1];
+  const nwChip=latestPointInfo.count<latestPointInfo.total?tstat('neutral','Partial history','info',true):curNet>=0?tstat('pos','In the black','check',true):tstat('neg','Under water','down',true);
   const firstNet=netData[0], change=curNet-firstNet;
   const changePct=firstNet?change/Math.abs(firstNet)*100:null;
   const changeCol=change>0?'var(--success)':change<0?'var(--danger)':'var(--muted)';
-  const changeText=(change>0?'+':change<0?'−':'')+fmtMoney(Math.abs(change))+
+  const comparable=points.length>1&&points.every(p=>p.coverage===points[0].coverage);
+  const changeText=!comparable?(points.length===1?'First recorded balance':'Account coverage changed — change not compared'):(change>0?'+':change<0?'−':'')+fmtMoney(Math.abs(change))+
     (changePct===null?'':' · '+(changePct>0?'+':'')+changePct.toFixed(1)+'%');
   const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#FF6B35').trim();
   const stale=accounts.filter(a=>a&&(a.history||[]).length).map(a=>{
@@ -19708,33 +19719,35 @@ function renderNetWorthChartInto(wrapId){
     const days=Math.floor((localMidnight(getLocalDate())-localMidnight(h[h.length-1].date))/864e5);
     return days>14?{name:a_name(a),days}:null;
   }).filter(Boolean);
-  const latest=completeDates[completeDates.length-1];
+  const latest=dates[dates.length-1];
   const ranges=[['1m','1M'],['3m','3M'],['1y','1Y'],['all','ALL']];
   wrap.innerHTML='<div class="card nw-chart-card">'+
     '<div class="nw-chart-head">'+
-      '<div><div class="nw-chart-kicker">'+acctIcon('trend',13)+'Net worth</div>'+
+      '<div><div class="nw-chart-kicker">'+acctIcon('trend',13)+(latestPointInfo.count<latestPointInfo.total?'Recorded net worth':'Net worth')+'</div>'+
         '<div class="nw-chart-value">'+fmtMoney(curNet)+'</div>'+
-        '<div class="nw-chart-change" style="color:'+changeCol+'">'+changeText+'</div>'+
+        '<div class="nw-chart-change" style="color:'+(comparable?changeCol:'var(--muted)')+'">'+changeText+'</div>'+
         // Absorbed from the Accounts hero, which used to state the same figure directly above
         // this card. Shown in BOTH mounts — it is the same truth on Stats > Finance.
-        '<div class="nw-chart-mix">'+fmtMoney(curAssets)+' assets · '+fmtMoney(curDebts)+' debts</div>'+
+        '<div class="nw-chart-mix">'+(curAssets===null?'Assets not recorded':fmtMoney(curAssets)+' recorded assets')+' · '+(curDebts===null?'Debts not recorded':fmtMoney(curDebts)+' recorded debts')+'</div>'+
         '<div class="nw-chart-verdict">'+nwChip+'</div></div>'+
       '<div class="nw-chart-ranges">'+ranges.map(r=>'<button onclick="setNWChartRange(\''+r[0]+'\')" class="'+(nwChartRange===r[0]?'on':'')+'">'+r[1]+'</button>').join('')+'</div>'+
     '</div>'+
     '<div class="nw-chart-canvas"><canvas id="'+canvasId+'"></canvas></div>'+
     '<div class="nw-chart-series">'+
-      '<span class="on"><i style="background:'+accent+'"></i>Net worth</span>'+
+      '<span class="on"><i style="background:'+accent+'"></i>'+(partial?'Recorded net worth':'Net worth')+'</span>'+
       '<button onclick="toggleNWChartSeries(\'assets\')" class="'+(nwChartSeries.assets?'on':'')+'"><i></i>Assets</button>'+
       (debtAccts.length?'<button onclick="toggleNWChartSeries(\'debts\')" class="'+(nwChartSeries.debts?'on':'')+'"><i></i>Debts</button>':'')+
     '</div>'+
-    '<div class="nw-chart-foot">Based on recorded balances carried forward between updates · Common coverage since '+fmtDate(completeDates[0])+' · Latest update '+fmtDate(latest)+
+    '<div class="nw-chart-foot">Recorded balances carried forward between updates · Latest update '+fmtDate(latest)+
+      (partial?'<span class="nw-chart-coverage">Earlier or missing account balances are unknown, not zero. Points show only accounts recorded by that date; dashed joins mark changes in coverage. Select a point to see its records.</span>':'')+
       (stale.length?'<span class="nw-chart-stale">'+_catEscHtml(stale.map(x=>x.name+' '+x.days+'d').join(' · '))+' old</span>':'')+
       (wrapId==='bs-balance-wrap'?'<button class="stats-inline-link" onclick="openAccounts()">Open account records →</button>':'')+
     '</div></div>';
   const ctx=document.getElementById(canvasId); if(!ctx) return;
   const {gc,tc}=budChartGridColors();
   const latestPoint=c=>c.dataIndex===dates.length-1?4:0;
-  const datasets=[{label:'Net worth',data:netData,borderColor:accent,backgroundColor:'rgba('+hexToRgb(accent)+',.08)',borderWidth:3,pointRadius:latestPoint,pointHoverRadius:5,pointBackgroundColor:accent,pointBorderColor:S.theme==='dark'?'#171717':'#fff',pointBorderWidth:2,fill:true,stepped:'after',tension:0}];
+  const coverageDash=c=>points[c.p0DataIndex].coverage!==points[c.p1DataIndex].coverage?[4,4]:undefined;
+  const datasets=[{label:partial?'Recorded net worth':'Net worth',data:netData,borderColor:accent,backgroundColor:'rgba('+hexToRgb(accent)+',.08)',borderWidth:3,pointRadius:latestPoint,pointHoverRadius:5,pointBackgroundColor:accent,pointBorderColor:S.theme==='dark'?'#171717':'#fff',pointBorderWidth:2,fill:true,stepped:'after',tension:0,segment:{borderDash:coverageDash}}];
   if(nwChartSeries.assets) datasets.push({label:'Assets',data:assetsData,borderColor:'#52B788',backgroundColor:'transparent',borderWidth:1.75,borderDash:[5,4],pointRadius:0,pointHoverRadius:4,fill:false,stepped:'after',tension:0});
   if(debtAccts.length&&nwChartSeries.debts) datasets.push({label:'Debts',data:debtsData,borderColor:'#E74C3C',backgroundColor:'transparent',borderWidth:1.75,borderDash:[5,4],pointRadius:0,pointHoverRadius:4,fill:false,stepped:'after',tension:0});
   _nwCharts[wrapId]=new Chart(ctx,{
@@ -19746,7 +19759,7 @@ function renderNetWorthChartInto(wrapId){
       interaction:{mode:'index',intersect:false},
       plugins:{
         legend:{display:false},
-        tooltip:{displayColors:true,backgroundColor:S.theme==='dark'?'#222':'#fff',titleColor:tc,bodyColor:tc,borderColor:gc,borderWidth:1,padding:12,callbacks:{label:c=>c.dataset.label+': '+fmtMoney(c.parsed.y)}}
+        tooltip:{displayColors:true,backgroundColor:S.theme==='dark'?'#222':'#fff',titleColor:tc,bodyColor:tc,borderColor:gc,borderWidth:1,padding:12,callbacks:{label:c=>c.dataset.label+': '+fmtMoney(c.parsed.y),footer:items=>{const p=items.length&&points[items[0].dataIndex];return p?p.count+' of '+p.total+' accounts recorded'+(p.count<p.total?' · partial total':''):'';}}}
       },
       scales:{
         x:{grid:{display:false},border:{display:false},ticks:{color:tc,font:{size:10,weight:'600'},maxTicksLimit:5,maxRotation:0}},

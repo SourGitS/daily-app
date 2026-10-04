@@ -1,5 +1,18 @@
 # Finance periods and Home — local validation
 
+## v372 — 2026-10-04
+
+**495 tests passed.** Four new chart regressions verify late-start accounts, undated current
+balances, complete comparable histories and genuine zero-balance points. Opening the chart
+does not modify records. Missing history is excluded with explicit coverage labels, never
+backfilled from current balances; existing dates remain visible.
+
+Synthetic browser checks at 1440px and 390px confirmed transparent weather forecast/controls,
+the period-switch animation, and compact budget content (about 200px desktop / 238px phone).
+Accounts rendered the formerly blocked three-date history, with working All/Assets/Debts
+controls and no application console errors. These are fixtures, not a live account audit or
+physical-iPhone test. User authorised commit and push.
+
 ## v371 correction — release authorised, 2026-10-04
 
 Follow-up polish: **491 tests pass**. Verified the shared weather drawer at 1440px and
