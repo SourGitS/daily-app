@@ -219,3 +219,13 @@
 #txn-date::-webkit-date-and-time-value{text-align:left;margin:0}
 #txn-date::-webkit-datetime-edit{padding:0;text-align:left}
 #txn-modal .txn-details{margin-top:16px;padding-top:0}
+
+/* A hidden phone forecast leaves a little scenery, not an empty forecast-sized slot. */
+@media(max-width:1023px){
+  #view-home .weather-forecast-dock{grid-template-rows:minmax(48px,1fr) auto;transition:grid-template-rows 280ms cubic-bezier(.22,1,.36,1)}
+  #view-home .weather-forecast-dock:has(>.weather-preview[aria-hidden="true"]){grid-template-rows:minmax(48px,0fr) auto}
+  #view-home .weather-forecast-dock .weather-preview{min-height:0;overflow:hidden}
+}
+@media(max-width:1023px) and (prefers-reduced-motion:reduce){
+  #view-home .weather-forecast-dock{transition:none}
+}

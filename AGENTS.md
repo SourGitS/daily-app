@@ -1,5 +1,14 @@
 # Daily — Agent Handoff
 
+## v376 phone weather disclosure — release authorised, 2026-10-04
+
+The phone forecast dock now contracts to a 48px scenery strip when hidden instead of reserving
+the full forecast height. Its grid row animates with the existing slide/fade; reduced motion
+settles immediately. This supersedes v368's fixed-space disclosure on phones only. Desktop,
+weather refresh/data, period selection and inert/aria-hidden behavior are unchanged.
+Cache prepared as `daily-v376`. All 21 weather/Home checks pass; phone hidden/Today/Week
+states and the unchanged desktop forecast sizing were checked in the browser.
+
 ## v375 phone Log refinement — release authorised, 2026-10-04
 
 Below 1024px, the Log hero's Weight & goal section shows the latest reading and date beside
