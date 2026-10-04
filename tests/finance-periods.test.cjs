@@ -132,10 +132,11 @@ test('weekly review uses actual payments and preserves a frozen legacy review',(
   const frozen={hasData:true,spendTotal:375,leftover:1425};
   assert.deepEqual(plain(c.wkrDisplayActuals('2026-09-28',{status:'completed',actualSnapshot:{money:frozen}},plan)),frozen);
 });
-test('graphic announcement is eligible after onboarding, deferred during restore and acknowledged separately',()=>{
+test('swipeable update popup waits for restore and can be seen after dismissing the old banner',()=>{
   const c=context({profileData:{onboardingVersion:2,lastSeenWhatsNew:999},auth:{currentUser:{uid:'A'}},_cloudWorkoutReady:false});
-  assert.equal(c.dailyUpdateBannerHtml(),'');c._cloudWorkoutReady=true;assert.match(c.dailyUpdateBannerHtml(),/Your budget, your rhythm/);assert.match(c.dailyUpdateBannerHtml(),/<svg/);
-  c.profileData.budgetRhythmSeen=1;assert.equal(c.dailyUpdateBannerHtml(),'');c.profileData={onboardingVersion:0};assert.equal(c.dailyUpdateBannerHtml(),'');
+  assert.equal(c.dailyUpdateBannerHtml(),'');assert.equal(c.dailyUpdatePopupEligible(),false);c._cloudWorkoutReady=true;assert.equal(c.dailyUpdatePopupEligible(),true);
+  c.profileData.budgetRhythmSeen=1;assert.equal(c.dailyUpdatePopupEligible(),true);c.profileData.budgetRhythmSeen=2;assert.equal(c.dailyUpdatePopupEligible(),false);
+  c.profileData={onboardingVersion:0};assert.equal(c.dailyUpdatePopupEligible(),false);
 });
 test('saving another profile field cannot undo a banner acknowledgement from another device',()=>{
   let cloud={name:'Before',budgetRhythmSeen:1,homeCustomiseSeen:1};
@@ -145,4 +146,44 @@ test('saving another profile field cannot undo a banner acknowledgement from ano
 test('budget-period configuration uses the registered blob path for sync and restore',()=>{
   const source=fs.readFileSync('js/app.js','utf8');assert.match(source,/syncBlobListen\(user.uid,'budgetCycles','daily_budget_cycles'/);
   let write;const c=context({lsSave:(...args)=>write=args});c.budCyclesSave({config:{frequency:'weekly'},periods:{}});assert.equal(write[0],'daily_budget_cycles');assert.equal(write[2],'budgetCycles');
+});
+test('an exact saved week retains its allocations and goal without a confirmation or write',()=>{
+  const weeks={'2026-09-28':{inc_salary:1200,sav_amount:160,var_goal:300,fixRates:{rent:250}}},before=JSON.stringify(weeks);
+  const c=context({budgetData:weeks,ledgerData:[],ledgerOf:()=>[],txnData:[{date:'2026-10-03',amount:210}],
+    loadFixCats:()=>[{id:'rent',budget:999}],weekFixedContribution:(w,id)=>w.fixRates[id],weekFixedTotal:w=>w.fixRates.rent,
+    weekIncome:w=>w.inc_salary,weekVarTotal:()=>210,weekSavedAmt:w=>w.sav_amount,getWeekVarGoal:w=>w.var_goal});
+  c.budCyclesSave({config:{frequency:'weekly',anchor:'2026-09-28'},periods:{}});
+  let writes=0;c.lsSave=()=>writes++;
+  const m=c.budPeriodMoney();assert.equal(m.available,580);assert.equal(m.reserved,250);assert.equal(m.savings,160);assert.equal(m.record.goal,300);
+  assert.equal(m.allocationReview,false);assert.equal(writes,0);assert.equal(JSON.stringify(weeks),before);
+});
+test('an explicit period allocation remains authoritative over a matching old week',()=>{
+  const c=context(),p={start:'2026-09-28',end:'2026-10-04',days:7},saved={fundingConfirmed:true,savings:80,reserves:{rent:90}};
+  assert.deepEqual(plain(c.budPeriodInheritedPlan(p,saved)),saved);
+});
+test('moving between period breakdowns does not stamp an untouched allocation plan',()=>{
+  const fields={'sav-amount':{value:'200'},'week-notes':{value:''}};
+  const c=context({S:{view:'budget'},budgetView:'week',document:{getElementById:id=>fields[id],querySelectorAll:()=>[{dataset:{periodReserve:'rent'},value:'500'}]}});
+  c.budPeriodViewed=()=>period;
+  c.budCyclesSave({config:{frequency:'fortnightly',anchor:period.start},periods:{[period.id]:{start:period.start,end:period.end,savings:200,reserves:{rent:500},updatedAt:50}}});
+  let writes=0;c.lsSave=()=>writes++;
+  c.budPeriodSaveFields(false);assert.equal(writes,0);
+  fields['sav-amount'].value='250';c.budPeriodSaveFields(false);assert.equal(writes,1);
+});
+test('period Outlook gives back only reserves for charges due before payday, once per bill',()=>{
+  const c=context({nextPayInfo:()=>({date:new Date(2026,9,10)}),billOccurrences:()=>[
+    {kind:'charge',cat:{id:'rent'},date:new Date(2026,9,5),amount:100},
+    {kind:'charge',cat:{id:'rent'},date:new Date(2026,9,8),amount:100}]});
+  const f=c.budPeriodForecast({range:period,available:500,record:{reserves:{rent:600}},rows:[]});
+  assert.equal(f.addBack,200);assert.equal(f.projected,500);
+});
+
+test('restored period totals cancel older count-up frames before publishing the balance',()=>{
+  const pending=new Map(),el={textContent:''};let seq=0;
+  const c=context({performance:{now:()=>0},requestAnimationFrame:fn=>{pending.set(++seq,fn);return seq;},cancelAnimationFrame:id=>pending.delete(id),
+    document:{getElementById:id=>id==='bud-hero-avail'?el:null},fmtMoneyExact:n=>'$'+n,updateVarGoalCard:()=>{},budPaceText:()=>''});
+  vm.runInContext(extract('countUp'),c);c.budPeriodCardMode=()=>false;
+  c.countUp(el,790);assert.equal(pending.size,1);
+  c.budPeriodPaintMoney({available:580,range:period,spent:210,billPaid:0,reserved:250,savings:160,outgoing:0,income:1200,funded:1200,opening:0,incoming:0});
+  assert.equal(pending.size,0);assert.equal(el.textContent,'$580');
 });

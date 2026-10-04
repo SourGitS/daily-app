@@ -20,6 +20,17 @@ const source = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 const budgetCss = fs.readFileSync(path.join(__dirname, '../css/budget-home.css'), 'utf8');
 
+test('period goal warnings use purchases, not paid bills, and explicit zero funding stays known', () => {
+  const c=vm.createContext({accounts:[],localMidnight:s=>new Date(s+'T00:00:00'),getLocalDate:()=> '2026-10-04',
+    billOccurrences:()=>[],billsUndatedCount:()=>0,fmtMoneyExact:n=>'$'+n,fmtMoney:n=>'$'+n});
+  vm.runInContext(extract('budOvAttention'),c);
+  const m={period:{start:'2026-10-02',end:'2026-10-15'},income:0,available:0,week:{var_goal:200},spent:625,variableSpent:125};
+  assert.equal(c.budOvAttention(m,null).length,0);
+  m.variableSpent=250;
+  const warnings=c.budOvAttention(m,null);
+  assert.equal(warnings.length,1);assert.match(warnings[0].body,/\$250 against a \$200 goal — \$50 over/);
+});
+
 // BUD_VIEWS and NAV_TREE are `const`, not functions, so harness.extract() cannot reach them.
 // Slice between two anchors instead, and assert the anchors exist so renaming one fails here
 // loudly rather than quietly testing nothing.
@@ -577,7 +588,7 @@ test('the fortnight preview is truncated but its total is not', () => {
   assert.match(fn, /const total=occ\.reduce\(\(s,o\)=>s\+o\.amount,0\)/);
   assert.match(fn, /const shown=occ\.slice\(0,BUD_OV_BILL_PREVIEW\)/);
   assert.match(fn, /shown\.map\(billRowHtml\)/, 'the Bills calendar’s own row, not a second one');
-  assert.match(fn, /Nothing here is deducted from this week’s figures/,
+  assert.match(fn, /This schedule does not record payments or deduct money/,
     'an upcoming-payment total is not the weekly accrual and must say so');
 });
 
@@ -637,8 +648,8 @@ test('This week stays the primary action before anything is set up', () => {
   assert.match(buttons[0], /bov-act-lead/);
   assert.ok(!/openBudgetSetup/.test(html), 'setup is copy here, not a button');
   // Setup is still explained, and still named where it actually lives.
-  assert.match(html, /Income, bills and your spending goal are set up in This week/);
-  assert.match(html, /Add this week’s income and fixed costs/);
+  assert.match(html, /Income, bills and your spending goal are set up in Budget/);
+  assert.match(html, /Record income and fixed costs/);
   // The figure itself still refuses to present an unknown as $0.
   assert.match(html, /val="—"/);
 });
@@ -654,9 +665,9 @@ test('the hero keeps every figure it already stated', () => {
   const html = hero(WEEK);
   assert.match(html, /Spent=\$210/);
   assert.match(html, /Committed=\$480/);
-  assert.match(html, /Saved=\$160/);
+  assert.match(html, /Allocated=\$160/);
   assert.match(html, /val="\$350"/);
   assert.match(html, /\$50 a day for 3 more days/, 'the shared pace line');
   assert.match(html, /This week · 7-13 Sept/);
-  assert.match(html, /not a bank balance/, 'the allocation caveat stays');
+  assert.match(html, /separate from your account balances/, 'the allocation caveat stays');
 });

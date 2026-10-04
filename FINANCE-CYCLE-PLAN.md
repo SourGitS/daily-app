@@ -1,5 +1,13 @@
 # Finance: budgeting by period
 
+## Correction to implementation scope — 2026-10-04
+
+The user rejected the replacement Finance layout after v370. Restore the existing gradient
+heroes, status, Overview summaries, Budget cards and their controls. Adapt their dates and
+readers to the chosen period. Preserve exact weekly allocations without requiring a new setup.
+Replace the inline update banner with a simple swipeable launch pop-up, dismissed once per
+profile. The user authorised committing and pushing the completed corrections on 2026-10-04.
+
 Status: implemented for v370; release authorised on 2026-10-04. Real-account verification remains outstanding.
 Updated: 2026-10-04.
 

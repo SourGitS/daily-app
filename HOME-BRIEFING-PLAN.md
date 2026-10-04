@@ -1,5 +1,12 @@
 # Home briefing and new-user hierarchy
 
+## Correction to implementation scope — 2026-10-04
+
+Restore the original accent gradient and budget status within the compact desktop hero.
+Keep the approved hierarchy and existing weather illustration. The announcement belongs in
+a simple swipeable launch pop-up, not an inline Home card. The final desktop weather panel spans
+the hero's height and owns its date. The user authorised commit and push on 2026-10-04.
+
 Status: implemented for v370; release authorised on 2026-10-04.
 Updated: 2026-10-04.
 

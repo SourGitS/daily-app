@@ -69,15 +69,15 @@ function budPeriodCompute(range,record,events,expenses,periods,legacy){
   const spent=sum(purchases)+(legacy?.spent||0),billPaid=sum(payments),opening=Number(r.opening)||0,savings=Number(r.savings)||0;
   const funded=income+opening+incoming;
   const known=budMoneyRound(funded-spent-billPaid-reserved-savings-outgoing);
-  const incomplete=!!legacy?.incomplete,allocationReview=!!legacy?.allocationReview&&!r.fundingConfirmed;
+  const incomplete=!!legacy?.incomplete,allocationReview=!!legacy?.allocationReview&&!r.fundingConfirmed&&!r.allocationsReviewed;
   return {range,record:r,rows,purchases,income:budMoneyRound(income),spent:budMoneyRound(spent),billPaid,
     reserved:budMoneyRound(reserved),opening,savings,incoming:budMoneyRound(incoming),outgoing,
     funded:budMoneyRound(funded),known,available:incomplete||allocationReview||(!funded&&!r.fundingConfirmed)?null:known,incomplete,allocationReview,
     legacyIncome:legacy?.income||0,legacySpent:legacy?.spent||0};
 }
-function budPeriodLegacy(range){
+function budPeriodLegacy(range,weeks){
   let income=0,spent=0,incomplete=false,allocationReview=false;
-  Object.entries(budgetData||{}).forEach(([start,w])=>{
+  Object.entries(weeks||budgetData||{}).forEach(([start,w])=>{
     if(!budDateValid(start))return;
     const end=budDateAdd(start,6);if(end<range.start||start>range.end)return;
     if(Number(w.sav_amount)>0||Object.values(w.fixRates||{}).some(n=>Number(n)>0)||Object.keys(w).some(k=>k.startsWith('fix_')&&Number(w[k])>0))allocationReview=true;
@@ -90,9 +90,26 @@ function budPeriodLegacy(range){
   });
   return {income:budMoneyRound(income),spent:budMoneyRound(spent),incomplete,...(allocationReview?{allocationReview:true}:{})};
 }
-function budPeriodMoney(range){
+function budPeriodMoney(range,weekOverride){
   const p=range||budPeriodCurrent();if(!p)return null;
-  const store=budCyclesLoad();return budPeriodCompute(p,store.periods[p.id],ledgerData,txnData,store.periods,budPeriodLegacy(p));
+  const store=budCyclesLoad(),legacy=budPeriodLegacy(p,weekOverride?{...budgetData,[p.start]:weekOverride}:null),record=budPeriodInheritedPlan(p,store.periods[p.id],weekOverride);
+  if(record.inheritedWeeklyPlan)legacy.allocationReview=false;
+  return budPeriodCompute(p,record,ledgerData,txnData,store.periods,legacy);
+}
+// An exact saved week already defines its allocations. Reading it must neither seed a
+// second plan nor force the user to confirm the same numbers again.
+function budPeriodInheritedPlan(p,saved,basis){
+  if(saved&&saved.fundingConfirmed)return saved;
+  if(p.days!==7||localMidnight(p.start).getDay()!==1)return saved||{};
+  if(typeof weekFixedTotal!=='function')return saved||{};
+  const w=basis||budgetData[p.start]||{},reserves={};
+  const ids=new Set(loadFixCats().map(c=>c.id));
+  Object.keys(w.fixRates||{}).forEach(id=>ids.add(id));
+  Object.keys(w).filter(k=>k.startsWith('fix_')).forEach(k=>ids.add(k.slice(4)));
+  ids.forEach(id=>{reserves[id]=weekFixedContribution(w,id);});
+  const remainder=budMoneyRound(weekFixedTotal(w)-Object.values(reserves).reduce((s,n)=>s+n,0));
+  if(remainder>0)reserves.__unitemised=remainder;
+  return {...(saved||{}),reserves,savings:weekSavedAmt(w),goal:getWeekVarGoal(w),inheritedWeeklyPlan:true};
 }
 function budPeriodNavigate(n){budPeriodSelected='';budPeriodOffset=n===0?0:budPeriodOffset+n;renderBudgetTab();}
 function budPeriodRefresh(){
@@ -228,18 +245,19 @@ function budPeriodPage(){
 }
 function budPeriodRender(){
   const host=document.getElementById('budget-period-view'),legacy=document.getElementById('budget-legacy-week');if(!host||!legacy)return;
-  host.innerHTML=budPeriodPage()+'<button class="stg-btn bp-legacy-toggle" aria-expanded="'+budLegacyOpen+'" onclick="budLegacyOpen=!budLegacyOpen;renderBudgetTab()">'+(budLegacyOpen?'Hide':'Open')+' weekly history &amp; legacy editor</button>';
-  legacy.classList.toggle('hidden',!budLegacyOpen);
+  const p=budPeriodViewed();
+  host.innerHTML='<div class="bud-period-toolbar"><button class="bud-edit-btn" onclick="budPeriodSetup()">'+(p?'Budget period · '+escText(budPeriodLabel(p)):'Choose budget period')+'</button>'+
+    (p?'<button class="bud-edit-btn" onclick="budLegacyOpen=!budLegacyOpen;renderBudgetTab()">'+(budLegacyOpen?'Return to budget period':'Weekly history')+'</button>':'')+'</div>';
+  legacy.classList.remove('hidden');
 }
 function budPeriodOverview(){
-  const p=budPeriodCurrent(),host=document.getElementById('budget-overview-view');if(!host)return false;
-  if(!p){host.innerHTML=budPeriodPage()+'<div class="bp-grid"><section class="card">'+cardHeader('calendar','Scheduled bills')+budPeriodScheduleHtml({start:getLocalDate(),end:budDateAdd(getLocalDate(),13)})+'</section><section>'+budOvAccountsHtml()+budOvMonthHtml()+'</section></div>';return true;}
-  const m=budPeriodMoney(p);host.innerHTML=budPeriodHero(m,false)+'<div class="bp-grid"><section class="card">'+cardHeader('calendar','Next 14 days')+budPeriodScheduleHtml({start:getLocalDate(),end:budDateAdd(getLocalDate(),13)})+'<button class="stg-btn" onclick="setBudgetView(\'week\')">Open Budget →</button></section><section>'+budOvAccountsHtml()+budOvMonthHtml()+'</section></div>';return true;
+  return false;
 }
 function budPeriodHomeCard(){
   const m=budPeriodMoney();if(!m)return '<div class="card home-budget-card">'+cardHeader('wallet','Budget')+'<h3>Your money, on your dates</h3><p class="card-cap">Choose a budget period. Your weekly history stays available.</p><button class="home-budget-add-labelled" onclick="budPeriodSetup()">Set up budget →</button></div>';
   const goal=Number(m.record.goal)||0;
-  return '<div class="card home-budget-card">'+cardHeader('wallet','Budget · '+budPeriodLabel(m.range))+
+  return '<div class="card budget-snapshot-card home-budget-card">'+cardHeader('wallet','Budget · '+budPeriodLabel(m.range),
+    m.available===null?tstat('warn','Needs a date check','info',true):m.available<0?tstat('neg','Over budget','alert',true):tstat('pos','On track','check',true))+
     '<div class="card-fig">'+(m.available===null?'—':fmtMoneyExact(m.available))+'</div><div class="card-fig-u">Remaining spending budget</div>'+
     '<p class="card-cap">'+(m.incomplete?'Review overlapping weekly totals':fmtMoneyExact(m.income)+' income received')+'</p>'+
     '<button class="home-budget-add-labelled" onclick="openTxnModal({date:getLocalDate()})">＋ Add expense</button>'+
@@ -248,17 +266,17 @@ function budPeriodHomeCard(){
     '<div class="home-budget-footer"><span class="card-cap">'+(goal?(m.spent>goal?'Above goal':fmtMoneyExact(goal-m.spent)+' to goal'):'No spending goal set')+'</span><button class="home-budget-link" onclick="homeOpenBudgetWeek()">View budget ↗</button></div></div>';
 }
 function dailyUpdateBannerHtml(){
-  if(typeof profileData==='undefined'||profileData.budgetRhythmSeen>=1||!profileData.onboardingVersion)return '';
-  if(typeof auth!=='undefined'&&auth?.currentUser&&!_cloudWorkoutReady)return '';
-  return '<aside class="daily-update-banner" aria-label="What’s new in Daily"><svg viewBox="0 0 180 100" aria-hidden="true"><rect x="10" y="12" width="160" height="78" rx="14" fill="currentColor" opacity=".12"/><path d="M10 36h160M44 7v17M136 7v17" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><circle cx="44" cy="62" r="10" fill="currentColor"/><circle cx="136" cy="62" r="10" fill="none" stroke="currentColor" stroke-width="3"/><path d="M65 62h48m-8-7 8 7-8 7" fill="none" stroke="currentColor" stroke-width="3"/></svg><div><span class="bp-eyebrow">New in Daily</span><h2>Your budget, your rhythm</h2><p>Choose weekly, fortnightly, monthly or custom dates. Week is now Budget. Your desktop briefing is simpler, and Customise Home is easier to find.</p><div class="bp-actions"><button class="stg-btn primary" onclick="dailyUpdateDismiss();budPeriodSetup()">Choose my budget period</button><button class="stg-btn" onclick="dailyUpdateDismiss()">Later</button></div></div><button class="daily-update-close" aria-label="Dismiss update announcement" onclick="dailyUpdateDismiss()">×</button></aside>';
+  return '';
 }
 function dailyUpdateDismiss(){
-  profileData.budgetRhythmSeen=1;localStorage.setItem('daily_profile',JSON.stringify(profileData));
-  const r=fbRef('profile');if(r)r.child('budgetRhythmSeen').transaction(v=>Math.max(Number(v)||0,1));
+  profileData.budgetRhythmSeen=2;localStorage.setItem('daily_profile',JSON.stringify(profileData));
+  const r=fbRef('profile');if(r)r.child('budgetRhythmSeen').transaction(v=>Math.max(Number(v)||0,2));
+  const popup=document.getElementById('daily-update-dialog');if(popup){popup.close();popup.remove();}
   document.querySelectorAll('.daily-update-banner').forEach(e=>e.remove());
 }
 function dailyUpdateRefresh(){
   ['finance-update-announcement','home-update-announcement'].forEach(id=>{const slot=document.getElementById(id);if(slot)slot.innerHTML=dailyUpdateBannerHtml();});
+  if(typeof dailyUpdatePopupCheck==='function')dailyUpdatePopupCheck();
 }
 function incomeTwiceMonthlyNext(c,from){
   if(!budDateValid(c.payDate)||!budDateValid(from))return null;
@@ -405,3 +423,175 @@ function homeCustomiseHint(){
 function homeCustomiseDismiss(){
   profileData.homeCustomiseSeen=1;localStorage.setItem('daily_profile',JSON.stringify(profileData));syncProfileToFirebase();homeCustomiseHint();
 }
+
+function budPeriodDaysLeft(p){
+  const today=getLocalDate();return today<p.start||today>p.end?0:budDateDays(today,p.end)+1;
+}
+function budPeriodCardMode(){
+  const p=budPeriodViewed();return !!(p&&!budLegacyOpen&&!budPeriodMoney(p).record.inheritedWeeklyPlan);
+}
+function budPeriodOverviewMoney(m){
+  return {period:m.range,monday:localMidnight(m.range.start),key:m.range.start,
+    week:{var_goal:m.record.goal},income:m.funded,committed:m.reserved,spent:m.spent+m.billPaid,saved:m.savings,
+    available:m.available,variableSpent:m.spent};
+}
+function budPeriodForecast(m){
+  const pay=nextPayInfo();if(!pay)return null;
+  const today=localMidnight(getLocalDate()),until=localMidnight(budDateAdd(dateStr(pay.date),-1));
+  const bills=until<today?[]:billOccurrences(today,until),scheduled=bills.reduce((s,b)=>s+b.amount,0);
+  const paid={},used={};m.rows.filter(x=>x.kind==='bill_payment').forEach(x=>paid[x.fixCatId]=(paid[x.fixCatId]||0)+Number(x.amount||0));
+  let addBack=0;
+  bills.forEach(b=>{const id=b.cat?.id;if(b.kind!=='charge'||!id||used[id]||dateStr(b.date)>m.range.end)return;
+    used[id]=true;const due=bills.filter(x=>x.kind==='charge'&&x.cat?.id===id&&dateStr(x.date)<=m.range.end).reduce((s,x)=>s+x.amount,0);
+    addBack+=Math.min(due,Math.max(0,Number(m.record.reserves?.[id]||0)-(paid[id]||0)));});
+  // Do not extrapolate a period allocation beyond its own end.
+  const projected=m.available===null||dateStr(until)>m.range.end?null:budMoneyRound(m.available+addBack-scheduled);
+  return {pay,until,bills,scheduled,addBack,available:m.available,projected,period:true};
+}
+function budPeriodPaintMoney(m){
+  // A count-up started before cloud restore must not overwrite the restored figures later.
+  const put=(id,text)=>{const el=document.getElementById(id);if(el){if(el._countUpFrame){cancelAnimationFrame(el._countUpFrame);el._countUpFrame=null;}el.textContent=text;}};
+  const avail=m.available,used=m.spent+m.billPaid+m.reserved+m.savings+m.outgoing;
+  put('bud-hero-avail',avail===null?'—':fmtMoneyExact(avail));
+  put('bud-hero-avail-lbl',avail!==null&&avail<0?'Over budget':'Available to spend');
+  put('bud-hero-income-note',fmtMoneyExact(m.income)+' income'+(m.opening+m.incoming?' · '+fmtMoneyExact(m.opening+m.incoming)+' allocated':'') );
+  put('bud-hero-spent',fmtMoneyExact(m.spent+m.billPaid));put('bud-hero-committed',fmtMoneyExact(m.reserved));put('bud-hero-saved',fmtMoneyExact(m.savings));
+  put('bud-hero-pace',m.incomplete?'Older weekly totals cross these dates; check income and spending dates.':budPaceText(avail,budPeriodDaysLeft(m.range)));
+  put('week-status-pill-hero',avail===null?'Check dates / income':avail<0?'⚠ Over budget':'✓ On track');
+  put('budget-bar-label-l',fmtMoneyExact(used)+' allocated');put('budget-bar-label-r',m.funded?Math.round(used/m.funded*100)+'% of funds':'');
+  const bar=document.getElementById('budget-bar');if(bar)bar.style.width=(m.funded?Math.min(100,Math.max(0,used/m.funded*100)):0)+'%';
+  put('calc-variable',fmtMoneyExact(m.spent));put('sum-var',fmtMoneyExact(m.spent));
+  put('sum-inc',fmtMoneyExact(m.income));put('sum-fix',fmtMoneyExact(m.reserved+m.billPaid));put('plan-fix-sum',fmtMoneyExact(m.reserved+m.billPaid));
+  put('sav-head-sum',fmtMoneyExact(m.savings));put('plan-avail',avail===null?'—':fmtMoneyExact(avail+m.spent));put('sum-plan',avail===null?'—':fmtMoneyExact(avail+m.spent));
+  updateVarGoalCard(m.spent);
+  if(budPeriodCardMode()){
+    put('sav-goal-label','Allocation for '+budPeriodLabel(m.range));
+    const goal=document.getElementById('vargoal-defaultline');if(goal)goal.textContent='';
+    const pace=document.getElementById('vargoal-pace');if(pace&&!budPeriodDaysLeft(m.range))pace.textContent='';
+  }
+}
+
+// Keep the existing card shells, column order, disclosures and expense editor. Only
+// the rows whose dates span several weeks need a period-aware reader/editor.
+function budPeriodRenderCards(){
+  const p=budPeriodViewed(),m=budPeriodMoney(p),r=m.record;
+  const put=(id,text)=>{const el=document.getElementById(id);if(el)el.textContent=text;};
+  put('week-label-main','Budget period');put('week-label-sub',budPeriodLabel(p));put('bud-compact-week',budPeriodLabel(p));
+  document.getElementById('week-next-btn').style.opacity='1';document.getElementById('bud-compact-next').style.opacity='1';
+  document.getElementById('week-edit-btn').style.display='none';
+  document.getElementById('bud-hero-act').innerHTML='<button class="bud-hero-add" onclick="openTxnModal({date:getLocalDate()})"><span class="bud-hero-add-plus">+</span>Add expense</button>';
+  document.getElementById('bud-spend-card').innerHTML=renderSpendCard({var_goal:r.goal??null},true).replaceAll('weekly goal','period goal').replaceAll('this week','this period').replaceAll('This week','This period');
+  document.getElementById('bud-setup-card').innerHTML='';
+  document.getElementById('bud-fix-body').innerHTML=budPeriodFixedRows(m);
+  document.querySelector('#bud-fixed-card .bud-head-unit').textContent='/period';
+  document.querySelector('#bud-plan-card .bud-head-label span').textContent='Budget plan';
+  const sources=activeCats(loadIncCats()),incomeRows=sources.map(c=>{
+    const rows=m.rows.filter(x=>x.kind==='income'&&x.streamId===c.id);
+    return '<div class="bud-row">'+budCatNameHtml('inc',c,true,budEditMode.inc)+'<div class="bud-row-calc">'+fmtMoneyExact(rows.reduce((s,x)=>s+Number(x.amount||0),0))+'</div>'+rows.map(x=>'<button class="bud-edit-btn" data-entry-id="'+escAttr(x.id)+'" onclick="budPeriodEdit(this.dataset.entryId)">'+escText(fmtDate(x.date))+'</button>').join('')+(budEditMode.inc?'<button class="delete-cat-btn" data-type="inc" data-id="'+escAttr(c.id)+'" aria-label="Remove income source">×</button>':'')+'</div>';
+  }).join('');
+  document.getElementById('bud-plan-inc').innerHTML=budPlanSection('inc','wallet','Income','sum-inc',incomeRows+
+    (m.legacyIncome?'<p class="bp-note">'+fmtMoneyExact(m.legacyIncome)+' recorded in complete weekly totals.</p>':'')+
+    '<button class="add-cat-btn" onclick="budPeriodRecord(\'income\')">+ Record received income</button><button class="bud-edit-btn" onclick="openBudgetEditor()">Income sources & paydays</button>'+(budEditMode.inc?'<button class="add-cat-btn" data-type="inc">+ Add income source</button>':''),'inc',true);
+  const sav=document.getElementById('sav-amount');sav.disabled=false;sav.value=r.savings||'';sav.style.opacity='1';
+  document.getElementById('sav-status').innerHTML='';
+  const notes=document.getElementById('week-notes');notes.disabled=false;notes.value=r.notes||'';notes.placeholder='What happened this period?';
+  put('closeout-sum',r.finished?'Finished':'Open');put('save-week-hint','Save your notes and mark this budget period reviewed.');
+  document.getElementById('save-week-btn').style.display='block';put('save-week-btn',r.finished?'✓ Period finished — tap to update':'Finish period');
+  document.getElementById('save-week-msg').style.display='none';
+  document.querySelector('#bud-closeout-card .bud-head-label span').textContent='Close out period';
+  document.getElementById('closeout-state').innerHTML=tstat(r.finished?'pos':'warn',r.finished?'Period finished':'Not finished yet',r.finished?'check':'flat',true);
+  let extra=document.getElementById('bud-period-tools');if(!extra){extra=document.createElement('div');extra.id='bud-period-tools';document.getElementById('bud-tools-card').appendChild(extra);}
+  extra.innerHTML='<div class="bud-spend-tools"><button class="bud-edit-btn" onclick="budPeriodAdjust()">Allocate existing money</button><button class="bud-edit-btn" onclick="budPeriodRollover()">Rollover</button><button class="bud-edit-btn" onclick="budPeriodCSV()">Export period</button></div>';
+  _budSecOpen.add('inc');budSecApply();budPeriodPaintMoney(m);renderOutlookCard(m.available,{});
+  renderPrevWeeks();renderBudgetConfig();loadCCInput();renderDueBanner(localMidnight(p.start));budApplyLayout();restoreBudgetCollapseState();
+  if(budgetView==='overview')renderBudgetOverview();else if(budgetView==='plan')renderPlan();
+}
+function budPeriodSaveFields(finish){
+  if(S.view!=='budget'||budgetView!=='week')return;
+  const p=budPeriodViewed(),store=budCyclesLoad(),old=store.periods[p.id]||{},next={...old,start:p.start,end:p.end};
+  const capture=(id,key)=>{const el=document.getElementById(id);if(el)next[key]=key==='notes'?el.value:el.value===''?null:budMoneyRound(el.value);};
+  capture('sav-amount','savings');capture('vargoal-input','goal');capture('week-notes','notes');
+  document.querySelectorAll('[data-period-reserve]').forEach(el=>{next.reserves={...(next.reserves||{}),[el.dataset.periodReserve]:budMoneyRound(el.value)};});
+  if(finish)next.finished=true;
+  const reservesChanged=Object.entries(next.reserves||{}).some(([id,n])=>Number(n||0)!==Number(old.reserves?.[id]||0));
+  const savingChanged=Number(next.savings||0)!==Number(old.savings||0);
+  if((next.notes||'')===(old.notes||'')&&(next.goal??null)===(old.goal??null)&&!reservesChanged&&!savingChanged&&!!next.finished===!!old.finished)return;
+  if(reservesChanged||savingChanged)next.allocationsReviewed=true;
+  next.updatedAt=Date.now();store.periods[p.id]=next;budCyclesSave(store);
+}
+function budPeriodFixedRows(m){
+  const rows=activeCats(loadFixCats()).map(c=>'<div class="bud-row bud-cat-row">'+budCatNameHtml('fix',c,true,budEditMode.fix)+
+    '<input class="bud-row-input" type="number" min="0" step="0.01" aria-label="'+escAttr(catLabel(c))+' period allowance" data-period-reserve="'+escAttr(c.id)+'" value="'+(m.record.reserves?.[c.id]??'')+'" placeholder="$0" oninput="budSaveDraft();budRecalc()">'+(budEditMode.fix?'<button class="delete-cat-btn" data-type="fix" data-id="'+escAttr(c.id)+'" aria-label="Remove category">×</button>':'')+'</div>').join('');
+  return '<div class="bud-fix-cap">Allowances for '+escText(budPeriodLabel(m.range))+'. Recorded bill payments use their allowance once; Outlook shows the scheduled charges.</div>'+
+    '<div class="bud-spend-tools"><button class="bud-edit-btn" data-type="fix" data-action="bud-edit-toggle">Edit</button><button class="bud-edit-btn" onclick="openBudgetEditor()">Recurring bills</button></div>'+rows+
+    (budEditMode.fix?'<button class="add-cat-btn" data-type="fix">+ Add fixed expense</button>':'')+'<button class="add-cat-btn" onclick="budPeriodRecord(\'bill_payment\')">+ Record bill payment</button>'+
+    m.rows.filter(x=>x.kind==='bill_payment').map(x=>'<button class="txn-item" data-entry-id="'+escAttr(x.id)+'" onclick="budPeriodEdit(this.dataset.entryId)"><span>'+escText(loadFixCats().find(c=>c.id===x.fixCatId)?.name||'Bill')+' · '+escText(fmtDate(x.date))+'</span><span>'+fmtMoneyExact(x.amount)+'</span></button>').join('');
+}
+function budPeriodVarRows(){
+  const m=budPeriodMoney(budPeriodViewed()),cats=loadVarCats(),ids=new Set([...activeCats(cats).map(c=>c.id),...m.purchases.map(x=>x.catId)]);
+  return [...ids].map(id=>{const c=cats.find(c=>c.id===id)||{id,name:'Archived category'},rows=m.purchases.filter(x=>x.catId===id),total=rows.reduce((s,x)=>s+Number(x.amount||0),0);
+    return '<div class="bud-row bud-cat-row">'+budCatNameHtml('var',c,true,budEditMode.var)+'<button class="bud-row-calc txn-total" data-cat="'+escAttr(id)+'" onclick="txnToggleCat(this.dataset.cat)">'+fmtMoneyExact(total)+'<span class="txn-count">'+rows.length+'</span></button>'+(budEditMode.var?'<button class="delete-cat-btn" data-type="var" data-id="'+escAttr(id)+'" aria-label="Remove category">×</button>':'')+'</div>'+
+      (_txnOpenCats.has(id)?'<div class="txn-list">'+rows.map(x=>'<button class="txn-item" data-id="'+escAttr(x.id)+'" onclick="openTxnModal({id:this.dataset.id})"><span class="txn-item-l"><span class="txn-item-name">'+escText(x.merchant||'Expense')+'</span><span class="txn-item-meta">'+escText(fmtDate(x.date))+'</span></span><span class="txn-item-amt">'+fmtMoneyExact(x.amount)+'</span></button>').join('')+'<button class="txn-add-inline" data-cat="'+escAttr(id)+'" onclick="openTxnModal({catId:this.dataset.cat})">+ Add expense</button></div>':'');
+  }).join('')+(m.legacySpent?'<p class="bp-note">'+fmtMoneyExact(m.legacySpent)+' from complete weekly totals; retained in weekly history.</p>':'')+
+    '<div class="bud-row"><span>Total variable</span><span id="calc-variable">'+fmtMoneyExact(m.spent)+'</span></div>'+(budEditMode.var?'<button class="add-cat-btn" data-type="var">+ Add variable expense</button>':'');
+}
+function budPeriodDaySpend(){
+  const p=budPeriodViewed(),m=budPeriodMoney(p),out={days:[],dated:0,carry:0,carryCount:0,undated:m.legacySpent,txnCount:0,max:0,busiest:null};
+  for(let i=0;i<p.days;i++){
+    const key=budDateAdd(p.start,i),dt=localMidnight(key),txns=m.purchases.filter(x=>x.date===key&&!txnIsCarryRecord(x)),total=txns.reduce((s,x)=>s+Number(x.amount||0),0);
+    const row={key,dt,name:dt.toLocaleDateString('en-AU',{weekday:'short'}),txns,total};out.days.push(row);out.dated+=total;out.txnCount+=txns.length;
+    if(total>out.max){out.max=total;out.busiest=row;}
+  }
+  m.purchases.filter(txnIsCarryRecord).forEach(x=>{out.carry+=Number(x.amount||0);out.carryCount++;});return out;
+}
+function budPeriodEssentialHtml(){return budEssentialLineHtml(budEssentialSummary(budPeriodMoney(budPeriodViewed()).purchases),'this period');}
+function budPeriodLiveMoney(){
+  const m=budPeriodMoney(budPeriodViewed()),r={...m.record,reserves:{...(m.record.reserves||{})}};
+  if(S.view==='budget'&&budgetView==='week'){
+    const sav=document.getElementById('sav-amount');if(sav)r.savings=budMoneyRound(sav.value);
+    document.querySelectorAll('[data-period-reserve]').forEach(el=>r.reserves[el.dataset.periodReserve]=budMoneyRound(el.value));
+  }
+  return budPeriodCompute(m.range,r,ledgerData,txnData,budCyclesLoad().periods,budPeriodLegacy(m.range));
+}
+
+const DAILY_UPDATE_PAGES=[
+  {icon:'calendar',title:'Money that fits your payday',body:'Week is now Budget, with weekly, fortnightly, monthly and custom periods. Set income sources and paydays, and enter fortnightly bills. Improved bill conversions and balance calculations keep your familiar Finance cards and saved weekly plans together.'},
+  {icon:'home',title:'A clearer, calmer Home',body:'Gradient heroes and status are back, with gentler orange spending warnings. Desktop weather fills its side of the briefing, with the date inside. Today and Week forecasts slide from the bottom controls on phone and desktop. One Customise Home button keeps layout choices together.'},
+  {icon:'wallet',title:'Smoother first steps',body:'Account data stays separate when signing in or switching users. The Daily logo is visible in light-mode onboarding, and new users start with the recommended six Home cards. Swipe through this update, then dismiss it when you’re ready.'}
+];
+let dailyUpdatePage=0;
+function dailyUpdatePopupEligible(){
+  return typeof profileData!=='undefined'&&!!profileData.onboardingVersion&&(Number(profileData.budgetRhythmSeen)||0)<2&&
+    !(typeof auth!=='undefined'&&auth?.currentUser&&!_cloudWorkoutReady);
+}
+function dailyUpdatePopupCheck(){
+  if(!dailyUpdatePopupEligible()||document.getElementById('daily-update-dialog'))return;
+  const ob=document.getElementById('onboarding-overlay');
+  if(ob&&!ob.classList.contains('hidden'))return;
+  if(document.querySelector('dialog[open],#whats-new-overlay'))return;
+  const d=document.createElement('dialog');d.id='daily-update-dialog';d.className='daily-update-dialog';
+  d.setAttribute('aria-labelledby','daily-update-title');
+  d.innerHTML='<div class="du-head"><span>Daily · Quality-of-life update</span><button type="button" aria-label="Dismiss updates" onclick="dailyUpdateDismiss()">×</button></div>'+
+    '<div class="du-page" id="daily-update-page" tabindex="0" aria-live="polite"><div id="daily-update-art" aria-hidden="true"></div><h2 id="daily-update-title"></h2><p id="daily-update-copy"></p></div>'+
+    '<div class="du-dots" aria-label="Update pages">'+DAILY_UPDATE_PAGES.map((_,i)=>'<button type="button" aria-label="Update '+(i+1)+' of '+DAILY_UPDATE_PAGES.length+'" onclick="dailyUpdateGo('+i+')"></button>').join('')+'</div>'+
+    '<div class="du-foot"><button class="stg-btn" id="daily-update-back" onclick="dailyUpdateGo(dailyUpdatePage-1)">Back</button><span id="daily-update-count"></span><button class="stg-btn primary" id="daily-update-next" onclick="dailyUpdateNext()">Next</button></div>';
+  d.addEventListener('cancel',e=>{e.preventDefault();dailyUpdateDismiss();});
+  d.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();dailyUpdateGo(dailyUpdatePage+(e.key==='ArrowRight'?1:-1));}});
+  let start=null;
+  const page=d.querySelector('.du-page');
+  page.addEventListener('pointerdown',e=>{start={x:e.clientX,y:e.clientY};});
+  page.addEventListener('pointerup',e=>{if(!start)return;const dx=e.clientX-start.x,dy=e.clientY-start.y;start=null;if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)*1.5)dailyUpdateGo(dailyUpdatePage+(dx<0?1:-1));});
+  page.addEventListener('pointercancel',()=>{start=null;});
+  document.body.appendChild(d);dailyUpdatePage=0;dailyUpdateGo(0);d.showModal();
+}
+function dailyUpdateGo(n){
+  const d=document.getElementById('daily-update-dialog');if(!d)return;
+  dailyUpdatePage=Math.max(0,Math.min(DAILY_UPDATE_PAGES.length-1,n));const p=DAILY_UPDATE_PAGES[dailyUpdatePage];
+  d.querySelector('#daily-update-art').innerHTML=cardIcon(p.icon);
+  d.querySelector('#daily-update-title').textContent=p.title;d.querySelector('#daily-update-copy').textContent=p.body;
+  d.querySelector('#daily-update-count').textContent=(dailyUpdatePage+1)+' / '+DAILY_UPDATE_PAGES.length;
+  d.querySelector('#daily-update-back').disabled=dailyUpdatePage===0;
+  d.querySelector('#daily-update-next').textContent=dailyUpdatePage===DAILY_UPDATE_PAGES.length-1?'Got it':'Next';
+  d.querySelectorAll('.du-dots button').forEach((el,i)=>el.setAttribute('aria-current',i===dailyUpdatePage?'step':'false'));
+}
+function dailyUpdateNext(){if(dailyUpdatePage===DAILY_UPDATE_PAGES.length-1)dailyUpdateDismiss();else dailyUpdateGo(dailyUpdatePage+1);}

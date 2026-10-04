@@ -383,7 +383,8 @@
 // v369: empty personal Finance defaults, consistent recurring amounts, fortnightly pay/bills,
 // and reliable light/dark onboarding logo artwork.
 // v370: account-scoped storage, dated budget periods, release banner and compact desktop briefing.
-const CACHE_NAME = 'daily-v370';
+// v371: restore Finance/Home cards; swipeable updates; anchored weather drawer and Home polish.
+const CACHE_NAME = 'daily-v371';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

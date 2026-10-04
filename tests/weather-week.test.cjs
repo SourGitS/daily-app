@@ -12,7 +12,7 @@ function entry(){return {timezone:'Australia/Sydney',utcOffsetSeconds:36000,
 function fixture(cache=entry()){
   const nodes={},calls=[];
   for(const id of ['periods','today','week','hours','summary','forecast-caption','forecast-empty','forecast-retry','preview','forecast-toggle','forecast-toggle-label']){
-    nodes['home-weather-'+id]={hidden:false,textContent:'',innerHTML:'',attrs:{},classes:new Set(),
+    nodes['home-weather-'+id]={hidden:false,textContent:'',innerHTML:'',attrs:{},dataset:{},classes:new Set(),
       setAttribute(k,v){this.attrs[k]=v;},classList:{toggle(k,on){nodes['home-weather-'+id].classes[on?'add':'delete'](k);}}};
   }
   class Clock extends Date {static now(){return NOW;}}
@@ -133,4 +133,20 @@ test('selecting a period reveals a hidden forecast and missing data stays access
   ctx.homeToggleWeatherForecast();
   assert.equal(nodes['home-weather-preview'].inert,false);
   assert.equal(nodes['home-weather-forecast-retry'].hidden,false);
+});
+
+test('desktop drawer toggles independently and refreshes do not restart the period slide',()=>{
+  const {ctx,nodes,calls}=fixture();
+  const toggle=nodes['home-weather-forecast-toggle'],preview=nodes['home-weather-preview'];
+  toggle.dataset.mode='desktop';
+  ctx.homeSetWeatherPeriod('today');
+  const first=preview.dataset.weatherSlide;
+  ctx.renderWeatherForecast(entry());assert.equal(preview.dataset.weatherSlide,first);
+  ctx.homeToggleWeatherForecast();assert.equal(preview.inert,true);
+  assert.equal(vm.runInContext('_homeWeatherExpanded.mobile',ctx),null);
+  ctx.homeSetWeatherPeriod('week');assert.equal(preview.inert,false);
+  assert.notEqual(preview.dataset.weatherSlide,first);
+  const next=preview.dataset.weatherSlide;
+  ctx.homeSetWeatherPeriod('week');assert.equal(preview.dataset.weatherSlide,next);
+  assert.equal(calls.length,0);
 });

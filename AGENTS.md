@@ -1,5 +1,30 @@
 # Daily — Agent Handoff
 
+## v371 local correction — 2026-10-04
+
+The user rejected v370's presentation overhaul, then authorised committing and pushing the
+completed quality-of-life corrections on 2026-10-04. These points supersede the presentation notes below:
+
+- Home and Finance retain their original accent-gradient hero styling and status. The compact
+  desktop briefing remains, with the existing weather scene inset.
+- Budget uses its existing Spending, Fixed expenses, Week/Budget plan, Outlook, Close out and
+  History & tools card shells and controls. Overview retains Needs attention and Coming up.
+  Period-aware rows use the same cards; exact Monday-to-Sunday plans retain native weekly edits.
+- Exact weekly ranges read saved/frozen allocations and goals without migration or confirmation.
+  Partial overlapping undated history still needs review. Explicit period allocations win.
+- The inline release banner is replaced by a simple three-page launch dialog, with swipe,
+  keyboard arrows, Back/Next and dismissal. `profile.budgetRhythmSeen=2` acknowledges it using
+  the existing monotonic profile sync; no new store or onboarding-version bump.
+- Cache is prepared as `daily-v371`. See tests/FINANCE-PERIOD-VALIDATION.md for local evidence.
+- The desktop weather panel spans the hero header and body, with the date inside the scene.
+  Without weather, the shared header retains the date. The three swipeable quality-of-life
+  pages summarise Finance, Home/weather and onboarding/account improvements from this session.
+- Follow-up polish: Home has one Customise Home entry (the bottom Edit layout strip was
+  removed). Spending cautions are muted orange. Both desktop and phone weather now use
+  Today/Week plus a bottom-anchored forecast drawer; CSS slides only after a user choice,
+  retains the card's space, and respects reduced motion. Hidden contents remain inert and
+  aria-hidden. Disclosure choices remain independent per layout and in memory only.
+
 ## v370 implementation — 2026-10-04
 
 This section supersedes older single-account, weekly-only and script-count descriptions below.

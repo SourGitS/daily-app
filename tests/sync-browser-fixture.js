@@ -35,6 +35,13 @@
     stores.budgetData={'2026-09-28':{wk:'2026-09-28',inc_salary:'2000',updatedAt:500}};
     stores.profile.budgetRhythmSeen=1;
   }
+  if(params.has('weekly')){
+    stores.budgetCycles={v:JSON.stringify({config:{frequency:'weekly',anchor:'2026-09-28'},periods:{}}),t:500};
+    stores.budgetData={'2026-09-28':{wk:'2026-09-28',inc_salary:'1200',sav_amount:'160',var_goal:'300',fixRates:{rent:250},updatedAt:500}};
+    stores.transactions={v:JSON.stringify([{id:'weekly-expense',date:'2026-10-03',amount:210,catId:'food',merchant:'Test groceries'}]),t:500};
+    stores.profile.budgetRhythmSeen=2;
+  }
+  if(params.has('accent'))memory.set('daily-account:user%3Afixture:daily_accent_color','#'+params.get('accent'));
   const initial=clone(stores),listeners=new Map(),writes=[],errors=[];
   window.addEventListener('error',e=>errors.push(e.message));
   window.addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
@@ -69,7 +76,7 @@
   const auth={currentUser:user,getRedirectResult:()=>Promise.resolve(null),onAuthStateChanged:fn=>{authChange=fn;const t=setTimeout(()=>fn(user),50);return()=>clearTimeout(t);}};
   window.firebase={initializeApp:()=>{},auth:()=>auth,database:()=>({ref})};
   window.addEventListener('load',()=>setTimeout(()=>{
-    if(new URL(location.href).searchParams.has('onboarding'))return;
+    if(new URL(location.href).searchParams.has('onboarding')||params.has('preview'))return;
     const report=document.createElement('pre');report.id='sync-test-result';
     report.style='position:fixed;inset:10px 10px auto;z-index:999999;padding:20px;background:#fff;color:#000;font:15px monospace;white-space:pre-wrap';
     const unchanged=['sessions','weights','trainingSplit','exerciseLib','plans','budgetIncCats','budgetFixCats'].filter(k=>initial[k]!=null).every(k=>JSON.stringify(stores[k])===JSON.stringify(initial[k]));

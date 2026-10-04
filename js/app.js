@@ -12107,6 +12107,7 @@ function budRenderView(v){
 
 // ── Week navigation ───────────────────────────────────────────────
 function changeWeek(dir){
+  if(typeof budPeriodViewed==='function'&&budPeriodViewed()&&!budLegacyOpen){budSaveDraft();budPeriodNavigate(dir);return;}
   if(dir>0&&currentWeekIdx>=0) return;
   budSaveDraft();              // flush the viewed week's inputs before the index changes
   budPastEdit=false;          // lock the next week by default (history is read-only unless unlocked)
@@ -13209,6 +13210,7 @@ function getWeekVarGoal(data){
 // Days remaining in the viewed week, today included. Only meaningful for the current week —
 // a past week has no "rest of the week" left to pace.
 function varGoalDaysLeft(){
+  if(typeof budPeriodCardMode==='function'&&budPeriodCardMode())return budPeriodDaysLeft(budPeriodViewed());
   const dow=(new Date().getDay()+6)%7; // 0 = Monday … 6 = Sunday
   return 7-dow;
 }
@@ -13218,7 +13220,7 @@ function varGoalDaysLeft(){
 // Every id here is unchanged, because updateVarGoalCard() drives all of them live from
 // budRecalc rather than re-rendering (which would drop focus out of the goal input).
 function budVarGoalBlockHtml(data,editable){
-  const goal=getWeekVarGoal(data);
+  const goal=typeof budPeriodCardMode==='function'&&budPeriodCardMode()?(data.var_goal??null):getWeekVarGoal(data);
   const editing=budEditMode.vargoal && editable;
   // Read-only by default (same Edit-button convention as the income/fixed/category rows):
   // the goal is already spelled out in "left of your $250 goal", so an always-visible input
@@ -13307,6 +13309,7 @@ function updateVarGoalCard(totalVar){
 // "Usual goal" controls: only shown when this week's number differs from the saved default.
 function updateVarGoalDefaultLine(goal){
   const el=document.getElementById('vargoal-defaultline'); if(!el) return;
+  if(typeof budPeriodCardMode==='function'&&budPeriodCardMode()){el.innerHTML='';return;}
   if(!document.getElementById('vargoal-input')){ el.innerHTML=''; return; } // read-only card
   const def=getVarGoalDefault();
   if(goal===null||isNaN(goal)||def===null||goal===def){
@@ -13318,6 +13321,7 @@ function updateVarGoalDefaultLine(goal){
     '<button class="vg-default-btn" onclick="budVarGoalSaveDefault()">Make this my usual</button>';
 }
 function budVarGoalInput(){
+  if(typeof budPeriodCardMode==='function'&&budPeriodCardMode()){budSaveDraft();budRecalc();return;}
   // First goal ever set becomes the usual one — otherwise the "usual" line would stay empty
   // until the user found the button, and there'd be nothing for new weeks to inherit.
   if(getVarGoalDefault()===null){
@@ -13704,6 +13708,7 @@ function txnToggleCat(catId){
 // the same thing is a duplicate top-level const and will not parse.
 const BUD_WEEK_DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 function budDaySpend(wk){
+  if(typeof budPeriodCardMode==='function'&&budPeriodCardMode())return budPeriodDaySpend();
   const out={days:[],dated:0,carry:0,carryCount:0,undated:0,txnCount:0,max:0,busiest:null};
   if(!wk) return out;
   const mon=localMidnight(wk);
@@ -14015,7 +14020,7 @@ function budForecastPart(f){
   // Exact, not rounded: the rows carrying these amounts are printed in the timeline below, so
   // a rounded total would disagree with its own visible arithmetic.
   const secondCell = (f.projected==null)
-    ? ['This week’s income', 'Not entered', 'no projection yet']
+    ? [f.period?'Budget period':'This week’s income',f.period?'Check dates / funding':'Not entered','no projection yet']
     : ['Bills before then', n?fmtMoneyExact(f.scheduled):'None', n?(n+' charge'+(n===1?'':'s')):'nothing scheduled'];
   const html='<div class="fc-part">'+
     '<div class="fc-part-h">Until next pay</div>'+
@@ -14028,7 +14033,7 @@ function budForecastPart(f){
       secondCell
     ])+
     (f.projected==null
-      ? '<div class="fc-note">Enter this week’s income in Week plan and Daily will project what is left by payday.</div>'
+      ? '<div class="fc-note">'+(f.period?'A projection needs recorded funding and a budget period covering the dates before payday.':'Enter this week’s income in Week plan and Daily will project what is left by payday.')+'</div>'
       : '')+
   '</div>';
   return {tone, sum:figure, html};
@@ -14039,8 +14044,9 @@ function renderOutlookCard(available, week){
   // Forecasting only makes sense from the current week -- a past week has no future to
   // project. The TIMELINE is unconditional and always runs from today, because "what is
   // coming" does not change with which week you happen to be looking at.
-  const isCur=budIsCurrentWeek();
-  const f=isCur?payCycleForecast(available, week):null;
+  const period=typeof budPeriodViewed==='function'&&!budLegacyOpen?budPeriodViewed():null;
+  const isCur=period?budPeriodDaysLeft(period)>0:budIsCurrentWeek();
+  const f=isCur?(period?budPeriodForecast(budPeriodMoney(period)):payCycleForecast(available, week)):null;
 
   const win=budTimelineWindow();
   const occ=billOccurrences(win.from, win.to);
@@ -14070,7 +14076,7 @@ function renderOutlookCard(available, week){
   // Every occurrence, in date order, never truncated and never stopped at payday: a weekly
   // subscription genuinely lands twice in a fortnight and both are money leaving the account.
   const pastNote=isCur ? ''
-    : '<div class="fc-note">Counted from today, not from the week you’re viewing — this is what is still to come.</div>';
+    : '<div class="fc-note">Counted from today, independently of the dates you’re viewing — this is what is still to come.</div>';
   const rows=occ.length
     ? '<div class="fc-timeline">'+occ.map(billRowHtml).join('')+'</div>'+
       '<div class="fc-total">'+
@@ -14080,7 +14086,7 @@ function renderOutlookCard(available, week){
       // Says which quantity this is. The weekly hero holds one week of ACCRUAL; these are the
       // amounts that will actually be charged, so the two are not comparable and the card
       // says so rather than letting them look like a discrepancy.
-      '<div class="fc-note">Amounts actually due, not the weekly allocation in Fixed expenses. Nothing here is deducted from this week’s figures.</div>'
+      '<div class="fc-note">Scheduled charges are separate from your Fixed expenses allowances. This schedule does not record payments or deduct money.</div>'
     : '<div class="up-none">No scheduled bills in the next 14 days.</div>';
   const timelinePart='<div class="fc-part">'+
     '<div class="fc-part-h">Next 14 days<span class="fc-part-r">'+range+'</span></div>'+
@@ -14170,20 +14176,20 @@ function budOvAttention(m, f){
     items.push({tone:'neg', icon:'down',
       title:'Short before your next pay',
       body:'After the '+(f.bills.length?fmtMoneyExact(f.scheduled)+' of bills dated before ':'bills due before ')+
-        escText(budOvPayLabel(f))+', this week is projected to run '+fmtMoney(Math.abs(f.projected))+' short.',
-      act:'Open week', run:"setBudgetView('week')"});
+        escText(budOvPayLabel(f))+', this '+(m.period?'period':'week')+' is projected to run '+fmtMoney(Math.abs(f.projected))+' short.',
+      act:'Open budget', run:"setBudgetView('week')"});
   }
 
   // 3. No income figure means every "available" number on this screen is UNANSWERABLE rather
   //    than zero, so it is said here as well as in the hero.
-  if(!(m.income>0)){
+  if(m.period?m.available===null:!(m.income>0)){
     const named=activeCats(loadIncCats()).some(c=>String(c.name||'').trim());
     items.push({tone:'warn', icon:'info',
-      title:named?'No income recorded for this week':'No income sources set up yet',
-      body:named
+      title:m.period?'Check budget funding and dates':named?'No income recorded for this week':'No income sources set up yet',
+      body:m.period?'Confirm the money allocated to these dates and review any older weekly totals.':named
         ? 'Available to spend cannot be worked out until this week’s pay is entered.'
         : 'Add your income sources and fixed costs and Daily can work out what each week leaves.',
-      act:named?'Enter income':'Set up budget', run:'openBudgetSetup()'});
+      act:m.period?'Open budget':named?'Enter income':'Set up budget', run:m.period?"setBudgetView('week')":'openBudgetSetup()'});
   }
 
   // 4. Due today, tomorrow or the day after — close enough to change what you would do now.
@@ -14202,12 +14208,13 @@ function budOvAttention(m, f){
   }
 
   // 5. The week's own self-imposed ceiling, read exactly the way the Spending card reads it.
-  const goal=getWeekVarGoal(m.week);
-  if(goal!==null&&goal>0&&m.spent>goal){
+  const goal=m.period?(m.week.var_goal??null):getWeekVarGoal(m.week);
+  const goalSpent=m.period?m.variableSpent:m.spent;
+  if(goal!==null&&goal>0&&goalSpent>goal){
     items.push({tone:'warn', icon:'up',
-      title:'Spending is past this week’s goal',
-      body:fmtMoneyExact(m.spent)+' against a '+fmtMoney(goal)+' goal — '+fmtMoney(m.spent-goal)+' over.',
-      act:'Open week', run:"setBudgetView('week')"});
+      title:'Spending is past this '+(m.period?'period’s':'week’s')+' goal',
+      body:fmtMoneyExact(goalSpent)+' against a '+fmtMoney(goal)+' goal — '+fmtMoney(goalSpent-goal)+' over.',
+      act:'Open budget', run:"setBudgetView('week')"});
   }
 
   // 6. The SAME threshold the Outlook card tightens at, so one number decides "tight" in both
@@ -14266,7 +14273,7 @@ function budOvComingHtml(f){
         '<span class="fc-total-l">Total scheduled'+(hasStmt?', including card statements':'')+'</span>'+
         '<span class="fc-total-v">'+fmtMoneyExact(total)+'</span>'+
       '</div>'+
-      '<div class="fc-note">Amounts actually due, not the weekly allocation in Fixed expenses. Nothing here is deducted from this week’s figures.</div>'
+      '<div class="fc-note">Scheduled charges are separate from your Fixed expenses allowances. This schedule does not record payments or deduct money.</div>'
     : '<div class="up-none">No scheduled bills in the next 14 days.</div>';
   const undated=billsUndatedCount();
   const hint=undated
@@ -14374,8 +14381,8 @@ function budOvMonthHtml(){
 // other hero. "Available to spend" is an allocation out of this week's income and NOT a bank
 // balance; the card says so rather than leaving the reader to assume it.
 function budOvHeroHtml(m){
-  const setup=!(m.income>0);
-  const sunday=new Date(m.monday.getFullYear(), m.monday.getMonth(), m.monday.getDate()+6);
+  const setup=m.period?m.available===null:!(m.income>0);
+  const sunday=m.period?localMidnight(m.period.end):new Date(m.monday.getFullYear(), m.monday.getMonth(), m.monday.getDate()+6);
   // ONE primary action, in EVERY state, and it is This week. The hero STATES the weekly
   // position; Week is where every part of it is actually changed — income, the bills, the
   // spending goal, the categories, the close-out — so it is where almost every visit to this
@@ -14387,7 +14394,7 @@ function budOvHeroHtml(m){
   // every later visit goes to — when setup lives on that screen anyway, in Week's own setup card.
   // It is supporting COPY now (see the note below), never a competing button.
   const week='<button type="button" class="bov-act bov-act-primary bov-act-lead"'+
-    ' onclick="setBudgetView(\'week\')">This week <span aria-hidden="true">→</span></button>';
+    ' onclick="setBudgetView(\'week\')">Open budget <span aria-hidden="true">→</span></button>';
   // Add expense is dropped while the week is unset up: with no categories yet the modal has
   // nothing to file a purchase against, and a second pill would dilute the one action that
   // matters here. It is unchanged everywhere else.
@@ -14395,24 +14402,24 @@ function budOvHeroHtml(m){
     (setup?'':'<button type="button" class="bov-act" onclick="openTxnModal()">'+
       '<span aria-hidden="true">+</span> Add expense</button>')+
   '</div>';
-  const extra='<div class="bov-hero-range">This week · '+budRangeLabel(m.monday,sunday)+'</div>'+
+  const extra='<div class="bov-hero-range">'+(m.period?'Budget period':'This week')+' · '+budRangeLabel(m.monday,sunday)+'</div>'+
     statsSplit([
       ['Spent',     fmtMoney(m.spent)],
       ['Committed', fmtMoney(m.committed)],
-      ['Saved',     fmtMoney(m.saved)]
+      ['Allocated', fmtMoney(m.saved)]
     ])+
     '<div class="bov-hero-note">'+(setup
-      ? 'Income, bills and your spending goal are set up in This week.'
-      : 'An allocation out of this week’s income — not a bank balance.')+'</div>'+
+      ? (m.period?'Check the income dates in Budget; older weekly totals are preserved.':'Income, bills and your spending goal are set up in Budget.')
+      : 'Your spending allocation — separate from your account balances.')+'</div>'+
     acts;
   return budHeroPanel([{
     icon:'wallet',
-    label:'Available to spend this week',
+    label:m.period?'Available to spend this period':'Available to spend this week',
     lg:true,
     val: setup ? '—' : (m.available<0?'-':'')+'$'+Math.abs(m.available).toFixed(0),
     sub: setup
-      ? 'Add this week’s income and fixed costs and Daily will work out what is left.'
-      : escText(budPaceText(m.available, varGoalDaysLeft())),
+      ? 'Record income and fixed costs to see what is left.'
+      : escText(budPaceText(m.available, m.period?budPeriodDaysLeft(m.period):varGoalDaysLeft())),
     chip: setup ? '' : (m.available<0
       ? tstat('neg','Over budget','alert',true)
       : tstat('pos','On track','check',true)),
@@ -14430,10 +14437,11 @@ function renderBudgetOverview(){
   const wrap=document.getElementById('budget-overview-view'); if(!wrap) return;
   const monday=getMondayOf(0);
   const key=weekKey(monday);
-  const m=Object.assign({monday, key}, budWeekMoney(budCurrentWeekBasis(), key));
+  const period=typeof budPeriodMoney==='function'?budPeriodMoney():null;
+  const m=period?budPeriodOverviewMoney(period):Object.assign({monday, key}, budWeekMoney(budCurrentWeekBasis(), key));
   // Derived from the SAME figure and the SAME week object the hero above it states, exactly
   // as budRecalc hands them to the Outlook card.
-  const f=payCycleForecast(m.available, m.week);
+  const f=period?budPeriodForecast(period):payCycleForecast(m.available, m.week);
   wrap.innerHTML=budOvHeroHtml(m)+
     '<div class="bov-cols">'+
       '<div class="bov-col bov-col-main">'+budOvAttentionHtml(m,f)+budOvComingHtml(f)+'</div>'+
@@ -14759,6 +14767,7 @@ function renderVarConflict(c,conf,isCur){
 // transaction-conflict handling and the same Edit/Done category controls. Only the card
 // wrapper and its header moved out, into the merged card above it.
 function budVarRowsHtml(data,isCur){
+  if(typeof budPeriodCardMode==='function'&&budPeriodCardMode())return budPeriodVarRows();
   const editing=budEditMode.var && isCur;
   const cats=activeCats(loadVarCats()); // archived keep counting in totals, just no row
   const wk=weekKey(getMondayOf(currentWeekIdx));
@@ -14924,7 +14933,7 @@ function renderSpendCard(data,isCur){
     tools+seg+panel+
     // Below the breakdown, never inside it: this is a second reading of the same expenses, not
     // a category, and it is deliberately not subtracted from the goal or the weekly total.
-    budEssentialLineHtml(weekEssentialSummary(wk),'this week')+
+    (typeof budPeriodCardMode==='function'&&budPeriodCardMode()?budPeriodEssentialHtml():budEssentialLineHtml(weekEssentialSummary(wk),'this week'))+
   '</div>';
 }
 // The Income section of the Week plan card. Same rows, same ids, same hours-worked companion
@@ -15068,6 +15077,14 @@ function restoreBudgetCollapseState(){
 function renderBudgetTab(){
   if(typeof budPeriodRender==='function') budPeriodRender();
   if(typeof dailyUpdateRefresh==='function') dailyUpdateRefresh();
+  if(typeof budPeriodCardMode==='function'&&budPeriodCardMode()){budPeriodRenderCards();return;}
+  const period=typeof budPeriodViewed==='function'&&!budLegacyOpen?budPeriodViewed():null;
+  if(period)currentWeekIdx=Math.round(budDateDays(weekKey(getMondayOf(0)),period.start)/7);
+  document.querySelector('#bud-fixed-card .bud-head-unit').textContent='/wk';
+  document.querySelector('#bud-plan-card .bud-head-label span').textContent='Week plan';
+  document.querySelector('#bud-closeout-card .bud-head-label span').textContent='Close out week';
+  document.getElementById('week-notes').placeholder='What happened this week?';
+  document.getElementById('bud-period-tools')?.remove();
   const monday=getMondayOf(currentWeekIdx);
   const key=weekKey(monday);
   const data=getBudWeekData(key);
@@ -15075,15 +15092,15 @@ function renderBudgetTab(){
   if(isCur) budPastEdit=false;          // current week is always editable; clear any past-edit state
   const editable = isCur || budPastEdit; // current week, or a past week the user unlocked
 
-  document.getElementById('week-label-main').textContent=
-    isCur?'This week':currentWeekIdx===-1?'Last week':Math.abs(currentWeekIdx)+' weeks ago';
+  const weekTitle=isCur?'This week':currentWeekIdx===-1?'Last week':currentWeekIdx>0?'In '+currentWeekIdx+' weeks':Math.abs(currentWeekIdx)+' weeks ago';
+  document.getElementById('week-label-main').textContent=weekTitle;
   document.getElementById('week-label-sub').textContent=fmtWeekLabel(monday);
-  document.getElementById('week-next-btn').style.opacity=currentWeekIdx>=0?'0.3':'1';
+  document.getElementById('week-next-btn').style.opacity=!period&&currentWeekIdx>=0?'0.3':'1';
   // Same state, second surface: the landscape-only compact strip (see .bud-compact-nav).
   const cw=document.getElementById('bud-compact-week');
-  if(cw) cw.textContent=(isCur?'This week':currentWeekIdx===-1?'Last week':Math.abs(currentWeekIdx)+' weeks ago')+' \u00b7 '+fmtWeekLabel(monday);
+  if(cw) cw.textContent=weekTitle+' \u00b7 '+fmtWeekLabel(monday);
   const cn=document.getElementById('bud-compact-next');
-  if(cn) cn.style.opacity=currentWeekIdx>=0?'0.3':'1';
+  if(cn) cn.style.opacity=!period&&currentWeekIdx>=0?'0.3':'1';
 
   // Edit-week toggle: only on past weeks (current week is editable already).
   const weekEditBtn=document.getElementById('week-edit-btn');
@@ -15383,17 +15400,20 @@ function savingsColor(amt){
 }
 function countUp(el, target, duration){
   if(!el || isNaN(target)) return;
+  if(el._countUpFrame)cancelAnimationFrame(el._countUpFrame);
   duration = duration || 600;
   const start = performance.now();
   function step(now){
     const p = Math.min((now-start)/duration, 1);
     const ease = 1 - Math.pow(1-p, 3);
     el.textContent = '$' + Math.round(target * ease).toLocaleString();
-    if(p < 1) requestAnimationFrame(step);
+    el._countUpFrame=p<1?requestAnimationFrame(step):null;
   }
-  requestAnimationFrame(step);
+  el._countUpFrame=requestAnimationFrame(step);
 }
 function budRecalc(animate){
+  if(typeof budPeriodCardMode==='function'&&budPeriodCardMode()){budPeriodPaintMoney(budPeriodLiveMoney());return;}
+  if(typeof budPeriodViewed==='function'&&budPeriodViewed()&&!budLegacyOpen)animate=false;
   const v=id=>parseFloat(document.getElementById(id)?.value)||0;
   const _wk=budgetData[weekKey(getMondayOf(currentWeekIdx))]||{};
   const incomeBasis=Object.assign({},_wk);
@@ -15411,6 +15431,7 @@ function budRecalc(animate){
   // them is how the on-screen total ends up disagreeing with the saved week.
   const _wkKey=weekKey(getMondayOf(currentWeekIdx));
   const _live=Object.assign({}, _wk);
+  loadIncCats().forEach(c=>{_live['inc_'+c.id]=incomeBasis['inc_'+c.id];});
   // Only ACTIVE NON-RECURRING categories have inputs (renderFixedCardBody gives recurring charges
   // a read-only block instead), so merging the live values below stamps fix_ keys for just
   // those — and weekFixedTotal treats any week carrying fix_ fields as defining its own
@@ -15557,6 +15578,9 @@ function budRecalc(animate){
     if(barL) barL.textContent='Enter income to see breakdown';
     if(barR) barR.textContent='';
   }
+  if(typeof budPeriodViewed==='function'&&!budLegacyOpen){
+    const p=budPeriodViewed();if(p)budPeriodPaintMoney(budPeriodMoney(p,{..._live,sav_amount:totalSaved}));
+  }
 }
 
 // Write the per-week editable fields from the DOM into a week record.
@@ -15589,6 +15613,7 @@ function budWriteFields(d){
   loadVarCats().forEach(c=>{ const el=document.getElementById('var-'+c.id); if(el) d['var_'+c.id]=el.value||''; });
 }
 function budSaveDraft(){
+  if(typeof budPeriodCardMode==='function'&&budPeriodCardMode()){budPeriodSaveFields(false);return;}
   // Current week always auto-persists; a past week persists only while unlocked for editing.
   if(currentWeekIdx !== 0 && !budPastEdit) return;
   const key=weekKey(getMondayOf(currentWeekIdx)); // write to the VIEWED week, not always "this" week
@@ -15623,6 +15648,7 @@ function budSaveCurrentWeek(){
 }
 
 function budSaveWeekExplicit(){
+  if(typeof budPeriodCardMode==='function'&&budPeriodCardMode()){budPeriodSaveFields(true);renderBudgetTab();return;}
   budSaveCurrentWeek();
   const btn=document.getElementById('save-week-btn');
   const msg=document.getElementById('save-week-msg');
@@ -21250,22 +21276,27 @@ function homeWeatherPeriod(entry){
 }
 function homeSetWeatherPeriod(period){
   if(period!=='today'&&period!=='week') return;
+  const changed=_homeWeatherPeriod!==period;
   _homeWeatherPeriod=period;
-  _homeWeatherExpanded.mobile=true;
+  const mode=document.getElementById('home-weather-forecast-toggle')?.dataset?.mode||'mobile';
+  _homeWeatherExpanded[mode]=true;
   const entry=loadWeatherCache();
   renderWeatherForecast(entry);
+  const preview=document.getElementById('home-weather-preview');
+  if(changed&&preview?.dataset)preview.dataset.weatherSlide=preview.dataset.weatherSlide==='a'?'b':'a';
   if(period==='week'&&!weatherForecastDays(entry).length) weatherRefresh({force:true,reason:'week-forecast'});
 }
 function homeToggleWeatherForecast(){
   if(!document.getElementById('home-weather-forecast-toggle')) return;
-  _homeWeatherExpanded.mobile=_homeWeatherExpanded.mobile===false;
+  const mode=document.getElementById('home-weather-forecast-toggle').dataset?.mode||'mobile';
+  _homeWeatherExpanded[mode]=_homeWeatherExpanded[mode]===false;
   renderMobileWeatherDisclosure();
 }
 function renderMobileWeatherDisclosure(){
   const toggle=document.getElementById('home-weather-forecast-toggle');
   const preview=document.getElementById('home-weather-preview');
   if(!toggle||!preview) return;
-  const open=_homeWeatherExpanded.mobile!==false;
+  const open=_homeWeatherExpanded[toggle.dataset?.mode||'mobile']!==false;
   toggle.setAttribute('aria-expanded',String(open));
   document.getElementById('home-weather-forecast-toggle-label').textContent=open?'Hide forecast':'Show forecast';
   // Keep the scene's space while hiding the forecast from sight, focus and assistive technology.
@@ -21453,7 +21484,7 @@ function weatherLandscapeSvg(view){
 }
 
 function buildWeatherCard(inHero){
-  const mobile=inHero&&!layoutIsDesktop();
+  const mode=layoutMode(),forecastOpen=_homeWeatherExpanded[mode]!==false;
   const d=localMidnight(getLocalDate());
   const dayLabel=d.toLocaleDateString('en-AU',{weekday:'long'});
   const dateLabel=d.toLocaleDateString('en-AU',{day:'numeric',month:'long'});
@@ -21486,6 +21517,7 @@ function buildWeatherCard(inHero){
     '</div>'+
     '<div class="weather-legibility weather-legibility-left" aria-hidden="true"></div>'+
     '<div class="weather-legibility weather-legibility-right" aria-hidden="true"></div>'+
+    '<div class="weather-card-date">'+escText(d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}))+'</div>'+
     '<div class="weather-content">'+
       '<div class="weather-left">'+
         '<div class="weather-heading">'+
@@ -21515,18 +21547,17 @@ function buildWeatherCard(inHero){
       '</div>'+
       '<p class="weather-notice" id="home-weather-notice" role="status" aria-live="polite" hidden></p>'+
       '<button type="button" class="weather-use-location" id="home-weather-location" onclick="weatherUseCurrentLocation()" hidden>Use my location</button></div>'+
-    (mobile?'<div class="weather-mobile-controls"><div id="home-weather-periods" role="group" aria-label="Forecast period">'+
+    '<div class="weather-forecast-dock"><div class="weather-mobile-controls"><div id="home-weather-periods" role="group" aria-label="Forecast period">'+
       '<button type="button" id="home-weather-today" aria-pressed="false" aria-controls="home-weather-preview" onclick="homeSetWeatherPeriod(\'today\')">Today</button>'+
       '<button type="button" id="home-weather-week" aria-pressed="false" aria-controls="home-weather-preview" onclick="homeSetWeatherPeriod(\'week\')">Week</button></div>'+
-      '<button type="button" class="weather-forecast-toggle" id="home-weather-forecast-toggle" aria-expanded="'+(_homeWeatherExpanded.mobile!==false)+'" aria-controls="home-weather-preview" onclick="homeToggleWeatherForecast()"><span id="home-weather-forecast-toggle-label">'+(_homeWeatherExpanded.mobile===false?'Show forecast':'Hide forecast')+'</span><i class="ti ti-chevron-down" aria-hidden="true"></i></button></div>':
-      inHero?'<details class="home-weather-disclosure"'+((_homeWeatherExpanded[layoutMode()]===null?layoutIsDesktop():_homeWeatherExpanded[layoutMode()])?' open':'')+' data-mode="'+layoutMode()+'" ontoggle="homeWeatherToggle(this)"><summary>Hourly forecast <span aria-hidden="true">⌄</span></summary>':'')+
-    '<div class="weather-preview" id="home-weather-preview"'+(mobile?' aria-hidden="'+(_homeWeatherExpanded.mobile===false)+'"'+(_homeWeatherExpanded.mobile===false?' inert':''):'')+'>'+
-      (mobile?'<span id="home-weather-forecast-caption" class="weather-forecast-caption"></span>':'')+
+      '<button type="button" class="weather-forecast-toggle" id="home-weather-forecast-toggle" data-mode="'+mode+'" aria-expanded="'+forecastOpen+'" aria-controls="home-weather-preview" onclick="homeToggleWeatherForecast()"><span id="home-weather-forecast-toggle-label">'+(forecastOpen?'Hide forecast':'Show forecast')+'</span><i class="ti ti-chevron-up" aria-hidden="true"></i></button></div>'+
+    '<div class="weather-preview" id="home-weather-preview" aria-hidden="'+!forecastOpen+'"'+(!forecastOpen?' inert':'')+'>'+
+      '<span id="home-weather-forecast-caption" class="weather-forecast-caption"></span>'+
       '<p class="weather-summary" id="home-weather-summary" hidden></p>'+
       '<div class="weather-hours" id="home-weather-hours" role="list" aria-label="Next six hours at the forecast location" tabindex="0" ontouchstart="event.stopPropagation()" ontouchmove="event.stopPropagation()" hidden></div>'+
       '<p class="weather-forecast-empty" id="home-weather-forecast-empty">Hourly forecast unavailable</p>'+
-      (mobile?'<button type="button" class="weather-forecast-retry" id="home-weather-forecast-retry" onclick="weatherRefresh({force:true,reason:\'forecast-retry\'})" hidden>Refresh forecast</button>':'')+
-    '</div>'+(inHero&&!mobile?'</details>':'')+
+      '<button type="button" class="weather-forecast-retry" id="home-weather-forecast-retry" onclick="weatherRefresh({force:true,reason:\'forecast-retry\'})" hidden>Refresh forecast</button>'+
+    '</div></div>'+
   '</div>';
 }
 // ── Credit card tracker (Home card + Budget input) ───────────────
@@ -21658,6 +21689,7 @@ function daysUntil(targetDay,today){
 // Chrome only. Emoji the USER typed (note titles, recipe names, the per-subscription emoji
 // field) are content and are left alone.
 const CARD_ICONS={
+  home:'<path d="m3 10 9-7 9 7M5 9v11h5v-6h4v6h5V9"/>',
   wallet:'<path d="M17 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6"/><circle cx="16.5" cy="13.5" r="1.1"/>',
   bank:'<path d="M3 21h18M5 10v11M19 10v11M9.5 10v11M14.5 10v11M4 10h16L12 4z"/>',
   scale:'<path d="M12 4v16M7 20h10M4 7h16M7 7l-3 6a3 3 0 0 0 6 0zM17 7l-3 6a3 3 0 0 0 6 0z"/>',
@@ -22361,7 +22393,7 @@ function buildHomeMegaHero(cards,visible,mode,brief){
   }
   return '<section class="home-mega home-daily-briefing home-briefing-count-'+ids.length+(ids.includes('weather')?' has-weather':'')+
     (ids.some(id=>id!=='weather')?' has-main':'')+'" aria-label="Your day at a glance">'+
-    '<header class="home-briefing-header"><strong>Your day at a glance</strong><span>'+escText(brief?brief.date:'')+'</span></header>'+
+    '<header class="home-briefing-header"><strong>Your day at a glance</strong>'+(ids.includes('weather')?'':'<span>'+escText(brief?brief.date:'')+'</span>')+'</header>'+
     ids.map(id=>'<div class="home-mega-'+id+'" data-hero-section="'+id+'">'+
       (id==='weather'?'<div class="home-weather-window">'+cards[id]+'</div>':id==='session'&&brief&&typeof homeDesktopTraining==='function'?homeDesktopTraining(brief):cards[id])+'</div>').join('')+
     (ids.includes('budget')?'<div class="home-mega-footer">'+
@@ -23696,6 +23728,7 @@ function showWhatsNew(fromVersion, toVersion){ /* onboarding-step nudge — not 
 // WHATS_NEW_VERSION counter (not OB_VERSION) so everyday fixes/features can trigger it without
 // onboarding needing to change. Brand-new users are seeded caught-up in finishOnboarding().
 function checkWhatsNew(){
+  if(typeof dailyUpdatePopupCheck==='function'){dailyUpdatePopupCheck();return;}
   // Only for an existing (named) user. A brand-new user is mid-onboarding on this same load
   // (checkOnboarding just opened it) and gets seeded caught-up in finishOnboarding, so the
   // popup must never fire over/right after onboarding.
