@@ -91,5 +91,6 @@ test('desktop keeps the existing three-section hero even when supplied the phone
   const ctx=fixture();
   const html=ctx.buildHomeMegaHero({session:'Original workout',budget:'Original budget',weather:'Original weather'},['session','budget','weather'],'desktop',brief);
   assert.match(html,/Original workout/);assert.match(html,/Original budget/);assert.match(html,/Original weather/);
-  assert.doesNotMatch(html,/home-brief|home-weather-standalone/);
+  assert.doesNotMatch(html,/home-brief-body|home-weather-standalone/);
+  assert.match(html,/home-daily-briefing/);
 });

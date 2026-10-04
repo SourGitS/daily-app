@@ -382,7 +382,8 @@
 // v368: hide the phone forecast to reveal its scenery without resizing the hero.
 // v369: empty personal Finance defaults, consistent recurring amounts, fortnightly pay/bills,
 // and reliable light/dark onboarding logo artwork.
-const CACHE_NAME = 'daily-v369';
+// v370: account-scoped storage, dated budget periods, release banner and compact desktop briefing.
+const CACHE_NAME = 'daily-v370';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
@@ -402,6 +403,9 @@ const ASSETS = [
   './css/brand.css',
   './css/home-hero.css',
   './js/app.js',
+  './js/account-storage.js',
+  './js/finance-periods.js',
+  './css/finance-periods.css',
   './js/nutrition.js',
   // Runtime brand assets only. The masters, the export script and the ZIP under
   // assets/brand/refined/ are sources, not application assets, and are never precached.

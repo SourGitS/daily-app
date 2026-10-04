@@ -92,7 +92,11 @@ function updateHeaderAvatar(){
 }
 // Boot AND cloud-apply are both suppressed: a render triggered by an incoming snapshot must
 // not write the value it has just received straight back up as if the user had edited it.
-function syncProfileToFirebase(){ if(_bootPhase||_syncApplying) return; const r=fbRef('profile'); if(r) r.set(profileData); }
+function syncProfileToFirebase(){
+  if(_bootPhase||_syncApplying) return;
+  const r=fbRef('profile');
+  if(r) r.transaction(old=>({...profileData,budgetRhythmSeen:Math.max(Number(old&&old.budgetRhythmSeen)||0,Number(profileData.budgetRhythmSeen)||0),homeCustomiseSeen:Math.max(Number(old&&old.homeCustomiseSeen)||0,Number(profileData.homeCustomiseSeen)||0)}));
+}
 function syncPersonalInfoToFirebase(){ if(_bootPhase||_syncApplying) return; const r=fbRef('personalInfo'); if(r) r.set(S.personalInfo); }
 function syncBudDefaultsToFirebase(){ if(_bootPhase||_syncApplying) return; const r=fbRef('budgetDefaults'); if(r) r.set(budDefaults); }
 // When the caller knows which week changed, write ONLY that week's node — a device
@@ -373,6 +377,7 @@ function haptic(pattern){ try{ if(navigator.vibrate) navigator.vibrate(pattern);
 // the firebaseReady/auth/currentUser/db guard every cloud write repeated verbatim.
 function fbRef(path){
   if(!firebaseReady||!auth||!auth.currentUser||!db) return null;
+  if(typeof dailyAccountMatches==='function'&&!dailyAccountMatches(auth.currentUser)) return null;
   return db.ref('users/'+auth.currentUser.uid+'/'+path);
 }
 // One-shot reconcile for a simple object/array store on sign-in: if the cloud has a
@@ -426,9 +431,10 @@ if(firebaseReady){
   // Detach FIRST, before anything for the new account is attached. This runs on sign-out and
   // on an account switch alike, so no listener can outlive the account it was opened for.
   syncDetachAll();
+  if(typeof dailySwitchAccount==='function'&&dailySwitchAccount(user)){ firebaseReady=false; return; }
   let piRef, savRef, habitsRef, budDataRef, incCatRef, fixCatRef, varCatRef, ccRef;
   if(user){
-
+    const profileNeedsRestore=!(profileData.name||'').trim();
     dbRef = syncTrack(db.ref('users/'+user.uid+'/sessions'));
     wtAttachRecords(dbRef,'wt_sessions','id',records=>{
       _cloudApplied.sessions=true;
@@ -530,9 +536,20 @@ if(firebaseReady){
 
     // Sync profile
     fbReconcile('profile','daily_profile',
-      ()=>profileData, v=>{ profileData=v||{}; },
+      ()=>profileData, v=>{ profileData={...(v||{}),budgetRhythmSeen:Math.max(Number(profileData.budgetRhythmSeen)||0,Number(v&&v.budgetRhythmSeen)||0),homeCustomiseSeen:Math.max(Number(profileData.homeCustomiseSeen)||0,Number(v&&v.homeCustomiseSeen)||0)}; },
       ()=>{ renderAccountSection(); renderHome(); });
 
+    ['budgetRhythmSeen','homeCustomiseSeen'].forEach(key=>{
+      const flagRef=syncTrack(db.ref('users/'+user.uid+'/profile/'+key));
+      flagRef.on('value',snap=>{
+        if(!(auth.currentUser&&auth.currentUser.uid===user.uid))return;
+        if(Number(snap.val())>(Number(profileData[key])||0)){
+          profileData[key]=Number(snap.val());localStorage.setItem('daily_profile',JSON.stringify(profileData));
+          if(typeof dailyUpdateRefresh==='function')dailyUpdateRefresh();
+          if(typeof homeCustomiseHint==='function')homeCustomiseHint();
+        }
+      });
+    });
     // Sync budget defaults
     fbReconcile('budgetDefaults','daily_budget_defaults',
       ()=>budDefaults, v=>{ budDefaults=v||{}; },
@@ -682,9 +699,11 @@ if(firebaseReady){
     // The imported financial ledger. Registered through syncBlobListen like every other blob
     // store, which is also what puts it in SYNC_BLOB_REG and therefore in restorePushToCloud();
     // exportAllData() picks it up automatically because the key starts with daily_.
+    syncBlobListen(user.uid,'budgetCycles','daily_budget_cycles',()=>{ if(typeof budPeriodRefresh==='function') budPeriodRefresh(); });
     syncBlobListen(user.uid,'ledger','daily_ledger',()=>{
       try{ ledgerData=loadLedger(); }catch(e){}
-      if(S.view==='budget'&&typeof renderBudgetTab==='function') renderBudgetTab();
+      if(typeof budPeriodRefresh==='function') budPeriodRefresh();
+      else if(S.view==='budget'&&typeof renderBudgetTab==='function') renderBudgetTab();
     });
     syncBlobListen(user.uid,'transactions','daily_transactions',()=>{
       try{ txnData=loadTxns(); }catch(e){}
@@ -767,7 +786,10 @@ if(firebaseReady){
         if(!(auth.currentUser&&auth.currentUser.uid===user.uid)) return;
         if(_cloudApplied.sessions&&_cloudApplied.weights){
           _cloudWorkoutReady=true;
+          if(typeof dailyResumeOnboardingDraft==='function')dailyResumeOnboardingDraft(user.uid,!!(profileData.name||'').trim()||profileData.onboardingVersion>=OB_VERSION);
+          if(profileNeedsRestore&&profileData.onboardingVersion>=OB_VERSION&&typeof obCurrentStep==='function'&&obCurrentStep()==='welcome')obDismiss();
           setSyncStatus('Synced ✓');
+          if(typeof dailyUpdateRefresh==='function') dailyUpdateRefresh();
         } else setTimeout(ready,150);
       };
       ready();
@@ -2543,7 +2565,7 @@ const NAV_TREE=[
   {id:'money', label:'Finance', rows:[
     // Keep the labels and order aligned with the Finance tabs in BUD_VIEWS.
     {id:'bud-overview', label:'Overview',   view:'budget',   sub:'overview'},
-    {id:'bud-week',   label:'Week',          view:'budget',   sub:'week'},
+    {id:'bud-week',   label:'Budget',          view:'budget',   sub:'week'},
     {id:'bud-plan',   label:'Plan',          view:'budget',   sub:'plan'},
     {id:'bud-bills',  label:'Bills',         view:'budget',   sub:'bills'},
     {id:'accounts',   label:'Accounts',      view:'budget',   sub:'accounts'},
@@ -7349,7 +7371,7 @@ function aiResolveRange(kind, from, to){
 // OFF — a note is free text about people and plans, a different kind of disclosure from a
 // spending total.
 const AI_SCOPES=[
-  {id:'budget',        label:'Budget',        hint:'Weekly income, spending, savings and targets'},
+  {id:'budget',        label:'Budget',        hint:'Current budget period and legacy weekly history'},
   {id:'transactions',  label:'Transactions',  hint:'Individual purchases with merchant and note'},
   {id:'subscriptions', label:'Recurring charges', hint:'Subscriptions, bills and payment plans'},
   {id:'accounts',      label:'Accounts',      hint:'Balances, net worth and debt position', sensitive:true},
@@ -7958,7 +7980,10 @@ function buildDailyContext(options){
   const scopes=(Array.isArray(o.scopes)?o.scopes:[]).filter(s=>AI_SCOPES.some(x=>x.id===s));
   const has=id=>scopes.indexOf(id)>=0;
   const data={};
-  if(has('budget'))        data.budget=aiBudgetScope(range);
+  if(has('budget')){
+    data.budget=aiBudgetScope(range);
+    if(typeof budPeriodMoney==='function'&&budPeriodMoney())data.budget.currentPeriod=budPeriodExport();
+  }
   if(has('transactions')){
     data.transactions=aiTransactionsScope(range);
     // Rides with Transactions rather than being a scope of its own: a correction or a
@@ -8052,6 +8077,8 @@ function renderDailyContextMarkdown(ctx){
 
   // ── Budget ──
   if(d.budget){
+    if(d.budget.currentPeriod){const p=d.budget.currentPeriod;push('## Current budget period',p.start+' → '+p.end+' (separate from the selected calendar report range)',JSON.stringify(p),'');}
+
     const b=d.budget;
     push('## Budget','');
     const tRows=[];
@@ -11155,17 +11182,18 @@ const INC_PAY_CYCLES=[
   {id:'weekly',label:'Weekly'},
   {id:'fortnightly',label:'Fortnightly'},
   {id:'monthly',label:'Monthly'},
+  {id:'semimonthly',label:'Twice monthly'},
   {id:'irregular',label:'Irregular / no fixed schedule'}
 ];
 function incomePayCycle(c){ return c&&c.payCycle||'weekly'; }
 function incomePayHint(c){
   const cycle=incomePayCycle(c), amount=parseFloat(c&&c.payAmount);
-  const weekly=cycle!=='irregular'&&!isNaN(amount)?catWeeklyFromAmount(amount,cycle):null;
-  return (weekly!=null?'≈ '+fmtMoneyExact(weekly)+'/week · ':'')+'For reference; record received income in Week';
+  const weekly=cycle!=='irregular'&&!isNaN(amount)?(cycle==='semimonthly'?amount*24/52:catWeeklyFromAmount(amount,cycle)):null;
+  return (weekly!=null?'≈ '+fmtMoneyExact(weekly)+'/week · ':'')+'For reference; record received income in Budget';
 }
 function incomePayDateHint(c){
   const next=incomeNextPay(c);
-  return next?'Next: '+fmtDate(dateStr(next)):'Set a date from your pay cycle';
+  return next?'Next: '+fmtDate(dateStr(next)):incomePayCycle(c)==='semimonthly'?'Choose a pay date and a different second day of the month':'Set a date from your pay cycle';
 }
 function incomeNextPay(c, fromDate){
   if(!c||!INC_PAY_CYCLES.some(o=>o.id===incomePayCycle(c))||incomePayCycle(c)==='irregular') return null;
@@ -11173,6 +11201,7 @@ function incomeNextPay(c, fromDate){
   if(c.payDate){
     const anchor=localMidnight(c.payDate);
     if(isNaN(anchor.getTime())||dateStr(anchor)!==c.payDate) return null;
+    if(incomePayCycle(c)==='semimonthly') return incomeTwiceMonthlyNext(c,from);
     return catNextDue({cycle:incomePayCycle(c),dueDate:c.payDate},from);
   }
   if(incomePayCycle(c)!=='weekly') return null;
@@ -12020,6 +12049,9 @@ function getBudWeekData(key){
   };
 }
 function getMonthDate(offset){
+  if(typeof budPeriodActive==='function'&&budPeriodActive()){
+    const today=localMidnight(getLocalDate());return new Date(today.getFullYear(),today.getMonth()+offset,1);
+  }
   // Anchor to the current week's Monday so the default month matches where the latest
   // week data lives (e.g. if today is Wed Jul 2, Monday was Jun 29 → default month = June).
   const mon=getMondayOf(0);
@@ -12516,6 +12548,7 @@ function openBudgetWeekFromStats(key){
   const cur=getMondayOf(0), target=localMidnight(key);
   currentWeekIdx=Math.round((target-cur)/(7*864e5));
   budgetView='week'; budPastEdit=false;
+  if(typeof budLegacyOpen!=='undefined') budLegacyOpen=true;
   if(returnView==='budget') setBudgetView('week');
   else setView('budget');
   showSourceReturn(returnView,returnTab);
@@ -14295,6 +14328,7 @@ function budOvAccountsHtml(){
 // never compared against a complete previous one: monthSpendComparison() slices the earlier
 // month to the same number of recorded weeks and says so in its own text.
 function budOvMonthHtml(){
+  if(typeof budPeriodActive==='function'&&budPeriodActive())return budCalendarMonthHtml(getMonthDate(0));
   const monthDate=getMonthDate(0);
   // openBudgetCurrentMonth(), not setBudgetView('plan'): this card is labelled "This month"
   // and states the current month's figures, so its action has to open that month rather than
@@ -14392,6 +14426,7 @@ function budOvHeroHtml(m){
 // which gives the required reading order (position → attention → coming up → accounts →
 // month) with no CSS `order` and no second copy of the markup.
 function renderBudgetOverview(){
+  if(typeof budPeriodOverview==='function'&&budPeriodOverview()) return;
   const wrap=document.getElementById('budget-overview-view'); if(!wrap) return;
   const monday=getMondayOf(0);
   const key=weekKey(monday);
@@ -14412,6 +14447,7 @@ function renderBudgetOverview(){
 // when there is neither a scheduled bill nor a named income source, rather than showing
 // placeholder figures for a setup that does not exist.
 function buildFinanceCheckinCard(){
+  if(typeof budPeriodActive==='function'&&budPeriodActive()) return budPeriodCheckin();
   const today=localMidnight(getLocalDate());
   const horizon=new Date(today.getFullYear(), today.getMonth()+3, 0);
   const next=billOccurrences(today, horizon)[0]||null;
@@ -15030,6 +15066,8 @@ function restoreBudgetCollapseState(){
 }
 
 function renderBudgetTab(){
+  if(typeof budPeriodRender==='function') budPeriodRender();
+  if(typeof dailyUpdateRefresh==='function') dailyUpdateRefresh();
   const monday=getMondayOf(currentWeekIdx);
   const key=weekKey(monday);
   const data=getBudWeekData(key);
@@ -15183,6 +15221,7 @@ function renderBudgetConfig(){
             '<div class="bud-row-left"><div class="bud-row-name">'+_catEscHtml(name)+' pay date</div><div class="bud-row-budget" id="bud-paynext-'+c.id+'">'+incomePayDateHint(c)+'</div></div>'+
             '<input class="bud-row-input" type="date" id="bud-paydate-'+c.id+'" aria-label="'+_catEsc(name)+' pay date" style="width:160px" value="'+_catEsc(c.payDate||'')+'" onchange="budSaveConfig()">'+
           '</div>')+
+          (cycle==='semimonthly'?'<div class="bud-row"><div class="bud-row-left"><div class="bud-row-name">Second payday of each month</div><div class="bud-row-budget">Two calendar dates, not every 14 days. Dates beyond a month’s end use its last day.</div></div><input class="bud-row-input" type="number" min="1" max="31" id="bud-paysecond-'+c.id+'" aria-label="Second payday of month" value="'+(c.paySecondDay||'')+'" onchange="budSaveConfig()"></div>':'')+
           (cycle==='weekly'&&!c.payDate?'<div class="bud-row">'+
             '<div class="bud-row-left"><div class="bud-row-name">'+_catEscHtml(name)+' pay day</div></div>'+
             '<select class="bud-row-input" id="bud-payday-'+c.id+'" style="width:140px;text-align:left;padding:0 8px;-webkit-appearance:menulist;appearance:menulist" onchange="budSaveConfig()">'+dayOpts(getPayDay(c.id))+'</select>'+
@@ -15214,6 +15253,8 @@ function budSaveConfig(){
     if(cycleEl&&INC_PAY_CYCLES.some(o=>o.id===cycleEl.value)) c.payCycle=cycleEl.value;
     const dateEl=document.getElementById('bud-paydate-'+c.id);
     if(dateEl) c.payDate=dateEl.value;
+    const secondEl=document.getElementById('bud-paysecond-'+c.id);
+    if(secondEl) c.paySecondDay=secondEl.value===''?'':Math.max(1,Math.min(31,parseInt(secondEl.value)||1));
     const amountEl=document.getElementById('bud-payamount-'+c.id);
     if(amountEl) c.payAmount=amountEl.value===''?'':Math.max(0,parseFloat(amountEl.value)||0);
     if(oldCycle!==incomePayCycle(c)||hadDate!==!!c.payDate) rebuild=true;
@@ -16000,6 +16041,7 @@ function renderMonth(){
         '</div>'
       : '';
   }
+  if(typeof budCalendarReport==='function')budCalendarReport('budget-month-view','month',getMonthDate(currentMonthOffset));
 }
 
 // ── Budget › Plan: next 12 months of scheduled bills ──────────────
@@ -16103,6 +16145,7 @@ function budPlanClearYearCharts(){
   if(yearCCChart){ yearCCChart.destroy(); yearCCChart=null; }
 }
 function renderPlan(){
+  if(typeof budPeriodReport==='function') budPeriodReport('budget-plan-view');
   budPlanApplyLens();
   if(!layoutIsDesktop()){
     if(budgetPlanLens==='month'){
@@ -16369,6 +16412,7 @@ function renderYear(){
       });
     }
   }
+  if(typeof budCalendarReport==='function')budCalendarReport('budget-year-view','year');
 }
 
 // ── Budget trends ─────────────────────────────────────────────────
@@ -16611,6 +16655,7 @@ function renderBudgetStats(){
   renderBSBalance();
   renderBSAccountGrowth();
   renderBSCatBreakdown();
+  if(typeof budStatsCompose==='function')budStatsCompose();
 }
 
 // ── Stats → Finance: ONE range for the whole budget-derived analysis ─────────
@@ -16697,7 +16742,7 @@ function renderBSFinRange(){
   const sum=bsFinSummary(bsFinRangeKeys());
   wrap.innerHTML='<div class="bs-finrange">'+
     '<div class="bs-finrange-l">'+
-      '<span class="stats-kicker">Financial analysis</span>'+
+      '<span class="stats-kicker">Weekly history analysis</span>'+
       '<span class="bs-finrange-cov">One range for the picture, the money-flow chart and the category breakdown</span>'+
     '</div>'+
     statsSeg('bsfin',BS_FIN_RANGES,bsFinRange,'setBSFinRange')+
@@ -17282,10 +17327,11 @@ function renderStatsOverview(){
   const cal=statsCalorieCoverage(7);
   const weeks=statsCompletedWeeks();
   const lastWeek=weeks.length?weeks[weeks.length-1]:null;
-  const lastSpend=lastWeek?statsWeekSpending(budgetData[lastWeek],lastWeek):null;
+  const periodMode=typeof budPeriodActive==='function'&&budPeriodActive();
+  const lastSpend=periodMode?budRecordedSpend(budDateAdd(P.to,-6),P.to):lastWeek?statsWeekSpending(budgetData[lastWeek],lastWeek):null;
   const lastQuality=lastWeek?statsWeekSpendQuality(budgetData[lastWeek],lastWeek):null;
   const lastTarget=lastWeek?parseFloat(budgetData[lastWeek].statsSnapshot&&budgetData[lastWeek].statsSnapshot.totalTarget):NaN;
-  const planComparable=!!lastWeek&&!lastQuality.ambiguousLegacyVariable&&!isNaN(lastTarget)&&lastTarget>0;
+  const planComparable=!periodMode&&!!lastWeek&&!lastQuality.ambiguousLegacyVariable&&!isNaN(lastTarget)&&lastTarget>0;
   const nw=statsNetWorth();
 
   // ── Hero summary: the four highest-order facts, each naming its own window ──
@@ -17299,7 +17345,7 @@ function renderStatsOverview(){
     {tab:'nutrition',l:'Calories logged',v:cal.logged.length+' / 7',u:'days',
      s:cal.avg!==null?cal.avg.toLocaleString()+' kcal average':'Nothing logged in this window',cls:''},
     {tab:'finance',l:'Last week spend',v:lastSpend===null?'—':fmtMoney(Math.round(lastSpend)),u:'',
-     s:lastWeek?(planComparable?(lastSpend<=lastTarget?'Under':'Over')+' plan by '+fmtMoney(Math.abs(lastSpend-lastTarget)):'No saved plan for that week'):'No completed week',
+     s:periodMode?'Recorded payments · last completed calendar week':lastWeek?(planComparable?(lastSpend<=lastTarget?'Under':'Over')+' plan by '+fmtMoney(Math.abs(lastSpend-lastTarget)):'No saved plan for that week'):'No completed week',
      cls:planComparable?(lastSpend<=lastTarget?'up':'down'):''}
   ].map(c=>'<button type="button" class="ov-hs" onclick="setStatsTab(\''+c.tab+'\')">'+
       '<span class="ov-hs-label">'+c.l+'</span>'+
@@ -17390,7 +17436,9 @@ function renderStatsOverview(){
 
   // ── Finance block ──
   let finBody;
-  if(!lastWeek&&(!nw||!nw.covered)){
+  if(periodMode){
+    finBody=budCalendarFactsHtml(P.from,P.to,'Last 4 completed weeks');
+  }else if(!lastWeek&&(!nw||!nw.covered)){
     finBody='<div class="ov-empty">No completed budget week and no comparable account balances yet.</div>';
   }else{
     let weekPart='';
@@ -17990,7 +18038,9 @@ function wkrPendingWeek(){
 function wkrMoneyActuals(week, plan){
   const p=plan||wkrPlan;
   const d=budgetData[week]||null;
-  const parts=statsWeekParts(d,week);
+  const periodMode=typeof budPeriodActive==='function'&&budPeriodActive();
+  const dated=periodMode?budRecordedRange(week,budDateAdd(week,6)):null;
+  const parts=dated?{fixed:dated.billPaid,variable:dated.spent,total:dated.billPaid+dated.spent}:statsWeekParts(d,week);
   const maps=p.money.categoryMappings||{};
   const claimed=new Set();
   WKR_VAR_GROUPS.forEach(g=>(maps[g.id]||[]).forEach(id=>claimed.add(id)));
@@ -18014,6 +18064,11 @@ function wkrMoneyActuals(week, plan){
   groupCats.fixedBills=fixDefs.map(c=>({id:c.id,label:c.label,amount:statsFixedCatAmount(d,c.id)}))
     .filter(x=>x.amount).sort((a,b)=>b.amount-a.amount);
 
+  if(dated){
+    const paid={};dated.rows.filter(x=>x.kind==='bill_payment').forEach(x=>{paid[x.fixCatId]=(paid[x.fixCatId]||0)+Number(x.amount||0);});
+    groupCats.fixedBills=Object.entries(paid).map(([id,amount])=>({id,label:loadFixCats().find(c=>c.id===id)?.name||'Recorded bill',amount}));
+  }
+
   // Income, split into what the plan calls regular and what it calls irregular. weekIncome()
   // stays the authority on the TOTAL — if the itemised rows do not add up to it (a legacy week
   // whose only surviving figure is an aggregate), the difference is shown as unitemised rather
@@ -18026,7 +18081,7 @@ function wkrMoneyActuals(week, plan){
     return {id, label:c?catLabel(c):'Uncategorised / archived',
       amount:wkrNum((d||{})[k],0), irregular:irregular.has(id), archived:!!(c&&catIsArchived(c))};
   }).filter(r=>r.amount);
-  const incomeTotal=weekIncome(d);
+  const incomeTotal=dated?dated.income:weekIncome(d);
   const itemised=incomeRows.reduce((s,r)=>s+r.amount,0);
   const unitemised=Math.round((incomeTotal-itemised)*100)/100;
   if(Math.abs(unitemised)>=0.01)
@@ -18036,16 +18091,16 @@ function wkrMoneyActuals(week, plan){
   const regularIncome=incomeRows.filter(r=>!r.irregular).reduce((s,r)=>s+r.amount,0);
   const irregularIncome=incomeRows.filter(r=>r.irregular).reduce((s,r)=>s+r.amount,0);
 
-  const saved=weekSavedAmt(d);
+  const saved=dated?0:weekSavedAmt(d);
   return {
-    week, hasData:!!d,
+    week, hasData:!!d||!!dated, periodMode:!!dated,
     incomeTotal, regularIncome, irregularIncome, incomeRows,
-    incomeKnown:statsWeekIncomeKnown(d),
+    incomeKnown:!!dated||statsWeekIncomeKnown(d),
     groups, groupCats,
     fixed:parts.fixed, variable:parts.variable, spendTotal:parts.total,
     fromSnapshot:parts.fixedFromSnapshot||parts.variableFromSnapshot,
     quality:statsWeekSpendQuality(d,week),
-    saved, leftover:weekLeftover(d)
+    saved, leftover:dated?Math.round((incomeTotal-parts.total)*100)/100:weekLeftover(d)
   };
 }
 // Planned side of the comparison, read from whichever plan applies to this review: a completed
@@ -18774,7 +18829,7 @@ function wkrMoneySectionHtml(week, rec, plan){
     '<div class="wkr-total"><span class="wkr-total-l">Total spent</span>'+
       '<span class="wkr-total-v">'+fmtMoneyExact(m.spendTotal)+'</span></div>'+
     '<div class="wkr-help">Fixed '+fmtMoneyExact(m.fixed)+' + variable '+fmtMoneyExact(m.variable)+
-      '. These are the same figures Finance › Week and Stats › Finance show for this week.'+
+      (m.periodMode?'. Recorded payments within this calendar week; scheduled bills and budget reserves are excluded.':'. These are the original figures in Finance › Budget › Weekly history.')+
       (m.fromSnapshot?' Part of this week only survives as a saved total, so it has no category detail.':'')+
       (m.quality.ambiguousLegacyVariable?' This week has both a legacy total and transactions; Finance treats the transactions as authoritative.':'')+
     '</div>'+
@@ -18782,7 +18837,10 @@ function wkrMoneySectionHtml(week, rec, plan){
 
   // Savings and what was left. weekLeftover() is the canonical figure — the review does not
   // define its own version of "money left over".
-  const savedCard='<div class="card">'+cardHeader('pot','Savings and what was left')+
+  const savedCard=m.periodMode?'<div class="card">'+cardHeader('pot','Recorded weekly cash flow')+
+    wkrRow('Income received less payments',fmtMoneyExact(m.leftover),'Income minus purchases and paid bills within this calendar week')+
+    '<p class="wkr-help">This is not your remaining spending budget. A week without payday can be funded by an earlier payment in the same budget period. Bill reserves, savings allocations and carry-over stay in Finance › Budget.</p></div>':
+    '<div class="card">'+cardHeader('pot','Savings and what was left')+
     wkrPvRow('Savings', p.savings, m.saved, {higherIsBetter:true})+
     wkrPvRow('Safety buffer / left over', p.buffer, m.leftover, {higherIsBetter:true,
       sub:'Money in, less everything spent and saved.'})+
@@ -19274,8 +19332,8 @@ function wkrWeekSummaryHtml(week,rec,plan){
   const figs=m.hasData
     ? [['Income', m.incomeKnown?fmtMoneyExact(m.incomeTotal):'Not recorded'],
        ['Spending', fmtMoneyExact(m.spendTotal)],
-       ['Saved', fmtMoneyExact(m.saved)],
-       ['Left over', m.incomeKnown?fmtMoneyExact(m.leftover):'—']]
+       ...(m.periodMode?[]:[['Saved', fmtMoneyExact(m.saved)]]),
+       [m.periodMode?'Recorded cash flow':'Left over', m.incomeKnown?fmtMoneyExact(m.leftover):'—']]
     : [];
   return '<div class="card wkr-sum-card">'+
     cardHeader('wallet','Selected week',chip)+
@@ -19980,8 +20038,9 @@ function buildWeekSummaryCard(){
   const wNow=new Set(S.sessions.filter(s=>inRange(s.date,mondayStr,sundayStr)).map(s=>s.date)).size;
   const wPrev=new Set(S.sessions.filter(s=>inRange(s.date,prevMonStr,prevSunStr)).map(s=>s.date)).size;
   // Spending: total outgoings for each week, from the same accessor the Budget tab uses.
-  const sNow=budgetData[mondayStr]?weekSpending(budgetData[mondayStr]):null;
-  const sPrev=budgetData[prevMonStr]?weekSpending(budgetData[prevMonStr]):null;
+  const periodOn=typeof budPeriodActive==='function'&&budPeriodActive();
+  const sNow=periodOn?budRecordedSpend(mondayStr,sundayStr):budgetData[mondayStr]?weekSpending(budgetData[mondayStr]):null;
+  const sPrev=periodOn?budRecordedSpend(prevMonStr,prevSunStr):budgetData[prevMonStr]?weekSpending(budgetData[prevMonStr]):null;
   // Calories: daily average across the days actually logged in each week. calorieHistory is a
   // flat {date: total} map, so this is a read — no new tracking.
   const avgCals=(a,b)=>{
@@ -22165,10 +22224,19 @@ function renderHome(){
   };
   // Ordered + visibility-filtered widget list; skip widgets whose HTML is empty right now
   // (e.g. Recent Workout before any session exists) so edit mode has no invisible boxes.
+  if(typeof budPeriodHomeCard==='function'){
+    const periodCard=budPeriodHomeCard();
+    if(periodCard) homeCards.budget=periodCard;
+    const money=budPeriodMoney();if(money){
+      budLeft=money.available;
+      homeCards.tiles=budPeriodAllocationsCard(money,payDayTiles);
+    }
+  }
+  if(typeof homeCustomiseHint==='function') homeCustomiseHint();
   const _homeLayout=homeLayout(_homeMode);
   const _visibleIds=effectiveHomeWidgetIds(homeCards,_homeMode).filter(k=>homeCards[k]);
   const _homeIds=homeRegularWidgetIds(_visibleIds,_homeMode);
-  const _mega=buildHomeMegaHero(homeCards,_visibleIds,_homeMode,{
+  const _mega=(typeof dailyUpdateBannerHtml==='function'?'<div id="home-update-announcement">'+dailyUpdateBannerHtml()+'</div>':'')+buildHomeMegaHero(homeCards,_visibleIds,_homeMode,{
     title:mBrief.dayName,eyebrow:heroEyebrow,action:heroActLabel,date:heroDateLabel,
     meta:heroMeta+(mBrief.state==='inprogress'?' · '+mDone+' done':''),remaining:budLeft
   });
@@ -22245,8 +22313,13 @@ function homeOpenBudgetWeek(){
 }
 function homeBriefRows(visible,remaining){
   const rows=[];
+  const period=typeof budPeriodMoney==='function'?budPeriodMoney():null;
+  if(typeof budPeriodMoney==='function'&&!period&&visible.includes('budget'))rows.push({run:'budPeriodSetup()',title:'Choose your budget dates',detail:'Weekly, fortnightly or monthly',text:'Set up your budget period'});
+  if(period&&visible.includes('budget')){
+    rows.push({run:'homeOpenBudgetWeek()',title:period.available===null?'Set up your budget':fmtMoneyExact(Math.abs(period.available))+(period.available<0?' over budget':' left'),detail:budPeriodLabel(period.range),text:'Budget · '+budPeriodLabel(period.range)});
+  }
   if(visible.includes('budget')){
-    rows.push({run:'homeOpenBudgetWeek()',title:remaining===null?'No income recorded':fmtMoneyExact(Math.abs(remaining))+(remaining<0?' over budget':' left'),detail:'This week',text:remaining===null
+    if(typeof budPeriodMoney!=='function') rows.push({run:'homeOpenBudgetWeek()',title:remaining===null?'No income recorded':fmtMoneyExact(Math.abs(remaining))+(remaining<0?' over budget':' left'),detail:'This week',text:remaining===null
       ?'No income recorded this week'
       :fmtMoneyExact(Math.abs(remaining))+(remaining<0?' over budget':' left this week')});
     const win=budTimelineWindow(),bill=billOccurrences(win.from,win.to)[0];
@@ -22286,10 +22359,11 @@ function buildHomeMegaHero(cards,visible,mode,brief){
       (ids.includes('session')?'<div data-hero-section="session">'+(brief?buildHomeMobileBrief(brief,visible):cards.session)+'</div>':'')+
       (ids.includes('weather')?'<div class="home-mega-weather" data-hero-section="weather"><div class="home-weather-window">'+cards.weather+'</div></div>':'')+'</section>';
   }
-  return '<section class="home-mega'+(ids.includes('weather')?' has-weather':'')+
+  return '<section class="home-mega home-daily-briefing home-briefing-count-'+ids.length+(ids.includes('weather')?' has-weather':'')+
     (ids.some(id=>id!=='weather')?' has-main':'')+'" aria-label="Your day at a glance">'+
+    '<header class="home-briefing-header"><strong>Your day at a glance</strong><span>'+escText(brief?brief.date:'')+'</span></header>'+
     ids.map(id=>'<div class="home-mega-'+id+'" data-hero-section="'+id+'">'+
-      (id==='weather'?'<div class="home-weather-window">'+cards[id]+'</div>':cards[id])+'</div>').join('')+
+      (id==='weather'?'<div class="home-weather-window">'+cards[id]+'</div>':id==='session'&&brief&&typeof homeDesktopTraining==='function'?homeDesktopTraining(brief):cards[id])+'</div>').join('')+
     (ids.includes('budget')?'<div class="home-mega-footer">'+
       '<button type="button" class="txn-quick" onclick="openTxnModal({date:getLocalDate()})"><span aria-hidden="true">＋</span> Add expense</button>'+'</div>':'')+'</section>';
 }
@@ -22480,7 +22554,7 @@ const HOME_WIDGETS=[
   // `tab` is shown under the card name in Settings › Home Layout — it names the DESTINATION
   // the card belongs to, which is Finance. The card labels themselves still say Budget where
   // they mean the weekly budget, which is the concept rather than the place.
-  {id:'budget',   label:'Weekly Budget',        tab:'Finance', preview:hlPrevBudget},
+  {id:'budget',   label:'Budget',        tab:'Finance', preview:hlPrevBudget},
   {id:'balance',  label:'Net Worth & Accounts', tab:'Finance', preview:hlPrevBalance},
   {id:'tiles',    label:'Money Quick Tiles',    tab:'Finance', preview:hlPrevTiles},
   // id stays 'notes' — it is persisted in the saved Home layout (order/wide/hidden), so
@@ -22527,8 +22601,8 @@ const HOME_DASH_COLS=[
 // never been arranged. An existing layout is partitioned from its own saved order instead
 // (homeDashPartition), so applying Dashboard rearranges nothing the user chose.
 const HOME_DASH_DEFAULT={
-  main:   ['session','habits','notes','kitchen','recent','prs','review'],
-  summary:['weather','calories','streak','budget','balance','weight','finance','tiles']
+  main:   ['session','review','notes','habits','kitchen','recent','prs'],
+  summary:['weather','budget','balance','calories','weight','streak','finance','tiles']
 };
 // A card this table has never heard of (a widget added after this release) lands in the
 // supporting column: it is the neutral bucket, and a new arrival cannot push its way into
@@ -22609,11 +22683,15 @@ function homeLayoutProfileNormalise(value,mode,sourceT){
 function homeLayoutsNormalise(value,sourceT){
   let raw=value;
   if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(e){ raw=null; } }
-  const legacyOrder=loadHomeOrder()||[];
+  const legacyValue=loadHomeOrder(),legacyOrder=legacyValue||[];
   if(raw&&raw.schemaVersion===2&&raw.mobile&&raw.desktop){
     return {schemaVersion:2,
       mobile:homeLayoutProfileNormalise(raw.mobile,'mobile',sourceT),
       desktop:homeLayoutProfileNormalise(raw.desktop,'desktop',sourceT)};
+  }
+  if(!raw&&legacyValue===null&&!(sourceT>0)){
+    return {schemaVersion:2,mobile:homeLayoutProfileNormalise({},'mobile',0),
+      desktop:homeLayoutProfileNormalise({composition:'dashboard',dashboard:HOME_DASH_DEFAULT},'desktop',0)};
   }
   const legacy=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
   const order=Array.isArray(legacy.order)?legacy.order:legacyOrder;
@@ -23072,7 +23150,7 @@ function renderHomeLayoutSection(){
       '<div class="seg-tabs seg-fill hl-seg" role="tablist" aria-label="Home layout profile">'+
         tab('mobile','iPhone')+tab('desktop','Desktop')+
       '</div>'+
-      '<p class="stg-help">'+(mode==='mobile'?'One compact overview brings together your workout and weather, with a visible Today / Week forecast. When Weekly Budget is shown, its summary also appears here; the full budget card keeps its position below.':'The Home hero groups your visible session, weekly budget and weather.')+' Show or hide each below. Other cards keep the layout chosen here.</p>'+
+      '<p class="stg-help">'+(mode==='mobile'?'One compact overview brings together your workout and weather, with a visible Today / Week forecast. When Budget is shown, its summary also appears here; the full budget card keeps its position below.':'The Home hero groups your visible workout, budget and weather.')+' Show or hide each below. Other cards keep the layout chosen here.</p>'+
       '<p class="hl-editing">You are editing the <strong>'+label+'</strong> layout'+
         (mode===layoutMode()?' — the device you are on now.':'. It applies when Daily is opened on '+
           (mode==='mobile'?'a phone.':'a desktop or laptop.'))+'</p>'+
@@ -24932,21 +25010,7 @@ function obAppearanceHTML(){
 // four list editors on one onboarding screen meant scrolling before you could continue,
 // and it asked for real work before the app had shown any value.
 function obBudgetHTML(){
-  const v=k=>obData[k]!==undefined&&obData[k]!==null?obData[k]:'';
-  const sav=obNum(obData.savings), varg=obNum(obData.varGoal);
-  const preview=(sav!==undefined&&sav>0)
-    ? '<div class="ob-pv-card ob-pv-wide"><div class="ob-pv-k">Savings target</div>'+
-      '<div class="ob-pv-fig">'+fmtMoney(sav)+'</div><div class="ob-pv-cap">per week \u00b7 '+fmtMoney(sav*52)+' a year</div></div>'
-    : '';
-  return '<div class="ob-head"><div class="ob-title">Money goals</div>'+
-      '<div class="ob-desc">Two numbers to start. Your income and fixed bills are set up inside Budget, where you can see them against a real week.</div></div>'+
-    '<div class="settings-field"><label for="ob-savings">Weekly savings target ($)</label>'+
-      '<input type="number" id="ob-savings" value="'+obEsc(v('savings'))+'" placeholder="e.g. 200" inputmode="decimal" oninput="obBudgetPreview()"></div>'+
-    '<div class="settings-field"><label for="ob-vargoal">Weekly spending cap ($) <span class="ob-opt">optional</span></label>'+
-      '<input type="number" id="ob-vargoal" value="'+obEsc(v('varGoal'))+'" placeholder="e.g. 450" inputmode="decimal" oninput="obBudgetPreview()"></div>'+
-    '<div id="ob-budget-preview">'+preview+'</div>'+
-    '<button class="ob-btn-primary" onclick="obNext()">Continue →</button>'+
-    '<button class="ob-btn-link" onclick="obSkipBudget()">Skip for now</button>';
+  return '<div class="ob-head"><div class="ob-title">Your budget, your rhythm</div><div class="ob-desc">Choose a budget that fits your life: weekly, fortnightly, monthly or your own dates.</div></div><div class="ob-pv-card ob-pv-wide"><h3>Set it up in Finance</h3><p>Each income source can have its own payday. Record money when it arrives, reserve for bills, and see what remains across your chosen dates.</p><p>Expected pay stays separate from received income. You can add income, bills and savings allocations after setup.</p></div><button class="ob-btn-primary" onclick="obNext()">Continue →</button>';
 }
 // The one place in the flow that asks for a system permission, and it earns it: the sample
 // card becomes the user's real sky the moment they allow it. Revealed inside Appearance by

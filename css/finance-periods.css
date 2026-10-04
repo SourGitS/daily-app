@@ -1,0 +1,79 @@
+.bp-hero{padding:28px;border:1px solid var(--border);border-radius:24px;background:var(--surface-card);margin-bottom:18px;color:var(--text)}
+.bp-eyebrow{font-size:11px;line-height:1.5;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.bp-amount{font:600 clamp(36px,5vw,60px)/1.2 var(--font-num);letter-spacing:-.04em;margin:10px 0;overflow-wrap:anywhere}
+.bp-hero p,.bp-start p{line-height:1.6}.bp-note{font-size:12px;line-height:1.6;color:var(--muted)}
+.bp-actions,.bp-navigation{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:18px}.bp-navigation{margin:0 0 16px}
+.bp-grid{display:grid;gap:18px;grid-template-columns:repeat(2,minmax(0,1fr))}.bp-grid>*,.bp-row>*{min-width:0}.bp-span{grid-column:1/-1}
+.bp-grid .card{margin:0}.bp-row{display:flex;align-items:center;gap:16px;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--border);font-size:14px}.bp-row>span{flex:1}.bp-row small{display:block;font-size:12px;color:var(--muted);line-height:1.5;margin-top:5px}.bp-row strong{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.bp-hero .card-split{margin-top:24px;flex-wrap:wrap;gap:16px}.bp-hero .card-split-v{font-size:22px}
+.bp-history{display:block;margin:22px 0;color:var(--muted);font-size:12px}.bp-history select{display:block;margin-top:8px;max-width:100%}.bp-legacy-toggle{margin:8px 0 24px}
+.bp-warning{border-left:3px solid var(--warn);padding-left:12px}.bp-report{margin-bottom:18px}
+.bp-calendar-legacy{margin:16px 0 24px}.bp-calendar-legacy>summary{cursor:pointer;padding:14px 0;min-height:44px;box-sizing:border-box;font-size:13px;font-weight:700;color:var(--muted)}
+.bp-stats-mode .stats-fin-main{grid-template-columns:minmax(0,1fr)}.bp-stats-mode .stats-fin-col:empty{display:none}
+.bp-dialog{color:var(--text);background:var(--surface-card);border:1px solid var(--border);border-radius:22px;width:min(520px,calc(100% - 32px));max-height:85dvh;overflow:auto;padding:24px;box-sizing:border-box}
+.bp-dialog::backdrop{background:rgba(0,0,0,.65)}.bp-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.bp-dialog h2{font-size:22px;margin:0}.bp-dialog-head button,.daily-update-close,#home-customise-hint button{background:none;border:0;color:inherit;min-width:44px;min-height:44px;font-size:24px;cursor:pointer}
+.bp-dialog p{line-height:1.6;font-size:13px}.bp-dialog label{display:block;font-size:13px;font-weight:600;margin:18px 0}.bp-dialog small{display:block;font-weight:400;color:var(--muted);margin:5px 0}
+.bp-dialog input,.bp-dialog select,.bp-history select{box-sizing:border-box;width:100%;font:inherit;padding:12px;margin-top:8px;min-height:44px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text)}
+#bp-error{color:var(--danger)}.bp-dialog .bp-actions{justify-content:flex-end;position:sticky;bottom:-24px;padding:14px 0;background:var(--surface-card)}
+.daily-update-banner{position:relative;display:flex;align-items:center;gap:24px;padding:24px 52px 24px 24px;margin:0 0 22px;border:1px solid var(--border);border-radius:24px;background:linear-gradient(115deg,rgba(var(--accent-rgb),.16),transparent),var(--surface-card);color:var(--text)}
+.daily-update-banner>svg{width:140px;flex:none;color:var(--accent-text)}.daily-update-banner h2{font-size:24px;letter-spacing:-.03em;margin:6px 0}.daily-update-banner p{font-size:13px;line-height:1.7;margin:0;max-width:70ch;color:var(--muted)}.daily-update-close{position:absolute;top:8px;right:8px}
+.home-customise-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:1600px;margin:0 auto 14px}.home-customise-bar #home-customise-hint{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.home-budget-add-labelled{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 16px;border:0;border-radius:12px;background:var(--accent-hero);color:#fff;font:700 12px var(--font-ui);cursor:pointer;margin-top:12px}
+.home-budget-card .home-budget-link,.home-budget-card .home-budget-spending,.home-budget-card .home-budget-spending strong{color:var(--text)}
+@media(min-width:1024px){
+  #view-home .home-daily-briefing,#view-home .home-daily-briefing.has-main.has-weather{--mega-muted:var(--muted);--mega-line:var(--border);display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1.15fr) minmax(0,1fr);grid-template-rows:auto auto;background:var(--surface-card);color:var(--text);border:1px solid var(--border);box-shadow:var(--surface-card-top);padding:0 12px 12px;gap:0;max-width:none}
+  #view-home .home-briefing-header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 16px 18px;font-size:15px}.home-briefing-header span{font-size:12px;color:var(--muted)}
+  #view-home .home-daily-briefing .home-mega-session,#view-home .home-daily-briefing .home-mega-budget,#view-home .home-daily-briefing .home-mega-weather{grid-column:auto;grid-row:2;min-width:0;padding:16px;align-self:stretch;border-radius:0}
+  #view-home .home-daily-briefing .home-mega-budget{border-left:1px solid var(--border)}
+  #view-home .home-daily-briefing .home-mega-session+.home-mega-budget::before{display:none}
+  #view-home .home-daily-briefing .home-mega-weather{padding:0 0 0 12px}
+  #view-home .home-daily-briefing .home-budget-card{background:none;box-shadow:none;padding:0;border:0;margin:0;display:flex;flex-direction:column;align-items:flex-start;height:100%;border-radius:0}
+  #view-home .home-daily-briefing .card-fig{color:var(--text);font-size:clamp(30px,3vw,44px)}
+  #view-home .home-daily-briefing .home-budget-spending strong{color:var(--text)}
+  #view-home .home-daily-briefing .home-budget-footer{width:100%;margin-top:auto}
+  #view-home .home-daily-briefing .card-bar{width:100%;background:var(--border)}
+  #view-home .home-daily-briefing .card-bar-fill{background:var(--accent-text)}
+  #view-home .home-daily-briefing .home-desktop-training{display:flex;flex-direction:column;align-items:flex-start;height:100%}
+  #view-home .home-daily-briefing .home-desktop-training h2{font-size:clamp(25px,2.4vw,38px);letter-spacing:-.04em;line-height:1.18;overflow-wrap:anywhere;margin:12px 0 8px}
+  #view-home .home-daily-briefing .home-desktop-training p{font-size:12px;line-height:1.6;color:var(--muted);margin:0}
+  #view-home .home-daily-briefing .home-training-strip{width:100%;margin-top:auto;padding-top:22px}
+  #view-home .home-daily-briefing .home-training-mark{width:22px;height:22px;border-radius:7px;background:var(--border);color:var(--text)}
+  #view-home .home-daily-briefing .home-training-day.trained .home-training-mark{background:var(--accent-hero);color:white}
+  #view-home .home-daily-briefing .home-training-day.today .home-training-mark{outline-color:var(--text);outline-width:1px;outline-offset:2px}
+  #view-home .home-daily-briefing .home-weather-card{padding:14px 16px 0;min-height:280px}
+  #view-home .home-daily-briefing .weather-heading{margin-bottom:8px}
+  #view-home .home-daily-briefing .weather-temp{font-size:44px}
+  #view-home .home-daily-briefing .weather-read{margin:8px 0}
+  #view-home .home-daily-briefing .weather-condition{font-size:13px}
+  #view-home .home-daily-briefing .weather-right{display:flex;align-items:center;gap:12px;flex-wrap:nowrap}
+  #view-home .home-daily-briefing .weather-read{min-width:0;flex:1;margin:0}
+  #view-home .home-daily-briefing .weather-temp-row{gap:6px}
+  #view-home .home-daily-briefing .weather-icon{font-size:24px}
+  #view-home .home-daily-briefing .weather-feedback{margin-top:8px}
+  #view-home .home-daily-briefing .weather-feedback{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 8px}
+  #view-home .home-daily-briefing .weather-feedback:empty{display:none}
+  #view-home .home-daily-briefing .weather-freshness{font-size:10px;margin:0}
+  #view-home .home-daily-briefing .weather-use-location{font-size:10px;padding:6px 8px;margin:0;min-height:36px}
+  #view-home .home-daily-briefing .weather-hours{gap:3px;padding-top:7px;scrollbar-width:none}
+  #view-home .home-daily-briefing .weather-hour{flex:1 0 36px;gap:4px;font-size:10px}
+  #view-home .home-daily-briefing .weather-hour .ti{font-size:18px;line-height:1}
+  #view-home .home-daily-briefing .weather-hour-temp{font-size:12px}
+  #view-home .home-daily-briefing .weather-preview{margin:0 -16px;padding:0 16px 12px}
+  #view-home .home-daily-briefing .weather-summary{font-size:11px}
+  #view-home .home-daily-briefing .weather-landscape>svg{bottom:65px}
+  #view-home .home-daily-briefing button:focus-visible{outline-color:var(--text)}
+  #view-home .home-dash{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
+  #view-home .home-dash.home-dash-1col{grid-template-columns:minmax(0,1fr)}
+  #view-home .home-daily-briefing.home-briefing-count-1{grid-template-columns:minmax(0,1fr)}
+  #view-home .home-daily-briefing.home-briefing-count-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(min-width:1024px) and (max-width:1240px){
+  #view-home .home-daily-briefing,#view-home .home-daily-briefing.has-main.has-weather{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #view-home .home-daily-briefing .home-mega-weather{grid-column:1/-1;grid-row:3;padding:16px 0 0}
+  #view-home .home-daily-briefing .home-weather-card{min-height:210px}
+}
+@media(max-width:700px){
+  .bp-grid{grid-template-columns:minmax(0,1fr)}.bp-hero{padding:22px 18px}.bp-hero .card-split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.bp-hero .card-split-div{display:none}
+  .daily-update-banner{padding:22px;display:block}.daily-update-banner>svg{width:86px;margin-bottom:8px}.daily-update-banner h2{font-size:22px}.bp-actions .stg-btn{flex:1}
+  .home-customise-bar{align-items:flex-start;padding:0 4px}.home-customise-bar #home-customise-hint{font-size:11px;max-width:54%}.bp-dialog{padding:20px}.bp-row{gap:10px}
+}

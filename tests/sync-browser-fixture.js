@@ -1,11 +1,14 @@
 // Test-only Firebase and localStorage. This page cannot contact the production database.
 (() => {
   const clone=v=>v===undefined?undefined:JSON.parse(JSON.stringify(v));
-  const memory=new Map();
-  if(new URL(location.href).searchParams.has('light')) memory.set('wt_theme','light');
+  const params=new URL(location.href).searchParams,switchKey=params.has('switch')?'daily-test-switch-'+params.get('switch'):null;
+  const memory=new Map(switchKey?JSON.parse(sessionStorage.getItem(switchKey)||'[]'):[]);
+  const persistMemory=()=>{if(switchKey)sessionStorage.setItem(switchKey,JSON.stringify([...memory]));};
+  if(!memory.has('daily-account-active'))memory.set('daily-account-active','user:fixture');
+  if(new URL(location.href).searchParams.has('light')) memory.set('daily-account:user%3Afixture:wt_theme','light');
   Object.defineProperty(window,'localStorage',{value:{
     getItem:k=>memory.has(k)?memory.get(k):null,
-    setItem:(k,v)=>memory.set(k,String(v)), removeItem:k=>memory.delete(k),
+    setItem:(k,v)=>{memory.set(k,String(v));persistMemory();}, removeItem:k=>{memory.delete(k);persistMemory();},
     key:i=>[...memory.keys()][i], get length(){return memory.size;}
   }});
   Object.defineProperty(navigator,'serviceWorker',{value:{controller:null,register:()=>Promise.resolve({update:()=>Promise.resolve()}),addEventListener:()=>{}}});
@@ -19,12 +22,23 @@
     plans:{v:JSON.stringify({plans:[{id:'saved-plan',name:'Saved program',split}],activePlanId:'saved-plan',streak:{count:0,lastDate:''}}),t:500},
     profile:{name:'Sync test',onboardingVersion:999,lastSeenWhatsNew:999}
   };
-  const fresh=new URL(location.href).searchParams.has('fresh');
-  if(fresh) Object.keys(stores).filter(k=>k!=='profile').forEach(k=>delete stores[k]);
+  const selectedUid=memory.get('fixture-user')||'fixture';
+  if(params.has('onboarding'))stores.profile={};
+  const fresh=params.has('fresh')||selectedUid==='fresh-fixture';
+  if(params.has('fresh')) Object.keys(stores).filter(k=>k!=='profile').forEach(k=>delete stores[k]);
+  if(new URL(location.href).searchParams.has('period')){
+    const blob=v=>({v:JSON.stringify(v),t:500});
+    stores.budgetCycles=blob({config:{frequency:'fortnightly',anchor:'2026-10-02'},periods:{'2026-10-02_2026-10-15':{start:'2026-10-02',end:'2026-10-15',opening:100,savings:200,goal:1000,reserves:{rent:500},fundingConfirmed:true}}});
+    stores.ledger=blob([{id:'test-income',kind:'income',date:'2026-10-02',amount:2000,streamId:'salary',manual:true,weekMode:'add'},
+      {id:'test-payment',kind:'bill_payment',date:'2026-10-03',amount:500,fixCatId:'rent',manual:true}]);
+    stores.transactions=blob([{id:'test-expense',date:'2026-10-03',amount:125,catId:'food',merchant:'Test groceries'}]);
+    stores.budgetData={'2026-09-28':{wk:'2026-09-28',inc_salary:'2000',updatedAt:500}};
+    stores.profile.budgetRhythmSeen=1;
+  }
   const initial=clone(stores),listeners=new Map(),writes=[],errors=[];
   window.addEventListener('error',e=>errors.push(e.message));
   window.addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
-  const root={users:{fixture:stores}};
+  const root={users:{fixture:stores,'fresh-fixture':{}}};
   const get=p=>clone(p.split('/').reduce((v,k)=>v&&v[k],root)??null);
   const snapshot=p=>{const v=get(p);return {val:()=>clone(v),exists:()=>v!==null};};
   const put=(p,v)=>{
@@ -50,8 +64,9 @@
       if(complete)complete(null,result.committed,result.snapshot);return result;
     })
   });
-  const user={uid:'fixture',displayName:'Sync test',photoURL:null};
-  const auth={currentUser:user,getRedirectResult:()=>Promise.resolve(null),onAuthStateChanged:fn=>{const t=setTimeout(()=>fn(user),50);return()=>clearTimeout(t);}};
+  const user={uid:selectedUid,displayName:selectedUid==='fixture'?'Sync test':'Fresh test account',photoURL:null};
+  let authChange;
+  const auth={currentUser:user,getRedirectResult:()=>Promise.resolve(null),onAuthStateChanged:fn=>{authChange=fn;const t=setTimeout(()=>fn(user),50);return()=>clearTimeout(t);}};
   window.firebase={initializeApp:()=>{},auth:()=>auth,database:()=>({ref})};
   window.addEventListener('load',()=>setTimeout(()=>{
     if(new URL(location.href).searchParams.has('onboarding'))return;
@@ -68,6 +83,10 @@
     button.onclick=()=>{report.remove();obDismiss();setView('log');};report.appendChild(button);
     const financeButton=document.createElement('button');financeButton.textContent='Inspect Finance setup';
     financeButton.onclick=()=>{report.remove();obDismiss();openBudgetEditor();};report.appendChild(financeButton);
+    if(switchKey){
+      const switchButton=document.createElement('button');switchButton.textContent=selectedUid==='fixture'?'Switch to fresh test account':'Return to original test account';
+      switchButton.onclick=()=>{const uid=selectedUid==='fixture'?'fresh-fixture':'fixture';memory.set('fixture-user',uid);persistMemory();auth.currentUser={uid,displayName:'Test account'};authChange(auth.currentUser);};report.appendChild(switchButton);
+    }
     document.body.appendChild(report);
   },1500));
 })();

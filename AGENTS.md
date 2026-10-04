@@ -1,5 +1,45 @@
 # Daily — Agent Handoff
 
+## v370 implementation — 2026-10-04
+
+This section supersedes older single-account, weekly-only and script-count descriptions below.
+Release was authorised by the user on 2026-10-04 after disclosure that real-account
+verification remains outstanding. See tests/FINANCE-PERIOD-VALIDATION.md for test evidence.
+
+- Script order is `account-storage.js`, `nutrition.js`, `finance-periods.js`, then `app.js`.
+  `account-storage.js` binds application `localStorage` to one account for the lifetime of the
+  document. Native Firebase auth storage stays untouched. Account changes reload into the next
+  namespace; late callbacks remain bound to the previous account. Existing unscoped data stays
+  retained and requires an ownership choice before attachment. Sign-out uses a separate guest
+  namespace. The device weather cache remains shared and excluded from backup.
+- A staged onboarding draft may use account-addressed **sessionStorage** across the first auth
+  reload. It is consumed once after successful cloud readiness, discarded for an existing cloud
+  profile, never synced/backed up, and never applied as evidence that cloud data is empty.
+- Finance's visible Week tab is now **Budget**; the internal `week` route/ids remain stable.
+  `finance-periods.js` owns weekly, fortnightly, monthly and custom date ranges and the shared
+  `budPeriodMoney()` reader. Income comes from actual ledger events, purchases from transactions,
+  bill payments consume their reserves once, and savings allocations are not account deposits.
+  Expected pay schedules stay separate, including twice-monthly calendar paydays.
+- `daily_budget_cycles` is a timestamped blob registered at `budgetCycles` through the existing
+  registry. There is no boot seed. Configuration and dated allocation plans are saved only by
+  user actions. Old weekly records remain accessible; partial undated weeks never acquire guessed
+  transaction dates. Older weekly allocations require review before a spendable figure is shown.
+- Plan and Stats lead with recorded calendar facts. Their original weekly reports remain behind
+  labelled legacy disclosures. Current calendar months use today's month when period mode is on.
+- The desktop hero uses three columns and a compact shared header; mobile retains its existing
+  composition. Fresh desktop profiles use Dashboard with Review/Journal/Habits first on the left
+  and Accounts/Nutrition/Weight first on the right. Existing layouts, including legacy Grid, stay
+  intact. The recommended Dashboard reset uses the new hierarchy. Customise Home is directly visible.
+- The graphical release banner uses `profile.budgetRhythmSeen`; the customisation hint uses
+  `profile.homeCustomiseSeen`. Both acknowledgements merge monotonically and have live listeners.
+  They are independent of onboarding and general What's New versions.
+- CSS additions are appended in `css/finance-periods.css`; cache name is prepared as `daily-v370`.
+  Run `node --test tests/*.test.cjs` and regenerate `tests/sync-browser.html` with
+  `node tests/build-sync-browser.cjs`. The fixture is synthetic and cannot reach production Firebase.
+  `?period` supplies dated finance examples, `?light` tests light mode, and `?switch=<unique-run>`
+  exercises populated-account → fresh-account → original-account reloads in one browser tab.
+
+
 Technical reference for a coding agent (Codex/ChatGPT or otherwise) picking up this repo.
 Factual as of 2026-09-01. This doc replaces an earlier copy that duplicated `CLAUDE.md`
 almost verbatim — if you find `CLAUDE.md` still present, treat it as the longer-form design

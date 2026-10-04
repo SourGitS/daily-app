@@ -42,6 +42,7 @@
      rules above. Appended, never inserted. -->
 <link rel="stylesheet" href="css/brand.css">
 <link rel="stylesheet" href="css/home-hero.css">
+<link rel="stylesheet" href="css/finance-periods.css">
 </head>
 <body>
 <div id="app">
@@ -81,6 +82,7 @@
 
     <!-- HOME VIEW -->
     <section id="view-home" class="swipe-panel deck-active">
+      <div class="home-customise-bar"><button class="home-edit-btn" onclick="openHomeLayoutEditor()">Customise Home</button><span id="home-customise-hint"></span></div>
       <div id="home-content"></div>
       <!-- Persistent Recent-workout card (rendered separately from the draggable cards) -->
       <div id="home-recent-card"></div>
@@ -205,7 +207,7 @@
       <div class="bud-topnav" id="bud-topnav">
         <div class="seg-tabs seg-scroll" id="budget-view-tabs" role="tablist" aria-label="Finance views">
           <button id="bv-overview-btn" class="on" role="tab" aria-selected="true" aria-controls="budget-overview-view" onclick="setBudgetView('overview')">Overview</button>
-          <button id="bv-week-btn" role="tab" aria-selected="false" aria-controls="budget-week-view" onclick="setBudgetView('week')">Week</button>
+          <button id="bv-week-btn" role="tab" aria-selected="false" aria-controls="budget-week-view" onclick="setBudgetView('week')">Budget</button>
           <button id="bv-plan-btn" role="tab" aria-selected="false" aria-controls="budget-plan-view" onclick="setBudgetView('plan')">Plan</button>
           <button id="bv-bills-btn" role="tab" aria-selected="false" aria-controls="budget-bills-view" onclick="setBudgetView('bills')">Bills</button>
           <button id="bv-accounts-btn" role="tab" aria-selected="false" aria-controls="budget-accounts-view" onclick="setBudgetView('accounts')">Accounts</button>
@@ -221,6 +223,7 @@
            Visible by default because budgetView starts on 'overview'; the week's own div
            therefore carries .hidden in the markup, and setBudgetView() owns both from then on.
            This is a read-only summary: opening it writes nothing. -->
+      <div id="finance-update-announcement"></div>
       <div id="budget-overview-view" role="tabpanel" aria-labelledby="bv-overview-btn"></div>
 
       <!-- WEEK VIEW -->
@@ -230,6 +233,8 @@
            js/app.js is the single source for where each of the six actually sits — source
            order below is the MOBILE order only. -->
       <div id="budget-week-view" class="hidden" role="tabpanel" aria-labelledby="bv-week-btn">
+        <div id="budget-period-view"></div>
+        <div id="budget-legacy-week" class="hidden">
         <!-- Compact week navigation. Hidden everywhere except short landscape, where the
              weekly hero is far too tall to pin — this strip is what stays reachable while the
              cards scroll, so changing week doesn't mean scrolling back to the top. The hero
@@ -474,6 +479,7 @@
         </div><!-- /#bud-col-left: on desktop budApplyLayout() splits these across the two columns -->
         <div id="bud-col-right"></div>
         </div><!-- /.budget-desktop-grid -->
+        </div><!-- /#budget-legacy-week -->
       </div>
 
       <!-- PLAN VIEW -->
@@ -1440,7 +1446,9 @@
 
 <div id="toast-container" aria-live="polite"></div>
 
+<script src="js/account-storage.js" defer></script>
 <script src="js/nutrition.js" defer></script>
+<script src="js/finance-periods.js" defer></script>
 <script src="js/app.js" defer></script>
 </body>
 </html>
