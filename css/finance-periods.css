@@ -218,6 +218,10 @@
 #txn-modal .txn-amount::placeholder{color:var(--muted);opacity:1}
 [data-theme="dark"] #txn-modal input[type="date"],[data-theme="dark"] .bp-dialog input[type="date"]{color-scheme:dark}
 .bp-dialog .bp-actions button[type="submit"]{flex:1;white-space:normal}
+.bp-dialog form,.bp-dialog label,.bp-dialog-head h2{min-width:0;overflow-wrap:anywhere}
+.bp-dialog-head h2{flex:1}
+.bp-dialog input,.bp-dialog select{min-width:0;max-width:100%}
+.bp-dialog input[type="date"]{-webkit-appearance:none;display:block}
 
 /* Expense fields stay open; depth comes from the amount surface and input edges. */
 #txn-modal .txn-category-wrap>.txn-lbl{margin-top:0}

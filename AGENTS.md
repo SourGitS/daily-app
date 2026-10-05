@@ -1,5 +1,12 @@
 # Daily — Agent Handoff
 
+## v378 pay-cycle overflow — release authorised, 2026-10-05
+
+Shared Finance setup dialog fields can shrink within the form; date inputs have explicit
+block sizing and native WebKit appearance removed. The heading wraps beside its close button.
+Browser checks at 320/390px covered followed paydays and custom dates with no horizontal dialog
+overflow. No date calculations or save behavior changed. Cache prepared as `daily-v378`.
+
 ## v377 weight and phone Budget polish — release authorised, 2026-10-05
 
 On phones, the existing Log training and weight content use separate gradient and ordinary

@@ -389,7 +389,8 @@
 // v375: compact phone weight summary inside the Log briefing.
 // v376: phone weather contracts smoothly when the forecast is hidden.
 // v377: weight editor sizing, separate phone weight card and full-width Budget action.
-const CACHE_NAME = 'daily-v377';
+// v378: pay-cycle setup fields stay within the phone dialog.
+const CACHE_NAME = 'daily-v378';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
