@@ -391,7 +391,8 @@
 // v377: weight editor sizing, separate phone weight card and full-width Budget action.
 // v378: pay-cycle setup fields stay within the phone dialog.
 // v379: curated recipe catalogue and editorial Food introduction.
-const CACHE_NAME = 'daily-v379';
+// v380: persistent catalogue announcement below the Food Today hero.
+const CACHE_NAME = 'daily-v380';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was

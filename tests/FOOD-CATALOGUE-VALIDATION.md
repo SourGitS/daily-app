@@ -47,3 +47,13 @@ Checked in Chromium/Edge at 320 × 640, 390 × 844 and 1440 × 1000:
 
 Artwork assets and the JSON bundle are included in `daily-v379`'s service-worker asset list.
 Physical iPhone/Safari, production Firebase and an installed-PWA upgrade were not exercised.
+
+## v380 Food Today entry follow-up
+
+- A persistent “What’s new in Food” card sits between the Today chooser hero and Recipe options.
+  Its single accessible button opens the catalogue directly. It remains after dismissal of the
+  introduction, and filters/data refreshes retain the same card node.
+- 49 targeted Food overview, navigation and catalogue tests pass; syntax and diff checks pass.
+- Browser checks at 320 × 700, 390 × 844 and 1440 × 1000 cover light/dark layouts, DOM placement,
+  absence of horizontal overflow, direct catalogue opening, focus return and unchanged recipes.
+- Cache updated to `daily-v380`; no extra asset download or new saved preference is introduced.

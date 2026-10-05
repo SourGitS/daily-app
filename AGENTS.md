@@ -1,5 +1,15 @@
 # Daily — Agent Handoff
 
+## v380 Food Today catalogue announcement — 2026-10-06
+
+Food → Today now places a persistent light editorial “What’s new in Food” card immediately
+after the chooser hero and before Recipe options. The existing Birria artwork and Explore
+the catalogue action open the catalogue directly; this entry remains after introduction
+dismissal. It stays mounted with the chooser during filter/data refreshes. The existing Recipes
+entry, slideshow, seeding and save paths are unchanged. Cache: `daily-v380`. All 49 targeted
+Food checks pass; browser checks cover 320/390px phones and 1440px desktop, light/dark themes,
+placement, no horizontal overflow, catalogue opening, focus return and preserved recipe data.
+
 ## v379 Food catalogue — release authorised, 2026-10-06
 
 - `catalogue/food-catalogue.json` is the six-recipe import bundle and the only recipe source.
