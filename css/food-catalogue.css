@@ -1,0 +1,128 @@
+/* The launch is an editorial light surface in either app theme. All campaign ink and
+   controls are scoped here; the user's accent and everyday Food interface keep their tokens. */
+.fc-entry{display:flex;align-items:center;gap:14px;width:100%;margin:14px 0 20px;padding:12px 16px;border:1px solid var(--surface-card-border);border-radius:18px;background:var(--surface-card);color:var(--text);text-align:left}
+.fc-entry img{width:66px;height:54px;object-fit:cover;border-radius:10px;flex-shrink:0}
+.fc-entry strong{display:block;font-size:14px;font-weight:800}
+.fc-entry small{display:block;margin-top:3px;color:var(--muted);font-size:12px;line-height:1.4}
+.fc-entry-arrow{margin-left:auto;font-size:23px}
+.fc-dialog{--fc-paper:#faf7f0;--fc-ink:#1b1a18;--fc-muted:#625e58;--fc-blue:#005be4;box-sizing:border-box;width:min(960px,calc(100vw - 40px));height:min(790px,calc(100dvh - 48px));max-width:none;max-height:none;margin:auto;padding:0;border:0;border-radius:24px;color-scheme:light;background:var(--fc-paper);color:var(--fc-ink);box-shadow:0 28px 100px #0006;overflow:hidden;font-family:var(--font-ui)}
+.fc-dialog[open]{display:flex;flex-direction:column}
+.fc-dialog::backdrop{background:rgba(10,12,17,.65);backdrop-filter:blur(7px)}
+.fc-dialog button,.fc-dialog a{font-family:inherit;-webkit-tap-highlight-color:transparent}
+.fc-dialog button:focus-visible,.fc-dialog a:focus-visible{outline:3px solid var(--fc-blue);outline-offset:4px}
+.fc-dialog [tabindex="-1"]:focus{outline:none}
+.fc-head{display:flex;align-items:center;gap:18px;padding:20px 28px 12px;flex-shrink:0}
+.fc-head img{width:100px;height:25px;object-fit:contain}
+.fc-head>span{font-size:11px;text-transform:uppercase;letter-spacing:2px;color:var(--fc-muted)}
+.fc-close{width:44px;height:44px;display:grid;place-items:center;margin-left:auto;flex-shrink:0;border:1px solid #dedbd4;border-radius:50%;background:transparent;color:var(--fc-ink);font-size:29px;line-height:1}
+.fc-close:hover{background:#ece7dc}
+.fc-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;touch-action:pan-y;padding:0 28px 16px}
+.fc-intro h2,.fc-browse-heading h2,.fc-preview h2{font-family:var(--font-num);font-size:46px;font-weight:700;line-height:1.08;letter-spacing:-2px;margin:0;text-wrap:balance;color:var(--fc-ink)}
+.fc-intro h2 em{color:var(--fc-blue);font-style:italic}
+.fc-eyebrow{font-size:10px;font-weight:800;letter-spacing:2.2px;text-transform:uppercase;line-height:1.5;margin:0 0 16px;color:var(--fc-muted)}
+.fc-lede{font-size:15px;line-height:1.65;color:var(--fc-muted);margin:20px 0 0;max-width:34ch}
+.fc-byline{display:block;font-size:11px;font-weight:700;color:var(--fc-muted);margin-top:24px}
+.fc-intro-cover{display:grid;grid-template-columns:1fr 1.17fr;gap:24px;align-items:center;min-height:100%;padding-top:12px}
+.fc-intro-copy{padding:24px 0 24px 6px}
+.fc-hero{width:100%;height:100%;min-height:380px;max-height:530px;object-fit:cover;object-position:48% 50%;border-radius:8px 8px 60px 8px;display:block}
+.fc-intro-collection{text-align:center;padding-top:14px}
+.fc-intro-collection h2{font-size:38px;margin-bottom:20px}
+.fc-lineup{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 22px;max-width:680px;margin:0 auto}
+.fc-dish{display:block;aspect-ratio:1;background-image:url('../assets/food-catalogue/collection.webp');background-size:300% 200%;background-position:var(--fc-x) var(--fc-y);background-repeat:no-repeat;border-radius:12px}
+.fc-lineup .fc-dish{max-width:162px;margin:auto}
+.fc-lineup h3{font-size:12px;font-weight:800;line-height:1.4;margin:8px 0 0}
+.fc-intro-how{display:grid;grid-template-columns:1fr 1.1fr;gap:30px;align-items:center;min-height:100%;padding:16px 0}
+.fc-how-list{list-style:none;padding:0;margin:0;display:grid;gap:26px}
+.fc-how-list li{display:flex;align-items:center;gap:15px}
+.fc-icon{display:block;flex-shrink:0;width:102px;aspect-ratio:1;background:url('../assets/food-catalogue/icons.webp') var(--fc-x) 50% / 300% 100% no-repeat;border-radius:20px}
+.fc-how-list h3{font-size:15px;margin-bottom:6px}
+.fc-how-list p{font-size:13px;color:var(--fc-muted);line-height:1.55;margin:0}
+.fc-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-shrink:0;padding:15px 28px 22px;border-top:1px solid #e6e0d6;background:var(--fc-paper)}
+.fc-button{min-height:44px;padding:11px 18px;border:1px solid #c9c2b7;border-radius:12px;background:transparent;color:var(--fc-ink);font-size:12px;font-weight:800;line-height:1.4;cursor:pointer}
+.fc-primary{background:var(--fc-blue);color:#fff;border-color:var(--fc-blue)}
+.fc-button:disabled{opacity:.5;cursor:default}
+.fc-pages{display:flex;gap:4px;align-items:center}
+.fc-pages button{position:relative;width:30px;height:44px;border:0;background:transparent;padding:0}
+.fc-pages button::before{content:'';display:block;width:7px;height:7px;border-radius:50%;background:#bdb7ad;margin:auto}
+.fc-pages button[aria-current="step"]::before{background:var(--fc-blue);width:20px;border-radius:9px}
+.fc-status{font-size:12px;line-height:1.5;color:#3e4f36;margin:0;padding:0 28px;flex-shrink:0}
+.fc-status:not(:empty){padding-top:8px;padding-bottom:10px}
+.fc-browse-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin:15px 0 28px}
+.fc-browse-heading h2{font-size:34px;letter-spacing:-1.2px}
+.fc-browse-heading p:not(.fc-eyebrow){font-size:13px;color:var(--fc-muted);margin-top:9px;line-height:1.5}
+.fc-text-button{border:0;background:none;text-decoration:underline;text-underline-offset:4px;color:var(--fc-ink);font-size:11px;line-height:1.5;padding:12px 0;flex-shrink:0}
+.fc-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:30px 22px}
+.fc-recipe-card{min-width:0;display:flex;flex-direction:column}
+.fc-card-open{display:block;border:0;padding:0;background:transparent;color:var(--fc-ink);text-align:left;width:100%}
+.fc-card-open .fc-dish{width:100%;border-radius:12px 12px 32px 12px}
+.fc-card-open h3{font-size:16px;line-height:1.3;margin:12px 0 0;font-weight:800}
+.fc-card-caption{font-size:12px;line-height:1.55;color:var(--fc-muted);margin:8px 0}
+.fc-meta{font-size:11px;line-height:1.5;color:var(--fc-muted);margin:0 0 12px}
+.fc-card-action{margin-top:auto;width:100%;font-size:11px;padding:10px}
+.fc-note{font-size:11px;line-height:1.6;color:var(--fc-muted);margin:22px 0 0}
+.fc-download{color:var(--fc-ink);font-size:12px;line-height:1.5;text-underline-offset:4px}
+.fc-download span{display:block;color:var(--fc-muted);font-size:10px}
+.fc-loading{padding:40px 0;text-align:center}
+.fc-loading p{margin-bottom:20px;font-size:14px}
+.fc-preview{display:grid;grid-template-columns:1fr 1.2fr;gap:28px;align-items:center;margin-top:14px}
+.fc-preview-copy h2{font-size:34px;letter-spacing:-1px;margin-bottom:14px}
+.fc-preview-copy>p:not(.fc-eyebrow):not(.fc-meta):not(.fc-note){font-size:13px;line-height:1.7;white-space:pre-line}
+.fc-preview-method{max-width:700px;margin:28px auto 0}
+.fc-preview-method h3{font-size:16px;margin:24px 0 14px}
+.fc-ingredients{margin:0;font-size:13px;line-height:1.5}
+.fc-ingredients>div{display:grid;grid-template-columns:minmax(0,1fr) minmax(70px,auto);gap:16px;padding:10px 0;border-bottom:1px solid #e5e0d8}
+.fc-ingredients dd{text-align:right;color:var(--fc-muted);margin:0;max-width:145px}
+.fc-method{padding-left:22px;font-size:13px;line-height:1.7}
+.fc-method li{padding-left:7px;margin:16px 0}
+.fc-method .kit-cook-step-heading{display:block}
+.fc-arrive{animation:fc-arrive .26s ease-out}
+@keyframes fc-arrive{from{opacity:.25;transform:translateX(14px)}to{opacity:1;transform:none}}
+@media(max-width:640px){
+  .fc-dialog{width:calc(100vw - 20px);height:min(820px,calc(100dvh - 24px));border-radius:20px}
+  .fc-head{padding:12px 18px 6px;gap:12px}
+  .fc-head img{width:83px;height:21px}
+  .fc-head>span{font-size:9px;letter-spacing:1px}
+  .fc-close{width:40px;height:40px}
+  .fc-body{padding:0 18px 14px}
+  .fc-intro-cover{display:grid;grid-template-columns:1fr;grid-template-rows:auto minmax(180px,1fr);gap:16px;align-items:stretch;min-height:100%;padding-top:10px}
+  .fc-intro-copy{padding:0}
+  .fc-intro h2{font-size:35px;letter-spacing:-1.5px;max-width:14ch}
+  .fc-eyebrow{font-size:9px;letter-spacing:1.5px;margin-bottom:10px}
+  .fc-lede{font-size:12px;margin-top:12px;line-height:1.6;max-width:38ch}
+  .fc-byline{margin-top:12px;font-size:10px}
+  .fc-hero{height:100%;min-height:180px;max-height:none;object-position:50% 50%;border-radius:8px 8px 36px 8px}
+  .fc-intro-collection{padding-top:10px;text-align:left}
+  .fc-intro-collection h2{font-size:29px;margin-bottom:16px;max-width:none}
+  .fc-lineup{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .fc-lineup .fc-dish{width:100%;max-width:clamp(70px,calc((100dvh - 400px)/3),130px)}
+  .fc-lineup h3{font-size:11px;margin-top:6px;text-align:center}
+  .fc-intro-how{display:grid;grid-template-columns:1fr;grid-template-rows:auto 1fr;gap:0;padding:10px 0;min-height:100%}
+  .fc-intro-how h2{font-size:31px}
+  .fc-how-list{gap:22px;margin:20px 0;align-content:center}
+  .fc-icon{width:92px;border-radius:14px}
+  .fc-how-list h3{font-size:13px;margin-bottom:5px}
+  .fc-how-list p{font-size:11px}
+  .fc-footer{padding:12px 18px 16px;gap:10px}
+  .fc-button{font-size:11px;padding:10px 13px;border-radius:10px}
+  .fc-pages{gap:0}
+  .fc-pages button{width:22px}
+  .fc-browse-heading{display:block;margin:12px 0 20px}
+  .fc-browse-heading h2{font-size:29px}
+  .fc-text-button{padding:12px 0 0}
+  .fc-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 14px}
+  .fc-card-open h3{font-size:13px}
+  .fc-card-caption{font-size:11px}
+  .fc-meta{font-size:10px}
+  .fc-card-action{font-size:10px;padding:8px}
+  .fc-download{font-size:10px}
+  .fc-footer>.fc-primary{max-width:62%}
+  .fc-status{padding:0 18px;font-size:11px}
+  .fc-preview{display:flex;flex-direction:column;gap:20px;align-items:stretch}
+  .fc-preview-photo{max-width:240px;width:100%;margin:auto}
+  .fc-preview-copy h2{font-size:29px}
+  .fc-preview-method{margin-top:12px}
+  .fc-ingredients{font-size:12px}
+  .fc-ingredients dd{max-width:105px}
+}
+@media(max-height:600px) and (min-width:641px){.fc-hero{min-height:250px}.fc-intro h2{font-size:34px}.fc-lineup .fc-dish{max-width:96px}.fc-how-list{gap:10px}.fc-icon{width:72px}}
+@media(prefers-reduced-motion:reduce){.fc-arrive{animation:none}}

@@ -1,5 +1,31 @@
 # Daily — Agent Handoff
 
+## v379 Food catalogue — release authorised, 2026-10-06
+
+- `catalogue/food-catalogue.json` is the six-recipe import bundle and the only recipe source.
+  Its quantities, authored steps, nutrition provenance and tablespoon notes are retained.
+  Blank amounts are labelled in catalogue preview, saved recipe details and cooking mode.
+- Food's first visit shows a three-slide light editorial introduction using original raster
+  artwork: Birria reveal, six-dish collection, then cooking/shopping guidance. Close/Escape,
+  Back/Next, keyboard arrows and swipe work; motion respects reduced motion. Recipes has a
+  persistent Recipe catalogue entry with introduction replay, full previews and JSON download.
+- Existing users choose individual recipes or the remaining collection. Stable catalogue IDs
+  and normalised-name checks skip saved copies; no recipe is replaced. Adds use the existing
+  `kitchen_recipes` / `kitRecipes` writer and verify local storage before reporting success.
+- New users receive all six after first successful setup. `profile.foodCatalogueStarter`
+  records that explicit setup intent (1 pending, 2 settled). Account/cloud readiness, an absent
+  local book and an empty-cloud transaction guard seeding. An existing or deliberately empty
+  book wins; setup replay and later deletion never reseed it. The old sample-recipe boot write
+  is removed. This supersedes the older no-recipe-onboarding statement below.
+- `profile.foodCatalogueSeen` acknowledges dismissal/exploration; both catalogue flags merge
+  monotonically through existing profile sync. No new store, onboarding version or Firebase
+  path. `js/food-catalogue.js` loads before `app.js`; scoped CSS loads after finance-periods.
+- Cache `daily-v379` includes the bundle and three compressed artwork assets (~798 KiB).
+  523 automated tests pass. Synthetic browser checks cover 320/390px phones and desktop,
+  preserved edited recipes, first-setup seeding, repeat adds, deletion, JSON download, cooking,
+  failure/retry and reduced motion. Physical iPhone and production Firebase were not exercised.
+  Francois explicitly authorised completing, committing and pushing the full update.
+
 ## v378 pay-cycle overflow — release authorised, 2026-10-05
 
 Shared Finance setup dialog fields can shrink within the form; date inputs have explicit

@@ -95,7 +95,7 @@ function updateHeaderAvatar(){
 function syncProfileToFirebase(){
   if(_bootPhase||_syncApplying) return;
   const r=fbRef('profile');
-  if(r) r.transaction(old=>({...profileData,budgetRhythmSeen:Math.max(Number(old&&old.budgetRhythmSeen)||0,Number(profileData.budgetRhythmSeen)||0),homeCustomiseSeen:Math.max(Number(old&&old.homeCustomiseSeen)||0,Number(profileData.homeCustomiseSeen)||0)}));
+  if(r) r.transaction(old=>({...profileData,budgetRhythmSeen:Math.max(Number(old&&old.budgetRhythmSeen)||0,Number(profileData.budgetRhythmSeen)||0),homeCustomiseSeen:Math.max(Number(old&&old.homeCustomiseSeen)||0,Number(profileData.homeCustomiseSeen)||0),foodCatalogueSeen:Math.max(Number(old&&old.foodCatalogueSeen)||0,Number(profileData.foodCatalogueSeen)||0),foodCatalogueStarter:Math.max(Number(old&&old.foodCatalogueStarter)||0,Number(profileData.foodCatalogueStarter)||0)}));
 }
 function syncPersonalInfoToFirebase(){ if(_bootPhase||_syncApplying) return; const r=fbRef('personalInfo'); if(r) r.set(S.personalInfo); }
 function syncBudDefaultsToFirebase(){ if(_bootPhase||_syncApplying) return; const r=fbRef('budgetDefaults'); if(r) r.set(budDefaults); }
@@ -537,10 +537,10 @@ if(firebaseReady){
 
     // Sync profile
     fbReconcile('profile','daily_profile',
-      ()=>profileData, v=>{ profileData={...(v||{}),budgetRhythmSeen:Math.max(Number(profileData.budgetRhythmSeen)||0,Number(v&&v.budgetRhythmSeen)||0),homeCustomiseSeen:Math.max(Number(profileData.homeCustomiseSeen)||0,Number(v&&v.homeCustomiseSeen)||0)}; },
+      ()=>profileData, v=>{ profileData={...(v||{}),budgetRhythmSeen:Math.max(Number(profileData.budgetRhythmSeen)||0,Number(v&&v.budgetRhythmSeen)||0),homeCustomiseSeen:Math.max(Number(profileData.homeCustomiseSeen)||0,Number(v&&v.homeCustomiseSeen)||0),foodCatalogueSeen:Math.max(Number(profileData.foodCatalogueSeen)||0,Number(v&&v.foodCatalogueSeen)||0),foodCatalogueStarter:Math.max(Number(profileData.foodCatalogueStarter)||0,Number(v&&v.foodCatalogueStarter)||0)}; },
       ()=>{ renderAccountSection(); renderHome(); });
 
-    ['budgetRhythmSeen','homeCustomiseSeen'].forEach(key=>{
+    ['budgetRhythmSeen','homeCustomiseSeen','foodCatalogueSeen','foodCatalogueStarter'].forEach(key=>{
       const flagRef=syncTrack(db.ref('users/'+user.uid+'/profile/'+key));
       flagRef.on('value',snap=>{
         if(!(auth.currentUser&&auth.currentUser.uid===user.uid))return;
@@ -548,6 +548,7 @@ if(firebaseReady){
           profileData[key]=Number(snap.val());localStorage.setItem('daily_profile',JSON.stringify(profileData));
           if(typeof dailyUpdateRefresh==='function')dailyUpdateRefresh();
           if(typeof homeCustomiseHint==='function')homeCustomiseHint();
+          if(typeof foodCatalogueCheck==='function')foodCatalogueCheck();
         }
       });
     });
@@ -792,6 +793,8 @@ if(firebaseReady){
           if(profileNeedsRestore&&profileData.onboardingVersion>=OB_VERSION&&typeof obCurrentStep==='function'&&obCurrentStep()==='welcome')obDismiss();
           setSyncStatus('Synced ✓');
           if(typeof dailyUpdateRefresh==='function') dailyUpdateRefresh();
+          if(typeof foodCatalogueEnsureStarter==='function')foodCatalogueEnsureStarter();
+          if(typeof foodCatalogueCheck==='function')foodCatalogueCheck();
         } else setTimeout(ready,150);
       };
       ready();
@@ -25258,6 +25261,7 @@ function finishOnboarding(){
   }
   obCaptureCurrent();
   const name=(obData.name||'').trim()||profileData.name||'';
+  const catalogueStarter=typeof foodCatalogueNewUser==='function'&&foodCatalogueNewUser();
 
   // Profile + version stamp
   profileData.name = name;
@@ -25267,6 +25271,7 @@ function finishOnboarding(){
   if(Array.isArray(obData.focus)) profileData.focus = obData.focus.slice();
   profileData.onboardingVersion = OB_VERSION;
   profileData.lastSeenWhatsNew = WHATS_NEW_VERSION;   // brand-new users start "caught up"
+  if(catalogueStarter)profileData.foodCatalogueStarter=1;
   localStorage.setItem('daily_profile', JSON.stringify(profileData));
   syncProfileToFirebase();
 
@@ -25346,6 +25351,7 @@ function finishOnboarding(){
   obDetachAuthWatch();
   document.getElementById('onboarding-overlay').classList.add('hidden');
   renderHome();
+  if(typeof foodCatalogueEnsureStarter==='function')foodCatalogueEnsureStarter();
 }
 // Walk the flow again without clearing anything. The staged answers start from what is
 // already saved, so finishing simply rewrites the same values; the seeding guards in
@@ -25508,9 +25514,9 @@ function kitLoadRecipes(){
     const raw=localStorage.getItem('kitchen_recipes');
     if(raw){ const arr=JSON.parse(raw); if(Array.isArray(arr)) return arr; }
   }catch(e){}
-  const seeded=kitSeedRecipes();
-  lsSave('kitchen_recipes',seeded,'kitRecipes');
-  return seeded;
+  // A missing book is not permission to write samples before account restoration.
+  // First-time setup explicitly installs the curated catalogue after cloud readiness.
+  return [];
 }
 let kitRecipes=kitLoadRecipes();
 function kitSaveRecipes(){ lsSave('kitchen_recipes', kitRecipes, 'kitRecipes'); }
@@ -25877,6 +25883,7 @@ function foodSyncChrome(){
   const sf=document.getElementById('scroll-fade');
   if(sf) sf.style.display = (S.view==='food'&&(foodState.tab==='recipes'||foodState.tab==='shopping')) ? 'none' : '';
   updateKitFab();
+  if(typeof foodCatalogueCheck==='function')foodCatalogueCheck();
 }
 // ── Food: supporting screens ──────────────────────────────────────
 // Peer overlays, not tabs. They keep Food selected in the bottom nav, light their own row in
@@ -26616,7 +26623,7 @@ function kitCookStepIngredients(rv,st){
   return kitStepIngredients(st?st.text:'',all);
 }
 function kitCookIngRowHTML(i){
-  const right=[i.display,i.unit].filter(x=>x!==''&&x!=null).join(' ');
+  const right=[i.display,i.unit].filter(x=>x!==''&&x!=null).join(' ')||'Amount unspecified';
   const tag=i.source==='protein'?'<span class="kit-ing-tag">Chosen protein</span>'
           :i.source==='extra'?'<span class="kit-ing-tag">Option extra</span>':'';
   // An amount that could not be scaled is never dressed up as one that was.
@@ -27028,7 +27035,7 @@ function kitRenderDetail(id,target){
     return;
   }
   const ingRows=rv.ingredients.map(i=>{
-    const right=[i.display,i.unit].filter(x=>x!=='' && x!=null).join(' ');
+    const right=[i.display,i.unit].filter(x=>x!=='' && x!=null).join(' ')||'Amount unspecified';
     const tag=i.source==='protein'?'<span class="kit-ing-tag">Chosen protein</span>'
             :i.source==='extra'?'<span class="kit-ing-tag">For '+kitEsc(rv.optionLabel)+'</span>':'';
     return '<div class="kit-ing-row'+(i.source==='shared'?'':' kit-ing-opt')+'"><span>'+kitEsc(i.name)+tag+'</span><span class="kit-ing-amt">'+kitEsc(right)+'</span></div>';

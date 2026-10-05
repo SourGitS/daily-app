@@ -43,6 +43,16 @@
     ].map(([id,name,cookTime,calories,protein])=>({id,name,category:id==='toast'?'breakfast':'dinner',servings:4,cookTime: cookTime+' min',calories,protein,nutritionBasis:'manual',ingredients:[{name:'Test ingredient',amount:400,unit:'g'}],steps:['Prepare the ingredients.','Cook and serve.']}))),t:500};
   }
   if(params.has('onboarding'))stores.profile={};
+  if(params.has('catalogue')){
+    stores.profile.budgetRhythmSeen=2;
+    stores.kitRecipes={v:JSON.stringify([
+      {id:'personal-lunch',name:'My saved lunch',category:'lunch',servings:2,ingredients:[{name:'Rice',amount:200,unit:'g'}],steps:['Cook the rice.'],favourite:true},
+      {id:'personal-birria',name:'Birria Tacos',category:'dinner',servings:3,description:'My edited version — preserve this.',ingredients:[{name:'Beef',amount:900,unit:'g'}],steps:['My own method.']}
+    ]),t:500};
+    if(params.get('catalogue')==='new'){
+      Object.keys(stores).forEach(key=>delete stores[key]);stores.profile={budgetRhythmSeen:2};
+    }
+  }
   const fresh=params.has('fresh')||selectedUid==='fresh-fixture';
   if(params.has('fresh')) Object.keys(stores).filter(k=>k!=='profile').forEach(k=>delete stores[k]);
   if(new URL(location.href).searchParams.has('period')){

@@ -43,6 +43,7 @@
 <link rel="stylesheet" href="css/brand.css">
 <link rel="stylesheet" href="css/home-hero.css">
 <link rel="stylesheet" href="css/finance-periods.css">
+<link rel="stylesheet" href="css/food-catalogue.css">
 </head>
 <body>
 <div id="app">
@@ -609,6 +610,10 @@
       </div>
 
       <div id="kit-recipes" class="kit-pane food-pane hidden" role="tabpanel" aria-labelledby="food-tab-recipes">
+        <button type="button" class="fc-entry" onclick="foodCatalogueOpen('browse')">
+          <img src="assets/food-catalogue/birria.webp" alt="" loading="lazy">
+          <span><strong>Recipe catalogue</strong><small>Explore Francois’s six favourites</small></span><span class="fc-entry-arrow" aria-hidden="true">↗</span>
+        </button>
         <div class="kit-cols">
           <div class="kit-list-col">
             <div id="kitchen-featured"></div>
@@ -1452,6 +1457,7 @@
 <script src="js/account-storage.js" defer></script>
 <script src="js/nutrition.js" defer></script>
 <script src="js/finance-periods.js" defer></script>
+<script src="js/food-catalogue.js" defer></script>
 <script src="js/app.js" defer></script>
 </body>
 </html>

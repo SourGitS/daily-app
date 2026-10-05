@@ -390,7 +390,8 @@
 // v376: phone weather contracts smoothly when the forecast is hidden.
 // v377: weight editor sizing, separate phone weight card and full-width Budget action.
 // v378: pay-cycle setup fields stay within the phone dialog.
-const CACHE_NAME = 'daily-v378';
+// v379: curated recipe catalogue and editorial Food introduction.
+const CACHE_NAME = 'daily-v379';
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
@@ -413,6 +414,12 @@ const ASSETS = [
   './js/account-storage.js',
   './js/finance-periods.js',
   './css/finance-periods.css',
+  './js/food-catalogue.js',
+  './css/food-catalogue.css',
+  './catalogue/food-catalogue.json',
+  './assets/food-catalogue/birria.webp',
+  './assets/food-catalogue/collection.webp',
+  './assets/food-catalogue/icons.webp',
   './js/nutrition.js',
   // Runtime brand assets only. The masters, the export script and the ZIP under
   // assets/brand/refined/ are sources, not application assets, and are never precached.
