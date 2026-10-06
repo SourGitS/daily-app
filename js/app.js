@@ -12295,6 +12295,7 @@ const CAT_CYCLES=[
   {id:'weekly',  label:'Weekly',  suffix:'/wk', perWeek:1},
   {id:'fortnightly', label:'Fortnightly', suffix:'/fortnight', perWeek:1/2},
   {id:'monthly', label:'Monthly', suffix:'/mo', perWeek:12/52},
+  {id:'quarterly', label:'Quarterly', suffix:'/quarter', perWeek:4/52},
   {id:'yearly',  label:'Yearly',  suffix:'/yr', perWeek:1/52},
 ];
 function cyclePerWeek(cycle){ const c=CAT_CYCLES.find(x=>x.id===cycle); return c?c.perWeek:1; }
@@ -13126,7 +13127,8 @@ function renderFixedCardBody(data,isCur){
   const editing=budEditMode.fix && isCur;
   const cats=activeCats(loadFixCats()); // archived keep counting in totals, just no row
   const weeklyCats=cats.filter(c=>!catIsRecurring(c));
-  const recurCats=cats.filter(catIsRecurring);
+  const routineCats=cats.filter(c=>catIsRecurring(c)&&['weekly','fortnightly','monthly'].includes(catCycle(c)));
+  const periodicCats=cats.filter(c=>catIsRecurring(c)&&['quarterly','yearly'].includes(catCycle(c)));
 
   const rows=weeklyCats.map(c=>{
     const raw=data['fix_'+c.id];
@@ -13140,35 +13142,20 @@ function renderFixedCardBody(data,isCur){
     '</div>';
   }).join('');
 
-  // Recurring block: one summary row that expands to a read-only breakdown. Toggled inline
-  // (same idiom as the Home accounts list) so it never triggers a re-render mid-tap.
-  let recurBlock='';
-  if(recurCats.length){
-    const recurTotal=recurCats.reduce((s,c)=>s+catBudget(c),0);
-    const items=recurCats.map(c=>
-      '<div class="bud-recur-item">'+
-        '<div class="bud-row-left">'+catIconHtml(c,18)+
-          '<div class="bud-row-name">'+_catEscHtml(catDisplayName(c.name))+'</div></div>'+
-        '<div class="bud-recur-amt">$'+catBudget(c).toFixed(2)+
-          '<span class="bud-recur-per">/wk</span></div>'+
-      '</div>').join('');
-    // Rendered in its REMEMBERED state, not closed. It used to be an inline toggle over a
-    // hardcoded display:none, so it shut again on every re-render — changing week, pressing
-    // Edit or typing an amount all closed it — as well as on every reload.
-    const rOpen=budRecurOpen();
-    recurBlock=
-      '<div class="bud-row bud-recur-head" role="button" tabindex="0" aria-expanded="'+(rOpen?'true':'false')+'" '+
-        'aria-controls="bud-recur-list" onclick="budRecurToggle()" '+
-        'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();budRecurToggle();}">'+
-        '<div class="bud-row-left"><span class="bud-recur-ic">'+cardIcon('repeat')+'</span>'+
-          '<div class="bud-row-name">Recurring<span class="bud-recur-count">'+recurCats.length+'</span></div></div>'+
-        '<div class="bud-row-calc bud-recur-total">$'+recurTotal.toFixed(2)+
-          '<span class="bud-recur-chev">'+(rOpen?'▴':'▾')+'</span></div>'+
-      '</div>'+
-      '<div class="bud-recur-list" id="bud-recur-list"'+(rOpen?'':' style="display:none"')+'>'+items+
-        '<div class="bud-recur-note">Counted automatically each week from their billing cycle — nothing to enter. Edit them in Settings → Budget setup.</div>'+
-      '</div>';
-  }
+  // Compact reserve disclosures separate routine charges from less-frequent periodic ones.
+  // Each detail shows its actual billed amount/cadence alongside the weekly budget reserve.
+  const groupHtml=(id,label,groupCats)=>{
+    if(!groupCats.length) return '';
+    const total=groupCats.reduce((s,c)=>s+catBudget(c),0), open=budRecurOpen(id);
+    const items=groupCats.map(c=>{
+      const cycle=catCycle(c), cycleLabel=(CAT_CYCLES.find(x=>x.id===cycle)||{}).label||cycle;
+      const raw=catAmount(c), amount=raw===''?'Amount not set':'$'+Number(raw).toFixed(2)+' / '+cycleLabel.toLowerCase();
+      const due=c.dueDate?(' · Due '+new Date(c.dueDate+'T00:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'})):'';
+      return '<div class="bud-recur-item"><div class="bud-row-left">'+catIconHtml(c,18)+'<div><div class="bud-row-name">'+_catEscHtml(catDisplayName(c.name))+'</div><div class="bud-recur-note">'+_catEscHtml(amount+due)+'</div></div></div><div class="bud-recur-amt">$'+catBudget(c).toFixed(2)+'<span class="bud-recur-per">/wk</span></div></div>';
+    }).join('');
+    return '<div class="bud-row bud-recur-head" role="button" tabindex="0" aria-expanded="'+(open?'true':'false')+'" aria-controls="bud-recur-list-'+id+'" onclick="budRecurToggle(\''+id+'\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();budRecurToggle(\''+id+'\');}"><div class="bud-row-left"><span class="bud-recur-ic">'+cardIcon('repeat')+'</span><div class="bud-row-name">'+label+'<span class="bud-recur-count">'+groupCats.length+'</span></div></div><div class="bud-row-calc bud-recur-total">$'+total.toFixed(2)+'<span class="bud-recur-per">/wk</span><span class="bud-recur-chev">'+(open?'▴':'▾')+'</span></div></div><div class="bud-recur-list" id="bud-recur-list-'+id+'"'+(open?'':' style="display:none"')+'>'+items+'</div>';
+  };
+  const recurBlock=groupHtml('routine','Routine · weekly to monthly',routineCats)+groupHtml('periodic','Periodic · quarterly / yearly',periodicCats);
 
   // Says out loud what the figure in the header IS. A weekly allocation and an actual charge
   // are different numbers for the same bill — $3.23/wk against a $13.99 monthly AppleCare —
@@ -14874,22 +14861,24 @@ function budSpendView(){
 // a LIST you either want to read every time or never. Resolved once and cached, so rendering
 // never touches localStorage.
 let _budRecurOpen=null;
-function budRecurOpen(){
-  if(_budRecurOpen===null) _budRecurOpen=!!budUiLoad().recurOpen;
-  return _budRecurOpen;
+function budRecurOpen(group){
+  if(_budRecurOpen===null){ const ui=budUiLoad(), saved=ui.recurGroupsOpen||{}; _budRecurOpen={routine:saved.routine==null?!!ui.recurOpen:!!saved.routine,periodic:!!saved.periodic}; }
+  return !!_budRecurOpen[group];
 }
 // Writes the DOM directly rather than re-rendering: the card holds live weekly inputs, and
 // rebuilding it to open a disclosure would drop focus out of whichever one was being typed in.
-function budRecurToggle(){
-  _budRecurOpen=!budRecurOpen();
-  budUiSave({recurOpen:_budRecurOpen});
-  const head=document.querySelector('#bud-fixed-card .bud-recur-head');
-  const list=document.querySelector('#bud-fixed-card .bud-recur-list');
-  if(list) list.style.display=_budRecurOpen?'block':'none';
+function budRecurToggle(group){
+  if(!['routine','periodic'].includes(group)) return;
+  _budRecurOpen=budRecurOpen('routine')||budRecurOpen('periodic')?_budRecurOpen:{routine:false,periodic:false};
+  _budRecurOpen[group]=!_budRecurOpen[group];
+  budUiSave({recurOpen:_budRecurOpen.routine,recurGroupsOpen:_budRecurOpen});
+  const head=document.querySelector('#bud-fixed-card [aria-controls="bud-recur-list-'+group+'"]');
+  const list=document.getElementById('bud-recur-list-'+group);
+  if(list) list.style.display=_budRecurOpen[group]?'block':'none';
   if(head){
-    head.setAttribute('aria-expanded',_budRecurOpen?'true':'false');
+    head.setAttribute('aria-expanded',_budRecurOpen[group]?'true':'false');
     const ch=head.querySelector('.bud-recur-chev');
-    if(ch) ch.textContent=_budRecurOpen?'▴':'▾';
+    if(ch) ch.textContent=_budRecurOpen[group]?'▴':'▾';
   }
 }
 function budSetSpendView(v){

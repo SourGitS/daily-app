@@ -147,6 +147,7 @@
 .bud-recur-amt{font-family:var(--font-num);font-size:13px;font-weight:700;color:var(--text-2);white-space:nowrap;flex-shrink:0}
 .bud-recur-per{font-size:10px;font-weight:600;color:var(--muted);margin-left:2px}
 .bud-recur-note{font-size:11px;color:var(--muted);line-height:1.45;padding:8px 0 2px}
+.bud-recur-item .bud-recur-note{padding:1px 0 0;font-size:10px;line-height:1.3}
 /* flex row so a fixed category's logo (or initial) can sit before its name */
 .bud-row-left{flex:1;min-width:0;display:flex;align-items:center;gap:9px}
 .bud-row-name{font-size:14px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis}
