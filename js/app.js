@@ -13155,7 +13155,7 @@ function renderFixedCardBody(data,isCur){
     }).join('');
     return '<div class="bud-row bud-recur-head" role="button" tabindex="0" aria-expanded="'+(open?'true':'false')+'" aria-controls="bud-recur-list-'+id+'" onclick="budRecurToggle(\''+id+'\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();budRecurToggle(\''+id+'\');}"><div class="bud-row-left"><span class="bud-recur-ic">'+cardIcon('repeat')+'</span><div class="bud-row-name">'+label+'<span class="bud-recur-count">'+groupCats.length+'</span></div></div><div class="bud-row-calc bud-recur-total">$'+total.toFixed(2)+'<span class="bud-recur-per">/wk</span><span class="bud-recur-chev">'+(open?'▴':'▾')+'</span></div></div><div class="bud-recur-list" id="bud-recur-list-'+id+'"'+(open?'':' style="display:none"')+'>'+items+'</div>';
   };
-  const recurBlock=groupHtml('routine','Routine · weekly to monthly',routineCats)+groupHtml('periodic','Periodic · quarterly / yearly',periodicCats);
+  const recurBlock=groupHtml('routine','Routine',routineCats)+groupHtml('periodic','Periodic',periodicCats);
 
   // Says out loud what the figure in the header IS. A weekly allocation and an actual charge
   // are different numbers for the same bill — $3.23/wk against a $13.99 monthly AppleCare —
