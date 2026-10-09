@@ -51,7 +51,12 @@ function dailySwitchAccount(user){
   dailyNativeStorage.setItem('daily-account-active',target);
   document.body.inert=true;
   document.body.style.visibility='hidden';
-  window.location.reload();
+  // Finish revocation before reloading, so a queued push cannot target the previous account.
+  if(typeof dailyNotifyBinding!=='function'){window.location.reload();return true;}
+  const revoke=dailyNotifyBinding().then(b=>{
+    if(b&&b.scope!==target)return dailyNotifyPatch(b.scope,b.token,{enabled:false,token:crypto.randomUUID()});
+  });
+  revoke.catch(()=>{}).finally(()=>window.location.reload());
   return true;
 }
 function dailyKeepOnboardingDraft(uid){

@@ -1,5 +1,36 @@
 # Daily — Agent Handoff
 
+## v381 notifications — client release authorised, Firebase deferred, 2026-10-09
+
+- Existing `daily_reminders` settings and acknowledgement dates are retained. Separate workout,
+  budget-update and weekly-report prompts default off. Weekdays, times, frequency limits,
+  quiet hours and rotating wording share `js/notification-schedule.js` between page and backend.
+  Permission is requested only by an explicit enable button; category edits never request it.
+- `js/notifications.js` replaces the startup-only reminder functions. Open-app delivery uses a
+  visible-only timer plus resume checks and `ServiceWorkerRegistration.showNotification`.
+  Closed-app delivery uses the new Firebase callable/scheduler in `functions/`, standard Web
+  Push and a private `notificationDevices` server registry. Existing user stores/rules are not
+  changed. Device settings remain account-specific and retain their existing backup behavior;
+  subscriptions, bindings and receipts are device-local IndexedDB state outside backups.
+- Account changes revoke the notification token before reload. Sign-out/master opt-out revoke
+  it, unsubscribe and disable the connection. Scheduler transactions and worker receipts prevent
+  duplicates. Workout suppression reads actual dated sessions plus the device's completion signal.
+  Offline workouts on another device cannot be known until synced. Delivery is at most once:
+  an ambiguous transport failure is not retried. Alerts expire within 15 minutes, before quiet
+  hours/midnight; short missed scheduling windows catch up, hours-old alerts do not.
+- Client push configuration remains disabled with no VAPID key. No billing, secrets or backend
+  deployment was performed. Firebase Blaze, contact/key setup and production approval are still
+  required. Francois explicitly authorised committing and pushing the client update while
+  deferring Firebase setup until a future request. Do not enable billing, deploy functions or
+  activate remote push as part of this release. See `NOTIFICATIONS-SETUP.md` for activation.
+- Cache prepared as `daily-v381`. All 548 Node checks pass, including 25 notification checks.
+  Chrome synthetic browser checks cover 320/390/1440px and both themes; real IndexedDB claims,
+  native worker display with synthetic push events, click URLs under `/daily-app/`, opt-out and
+  account rejection pass. Dependency audit found no known vulnerabilities. Local runtime was
+  Node 24; backend targets Node 22. Physical iPhone, remote push, deployed Node 22 and fresh-profile
+  production Firebase checks remain unverified. Francois authorised the client release after
+  those verification limits were disclosed.
+
 ## v380 Food Today catalogue announcement — 2026-10-06
 
 Food → Today now places a persistent light editorial “What’s new in Food” card immediately

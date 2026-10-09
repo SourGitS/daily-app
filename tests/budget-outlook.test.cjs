@@ -274,11 +274,12 @@ test('saving one Budget UI preference does not erase the other', () => {
 test('both preferences are read back, and a fresh device gets the closed/category defaults', () => {
   const seeded = uiCtx('{"spendView":"day","recurOpen":true}');
   assert.equal(seeded.budSpendView(), 'day');
-  assert.equal(seeded.budRecurOpen(), true);
+  assert.equal(seeded.budRecurOpen('routine'), true);
+  assert.equal(seeded.budRecurOpen('periodic'), false);
 
   const fresh = uiCtx();
   assert.equal(fresh.budSpendView(), 'cat');
-  assert.equal(fresh.budRecurOpen(), false);
+  assert.equal(fresh.budRecurOpen('routine'), false);
   assert.equal(fresh.__store.has('daily_budget_ui'), false,
     'reading a preference must never write one — this runs during a render');
 });

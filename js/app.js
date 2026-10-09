@@ -41,7 +41,7 @@ document.body.addEventListener('click', function(){}, false);
 // outright and the popup opens blank.
 function handleAuth(){
   if(!firebaseReady || !auth) return Promise.resolve(null);
-  if(auth.currentUser){ auth.signOut(); return Promise.resolve(null); }
+  if(auth.currentUser){ return dailyNotifyStop().catch(()=>{}).then(()=>auth.signOut()); }
   return auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
 }
 // Button-facing wrapper: same sign-in, but a failure surfaces as a toast instead of an
@@ -432,6 +432,7 @@ if(firebaseReady){
   // on an account switch alike, so no listener can outlive the account it was opened for.
   syncDetachAll();
   if(typeof dailySwitchAccount==='function'&&dailySwitchAccount(user)){ firebaseReady=false; return; }
+  if(typeof dailyNotifyResume==='function')dailyNotifyResume().catch(()=>{});
   let piRef, savRef, habitsRef, budDataRef, incCatRef, fixCatRef, varCatRef, ccRef;
   if(user){
     const profileNeedsRestore=!(profileData.name||'').trim();
@@ -4681,6 +4682,7 @@ function saveSession(){
 
   S.sessions.push(sessionObj);
   if(!persist([String(sessionObj.id)])) return;
+  if(typeof dailyNotifyWorkoutSaved==='function')dailyNotifyWorkoutSaved(sessionObj.date).catch(()=>{});
   updateNavBadges();
 
   // Progressive overload check
@@ -6196,6 +6198,7 @@ const SETTINGS_SEARCH=[
   {s:'account', label:'Display name',       sub:'Profile',   a:'stg-card-profile',   keys:'your name greeting who am i profile'},
   {s:'account', label:'Workout reminder',   sub:'Reminders', a:'stg-card-reminders', keys:'notification alert notify time train daily push'},
   {s:'account', label:'Budget reminder',    sub:'Reminders', a:'stg-card-reminders', keys:'notification alert notify weekly money day time push'},
+  {s:'account', label:'System notifications', sub:'Reminders', a:'stg-card-reminders', keys:'workout budget prompts weekly report quiet hours days frequency opt out push iphone'},
   {s:'account', label:'Reset onboarding',   sub:'Danger zone', a:'stg-card-advanced', keys:'clear wipe start over welcome first run advanced'},
   {s:'health',  label:'Name',               sub:'Health details', a:'stg-card-personal', keys:'your name'},
   {s:'health',  label:'Age, sex and height',sub:'Health details', a:'stg-card-personal', keys:'birthday male female tall cm metrics body'},
@@ -6643,7 +6646,7 @@ function renderAccountSection(){
     '</div>';
   const remindersCard=
     '<div class="stg-card" id="stg-card-reminders">'+
-      stgCardHead('bell','Reminders','Local notifications from this device. Each switch saves the moment you flip it.')+
+      stgCardHead('bell','Reminders','Choose your days, times and optional prompts. Changes save as you make them.')+
       '<div id="reminders-inner"></div>'+
     '</div>';
   const dangerCard=
@@ -25362,87 +25365,6 @@ function resetOnboarding(){
 }
 
 // ── Reminders ────────────────────────────────────────────────────
-function loadReminders(){ return lsLoad('daily_reminders', {}); }
-function saveReminders(r){ lsSave('daily_reminders', r); }
-function checkReminders(){
-  if(!('Notification' in window)) return;
-  const r=loadReminders();
-  const today=getLocalDate();
-  const now=new Date();
-  const nowMins=now.getHours()*60+now.getMinutes();
-
-  // Workout reminder
-  const wr=r.workout||{};
-  if(wr.enabled){
-    const [wH,wM]=(wr.time||'07:00').split(':').map(Number);
-    const wAck=localStorage.getItem('daily_reminder_workout_date');
-    if(nowMins>=wH*60+wM && wAck!==today){
-      if(Notification.permission==='granted'){
-        const nxt=type(suggestDay());
-        new Notification('Time to train 💪',{body:nxt.name+' is up — let\'s go.',icon:'icon-192.png'});
-        localStorage.setItem('daily_reminder_workout_date',today);
-      } else if(Notification.permission!=='denied'){
-        Notification.requestPermission().then(p=>{ if(p==='granted') checkReminders(); });
-      }
-    }
-  }
-
-  // Budget reminder
-  const br=r.budget||{};
-  if(br.enabled){
-    const todayDay=new Date(today+'T12:00:00').getDay();
-    const [bH,bM]=(br.time||'20:00').split(':').map(Number);
-    const bAck=localStorage.getItem('daily_reminder_budget_date');
-    if(todayDay===(br.day??0) && nowMins>=bH*60+bM && bAck!==today){
-      if(Notification.permission==='granted'){
-        new Notification('Save your week 💰',{body:"Don't forget to log this week's budget before it resets.",icon:'icon-192.png'});
-        localStorage.setItem('daily_reminder_budget_date',today);
-      } else if(Notification.permission!=='denied'){
-        Notification.requestPermission().then(p=>{ if(p==='granted') checkReminders(); });
-      }
-    }
-  }
-}
-function renderRemindersSection(){
-  const wrap=document.getElementById('reminders-inner'); if(!wrap) return;
-  const r=loadReminders();
-  const wr=r.workout||{enabled:false,time:'07:00'};
-  const br=r.budget||{enabled:false,day:0,time:'20:00'};
-  const denied='Notification' in window && Notification.permission==='denied';
-  const deniedBanner=denied?'<div class="stg-status err">Notifications are blocked — enable them for this site in your browser settings.</div>':'';
-  const days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const dayOpts=days.map((d,i)=>`<option value="${i}"${i===(br.day??0)?' selected':''}>${d}</option>`).join('');
-  // Renders INSIDE the Reminders card, so these are sub-headings (.stg-sub), not two more
-  // cards. The emoji headings are gone: they ignore currentColor, so they could follow
-  // neither the theme nor the accent (see the icon note in css/settings.css).
-  wrap.innerHTML=`
-    ${deniedBanner}
-    <div class="stg-sub">Workout</div>
-    <div class="stg-row">
-      <span class="stg-row-txt"><span class="stg-row-label">Daily reminder</span><span class="stg-row-sub">Nudges you on a day you have not logged yet.</span></span>
-      <label class="toggle-switch"><input type="checkbox" id="rem-workout-enabled"${wr.enabled?' checked':''} onchange="saveReminderField('workout','enabled',this.checked)"><span class="toggle-slider"></span></label>
-    </div>
-    <div class="stg-field" style="margin-top:10px"><label for="rem-workout-time">Remind me at</label><input type="time" id="rem-workout-time" value="${wr.time||'07:00'}" onchange="saveReminderField('workout','time',this.value)"></div>
-    <div class="stg-sub">Budget</div>
-    <div class="stg-row">
-      <span class="stg-row-txt"><span class="stg-row-label">Weekly reminder</span><span class="stg-row-sub">Prompts you to save the week before it resets.</span></span>
-      <label class="toggle-switch"><input type="checkbox" id="rem-budget-enabled"${br.enabled?' checked':''} onchange="saveReminderField('budget','enabled',this.checked)"><span class="toggle-slider"></span></label>
-    </div>
-    <div class="stg-2col" style="margin-top:10px">
-      <div class="stg-field"><label for="rem-budget-day">Day</label><select id="rem-budget-day" onchange="saveReminderField('budget','day',parseInt(this.value))">${dayOpts}</select></div>
-      <div class="stg-field"><label for="rem-budget-time">Time</label><input type="time" id="rem-budget-time" value="${br.time||'20:00'}" onchange="saveReminderField('budget','time',this.value)"></div>
-    </div>`;
-}
-function saveReminderField(type,field,value){
-  const r=loadReminders();
-  if(!r[type]) r[type]={};
-  r[type][field]=value;
-  saveReminders(r);
-  if(field==='enabled' && value && 'Notification' in window && Notification.permission==='default'){
-    Notification.requestPermission().then(()=>renderRemindersSection());
-  }
-}
-
 // ══ KITCHEN: Recipe Book ══════════════════════════════════════════
 function kitUUID(){
   return (crypto&&crypto.randomUUID)?crypto.randomUUID():'r'+Date.now()+Math.random().toString(16).slice(2);

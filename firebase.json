@@ -1,5 +1,20 @@
 {
   "database": {
     "rules": "database.rules.json"
-  }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "daily-notifications",
+      "predeploy": [
+        "node functions/build.cjs"
+      ],
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*.local",
+        "*.log"
+      ]
+    }
+  ]
 }

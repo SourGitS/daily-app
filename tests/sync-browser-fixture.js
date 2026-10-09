@@ -11,7 +11,7 @@
     setItem:(k,v)=>{memory.set(k,String(v));persistMemory();}, removeItem:k=>{memory.delete(k);persistMemory();},
     key:i=>[...memory.keys()][i], get length(){return memory.size;}
   }});
-  Object.defineProperty(navigator,'serviceWorker',{value:{controller:null,register:()=>Promise.resolve({update:()=>Promise.resolve()}),addEventListener:()=>{}}});
+  Object.defineProperty(navigator,'serviceWorker',{value:{controller:null,register:()=>Promise.resolve({update:()=>Promise.resolve()}),getRegistration:()=>Promise.resolve(undefined),addEventListener:()=>{}}});
   const split={types:[{id:'cloud',name:'Saved cloud workout',colorKey:'legs',exercises:[{name:'Cloud squat',sets:3}]}],schedule:[0]};
   const workouts={one:{id:'one',date:'2026-09-01',sessionType:'Saved cloud workout',dayNum:1,exercises:[{name:'Cloud squat',sets:[{weight:100,reps:5}]}]},two:{id:'two',date:'2026-09-03',sessionType:'Saved cloud workout',dayNum:1,exercises:[{name:'Cloud squat',sets:[{weight:105,reps:5}]}]}};
   const stores={sessions:workouts,weights:{20260903:{date:'2026-09-03',weight:80}},

@@ -18,3 +18,9 @@ tests/sync-browser.html
 assets/brand/refined/daily-app-icon-master.png
 assets/brand/refined/daily-wordmark-source-opaque.png
 assets/brand/refined/daily-brand-assets.zip
+
+# Push backend build/runtime secrets are never committed or published.
+functions/node_modules/
+functions/schedule.cjs
+functions/.env*
+functions/*.local

@@ -392,7 +392,9 @@
 // v378: pay-cycle setup fields stay within the phone dialog.
 // v379: curated recipe catalogue and editorial Food introduction.
 // v380: persistent catalogue announcement below the Food Today hero.
-const CACHE_NAME = 'daily-v380';
+// v381: opt-in prompts, scheduled reminders and account-bound Web Push.
+const CACHE_NAME = 'daily-v381';
+importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
@@ -412,6 +414,11 @@ const ASSETS = [
   './css/brand.css',
   './css/home-hero.css',
   './js/app.js',
+  './js/notification-schedule.js',
+  './js/notification-storage.js',
+  './js/notification-config.js',
+  './js/notifications.js',
+  './css/notifications.css',
   './js/account-storage.js',
   './js/finance-periods.js',
   './css/finance-periods.css',
@@ -497,4 +504,36 @@ self.addEventListener('fetch', event => {
       return cached || networkFetch;
     })
   );
+});
+
+self.addEventListener('push',event=>{
+  event.waitUntil((async()=>{
+    let data;try{data=event.data.json();}catch(e){return;}
+    const b=await dailyNotifyBinding();
+    const routes={workout:'log',workoutPrompt:'log',budget:'budget',budgetPrompt:'budget',weeklyReport:'stats'};
+    if(!b?.enabled||!b.remote||b.token!==data.token||b.scope!==data.scope||!Number.isFinite(data.expiresAt)||data.expiresAt<Date.now())return;
+    if(routes[data.channel]!==data.route||!Number.isInteger(data.day)||!new RegExp('^'+data.channel+'_\\d{4}-\\d{2}-\\d{2}$').test(data.id))return;
+    if(!await dailyNotifyClaim(b.token,data.id,data.channel,data.day))return;
+    await self.registration.showNotification('Daily',{
+      body:String(data.body||'Open Daily for your reminder.').slice(0,240),
+      icon:new URL('./assets/brand/daily-app-icon-192.png',self.registration.scope).href,
+      tag:data.id,data
+    });
+  })());
+});
+self.addEventListener('notificationclick',event=>{
+  event.notification.close();
+  event.waitUntil((async()=>{
+    const data=event.notification.data,b=await dailyNotifyBinding();
+    if(!b?.enabled||!data||b.token!==data.token||b.scope!==data.scope||!['log','budget','stats'].includes(data.route))return;
+    const url=new URL('./',self.registration.scope);
+    url.searchParams.set('dailyNotification',data.route);
+    url.searchParams.set('dailyToken',data.token);
+    url.searchParams.set('dailyScope',data.scope);
+    url.hash=data.route;
+    const clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    const client=clients.find(c=>c.url.startsWith(self.registration.scope));
+    if(client){await client.navigate(url.href);await client.focus();}
+    else await self.clients.openWindow(url.href);
+  })());
 });
