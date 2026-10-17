@@ -11142,9 +11142,9 @@ function billOccurrences(from, to){
     });
   });
   (Array.isArray(accounts)?accounts:[]).forEach(a=>{
-    if(!a||a.type!=='debt'||!a.tracksStatement||!a.dueDate) return;
+    if(!a||a.type!=='debt'||!a.tracksStatement||!a.dueDate||(parseFloat(a.statementBalance)||0)<=0) return;
     const d=localMidnight(String(a.dueDate).slice(0,10));
-    if(isNaN(d.getTime())||d<from||d>to) return;
+    if(isNaN(d.getTime())||dateStr(d)!==String(a.dueDate).slice(0,10)||d<from||d>to) return;
     out.push({kind:'statement', acct:a, date:d, key:dateStr(d),
               amount:parseFloat(a.statementBalance)||0, name:a.name||'Credit card', acctName:''});
   });
@@ -14161,7 +14161,7 @@ function budOvAttention(m, f){
   // 1. An overdue tracked statement is the only item here that is a FACT rather than a
   //    projection, which is why it leads.
   (Array.isArray(accounts)?accounts:[]).forEach(a=>{
-    if(!a||a.type!=='debt'||!a.tracksStatement||!a.dueDate) return;
+    if(!a||a.type!=='debt'||!a.tracksStatement||!a.dueDate||(parseFloat(a.statementBalance)||0)<=0) return;
     const n=acctDueDays(a);
     if(n===null||n>=0) return;
     const bal=parseFloat(a.statementBalance)||0;
@@ -14315,7 +14315,7 @@ function budOvAccountsHtml(){
   // The nearest tracked statement in either direction. acctDueText() already names an overdue
   // one as overdue, and that is the only case coloured.
   const stmt=accounts
-    .filter(a=>a&&a.type==='debt'&&a.tracksStatement&&a.dueDate&&acctDueDays(a)!==null)
+    .filter(a=>a&&a.type==='debt'&&a.tracksStatement&&(parseFloat(a.statementBalance)||0)>0&&a.dueDate&&acctDueDays(a)!==null)
     .sort((a,b)=>acctDueDays(a)-acctDueDays(b))[0]||null;
   const stmtRow=stmt
     ? '<div class="fin-line"><span class="fin-line-l">'+escText(stmt.name||'Card')+' statement'+
@@ -15200,7 +15200,7 @@ function renderDueBanner(monday){
   const mondayStr=weekKey(monday);
   const sun=new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+6);
   const sundayStr=weekKey(sun);
-  const hits=accounts.filter(a=>a&&a.type==='debt'&&a.tracksStatement&&a.dueDate
+  const hits=accounts.filter(a=>a&&a.type==='debt'&&a.tracksStatement&&(parseFloat(a.statementBalance)||0)>0&&a.dueDate&&acctDueDays(a)!==null
     && String(a.dueDate).slice(0,10)>=mondayStr && String(a.dueDate).slice(0,10)<=sundayStr);
   if(!hits.length){ el.innerHTML=''; return; }
   el.innerHTML=hits.map(a=>{
@@ -22146,7 +22146,7 @@ function renderHome(){
     '</div>';
   }).join('');
   const _stmtRows=accounts
-    .filter(a=>a&&a.type==='debt'&&a.tracksStatement&&((parseFloat(a.statementBalance)||0)>0||a.dueDate))
+    .filter(a=>a&&a.type==='debt'&&a.tracksStatement&&(parseFloat(a.statementBalance)||0)>0)
     .map(a=>{
       const dueTxt=acctDueText(a);
       return '<div style="font-size:12px;font-weight:600;color:var(--amber-dark);background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:7px 10px;margin-top:8px">'+
@@ -24091,16 +24091,17 @@ function fmtMoneyExact(n){
 // the number IS the message.
 function acctDueDays(acc){
   if(!acc||!acc.dueDate) return null;
-  const s=String(acc.dueDate); const due=new Date(s.length<=10?s.slice(0,10)+'T12:00:00':s);
-  if(isNaN(due.getTime())) return null;
+  const s=String(acc.dueDate).slice(0,10); const due=new Date(s+'T12:00:00');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(s)||isNaN(due.getTime())||
+    due.getFullYear()!==Number(s.slice(0,4))||due.getMonth()+1!==Number(s.slice(5,7))||due.getDate()!==Number(s.slice(8,10))) return null;
   const today=new Date(getLocalDate()+'T12:00:00');
   return Math.round((due-today)/864e5);
 }
 function acctDueText(acc){
   if(!acc||!acc.dueDate) return '';
-  const s=String(acc.dueDate); const due=new Date(s.length<=10?s.slice(0,10)+'T12:00:00':s);
-  if(isNaN(due.getTime())) return '';
   const d=acctDueDays(acc);
+  if(d===null) return '';
+  const due=new Date(String(acc.dueDate).slice(0,10)+'T12:00:00');
   const dateTxt=due.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
   if(d===null) return 'Due '+dateTxt;
   if(d<0)  return 'Overdue by '+Math.abs(d)+' day'+(Math.abs(d)===1?'':'s');
@@ -24290,7 +24291,7 @@ function renderAccountsPage(){
                 '<input class="bud-row-input" type="number" inputmode="decimal" placeholder="$0" value="'+(a.statementBalance?a.statementBalance:'')+'" onchange="accountSetStatementField(\''+a.id+'\',\'statementBalance\',this.value)">'+
               '</div>'+
               '<div class="bud-row" style="border-bottom:none">'+
-                '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500">Due date</div>'+(dueTxt?'<div class="bud-row-budget"'+(dueTxt.indexOf('Overdue')===0?' style="color:var(--danger)"':'')+'>'+dueTxt+'</div>':'')+'</div>'+
+                '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500">Due date</div>'+('<div class="bud-row-budget" id="acct-due-hint-'+a.id+'"'+(dueTxt.indexOf('Overdue')===0?' style="color:var(--danger)"':'')+'>'+dueTxt+'</div>')+'</div>'+
                 '<input class="bud-row-input" type="date" value="'+(a.dueDate?String(a.dueDate).slice(0,10):'')+'" onchange="accountSetStatementField(\''+a.id+'\',\'dueDate\',this.value)" style="width:150px">'+
               '</div>'+
               '<button class="sav-update-btn" style="width:100%;margin-top:8px" onclick="accountMarkPaid(\''+a.id+'\')">Mark statement as paid</button>'+
@@ -24500,9 +24501,28 @@ function accountToggleStatement(id,on){
 }
 function accountSetStatementField(id,field,val){
   const a=accounts.find(x=>x&&x.id===id); if(!a) return;
-  if(field==='statementBalance') a.statementBalance=parseFloat(val)||0;
-  else if(field==='dueDate') a.dueDate=val||'';
-  saveAccounts(accounts); renderAccountsPage();
+  const savedList=loadAccounts(),saved=savedList.find(x=>x&&x.id===id);
+  if(JSON.stringify(saved)!==JSON.stringify(a)){showToast('This account changed. Reopen Accounts before editing the statement.');return;}
+  const next={...a};
+  if(field==='statementBalance'){
+    const text=String(val).trim();
+    if(text!==''&&(!/^\d+(?:\.\d{1,2})?$/.test(text)||!Number.isFinite(Number(text))||Number(text)>Number.MAX_SAFE_INTEGER/100)){
+      showToast('Enter a statement balance of 0 or more, with at most two decimal places.'); return;
+    }
+    next.statementBalance=text===''?0:Number(text);
+  }else if(field==='dueDate'){
+    if(val&&acctDueDays({dueDate:val})===null){showToast('Choose a valid repayment due date.');return;}
+    next.dueDate=val||'';
+  }else return;
+  const before=accounts;
+  saveAccounts(savedList.map(x=>x&&x.id===id?next:x));
+  if(JSON.stringify(loadAccounts().find(x=>x&&x.id===id))!==JSON.stringify(next)){
+    accounts=before;showToast('The statement change could not be saved on this device. Try again.');return;
+  }
+  // Keep the payment button mounted when changing a field blurs its input.
+  const hint=document.getElementById('acct-due-hint-'+id);
+  if(hint){hint.textContent=acctDueText(next);hint.style.color=acctDueDays(next)<0?'var(--danger)':'';}
+  if(typeof renderBudgetTab==='function')renderBudgetTab();
 }
 // ── Credit limit & utilisation ────────────────────────────────────
 // Optional per-debt field. Absent on every existing account, and every reader below treats
@@ -24555,11 +24575,64 @@ function accountSetCategory(id,val){
 }
 function accountMarkPaid(id){
   const a=accounts.find(x=>x&&x.id===id); if(!a) return;
-  // Clears the statement reminder (this cycle is settled). The running debt total (current)
-  // is edited separately via Update — paying a statement doesn't necessarily zero the card.
-  a.statementBalance=0; a.dueDate='';
-  saveAccounts(accounts); renderAccountsPage();
-  if(typeof showToast==='function') showToast('Statement marked paid');
+  if(a.type!=='debt'||!a.tracksStatement) return;
+  const dialog=document.getElementById('acct-statement-dialog'); if(!dialog) return;
+  const current=Number(a.current),statement=Number(a.statementBalance??0);
+  if(!Number.isFinite(current)||current<0||!Number.isFinite(statement)||statement<0){
+    showToast('Check the current and statement balances before marking this paid.'); return;
+  }
+  if(statement===0&&!a.dueDate){ showToast('There is no outstanding statement to settle.'); return; }
+  acctSettlementDraft={id,snapshot:JSON.stringify(a),uid:typeof auth!=='undefined'&&auth?auth.currentUser?.uid||null:null};
+  document.getElementById('acct-statement-summary').textContent=(a.name||'This account')+
+    ' has a recorded debt of '+fmtMoneyExact(current)+' and a statement of '+fmtMoneyExact(statement)+'.';
+  const input=document.getElementById('acct-statement-remaining');
+  // A statement can exclude newer purchases, or the running balance may already be updated.
+  // Confirm the actual remaining balance rather than silently subtracting twice.
+  input.value=statement>0&&statement<=current?((Math.round(current*100)-Math.round(statement*100))/100).toFixed(2):'';
+  document.getElementById('acct-statement-error').textContent='';
+  dialog.showModal();
+  document.getElementById('acct-statement-cancel').focus();
+}
+let acctSettlementDraft=null;
+function accountCancelStatement(){
+  acctSettlementDraft=null;
+  document.getElementById('acct-statement-dialog')?.close();
+}
+function accountConfirmStatement(){
+  const draft=acctSettlementDraft,dialog=document.getElementById('acct-statement-dialog');
+  if(!draft||!dialog?.open) return false;
+  const error=document.getElementById('acct-statement-error');
+  const fail=message=>{ error.textContent=message; return false; };
+  const uid=typeof auth!=='undefined'&&auth?auth.currentUser?.uid||null:null;
+  if(uid!==draft.uid)return fail('The signed-in account changed. Cancel and reopen this statement in the current account.');
+  const a=accounts.find(x=>x&&x.id===draft.id);
+  const savedList=loadAccounts(),saved=savedList.find(x=>x&&x.id===draft.id);
+  if(!a||JSON.stringify(a)!==draft.snapshot||JSON.stringify(saved)!==draft.snapshot)
+    return fail('This account changed while this window was open. Cancel and reopen it to review the latest balances.');
+  const text=document.getElementById('acct-statement-remaining').value.trim();
+  if(!/^\d+(?:\.\d{1,2})?$/.test(text)||!Number.isFinite(Number(text))||Number(text)>Number.MAX_SAFE_INTEGER/100)
+    return fail('Enter the actual remaining debt as a positive amount or 0, with at most two decimal places.');
+  const remaining=Number(text),today=getLocalDate();
+  const history=(Array.isArray(a.history)?a.history:[]).filter(e=>e&&e.date!==today);
+  history.push({date:today,balance:remaining});history.sort((x,y)=>x.date<y.date?-1:x.date>y.date?1:0);
+  const next={...a,current:remaining,statementBalance:0,dueDate:'',history,
+    statementSettlements:[...(Array.isArray(a.statementSettlements)?a.statementSettlements:[]),{
+      date:today,statementBalance:Number(a.statementBalance)||0,dueDate:a.dueDate||'',
+      previousBalance:Number(a.current)||0,confirmedBalance:remaining
+    }]};
+  const before=accounts;
+  saveAccounts(savedList.map(x=>x&&x.id===draft.id?next:x));
+  if(JSON.stringify(loadAccounts().find(x=>x&&x.id===draft.id))!==JSON.stringify(next)){
+    accounts=before;
+    return fail('The updated balance could not be saved on this device. Your statement has not been confirmed. Try again.');
+  }
+  acctSettlementDraft=null;dialog.close();
+  renderAccountsPage();
+  if(typeof renderBudgetTab==='function')renderBudgetTab();
+  if(S.view==='home'&&typeof renderHome==='function')renderHome();
+  if(S.view==='stats'&&typeof refreshStatsForData==='function')refreshStatsForData(['overview','review','finance']);
+  showToast('Statement settled · remaining debt '+fmtMoneyExact(remaining));
+  return true;
 }
 
 // ── Navigation ──

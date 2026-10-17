@@ -1438,6 +1438,16 @@
   <div class="stg-actions"><button type="button" class="stg-btn" onclick="closeAccentPicker()">Cancel</button><button type="button" id="accent-picker-apply" class="stg-btn primary" onclick="applyAccentPicker()">Apply colour</button></div>
 </dialog>
 <div id="kit-cook-overlay"></div>
+<dialog id="acct-statement-dialog" class="acct-statement-dialog" aria-labelledby="acct-statement-title" aria-describedby="acct-statement-summary acct-statement-help" oncancel="event.preventDefault();accountCancelStatement()">
+  <h2 id="acct-statement-title">Confirm statement payment</h2>
+  <p id="acct-statement-summary"></p>
+  <p id="acct-statement-help">Confirm the debt still owed after this payment. If you already updated the balance, enter that balance to avoid subtracting the payment twice. This clears this statement’s due date. Other account balances and budget spending stay unchanged.</p>
+  <form onsubmit="event.preventDefault();accountConfirmStatement()">
+    <div class="stg-field"><label for="acct-statement-remaining">Remaining debt after payment</label><input id="acct-statement-remaining" type="text" inputmode="decimal" autocomplete="off" required aria-describedby="acct-statement-error"></div>
+    <p id="acct-statement-error" role="alert"></p>
+    <div class="stg-actions"><button id="acct-statement-cancel" class="stg-btn" type="button" onclick="accountCancelStatement()">Cancel</button><button class="stg-btn primary" type="submit">Confirm payment</button></div>
+  </form>
+</dialog>
 <div id="kit-toast" class="kit-toast"></div>
 
 <div id="nutrition-food-overlay" class="modal-overlay hidden" onclick="if(event.target===this)nutCloseFoodSheet()">

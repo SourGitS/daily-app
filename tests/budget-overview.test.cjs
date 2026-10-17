@@ -167,7 +167,7 @@ test('the Accounts store, its sync registration and its save path did not move',
   assert.match(body('ensureAccountsMigrated'),
     /if\(!savHas && !ccHas\) return;/, 'a brand-new user is still left unmigrated');
   // Every edit still lands through saveAccounts() and then re-renders the same page.
-  ['accountSetField', 'accountDelete', 'accountToggleStatement', 'accountMarkPaid']
+  ['accountSetField', 'accountDelete', 'accountToggleStatement', 'accountConfirmStatement']
     .filter(n => source.includes('function ' + n + '('))
     .forEach(n => assert.match(body(n), /saveAccounts\(/, n + ' must save through saveAccounts'));
 });

@@ -1,5 +1,35 @@
 # Daily — Agent Handoff
 
+## v382 credit-card statements — release authorised, existing balances retained, 2026-10-17
+
+- Investigation confirmed `accountMarkPaid()` only cleared the statement amount/date; it
+  deliberately left `current` unchanged. Statement field blur also rebuilt the payment button
+  before a direct tap could finish. Francois clarified “expiry” means the repayment due date.
+- Mark statement as paid now opens one native confirmation dialog. The user confirms the
+  actual remaining debt (including zero) before any save. The suggested balance subtracts the
+  statement only when it does not exceed recorded debt; already-adjusted balances can be kept
+  explicitly. Cancel/Escape write nothing. Repeated confirms, changed records, an auth-account
+  switch and failed local saves cannot silently apply a settlement.
+- Confirmation uses the existing `saveAccounts` / `daily_accounts` writer and sync path,
+  retains unrelated saved accounts, updates today's usual balance-history observation, clears
+  this statement's amount/date, and retains the previous values in `statementSettlements` on
+  that same account. It does not invent a bank transfer, expense, source account or next date.
+  Statement edits preserve the button DOM and verify local persistence. Existing sync, account
+  namespaces, stores and security rules are unchanged; no migration or boot repair is added.
+- Zero-amount statements no longer create due/overdue alerts. Due dates are validated as real
+  calendar dates; invalid dates do not roll into another month. Account summaries and Budget
+  tools/due warnings refresh after settlement. Historical “paid” actions cannot be reconstructed
+  because the old action erased the statement values; correct remaining balances explicitly.
+- Cache prepared as `daily-v382`. All 561 Node checks pass, including 13 statement regressions.
+  Synthetic Chrome checks cover 320/390/1440px, both themes, weekly/pay-period modes, direct edit-to-pay, confirmation,
+  cancellation, stale-record rejection, exact balances/history and preserved financial stores.
+  Production Firebase was blocked; no real saved budget data was read or changed. Physical
+  iPhone and fresh-profile production sync remain unverified. Francois explicitly authorised
+  committing and pushing these fixes after disclosure of those limits, with existing balances
+  unchanged. Release must not apply historical-payment corrections or any automatic balance
+  adjustment; only subsequent explicit edits or confirmed settlements may change balances.
+  Firebase notification setup remains deferred as authorised for v381.
+
 ## v381 notifications — client release authorised, Firebase deferred, 2026-10-09
 
 - Existing `daily_reminders` settings and acknowledgement dates are retained. Separate workout,

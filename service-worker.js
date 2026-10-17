@@ -393,7 +393,8 @@
 // v379: curated recipe catalogue and editorial Food introduction.
 // v380: persistent catalogue announcement below the Food Today hero.
 // v381: opt-in prompts, scheduled reminders and account-bound Web Push.
-const CACHE_NAME = 'daily-v381';
+// v382: confirm statement settlement and refresh debt totals and due-date summaries.
+const CACHE_NAME = 'daily-v382';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
