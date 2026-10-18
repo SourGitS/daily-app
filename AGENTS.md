@@ -1,5 +1,19 @@
 # Daily — Agent Handoff
 
+## v383 Manhua Hub shortcut — release authorised, 2026-10-18
+
+- Home has one movable/hideable Manhua Hub card through the existing widget/layout system.
+  It appends to the phone/Grid order and desktop Dashboard's At a glance column without a
+  boot-time layout write. Restrained purple and a simple inline sword symbol match the reviewed
+  preview; the Hub's exact icon was unavailable.
+- The fixed external link opens `https://manhua-hub.exactbear128.chatgpt.site/` with
+  `target="_blank"` and `rel="noopener noreferrer"`. It adds no reading data, Firebase connection,
+  stores or billing. It cannot guarantee launching the installed Hub or enabling Safari helpers.
+- Cache `daily-v383`. All 561 Node checks pass; synthetic Chrome checks cover 320/390/1440px,
+  both themes, link attributes, focus/touch size, overflow, move/hide and preserved saved data.
+  Physical iPhone handoff remains unverified. Francois reviewed the card and explicitly
+  authorised committing and pushing the shortcut. Live reading integration remains deferred.
+
 ## v382 credit-card statements — release authorised, existing balances retained, 2026-10-17
 
 - Investigation confirmed `accountMarkPaid()` only cleared the statement amount/date; it

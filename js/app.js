@@ -22236,7 +22236,8 @@ function renderHome(){
     prs: buildPRCard(),
     kitchen: buildKitchenCard(),
     notes: buildHomeNotesCard(),
-    recent: buildHomeRecentCard()
+    recent: buildHomeRecentCard(),
+    manhua: buildManhuaHubCard()
   };
   // Ordered + visibility-filtered widget list; skip widgets whose HTML is empty right now
   // (e.g. Recent Workout before any session exists) so edit mode has no invisible boxes.
@@ -22491,6 +22492,21 @@ function hlPrevBalance(){
     '<div style="display:flex;gap:6px;margin-top:5px">'+cell('Assets','$9,370')+cell('Debts','$1,340')+'</div>'+
   '</div>';
 }
+function manhuaHubIcon(){
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 4.5 5-1-1 5L9 18l-3-3zM5 13l6 6M7 17l-4 4M2 20l2 2"/></svg>';
+}
+function buildManhuaHubCard(){
+  return '<div class="card manhua-hub-card">'+
+    cardHeader('','Manhua Hub')+
+    '<div class="manhua-hub-intro"><span class="manhua-hub-icon">'+manhuaHubIcon()+'</span>'+
+    '<div><p class="manhua-hub-title">Your reading library</p><p class="manhua-hub-caption">Manhua, manhwa &amp; webtoons</p></div></div>'+
+    '<a class="manhua-hub-open" href="https://manhua-hub.exactbear128.chatgpt.site/" target="_blank" rel="noopener noreferrer">Open Manhua Hub <span aria-hidden="true">↗</span><span class="sr-only"> (opens externally)</span></a>'+
+    '</div>';
+}
+function hlPrevManhua(){
+  return '<div class="hl-prev hl-prev-plain"><div class="hl-lbl">Manhua Hub</div>'+
+    '<div class="manhua-hub-preview">'+manhuaHubIcon()+'<span>Your reading library</span></div><div class="hl-sub">Open Manhua Hub ↗</div></div>';
+}
 function hlPrevFinance(){
   const row=(l,r,s)=>'<div class="hl-row-between" style="padding:2px 0">'+
     '<span style="font-size:8.5px;font-weight:600;color:var(--text)">'+l+
@@ -22580,8 +22596,9 @@ const HOME_WIDGETS=[
   // income source — see buildFinanceCheckinCard. No parallel preference system: it is hidden
   // and reordered through Settings → Home Layout like every other card.
   {id:'finance',  label:'Finance check-in',     tab:'Finance', preview:hlPrevFinance},
+  {id:'manhua',   label:'Manhua Hub',           tab:'Shortcut', preview:hlPrevManhua},
 ];
-const HOME_DEFAULT_ORDER=['session','weather','streak','prs','calories','weight','review','habits','budget','finance','balance','tiles','kitchen','notes','recent'];
+const HOME_DEFAULT_ORDER=['session','weather','streak','prs','calories','weight','review','habits','budget','finance','balance','tiles','kitchen','notes','recent','manhua'];
 // Which cards span the full desktop grid row by default. User-editable per card
 // (Settings → Home Layout); this is only the starting point. Only the session hero: it is the
 // one card with enough internal content to earn the width (label, play button, 40px title, meta,
@@ -22618,7 +22635,7 @@ const HOME_DASH_COLS=[
 // (homeDashPartition), so applying Dashboard rearranges nothing the user chose.
 const HOME_DASH_DEFAULT={
   main:   ['session','review','notes','habits','kitchen','recent','prs'],
-  summary:['weather','budget','balance','calories','weight','streak','finance','tiles']
+  summary:['weather','budget','balance','calories','weight','streak','finance','tiles','manhua']
 };
 // A card this table has never heard of (a widget added after this release) lands in the
 // supporting column: it is the neutral bucket, and a new arrival cannot push its way into

@@ -394,7 +394,8 @@
 // v380: persistent catalogue announcement below the Food Today hero.
 // v381: opt-in prompts, scheduled reminders and account-bound Web Push.
 // v382: confirm statement settlement and refresh debt totals and due-date summaries.
-const CACHE_NAME = 'daily-v382';
+// v383: optional Manhua Hub Home shortcut; no reading data connection.
+const CACHE_NAME = 'daily-v383';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
