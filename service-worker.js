@@ -402,7 +402,8 @@
 // v389: remove the repeated Manhua Hub heading above the branded shortcut.
 // v390: keep only the text logo in the Manhua Hub shortcut and layout previews.
 // v391: matching four-point star detail in the Manhua Hub wordmark's H.
-const CACHE_NAME = 'daily-v391';
+// v392: unframed Daily signature with tighter spacing beneath the Hub wordmark.
+const CACHE_NAME = 'daily-v392';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —

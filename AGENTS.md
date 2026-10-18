@@ -1,5 +1,15 @@
 # Daily — Agent Handoff
 
+## v392 unframed Daily signature — 2026-10-18
+
+- Removed the decorative frame and its padding from the small grey Daily signature under
+  the Manhua Hub wordmark, matching the Hub header. Reduced the inter-logo gap to 1px and
+  updated Home Layout previews. Original artwork, install icons, links and data are unchanged.
+- Cache `daily-v392`. All 561 Daily tests pass; synthetic checks cover 320/390/1440px in
+  both themes and both layout previews, without overflow or browser errors. Hub's 94 app
+  tests pass; its deferred Firebase catalogue test cannot run without the absent cheerio
+  dependency and was not required by this CSS-only change. Physical iPhone is unverified.
+
 ## v391 paired-star Manhua Hub wordmark — release authorised, 2026-10-18
 
 - The matching wordmark in Home and Home Layout previews adds a smaller four-point star
