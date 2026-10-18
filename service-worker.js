@@ -397,7 +397,8 @@
 // v383: optional Manhua Hub Home shortcut; no reading data connection.
 // v384: Manhua Hub shortcut uses its own logo within a restrained action.
 // v386: refined Manhua Hub icon and explicit Daily return context.
-const CACHE_NAME = 'daily-v386';
+// v387: layered blue-violet background for the Manhua Hub icon.
+const CACHE_NAME = 'daily-v387';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
@@ -418,7 +419,7 @@ const ASSETS = [
   './css/brand.css',
   './css/home-hero.css',
   './js/app.js',
-  './assets/manhua-hub-mark.png',
+  './assets/manhua-hub-mark-v2.png',
   './js/notification-schedule.js',
   './js/notification-storage.js',
   './js/notification-config.js',

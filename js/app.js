@@ -22441,7 +22441,7 @@ function hlPrevBalance(){
   return hlPreviewCard('Balance');
 }
 function manhuaHubIcon(){
-  return '<img src="assets/manhua-hub-mark.png" width="36" height="36" alt="" aria-hidden="true">';
+  return '<img src="assets/manhua-hub-mark-v2.png" width="36" height="36" alt="" aria-hidden="true">';
 }
 function buildManhuaHubCard(){
   return '<div class="card manhua-hub-card">'+

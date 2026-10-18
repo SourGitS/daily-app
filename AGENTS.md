@@ -1,5 +1,15 @@
 # Daily — Agent Handoff
 
+## v387 Manhua Hub icon background — 2026-10-18
+
+- The user requested a richer app-icon background and a clearer Daily brand connection.
+  The Hub's folded M now sits over layered blue/violet artwork, shared by the Home shortcut
+  and Home Layout previews at `assets/manhua-hub-mark-v2.png`. The separate Hub adds a small
+  `by Daily` header signature; Daily's existing card copy and destination stay intact.
+- Cache `daily-v387`. All 561 Node checks pass; the new image loads in the synthetic 390px
+  phone card in light/dark themes, with no overflow or browser errors. Hub's 94 checks pass
+  and its signature fits 320/390/1440px. No saved data, reading or financial behavior changed.
+
 ## v386 Manhua Hub identity and return link — 2026-10-18
 
 - Home and Home Layout previews use the Hub's new generated folded-page M mark at
