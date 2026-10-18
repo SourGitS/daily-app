@@ -22441,13 +22441,13 @@ function hlPrevBalance(){
   return hlPreviewCard('Balance');
 }
 function manhuaHubIcon(){
-  return '<img src="assets/manhua-hub.svg" width="36" height="36" alt="" aria-hidden="true">';
+  return '<img src="assets/manhua-hub-mark.png" width="36" height="36" alt="" aria-hidden="true">';
 }
 function buildManhuaHubCard(){
   return '<div class="card manhua-hub-card">'+
     cardHeader('','Manhua Hub')+
     '<div class="manhua-hub-intro"><div><p class="manhua-hub-title">A little escape.</p><p class="manhua-hub-caption">Manhua, manhwa &amp; webtoons</p></div></div>'+
-    '<a class="manhua-hub-open" href="https://manhua-hub.exactbear128.chatgpt.site/" target="_blank" rel="noopener noreferrer">'+manhuaHubIcon()+'<span class="manhua-hub-open-label">Open Manhua Hub</span><span aria-hidden="true">↗</span><span class="sr-only"> (opens externally)</span></a>'+
+    '<a class="manhua-hub-open" href="https://manhua-hub.exactbear128.chatgpt.site/?from=daily" target="_blank" rel="noopener noreferrer">'+manhuaHubIcon()+'<span class="manhua-hub-open-label">Open Manhua Hub</span><span aria-hidden="true">↗</span><span class="sr-only"> (opens externally)</span></a>'+
     '</div>';
 }
 function hlPrevManhua(){

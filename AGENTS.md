@@ -1,5 +1,18 @@
 # Daily — Agent Handoff
 
+## v386 Manhua Hub identity and return link — 2026-10-18
+
+- Home and Home Layout previews use the Hub's new generated folded-page M mark at
+  `assets/manhua-hub-mark.png`, replacing the sword. The external shortcut now includes
+  `?from=daily`; Hub uses this to show a fixed Back to Daily Home link, retained for that tab.
+  Existing new-tab behavior and `noopener noreferrer` remain. An installed iPhone app handoff
+  is not guaranteed; the return destination is Daily's website.
+- Cache `daily-v386` includes the new icon. All 561 Node checks pass. Synthetic browser checks
+  cover 320/390/1440px, both themes, loaded icon, safe destination/attributes and no overflow.
+  No reading progress, financial stores, balances, account/sync code or billing were changed.
+  The separate Hub source has 94 passing checks, including navigation-context isolation,
+  fixed return destinations and denied session storage. Physical iPhone remains unverified.
+
 ## v385 Budget card and Home Layout previews — release authorised, 2026-10-18
 
 - Home's Budget card opens the existing Budget view through a native stretched link, with
