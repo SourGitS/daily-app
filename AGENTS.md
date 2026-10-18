@@ -1,5 +1,20 @@
 # Daily — Agent Handoff
 
+## v388 matching Manhua Hub branding — 2026-10-18
+
+- Home's existing shortcut and Home Layout previews reuse the exact approved Hub wordmark:
+  purple MANHUA, white HUB in dark mode (dark ink in light mode), and the four-point star
+  integrated into the M. The original framed Daily logo sits underneath in neutral `#777`.
+  The folded-M icon, copy, fixed `?from=daily` destination and new-tab safety attributes remain.
+- The native link retains an explicit Open Manhua Hub accessible name. The matching raster
+  mask is local at `assets/manhua-hub-wordmark-star.png` and precached in `daily-v388`.
+  No reading, financial, balance, layout-store, account or Firebase behavior changed.
+- All 561 Node checks and JavaScript syntax/diff checks pass. Synthetic browser checks cover
+  320/390/1440px, light/dark themes, loaded artwork, contained wordmark, 66px link target,
+  safe destination/attributes, matching layout previews and no browser errors. Physical iPhone
+  remains unverified. Francois asked to match the approved branding and finish the changes;
+  commit and push follow the existing release authorisation. Billing remains off.
+
 ## v387 Manhua Hub icon background — 2026-10-18
 
 - The user requested a richer app-icon background and a clearer Daily brand connection.

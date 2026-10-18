@@ -22409,7 +22409,7 @@ function hlPreviewCard(kind){
   return '<div class="hl-prev '+(kind==='Session'?'hl-prev-hero':kind==='Weather'?'hl-prev-weather':'hl-prev-plain')+'">'+
     '<div class="hl-lbl">'+esc(sample[0])+'</div><div class="hl-title">'+(kind==='Calories'?'<span class="hl-ring"><i></i></span>':'')+esc(sample[1])+(kind==='Weather'?'<span class="hl-preview-sun">'+weatherIcon('sun')+'</span>':'')+'</div><div class="hl-sub">'+esc(sample[2])+'</div>'+
     (facts?'<div class="hl-preview-facts">'+facts+'</div>':'')+progress+chart+
-    (kind==='Budget'?'<div class="hl-preview-action">＋ Add expense</div>':kind==='Manhua'?'<div class="manhua-hub-preview">'+manhuaHubIcon()+'<span>Open Manhua Hub ↗</span></div>':kind==='Weather'?'<div class="hl-preview-forecast">Today · Week <span>Hide forecast ⌄</span></div>':'')+'</div>';
+    (kind==='Budget'?'<div class="hl-preview-action">＋ Add expense</div>':kind==='Manhua'?'<div class="manhua-hub-preview">'+manhuaHubIcon()+manhuaHubWordmark()+'<span aria-hidden="true">↗</span></div>':kind==='Weather'?'<div class="hl-preview-forecast">Today · Week <span>Hide forecast ⌄</span></div>':'')+'</div>';
 }
 function hlPrevSession(){
   return hlPreviewCard('Session');
@@ -22443,11 +22443,14 @@ function hlPrevBalance(){
 function manhuaHubIcon(){
   return '<img src="assets/manhua-hub-mark-v2.png" width="36" height="36" alt="" aria-hidden="true">';
 }
+function manhuaHubWordmark(){
+  return '<span class="manhua-hub-lockup" aria-hidden="true"><span class="manhua-hub-wordmark"></span><span class="manhua-hub-signature"></span></span>';
+}
 function buildManhuaHubCard(){
   return '<div class="card manhua-hub-card">'+
     cardHeader('','Manhua Hub')+
     '<div class="manhua-hub-intro"><div><p class="manhua-hub-title">A little escape.</p><p class="manhua-hub-caption">Manhua, manhwa &amp; webtoons</p></div></div>'+
-    '<a class="manhua-hub-open" href="https://manhua-hub.exactbear128.chatgpt.site/?from=daily" target="_blank" rel="noopener noreferrer">'+manhuaHubIcon()+'<span class="manhua-hub-open-label">Open Manhua Hub</span><span aria-hidden="true">↗</span><span class="sr-only"> (opens externally)</span></a>'+
+    '<a class="manhua-hub-open" href="https://manhua-hub.exactbear128.chatgpt.site/?from=daily" target="_blank" rel="noopener noreferrer" aria-label="Open Manhua Hub (opens externally)">'+manhuaHubIcon()+manhuaHubWordmark()+'<span aria-hidden="true">↗</span></a>'+
     '</div>';
 }
 function hlPrevManhua(){

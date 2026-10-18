@@ -2351,17 +2351,30 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 #acct-statement-error{color:var(--danger)}
 
 /* Companion shortcut: the purple belongs to this card, independently of Appearance. */
-.manhua-hub-card{--manhua-ink:#66418e;--manhua-tint:rgba(110,67,154,.09)}
-[data-theme="dark"] .manhua-hub-card{--manhua-ink:#c4a3e8;--manhua-tint:rgba(180,132,225,.12)}
+.manhua-hub-card,.manhua-hub-preview{--manhua-ink:#66418e;--manhua-hub-ink:#1c1c1e;--manhua-tint:rgba(110,67,154,.09)}
+[data-theme="dark"] .manhua-hub-card,[data-theme="dark"] .manhua-hub-preview{--manhua-ink:#c4a3e8;--manhua-hub-ink:#f4f4f5;--manhua-tint:rgba(180,132,225,.12)}
 .manhua-hub-card .card-hd{margin-bottom:12px}
 .manhua-hub-intro{display:flex;align-items:center;gap:12px;min-width:0}
 .manhua-hub-title{font-size:15px;line-height:1.4;font-weight:700;color:var(--text)}
 .manhua-hub-caption{margin-top:3px;font-size:12px;line-height:1.5;color:var(--text-secondary)}
 .manhua-hub-open{display:flex;align-items:center;gap:12px;min-height:58px;margin-top:14px;padding:10px 12px;border:1px solid rgba(128,96,178,.14);border-radius:14px;background:linear-gradient(110deg,var(--manhua-tint),rgba(128,96,178,.04));color:var(--manhua-ink);font-size:13px;font-weight:700;line-height:1.5;text-decoration:none}
 .manhua-hub-open img{width:36px;height:36px;flex:none;border-radius:10px}
-.manhua-hub-open-label{flex:1;min-width:0}
-.manhua-hub-open:hover{background:var(--manhua-tint);text-decoration:underline;text-underline-offset:3px}
+.manhua-hub-lockup{display:flex;flex-direction:column;align-items:flex-start;gap:4px;flex:1;min-width:0}
+/* Same mask and word-gap colour boundary as the approved Hub header. */
+.manhua-hub-wordmark{display:block;width:186px;max-width:100%;height:24px;background:linear-gradient(to right,var(--manhua-ink) 65.9%,var(--manhua-hub-ink) 65.9%);-webkit-mask:url('../assets/manhua-hub-wordmark-star.png') left center/contain no-repeat;mask:url('../assets/manhua-hub-wordmark-star.png') left center/contain no-repeat;mask-mode:alpha}
+.manhua-hub-signature{display:block;position:relative;width:52px;height:17px;margin-left:2px;color:#777}
+.manhua-hub-signature:before{content:'';position:absolute;inset:3px 5px;background:currentColor;-webkit-mask:url('../assets/brand/daily-wordmark-mask.png') center/contain no-repeat;mask:url('../assets/brand/daily-wordmark-mask.png') center/contain no-repeat;mask-mode:alpha}
+.manhua-hub-signature:after{content:'';position:absolute;inset:0;border:1px solid currentColor;border-radius:3px;transform:skewX(-14deg)}
+.manhua-hub-open:hover{background:var(--manhua-tint)}
 .manhua-hub-open:focus-visible{outline:2px solid var(--manhua-ink);outline-offset:3px}
-.manhua-hub-open .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .manhua-hub-preview{display:flex;align-items:center;gap:7px;margin:10px 0;color:var(--text);font-size:9px;font-weight:600}
 .manhua-hub-preview img{width:24px;height:24px;flex:none;border-radius:6px}
+.manhua-hub-preview .manhua-hub-wordmark{width:110px;height:14px}
+.manhua-hub-preview .manhua-hub-signature{width:36px;height:11px}
+.manhua-hub-preview .manhua-hub-signature:before{inset:2px 3px}
+@supports not ((-webkit-mask-image:url('x')) or (mask-image:url('x'))){
+  .manhua-hub-wordmark{background:transparent url('../assets/manhua-hub-wordmark-star.png') left center/contain no-repeat}
+  [data-theme="dark"] .manhua-hub-wordmark{filter:invert(1)}
+  .manhua-hub-signature:before{background:transparent url('../assets/brand/daily-wordmark-light.png') center/contain no-repeat;opacity:.46}
+  [data-theme="dark"] .manhua-hub-signature:before{background-image:url('../assets/brand/daily-wordmark-dark.png')}
+}
