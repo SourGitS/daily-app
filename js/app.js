@@ -22493,19 +22493,18 @@ function hlPrevBalance(){
   '</div>';
 }
 function manhuaHubIcon(){
-  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 4.5 5-1-1 5L9 18l-3-3zM5 13l6 6M7 17l-4 4M2 20l2 2"/></svg>';
+  return '<img src="assets/manhua-hub.svg" width="36" height="36" alt="" aria-hidden="true">';
 }
 function buildManhuaHubCard(){
   return '<div class="card manhua-hub-card">'+
     cardHeader('','Manhua Hub')+
-    '<div class="manhua-hub-intro"><span class="manhua-hub-icon">'+manhuaHubIcon()+'</span>'+
-    '<div><p class="manhua-hub-title">Your reading library</p><p class="manhua-hub-caption">Manhua, manhwa &amp; webtoons</p></div></div>'+
-    '<a class="manhua-hub-open" href="https://manhua-hub.exactbear128.chatgpt.site/" target="_blank" rel="noopener noreferrer">Open Manhua Hub <span aria-hidden="true">↗</span><span class="sr-only"> (opens externally)</span></a>'+
+    '<div class="manhua-hub-intro"><div><p class="manhua-hub-title">A little escape.</p><p class="manhua-hub-caption">Manhua, manhwa &amp; webtoons</p></div></div>'+
+    '<a class="manhua-hub-open" href="https://manhua-hub.exactbear128.chatgpt.site/" target="_blank" rel="noopener noreferrer">'+manhuaHubIcon()+'<span class="manhua-hub-open-label">Open Manhua Hub</span><span aria-hidden="true">↗</span><span class="sr-only"> (opens externally)</span></a>'+
     '</div>';
 }
 function hlPrevManhua(){
   return '<div class="hl-prev hl-prev-plain"><div class="hl-lbl">Manhua Hub</div>'+
-    '<div class="manhua-hub-preview">'+manhuaHubIcon()+'<span>Your reading library</span></div><div class="hl-sub">Open Manhua Hub ↗</div></div>';
+    '<div class="manhua-hub-preview">'+manhuaHubIcon()+'<span>A little escape.</span></div><div class="hl-sub">Open Manhua Hub ↗</div></div>';
 }
 function hlPrevFinance(){
   const row=(l,r,s)=>'<div class="hl-row-between" style="padding:2px 0">'+

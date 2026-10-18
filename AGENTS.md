@@ -1,5 +1,19 @@
 # Daily — Agent Handoff
 
+## v384 Manhua Hub card refinement — release authorised, 2026-10-18
+
+- The Home shortcut uses the Hub's actual sword logo from its owned Site source, retained at
+  `assets/manhua-hub.svg`, inside the Open Manhua Hub action. The separate oversized icon block
+  is removed; “A little escape.” replaces “Your reading library”. Neutral card chrome and a
+  faint purple action keep the design restrained. The layout-picker preview uses the same logo.
+- Link destination/attributes, widget move/hide behavior and saved layouts are unchanged.
+  No reading integration, Firebase, store, account or balance changes. Cache prepared as
+  `daily-v384` and includes the logo. Francois reviewed the design and explicitly authorised
+  committing and pushing this refinement on 2026-10-18.
+- All 561 Node checks pass. Synthetic browser checks cover 320/390/1440px, both themes,
+  logo loading, link safety, focus/touch size, overflow, move/hide and unchanged saved data.
+  Physical iPhone handoff remains unverified; that limit was disclosed before release approval.
+
 ## v383 Manhua Hub shortcut — release authorised, 2026-10-18
 
 - Home has one movable/hideable Manhua Hub card through the existing widget/layout system.
