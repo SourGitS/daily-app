@@ -408,9 +408,9 @@ function budPeriodOverview(){
   return false;
 }
 function budPeriodHomeCard(){
-  const m=budPeriodMoney();if(!m)return '<div class="card home-budget-card">'+cardHeader('wallet','Budget')+'<h3>Your money, on your dates</h3><p class="card-cap">Choose a budget period. Your weekly history stays available.</p><button class="home-budget-add-labelled" onclick="budPeriodSetup()">Set up budget →</button></div>';
+  const m=budPeriodMoney();if(!m)return '<div class="card home-budget-card">'+homeBudgetDestination()+cardHeader('wallet','Budget')+'<h3>Your money, on your dates</h3><p class="card-cap">Choose a budget period. Your weekly history stays available.</p><button class="home-budget-add-labelled" onclick="budPeriodSetup()">Set up budget →</button></div>';
   const goal=Number(m.record.goal)||0;
-  return '<div class="card budget-snapshot-card home-budget-card">'+cardHeader('wallet','Budget · '+budPeriodLabel(m.range),
+  return '<div class="card budget-snapshot-card home-budget-card">'+homeBudgetDestination()+cardHeader('wallet','Budget · '+budPeriodLabel(m.range),
     m.available===null?tstat('warn','Needs a date check','info',true):m.available<0?tstat('neg','Over budget','alert',true):tstat('pos','On track','check',true))+
     '<div class="home-budget-totals"><div><div class="card-fig">'+(m.available===null?'—':fmtMoneyExact(m.available))+'</div><div class="card-fig-u">Available to spend</div></div>'+
     '<div class="home-budget-received"><strong>'+fmtMoneyExact(m.income)+'</strong><span>Income received</span></div></div>'+
@@ -418,7 +418,7 @@ function budPeriodHomeCard(){
     '<div class="home-budget-spending"><span>Spending goal</span><strong>'+fmtMoneyExact(m.spent)+(goal?' / '+fmtMoneyExact(goal):' spent')+'</strong></div>'+
     (goal?'<div class="card-bar"><div class="card-bar-fill" style="width:'+Math.min(100,m.spent/goal*100)+'%"></div></div>':'')+
     '<div class="home-budget-goal-note card-cap">'+(goal?(m.spent>goal?'Above goal':fmtMoneyExact(goal-m.spent)+' to goal'):'No spending goal set')+'</div>'+
-    '<div class="home-budget-footer"><button class="home-budget-add-labelled" onclick="openTxnModal({date:getLocalDate()})">＋ Add expense</button><button class="home-budget-link" onclick="homeOpenBudgetWeek()">View budget ↗</button></div></div>';
+    '<div class="home-budget-footer"><button class="home-budget-add-labelled" onclick="openTxnModal({date:getLocalDate()})">＋ Add expense</button></div></div>';
 }
 function dailyUpdateBannerHtml(){
   return '';

@@ -1,5 +1,23 @@
 # Daily — Agent Handoff
 
+## v385 Budget card and Home Layout previews — release authorised, 2026-10-18
+
+- Home's Budget card opens the existing Budget view through a native stretched link, with
+  an accessible name and focus ring. View budget/View week copy is removed. Add expense and
+  setup buttons remain independent; layout edit mode disables the card link and its tab stop.
+  No budget calculations, balances, stores, writers or saved layout values changed.
+- Home Layout's profile switch explicitly removes the shared sticky strip's bleed shadow,
+  preventing it from painting over the introduction. All 16 illustrative card thumbnails and
+  the composition preview now share current miniature graphics and destination labels.
+  The phone preview scrolls within its frame and remains keyboard accessible. Sample values
+  are explicitly labelled illustrative and never read from or written to user records.
+- Cache prepared as `daily-v385`. All 561 Node checks pass. Synthetic Chrome checks cover
+  320/390/1440px, light and dark themes, card destination, independent expense entry, the
+  unobscured profile switch, all 16 preview graphics and no horizontal page overflow. No
+  real financial records were read or changed. Physical iPhone remains unverified.
+- Francois authorised committing and pushing after tests pass. Firebase notification setup
+  and billing remain deferred. Manhua Hub's separate Sites source-date lookup is independent.
+
 ## v384 Manhua Hub card refinement — release authorised, 2026-10-18
 
 - The Home shortcut uses the Hub's actual sword logo from its owned Site source, retained at

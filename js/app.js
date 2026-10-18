@@ -22090,7 +22090,7 @@ function renderHome(){
     ? '<span>Spending goal</span><span><strong>'+fmtMoney(budVarSpent)+'</strong> / '+fmtMoney(budGoal)+'</span>'
     : '<span>Variable spending <strong>'+fmtMoney(budVarSpent)+'</strong></span><span>No spending goal set</span>';
   const budgetSnapshot=
-    '<div class="'+(_homeMode==='mobile'?'card home-budget-card ':'')+'budget-snapshot-card">'+
+    '<div class="'+(_homeMode==='mobile'?'card home-budget-card ':'')+'budget-snapshot-card">'+homeBudgetDestination()+
       cardHeader('wallet','Weekly budget','')+
       '<div class="home-budget-position">'+
         (mBudIncome>0
@@ -22106,7 +22106,7 @@ function renderHome(){
         '<div class="card-bar-pace" style="left:calc('+budPacePct+'% - 1px)" title="Today’s point in the week"></div></div>':'')+
       '<div class="home-budget-footer">'+
         (budPillTxt2?'<span class="budget-snap-pill'+budPillCls2+'" id="home-bud-status">'+budPillTxt2+'</span>':'')+
-        '<button type="button" class="home-budget-link" onclick="homeOpenBudgetWeek()" aria-label="Open this week in Finance">View week ↗</button>'+'</div>'+
+        '</div>'+
       (_homeMode==='mobile'?'<button type="button" class="txn-quick" onclick="openTxnModal({date:getLocalDate()})"><span aria-hidden="true">＋</span> Add expense</button>':'')+
     '</div>';
 
@@ -22323,6 +22323,9 @@ function homeRegularWidgetIds(ids,mode){
   const hero=homeHeroIds(mode);
   return ids.filter(id=>!hero.includes(id));
 }
+function homeBudgetDestination(){
+  return '<a class="home-budget-destination" href="#budget" aria-label="Open budget" onclick="event.preventDefault();if(!homeEditMode)homeOpenBudgetWeek()"></a>';
+}
 function homeOpenBudgetWeek(){
   currentWeekIdx=0;
   budPastEdit=false;
@@ -22396,101 +22399,46 @@ function buildHomeMegaHero(cards,visible,mode,brief){
 // Content is deliberately illustrative placeholder rather than live data: bound to real
 // values these would render blank exactly when the user has nothing logged yet, which is
 // when they're most likely to be setting their layout up.
+function hlPreviewCard(kind){
+  const samples={"Session":["Today’s training","Full Body A","4 exercises · Start session →","Last 7 days|3 sessions","Up next|Full Body B"],"Weather":["Your local forecast","21°","Clear sky · H 23° L 14°","Today|21°","Week|Show forecast"],"Streak":["Streak & this week","3 days","Current training streak","This week|3 / 4 sessions","Target|4 sessions"],"Review":["Week in review","Your recorded week","Full review →","Training|3 sessions","Food logged|5 days"],"Recent":["Recent sessions","Full Body A","Yesterday · 4 exercises","Previous session|Full Body B","Recorded|3 days ago"],"Calories":["Nutrition","640 kcal","Remaining today · Log food →","Protein|112 g","Carbs / fat|180 g / 54 g"],"Habits":["Today’s habits","2 of 3","Your daily check-in","✓ Morning walk|Done","Drink water|To do"],"Budget":["Budget · Your period","$666","Available to spend","Income received|$1,500","Spending goal|$119 / $300"],"Balance":["Net worth & accounts","$8,030","Net worth · Accounts →","Assets|$9,370","Debts|$1,340"],"Manhua":["Manhua Hub","A little escape.","Manhua, manhwa & webtoons"],"Finance":["Finance check-in","Coming up","Scheduled dates, at a glance","Phone bill · $35|In 3 days","Next payday|Thursday"],"PRs":["Personal records","Bench press","100 kg × 5 reps · All records →","Squat|140 kg × 3","Deadlift|180 kg × 1"],"Kitchen":["Food","What’s cooking?","Recipes for your next meal","Shopping|6 left","Pantry|2 running low"],"Weight":["Weight & goal","82.4 kg","Latest recorded reading","Target|80 kg","Log weight|Edit goal →"],"Tiles":["Period allocations","Your money plan","Allocated within your budget","Savings plan|$150","Bills reserved|$500"],"Notes":["Journal","A moment for today.","Write about today →","Open notes|Car registration","Due|In 3 days"]};
+  const sample=samples[kind];
+  const esc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const facts=sample.slice(3).map(v=>{const parts=v.split('|');return '<span>'+esc(parts[0])+'<strong>'+esc(parts[1])+'</strong></span>';}).join('');
+  const progress=['Budget','Streak','Habits','Session'].includes(kind)?'<div class="hl-bar"><i style="width:60%"></i></div>':'';
+  const chart=['Weight','Balance'].includes(kind)?'<svg class="hl-preview-chart" viewBox="0 0 160 26" aria-hidden="true"><path d="'+(kind==='Weight'?'M2 4 28 8 53 6 80 16 107 13 133 19 158 22':'M2 22 28 18 53 20 80 13 107 14 133 6 158 3')+'"/></svg>':'';
+  return '<div class="hl-prev '+(kind==='Session'?'hl-prev-hero':kind==='Weather'?'hl-prev-weather':'hl-prev-plain')+'">'+
+    '<div class="hl-lbl">'+esc(sample[0])+'</div><div class="hl-title">'+(kind==='Calories'?'<span class="hl-ring"><i></i></span>':'')+esc(sample[1])+(kind==='Weather'?'<span class="hl-preview-sun">'+weatherIcon('sun')+'</span>':'')+'</div><div class="hl-sub">'+esc(sample[2])+'</div>'+
+    (facts?'<div class="hl-preview-facts">'+facts+'</div>':'')+progress+chart+
+    (kind==='Budget'?'<div class="hl-preview-action">＋ Add expense</div>':kind==='Manhua'?'<div class="manhua-hub-preview">'+manhuaHubIcon()+'<span>Open Manhua Hub ↗</span></div>':kind==='Weather'?'<div class="hl-preview-forecast">Today · Week <span>Hide forecast ⌄</span></div>':'')+'</div>';
+}
 function hlPrevSession(){
-  return '<div class="hl-prev hl-prev-hero">'+
-    '<div class="hl-lbl">Today\'s session · Sat</div>'+
-    '<div class="hl-title">Full Body A</div>'+
-    '<div class="hl-sub">4 exercises</div>'+
-    '<div class="hl-row-between" style="margin-top:7px;font-size:8.5px;font-weight:700;opacity:.85"><span>1 of 4 done</span><span>25%</span></div>'+
-    '<div class="hl-bar"><i style="width:25%"></i></div>'+
-  '</div>';
+  return hlPreviewCard('Session');
 }
 function hlPrevWeather(){
-  return '<div class="hl-prev hl-prev-weather">'+
-    '<div class="hl-row-between">'+
-      '<div><div style="font-size:13px;font-weight:800">Saturday</div><div class="hl-sub">15 August</div></div>'+
-      '<div style="text-align:right">'+
-        '<div style="display:flex;align-items:center;gap:4px;justify-content:flex-end">'+
-          '<span class="weather-icon" style="font-size:14px">'+weatherIcon('sun')+'</span>'+
-          '<span class="hl-num">21°</span>'+
-        '</div>'+
-        '<div class="hl-sub">Clear sky</div>'+
-      '</div>'+
-    '</div>'+
-  '</div>';
+  return hlPreviewCard('Weather');
 }
 function hlPrevStreak(){
-  const segs=[1,1,1,0,0,0].map(on=>'<i class="'+(on?'on':'')+'"></i>').join('');
-  return '<div class="hl-prev hl-prev-plain" style="display:flex;gap:12px">'+
-    '<div style="flex:1"><div class="hl-lbl">Streak</div><div class="hl-num" style="margin-top:3px">3</div><div class="hl-sub">days</div></div>'+
-    '<div style="width:0.5px;background:var(--border)"></div>'+
-    '<div style="flex:1"><div class="hl-lbl">This week</div><div class="hl-num" style="margin-top:3px">3 <span style="font-size:9px;font-weight:600;color:var(--muted)">of 6</span></div>'+
-      '<div class="hl-segs">'+segs+'</div></div>'+
-  '</div>';
+  return hlPreviewCard('Streak');
 }
 function hlPrevReview(){
-  const stat=(lbl,val,col)=>'<div><div class="hl-lbl">'+lbl+'</div><div class="hl-num" style="font-size:14px;margin-top:2px'+(col?';color:'+col:'')+'">'+val+'</div></div>';
-  const dots=[1,1,0,1,0,0,0].map(on=>'<i class="'+(on?'on':'')+'"></i>').join('');
-  return '<div class="hl-prev hl-prev-plain">'+
-    '<div class="hl-lbl">📋 Weekly review</div>'+
-    '<div class="hl-grid2">'+
-      stat('Workouts','3')+stat('Budget','+$120','var(--success)')+
-      stat('Cals today','1,840')+stat('Weight Δ','-0.4','var(--success)')+
-    '</div>'+
-    '<div class="hl-dots">'+dots+'</div>'+
-  '</div>';
+  return hlPreviewCard('Review');
 }
 function hlPrevRecent(){
-  return '<div class="hl-prev hl-prev-plain">'+
-    '<div class="hl-lbl">Recent workout</div>'+
-    '<div class="hl-list">'+
-      '<div class="hl-li"><i></i>Squat <span style="margin-left:auto;color:var(--muted)">80kg × 5</span></div>'+
-      '<div class="hl-li"><i></i>Bench press <span style="margin-left:auto;color:var(--muted)">60kg × 8</span></div>'+
-      '<div class="hl-li"><i></i>Barbell row <span style="margin-left:auto;color:var(--muted)">55kg × 8</span></div>'+
-    '</div>'+
-  '</div>';
+  return hlPreviewCard('Recent');
 }
 function hlPrevCalories(){
-  // Neutral surface, not accent — .card.hero-card on Home is deliberately a plain card.
-  return '<div class="hl-prev hl-prev-plain">'+
-    '<div class="hl-lbl">📊 Overview</div>'+
-    '<div style="display:flex;align-items:center;gap:9px;margin-top:6px">'+
-      '<div class="hl-ring"><i></i></div>'+
-      '<div><div style="font-size:11px;font-weight:700;color:var(--text)">Good morning</div>'+
-        '<div class="hl-num" style="font-size:14px;color:var(--success);margin-top:2px">640</div>'+
-        '<div class="hl-sub">kcal remaining</div></div>'+
-    '</div>'+
-  '</div>';
+  return hlPreviewCard('Calories');
 }
 function hlPrevHabits(){
-  const li=(txt,on)=>'<div class="hl-li"><b class="'+(on?'on':'')+'"></b>'+txt+'</div>';
-  return '<div class="hl-prev hl-prev-plain">'+
-    '<div class="hl-row-between"><div class="hl-lbl">Daily habits</div><div style="font-size:9px;font-weight:700;color:var(--text)">3/5</div></div>'+
-    '<div class="hl-list">'+li('Morning workout',1)+li('Hit calorie goal',1)+li('Drink 2L water',0)+'</div>'+
-  '</div>';
+  return hlPreviewCard('Habits');
 }
 // Plain, not hl-prev-hero, and semantic green rather than white-on-accent — these thumbnails
 // are meant to be recognisable miniatures of the real cards, so they track the redesigns.
 function hlPrevBudget(){
-  return '<div class="hl-prev hl-prev-plain">'+
-    '<div class="hl-row-between">'+
-      '<div class="hl-lbl">Weekly budget</div>'+
-      '<span style="font-size:7.5px;font-weight:700;background:rgba(82,183,136,.16);color:var(--positive);padding:2px 7px;border-radius:20px">On track</span>'+
-    '</div>'+
-    '<div class="hl-num" style="font-size:20px;margin-top:6px">$666</div>'+
-    '<div class="hl-sub">left of $785</div>'+
-    '<div class="hl-bar"><i style="width:62%;background:var(--positive)"></i></div>'+
-  '</div>';
+  return hlPreviewCard('Budget');
 }
 function hlPrevBalance(){
-  const cell=(l,v)=>'<div style="flex:1;min-width:0"><div class="hl-lbl" style="font-size:7px">'+l+'</div>'+
-    '<div style="font-size:9px;font-weight:800;color:var(--text)">'+v+'</div></div>';
-  return '<div class="hl-prev hl-prev-plain">'+
-    '<div class="hl-lbl">Accounts</div>'+
-    '<div class="hl-num" style="font-size:19px;margin-top:5px">$8,030</div>'+
-    '<div class="hl-sub">net worth</div>'+
-    '<div style="display:flex;gap:6px;margin-top:5px">'+cell('Assets','$9,370')+cell('Debts','$1,340')+'</div>'+
-  '</div>';
+  return hlPreviewCard('Balance');
 }
 function manhuaHubIcon(){
   return '<img src="assets/manhua-hub.svg" width="36" height="36" alt="" aria-hidden="true">';
@@ -22503,84 +22451,37 @@ function buildManhuaHubCard(){
     '</div>';
 }
 function hlPrevManhua(){
-  return '<div class="hl-prev hl-prev-plain"><div class="hl-lbl">Manhua Hub</div>'+
-    '<div class="manhua-hub-preview">'+manhuaHubIcon()+'<span>A little escape.</span></div><div class="hl-sub">Open Manhua Hub ↗</div></div>';
+  return hlPreviewCard('Manhua');
 }
 function hlPrevFinance(){
-  const row=(l,r,s)=>'<div class="hl-row-between" style="padding:2px 0">'+
-    '<span style="font-size:8.5px;font-weight:600;color:var(--text)">'+l+
-      (s?'<span style="color:var(--muted);font-weight:500"> · '+s+'</span>':'')+'</span>'+
-    '<span style="font-size:8.5px;font-weight:800;color:var(--text)">'+r+'</span></div>';
-  return '<div class="hl-prev hl-prev-plain">'+
-    '<div class="hl-lbl">Finance check-in</div>'+
-    '<div style="margin-top:4px">'+
-      row('Spotify','$13.99','in 3 days')+
-      row('Projected after bills','$248','')+
-      row('Next pay','Thu 4 Sep','')+
-    '</div>'+
-  '</div>';
+  return hlPreviewCard('Finance');
 }
 function hlPrevPRs(){
-  const r=(n,v,isNew)=>'<div class="hl-row-between" style="padding:2px 0">'+
-    '<span style="font-size:8.5px;font-weight:600;color:var(--text)">'+n+
-      (isNew?' <span style="font-size:6.5px;font-weight:800;color:var(--positive)">NEW</span>':'')+'</span>'+
-    '<span style="font-size:8.5px;font-weight:800;color:var(--text)">'+v+'</span></div>';
-  return '<div class="hl-prev hl-prev-plain">'+
-    '<div class="hl-lbl">Personal records</div>'+
-    '<div style="margin-top:4px">'+r('Bench press','100 kg × 5',1)+r('Squat','140 kg × 3')+r('Deadlift','180 kg × 1')+'</div>'+
-  '</div>';
+  return hlPreviewCard('PRs');
 }
 function hlPrevKitchen(){
-  return '<div class="hl-prev hl-prev-plain">'+
-    '<div class="hl-lbl">Kitchen</div>'+
-    '<div style="font-size:11px;font-weight:700;color:var(--text);margin-top:4px">Chicken Katsu</div>'+
-    '<div class="hl-sub">Dinner · cooked 3 weeks ago</div>'+
-    '<div style="display:flex;gap:8px;margin-top:5px">'+
-      '<div><div class="hl-lbl" style="font-size:7px">Shopping</div><div style="font-size:9px;font-weight:800;color:var(--text)">6 left</div></div>'+
-      '<div><div class="hl-lbl" style="font-size:7px">Pantry</div><div style="font-size:9px;font-weight:800;color:#f59e0b">2 low</div></div>'+
-    '</div>'+
-  '</div>';
+  return hlPreviewCard('Kitchen');
 }
 function hlPrevWeight(){
-  return '<div class="hl-prev hl-prev-plain">'+
-    '<div class="hl-row-between">'+
-      '<div class="hl-lbl">Weight</div>'+
-      '<span style="font-size:7.5px;font-weight:700;background:rgba(82,183,136,.16);color:var(--positive);padding:2px 7px;border-radius:20px">On pace</span>'+
-    '</div>'+
-    '<div class="hl-num" style="font-size:19px;margin-top:5px">82.4<span style="font-size:9px;margin-left:2px">kg</span></div>'+
-    '<svg viewBox="0 0 100 22" preserveAspectRatio="none" style="width:100%;height:22px;margin-top:4px">'+
-      '<line x1="0" y1="17" x2="100" y2="17" stroke="var(--text-3)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>'+
-      '<path d="M0 4 L25 7 L50 6 L75 11 L100 13" fill="none" stroke="var(--accent-text)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>'+
-    '</svg>'+
-    '<div class="hl-sub">−0.4 kg this week · 3.2 kg to go</div>'+
-  '</div>';
+  return hlPreviewCard('Weight');
 }
 function hlPrevTiles(){
-  const tile=(icon,val,lbl)=>'<div class="hl-tile"><em>'+icon+'</em><span>'+val+'</span><div class="hl-sub" style="font-size:7px;margin-top:1px">'+lbl+'</div></div>';
-  return '<div class="hl-prev hl-prev-plain">'+
-    '<div class="hl-tiles">'+tile('💰','$150','Saved')+tile('💵','$785','Last pay')+'</div>'+
-  '</div>';
+  return hlPreviewCard('Tiles');
 }
 // Mirrors what the real card now shows: the write-about-today line first, then open loops.
 function hlPrevNotes(){
-  return '<div class="hl-prev hl-prev-plain">'+
-    '<div class="hl-lbl">Journal</div>'+
-    '<div class="hl-list">'+
-      '<div class="hl-li" style="color:var(--accent-text)">Write about today →</div>'+
-      '<div class="hl-li"><i style="background:var(--danger)"></i>Rego due <span style="margin-left:auto;color:var(--muted);font-size:8px">3 days</span></div>'+
-    '</div>'+
-  '</div>';
+  return hlPreviewCard('Notes');
 }
 const HOME_WIDGETS=[
-  {id:'session',  label:"Today's Session",      tab:'Train', preview:hlPrevSession},
-  {id:'weather',  label:'Weather',              tab:'Train', preview:hlPrevWeather},
-  {id:'streak',   label:'Streak & This Week',   tab:'Train', preview:hlPrevStreak},
-  {id:'review',   label:'Week in Review',       tab:'Train', preview:hlPrevReview},
-  {id:'recent',   label:'Recent Workout',       tab:'Train', preview:hlPrevRecent},
-  {id:'calories', label:'Overview & Greeting',  tab:'Nutrition', fixed:true, preview:hlPrevCalories},
-  {id:'weight',   label:'Weight & Goal',        tab:'Nutrition', preview:hlPrevWeight},
-  {id:'prs',      label:'Personal Records',     tab:'Train', preview:hlPrevPRs},
-  {id:'kitchen',  label:'Kitchen Snapshot',     tab:'Kitchen', preview:hlPrevKitchen},
+  {id:'session',  label:"Today's Session",      tab:'Log', preview:hlPrevSession},
+  {id:'weather',  label:'Weather',              tab:'Home', preview:hlPrevWeather},
+  {id:'streak',   label:'Streak & This Week',   tab:'Log', preview:hlPrevStreak},
+  {id:'review',   label:'Week in Review',       tab:'Log', preview:hlPrevReview},
+  {id:'recent',   label:'Recent Workout',       tab:'Log', preview:hlPrevRecent},
+  {id:'calories', label:'Nutrition Overview',   tab:'Food', fixed:true, preview:hlPrevCalories},
+  {id:'weight',   label:'Weight & Goal',        tab:'Log', preview:hlPrevWeight},
+  {id:'prs',      label:'Personal Records',     tab:'Log', preview:hlPrevPRs},
+  {id:'kitchen',  label:'Food Snapshot',        tab:'Food', preview:hlPrevKitchen},
   {id:'habits',   label:"Today's Habits",       tab:'Habits', preview:hlPrevHabits},
   // `tab` is shown under the card name in Settings › Home Layout — it names the DESTINATION
   // the card belongs to, which is Finance. The card labels themselves still say Budget where
@@ -23053,7 +22954,8 @@ function homeLayoutCopy(from,to){
 // below, clearly marked, which is where you turn them back on.
 function hlPvTile(id,extra){
   const w=HOME_WIDGETS.filter(x=>x.id===id)[0];
-  return '<span class="hl-pv-tile'+(extra||'')+'">'+(w?w.label:id)+'</span>';
+  return '<div class="hl-pv-tile'+(extra||'')+'"><span class="hl-pv-name">'+(w?w.label:id)+'</span>'+
+    (w&&w.preview?'<div class="hl-pv-art" aria-hidden="true">'+w.preview()+'</div>':'')+'</div>';
 }
 function hlPvShown(layout){
   const hidden=new Set(layout.hidden);
@@ -23067,7 +22969,7 @@ function hlPreview(mode,layout){
   if(mode==='mobile'){
     const ids=homeLayoutOrderIds(layout).filter(shown);
     const briefHtml=hero.length?'<div class="hl-pv-mega"><strong>Daily overview</strong>'+hero.map(id=>hlPvTile(id)).join('')+'</div>':'';
-    return '<div class="hl-pv hl-pv-phone" role="group" aria-label="iPhone Home preview">'+
+    return '<div class="hl-pv hl-pv-phone" role="group" tabindex="0" aria-label="iPhone Home preview">'+
       '<span class="hl-pv-bar"></span>'+briefHtml+
       '<div class="hl-pv-stack">'+ids.map(id=>hlPvTile(id,id==='session'?' is-hero':'')).join('')+'</div>'+
     '</div>';
@@ -23108,7 +23010,7 @@ function hlWidgetRow(id,index,count,mode,ctx){
           ' onchange="homeWidgetToggle(\''+id+'\',this.checked,\''+mode+'\')">'+
           '<span class="toggle-slider"></span></span></label>')+
     '</div>'+
-    '<div class="hl-widget-preview">'+(w.preview?w.preview():'')+'</div>'+
+    '<div class="hl-widget-preview" aria-label="Illustrative '+w.label+' card">'+(w.preview?w.preview():'')+'</div>'+
     (inHero?'<p class="stg-help">'+(mode==='mobile'
       ?id==='weather'?'When enabled, appears inside the daily overview with a visible Today / Week forecast.':'When enabled, leads the compact daily overview at the top of Home.'
       :'When enabled, appears in the Home hero.')+' Its saved position and width are retained.</p>':'<div class="hl-widget-actions">'+
@@ -23200,7 +23102,7 @@ function renderHomeLayoutSection(){
     '</div>'+
     '<div class="stg-card">'+
       stgCardHead(mode==='mobile'?'phone':'grid','Preview','What Home will look like on '+(mode==='mobile'?'your phone':'a desktop')+
-        '. Hidden cards are left out; their controls are below.')+
+        '. Card values are illustrative. Hidden cards are left out; their controls are below.')+
       hlPreview(mode,layout)+
     '</div>'+
     (stale
@@ -23319,6 +23221,7 @@ function applyHomeEditMode(){
   const stg=document.getElementById('home-layout-btn');
   if(stg) stg.style.display=homeEditMode?'':'none';
   document.querySelectorAll('#home-content [data-card-id]').forEach(c=>c.classList.toggle('home-card-jiggle',homeEditMode));
+  document.querySelectorAll('#home-content .home-budget-destination').forEach(a=>{a.tabIndex=homeEditMode?-1:0;});
 }
 // Drag-to-reorder with a floating clone. Active only in Home edit mode.
 // Pointer Events (not touch events) so mouse, touch and pen all run the same path — the old

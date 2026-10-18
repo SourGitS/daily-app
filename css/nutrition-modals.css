@@ -101,6 +101,18 @@
 .hl-prev-plain{background:var(--card);border:0.5px solid var(--card-border);color:var(--text)}
 .hl-prev-hero{background:linear-gradient(150deg, var(--accent-hero), var(--accent-hero-2));color:#fff}
 .hl-prev-weather{background:linear-gradient(160deg,#6DD5FA 0%,#2E86DE 100%);color:#fff}
+.hl-prev-weather{background:linear-gradient(145deg,#314c6d,#7188a0)}
+.hl-title{display:flex;align-items:center;gap:7px}
+.hl-preview-facts{display:flex;justify-content:space-between;gap:10px;margin-top:9px;font-size:8px;color:var(--muted)}
+.hl-preview-facts>span{min-width:0;flex:1}
+.hl-preview-facts strong{display:block;color:var(--text);font-size:10px;margin-top:3px}
+.hl-prev-hero .hl-preview-facts,.hl-prev-weather .hl-preview-facts{color:rgba(255,255,255,.75)}
+.hl-prev-hero .hl-preview-facts strong,.hl-prev-weather .hl-preview-facts strong{color:#fff}
+.hl-prev-plain .hl-bar>i{background:var(--accent)}
+.hl-preview-action{margin-top:9px;padding:7px 8px;background:var(--accent-hero);color:#fff;text-align:center;border-radius:7px;font-size:9px;font-weight:700}
+.hl-preview-chart{display:block;width:100%;height:24px;margin-top:8px;fill:none;stroke:var(--accent-text);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.hl-preview-sun{margin-left:auto;font-size:22px;display:flex}
+.hl-preview-forecast{display:flex;justify-content:space-between;border-top:1px solid rgba(255,255,255,.2);padding-top:7px;margin-top:8px;font-size:8px;font-weight:700}
 /* Text scale — the hero/weather variants inherit white via the container's own colour, so
    these only set size/weight and lean on currentColor for everything except muted greys. */
 .hl-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;opacity:.7}
@@ -152,7 +164,7 @@
 /* The profile switch is the app's ONE segmented control (.seg-tabs in css/workout.css), not
    a fourth private pill row. It is static here: .seg-tabs is position:sticky for the strips
    that head a scrolling screen, and this one sits inside a settings card. */
-.hl-seg{position:static;margin:2px 0 10px}
+.seg-tabs.hl-seg{position:static;z-index:auto;box-shadow:none;--seg-bleed:0px;margin:2px 0 14px;max-width:none}
 .hl-editing{font-size:12px;line-height:1.45;color:var(--muted);margin:0 0 4px}
 .hl-editing strong{color:var(--text)}
 /* Composition chooser: two selectable cards with a diagram of the arrangement each makes,
@@ -318,3 +330,21 @@
 .nut-sheet-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}.nut-field{display:flex;flex-direction:column;gap:5px}.nut-field.full{grid-column:1/-1}.nut-field label{font-size:11px;font-weight:800;color:var(--muted)}.nut-field input,.nut-field select{width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font-size:14px}.nut-live{background:var(--border);border-radius:12px;padding:12px;margin:12px 0;font-size:13px;line-height:1.5}.nut-sheet-list{max-height:46vh;overflow:auto}.nut-sheet-actions{display:flex;gap:9px;margin-top:14px}.nut-sheet-actions>*{flex:1}.nut-inline-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.nut-small-btn{border:1px solid var(--border);border-radius:999px;background:var(--card);color:var(--text);padding:7px 10px;font:700 11px var(--font-ui);cursor:pointer}
 @media(max-width:370px){.nav-btn{font-size:9px;padding-left:1px;padding-right:1px}.nav-btn svg{width:20px;height:20px}.nut-kcal{font-size:34px}}
 @media(min-width:1024px){.nut-today-grid{display:grid;grid-template-columns:minmax(320px,.7fr) minmax(520px,1.3fr);gap:20px}.nut-today-grid .nut-hero{position:sticky;top:0;align-self:start}.nut-catalog-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}}
+/* Current illustrative card graphics inside the composition preview as well as the editor. */
+.hl-pv-tile{white-space:normal;padding:7px;flex:1 1 72px}
+.hl-pv-name{display:block;font-size:9px;margin-bottom:5px}
+.hl-pv-art .hl-prev{margin:0;padding:7px;border-radius:6px}
+.hl-pv-art .hl-lbl{font-size:6px}
+.hl-pv-art .hl-title{font-size:11px}
+.hl-pv-art .hl-sub,.hl-pv-art .hl-preview-facts{font-size:6px}
+.hl-pv-art .hl-preview-facts strong{font-size:7px}
+.hl-pv-art .hl-preview-action{font-size:7px;padding:5px}
+.hl-pv-art .manhua-hub-preview{font-size:7px;gap:5px}
+.hl-pv-art .manhua-hub-preview img{width:20px;height:20px}
+.hl-pv-phone{max-height:440px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.hl-pv-phone:focus-visible{outline:2px solid var(--accent-text);outline-offset:3px}
+.hl-pv-mega .hl-pv-art .hl-prev{background:transparent;border:0;color:inherit;padding:2px}
+.hl-pv-mega .hl-pv-art .hl-preview-facts{display:none}
+.hl-pv-mega{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr))}
+.hl-pv-mega>strong{grid-column:1/-1}
+.hl-pv-mega .hl-preview-forecast{display:none}

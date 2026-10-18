@@ -396,7 +396,7 @@
 // v382: confirm statement settlement and refresh debt totals and due-date summaries.
 // v383: optional Manhua Hub Home shortcut; no reading data connection.
 // v384: Manhua Hub shortcut uses its own logo within a restrained action.
-const CACHE_NAME = 'daily-v384';
+const CACHE_NAME = 'daily-v385';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —

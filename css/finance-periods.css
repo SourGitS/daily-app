@@ -233,6 +233,13 @@
 #txn-modal .txn-details{margin-top:16px;padding-top:0}
 
 /* A hidden phone forecast leaves a little scenery, not an empty forecast-sized slot. */
+.budget-snapshot-card,.home-budget-card{position:relative;isolation:isolate}
+.home-budget-destination{position:absolute;inset:0;z-index:1;border-radius:inherit;cursor:pointer}
+.home-budget-destination:focus-visible{outline:2px solid var(--accent-text);outline-offset:-4px}
+.budget-snapshot-card button,.home-budget-card button{position:relative;z-index:2}
+.home-editing .home-budget-destination{pointer-events:none}
+.home-budget-footer:has(>.home-budget-add-labelled:only-child){margin-top:14px}
+
 @media(max-width:1023px){
   #view-home .weather-forecast-dock{grid-template-rows:minmax(48px,1fr) auto;transition:grid-template-rows 280ms cubic-bezier(.22,1,.36,1)}
   #view-home .weather-forecast-dock:has(>.weather-preview[aria-hidden="true"]){grid-template-rows:minmax(48px,0fr) auto}
