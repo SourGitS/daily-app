@@ -1,5 +1,13 @@
 # Daily — Agent Handoff
 
+## v389 Manhua Hub heading cleanup — 2026-10-18
+
+- Removed the repeated Manhua Hub heading from Home's card and its illustrative layout
+  previews. The approved branded action, copy, accessible link name and destination remain.
+- Cache `daily-v389`. All 561 Node checks, syntax/diff checks and synthetic browser checks
+  pass: 320/390px phones, 1440px desktop, both themes, no card overflow and matching previews.
+  No saved data or Firebase behavior changed; physical iPhone remains unverified.
+
 ## v388 matching Manhua Hub branding — 2026-10-18
 
 - Home's existing shortcut and Home Layout previews reuse the exact approved Hub wordmark:

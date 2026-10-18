@@ -2353,7 +2353,6 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 /* Companion shortcut: the purple belongs to this card, independently of Appearance. */
 .manhua-hub-card,.manhua-hub-preview{--manhua-ink:#66418e;--manhua-hub-ink:#1c1c1e;--manhua-tint:rgba(110,67,154,.09)}
 [data-theme="dark"] .manhua-hub-card,[data-theme="dark"] .manhua-hub-preview{--manhua-ink:#c4a3e8;--manhua-hub-ink:#f4f4f5;--manhua-tint:rgba(180,132,225,.12)}
-.manhua-hub-card .card-hd{margin-bottom:12px}
 .manhua-hub-intro{display:flex;align-items:center;gap:12px;min-width:0}
 .manhua-hub-title{font-size:15px;line-height:1.4;font-weight:700;color:var(--text)}
 .manhua-hub-caption{margin-top:3px;font-size:12px;line-height:1.5;color:var(--text-secondary)}

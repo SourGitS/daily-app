@@ -22407,7 +22407,7 @@ function hlPreviewCard(kind){
   const progress=['Budget','Streak','Habits','Session'].includes(kind)?'<div class="hl-bar"><i style="width:60%"></i></div>':'';
   const chart=['Weight','Balance'].includes(kind)?'<svg class="hl-preview-chart" viewBox="0 0 160 26" aria-hidden="true"><path d="'+(kind==='Weight'?'M2 4 28 8 53 6 80 16 107 13 133 19 158 22':'M2 22 28 18 53 20 80 13 107 14 133 6 158 3')+'"/></svg>':'';
   return '<div class="hl-prev '+(kind==='Session'?'hl-prev-hero':kind==='Weather'?'hl-prev-weather':'hl-prev-plain')+'">'+
-    '<div class="hl-lbl">'+esc(sample[0])+'</div><div class="hl-title">'+(kind==='Calories'?'<span class="hl-ring"><i></i></span>':'')+esc(sample[1])+(kind==='Weather'?'<span class="hl-preview-sun">'+weatherIcon('sun')+'</span>':'')+'</div><div class="hl-sub">'+esc(sample[2])+'</div>'+
+    (kind==='Manhua'?'':'<div class="hl-lbl">'+esc(sample[0])+'</div>')+'<div class="hl-title">'+(kind==='Calories'?'<span class="hl-ring"><i></i></span>':'')+esc(sample[1])+(kind==='Weather'?'<span class="hl-preview-sun">'+weatherIcon('sun')+'</span>':'')+'</div><div class="hl-sub">'+esc(sample[2])+'</div>'+
     (facts?'<div class="hl-preview-facts">'+facts+'</div>':'')+progress+chart+
     (kind==='Budget'?'<div class="hl-preview-action">＋ Add expense</div>':kind==='Manhua'?'<div class="manhua-hub-preview">'+manhuaHubIcon()+manhuaHubWordmark()+'<span aria-hidden="true">↗</span></div>':kind==='Weather'?'<div class="hl-preview-forecast">Today · Week <span>Hide forecast ⌄</span></div>':'')+'</div>';
 }
@@ -22448,7 +22448,6 @@ function manhuaHubWordmark(){
 }
 function buildManhuaHubCard(){
   return '<div class="card manhua-hub-card">'+
-    cardHeader('','Manhua Hub')+
     '<div class="manhua-hub-intro"><div><p class="manhua-hub-title">A little escape.</p><p class="manhua-hub-caption">Manhua, manhwa &amp; webtoons</p></div></div>'+
     '<a class="manhua-hub-open" href="https://manhua-hub.exactbear128.chatgpt.site/?from=daily" target="_blank" rel="noopener noreferrer" aria-label="Open Manhua Hub (opens externally)">'+manhuaHubIcon()+manhuaHubWordmark()+'<span aria-hidden="true">↗</span></a>'+
     '</div>';

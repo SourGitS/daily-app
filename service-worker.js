@@ -399,7 +399,8 @@
 // v386: refined Manhua Hub icon and explicit Daily return context.
 // v387: layered blue-violet background for the Manhua Hub icon.
 // v388: match the Manhua Hub shortcut and previews to the approved purple/white wordmark.
-const CACHE_NAME = 'daily-v388';
+// v389: remove the repeated Manhua Hub heading above the branded shortcut.
+const CACHE_NAME = 'daily-v389';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
