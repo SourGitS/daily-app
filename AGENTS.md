@@ -1,5 +1,16 @@
 # Daily — Agent Handoff
 
+## v390 text-only Manhua Hub shortcut — 2026-10-18
+
+- Removed the square icon from Home's Manhua Hub action and its Home Layout previews,
+  retaining the approved purple/white wordmark and grey Daily signature. The link's accessible
+  name, fixed Daily-return URL, new-tab behavior and safety attributes remain unchanged.
+  Unused icon-rendering helper/styles were removed; existing icon assets are retained.
+- Cache `daily-v390`. All 561 Node tests and syntax/diff checks pass. Synthetic browser
+  checks cover 320/390px phones, 1440px desktop, both themes, wordmark containment, no card
+  overflow, icon-free previews and no browser errors. No reading/budget records, saved layout,
+  accounts, Firebase or installed-app icons were changed. Physical iPhone remains unverified.
+
 ## v389 Manhua Hub heading cleanup — 2026-10-18
 
 - Removed the repeated Manhua Hub heading from Home's card and its illustrative layout

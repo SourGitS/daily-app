@@ -340,7 +340,6 @@
 .hl-pv-art .hl-preview-facts strong{font-size:7px}
 .hl-pv-art .hl-preview-action{font-size:7px;padding:5px}
 .hl-pv-art .manhua-hub-preview{font-size:7px;gap:5px}
-.hl-pv-art .manhua-hub-preview img{width:20px;height:20px}
 .hl-pv-phone{max-height:440px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
 .hl-pv-phone:focus-visible{outline:2px solid var(--accent-text);outline-offset:3px}
 .hl-pv-mega .hl-pv-art .hl-prev{background:transparent;border:0;color:inherit;padding:2px}
