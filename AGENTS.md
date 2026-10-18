@@ -1,5 +1,18 @@
 # Daily — Agent Handoff
 
+## v391 paired-star Manhua Hub wordmark — release authorised, 2026-10-18
+
+- The matching wordmark in Home and Home Layout previews adds a smaller four-point star
+  to the first H of HUB. Both apps use the same `manhua-hub-wordmark-stars.png` alpha mask;
+  MANHUA remains purple, HUB follows the theme, and the Daily signature remains grey.
+  The existing square install/browser icons and native shortcut destination are unchanged.
+- Cache `daily-v391` includes the new asset. All 561 Node tests and syntax/diff checks pass.
+  Synthetic browser checks cover 320/390px phones, 1440px desktop, both themes, loaded and
+  contained wordmarks, icon-free layout previews, safe links, no overflow and no browser errors.
+  The separate Hub has 94 passing tests and matching responsive checks. No reading progress,
+  balances, saved layouts, account/storage code or Firebase settings changed. Physical iPhone
+  remains unverified. Francois explicitly requested implementing, committing and pushing this.
+
 ## v390 text-only Manhua Hub shortcut — 2026-10-18
 
 - Removed the square icon from Home's Manhua Hub action and its Home Layout previews,

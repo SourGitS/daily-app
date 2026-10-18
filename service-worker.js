@@ -401,7 +401,8 @@
 // v388: match the Manhua Hub shortcut and previews to the approved purple/white wordmark.
 // v389: remove the repeated Manhua Hub heading above the branded shortcut.
 // v390: keep only the text logo in the Manhua Hub shortcut and layout previews.
-const CACHE_NAME = 'daily-v390';
+// v391: matching four-point star detail in the Manhua Hub wordmark's H.
+const CACHE_NAME = 'daily-v391';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
@@ -424,6 +425,7 @@ const ASSETS = [
   './js/app.js',
   './assets/manhua-hub-mark-v2.png',
   './assets/manhua-hub-wordmark-star.png',
+  './assets/manhua-hub-wordmark-stars.png',
   './js/notification-schedule.js',
   './js/notification-storage.js',
   './js/notification-config.js',
