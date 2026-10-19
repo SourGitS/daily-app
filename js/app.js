@@ -9587,6 +9587,7 @@ function aiValBalanceSnapshot(d,id){
 
   // `available` is never allowed to move a stored balance: it is a different quantity.
   const writesHistory=kind!=='available';
+  if(writesHistory&&((typeof acctLinkActive==='function'&&acctLinkActive(acc.rec))||(acc.rec.balanceMovements||[]).some(r=>r.paymentId)))return {ok:false,error:'Confirm this account’s bank balance with Update in Accounts to preserve its linked entries and repayment audit trail.'};
   let summary=(writesHistory?'Record ':'Note ')+acc.rec.name+' '+kind+' balance '+fmtMoneyExact(bal)+
     ' as at '+aiActFmtFullDate(date)+'.';
   if(!writesHistory) summary+=' Available balance is kept as an observation only — it never replaces the current balance.';
@@ -9633,6 +9634,7 @@ function aiValUpdateExpense(d,id){
   if(!expenseId) return {ok:false, error:'A correction needs the exact "expenseId" from Daily\'s context export. Names are not accepted as targets.'};
   const txn=(Array.isArray(txnData)?txnData:[]).find(t=>t&&String(t.id)===expenseId);
   if(!txn) return {ok:false, error:'No expense has id "'+expenseId.slice(0,60)+'".'};
+  if(txn.accountLink)return {ok:false,error:'This expense is linked to an account balance. Edit it through Add expense / the expense list to review the balance effect.'};
   const changes=[], parts=[];
   if(d.setCategoryId!=null||d.setCategoryName!=null||d.setCategory!=null){
     const cats=activeCats(loadVarCats());
@@ -11142,11 +11144,11 @@ function billOccurrences(from, to){
     });
   });
   (Array.isArray(accounts)?accounts:[]).forEach(a=>{
-    if(!a||a.type!=='debt'||!a.tracksStatement||!a.dueDate||(parseFloat(a.statementBalance)||0)<=0) return;
+    if(!a||a.type!=='debt'||!a.tracksStatement||!a.dueDate||(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))<=0) return;
     const d=localMidnight(String(a.dueDate).slice(0,10));
     if(isNaN(d.getTime())||dateStr(d)!==String(a.dueDate).slice(0,10)||d<from||d>to) return;
     out.push({kind:'statement', acct:a, date:d, key:dateStr(d),
-              amount:parseFloat(a.statementBalance)||0, name:a.name||'Credit card', acctName:''});
+              amount:typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0), name:a.name||'Credit card', acctName:''});
   });
   // Date first, then amount descending, so a day's biggest hit reads first.
   return out.sort((x,y)=> x.key<y.key?-1 : x.key>y.key?1 : (y.amount-x.amount));
@@ -11713,14 +11715,15 @@ function ccBalanceAt(date){
 // Net worth = Σ(asset.current) − Σ(debt.current). Persists to daily_accounts and syncs
 // as a blob via the 'accounts' Firebase path (registered in the auth callback), exactly
 // like the budget-category lists.
-function loadAccounts(){ const a=lsLoad('daily_accounts', []); return Array.isArray(a)?a:[]; }
+function loadAccounts(){ const a=lsLoad('daily_accounts', []); return Array.isArray(a)?(typeof acctLinkProject==='function'?acctLinkProject(a):a):[]; }
 let accounts = loadAccounts();
 function saveAccounts(list){
   if(Array.isArray(list)) accounts=list;
   // A real save supersedes the boot migration guess — drop the flag so the sign-in reconcile
   // treats this as authoritative (offline edits win) rather than discarding it for the cloud.
   try{ localStorage.removeItem('daily_accounts_migrated'); }catch(e){}
-  lsSave('daily_accounts', accounts, 'accounts');
+  lsSave('daily_accounts', typeof acctLinkStored==='function'?acctLinkStored(accounts):accounts, 'accounts');
+  if(typeof acctLinkStored==='function')accounts=loadAccounts();
   // Finance › Overview states the account position, so an edit made on the Accounts tab has to
   // reach it. Building that markup writes nothing, and the panel may be hidden — it is the
   // string that matters, so the card is right the moment the tab is selected.
@@ -11912,13 +11915,21 @@ function netWorthAt(date){
 // the old savings/CC balance logs (one entry per date, newest wins).
 function accountLogBalance(id, bal){
   const acc=accounts.find(a=>a&&a.id===id); if(!acc) return;
-  const b=parseFloat(bal); if(isNaN(b)) return;
+  const b=Number(bal); if(String(bal).trim()===''||!Number.isFinite(b)) return;
+  if(typeof acctFinCents==='function'){try{acctFinCents(b);}catch(e){showToast(e.message);return;}}
+  if(typeof acctLinkActive==='function'&&acctLinkActive(acc)){
+    try{acctLinkAmount(b);}catch(e){showToast(e.message);return;}
+  }
+  if(JSON.stringify(loadAccounts().find(a=>a.id===id))!==JSON.stringify(acc)){showToast('This account changed. Reopen Accounts before updating its balance.');return;}
   const today=getLocalDate();
+  if(typeof acctFinReconcileReceipt==='function')acctFinReconcileReceipt(acc,b,'Quick balance update');
   acc.history=(acc.history||[]).filter(e=>e&&e.date!==today);
   acc.history.push({date:today, balance:b});
   acc.history.sort((x,y)=>x.date<y.date?-1:1);
+  if(typeof acctLinkSnapshot==='function')acctLinkSnapshot(acc,b);
   acc.current=b;
   saveAccounts(accounts);
+  if(JSON.stringify(loadAccounts().find(a=>a.id===id))!==JSON.stringify(acc))showToast('The balance could not be saved on this device. Please try again.');
 }
 // ── Legacy weight-log merge (daily_weight_log / users/{uid}/weightLog → wt_weight) ──
 // The old duplicate store held {date, kg} entries; the canonical store holds
@@ -12694,7 +12705,12 @@ function weekFixedContribution(d, id){
 // is what makes this safe to roll out onto live data.
 function loadTxns(){ const a=lsLoad('daily_transactions', []); return Array.isArray(a)?a:[]; }
 let txnData = loadTxns();
-function saveTxns(){ lsSave('daily_transactions', txnData, 'transactions'); }
+function saveTxns(){
+  lsSave('daily_transactions', txnData, 'transactions');
+  const ok=JSON.stringify(loadTxns())===JSON.stringify(txnData);
+  if(ok&&typeof acctLinkRefresh==='function')acctLinkRefresh();
+  return ok;
+}
 function genTxnId(){ return 'txn_'+Date.now()+'_'+Math.floor(Math.random()*1e4); }
 
 // ── The financial ledger (imported dated events that are NOT variable spending) ───
@@ -12719,7 +12735,12 @@ function genTxnId(){ return 'txn_'+Date.now()+'_'+Math.floor(Math.random()*1e4);
 //               count the same money twice, so it is recorded here and excluded from Spent.
 function loadLedger(){ const a=lsLoad('daily_ledger', []); return Array.isArray(a)?a:[]; }
 let ledgerData = loadLedger();
-function saveLedger(){ lsSave('daily_ledger', ledgerData, 'ledger'); }
+function saveLedger(){
+  lsSave('daily_ledger', ledgerData, 'ledger');
+  const ok=JSON.stringify(loadLedger())===JSON.stringify(ledgerData);
+  if(ok&&typeof acctLinkRefresh==='function')acctLinkRefresh();
+  return ok;
+}
 function genLedgerId(){ return 'led_'+Date.now()+'_'+Math.floor(Math.random()*1e4); }
 const LEDGER_KINDS=['income','transfer','reimbursement','bill_payment'];
 function ledgerOf(kind){ return ledgerData.filter(r=>r&&r.kind===kind); }
@@ -12787,7 +12808,11 @@ function ledgerSavingsMovement(fromDate, toDate){
     return !!(a&&typeof acctIsSaver==='function'&&acctIsSaver(a));
   };
   let contributions=0, withdrawals=0, count=0;
-  ledgerOf('transfer').forEach(r=>{
+  const transfers=ledgerOf('transfer');
+  const recorded=typeof acctRecordedTransfers==='function'?acctRecordedTransfers():[];
+  const linked=new Set(transfers.flatMap(r=>[r.id,r.accountMovementId].filter(Boolean)));
+  const ledgerIds=new Set(transfers.map(r=>r.id));
+  [...transfers,...recorded.filter(r=>!linked.has(r.id)&&!ledgerIds.has(r.ledgerId))].forEach(r=>{
     if(fromDate&&r.date<fromDate) return;
     if(toDate&&r.date>toDate) return;
     const amt=parseFloat(r.amount)||0;
@@ -13390,6 +13415,7 @@ function openTxnModal(opts){
   if(essential) essential.checked = !!(existing&&txnIsEssential(existing));
   document.getElementById('txn-date').value = existing?existing.date:(o.date||getLocalDate());
   txnRenderAccounts(existing?existing.acctId:null);
+  if(typeof acctTxnOpen==='function')acctTxnOpen(existing);
   document.getElementById('txn-err').textContent='';
   document.getElementById('txn-delete-btn').classList.toggle('hidden', !existing);
   document.getElementById('txn-save-btn').textContent = existing?'Save changes':'Save expense';
@@ -13406,6 +13432,7 @@ function openTxnModal(opts){
   setTimeout(()=>{ const a=document.getElementById('txn-amount'); if(a){ a.focus(); a.select(); } },60);
 }
 function closeTxnModal(){
+  if(typeof acctTxnDraft!=='undefined')acctTxnDraft=null;
   const modal=document.getElementById('txn-modal');
   // Blur first: on iOS the keyboard only retracts when focus actually leaves, and the shell
   // cannot be resynchronised to the full viewport until it has.
@@ -13446,12 +13473,7 @@ function txnRenderMerchants(){
     : '';
 }
 function txnPickMerchant(m){ const el=document.getElementById('txn-merchant'); if(el) el.value=m; }
-// Which account paid. Recorded ONLY — it deliberately does not move the account's balance.
-// Doing that safely would mean modelling transfers and card repayments too, and without those
-// a spend would decrement an account that a later manual balance update then decrements again,
-// so cash and debt figures would drift apart in a way that is very hard to unpick. This is the
-// read-only half the review asked for: it enables "what went on the Visa this week" and lets
-// you eyeball tracked spending against a card's real balance movement.
+// Which account paid remains optional. Only explicitly linked new entries affect a balance.
 function txnRenderAccounts(selectedId){
   const sel=document.getElementById('txn-account'); if(!sel) return;
   const list=(typeof accounts!=='undefined'&&Array.isArray(accounts))?accounts:[];
@@ -13461,7 +13483,7 @@ function txnRenderAccounts(selectedId){
   const lastUsed=[...txnData].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).find(t=>t&&t.acctId);
   const want=selectedId!==undefined&&selectedId!==null?selectedId:(lastUsed?lastUsed.acctId:'');
   sel.innerHTML='<option value="">Not recorded</option>'+
-    list.map(a=>'<option value="'+_catEsc(a.id)+'"'+(a.id===want?' selected':'')+'>'+_catEscHtml(a.name||'Account')+'</option>').join('');
+    list.filter(a=>!a.archivedAt||a.id===selectedId).map(a=>'<option value="'+_catEsc(a.id)+'"'+(a.id===want?' selected':'')+'>'+_catEscHtml(a.name||'Account')+'</option>').join('');
 }
 // The ONE place a transaction record is created. The modal below and the AI Inbox both go
 // through it, so there is a single writer and a single record shape — a second one would drift
@@ -13473,6 +13495,7 @@ function txnCreateRecord(f, meta){
     merchant:f.merchant||'', note:f.note||'', acctId:f.acctId||'', createdAt:Date.now()};
   // Written only when true: an untagged expense keeps the exact record shape it always had.
   if(f.essential===true) rec.essential=true;
+  if(f.accountLink)rec.accountLink={...f.accountLink};
   if(meta&&meta.aiActionId){ rec.aiActionId=meta.aiActionId; rec.aiSource=meta.aiSource||''; }
   txnData.push(rec);
   return rec;
@@ -13583,6 +13606,7 @@ function txnReadForm(){
     essential:!!(document.getElementById('txn-essential')||{}).checked};
 }
 function txnSave(){
+  if(document.getElementById('txn-modal')?.classList.contains('hidden'))return;
   const f=txnReadForm(); if(!f) return;
   const conflict=txnManualConflict(f.date,f.catId,_txnEditId||null);
   if(conflict){ _txnPending=f; txnShowConflict(conflict); return; }
@@ -13629,6 +13653,8 @@ function txnResolveConflict(mode){
 // the manual field in the same pass as the transaction is written, so no dormant value can
 // survive the decision.
 function txnCommitSave(f,mode){
+  try{if(typeof acctTxnPrepare==='function')f=acctTxnPrepare(f);}
+  catch(e){document.getElementById('txn-err').textContent=e.message;return;}
   const wk=txnWeekOf(f.date);
   const d=budgetData[wk];
   const field='var_'+f.catId;
@@ -13642,9 +13668,6 @@ function txnCommitSave(f,mode){
       rec.createdAt-=1;   // sorts above the purchase that triggered the conversion
     }
   }
-  if(mode==='keep'||mode==='replace'){
-    if(d){ delete d[field]; delete d['varDormant_'+f.catId]; d.updatedAt=Date.now(); budSaveData(wk); }
-  }
   // An edit can move a transaction out of a category/week; the one it LEFT may now be empty
   // with an old manual figure still sitting behind it.
   let fromWk=null, fromCat=null;
@@ -13654,6 +13677,7 @@ function txnCommitSave(f,mode){
     if(t){
       fromWk=txnWeekOf(t.date); fromCat=t.catId;
       t.amount=f.amount; t.catId=f.catId; t.date=f.date; t.merchant=f.merchant; t.note=f.note; t.acctId=f.acctId;
+      if(f.accountLink)t.accountLink={...f.accountLink};else delete t.accountLink;
       // Clearing the box removes the field rather than storing false, so an edited record is
       // shaped exactly like one that was never tagged.
       if(f.essential===true) t.essential=true; else delete t.essential;
@@ -13661,7 +13685,12 @@ function txnCommitSave(f,mode){
   } else {
     txnCreateRecord(f);
   }
-  saveTxns();
+  if(saveTxns()===false){
+    txnData=loadTxns();document.getElementById('txn-err').textContent='The expense could not be saved on this device. Your balances have not changed. Please try again.';return;
+  }
+  if(mode==='keep'||mode==='replace'){
+    if(d){ delete d[field]; delete d['varDormant_'+f.catId]; d.updatedAt=Date.now(); budSaveData(wk); }
+  }
   if(fromCat && (fromWk!==wk || fromCat!==f.catId)) txnParkDormantManual(fromWk,fromCat);
   closeTxnModal();
   txnAfterChange();
@@ -13669,10 +13698,12 @@ function txnCommitSave(f,mode){
 }
 function txnDeleteCurrent(){
   if(!_txnEditId) return;
+  try{if(typeof acctTxnGuard==='function')acctTxnGuard();}
+  catch(e){document.getElementById('txn-err').textContent=e.message;return;}
   const t=txnData.find(x=>x&&x.id===_txnEditId);
   const wk=t?txnWeekOf(t.date):null, catId=t?t.catId:null;
   txnData=txnData.filter(x=>x&&x.id!==_txnEditId);
-  saveTxns();
+  if(saveTxns()===false){txnData=loadTxns();document.getElementById('txn-err').textContent='This expense could not be deleted. Please try again.';return;}
   if(wk&&catId) txnParkDormantManual(wk,catId);
   closeTxnModal();
   txnAfterChange();
@@ -13681,6 +13712,7 @@ function txnDeleteCurrent(){
 // A transaction changes the week's variable total, so anything showing that figure has to
 // re-read. The manual per-category inputs are rebuilt by renderBudgetTab.
 function txnAfterChange(){
+  if(typeof acctLinkRefresh==='function')acctLinkRefresh();
   try{ if(typeof renderBudgetTab==='function' && S.view==='budget') renderBudgetTab(); }catch(e){}
   try{ if(typeof renderHome==='function' && S.view==='home') renderHome(); }catch(e){}
   try{ if(S.view==='stats') refreshStatsForData(['overview','review','finance']); }catch(e){}
@@ -14155,16 +14187,16 @@ function budOvPayLabel(f){
 // shortfall); amber is for close, incomplete or unknown. An ordinary bill landing next week is
 // neither, and is left to the Coming up card.
 function budOvAttention(m, f){
-  const items=[];
+  const items=typeof acctFinAccountAlerts==='function'?acctFinAccountAlerts():[];
   const today=localMidnight(getLocalDate());
 
   // 1. An overdue tracked statement is the only item here that is a FACT rather than a
   //    projection, which is why it leads.
   (Array.isArray(accounts)?accounts:[]).forEach(a=>{
-    if(!a||a.type!=='debt'||!a.tracksStatement||!a.dueDate||(parseFloat(a.statementBalance)||0)<=0) return;
+    if(!a||a.type!=='debt'||!a.tracksStatement||!a.dueDate||(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))<=0) return;
     const n=acctDueDays(a);
     if(n===null||n>=0) return;
-    const bal=parseFloat(a.statementBalance)||0;
+    const bal=typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0);
     items.push({tone:'neg', icon:'alert',
       title:escText(a.name||'Card')+' statement is overdue',
       body:escText(acctDueText(a))+(bal>0?' · '+fmtMoneyExact(bal)+' on the last statement':''),
@@ -14315,13 +14347,13 @@ function budOvAccountsHtml(){
   // The nearest tracked statement in either direction. acctDueText() already names an overdue
   // one as overdue, and that is the only case coloured.
   const stmt=accounts
-    .filter(a=>a&&a.type==='debt'&&a.tracksStatement&&(parseFloat(a.statementBalance)||0)>0&&a.dueDate&&acctDueDays(a)!==null)
+    .filter(a=>a&&a.type==='debt'&&a.tracksStatement&&(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))>0&&a.dueDate&&acctDueDays(a)!==null)
     .sort((a,b)=>acctDueDays(a)-acctDueDays(b))[0]||null;
   const stmtRow=stmt
     ? '<div class="fin-line"><span class="fin-line-l">'+escText(stmt.name||'Card')+' statement'+
         '<small>'+escText(acctDueText(stmt))+'</small></span>'+
         '<span class="fin-line-r'+(acctDueDays(stmt)<0?' is-over':'')+'">'+
-        fmtMoneyExact(parseFloat(stmt.statementBalance)||0)+'</span></div>'
+        fmtMoneyExact(typeof acctStatementRemaining==='function'?acctStatementRemaining(stmt):(parseFloat(stmt.statementBalance)||0))+'</span></div>'
     : '';
   return '<div class="card bov-card">'+head+
     '<div class="bov-fig-row">'+statsFigure(fmtMoney(net),'net worth','')+chip+'</div>'+
@@ -15200,7 +15232,7 @@ function renderDueBanner(monday){
   const mondayStr=weekKey(monday);
   const sun=new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+6);
   const sundayStr=weekKey(sun);
-  const hits=accounts.filter(a=>a&&a.type==='debt'&&a.tracksStatement&&(parseFloat(a.statementBalance)||0)>0&&a.dueDate&&acctDueDays(a)!==null
+  const hits=accounts.filter(a=>a&&a.type==='debt'&&a.tracksStatement&&(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))>0&&a.dueDate&&acctDueDays(a)!==null
     && String(a.dueDate).slice(0,10)>=mondayStr && String(a.dueDate).slice(0,10)<=sundayStr);
   if(!hits.length){ el.innerHTML=''; return; }
   el.innerHTML=hits.map(a=>{
@@ -15208,7 +15240,7 @@ function renderDueBanner(monday){
     // screen never disagree about the same due date. Inside this banner's own week window the
     // helper always returns the countdown form, which is the whole point of the banner.
     const dueTxt=acctDueText(a)||'';
-    const amt=parseFloat(a.statementBalance)||0;
+    const amt=typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0);
     return '<div class="card" style="background:var(--warn-bg);border:1px solid var(--warn-border);padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:8px">'+
       // Icon, not 💳: the stroke inherits the row's amber via currentColor. Same reasoning
       // (and the same glyph) as the Home statement row, which got this right first.
@@ -15619,8 +15651,9 @@ function budSaveCurrentWeek(){
 }
 
 function budSaveWeekExplicit(){
-  if(typeof budPeriodCardMode==='function'&&budPeriodCardMode()){budPeriodSaveFields(true);renderBudgetTab();return;}
+  if(typeof budPeriodCardMode==='function'&&budPeriodCardMode()){budPeriodSaveFields(true);renderBudgetTab();acctOfferBudgetTransfer(true);return;}
   budSaveCurrentWeek();
+  acctOfferBudgetTransfer(false);
   const btn=document.getElementById('save-week-btn');
   const msg=document.getElementById('save-week-msg');
   if(btn){btn.textContent='✓ Week finished';btn.style.background='var(--accent)';}
@@ -22146,7 +22179,7 @@ function renderHome(){
     '</div>';
   }).join('');
   const _stmtRows=accounts
-    .filter(a=>a&&a.type==='debt'&&a.tracksStatement&&(parseFloat(a.statementBalance)||0)>0)
+    .filter(a=>a&&a.type==='debt'&&a.tracksStatement&&(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))>0)
     .map(a=>{
       const dueTxt=acctDueText(a);
       return '<div style="font-size:12px;font-weight:600;color:var(--amber-dark);background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:7px 10px;margin-top:8px">'+
@@ -22154,7 +22187,7 @@ function renderHome(){
         // currentColor, which an emoji cannot do.
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;vertical-align:-2px;margin-right:6px" aria-hidden="true">'+
           '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>'+
-        _catEscHtml(a.name||'')+': '+fmtMoney(parseFloat(a.statementBalance)||0)+' this statement'+(dueTxt?' · '+dueTxt:'')+'</div>';
+        _catEscHtml(a.name||'')+': '+fmtMoney(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))+' this statement'+(dueTxt?' · '+dueTxt:'')+'</div>';
     }).join('');
   // ── Net worth & accounts ──
   // Rebuilt on the shared card anatomy. It was the only Home card with no CSS identity at all —
@@ -23961,13 +23994,27 @@ function closeBudgetEditor(){
 // Same overlay pattern as the budget/settings editors, and the same add/rename/delete
 // idiom as the budget-category lists — just richer per-item fields (balance history,
 // optional statement tracking for debts). Reads/writes the daily_accounts store from phase 1.
-let _acctAddOpen=false, _acctAddType='asset', _acctAddTracks=false, _acctAddSaver=false;
+let _acctAddOpen=false, _acctAddType='asset', _acctAddTracks=false, _acctAddSaver=false, _acctAddCategory='', _acctAddName='';
 // Read-only by default, same Edit-button convention as the Budget cards (budEditMode). The
 // account name used to be a permanent <input>, and in dark mode an input carries a grey fill —
 // so every account card showed a grey slab across its title, which read as a rendering fault
 // rather than as "this is editable". A name you change once and then read a hundred times
 // should look like a heading; the input only appears while editing.
 let _acctEditMode=false;
+// Presentation only, like Log's exercise disclosure state. Never saved into money records.
+const _acctCollapsed=new Set(),_acctOptionsOpen=new Set();
+function acctRememberDisclosure(el,kind){
+  if(!el.isConnected||_acctEditMode)return;
+  const state=kind==='account'?_acctCollapsed:_acctOptionsOpen;
+  const selected=kind==='account'?!el.open:el.open;
+  if(selected)state.add(el.dataset.account);else state.delete(el.dataset.account);
+}
+function acctToggleDisclosure(summary,kind){
+  const el=summary.parentElement;
+  el.open=!el.open;
+  // Record the choice before another action can repaint; native toggle events are deferred.
+  acctRememberDisclosure(el,kind);
+}
 function acctToggleEdit(){
   _acctEditMode=!_acctEditMode;
   renderAccountsPage();
@@ -24017,6 +24064,7 @@ function acctDueDays(acc){
 }
 function acctDueText(acc){
   if(!acc||!acc.dueDate) return '';
+  if(typeof acctStatementRemaining==='function'&&acc.statementBalance>0&&acctStatementRemaining(acc)===0)return 'Statement covered';
   const d=acctDueDays(acc);
   if(d===null) return '';
   const due=new Date(String(acc.dueDate).slice(0,10)+'T12:00:00');
@@ -24121,9 +24169,16 @@ function renderAccountsHero(){
   ],{cols:1,colsSm:1});
 }
 function savingsReconcileFocus(){
+  if(typeof acctFinCheckinOpen==='function'){acctFinCheckinOpen(saverAccounts().filter(a=>!a.archivedAt).map(a=>a.id));return;}
   const first=saverAccounts()[0];
   const input=first&&document.getElementById('acct-bal-'+first.id);
   if(input){ input.focus({preventScroll:true}); input.select(); }
+}
+function acctSavingsCheckState(list,today){
+  const active=list.filter(a=>!a.archivedAt),latest=rows=>(rows||[]).filter(r=>r&&r.date&&r.date<=today).map(r=>r.date).sort().at(-1)||'';
+  const checks=active.map(a=>({checked:latest(a.reconciliations)===today,updated:latest([...(a.history||[]),...(a.reconciliations||[])])===today}));
+  const checked=checks.length>0&&checks.every(r=>r.checked),updated=checks.length>0&&checks.every(r=>r.updated),count=checks.filter(r=>r.updated).length;
+  return {checked,updated,label:checked?'Checked today':updated?'Updated today':count?count+' of '+checks.length+' updated today':'Check when needed'};
 }
 function renderSaversReconcileCard(){
   const wrap=document.getElementById('accounts-savers-reconcile'); if(!wrap) return;
@@ -24132,15 +24187,16 @@ function renderSaversReconcileCard(){
   const state=savingsPeriodState(monthStart,today);
   if(!state.hasSavers){
     wrap.innerHTML='<div class="card">'+
-      cardHeader('bank','Savings reconciliation',statsChip('neutral','No Savers account'))+
-      '<div class="stats-note-panel">Savings is tracked from Accounts. Mark the asset you use for savings as a Savers account; your existing balance becomes the current savings position. Budget allocations remain intact and are not converted into deposits.</div>'+
+      cardHeader('bank','Savings balance check',statsChip('neutral','No Savers account'))+
+      '<div class="stats-data-note">Choose the account you use for savings to see its balance here.</div>'+
       '<button type="button" class="stg-btn" onclick="acctToggleEdit()">Choose a Savers account</button>'+
     '</div>';
     return;
   }
+  const check=acctSavingsCheckState(state.accounts,today);
   const signedMoney=n=>(n>0?'+':'')+fmtMoneyExact(n);
   const movement=state.metric===null
-    ? savingsMetricDetail(state)
+    ? 'This month’s change needs a balance recorded before '+fmtDate(monthStart)+'. Your current balance is still saved.'
     : savingsMetricLabel(state)+' '+signedMoney(state.metric)+' · '+savingsMetricDetail(state);
   const rows=state.accounts.map(a=>{
     const hist=(a.history||[]).filter(e=>e&&e.date).sort((x,y)=>x.date<y.date?-1:1);
@@ -24150,13 +24206,14 @@ function renderSaversReconcileCard(){
         '<div class="bud-row-budget">'+(latest?'Last balance update '+fmtDate(latest.date):'No dated balance update yet')+'</div></div>'+
       '<strong>'+fmtMoneyExact(parseFloat(a.current)||0)+'</strong></div>';
   }).join('');
-  wrap.innerHTML='<div class="card">'+
-    cardHeader('bank','Savings reconciliation',statsChip('neutral','Account-backed'))+
-    '<div class="card-cols"><div><span class="card-fig">'+fmtMoney(state.balance)+'</span><span class="card-fig-u">current savers balance</span></div>'+
-      '<div class="card-cap">'+escText(movement)+'</div></div>'+
-    '<div class="stats-data-note">Reconcile by entering each account’s current balance below. This records today’s balance; it never deletes old budget allocations or invents a transfer.</div>'+
-    rows+
-    '<button type="button" class="stg-btn" onclick="savingsReconcileFocus()">Reconcile balances</button>'+
+  wrap.innerHTML='<div class="card acct-savings-check">'+
+    cardHeader('bank','Savings balance check',statsChip(check.updated?'pos':'neutral',check.label))+
+    '<div class="card-fig">'+fmtMoney(state.balance)+'</div><div class="card-cap">'+(state.accounts.length===1?_catEscHtml(state.accounts[0].name||'Savings'):'Across '+state.accounts.length+' savings accounts')+'</div>'+
+    (state.metric===null?'':'<div class="card-cap">'+escText(movement)+'</div>')+
+    '<div class="acct-check-actions"><button type="button" class="stg-btn" onclick="savingsReconcileFocus()">'+(check.updated?'Check again':'Check savings balances')+'</button></div>'+
+    '<details class="acct-records"><summary>Balance details</summary>'+
+      '<p>'+(check.checked?'Today’s balance check is complete.':check.updated?'Today’s balances are recorded.':'Check against your bank whenever it suits you.')+' Budget allocations and past spending stay unchanged.</p>'+
+      (state.metric===null?'<p>'+escText(movement)+'</p>':'')+rows+'</details>'+
   '</div>';
 }
 function renderAccountsPage(){
@@ -24171,11 +24228,13 @@ function renderAccountsPage(){
   const headEl=document.getElementById('accounts-list-head');
   if(headEl){
     headEl.innerHTML=accounts.length
-      ? '<div class="sec-label bud-toggle" style="cursor:default">'+
+      ? '<div class="sec-label bud-toggle acct-list-heading" style="cursor:default">'+
           '<span class="bud-head-label">Your accounts</span>'+
           '<button class="bud-edit-btn'+(_acctEditMode?' active':'')+'" onclick="acctToggleEdit()">'+
             (_acctEditMode?'Done':'Edit')+'</button>'+
-        '</div>'
+        '</div><div class="acct-list-actions">'+
+          '<button class="stg-btn" onclick="acctTransferOpen()">Record transfer</button>'+
+          (typeof acctFinCheckinOpen==='function'?'<button class="stg-btn" onclick="acctFinCheckinOpen()">Check balances</button><button class="stg-btn" onclick="acctFinExport()">Export Finance</button>':'')+'</div>'
       : '';
   }
   const listEl=document.getElementById('accounts-list');
@@ -24184,6 +24243,7 @@ function renderAccountsPage(){
       listEl.innerHTML='<div class="card" style="text-align:center;color:var(--muted);font-size:13px;padding:24px 16px">No accounts yet. Tap “+ Add account” to add your savings, credit card, or any other balance you want to track.</div>';
     } else {
       listEl.innerHTML=accounts.map((a,acctIndex)=>{
+        if(a.archivedAt)return '';
         const isDebt=a.type==='debt';
         const curCol=isDebt?'var(--danger)':'var(--text)';
         let stmt='';
@@ -24254,8 +24314,7 @@ function renderAccountsPage(){
                 '<div class="acct-util-cap"'+(over?' style="color:var(--danger);font-weight:700"':'')+'>'+
                   fmtMoney(parseFloat(a.current)||0)+' of '+fmtMoney(parseFloat(a.limit)||0)+
                   (over?' · over the limit by '+fmtMoney((parseFloat(a.current)||0)-(parseFloat(a.limit)||0))
-                       :(util>=80?' · high — this hurts your credit score'
-                       :(util>=30?' · above the 30% healthy mark':'')))+'</div>'+
+                       :(util>=80?' · nearing the recorded limit':''))+'</div>'+
               '</div>';
           }
           limitRow=!_acctEditMode ? '' :
@@ -24279,23 +24338,15 @@ function renderAccountsPage(){
         // Lock icon inherits typeCol via currentColor; the emoji it replaces rendered at 11px
         // as an OS-specific picture that couldn't take the tag's blue.
         const typeTag=(!isDebt&&a.saver)?acctIcon('lock',11)+' Savers':(isDebt?'Debt':'Asset');
-        const typeCol=isDebt?'var(--danger)':((a.saver)?'var(--blue)':'var(--success)');
-        return '<div class="card">'+
-          '<div class="bud-row" style="border-bottom:1px solid var(--border)">'+
-            (_acctEditMode
-              ? '<input class="bud-cat-name-input" value="'+_catEsc(a.name)+'" placeholder="Account name" onchange="accountRename(\''+a.id+'\',this.value)" style="flex:1;font-weight:700">'
-              : '<div style="flex:1;min-width:0;font-weight:700;font-size:15px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_catEscHtml(a.name||'Untitled')+'</div>')+
-            '<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:'+typeCol+';margin:0 8px;white-space:nowrap">'+typeTag+'</span>'+
-            (_acctEditMode
-              ? '<div class="acct-order-controls">'+
-                  '<button onclick="accountMove(\''+a.id+'\',-1)" aria-label="Move account up"'+(acctIndex===0?' disabled':'')+'>↑</button>'+
-                  '<button onclick="accountMove(\''+a.id+'\',1)" aria-label="Move account down"'+(acctIndex===accounts.length-1?' disabled':'')+'>↓</button>'+
-                '</div>'
-              : '')+
-            // Destructive, so it only exists while deliberately in edit mode.
-            (_acctEditMode?'<button class="lib-del-btn" onclick="accountDelete(\''+a.id+'\')" aria-label="Delete account">×</button>':'')+
-          '</div>'+
-          '<div class="bud-row" style="border-bottom:none">'+
+        const typeCol=isDebt?'var(--danger)':((a.saver)?'var(--accent-text)':'var(--success)');
+        return '<details class="card acct-account-card" data-account="'+escAttr(a.id)+'"'+(_acctEditMode||!_acctCollapsed.has(a.id)?' open':'')+' ontoggle="acctRememberDisclosure(this,\'account\')">'+
+          '<summary class="acct-account-heading" onclick="event.preventDefault();acctToggleDisclosure(this,\'account\')"><span class="acct-summary-row">'+
+            '<span class="acct-account-title"><span class="acct-account-name">'+_catEscHtml(a.name||'Untitled')+'</span>'+(acctCategoryLabel(a)?'<span class="acct-category-label">'+_catEscHtml(acctCategoryLabel(a))+'</span>':'')+'</span>'+
+            '<span class="acct-collapsed-balance" style="color:'+curCol+'">'+fmtMoneyExact(a.current||0)+'</span>'+
+            '<span class="acct-type-label" style="color:'+typeCol+'">'+typeTag+'</span><span class="acct-disclosure-chevron" aria-hidden="true"></span></span>'+
+            '<span class="acct-quick-status" id="acct-quick-status-'+escAttr(a.id)+'">'+(typeof acctFinQuickStatus==='function'?acctFinQuickStatus(a):'')+'</span>'+
+          '</summary><div class="acct-account-body">'+
+          '<div class="bud-row acct-balance-row" style="border-bottom:none">'+
             '<div class="bud-row-left"><div class="bud-row-name">Current balance</div>'+
               '<div class="bud-row-budget">'+(a.history&&a.history.length?a.history.length+' update'+(a.history.length===1?'':'s')+' logged':'No history yet')+'</div>'+
               acctChangeHtml(a)+'</div>'+
@@ -24304,8 +24355,16 @@ function renderAccountsPage(){
               '<button class="sav-update-btn" onclick="accountUpdateBalanceFromInput(\''+a.id+'\')">Update</button>'+
             '</div>'+
           '</div>'+
-          // Live status sits directly under the balance, above the set-once config below it.
-          utilStrip+
+          // Keep the credit-used bar and savings goal visible; tools are optional disclosure.
+          utilStrip+(typeof acctFinSavingsGoalHtml==='function'?acctFinSavingsGoalHtml(a):'')+
+          '<details class="acct-records acct-options" data-account="'+escAttr(a.id)+'"'+(_acctEditMode||_acctOptionsOpen.has(a.id)?' open':'')+' ontoggle="acctRememberDisclosure(this,\'options\')"><summary onclick="event.preventDefault();acctToggleDisclosure(this,\'options\')">Account options</summary>'+
+          (typeof acctLinkCard==='function'?acctLinkCard(a):'')+
+          (_acctEditMode?'<div class="bud-row acct-edit-row">'+
+            '<input class="bud-cat-name-input" aria-label="Account name" value="'+_catEsc(a.name)+'" placeholder="Account name" onchange="accountRename(\''+a.id+'\',this.value)" style="flex:1;font-weight:700">'+
+            '<div class="acct-order-controls">'+
+              '<button onclick="accountMove(\''+a.id+'\',-1)" aria-label="Move account up"'+(acctIndex===0?' disabled':'')+'>↑</button>'+
+              '<button onclick="accountMove(\''+a.id+'\',1)" aria-label="Move account down"'+(acctIndex===accounts.length-1?' disabled':'')+'>↓</button></div>'+
+            '<button class="lib-del-btn" onclick="accountDelete(\''+a.id+'\')" aria-label="Archive account">×</button></div>':'')+
           // Clarify that a debt balance is a standalone running total, not weekly spending —
           // the note that used to live in the retired Budget-tab CC editor.
           catRow+
@@ -24317,11 +24376,11 @@ function renderAccountsPage(){
           // so the explanation is doing work) and in edit mode, where you're configuring the
           // account and the distinction is actually relevant again.
           (isDebt&&(_acctEditMode||!(a.history&&a.history.length))
-            ?'<div class="acct-note" style="font-size:12px;color:var(--muted);line-height:1.45;padding:2px 2px 4px">This is the total currently owed — a separate running debt, not counted in your weekly leftover. Enter card purchases in your Variable spending categories as usual, same as cash.</div>'
+            ?'<div class="acct-note" style="font-size:12px;color:var(--muted);line-height:1.45;padding:2px 2px 4px">Enter the total owed here. Record purchases separately in your budget.</div>'
             :'')+
-          stmt+
-        '</div>';
-      }).join('');
+          stmt+acctRecordsHtml(a)+
+        '</details></div></details>';
+      }).join('')+(typeof acctFinArchivedHtml==='function'?acctFinArchivedHtml():'');
     }
   }
   // Add-account form / button
@@ -24332,7 +24391,7 @@ function renderAccountsPage(){
     } else {
       formEl.innerHTML=
         '<div class="card">'+
-          '<div class="bud-row" style="border-bottom:none"><input class="modal-input" id="acct-new-name" type="text" placeholder="Account name (e.g. Savings, Visa)"></div>'+
+          '<div class="bud-row" style="border-bottom:none"><input class="modal-input" id="acct-new-name" aria-label="Account name" type="text" value="'+_catEsc(_acctAddName)+'" placeholder="Account name (e.g. Savings, Visa)" oninput="_acctAddName=this.value"></div>'+
           '<div class="bud-row" style="border-bottom:none">'+
             '<div class="bud-row-left"><div class="bud-row-name">Type</div></div>'+
             '<div class="acct-type-seg">'+
@@ -24340,6 +24399,7 @@ function renderAccountsPage(){
               '<button class="acct-type-btn'+(_acctAddType==='debt'?' on':'')+'" onclick="accountsAddSetType(\'debt\')">Debt</button>'+
             '</div>'+
           '</div>'+
+          '<div class="stg-field"><label for="acct-new-category">Account category</label><select id="acct-new-category" onchange="accountsAddSetCategory(this.value)"><option value="">Choose category</option>'+ACCT_CATEGORIES[_acctAddType].map(c=>'<option value="'+c.id+'"'+(_acctAddCategory===c.id?' selected':'')+'>'+c.label+'</option>').join('')+'</select></div>'+
           (_acctAddType==='debt'?
             '<div class="bud-row" style="border-bottom:none">'+
               '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Track statement due date</div></div>'+
@@ -24363,9 +24423,13 @@ function renderAccountsPage(){
   renderNetWorthChartInto('accounts-chart');
 }
 // Add-form controllers
-function accountsAddOpen(){ _acctAddOpen=true; _acctAddType='asset'; _acctAddTracks=false; _acctAddSaver=false; renderAccountsPage(); }
+function accountsAddOpen(){ _acctAddOpen=true; _acctAddType='asset'; _acctAddTracks=false; _acctAddSaver=false; _acctAddCategory=''; _acctAddName=''; renderAccountsPage(); }
 function accountsAddCancel(){ _acctAddOpen=false; renderAccountsPage(); }
-function accountsAddSetType(t){ _acctAddType=t; if(t!=='debt') _acctAddTracks=false; else _acctAddSaver=false; renderAccountsPage(); }
+function accountsAddSetType(t){ _acctAddType=t; _acctAddCategory=''; if(t!=='debt') _acctAddTracks=false; else _acctAddSaver=false; renderAccountsPage(); }
+function accountsAddSetCategory(val){
+  if(!ACCT_CATEGORIES[_acctAddType].some(c=>c.id===val)&&val!=='')return;
+  _acctAddCategory=val;_acctAddSaver=_acctAddType==='asset'&&val==='savings';_acctAddTracks=_acctAddType==='debt'&&val==='card';renderAccountsPage();
+}
 function accountsAddSetSaver(on){ _acctAddSaver=!!on; }
 function accountsAddSetTracks(on){ _acctAddTracks=!!on; }
 function accountMove(id,delta){
@@ -24382,6 +24446,7 @@ function accountsAddConfirm(){
   const name=(document.getElementById('acct-new-name')?.value||'').trim();
   if(!name){ document.getElementById('acct-new-name')?.focus(); return; }
   accounts.push({ id:genAccountId(), name, type:(_acctAddType==='debt'?'debt':'asset'),
+    category:_acctAddCategory,
     tracksStatement:(_acctAddType==='debt'&&_acctAddTracks), saver:(_acctAddType!=='debt'&&_acctAddSaver),
     current:0, statementBalance:0, dueDate:'', history:[] });
   saveAccounts(accounts);
@@ -24395,6 +24460,7 @@ function accountRename(id,val){
   saveAccounts(accounts); renderAccountsPage();
 }
 function accountDelete(id){
+  if(typeof acctFinArchiveOpen==='function'){acctFinArchiveOpen(id);return;}
   const a=accounts.find(x=>x&&x.id===id); if(!a) return;
   if(!confirm('Delete “'+(a.name||'this account')+'”? Its balance history will be removed.')) return;
   accounts=accounts.filter(x=>x&&x.id!==id);
@@ -24432,6 +24498,7 @@ function accountSetStatementField(id,field,val){
     if(val&&acctDueDays({dueDate:val})===null){showToast('Choose a valid repayment due date.');return;}
     next.dueDate=val||'';
   }else return;
+  try{if(typeof acctFinStatementInline==='function')acctFinStatementInline(a,next);}catch(e){showToast(e.message);return;}
   const before=accounts;
   saveAccounts(savedList.map(x=>x&&x.id===id?next:x));
   if(JSON.stringify(loadAccounts().find(x=>x&&x.id===id))!==JSON.stringify(next)){
@@ -24440,6 +24507,8 @@ function accountSetStatementField(id,field,val){
   // Keep the payment button mounted when changing a field blurs its input.
   const hint=document.getElementById('acct-due-hint-'+id);
   if(hint){hint.textContent=acctDueText(next);hint.style.color=acctDueDays(next)<0?'var(--danger)':'';}
+  const quick=document.getElementById('acct-quick-status-'+id);
+  if(quick&&typeof acctFinQuickStatus==='function')quick.innerHTML=acctFinQuickStatus(next);
   if(typeof renderBudgetTab==='function')renderBudgetTab();
 }
 // ── Credit limit & utilisation ────────────────────────────────────
@@ -24473,11 +24542,14 @@ const ACCT_CATEGORIES={
   asset:[ {id:'cash',   label:'Cash / everyday'},
           {id:'savings',label:'Savings'},
           {id:'invest', label:'Investments'},
-          {id:'owed',   label:'Owed to me'} ],
+          {id:'owed',   label:'Owed to me'},
+          {id:'super',  label:'Superannuation'},
+          {id:'other',  label:'Other asset'} ],
   debt: [ {id:'card',   label:'Credit card'},
           {id:'loan',   label:'Loan'},
           {id:'person', label:'Owed to a person'},
-          {id:'bill',   label:'Bill / arrears'} ]
+          {id:'bill',   label:'Bill / arrears'},
+          {id:'other',  label:'Other debt'} ]
 };
 function acctCategoryLabel(a){
   if(!a||!a.category) return null;
@@ -24495,8 +24567,9 @@ function accountMarkPaid(id){
   const a=accounts.find(x=>x&&x.id===id); if(!a) return;
   if(a.type!=='debt'||!a.tracksStatement) return;
   const dialog=document.getElementById('acct-statement-dialog'); if(!dialog) return;
-  const current=Number(a.current),statement=Number(a.statementBalance??0);
-  if(!Number.isFinite(current)||current<0||!Number.isFinite(statement)||statement<0){
+  const current=Number(a.current),statement=typeof acctStatementRemaining==='function'?acctStatementRemaining(a):Number(a.statementBalance??0);
+  const allowCredit=typeof acctFinStatementId==='function'&&a.category==='card';
+  if(!Number.isFinite(current)||current<0&&!allowCredit||!Number.isFinite(statement)||statement<0){
     showToast('Check the current and statement balances before marking this paid.'); return;
   }
   if(statement===0&&!a.dueDate){ showToast('There is no outstanding statement to settle.'); return; }
@@ -24506,7 +24579,7 @@ function accountMarkPaid(id){
   const input=document.getElementById('acct-statement-remaining');
   // A statement can exclude newer purchases, or the running balance may already be updated.
   // Confirm the actual remaining balance rather than silently subtracting twice.
-  input.value=statement>0&&statement<=current?((Math.round(current*100)-Math.round(statement*100))/100).toFixed(2):'';
+  input.value=statement>0&&statement<=current?((Math.round(current*100)-Math.round(statement*100))/100).toFixed(2):typeof acctFinStatementId==='function'&&statement===0?current.toFixed(2):'';
   document.getElementById('acct-statement-error').textContent='';
   dialog.showModal();
   document.getElementById('acct-statement-cancel').focus();
@@ -24528,17 +24601,20 @@ function accountConfirmStatement(){
   if(!a||JSON.stringify(a)!==draft.snapshot||JSON.stringify(saved)!==draft.snapshot)
     return fail('This account changed while this window was open. Cancel and reopen it to review the latest balances.');
   const text=document.getElementById('acct-statement-remaining').value.trim();
-  if(!/^\d+(?:\.\d{1,2})?$/.test(text)||!Number.isFinite(Number(text))||Number(text)>Number.MAX_SAFE_INTEGER/100)
-    return fail('Enter the actual remaining debt as a positive amount or 0, with at most two decimal places.');
+  const allowCredit=typeof acctFinStatementId==='function'&&a.category==='card';
+  if(!(allowCredit?/^-?\d+(?:\.\d{1,2})?$/:/^\d+(?:\.\d{1,2})?$/).test(text)||!Number.isFinite(Number(text))||Math.abs(Number(text))>Number.MAX_SAFE_INTEGER/100)
+    return fail('Enter the actual remaining debt with at most two decimal places.'+(allowCredit?' A negative amount means the card is in credit.':' Use a positive amount or 0.'));
   const remaining=Number(text),today=getLocalDate();
   const history=(Array.isArray(a.history)?a.history:[]).filter(e=>e&&e.date!==today);
   history.push({date:today,balance:remaining});history.sort((x,y)=>x.date<y.date?-1:x.date>y.date?1:0);
-  const next={...a,current:remaining,statementBalance:0,dueDate:'',history,
+  const next={...a,current:remaining,statementBalance:0,dueDate:'',statementDetails:null,history,
     statementSettlements:[...(Array.isArray(a.statementSettlements)?a.statementSettlements:[]),{
       date:today,statementBalance:Number(a.statementBalance)||0,dueDate:a.dueDate||'',
-      previousBalance:Number(a.current)||0,confirmedBalance:remaining
+      previousBalance:Number(a.current)||0,confirmedBalance:remaining,
+      ...(typeof acctFinStatementId==='function'?{details:acctCurrentStatement(a)}:a.statementDetails?{details:a.statementDetails}:{})
     }]};
   const before=accounts;
+  if(typeof acctLinkSnapshot==='function')acctLinkSnapshot(next,remaining,a.current);
   saveAccounts(savedList.map(x=>x&&x.id===draft.id?next:x));
   if(JSON.stringify(loadAccounts().find(x=>x&&x.id===draft.id))!==JSON.stringify(next)){
     accounts=before;

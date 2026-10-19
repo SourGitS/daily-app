@@ -157,7 +157,7 @@ test('the Accounts store, its sync registration and its save path did not move',
   // One store, one key, one Firebase path, one writer — rehoming the SCREEN must not have
   // touched any of them.
   assert.match(body('loadAccounts'), /lsLoad\('daily_accounts', \[\]\)/);
-  assert.match(body('saveAccounts'), /lsSave\('daily_accounts', accounts, 'accounts'\)/);
+  assert.match(body('saveAccounts'), /lsSave\('daily_accounts', [^;]+, 'accounts'\)/);
   assert.equal((source.match(/lsSave\('daily_accounts'/g) || []).length, 1,
     'exactly one writer for the accounts store');
   assert.match(source, /syncBlobListen\(user\.uid,'accounts','daily_accounts'/,

@@ -82,6 +82,23 @@ test('visible finance language distinguishes a Budget allocation from account-ba
   assert.match(html, /Savings allocation/);
   assert.match(source, /label:'Budget allocation'/);
   assert.match(source, /'Savers balance'/);
-  assert.match(source, /Savings reconciliation/);
+  assert.match(source, /Savings balance check/);
   assert.match(source, /const savings=accounts\.some\(acctIsSaver\)\?accountsSaverTotal\(\):0/);
+});
+
+test('savings check distinguishes confirmed balances from transfers and ignores archived or future records',()=>{
+  const c=vm.createContext({});vm.runInContext(extract('acctSavingsCheckState'),c);
+  const today='2026-10-20',checked={history:[{date:today,balance:500}],reconciliations:[{date:today,confirmedBalance:500}]};
+  assert.equal(c.acctSavingsCheckState([checked],today).label,'Checked today');
+  assert.equal(c.acctSavingsCheckState([{history:[{date:today,balance:500}]}],today).label,'Updated today');
+  assert.equal(c.acctSavingsCheckState([checked,{history:[{date:'2026-10-19',balance:20}]}],today).label,'1 of 2 updated today');
+  assert.equal(c.acctSavingsCheckState([checked,{archivedAt:1,history:[]}],today).checked,true);
+  assert.equal(c.acctSavingsCheckState([{reconciliations:[{date:'2026-10-21'}]}],today).checked,false);
+});
+
+test('confirmed savings check stays complete when the older monthly opening balance is missing',()=>{
+  const wrap={innerHTML:''},account={id:'save',name:'Savings',current:500,history:[{date:'2026-10-20',balance:500}],reconciliations:[{date:'2026-10-20',confirmedBalance:500}]};
+  const c=vm.createContext({document:{getElementById:()=>wrap},getLocalDate:()=> '2026-10-20',savingsPeriodState:()=>({hasSavers:true,accounts:[account],balance:500,metric:null}),fmtDate:String,fmtMoney:String,fmtMoneyExact:String,escText:String,_catEscHtml:String,cardHeader:(icon,title,chip)=>title+chip,statsChip:(tone,text)=>text});
+  vm.runInContext(extract('acctSavingsCheckState')+'\n'+extract('renderSaversReconcileCard'),c);const before=JSON.stringify(account);c.renderSaversReconcileCard();
+  assert.match(wrap.innerHTML,/Checked today/);assert.match(wrap.innerHTML,/check is complete/);assert.match(wrap.innerHTML,/needs a balance recorded before/);assert.match(wrap.innerHTML,/Check again/);assert.doesNotMatch(wrap.innerHTML,/Reconcile balances|Update saver balances/);assert.equal(JSON.stringify(account),before);
 });

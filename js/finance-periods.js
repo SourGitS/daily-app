@@ -129,6 +129,7 @@ function budPeriodInheritedPlan(p,saved,basis){
 }
 function budPeriodNavigate(n){budPeriodSelected='';budPeriodOffset=n===0?0:budPeriodOffset+n;renderBudgetTab();}
 function budPeriodRefresh(){
+  if(typeof acctLinkRefresh==='function')acctLinkRefresh();
   if(S.view==='budget')renderBudgetTab();
   if(S.view==='home')renderHome();
   if(S.view==='stats')refreshStatsForData(['finance','overview','review']);
@@ -295,6 +296,7 @@ function budPeriodAdjust(){
   };
 }
 function budPeriodRecord(kind){
+  const balanceSignature=typeof acctLinkSignature==='function'?acctLinkSignature():null;
   const income=kind==='income',cats=activeCats(income?loadIncCats():loadFixCats());
   if(!cats.length){if(income)budIncomeManage();else{showToast('Add a bill in Budget setup first.');openBudgetEditor();}return;}
   const hasUndatedIncome=income&&Object.entries(budgetData).some(([week,w])=>budDateValid(week)&&
@@ -305,7 +307,8 @@ function budPeriodRecord(kind){
     '<label>Date<input name="date" type="date" required max="'+getLocalDate()+'" value="'+getLocalDate()+'"></label>'+
     (hasUndatedIncome?'<label id="bi-history" hidden>This week already includes income without dates<select name="weekMode"><option value="">Choose how to record this payment</option><option value="add">It is an additional payment</option><option value="record_only">It is already included — add its date only</option></select></label>':'')+
     (income?'<p id="bi-record-hint" class="bp-note"></p><details id="bi-estimate" hidden><summary>Estimate from hours</summary><label>Hours worked<input name="hours" type="number" min="0" step="0.01" inputmode="decimal"></label><button class="stg-btn" type="button" onclick="budIncomeEstimate()">Use hours × saved rate</button><p id="bi-estimate-result" class="bp-note">Check deductions before recording take-home pay.</p></details><label id="bi-duplicate" class="bi-follow" hidden><input name="duplicate" type="checkbox"><span>This is another payment on the same date<small>A payment from this source is already recorded for this day.</small></span></label>':'')+
-    '<label>Note<input name="note" maxlength="200"></label><p class="bp-note">Record actual '+(income?'money received':'payments')+'. Account balances remain your separately recorded balances.</p>');
+    (typeof acctIncomeFields==='function'?acctIncomeFields(kind):'')+
+    '<label>Note<input name="note" maxlength="200"></label><p class="bp-note">Record actual '+(income?'money received':'payments')+'. Only tick balance updating for a posted payment that is not already included in your account balance.</p>');
   let submitted=false;
   if(income){
     budIncomeRecordFill();budIncomeRecordReview();
@@ -328,9 +331,14 @@ function budPeriodRecord(kind){
     const entry={id:genLedgerId(),kind,date,amount,note:f.get('note'),createdAt:Date.now(),manual:true};
     if(income){entry.streamId=id;entry.weekKey=wk;entry.weekMode=mode;entry.weekBefore=before;entry.weekAfter=mode==='add'?budMoneyRound(before+amount):before;}
     else entry.fixCatId=id;
-    submitted=true;ledgerData.push(entry);saveLedger();
+    try{if(typeof acctIncomePrepare==='function')acctIncomePrepare(entry,f,balanceSignature);}
+    catch(err){budPeriodError(err.message);return;}
+    submitted=true;ledgerData.push(entry);
+    if(saveLedger()===false){ledgerData=loadLedger();submitted=false;budPeriodError('This payment could not be saved on this device. Your balances have not changed. Please try again.');return;}
     if(income&&mode==='add'){
-      budgetData[wk]={...w,wk,[field]:String(entry.weekAfter),draft:!w.saved,updatedAt:Date.now()};budSaveData(wk);
+      const week={...w,wk,[field]:String(entry.weekAfter),draft:!w.saved,updatedAt:Date.now()};
+      if(typeof acctIncomeFinishWeeks==='function'){if(!acctIncomeFinishWeeks({[wk]:week}))return;}
+      else{budgetData[wk]=week;budSaveData(wk);}
     }
     document.getElementById('bud-period-dialog').close();budPeriodRefresh();
   };
@@ -545,27 +553,37 @@ function budStatsCompose(){
 }
 function budPeriodEdit(id){
   const entry=ledgerData.find(x=>x.id===id&&x.manual);if(!entry)return;
+  const balanceSignature=typeof acctLinkSignature==='function'?acctLinkSignature():null;
+  let saveFailed=false;
   budPeriodDialog(entry.kind==='income'?'Correct received income':'Correct bill payment',
     '<label>Amount<input name="amount" type="number" min="0.01" step="0.01" required value="'+entry.amount+'"></label>'+
     '<label>Date<input name="date" type="date" required max="'+getLocalDate()+'" value="'+escAttr(entry.date)+'"></label>'+
     '<label>Note<input name="note" maxlength="200" value="'+escAttr(entry.note||'')+'"></label>'+
-    '<p class="bp-note">This corrects the recorded event. Income added through Budget also corrects its weekly history total. Payments linked to an older typed total keep that total and must stay within its week.</p>');
+    '<p class="bp-note">This corrects the recorded event. Income added through Budget also corrects its weekly history total. Payments linked to an older typed total keep that total and must stay within its week.</p>'+
+    (entry.accountLink?'<p class="bp-note">The linked balance changes only if this entry is still after the account’s latest confirmed starting balance. A newer confirmed bank balance is kept.</p>':''));
   document.getElementById('bp-form').onsubmit=e=>{
     e.preventDefault();const f=new FormData(e.target),amount=budMoneyRound(f.get('amount')),date=f.get('date');
+    if(saveFailed){budPeriodError('Close and reopen this payment before trying again.');return;}
     if(!(amount>0)||!budDateValid(date)||date>getLocalDate()){budPeriodError('Enter a positive amount and a valid past or current date.');return;}
+    try{if(typeof acctLinkedEditCheck==='function')acctLinkedEditCheck(entry,date,balanceSignature);}
+    catch(err){budPeriodError(err.message);return;}
     const oldWeek=txnWeekOf(entry.date),newWeek=txnWeekOf(date),field='inc_'+entry.streamId;
     if(entry.kind==='income'&&entry.weekMode==='record_only'&&(oldWeek!==newWeek||amount!==entry.amount)){
       budPeriodError('This payment dates an older weekly total. Correct that total in Weekly history before changing its amount or week.');return;
     }
+    const weeks={};
     if(entry.kind==='income'&&entry.weekMode==='add'){
       const oldTotal=Number(budgetData[oldWeek]?.[field])||0;
       if(oldTotal<entry.amount){budPeriodError('The weekly total has changed separately. Review Weekly history before correcting this payment.');return;}
-      budgetData[oldWeek]={...budgetData[oldWeek],[field]:String(budMoneyRound(oldTotal-entry.amount)),updatedAt:Date.now()};
-      budgetData[newWeek]={...(budgetData[newWeek]||{}),[field]:String(budMoneyRound((Number(budgetData[newWeek]?.[field])||0)+amount)),updatedAt:Date.now()};
-      [...new Set([oldWeek,newWeek])].forEach(w=>budSaveData(w));
+      weeks[oldWeek]={...budgetData[oldWeek],[field]:String(budMoneyRound(oldTotal-entry.amount)),updatedAt:Date.now()};
+      const destination=weeks[newWeek]||budgetData[newWeek]||{};
+      weeks[newWeek]={...destination,[field]:String(budMoneyRound((Number(destination[field])||0)+amount)),updatedAt:Date.now()};
     }
     Object.assign(entry,{amount,date,note:f.get('note'),weekKey:entry.kind==='income'?newWeek:undefined,updatedAt:Date.now()});
-    saveLedger();document.getElementById('bud-period-dialog').close();budPeriodRefresh();
+    if(saveLedger()===false){ledgerData=loadLedger();saveFailed=true;budPeriodError('This correction could not be saved. Close and reopen to try again.');return;}
+    if(typeof acctIncomeFinishWeeks==='function'){if(!acctIncomeFinishWeeks(weeks))return;}
+    else Object.entries(weeks).forEach(([w,value])=>{budgetData[w]=value;budSaveData(w);});
+    document.getElementById('bud-period-dialog').close();budPeriodRefresh();
   };
 }
 function homeDesktopTraining(brief){

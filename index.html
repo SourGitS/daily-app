@@ -1118,8 +1118,12 @@
         <input class="modal-input" type="text" id="txn-merchant" placeholder="e.g. Woolworths" autocomplete="off">
         <div id="txn-recent-merchants" class="txn-recent"></div>
         <div class="txn-field-pair">
-          <div><label class="txn-lbl" for="txn-account">Paid with <span class="txn-opt">optional</span></label><select class="modal-input" id="txn-account"></select></div>
+          <div><label class="txn-lbl" for="txn-account">Paid with <span class="txn-opt">optional</span></label><select class="modal-input" id="txn-account" onchange="acctTxnChoice()"></select></div>
           <div><label class="txn-lbl" for="txn-date">Date</label><input class="modal-input" type="date" id="txn-date"></div>
+        </div>
+        <div class="txn-flag-wrap">
+          <label class="txn-flag"><input type="checkbox" id="txn-update-balance" aria-describedby="txn-balance-hint"><span class="txn-flag-t">Update this account’s balance</span></label>
+          <p class="txn-flag-d" id="txn-balance-hint"></p>
         </div>
         <div id="txn-details" class="txn-details">
           <label class="txn-lbl" for="txn-note">Note <span class="txn-opt">optional</span></label>
@@ -1468,6 +1472,10 @@
 <script src="js/account-storage.js" defer></script>
 <script src="js/nutrition.js" defer></script>
 <script src="js/finance-periods.js" defer></script>
+<script src="js/accounts-tools.js" defer></script>
+<script src="js/account-links.js" defer></script>
+<script src="js/finance-accounts.js" defer></script>
+<script src="js/finance-import.js" defer></script>
 <script src="js/food-catalogue.js" defer></script>
 <script src="js/notification-schedule.js" defer></script>
 <script src="js/notification-storage.js" defer></script>

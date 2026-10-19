@@ -2348,6 +2348,22 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .acct-statement-dialog .stg-field input{box-sizing:border-box;width:100%;min-width:0}
 .acct-statement-dialog .stg-actions{display:flex;flex-wrap:wrap;gap:8px}
 .acct-statement-dialog .stg-actions button{flex:1;min-height:44px}
+.acct-tools-dialog{width:min(560px,calc(100% - 32px))}
+.acct-tools-dialog .stg-field{margin:12px 0;min-width:0}
+.acct-tools-dialog select,#accounts-addform select{box-sizing:border-box;width:100%;max-width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font:inherit}
+.acct-tools-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:10px}
+.acct-tools-dialog input[type=date]{display:block;appearance:none;-webkit-appearance:none;min-height:42px}
+.acct-transfer-check{display:flex;align-items:flex-start;gap:9px;line-height:1.5;font-size:14px;margin:16px 0}
+.acct-transfer-check input{flex:none;margin-top:4px}
+.acct-record-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.acct-records{border-top:1px solid var(--border);margin-top:12px;padding-top:10px;font-size:13px}
+.acct-records summary{cursor:pointer;min-height:36px;display:flex;align-items:center;font-weight:700}
+.acct-records p,.acct-record small,.acct-category-label{color:var(--muted);line-height:1.5}
+.acct-record{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;padding:10px 0;border-top:1px solid var(--border);overflow-wrap:anywhere}
+.acct-record small{grid-column:1 / -1}
+.acct-category-label{font-size:12px;margin:4px 0}
+#acct-tools-error{color:var(--danger)}
+#accounts-list-head .bud-toggle{flex-wrap:wrap;gap:8px}
 #acct-statement-error{color:var(--danger)}
 
 /* Companion shortcut: the purple belongs to this card, independently of Appearance. */
@@ -2373,3 +2389,74 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   .manhua-hub-signature:before{background:transparent url('../assets/brand/daily-wordmark-light.png') center/contain no-repeat;opacity:.46}
   [data-theme="dark"] .manhua-hub-signature:before{background-image:url('../assets/brand/daily-wordmark-dark.png')}
 }
+.acct-link-status{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:6px 2px 12px;font-size:12px;color:var(--muted);line-height:1.45}
+.acct-link-status span{flex:1 1 180px;min-width:0}
+.acct-balance-row>.bud-row-left{display:block}
+.acct-balance-row .bud-row-name{overflow:visible;text-overflow:clip;white-space:normal}
+.fin-facts{display:flex;flex-wrap:wrap;gap:14px;margin:10px 0}
+.fin-facts span{flex:1 1 110px;color:var(--muted)}
+.fin-facts strong{display:block;margin-top:4px;color:var(--text);font-size:17px}
+.fin-activity{max-height:280px;overflow:auto;border-block:1px solid var(--border);margin:16px 0}
+.fin-warning{color:var(--danger)!important}
+.fin-goal{display:block;width:100%;height:5px;appearance:none;border:0;border-radius:var(--radius-bar);background:var(--border);accent-color:var(--accent)}
+.fin-goal::-webkit-progress-bar{background:var(--border);border-radius:var(--radius-bar)}
+.fin-goal::-webkit-progress-value{background:var(--accent);border-radius:var(--radius-bar)}
+.fin-goal::-moz-progress-bar{background:var(--accent);border-radius:var(--radius-bar)}
+.acct-record>.acct-record-actions{grid-column:1 / -1}
+.acct-tools-dialog textarea{box-sizing:border-box;display:block;width:100%;min-width:0;padding:10px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:10px;font:inherit;resize:vertical}
+.acct-tools-dialog label,.acct-tools-dialog p{overflow-wrap:anywhere}
+.acct-tools-dialog .stg-field input[type=checkbox]{width:auto}
+
+/* Accounts use the shared Daily surfaces, with flat rows and quieter secondary tools. */
+#accounts-list-head .acct-list-heading{margin-bottom:8px}
+.acct-list-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.acct-account-title{display:block;flex:1;min-width:0}
+.acct-account-name{display:block;font-size:15px;font-weight:700;color:var(--text);overflow-wrap:anywhere}
+.acct-account-heading .acct-category-label{margin:3px 0 0;font-size:12px;font-weight:400}
+.acct-account-heading .acct-category-label{display:block}
+.acct-account-heading{cursor:pointer;list-style:none;padding:0;min-height:44px;-webkit-tap-highlight-color:transparent}
+.acct-account-heading::-webkit-details-marker{display:none}
+.acct-summary-row{display:flex;align-items:center;gap:12px;min-height:44px}
+.acct-type-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.acct-collapsed-balance{font-family:var(--font-num);font-size:18px;font-weight:700;white-space:nowrap}
+.acct-account-card[open]>.acct-account-heading .acct-collapsed-balance{display:none}
+.acct-account-card:not([open])>.acct-account-heading .acct-type-label{display:none}
+.acct-disclosure-chevron{flex:none;width:7px;height:7px;margin-right:3px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg)}
+.acct-account-card[open]>.acct-account-heading .acct-disclosure-chevron{transform:rotate(225deg)}
+.acct-account-card[open]>.acct-account-heading{padding-bottom:12px;border-bottom:1px solid var(--border)}
+.acct-account-heading:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:6px}
+.acct-quick-status{display:block;font-size:12px;font-weight:400;line-height:1.5;color:var(--muted);margin-top:7px}
+.acct-quick-status:empty{display:none}
+.acct-pending-hint{display:block}
+.acct-account-card .acct-options{margin-top:10px;padding-top:2px}
+.acct-account-card .acct-options>summary{font-size:13px;font-weight:600;color:var(--muted)}
+.acct-account-card .acct-edit-row{gap:8px;flex-wrap:wrap}
+.acct-edit-row .bud-cat-name-input{min-width:100px}
+.acct-account-card .acct-link-status{gap:4px 12px;padding:0 0 10px}
+.acct-account-card .acct-link-status span{flex:1 1 120px}
+.acct-account-card .stg-btn,.acct-account-card .sav-update-btn,
+.acct-savings-check .stg-btn,.acct-list-actions .stg-btn{
+  min-height:44px;padding:9px 13px;border:1px solid var(--border);border-radius:var(--radius-pill);
+  background:transparent;color:var(--text);font-family:var(--font-ui);font-size:13px;font-weight:600;line-height:1.4;
+}
+.acct-account-card .acct-link-status .stg-btn{border-color:transparent;padding-inline:0;color:var(--muted);font-size:12px}
+.acct-account-card .stg-btn:hover,.acct-account-card .sav-update-btn:hover,
+.acct-savings-check .stg-btn:hover,.acct-list-actions .stg-btn:hover{background:var(--card)}
+.acct-account-card button:focus-visible,.acct-savings-check button:focus-visible,
+.acct-list-actions button:focus-visible,.acct-records summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.acct-account-card .acct-record-actions{margin-top:10px}
+.acct-account-card .fin-facts{gap:12px;margin:0}
+.acct-account-card .fin-facts span{flex-basis:92px;font-size:12px;line-height:1.4}
+.acct-account-card .fin-facts strong{font-family:var(--font-num);font-size:18px;font-weight:700}
+.acct-statement-summary p,.acct-savings-goal p{margin:8px 0 0;font-size:12px}
+.acct-records summary{gap:12px;min-height:44px;list-style:none}
+.acct-records summary::-webkit-details-marker{display:none}
+.acct-records summary::after{content:'';flex:none;margin-left:auto;margin-right:4px;width:6px;height:6px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg)}
+.acct-records[open]>summary::after{transform:rotate(225deg)}
+.acct-records[open]>summary{margin-bottom:4px}
+.acct-goal-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+.acct-goal-heading strong{font-family:var(--font-num);font-weight:700}
+.acct-savings-check .card-fig{margin-top:6px}
+.acct-check-actions{margin-top:14px}
+.acct-savings-check .acct-records{margin-top:12px;padding-top:2px}
+.acct-savings-check .acct-records p{font-size:12px}

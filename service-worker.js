@@ -403,7 +403,10 @@
 // v390: keep only the text logo in the Manhua Hub shortcut and layout previews.
 // v391: matching four-point star detail in the Manhua Hub wordmark's H.
 // v392: unframed Daily signature with tighter spacing beneath the Hub wordmark.
-const CACHE_NAME = 'daily-v392';
+// v393: optional linked balances, weekly bank checks, statements/repayments, reviewed savings,
+// statement CSV import and account audit records. Collapsible cards retain credit-used bars;
+// secondary controls sit behind Account options. No historical balance migration.
+const CACHE_NAME = 'daily-v393';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
@@ -434,6 +437,10 @@ const ASSETS = [
   './css/notifications.css',
   './js/account-storage.js',
   './js/finance-periods.js',
+  './js/accounts-tools.js',
+  './js/account-links.js',
+  './js/finance-accounts.js',
+  './js/finance-import.js',
   './css/finance-periods.css',
   './js/food-catalogue.js',
   './css/food-catalogue.css',

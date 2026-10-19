@@ -26,6 +26,7 @@ const server=http.createServer((req,res)=>{
         openAccounts();
         return Object.fromEntries(moneyKeys.map(k=>[k,localStorage.getItem(k)]));
       },{theme,moneyKeys});
+      await page.locator('.acct-options[data-account="test-card"] > summary').click();
       await page.getByRole('button',{name:'Mark statement as paid',exact:true}).click();
       const dialog=page.locator('#acct-statement-dialog');await dialog.waitFor({state:'visible'});
       assert.equal(await page.locator('#acct-statement-remaining').inputValue(),'250.10');

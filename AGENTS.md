@@ -1,5 +1,159 @@
 # Daily — Agent Handoff
 
+## v393 Finance release authorised — 2026-10-20
+
+- Francois explicitly authorised committing and pushing the complete Finance build after the
+  final Accounts refinement. This supersedes the local-review-only release restrictions below.
+  GitHub Pages publishes main; Firebase billing, remote notifications and backend changes remain
+  deferred. No real financial records were accessed or changed during implementation.
+- Each account is a keyboard-accessible disclosure: its name and balance remain when minimised.
+  Credit-used bars and savings goals remain in the expanded overview. Statement/due and pending
+  repayment hints stay in the heading even when collapsed. Detailed tools, tracking preferences,
+  statement fields, repayment actions and history are under one Account options disclosure.
+- Disclosure choices live in memory, like Log's exercise cards, survive navigation/repaints and
+  reset on reload. Edit temporarily opens the cards and restores prior choices afterwards.
+  Toggle handlers record choices synchronously and ignore detached nodes; they never write a
+  financial record or stored preference. Direct statement-edit-to-payment clicks keep their DOM.
+- Cache daily-v393 includes all four Finance helper scripts. Existing/manual account balances,
+  historical spending/income and weekly records are retained. Linking is an explicit choice for
+  future entries; update Daily on all devices before enabling it. No boot migration is added.
+- Validation: all 622 Node tests pass. Full Finance, account tools and linked-entry browser suites
+  pass at 320/390/1440px in light/dark, including collapse/keyboard/state preservation, unchanged
+  records, payments/imports, failure recovery and populated mock-cloud restore. The original
+  statement-settlement browser suite also passes all sizes/themes in weekly and pay-period modes,
+  including direct edit-to-payment clicks, exact balances/history and stale-account rejection. Production
+  Firebase/fresh-profile sync and a physical iPhone remain unverified, as previously disclosed.
+
+## v393 complete Finance build — local review only, 2026-10-20
+
+- Accounts presentation follow-up keeps the existing card layout and all financial writers.
+  Short tracking labels replace repeated instructions; account categories sit with names.
+  Shared spacing, typography, button shapes and savings accent align the new tools with Daily.
+  Statement add/import actions live inside Statements & charges; daily balance/payment actions
+  remain visible. Savings check completion stays visible, with guidance and individual balance
+  rows under Balance details. All 622 Node tests pass; complete Finance and account-tools
+  browser assertions pass at 320/390/1440px in both themes. The local browser processes were
+  stopped after their assertions completed because Chrome cleanup did not return. This polish
+  remains unpublished and uses only sample data for browser verification.
+- Walkthrough follow-up: the persistent Savings reconciliation card is now Savings balance
+  check. It distinguishes Checked today (explicit bank confirmation) from Updated today
+  (a saved balance/transfer), and offers Check again after completion. Missing historical
+  opening balances explain an unknown monthly change without repeatedly requesting updates.
+  Its action opens the real savings-only check-in; it previously only focused a balance input.
+  Completion is derived read-only from saved records, with no new status store or migration.
+- Francois expanded the request from stage 1 to the complete Finance functionality before
+  review. This supersedes the deferred-stage notes below. Existing cards/layout and manual
+  balance updates remain. No commit, push, deployment, live bank connection or production
+  financial-data access is authorised by this request. Cache is still unreleased daily-v393.
+- `finance-accounts.js` and `finance-import.js` load after account-links and before app.js.
+  New account helpers use `acctFin*`. All new records remain additive fields inside the existing
+  `daily_accounts` blob; original source stores, sync registry/rules and backup paths remain.
+  Optional new-entry linking and explicit baseline confirmation work as described in stage 1.
+- Statements have stable IDs, immutable closing figures except explicit audited corrections,
+  dates, optional minimum/interest/fees and optional opening/purchase/credit/printed-payment
+  figures. Replacing the current statement archives it. Printed totals do not generate ledger
+  events. Previous closing balances are never summed as debt. Unknown charges stay unknown.
+  Legacy erased statements cannot be reconstructed. Current due readers use matched remaining
+  amounts; a met minimum is distinct from full repayment and from meeting the original due date.
+- Repayments support scheduled, pending, failed, cancelled, posted and retained void records.
+  Only explicitly matched posted amounts reduce statement obligations. Updating both balances
+  is a separate explicit choice, saved atomically with receipts in the account blob. Card
+  overpayments may produce a credit. Existing transfers can be matched without posting twice.
+  Reposting, duplicates, mismatched transfers, stale drafts, auth changes and failed saves are
+  guarded. Voids can reverse original effects only before either balance has been reconfirmed;
+  otherwise the user must keep their newer balances. All status changes retain their audit.
+- Account activity combines saved sources, transfers, repayments and reconciliation records.
+  Weekly Check balances accepts any subset of accounts; blanks stay unchanged, zero is valid.
+  Explicit confirmations start new tracking anchors and preserve older entries/history. A zero
+  account may be archived only after clearing current statements and pending repayments; archive
+  seals linked tracking so old edits cannot revive hidden debt. Restore retains records in manual
+  mode. Categories also include Superannuation and other asset/debt without recategorising data.
+- Savings preferences provide optional goals, a usual source, reviewed transfers or manual-only
+  updates. Finishing a saved current budget offers its unrecorded savings remainder. Confirmed
+  partial transfers share one range key and cannot exceed the allocation or post twice. Budgets
+  themselves never move account balances; recording a transfer never makes a bank transaction.
+  Review / void retains incorrect transfers, reverses both balances only when their recorded
+  starting points still match, and releases that transfer's savings allocation. A matched
+  repayment must be voided first; old receipts without starting-point evidence cannot auto-reverse.
+- Statement CSV import supports local file/paste, validation, duplicate/conflict preview and
+  selected-row confirmation. One account-store write makes a batch atomic; existing statements
+  are never overwritten by import. No automatic PDF/OCR ingestion or live bank feed was added.
+  Finance export includes raw baselines and source records; Settings retains full-app backup.
+- Validation: 622 Node tests pass, including 29 full-flow Finance regressions and two savings
+  check-completion regressions. Three synthetic
+  browser suites cover 320/390/1440px, both themes, source preservation, payments, imports,
+  balance checks, weekly savings, failure/retry and populated mock-cloud restore. No production
+  Firebase/fresh-profile or physical iPhone verification. Existing whole-blob sync conflict
+  semantics remain; simultaneous offline changes are not newly merged. Refresh older clients
+  before enabling linking in a future release because they cannot project linked balances.
+- Review fixture: `tests/sync-browser.html?preview&finance-links` uses illustrative accounts,
+  statement history and a pending payment only. No real financial records were read or changed.
+
+## v393 Finance stage 1 — local review only, 2026-10-20
+
+- Francois authorised staged functionality, retaining the existing cards/layout and historical
+  spending/income. Manual weekly balance updates remain supported. Review is required before
+  publishing; no commit, push or deployment is authorised by this request.
+- `js/account-links.js` adds optional per-account linking for cash, savings and explicitly
+  categorised credit cards. Existing accounts remain manual. Enabling it requires confirmation
+  of today's starting balance; it never assigns accounts to old entries or replays history.
+- New expense and received-income/bill forms offer an explicit balance-update checkbox.
+  A source record's `accountLink` identifies its account, kind and confirmed-balance anchor.
+  `loadAccounts()` projects balances from matching saved sources; `saveAccounts()` stores the
+  baseline, never the projected current value. No second account write is needed for an expense
+  or income effect. Keep these two readers/writers paired. No new storage key or Firebase path.
+- Manual balance confirmation (including the same amount), disabling/re-enabling linking and
+  statement settlement create a fresh anchor. Previous anchors are retained in balanceCheckpoints;
+  source records stay unchanged. Later corrections to already-included entries affect the budget
+  only. Balance history remains explicit observations; no historical chart points are fabricated.
+  Confirmed transfers adjust both baseline amounts in the single existing account-store save,
+  retaining active purchase effects. Repayments do not automatically clear statement obligations.
+- Active linked expense edits/deletes/refunds change their one source effect. Legacy edits remain
+  budget-only. Imports stay unlinked; AI corrections and balance imports for linked records must
+  use the existing review forms. Stale drafts, account switches, older/future linked dates and
+  invalid currency amounts are rejected. Repeated submission of a closed expense form is ignored.
+- Source saves verify local persistence before changing weekly summaries or reporting success.
+  If an income event saves but its legacy weekly summary fails, an explicit recovery form retries
+  only that summary, guarding changed records; it cannot duplicate the payment. No boot repair.
+- Synthetic checks: 591 Node tests pass; both browser suites cover 320/390/1440px in both themes,
+  original statement/transfer flows, manual/linked modes, corrections, disable/re-enable, failed
+  saves and summary recovery, settlement, unchanged older records and no overflow/browser errors.
+  Populated mock-cloud restore/reload retains raw records and timestamps and reconstructs balances.
+  `tests/sync-browser.html?preview&finance-links` is an isolated sample-data review fixture.
+- Existing whole-blob sync conflict semantics are unchanged; simultaneous offline edits are not
+  newly merged. Production Firebase/fresh-profile sync and physical iPhone remain unverified.
+  Refresh all clients before enabling linking in a future release: old clients cannot project
+  these balances. No real financial data was read or changed. Cache remains unreleased daily-v393.
+  Full statement allocation/partial repayments and bank reconciliation/import automation are later
+  stages. The statement-history and confirmed-transfer prototype below remains included.
+
+## v393 Accounts records and confirmed transfers — local, not released, 2026-10-19
+
+- Accounts exposes categories at creation and beneath balances. Savings/card creation preselects
+  the existing Savers/statement flags visibly; existing accounts are not recategorised.
+- `js/accounts-tools.js` adds current/previous statement entry, optional minimum/interest/fees,
+  duplicate/date validation and visible historical settlements. Replacing a current statement
+  archives it with payment unconfirmed. Historical statements never change running balances.
+  Existing settlement confirmation retains the statement metadata. Old erased history cannot
+  be reconstructed. All new fields stay inside the registered `daily_accounts` store.
+- Record transfer requires two eligible accounts, an amount and confirmation that money has
+  posted and is not already included in Daily balances. It previews results and persists both
+  balances, today's history and matching receipts together via `saveAccounts`. Debt payments
+  reduce recorded debt without automatically settling a statement. No bank transaction occurs.
+- Finish current week/period offers a review of the saved savings allocation. Draft saves,
+  past periods and cancel do not change accounts. A saved range key prevents repeated Finish
+  actions, including the same range in weekly/period modes, from applying a second transfer.
+  Auth switches, stale account snapshots, invalid amounts and failed local saves are rejected.
+- Savings reporting deduplicates the paired account receipts. A matching existing transfer
+  from today must be explicitly linked in the form before it can update balances, and cannot
+  apply twice. An imported ledger transfer may reference `accountMovementId`; automatic bank
+  matching/import reconciliation is not implemented. No ledger, purchase or income is invented.
+- Cache prepared as `daily-v393`. 575 Node tests pass. Synthetic browser checks cover
+  320/390/1440px, both themes, statement preservation, transfers, category setup, weekly/period
+  repeat saves, no overflow and unchanged unrelated stores. Production Firebase/fresh-profile
+  sync and physical iPhone remain unverified. No real financial records were changed. Commit,
+  push and deployment have not been authorised for this update.
+
 ## v392 unframed Daily signature — 2026-10-18
 
 - Removed the decorative frame and its padding from the small grey Daily signature under

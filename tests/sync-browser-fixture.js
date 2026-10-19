@@ -76,6 +76,33 @@
     {id:'card',name:'Test card',type:'debt',current:200,history:[{date:'2026-09-15',balance:200}]},
     {id:'new',name:'Test new account',type:'asset',current:300,history:[]}
   ]),t:500};
+  if(params.has('finance-links')){
+    const format=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    const day=new Date(),date=format(day),monday=new Date(day),due=new Date(day);
+    monday.setDate(day.getDate()-((day.getDay()+6)%7));due.setDate(day.getDate()+20);const week=format(monday);
+    const blob=v=>({v:JSON.stringify(v),t:500});
+    const link=(id,balance)=>({version:1,anchor:'preview-'+id,balance,confirmedBalance:balance,date,confirmedAt:1});
+    const effect=(id,kind)=>({accountId:id,anchor:'preview-'+id,kind});
+    stores.profile={...stores.profile,name:'Finance preview',budgetRhythmSeen:2};
+    stores.accounts=blob([
+      {id:'cash',name:'Everyday — sample',type:'asset',category:'cash',current:1000,history:[{date,balance:1000}],balanceLink:link('cash',1000)},
+      {id:'savings',name:'Savings — sample',type:'asset',category:'savings',saver:true,current:500,history:[{date,balance:500}],savingsPlan:{mode:'review',fromId:'cash',goal:1500}},
+      {id:'card',name:'Credit card — sample',type:'debt',category:'card',tracksStatement:true,limit:2000,current:700,statementBalance:400,dueDate:format(due),history:[{date,balance:700}],balanceLink:link('card',700),
+        statementDetails:{id:'preview-statement',statementDate:date,minimum:20,interest:3.4,fees:20,sourceName:'Illustrative bank statement'},
+        statementHistory:[{id:'preview-previous',statementDate:'2026-09-16',dueDate:'2026-10-10',statementBalance:300,minimum:15,interest:0,fees:0,status:'paid'}],
+        repayments:[{id:'preview-pending',date,amount:100,applied:100,status:'pending',statementId:'preview-statement',fromAcctId:'cash',fromName:'Everyday — sample',affectsBalances:false,reference:'Sample transfer awaiting bank posting'}]}
+    ]);
+    stores.budgetVarCats=blob([{id:'food',name:'Food',icon:'cart'}]);
+    stores.budgetIncCats=blob([{id:'salary',name:'Salary',payMode:'variable',payCycle:'weekly',payDate:date}]);
+    stores.budgetFixCats=blob([]);
+    stores.transactions=blob([
+      {id:'preview-spend-cash',date,amount:35,catId:'food',merchant:'Sample groceries',acctId:'cash',accountLink:effect('cash','expense'),createdAt:1},
+      {id:'preview-spend-card',date,amount:45,catId:'food',merchant:'Sample dinner',acctId:'card',accountLink:effect('card','expense'),createdAt:2}
+    ]);
+    stores.ledger=blob([{id:'preview-income',date,amount:250,kind:'income',streamId:'salary',acctId:'cash',accountLink:effect('cash','income'),manual:true,weekMode:'add',weekKey:week,weekBefore:0,weekAfter:250,createdAt:1}]);
+    stores.budgetData={[week]:{wk:week,inc_salary:'250',sav_amount:'50',var_goal:'200',updatedAt:500}};
+    stores.budgetCycles=blob({config:{frequency:'weekly',anchor:week},periods:{}});
+  }
   const initial=clone(stores),listeners=new Map(),writes=[],errors=[];
   window.addEventListener('error',e=>errors.push(e.message));
   window.addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
@@ -110,6 +137,12 @@
   const auth={currentUser:user,getRedirectResult:()=>Promise.resolve(null),onAuthStateChanged:fn=>{authChange=fn;const t=setTimeout(()=>fn(user),50);return()=>clearTimeout(t);}};
   window.firebase={initializeApp:()=>{},auth:()=>auth,database:()=>({ref})};
   window.addEventListener('load',()=>setTimeout(()=>{
+    if(params.has('finance-links')){
+      obDismiss();dailyUpdateDismiss();openAccounts();
+      const banner=document.createElement('p');banner.textContent='Local preview · sample money only. Changes here do not affect your saved finances.';
+      banner.style='padding:12px;border:1px solid var(--border);border-radius:12px;font-size:13px;color:var(--muted)';
+      document.getElementById('view-budget').prepend(banner);return;
+    }
     if(new URL(location.href).searchParams.has('onboarding')||params.has('preview'))return;
     const report=document.createElement('pre');report.id='sync-test-result';
     report.style='position:fixed;inset:10px 10px auto;z-index:999999;padding:20px;background:#fff;color:#000;font:15px monospace;white-space:pre-wrap';
