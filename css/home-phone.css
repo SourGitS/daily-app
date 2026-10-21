@@ -32,11 +32,10 @@
   #view-home .weather-feedback{margin-top:12px}
   #view-home .weather-preview{display:block;min-width:0;margin-top:12px}
   #view-home .weather-summary{font-size:11.5px;line-height:1.5;margin:0 0 4px}
-  /* A fixed column basis, so the strip SCROLLS rather than squeezing six hours into whatever
-     width is left over. Each column is its own 44px touch target. */
-  #view-home .weather-hours{display:flex;gap:4px;max-width:100%;overflow-x:auto;overflow-y:hidden;
-    overscroll-behavior-x:contain;touch-action:pan-x pan-y;scrollbar-width:thin;-webkit-overflow-scrolling:touch;
-    scrollbar-color:rgba(255,255,255,.3) transparent;border-top:1px solid rgba(255,255,255,.2);padding-top:10px}
+  /* Forecast cells are information, not touch targets. Fit all six without introducing
+     a nested scroller that competes with tab swiping and the page's vertical scroll. */
+  #view-home .weather-hours{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;max-width:100%;overflow:visible;
+    touch-action:pan-y pinch-zoom;border-top:1px solid rgba(255,255,255,.2);padding-top:10px}
   /* Top-aligned, not centred: the chance line is absent below 20%, so centring would push the
      time and temperature of a dry hour out of line with a wet one beside it. */
   #view-home .weather-hour{flex:0 0 58px;min-width:0;min-height:44px;display:flex;align-items:center;
@@ -183,8 +182,8 @@
 .home-weather-disclosure[open] summary span{transform:rotate(180deg)}
 #view-home .home-mega .weather-preview{display:block;margin:0 -16px;padding:0 16px 14px;background:rgba(7,17,32,.18)}
 #view-home .home-mega .weather-summary{font-size:11px;line-height:1.5;margin:0;padding:10px 0}
-#view-home .home-mega .weather-hours{display:flex;gap:4px;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;
-  scrollbar-width:thin;border-top:1px solid rgba(255,255,255,.2);padding-top:10px;touch-action:pan-x pan-y}
+#view-home .home-mega .weather-hours{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;max-width:100%;overflow:visible;
+  border-top:1px solid rgba(255,255,255,.2);padding-top:10px;touch-action:pan-y pinch-zoom}
 #view-home .home-mega .weather-hour{flex:1 0 44px;display:flex;align-items:center;flex-direction:column;gap:6px;
   min-width:0;padding:2px 0;font-size:11px;line-height:1.4;text-align:center}
 #view-home .home-mega .weather-hour .ti{font-size:20px}
@@ -546,8 +545,8 @@
   #view-home .home-brief .weather-notice{padding:4px 0;margin:0}
   #view-home .home-brief .weather-use-location{margin:3px 0}
   #view-home .home-brief .weather-preview{margin:0 -17px;padding:0 17px 12px;background:rgba(7,17,32,.16)}
-  #view-home .home-brief .weather-hours{border:0;padding-top:7px;gap:3px}
-  #view-home .home-brief .weather-hour{gap:4px;padding:0;flex:1 0 43px}
+  #view-home .home-brief .weather-hours{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));border:0;padding-top:7px;gap:3px;overflow:visible;touch-action:pan-y pinch-zoom}
+  #view-home .home-brief .weather-hour{min-width:0;gap:4px;padding:0}
   #view-home .home-brief .weather-hour .ti{font-size:18px;line-height:1}
   #view-home .home-brief .weather-hour-temp{font-size:12px}
   #view-home .home-brief .weather-day-low{font-size:11px;color:rgba(255,255,255,.8)}

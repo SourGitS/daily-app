@@ -2355,6 +2355,7 @@ function setView(v, direction, opts){
   // Move the deck to the target panel — unless the gesture already positioned it (fromSwipe).
   if(isSwipe && !opts.fromSwipe) setDeckPosition(swipeIdx, prev!==v);
   else if(isSwipe) deckIdx=swipeIdx;
+  else setDeckPosition(deckIdx,false); // an overlay also cancels any pending page gesture
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
   setNavActive();
   if(v==='home') renderHome();
@@ -2873,6 +2874,8 @@ let deckRaf = 0;      // handle of the pending touchmove frame (0 = none) — mu
 // the deck out from under a finger that is mid-swipe.
 let deckDragging = false;
 let deckSnapH = null; // active snap's transitionend handler, so we can pull it off early
+let deckSnapTimer = 0;
+let deckAbortGesture = null;
 // Mobile WebKit can paint an input's caret in the wrong place when the field sits inside a
 // transformed, momentum-scrolling pager. Keep the normal GPU pager for navigation, but park
 // it with margin positioning while a field is being edited so the native text renderer has an
@@ -2893,6 +2896,7 @@ function deckPanelW(){
 // Current on-screen X of the deck in px (negative once paged right). Read from the computed
 // transform so an in-flight snap can be frozen exactly where it is, mid-animation.
 function deckOffsetPx(deck){
+  if(deckTextInputMode) return parseFloat(deck.style.marginLeft)||0;
   try{ return new DOMMatrixReadOnly(getComputedStyle(deck).transform).m41; }
   catch(e){ return -(deckIdx*deckPanelW()); }
 }
@@ -2900,6 +2904,7 @@ function deckOffsetPx(deck){
 function deckCancelPending(deck){
   if(deckRaf){ cancelAnimationFrame(deckRaf); deckRaf=0; }
   if(deckSnapH){ deck.removeEventListener('transitionend',deckSnapH); deckSnapH=null; }
+  clearTimeout(deckSnapTimer); deckSnapTimer=0;
 }
 function deckApplyTextInputPosition(){
   const deck=document.getElementById('swipe-deck'); if(!deck) return;
@@ -2908,6 +2913,7 @@ function deckApplyTextInputPosition(){
 function deckEnterTextInputMode(){
   if(deckTextInputMode || layoutIsDesktop()) return;
   const deck=document.getElementById('swipe-deck'); if(!deck) return;
+  if(deckAbortGesture) deckAbortGesture();
   deckCancelPending(deck);
   deck.style.transition='none';
   deck.style.transform='none';
@@ -2942,7 +2948,9 @@ function deckLeaveTextInputMode(){
 }
 function setDeckPosition(idx, animate){
   const deck=document.getElementById('swipe-deck'); if(!deck) return;
+  if(deckAbortGesture) deckAbortGesture();
   idx=Math.max(0, Math.min(NAV_ORDER.length-1, idx));
+  const currentX=deckOffsetPx(deck);
   // A nav tap can change tabs while the previous field still owns focus. Restore the pager
   // before moving it, otherwise its margin offset and transform would stack.
   deckLeaveTextInputMode();
@@ -2950,21 +2958,28 @@ function setDeckPosition(idx, animate){
   // transform we are about to set (that is what left the deck stranded mid-screen on a flick).
   deckCancelPending(deck);
   deck.style.transition='none';
+  deck.style.transform='translate3d('+currentX+'px,0,0)';
   void deck.offsetWidth; // force reflow so the browser registers the removal before we re-set
-  if(animate){
+  const targetX=-(idx*deckPanelW());
+  if(animate && Math.abs(currentX-targetX)>1 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches){
     deck.style.transition='transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)';
     // transitionend BUBBLES. Every card stagger, bar fill and ripple inside the panels sends one
     // up here, so an unfiltered listener strips the transition mid-snap and freezes the deck
     // half-way. Only the deck's own transform ends the snap.
-    deckSnapH=function(e){
-      if(e.target!==deck || e.propertyName!=='transform') return;
-      deck.removeEventListener('transitionend',deckSnapH); deckSnapH=null;
+    const finish=function(e){
+      if(e && (e.target!==deck || e.propertyName!=='transform')) return;
+      if(deckSnapH!==finish) return;
+      deck.removeEventListener('transitionend',finish); deckSnapH=null;
+      clearTimeout(deckSnapTimer); deckSnapTimer=0;
       deck.style.transition='none';
     };
+    deckSnapH=finish;
     deck.addEventListener('transitionend',deckSnapH);
+    // WebKit may omit transitionend after interruption or a visibility change.
+    deckSnapTimer=setTimeout(finish,420);
   }
   // Measure the panel live every time — never cache it (orientation/resize safe).
-  deck.style.transform='translate3d('+(-(idx*deckPanelW()))+'px,0,0)';
+  deck.style.transform='translate3d('+targetX+'px,0,0)';
   deckIdx=idx;
   pinDeckScroll(); // belt-and-braces: a stray scrollLeft would offset every panel
 }
@@ -3035,34 +3050,46 @@ document.addEventListener('focusout',function(){
   const deck=document.getElementById('swipe-deck'); if(!deck) return;
   const MAX=NAV_ORDER.length-1;
   let tsX=0,tsY=0,tsDelta=0,tsLocked=null,tsStartIdx=0,tsStartPx=0,tsTime=0,dragging=false,tsOnControl=false;
+  let suppressClickUntil=0;
+  deckAbortGesture=function(){ dragging=false;deckDragging=false;tsLocked=null; };
+  function cancel(){
+    const horizontal=dragging && tsLocked==='h';
+    deckAbortGesture();
+    if(horizontal){ suppressClickUntil=Date.now()+400;setDeckPosition(deckIdx,true); }
+  }
   // Interactive controls inside the panels — a touch that starts on one is presumed a TAP. The
   // pager must not lock horizontal (and preventDefault) on a few px of finger drift, or it eats
   // the click and the button "needs multiple taps". These need a deliberate swipe to page.
   const CONTROL_SEL='button, input, select, textarea, a, label, [onclick], [contenteditable]';
   deck.addEventListener('touchstart',e=>{
-    if(layoutIsDesktop() || e.touches.length>1) return; // desktop / pinch → no paging
-    // Freeze an in-flight snap exactly where it is and drag on from there, so grabbing the deck
-    // mid-animation doesn't teleport it to the snap target.
-    const cur=deckOffsetPx(deck);
-    deckCancelPending(deck);
-    deck.style.transition='none';
-    deck.style.transform='translate3d('+cur+'px,0,0)';
-    tsStartPx=-cur;                    // px scrolled from the first panel (positive)
+    if(e.touches.length!==1){ cancel();return; }
+    suppressClickUntil=0;
+    if(layoutIsDesktop() || deckTextInputMode || homeEditMode ||
+       e.target.closest('input,select,textarea,[contenteditable]')) return;
+    // Merely touching a moving page must not freeze its snap. Take ownership only
+    // after horizontal intent is established; vertical scrolling and taps stay native.
     tsX=e.touches[0].clientX; tsY=e.touches[0].clientY;
-    tsDelta=0; tsLocked=null; tsStartIdx=deckIdx; tsTime=Date.now(); dragging=true; deckDragging=true;
+    tsDelta=0; tsLocked=null; tsStartIdx=deckIdx; tsTime=Date.now(); dragging=true;
     tsOnControl=!!(e.target && e.target.closest && e.target.closest(CONTROL_SEL));
   },{passive:true});
   deck.addEventListener('touchmove',e=>{
     if(!dragging) return;
+    if(e.touches.length!==1 || layoutIsDesktop()){ cancel();return; }
     const dx=e.touches[0].clientX-tsX, dy=e.touches[0].clientY-tsY;
     if(tsLocked===null){
-      // On a control, require a clear horizontal swipe (>=16px) before hijacking — small drift
-      // stays unlocked so the tap/click proceeds. Elsewhere the light 3px dominance rule stands.
-      const hGate = tsOnControl ? 16 : 3;
-      if(Math.abs(dx)>Math.abs(dy)+3 && Math.abs(dx)>=hGate) tsLocked='h';
-      else if(Math.abs(dy)>Math.abs(dx)+3) tsLocked='v';
+      const hGate = tsOnControl ? 16 : 10;
+      if(Math.abs(dx)>Math.abs(dy)+6 && Math.abs(dx)>=hGate){
+        if(!e.cancelable){ cancel();return; }
+        tsLocked='h';deckDragging=true;
+        const cur=deckOffsetPx(deck);
+        deckCancelPending(deck);
+        deck.style.transition='none';
+        deck.style.transform='translate3d('+cur+'px,0,0)';
+        tsStartPx=-cur;
+      }else if(Math.abs(dy)>Math.abs(dx)+6) tsLocked='v';
     }
     if(tsLocked!=='h') return;                 // vertical/undecided → let the panel scroll
+    if(!e.cancelable){ cancel();return; }
     e.preventDefault();
     // Rubber-band: past either end the drag is damped to 0.3× and hard-clamped near 60px.
     let d=dx;
@@ -3081,11 +3108,13 @@ document.addEventListener('focusout',function(){
       });
     }
   },{passive:false});
-  function end(){
+  function end(e){
+    if(e.touches.length){ cancel();return; }
     deckDragging=false;
     if(!dragging) return;
     dragging=false;
     if(tsLocked!=='h'){ return; }               // wasn't a horizontal page gesture
+    suppressClickUntil=Date.now()+400;
     // Velocity-based flick (px/ms) rather than a raw elapsed-time cutoff, so a quick short
     // swipe still pages while a slow long drag past threshold also pages.
     const elapsed=Date.now()-tsTime;
@@ -3102,31 +3131,44 @@ document.addEventListener('focusout',function(){
     else updateNavPill(S.view);
   }
   deck.addEventListener('touchend',end);
-  deck.addEventListener('touchcancel',end);
+  deck.addEventListener('touchcancel',cancel);
+  deck.addEventListener('click',e=>{
+    // A completed drag must not activate a stretched card link. A new touch or a
+    // keyboard activation is independent and remains immediately usable.
+    if(e.detail>0 && Date.now()<suppressClickUntil){e.preventDefault();e.stopImmediatePropagation();}
+  },true);
 })();
 
 // ── Pull-to-refresh on the Home tab ──────────────────────────────
 // Manual (not native PTR) to avoid conflicts in PWA standalone mode. Only engages
-// when Home is showing and already scrolled to the very top. #app-main is the scroller.
+// when Home is showing and its panel is already scrolled to the very top.
 (function(){
-  let startY=0,pulling=false;
+  let startX=0,startY=0,pulling=false;
   const THRESHOLD=70;
   const main=document.getElementById('app-main');
   if(!main) return;
   main.addEventListener('touchstart',e=>{
+    if(e.touches.length!==1 || layoutIsDesktop() || deckTextInputMode || e.target.closest('input,select,textarea,[contenteditable]')){ pulling=false;return; }
     if(typeof homeEditMode!=='undefined' && homeEditMode){ pulling=false; return; } // dragging cards, not pulling
     // The Home panel is the scroller now (mobile), not #app-main — read its scrollTop.
     const homePanel=document.getElementById('view-home');
     const atTop=(homePanel?homePanel.scrollTop:main.scrollTop)===0;
-    if(S.view==='home' && atTop){ startY=e.touches[0].clientY; pulling=true; }
+    if(S.view==='home' && atTop){ startX=e.touches[0].clientX;startY=e.touches[0].clientY;pulling=true; }
     else pulling=false;
   },{passive:true});
+  main.addEventListener('touchmove',e=>{
+    if(!pulling) return;
+    if(e.touches.length!==1){pulling=false;return;}
+    const dx=Math.abs(e.touches[0].clientX-startX),dy=e.touches[0].clientY-startY;
+    if(dy<0 || (dx>12 && dx>Math.abs(dy))) pulling=false;
+  },{passive:true});
+  main.addEventListener('touchcancel',()=>{pulling=false;},{passive:true});
   main.addEventListener('touchend',e=>{
     if(!pulling) return;
     pulling=false;
-    if(S.view!=='home') return;
+    if(S.view!=='home' || e.touches.length || !e.changedTouches.length) return;
     const dist=e.changedTouches[0].clientY-startY;
-    if(dist>THRESHOLD) refreshHomeTab();
+    if(dist>THRESHOLD && dist>Math.abs(e.changedTouches[0].clientX-startX)) refreshHomeTab();
   },{passive:true});
 })();
 
@@ -21636,7 +21678,7 @@ function buildWeatherCard(inHero){
     '<div class="weather-preview" id="home-weather-preview" aria-hidden="'+!forecastOpen+'"'+(!forecastOpen?' inert':'')+'>'+
       '<span id="home-weather-forecast-caption" class="weather-forecast-caption"></span>'+
       '<p class="weather-summary" id="home-weather-summary" hidden></p>'+
-      '<div class="weather-hours" id="home-weather-hours" role="list" aria-label="Next six hours at the forecast location" tabindex="0" ontouchstart="event.stopPropagation()" ontouchmove="event.stopPropagation()" hidden></div>'+
+      '<div class="weather-hours" id="home-weather-hours" role="list" aria-label="Next six hours at the forecast location" tabindex="0" hidden></div>'+
       '<p class="weather-forecast-empty" id="home-weather-forecast-empty">Hourly forecast unavailable</p>'+
       '<button type="button" class="weather-forecast-retry" id="home-weather-forecast-retry" onclick="weatherRefresh({force:true,reason:\'forecast-retry\'})" hidden>Retry forecast</button>'+
     '</div></div>'+

@@ -1,5 +1,34 @@
 # Daily — Agent Handoff
 
+## v399 mobile touch and forecast fixes — release authorised, 2026-10-22
+
+- Francois requested fixing mobile text highlighting, unreliable tab swipes and weather
+  scrollbars, then committing and pushing. Retain the compact phone Home, desktop overview,
+  five tabs, saved layouts and all existing data. No storage, Firebase or financial writers
+  change in this release.
+- Phone UI text and links suppress selection, touch callouts and browser tap highlights.
+  Inputs, textareas, editable content and explicit copy/code areas keep native selection and
+  copy/paste. Desktop selection is unchanged.
+- The pager waits for horizontal intent before interrupting a transition. Taps and vertical
+  scrolling cannot strand a snap halfway. Cancel/multitouch returns to the active tab;
+  focus, navigation and resize discard pending gestures. Editing keeps the untransformed
+  caret mode, including its correct offset when leaving. Snap cleanup has a bounded fallback
+  for missing transitionend. A consumed swipe cannot activate a stretched card link, while
+  the next tap and keyboard activation remain available. Pull-to-refresh ignores cancelled
+  or horizontal gestures; its existing refresh action is retained.
+- Phone forecast hours/days fit six/seven columns without nested scrolling. Touches over
+  forecasts participate in normal page scrolling and tab swiping. Forecast disclosure,
+  weather fetching/location rules and the desktop weather presentation are unchanged.
+- Cache daily-v399. All 629 Node checks and the Home layout suite pass, including saved
+  arrangements, all visibility combinations and forecast error states at 320–1920px in both
+  themes. New mobile-interactions-browser.cjs keeps animations enabled and uses native
+  Chromium touch input plus precise synthetic interruption/cancellation cases; it passes
+  at 320x700, 390x844, 430x932 and 844x390 in both themes, with unchanged saved data.
+  The existing usability suite also passes at 320–1920px in both themes, including card
+  links, Journal routes/resizing, keyboard controls and expense actions. Browser
+  verification uses isolated synthetic data; no production records are accessed. Physical
+  iPhone/Safari and production Firebase remain unverified.
+
 ## v398 expense calculator, layout columns and five phone tabs — release authorised, 2026-10-22
 
 - Francois explicitly requested committing and pushing when complete. He then rejected the
