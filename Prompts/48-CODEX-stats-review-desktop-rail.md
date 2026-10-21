@@ -333,4 +333,3 @@ At the end, report:
 6. The service-worker cache change.
 7. Which verification items were completed and anything that still requires physical-device checking.
 8. Explicit confirmation that no data, calculations, storage, sync, Firebase or non-Review screen changed.
-

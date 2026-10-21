@@ -274,4 +274,3 @@ At the end, report:
 7. The service-worker cache change.
 8. Which verification items were completed, and anything that still requires physical-device checking.
 9. Explicit confirmation that no stored data, sync, Firebase or weather-fetch behaviour changed.
-
