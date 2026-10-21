@@ -96,7 +96,7 @@ test('reflection is one quiet optional line, never a weekly task', () => {
 
 test('the phone page is Today, the timeline, then Open Loops, then reflection', () => {
   const fn = extract('renderJournal');
-  const phone = fn.slice(fn.indexOf(': jrnHeadHtml()'), fn.indexOf('wrap.innerHTML'));
+  const phone = fn.slice(fn.indexOf(': (jrnQ()'), fn.indexOf('wrap.innerHTML'));
   const at = name => phone.indexOf(name);
   ['jrnTodayHtml', 'jrnBodyHtml', 'jrnLoopsHtml', 'jrnReflectLinkHtml']
     .forEach(n => assert.ok(at(n) > 0, 'missing ' + n));
@@ -176,10 +176,10 @@ test('the split point still agrees with the stylesheet', () => {
 
 // ── Home card ─────────────────────────────────────────────────────
 
-test('the Home card opens the dashboard without a duplicate Write today action', () => {
+test('the whole Home card opens Journal with one native destination and independent note actions', () => {
   const fn = extract('buildHomeNotesCard');
-  assert.match(fn, /class="jrn-composer is-peek" data-jrn-home="all"/, 'the main area is the way in');
-  assert.match(fn, /card-hd-act" data-jrn-home="all"/, 'the header uses the same dashboard route');
+  assert.match(fn, /homeCardDestination\('notes','Open Journal'\)/, 'the whole card is the way in');
+  assert.ok(!/card-hd-act|Open →/.test(fn), 'no duplicate Open control');
   assert.ok(!/data-jrn-home="write"/.test(fn), 'Home has no competing direct-to-editor route');
   assert.ok(!/jrn-home-write|jrn-write-btn/.test(fn), 'the prominent duplicate control is gone');
   assert.ok(!/data-jrn-home="new"/.test(fn), 'the preview no longer opens the editor itself');
@@ -188,15 +188,15 @@ test('the Home card opens the dashboard without a duplicate Write today action',
   assert.match(extract('renderHomeNotesBubble'), /\[data-card-id="notes"\]/);
 });
 
-test('Journal remains pinned while the five-item phone navigation stays intact', () => {
+test('Journal has its own phone tab and retains its pinned shortcut', () => {
   const ctx = vm.createContext({ console });
   const from = source.indexOf('const NAV_ORDER=');
   const to = source.indexOf('// ── Journal screen state');
   assert.ok(from >= 0 && to > from, 'navigation registry anchors');
   vm.runInContext(source.slice(from, to) + '\nglobalThis.__n={NAV_ORDER,NAV_QUICK,NAV_TREE};', ctx);
   const { NAV_ORDER, NAV_QUICK, NAV_TREE } = JSON.parse(JSON.stringify(ctx.__n));
-  assert.deepEqual(NAV_ORDER, ['home', 'budget', 'log', 'food', 'stats'],
-    'the five-item phone deck is untouched');
+  assert.deepEqual(NAV_ORDER, ['home', 'budget', 'log', 'food', 'stats', 'notes'],
+    'Journal follows the existing phone tabs');
   assert.deepEqual(NAV_QUICK.map(q => q.id),
     ['home', 'budget', 'log', 'food', 'stats', 'notes', 'aihub', 'accounts', 'settings']);
   // Journal is pinned for reach; its route, its internal id and its grouped row are unchanged.

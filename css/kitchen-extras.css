@@ -1219,6 +1219,7 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
      scroller, the account footer — rather than four blocks stacked at one rhythm. Only the
      spacing changed: the rows, the registries behind them and every selected-state rule are
      the same, and the groups are still the only thing that scrolls. */
+  #desktop-sidebar .ds-logo{padding:6px 22px 34px}
   #ds-nav{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
   #ds-nav .nv-quick{flex:none;margin:0;padding:0 0 14px;
     background:linear-gradient(var(--card),var(--card)),var(--bg)}
@@ -1938,7 +1939,7 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
      #view-accounts left it for the same reason when Accounts became a Finance VIEW — its
      panel is inside #view-budget and takes that panel's padding, so an !important inset here
      would have given it a gutter none of its five neighbours has. */
-  .app-overlay,#view-settings,#view-plans,#view-notes,
+  .app-overlay,#view-settings,#view-plans,
   #view-exercise-library,#view-exercise-detail{
     padding-left:calc(14px + env(safe-area-inset-left,0px)) !important;
     padding-right:calc(14px + env(safe-area-inset-right,0px)) !important;

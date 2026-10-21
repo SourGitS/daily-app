@@ -1,5 +1,31 @@
 # Daily — Agent Handoff
 
+## v397 complete Daily usability release — authorised, 2026-10-22
+
+- Francois explicitly instructed "commit and push everything". This supersedes v395's local
+  review restrictions and the earlier exclusion of the existing Prompts documents. Include
+  the complete usability pass and the existing historical prompt files, not ignored fixtures.
+- Integrated the pending usability work onto published phone restoration 0b0893f. Keep the
+  compact iPhone Home and original phone Budget placement, the approved desktop overview,
+  saved layouts and all financial records. The sixth Journal navigation tab is included.
+- Weather keeps automatic fetching and explicit Retry after failures; desktop details have
+  more room. Essential / need sits beside the expense amount and uses its existing field and
+  writers. Finance's primary This week action resets stale navigation in memory. Native Home
+  card links preserve independent controls. Journal adopts shared Daily surfaces and visible
+  Entries/Notes switching. No Firebase, auth, billing, backup or data migration changes.
+- Cache daily-v397 retains css/home-phone.css. Updated browser checks target the restored
+  phone weather card as well as the desktop widget. All 626 Node regressions pass after
+  integration. Home browser checks pass at 320/390/768/1023/1024/1280/1440/1920px in both
+  themes, including saved order/visibility, forecasts, actions, draft/cancel and resizing. The
+  complete usability browser suite passes both themes at 320/390/568/768/844/1023/1024/1100/
+  1239/1240/1440/1920px, including phone landscape, all navigation routes, Journal swipe and
+  history, an entry preserved across resizing, expense essential create/edit/cancel, unchanged
+  balances and records, current-week reset and native card/keyboard destinations. Syntax,
+  precache assets, merged page structure and diff checks pass. Physical iPhone and production
+  Firebase remain unverified; all browser records were synthetic.
+- Prompts/43 through 53 are historical source documents saved as requested. Their text is
+  reference material, not instructions to implement additional features in this release.
+
 ## v396 restore compact iPhone Home — release correction, 2026-10-21
 
 - Francois rejected the tall shared iPhone Home after reviewing the live v394 release and
@@ -29,6 +55,44 @@
 - Ignored sample-data review server: node temp-analysis/phone-preview-server.cjs on 8786. Other
   chats' 8784 review server and unpublished work were left untouched. Do not commit local review
   fixtures, screenshots or unrelated Prompts.
+
+## v395 Daily usability pass — local review only, 2026-10-21
+
+- Francois requested the complete weather, expenses, navigation, Finance and Journal pass for
+  review before pushing. He then required waiting for the other Home chat's commit and push.
+  That prerequisite completed at `6b9f12c`; this pass starts there. No commit, push or publication
+  is authorised for v395. Preserve v394's combined blue Training/Budget card, internal date and
+  Customise control, dark Last 7 days footer and saved widget arrangements.
+- Weather retains the existing automatic Home-entry/resume/reconnection/visible-interval
+  checks and fetching rules. Routine missing/stale/loading states offer no refresh control;
+  failures/offline retain Retry. Small details use their own row with larger, spaced text.
+  Explicit hidden controls remain hidden despite card display rules. Location and forecasts stay.
+- Essential / need already existed. Its existing checkbox now sits beside the amount with
+  laundry/medical examples, above payment details. No expense, balance, category, total, reader,
+  writer, source store, sync, backup or migration logic changes.
+- Finance Overview's primary button says This week. Add expense is secondary; This week resets
+  remembered weekly/period navigation in memory before using the existing Budget destination.
+- Journal is the sixth phone swipe/bottom tab and retains its sidebar favourite, internal notes
+  identity and existing records. Its page heading, cards, tabs and editor surfaces use Daily's
+  existing tokens. Entries/Notes switching is always visible; Notes includes Add note.
+- Home summary cards use accessible native links over their existing destinations, replacing
+  repeated Open/Manage/History labels. Independent note rows, account disclosures, recent-session
+  disclosure and other distinct actions remain controls. Layout edit mode disables destination
+  links. Journal's header and preview now share one native card destination, independent of its
+  note button. Weather, habits and cards with multiple actions keep their necessary controls.
+- Review fixture: `http://127.0.0.1:8784/temp-analysis/daily-improvements-review.html` has Desktop/
+  iPhone, Home, Finance, Journal, expense and theme controls over the isolated sample app.
+  The ignored fixture and unrelated Prompts must remain outside a future release commit.
+  Cache prepared locally as daily-v395. All 622 Node tests pass. The new browser suite passes
+  both themes at 320/390/568/768/844/1023/1024/1100/1239/1240/1440/1920px, including short phone
+  landscape, forecast recovery, card/keyboard destinations, tag create/edit/cancel, unchanged
+  sample balances and records, current-budget navigation, Journal swipe/Back/Forward and a saved
+  entry across desktop/phone resizing. The existing Home suite passes all eight visibility
+  combinations, saved orders/placements and edit draft/cancel across 320–1920px in both themes.
+  The existing account-link browser suite passes all sizes/themes, persistence failures, draft
+  guards and populated mock-cloud restore. The review wrapper's navigation/theme/expense-cancel
+  controls also pass. No real records were accessed or changed; physical iPhone and production
+  Firebase remain unverified.
 
 ## v394 compact shared Home — release authorised, 2026-10-21
 

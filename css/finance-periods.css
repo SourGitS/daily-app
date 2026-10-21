@@ -311,3 +311,28 @@
   #view-home .home-widget-weather .weather-right{gap:8px}
   #view-home .home-widget-weather .weather-temp{font-size:42px}
 }
+
+/* Summary destinations stay beneath the card's distinct actions. */
+#view-home .home-linked-card,#view-home .jrn-home-card{position:relative;isolation:isolate}
+#view-home .home-card-destination{position:absolute;inset:0;z-index:1;border-radius:inherit;cursor:pointer}
+#view-home .home-card-destination:focus-visible{outline:2px solid var(--accent-text);outline-offset:3px}
+#view-home .home-linked-card :is(button,input,select,summary,a,[onclick]):not(.home-card-destination),
+#view-home .jrn-home-card .jrn-loop{position:relative;z-index:2}
+#view-home .home-linked-card:has(.home-card-destination:hover),
+#view-home .jrn-home-card:has(.home-card-destination:hover){border-color:var(--accent-text)}
+.home-editing .home-card-destination{pointer-events:none}
+#view-home .jrn-composer.is-peek{padding:0;border:0;background:none;box-shadow:none;border-radius:0;cursor:inherit}
+#view-home .jrn-home-card .jrn-loop{margin-top:14px;padding-top:14px;min-height:44px}
+#view-home .home-widget-weather .weather-read{display:contents}
+#view-home .home-widget-weather .weather-condition{font-size:14px;line-height:1.5;margin:0}
+#view-home .home-widget-weather .weather-meta{grid-column:1/-1;font-size:12px;line-height:1.6;margin:2px 0 0;letter-spacing:0}
+#view-home .home-widget-weather .weather-right{row-gap:6px}
+#view-home .home-widget-weather .weather-feedback{margin-top:12px;row-gap:7px}
+#view-home .home-widget-weather .weather-freshness{font-size:12px;line-height:1.5}
+#view-home .home-widget-weather .weather-notice{font-size:12px;line-height:1.5}
+#view-home .home-widget-weather :is(.weather-retry,.weather-use-location,.weather-forecast-retry)[hidden]{display:none!important}
+.bov-hero-acts .bov-act-lead{min-height:48px;padding-inline:24px;font-size:15px}
+.bov-hero-acts .bov-act-secondary{background:transparent;border-color:transparent;box-shadow:none;font-weight:600}
+#txn-modal #txn-essential-help{font-size:12px;font-weight:400;line-height:1.5}
+#txn-modal .txn-amount-wrap+.txn-flag-wrap{margin:0 0 20px}
+@media(max-width:359px){#bottom-nav .nav-btn{font-size:10px;padding-inline:2px}#bottom-nav .nav-btn svg{width:20px;height:20px}}

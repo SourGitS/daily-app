@@ -122,8 +122,9 @@ test('combined training reuses Budget content once above the real dark history f
 
 test('Home Finance link still opens current Week through its existing entry point',()=>{
   let called=false;
-  const ctx=fixture(['homeOpenBudgetWeek'],{currentWeekIdx:-5,budPastEdit:true,openBudgetWeek:()=>{called=true;}});
+  const ctx=fixture(['homeOpenBudgetWeek'],{currentWeekIdx:-5,budPastEdit:true,budPeriodOffset:-2,budPeriodSelected:'old',budLegacyOpen:true,openBudgetWeek:()=>{called=true;}});
   ctx.homeOpenBudgetWeek();assert.equal(ctx.currentWeekIdx,0);assert.equal(ctx.budPastEdit,false);assert.equal(called,true);
+  assert.equal(ctx.budPeriodOffset,0);assert.equal(ctx.budPeriodSelected,'');assert.equal(ctx.budLegacyOpen,false);
 });
 
 

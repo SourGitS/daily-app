@@ -80,7 +80,7 @@
 
   <main id="app-main">
 
-    <!-- Swipe deck: the five bottom-nav views page horizontally. CSS order keeps Log central. -->
+    <!-- Swipe deck: the six bottom-nav views page horizontally. -->
     <div id="swipe-deck">
 
     <!-- HOME VIEW -->
@@ -663,7 +663,7 @@
          other four, and #app-main>section's absolute positioning no longer reaches it. There
          is still exactly one copy of this markup. The evidence overlay it opens deliberately
          stays OUTSIDE the deck (below #app-main) — position:fixed resolves against the deck's
-         transform, so an overlay inside it would be positioned against a 500%-wide box. -->
+         transform, so an overlay inside it would be positioned against a 600%-wide box. -->
     <section id="view-stats" class="swipe-panel">
       <div class="seg-tabs seg-scroll" id="stats-tab-row" role="tablist" aria-label="Stats sections">
         <button class="on" id="st-ov-btn" onclick="setStatsTab('overview')">Overview</button>
@@ -723,6 +723,11 @@
           <div id="bs-finance-right" class="stats-fin-col"></div>
         </div>
       </div>
+    </section>
+
+    <!-- Journal keeps its notes identity and records while joining the main swipe deck. -->
+    <section id="view-notes" class="swipe-panel">
+      <div id="notes-content"></div>
     </section>
 
     </div><!-- /#swipe-deck -->
@@ -982,12 +987,7 @@
       <div id="plans-content" style="padding:16px"></div>
     </section>
 
-    <!-- Journal. The view id, the nav data-tab and the Home widget id all stay "notes" on
-         purpose: they are persisted in the saved Home layout (order/wide/hidden), so renaming
-         them would silently reset every user's dashboard. Only the LABELS change. -->
-    <section id="view-notes" class="hidden">
-      <div id="notes-content" style="padding:16px"></div>
-    </section>
+
 
   </main>
 
@@ -1115,6 +1115,10 @@
           <label class="txn-lbl" for="txn-amount">Amount</label>
           <div class="txn-amount-entry"><span aria-hidden="true">$</span><input class="modal-input txn-amount" type="text" inputmode="decimal" id="txn-amount" aria-label="Amount in dollars" placeholder="0.00"></div>
         </div>
+        <div class="txn-flag-wrap">
+            <label class="txn-flag"><input type="checkbox" id="txn-essential" aria-describedby="txn-essential-help"><span class="txn-flag-t">Essential / need</span></label>
+            <p class="txn-flag-d" id="txn-essential-help">An unavoidable cost, such as laundry or a doctor’s appointment. Keeps its category and counts once.</p>
+          </div>
         <label class="txn-lbl" for="txn-merchant">Where / what <span class="txn-opt">optional</span></label>
         <input class="modal-input" type="text" id="txn-merchant" placeholder="e.g. Woolworths" autocomplete="off">
         <div id="txn-recent-merchants" class="txn-recent"></div>
@@ -1130,10 +1134,6 @@
         <div id="txn-details" class="txn-details">
           <label class="txn-lbl" for="txn-note">Note <span class="txn-opt">optional</span></label>
           <input class="modal-input" type="text" id="txn-note" placeholder="Anything worth remembering">
-          <div class="txn-flag-wrap">
-            <label class="txn-flag"><input type="checkbox" id="txn-essential" aria-describedby="txn-essential-help"><span class="txn-flag-t">Essential / need</span></label>
-            <p class="txn-flag-d" id="txn-essential-help">Include this cost in essential spending. Its category stays the same.</p>
-          </div>
         </div>
         <div id="txn-err" class="txn-err" role="alert" aria-live="polite"></div>
         <button class="txn-delete hidden" id="txn-delete-btn" onclick="txnDeleteCurrent()">Delete this expense</button>
@@ -1394,7 +1394,7 @@
     Log
   </button>
   <!-- Food replaces the separate Nutrition and Kitchen buttons; Stats takes the fifth slot it
-       lost when Kitchen arrived. Log stays in the centre. These five ARE NAV_ORDER — the icons
+       lost when Kitchen arrived. Journal follows Stats. These tabs match NAV_ORDER — the icons
        here and NAV_QUICK_ICONS in js/app.js draw the same paths, so the phone tab and the
        sidebar shortcut are visibly the same thing. -->
   <button class="nav-btn" data-view="food" onclick="setView('food')">
@@ -1404,6 +1404,10 @@
   <button class="nav-btn" data-view="stats" onclick="setView('stats')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M20 8v5h-5"/></svg>
     Stats
+  </button>
+  <button class="nav-btn" data-view="notes" onclick="setView('notes')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13H4V4zM16 4v4h3M8 12h7M8 16h4"/></svg>
+    Journal
   </button>
 </nav>
 

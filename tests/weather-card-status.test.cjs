@@ -46,9 +46,9 @@ test('fresh successful weather offers nothing to press and explains nothing', ()
   assert.equal(n['home-weather-location'].hidden, true, 'a real location needs no location prompt');
 });
 
-test('a stale reading stays on screen, says so, and exposes Retry', () => {
+test('a stale reading stays on screen while automatic refresh handles it', () => {
   const n = fixture(reading({ fetchedAt: NOW - 3 * HOUR }));
-  assert.equal(n['home-weather-refresh'].hidden, false);
+  assert.equal(n['home-weather-refresh'].hidden, true);
   assert.equal(n['home-weather-refresh'].span.textContent, 'Retry');
   assert.equal(n['home-weather-refresh'].attrs['aria-label'], 'Retry weather update');
   assert.equal(n['home-weather-notice'].hidden, false);
@@ -73,14 +73,15 @@ test('offline keeps the saved reading and says why it is not newer', () => {
 
 test('no reading at all asks for one, and offers the location prompt', () => {
   const n = fixture(null);
-  assert.equal(n['home-weather-freshness'].textContent, 'No update yet');
-  assert.equal(n['home-weather-refresh'].hidden, false);
+  assert.equal(n['home-weather-freshness'].textContent, 'Waiting for weather');
+  assert.equal(n['home-weather-refresh'].hidden, true);
   assert.equal(n['home-weather-location'].hidden, false);
 });
 
 test('while a request is in flight the control says so instead of inviting another press', () => {
   const n = fixture(reading({ fetchedAt: NOW - 3 * HOUR }), { state: 'loading' });
-  assert.equal(n['home-weather-refresh'].hidden, false);
+  assert.equal(n['home-weather-refresh'].hidden, true);
+  assert.equal(n['home-weather-freshness'].textContent, 'Updating automatically…');
   assert.equal(n['home-weather-refresh'].disabled, true);
   assert.equal(n['home-weather-refresh'].span.textContent, 'Updating…');
   assert.equal(n['home-weather-refresh'].attrs['aria-label'], 'Updating weather');

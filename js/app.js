@@ -2404,7 +2404,7 @@ function setView(v, direction, opts){
   if(v!=='home' && homeEditMode){ homeEditMode=false; const b=document.getElementById('home-edit-btn'); if(b){ b.textContent='Edit layout'; b.classList.remove('active'); } }
   updateNavBadges();
 }
-// The five swipeable tabs, in swipe order. Nutrition and Kitchen merged into ONE Food
+// The main swipeable tabs, in swipe order. Nutrition and Kitchen merged into ONE Food
 // destination — they were two top-level tabs answering one question between them — and the
 // slot that freed went back to Stats, which had been pushed out of the deck when Kitchen
 // arrived and had been reachable only through the menu and the header chip since.
@@ -2412,7 +2412,7 @@ function setView(v, direction, opts){
 // that isn't must be a direct <section> child of #app-main (see setView). Changing the list
 // without moving the markup gives you a tab you can swipe to but not tap, or the reverse.
 // #view-*{order:n} in css/layout.css must agree with this order for the same reason.
-const NAV_ORDER=['home','budget','log','food','stats'];
+const NAV_ORDER=['home','budget','log','food','stats','notes'];
 
 // ── Food: one destination, four sections, two supporting screens ──
 // Declared HERE, beside NAV_ORDER, and not next to the render functions two thousand lines
@@ -2473,11 +2473,11 @@ function navResolve(view, sub){
 }
 
 // ── Quick access ────────────────────────────────────────────────
-// The phone's five bottom-nav tabs, pinned above the groups on BOTH nav surfaces so the app's
+// The phone's bottom-nav tabs, pinned above the groups on BOTH nav surfaces so the app's
 // most-used destinations are one press instead of two (expand a group, then pick a row). That
 // two-press cost only existed on desktop and in the hamburger — the phone has always had these
 // five under its thumb — so this closes the gap rather than inventing a new idea.
-// The five deck tabs are DERIVED from NAV_ORDER, never re-typed: adding a tab to the phone
+// The deck tabs are DERIVED from NAV_ORDER, never re-typed: adding a tab to the phone
 // deck adds it here, and the two cannot drift into disagreeing about which views the deck
 // holds. Their icons are the same paths #bottom-nav draws, so the desktop shortcut and the
 // phone tab are visibly the same thing.
@@ -2514,11 +2514,8 @@ const NAV_QUICK_ICONS={
 // the bottom-nav button beside them.
 const NAV_QUICK_LABELS={home:'Home', budget:'Finance', log:'Log', food:'Food',
                         stats:'Stats', notes:'Journal', aihub:'Daily AI', accounts:'Accounts', settings:'Settings'};
-// Journal, Daily AI and Accounts are pinned alongside Settings: destinations worth one press that
-// are NOT deck tabs. The phone deck is NAV_ORDER and is untouched — there is still no sixth
-// bottom-nav button, and there is not going to be. All four keep their grouped rows below, which is
-// where you go when you are aiming at something specific inside Finance or More.
-const NAV_QUICK_EXTRA=['notes','aihub','accounts','settings'];
+// Journal is part of the phone deck. The remaining extras stay pinned on both menu surfaces.
+const NAV_QUICK_EXTRA=['aihub','accounts','settings'];
 const NAV_QUICK_VIEWS=NAV_ORDER.concat(NAV_QUICK_EXTRA);
 // A quick item is normally just a view, and dispatches setView with NO sub-tab — exactly what
 // pressing the bottom-nav button does — so it lands you back wherever you were inside it.
@@ -2673,7 +2670,7 @@ function navCurrentRow(){
 function navCurrentQuick(){
   if(NAV_NO_ROW_OVERLAYS.some(navShown)) return '';
   // Accounts is inside Finance, but its pinned shortcut is more specific than Finance and
-  // therefore lights itself. The five-item phone bar remains driven by NAV_ORDER separately.
+  // therefore lights itself. The phone bar remains driven by NAV_ORDER separately.
   if(navShown('view-aihub')) return 'aihub';
   // Food's supporting screens deliberately do NOT clear this: they are inside the Food
   // experience, so Food stays lit here exactly as it stays lit in the bottom nav.
@@ -2866,10 +2863,10 @@ const JRN_MEANINGFUL_KEYS=['mood','tags','pinned','title','body'];
 let _jrnResizeT=null;
 
 // ── Swipe deck (native-feel tab paging) ──────────────────────────
-// The five bottom-nav views sit side-by-side in #swipe-deck and track the finger in real
+// The bottom-nav views sit side-by-side in #swipe-deck and track the finger in real
 // time; releasing spring-snaps to the nearest view. Mobile only — desktop pages via
 // .deck-active (see setView + layout.css). Order matches NAV_ORDER: home, budget, log,
-// food, stats, keeping the workout action in the centre of the five phone tabs.
+// food, stats, notes. Journal is a full panel with the same swipe and keyboard handling.
 let deckIdx = 0;
 let deckRaf = 0;      // handle of the pending touchmove frame (0 = none) — must be cancellable
 // Mirrors the gesture IIFE's own `dragging`, at module scope: vpSyncDeck must never re-page
@@ -14426,12 +14423,12 @@ function budOvHeroHtml(m){
   // every later visit goes to — when setup lives on that screen anyway, in Week's own setup card.
   // It is supporting COPY now (see the note below), never a competing button.
   const week='<button type="button" class="bov-act bov-act-primary bov-act-lead"'+
-    ' onclick="setBudgetView(\'week\')">Open budget <span aria-hidden="true">→</span></button>';
+    ' onclick="homeOpenBudgetWeek()">This week <span aria-hidden="true">→</span></button>';
   // Add expense is dropped while the week is unset up: with no categories yet the modal has
   // nothing to file a purchase against, and a second pill would dilute the one action that
   // matters here. It is unchanged everywhere else.
   const acts='<div class="bov-hero-acts">'+week+
-    (setup?'':'<button type="button" class="bov-act" onclick="openTxnModal()">'+
+    (setup?'':'<button type="button" class="bov-act bov-act-secondary" onclick="openTxnModal()">'+
       '<span aria-hidden="true">+</span> Add expense</button>')+
   '</div>';
   const extra='<div class="bov-hero-range">'+(m.period?'Budget period':'This week')+' · '+budRangeLabel(m.monday,sunday)+'</div>'+
@@ -20789,13 +20786,13 @@ function renderWeatherStatus(){
   const error=_weatherStatus.state==='error'||!!(c&&c.lastError);
   const offline=navigator.onLine===false;
   const stale=!!(c&&!weatherIsFresh(c));
-  fresh.textContent=c&&c.fetchedAt?'Updated '+weatherAgeLabel(c.fetchedAt):'No update yet';
+  fresh.textContent=busy?'Updating automatically…':c&&c.fetchedAt?'Updated '+weatherAgeLabel(c.fetchedAt):'Waiting for weather';
   // Retry is not an everyday control. Routine updates arrive on their own — weatherEnsureFresh
   // runs on Home entry, resume, reconnection and the visible minute check — so a card holding a
   // fresh successful reading has nothing to ask of anyone and shows no button at all. It appears
-  // only for a reading that is missing, stale, failed or unreachable, which is exactly what the
-  // notice beside it is explaining.
-  const needsRetry=!c||error||offline||stale;
+  // only after a failed request or while offline. Missing/stale readings are handled by the
+  // automatic lifecycle without asking the user to refresh them.
+  const needsRetry=(error||offline)&&!busy;
   const button=document.getElementById('home-weather-refresh');
   if(button){
     button.hidden=!needsRetry;
@@ -21556,7 +21553,7 @@ function buildWeatherCard(inHero){
     '</div>'+
     // How old the reading is, why it is not newer, and the one action that can change that —
     // one block rather than a refresh control competing with the location line above. Retry
-    // ships hidden; renderWeatherStatus reveals it only for a missing, stale or failed reading.
+    // ships hidden; renderWeatherStatus reveals it only after an unsuccessful update.
     '<div class="weather-feedback">'+
       '<div class="weather-status-row">'+
         '<span class="weather-freshness" id="home-weather-freshness">No update yet</span>'+
@@ -21573,7 +21570,7 @@ function buildWeatherCard(inHero){
       '<p class="weather-summary" id="home-weather-summary" hidden></p>'+
       '<div class="weather-hours" id="home-weather-hours" role="list" aria-label="Next six hours at the forecast location" tabindex="0" ontouchstart="event.stopPropagation()" ontouchmove="event.stopPropagation()" hidden></div>'+
       '<p class="weather-forecast-empty" id="home-weather-forecast-empty">Hourly forecast unavailable</p>'+
-      '<button type="button" class="weather-forecast-retry" id="home-weather-forecast-retry" onclick="weatherRefresh({force:true,reason:\'forecast-retry\'})" hidden>Refresh forecast</button>'+
+      '<button type="button" class="weather-forecast-retry" id="home-weather-forecast-retry" onclick="weatherRefresh({force:true,reason:\'forecast-retry\'})" hidden>Retry forecast</button>'+
     '</div></div>'+
   '</div>';
 }
@@ -22314,6 +22311,7 @@ function renderHome(){
   }
   const _oldRecent=document.getElementById('home-recent-card'); if(_oldRecent) _oldRecent.innerHTML='';
   if(homeEditMode) applyHomeEditMode();
+  homePrepareCardLinks();
   applyHomeCardCaps();   // assigns grid spans too
 
   applyDayColour();
@@ -22395,12 +22393,38 @@ function buildHomePhoneOverview(cards,visible,brief){
     (ids.includes('session')?'<div data-hero-section="session">'+buildHomeMobileBrief(brief,visible)+'</div>':'')+
     (ids.includes('weather')?'<div class="home-mega-weather" data-hero-section="weather"><div class="home-weather-window">'+cards.weather+'</div></div>':'')+'</section>';
 }
+// Native links make the whole summary reachable by keyboard without nesting its other actions.
+function homeCardDestination(view,label){
+  return '<a class="home-card-destination" href="#'+view+'" aria-label="'+label+'" tabindex="'+(homeEditMode?-1:0)+'" onclick="event.preventDefault();event.stopPropagation();if(!homeEditMode)setView(\''+view+'\')"></a>';
+}
+function homePrepareCardLinks(){
+  const targets={prs:['stats','Open personal records','All →'],kitchen:['food','Open Food','Open →'],weight:['stats','Open weight and goal','Set a goal →'],recent:['log','Open workout history','History →'],finance:['budget','Open Finance','Open Finance →'],balance:['budget','Open accounts','Manage →'],review:['stats','Open weekly review','Full review →']};
+  Object.keys(targets).forEach(id=>{
+    const host=document.querySelector('#home-content [data-card-id="'+id+'"]');
+    const card=host&&host.querySelector('.card');
+    if(!card||card.querySelector('.home-card-destination')) return;
+    const [view,label,duplicate]=targets[id];
+    let action=card.onclick;
+    if(!action&&id==='balance') action=()=>openAccounts();
+    if(!action&&id==='review') action=()=>openWeekReviewModal();
+    if(!action) return;
+    card.removeAttribute('onclick');
+    card.classList.add('home-linked-card');
+    const link=document.createElement('a');
+    link.className='home-card-destination';link.href='#'+view;link.setAttribute('aria-label',label);
+    link.onclick=function(e){e.preventDefault();e.stopPropagation();if(!homeEditMode)action.call(card,e);};
+    link.tabIndex=homeEditMode?-1:0;
+    card.prepend(link);
+    card.querySelectorAll('.card-hd-act,.fin-act').forEach(el=>{if(el.textContent.trim()===duplicate)el.remove();});
+  });
+}
 function homeBudgetDestination(){
   return '<a class="home-budget-destination" href="#budget" aria-label="Open budget" onclick="event.preventDefault();if(!homeEditMode)homeOpenBudgetWeek()"></a>';
 }
 function homeOpenBudgetWeek(){
   currentWeekIdx=0;
   budPastEdit=false;
+  if(typeof budPeriodOffset!=='undefined'){budPeriodOffset=0;budPeriodSelected='';budLegacyOpen=false;}
   openBudgetWeek();
 }
 // ── Home widget system ────────────────────────────────────────────
@@ -23230,7 +23254,7 @@ function applyHomeEditMode(){
   const stg=document.getElementById('home-layout-btn');
   if(stg) stg.style.display=homeEditMode?'':'none';
   document.querySelectorAll('#home-content [data-card-id]').forEach(c=>c.classList.toggle('home-card-jiggle',homeEditMode));
-  document.querySelectorAll('#home-content .home-budget-destination').forEach(a=>{a.tabIndex=homeEditMode?-1:0;});
+  document.querySelectorAll('#home-content .home-budget-destination,#home-content .home-card-destination').forEach(a=>{a.tabIndex=homeEditMode?-1:0;});
 }
 // Drag-to-reorder with a floating clone. Active only in Home edit mode.
 // Pointer Events (not touch events) so mouse, touch and pen all run the same path — the old
@@ -29757,11 +29781,12 @@ function renderJournal(){
   // Today, then the timeline, then Open Loops, then reflection. Loops used to sit above the
   // timeline, which put a reminder list first on a screen whose subject is writing.
   const rail = desktop
-    ? jrnHeadHtml()+jrnNavHtml()
-    : jrnHeadHtml()+(jrnQ()?'':jrnTodayHtml())+jrnBodyHtml()+jrnLoopsHtml()+(jrnQ()?'':jrnReflectLinkHtml());
+    ? jrnNavHtml()
+    : (jrnQ()||jrnTab!=='timeline'?'':jrnTodayHtml())+jrnBodyHtml()+(jrnTab==='timeline'?jrnLoopsHtml():'')+(jrnQ()?'':jrnReflectLinkHtml());
+  const head='<header class="jrn-page-head">'+jrnHeadHtml()+'<p>Your days, thoughts and notes.</p></header>';
   wrap.innerHTML = desktop
-    ? '<div id="journal-root"><div class="jrn-rail">'+rail+'</div><div class="jrn-detail" id="jrn-detail"></div></div>'
-    : '<div id="journal-root">'+rail+'</div>';
+    ? '<div id="journal-root">'+head+'<div class="jrn-rail">'+rail+'</div><div class="jrn-detail" id="jrn-detail"></div></div>'
+    : '<div id="journal-root">'+head+rail+'</div>';
   if(desktop) jrnMountDetail();
   const s=document.getElementById('jrn-search');
   if(s && jrnSearchOpen && document.activeElement!==s){ s.value=jrnQuery; }
@@ -29886,7 +29911,7 @@ function jrnHeadHtml(){
   const searchIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
   const calIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
   let h='<div class="jrn-head">'+
-    '<div class="jrn-head-title">Journal</div>'+
+    '<h1 class="jrn-head-title">Journal</h1>'+
     '<button class="jrn-head-btn'+(jrnSearchOpen?' on':'')+'" data-jrn="search-toggle" aria-label="Search Journal" aria-pressed="'+(jrnSearchOpen?'true':'false')+'">'+searchIco+'</button>'+
     '<button class="jrn-head-btn" data-jrn="cal" aria-label="Jump to a date">'+calIco+'</button>'+
   '</div>';
@@ -29988,10 +30013,9 @@ function jrnLoopsHtml(){
   const dk=jrnIsDesktop();
   let h='<div class="jrn-loops'+(dk?' jrn-sec':'')+'">'+
     '<div class="jrn-loops-hd'+(dk?' jrn-sec-hd':'')+'">'+
-      '<span class="jrn-loops-ttl'+(dk?' jrn-sec-ttl':'')+'">Open loops'+(dk&&rows.length?' · '+rows.length:'')+'</span>'+
+      '<span class="jrn-loops-ttl'+(dk?' jrn-sec-ttl':'')+'">Notes'+(dk&&rows.length?' · '+rows.length:'')+'</span>'+
       (rows.length&&!dk?'<span class="jrn-loops-n">'+rows.length+'</span>':'')+
       '<span class="jrn-loops-act">'+
-        (total?'<button class="jrn-loops-btn" data-jrn="tab" data-tab-id="notes">All notes</button>':'')+
         '<button class="jrn-loops-btn" data-jrn="new-note" aria-label="New note">Add note</button>'+
       '</span>'+
     '</div><p class="jrn-loops-desc">Reminders and reference notes</p>';
@@ -30097,13 +30121,11 @@ function jrnTrashHtml(){
   }).join('')+'</div>';
 }
 function jrnBodyHtml(){
-  const tab=(id,label)=>'<button class="jrn-pill'+(jrnTab===id?' on':'')+'" data-jrn="tab" data-tab-id="'+id+'">'+label+'</button>';
+  const tab=(id,label)=>'<button type="button" class="jrn-pill'+(jrnTab===id?' on':'')+'" aria-pressed="'+(jrnTab===id)+'" data-jrn="tab" data-tab-id="'+id+'">'+label+'</button>';
   const trashN=jrnTrash().length;
-  const nav = (jrnTab==='timeline')
-    ? ''
-    : '<div class="jrn-ed-row" style="margin:2px 0 4px">'+tab('timeline','Timeline')+tab('notes','All notes')+tab('trash','Trash'+(trashN?' ('+trashN+')':''))+'</div>';
+  const nav = '<div class="jrn-browse-tabs" role="group" aria-label="Journal sections">'+tab('timeline','Entries')+tab('notes','Notes')+(trashN||jrnTab==='trash'?tab('trash','Trash'+(trashN?' ('+trashN+')':'')):'')+'</div>';
   let body;
-  if(jrnTab==='notes') body=jrnNotesListHtml();
+  if(jrnTab==='notes') body='<div class="jrn-notes-toolbar"><p>Reminders and reference notes</p><button type="button" class="jrn-write-btn" data-jrn="new-note">Add note</button></div>'+jrnNotesListHtml();
   else if(jrnTab==='trash') body=jrnTrashHtml();
   else body=jrnTimelineHtml();
   const footer = (jrnTab==='timeline' && trashN)
@@ -30543,20 +30565,19 @@ function buildHomeNotesCard(){
   // ONE loop, not three. This card is a way in, not a second Journal screen: the whole list is
   // one press away and a stack of reminders here is what makes Home feel like a to-do app.
   const rows=L.pinned.concat(L.due).slice(0,1);
-  let h='<div class="card jrn-home-card">';
+  let h='<div class="card jrn-home-card">'+homeCardDestination('notes','Open Journal');
   // The shared card header, not a fourth private copy of the uppercase-label declaration.
   // This one was 13px/.05em/--muted while every other Home card is 11px/.06em/--text-2, which
   // is most of why Journal read as a different family from the cards above and below it.
-  h+=cardHeader('note','Journal',
-      '<button class="card-hd-act" data-jrn-home="all">Open →</button>');
+  h+=cardHeader('note','Journal');
   // The preview and the header link both reach the same dashboard. One quiet invitation is
   // enough here; writing stays in Journal itself rather than competing with the card's preview.
   const line=latest ? (String(latest.title||'').trim()||String(latest.body||'').trim().split('\n')[0]||'Untitled') : '';
-  h+='<button class="jrn-composer is-peek" data-jrn-home="all">'+
+  h+='<div class="jrn-composer is-peek">'+
       '<div class="jrn-comp-top"><span class="jrn-comp-eyebrow">'+(latest?'Today\'s entry':'Today')+'</span></div>'+
       '<div class="jrn-comp-line'+(latest?'':' is-empty')+'">'+(latest?escText(line):'Nothing written yet today.')+'</div>'+
       (mine.length>1?'<div class="jrn-comp-meta">'+mine.length+' entries today</div>':'')+
-    '</button>';
+    '</div>';
   if(rows.length){
     rows.forEach(n=>{
       const diff=notesDayDiff(String(n.dueDate||''), today);
@@ -30578,7 +30599,7 @@ function buildHomeNotesCard(){
 }
 function renderHomeNotesBubble(){
   const el=document.querySelector('#home-content [data-card-id="notes"]');
-  if(el) el.innerHTML=buildHomeNotesCard();
+  if(el){ el.innerHTML=buildHomeNotesCard(); homePrepareCardLinks(); }
 }
 document.addEventListener('click',function(e){
   if(!e.target||!e.target.closest) return;

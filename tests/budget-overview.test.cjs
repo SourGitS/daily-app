@@ -626,7 +626,7 @@ test('This week is the hero primary action, and the only other control is quick 
   // Order and emphasis both say which one is primary.
   assert.match(buttons[0], /bov-act-primary/);
   assert.match(buttons[0], /bov-act-lead/);
-  assert.match(buttons[0], /setBudgetView\('week'\)/);
+  assert.match(buttons[0], /homeOpenBudgetWeek\(\)/);
   assert.match(html, />This week /);
   assert.ok(!/bov-act-primary/.test(buttons[1]), 'quick capture must not compete with it');
   assert.match(buttons[1], /openTxnModal\(\)/);
@@ -643,7 +643,7 @@ test('This week stays the primary action before anything is set up', () => {
   // main button change identity with state and sent a first-time reader somewhere other than
   // the screen every later visit goes to.
   assert.equal(buttons.length, 1, 'no second button may compete with This week');
-  assert.match(buttons[0], /setBudgetView\('week'\)/);
+  assert.match(buttons[0], /homeOpenBudgetWeek\(\)/);
   assert.match(buttons[0], /bov-act-primary/);
   assert.match(buttons[0], /bov-act-lead/);
   assert.ok(!/openBudgetSetup/.test(html), 'setup is copy here, not a button');

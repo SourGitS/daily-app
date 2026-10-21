@@ -51,10 +51,10 @@ function ctx() {
   });
 }
 
-test('the deck is exactly the five phone tabs, with Log in the centre', () => {
+test('the deck includes Journal after the five existing phone tabs', () => {
   const c = ctx();
-  assert.deepEqual(c.NAV_ORDER, ['home', 'budget', 'log', 'food', 'stats']);
-  assert.equal(c.NAV_ORDER[2], 'log', 'Log must stay in the middle slot');
+  assert.deepEqual(c.NAV_ORDER, ['home', 'budget', 'log', 'food', 'stats', 'notes']);
+  assert.equal(c.NAV_ORDER[2], 'log', 'Log keeps its existing slot');
   // css/layout.css assigns #view-*{order:n} from this list; a disagreement gives you a tab you
   // can tap but not swipe to. Check the stylesheet actually matches.
   const css = fs.readFileSync(path.join(__dirname, '../css/layout.css'), 'utf8');
@@ -67,8 +67,8 @@ test('the deck is exactly the five phone tabs, with Log in the centre', () => {
 test('Stats stays in the deck while Daily AI is a sidebar-only favourite', () => {
   const c = ctx();
   assert.ok(!c.NAV_QUICK_EXTRA.includes('stats'), 'Stats is in NAV_ORDER now; listing it here shows it twice');
-  assert.deepEqual(c.NAV_QUICK_EXTRA, ['notes', 'aihub', 'accounts', 'settings']);
-  // The pinned extras are NOT deck tabs: the phone keeps exactly five bottom-nav buttons.
+  assert.deepEqual(c.NAV_QUICK_EXTRA, ['aihub', 'accounts', 'settings']);
+  // The pinned extras are not deck tabs and cannot duplicate a phone destination.
   c.NAV_QUICK_EXTRA.forEach(v => assert.ok(!c.NAV_ORDER.includes(v), v + ' must not join the deck'));
   assert.equal(c.NAV_QUICK_VIEWS.filter(v => v === 'stats').length, 1);
   assert.equal(c.NAV_QUICK_VIEWS.filter(v => v === 'food').length, 1);

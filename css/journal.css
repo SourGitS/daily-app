@@ -13,7 +13,33 @@
    - Accent-coloured TEXT on a card/page background uses --accent-text, not --accent. */
 
 /* ── Screen shell ── */
-#journal-root{display:flex;flex-direction:column;gap:14px}
+#journal-root{display:flex;flex-direction:column;gap:20px}
+.jrn-page-head{grid-column:1/-1;min-width:0}
+.jrn-page-head>p{margin:6px 0 0;font-size:14px;line-height:1.5;color:var(--muted)}
+.jrn-page-head .jrn-head-title{margin:0;font-size:28px;letter-spacing:-.035em}
+.jrn-page-head .jrn-head-btn{min-width:44px;min-height:44px;border-radius:12px;background:var(--surface-card)}
+.jrn-browse-tabs{display:flex;gap:4px;padding:4px;margin:0 0 18px;border-radius:12px;background:var(--track)}
+.jrn-browse-tabs .jrn-pill{flex:1;min-width:0;min-height:44px;border:0;border-radius:9px;background:none;font-size:13px;color:var(--muted)}
+.jrn-browse-tabs .jrn-pill.on{background:var(--surface-card);color:var(--text);box-shadow:var(--surface-card-top)}
+.jrn-notes-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+.jrn-notes-toolbar p{font-size:13px;line-height:1.5;color:var(--muted);margin:0}
+.jrn-notes-toolbar .jrn-write-btn{flex-shrink:0;padding-inline:16px;font-family:var(--font-ui);border-radius:12px}
+.jrn-loops-act{flex-shrink:0}
+.jrn-loops-btn{min-height:44px;white-space:nowrap}
+.jrn-browse-tabs .jrn-pill:focus-visible,.jrn-head-btn:focus-visible,.jrn-loop:focus-visible,.jrn-row:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
+@media(max-width:1239px){
+  #journal-root>.jrn-today{padding:20px;border:1px solid var(--surface-card-border);border-radius:var(--radius-card);background:var(--surface-card);box-shadow:var(--surface-card-top);gap:14px}
+  #journal-root>.jrn-today .jrn-write-btn{border-radius:12px;font-family:var(--font-ui)}
+  #journal-root>.jrn-today .jrn-today-top{flex-wrap:wrap;gap:6px 12px}
+  #journal-root>.jrn-loops{padding:20px;border:1px solid var(--surface-card-border);border-radius:var(--radius-card);background:var(--surface-card);box-shadow:var(--surface-card-top)}
+  .jrn-entry{padding:16px}
+}
+@media(min-width:1024px){.jrn-page-head .jrn-head-title{font-size:34px}}
+@media(min-width:1240px){
+  #journal-root .jrn-rail{padding:18px;max-height:calc(100dvh - 160px);border:1px solid var(--surface-card-border);border-radius:var(--radius-card);background:var(--surface-card);box-shadow:var(--surface-card-top)}
+  #journal-root #jrn-editor.inline{background:var(--surface-card);border-color:var(--surface-card-border);box-shadow:var(--surface-card-top)}
+  #journal-root #jrn-editor.inline::before{display:none}
+}
 
 .jrn-head{display:flex;align-items:center;gap:8px;margin-bottom:2px}
 .jrn-head-title{font-size:22px;font-weight:800;color:var(--text);flex:1;min-width:0;letter-spacing:-.02em}
@@ -53,7 +79,7 @@
 /* The one accent affordance on the screen: --accent as a FILL carrying white text, which is
    what every accent the app can hold is tuned for. 46px so it is comfortable under a thumb. */
 .jrn-write-btn{min-height:46px;padding:0 20px;border:none;border-radius:var(--radius-pill);
-  background:var(--accent);color:#fff;font:700 15px inherit;cursor:pointer;
+  background:var(--accent);color:#fff;font:700 14px/1.4 var(--font-ui);cursor:pointer;
   -webkit-tap-highlight-color:transparent}
 .jrn-write-btn:active{transform:scale(.99)}
 .jrn-write-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

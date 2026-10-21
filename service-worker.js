@@ -408,7 +408,8 @@
 // secondary controls sit behind Account options. No historical balance migration.
 // v394: responsive Home overview with embedded Budget, and inline expense tracking setup.
 // v396: restore compact phone Home; desktop overview and saved data remain intact.
-const CACHE_NAME = 'daily-v396';
+// v397: complete Daily usability updates, retaining the compact phone Home.
+const CACHE_NAME = 'daily-v397';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —

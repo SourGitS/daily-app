@@ -24,21 +24,17 @@
 #app-main{flex:1;overflow:hidden;position:relative}
 
 /* ── Swipe deck (mobile tab paging) ── */
-#swipe-deck{display:flex;flex-direction:row;width:500%;height:100%;will-change:transform;transition:none;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+#swipe-deck{display:flex;flex-direction:row;width:600%;height:100%;will-change:transform;transition:none;backface-visibility:hidden;-webkit-backface-visibility:hidden}
 #swipe-deck.snapping{transition:transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)}
-.swipe-panel{width:20%;flex-shrink:0;height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:16px;padding-bottom:calc(104px + env(safe-area-inset-bottom));box-sizing:border-box;will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden}
-/* Visual order home→budget→log→food→stats, matching NAV_ORDER in js/app.js. The two must
-   agree exactly: NAV_ORDER decides which panel a swipe lands on, this decides which panel is
-   at that x offset, and a disagreement gives you a tab you can tap but not swipe to.
-   Nutrition and Kitchen merged into #view-food; Stats returned to the deck in the fifth slot
-   it lost when Kitchen arrived. Still five panels, so #swipe-deck's 500% and .swipe-panel's
-   20% are unchanged. */
+.swipe-panel{width:calc(100% / 6);flex-shrink:0;height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:16px;padding-bottom:calc(104px + env(safe-area-inset-bottom));box-sizing:border-box;will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+/* Visual order matches NAV_ORDER in js/app.js, including Journal as the sixth destination. */
 #view-home{order:0}
 #view-budget{order:1}
 #view-log{order:2}
 #view-food{order:3}
 #view-stats{order:4}
-/* Non-swipe views (settings/plans/notes) overlay the deck when shown. */
+#view-notes{order:5}
+/* Non-swipe views (settings/plans) overlay the deck when shown. */
 #app-main>section{position:absolute;top:0;left:0;right:0;bottom:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px;padding-bottom:calc(104px + env(safe-area-inset-bottom));background:var(--bg);z-index:5;box-sizing:border-box;animation:fadeIn 0.18s ease}
 
 /* Desktop: no swipe paging — the deck wrapper collapses and one panel shows at a time
@@ -92,7 +88,7 @@
 
 /* ── Bottom nav ── */
 #bottom-nav{display:flex;background:#fff;border-top:1px solid var(--border);position:fixed;left:0;right:0;bottom:0;margin:0 auto;width:100%;max-width:480px;z-index:10}
-.nav-btn{flex:1;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 4px 4px;border:none;background:transparent;font-size:11px;color:var(--muted);gap:2px;transition:color 0.15s;position:relative;z-index:1;-webkit-tap-highlight-color:transparent}
+.nav-btn{flex:1;min-width:0;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 4px 4px;border:none;background:transparent;font-size:11px;color:var(--muted);gap:2px;transition:color 0.15s;position:relative;z-index:1;-webkit-tap-highlight-color:transparent}
 .nav-btn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .nav-btn.active{color:var(--accent-text)}
 /* Active-tab pill sits behind the icon+label. Its bottom is anchored to the button-content
@@ -100,7 +96,7 @@
    it no longer bleeds into the bottom padding. Per-tab left/width (with outer insets on tabs
    1 & 4) are set by updateNavPill. Those geometry changes are deliberately instant: the page
    and active label change in the same event, so a travelling tile reads as the wrong tab. */
-#nav-pill{position:absolute;top:5px;bottom:max(18px, calc(env(safe-area-inset-bottom, 0px) + 2px));width:20%;background:rgba(var(--accent-rgb),0.12);border-radius:14px;left:0;transition:background 0.3s ease;pointer-events:none;z-index:0}
+#nav-pill{position:absolute;top:5px;bottom:max(18px, calc(env(safe-area-inset-bottom, 0px) + 2px));width:calc(100% / 6);background:rgba(var(--accent-rgb),0.12);border-radius:14px;left:0;transition:background 0.3s ease;pointer-events:none;z-index:0}
 [data-theme="dark"] #nav-pill{background:rgba(var(--accent-rgb),0.18)}
 /* Accent underline under the active tab. Raised off the screen edge to sit just beneath the
    icon+label (anchored to the button-content bottom, not bottom:2px), centred on the icon and
