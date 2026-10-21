@@ -9,6 +9,26 @@ function context(extra={}){
   vm.runInContext(fs.readFileSync('js/finance-periods.js','utf8'),ctx);return ctx;
 }
 const period={id:'2026-10-02_2026-10-15',start:'2026-10-02',end:'2026-10-15',days:14};
+
+test('shared budget card preserves unknown and zero amounts on every screen',()=>{
+  const c=context({lsSave:()=>{throw Error('Rendering must not save');},
+    homeBudgetDestination:()=>'<a href="#budget">Budget</a>',cardHeader:(icon,label,status='')=>'<header>'+label+status+'</header>',
+    tstat:(kind,label)=>'<span>'+label+'</span>',fmtMoneyExact:n=>'$'+n});
+  c.budPeriodLabel=()=> '2–15 Oct';
+  let money={range:period,record:{goal:450},available:null,income:0,spent:0,incomplete:true,allocationReview:false};
+  c.budPeriodMoney=()=>money;
+  const before=JSON.stringify(money);
+  assert.match(c.budPeriodHomeCard('desktop'),/Check your budget dates/);
+  assert.doesNotMatch(c.budPeriodHomeCard('desktop'),/Available to spend|card-fig/);
+  assert.equal(c.budPeriodHomeCard('mobile'),c.budPeriodHomeCard());
+  assert.equal(c.budPeriodHomeCard('desktop'),c.budPeriodHomeCard('mobile'));
+  assert.equal(JSON.stringify(money),before);
+  money={...money,incomplete:false};assert.match(c.budPeriodHomeCard('desktop'),/Set your starting funds/);
+  money={...money,allocationReview:true};assert.match(c.budPeriodHomeCard('desktop'),/Confirm the allocations/);
+  money={...money,available:0,incomplete:false,allocationReview:false};
+  assert.match(c.budPeriodHomeCard('desktop'),/card-fig">\$0/);
+  assert.equal(c.budPeriodHomeCard('desktop'),c.budPeriodHomeCard('mobile'));
+});
 test('one fortnightly payday funds both calendar weeks, through the DST boundary',()=>{
   const c=context(),cfg={frequency:'fortnightly',anchor:'2026-10-02'};
   for(const date of ['2026-10-02','2026-10-04','2026-10-05','2026-10-15'])assert.deepEqual(plain(c.budPeriodRange(cfg,date,0)),period);

@@ -20,6 +20,56 @@ function fixture(){
   function income(id,amount,account='cash'){const a=c.loadAccounts().find(a=>a.id===account);return {id,date:today,amount,kind:'income',acctId:account,accountLink:c.acctLinkEffect(a,'income',today)};}
   return {c,store,nodes,connect,expense,income,set fail(v){fail=v;},get writes(){return writes;}};
 }
+
+test('expense balance choice explains unavailable states and offers setup only for a new manual-account entry',()=>{
+  const f=fixture(),{c,nodes}=f;nodes['txn-balance-setup']={};
+  const before=f.writes;c.acctTxnOpen(null);
+  assert.equal(nodes['txn-update-balance'].disabled,true);assert.equal(nodes['txn-balance-setup'].hidden,false);
+  assert.match(nodes['txn-balance-hint'].textContent,/manual balances/);
+  nodes['txn-account'].value='';c.acctTxnChoice();assert.match(nodes['txn-balance-setup'].textContent,/Choose an account/);
+  assert.match(nodes['txn-balance-hint'].textContent,/Paid with first/);assert.equal(f.writes,before);
+  nodes['txn-account'].value='cash';c.acctTxnOpen({id:'legacy',acctId:'cash'});
+  assert.equal(nodes['txn-balance-setup'].hidden,true);assert.equal(nodes['txn-update-balance'].disabled,true);
+  assert.match(nodes['txn-balance-hint'].textContent,/budget only/);
+  f.connect('cash');c.acctTxnOpen(null);assert.equal(nodes['txn-update-balance'].disabled,false);assert.equal(nodes['txn-balance-setup'].hidden,true);
+  f.store.set('daily_accounts','[]');nodes['txn-account'].value='';c.acctTxnOpen(null);
+  assert.match(nodes['txn-balance-hint'].textContent,/Add a cash, savings or credit-card account/);assert.equal(nodes['txn-balance-setup'].hidden,true);
+});
+
+function inlineTracking(f){
+  const {c,nodes}=f;
+  nodes['acct-link-mode']={value:'linked'};nodes['acct-link-balance']={value:'1000'};
+  nodes['txn-modal']={classList:{contains:()=>false}};
+  nodes['txn-update-balance'].focus=()=>{};nodes['txn-balance-setup']={focus:()=>{}};
+  c.acctToolClose=()=>{};c.acctToolRefresh=()=>{};
+  c.acctTxnOpen(null);
+  vm.runInContext("acctToolDraft={kind:'connection',id:'cash',signature:acctLinkSignature(),expenseDraft:acctTxnDraft}",c);
+}
+test('confirmed inline tracking retains the expense draft, requires opting in again and never posts an expense itself',()=>{
+  const f=fixture(),{c,store,nodes}=f;inlineTracking(f);
+  const tx=store.get('daily_transactions'),ledger=store.get('daily_ledger'),budget=store.get('daily_budget');
+  assert.equal(c.acctLinkConfirm(),true);
+  assert.equal(c.loadAccounts()[0].current,1000);assert.equal(c.acctLinkActive(c.loadAccounts()[0]),true);
+  assert.equal(nodes['txn-update-balance'].disabled,false);assert.equal(nodes['txn-update-balance'].checked,false);
+  assert.doesNotThrow(()=>c.acctTxnGuard());
+  assert.equal(c.acctTxnPrepare({acctId:'cash',date:today,amount:20}).accountLink,undefined);
+  nodes['txn-update-balance'].checked=true;assert.equal(c.acctTxnPrepare({acctId:'cash',date:today,amount:20}).accountLink.accountId,'cash');
+  assert.equal(store.get('daily_transactions'),tx);assert.equal(store.get('daily_ledger'),ledger);assert.equal(store.get('daily_budget'),budget);
+});
+test('inline tracking refuses changed, replaced or closed expense drafts and a failed save leaves the account manual',()=>{
+  for(const kind of ['records','draft','account','closed','failed']){
+    const f=fixture(),{c,store,nodes}=f;inlineTracking(f);const accounts=store.get('daily_accounts');
+    if(kind==='records')store.set('daily_ledger','[{"id":"concurrent"}]');
+    if(kind==='draft')c.acctTxnOpen(null);
+    if(kind==='account')nodes['txn-account'].value='card';
+    if(kind==='closed')nodes['txn-modal'].classList.contains=()=>true;
+    if(kind==='failed')f.fail='daily_accounts';
+    assert.equal(c.acctLinkConfirm(),false,kind);assert.equal(store.get('daily_accounts'),accounts,kind);
+    assert.equal(c.acctLinkActive(c.loadAccounts()[0]),false,kind);
+    assert.equal(nodes['txn-update-balance'].disabled,true,kind);
+    if(kind==='failed')assert.doesNotThrow(()=>c.acctTxnGuard());
+  }
+});
 test('manual accounts and legacy entries remain byte-for-byte unchanged on reads and linking',()=>{
   const f=fixture(),{c,store}=f;
   store.set('daily_transactions',JSON.stringify([{id:'old',date:today,amount:500,acctId:'cash'}]));

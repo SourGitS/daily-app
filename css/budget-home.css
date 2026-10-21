@@ -449,6 +449,12 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .txn-flag:has(input:checked){border-color:var(--accent);background:rgba(var(--accent-rgb),.12)}
 .txn-flag:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 .txn-flag input{flex:0 0 auto;width:20px;height:20px;margin:0;accent-color:var(--accent);cursor:pointer}
+.txn-flag:has(input:disabled){border-style:dashed;background:transparent;cursor:default}
+.txn-flag:has(input:disabled) .txn-flag-t{color:var(--muted)}
+.txn-flag input:disabled{cursor:default}
+.txn-balance-setup{display:inline-flex;align-items:center;min-height:44px;margin:4px 2px 0;padding:6px 0;background:none;border:0;color:var(--accent-text);font:700 12px/1.5 var(--font-ui);cursor:pointer;text-align:left}
+.txn-balance-setup[hidden]{display:none}
+.txn-balance-setup:focus-visible{outline:2px solid var(--accent-text);outline-offset:3px}
 .txn-flag-t{font-size:14px;font-weight:600;color:var(--text)}
 .txn-flag-d{font-size:11.5px;font-weight:600;line-height:1.45;color:var(--muted);margin:6px 2px 0}
 .txn-recent{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
@@ -1248,21 +1254,6 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
     color:var(--accent-text);font-size:12px;font-weight:700;cursor:pointer;
     -webkit-tap-highlight-color:transparent}
   .home-card-more:hover{border-color:var(--accent)}
-  /* Weather as a wide banner — only when the user has it set to full width. At half width it
-     keeps the phone-sized treatment, which already fits a one-column box. */
-  #view-home .home-card-wide[data-card-id="weather"] .home-weather-card{padding:20px 24px}
-  /* Full width the card is ~1100px but its two content blocks only need ~250px, so
-     space-between stranded them at opposite edges with ~800px of dead air between. Cap the
-     row and centre it so the banner reads as one group. */
-  /* Explicit width, not max-width + auto margins. The card is a flex COLUMN now, so the
-     content is a flex item — and there `margin:0 auto` absorbs the free space and shrinks the
-     item to fit (195px), rather than centring a 560px block as it did when the card was a
-     plain block. An explicit width keeps the two ends spread across the banner. */
-  #view-home .home-card-wide[data-card-id="weather"] .weather-content{width:72%;max-width:none;margin:0 auto}
-  #view-home .home-card-wide[data-card-id="weather"] .weather-day{font-size:24px}
-  #view-home .home-card-wide[data-card-id="weather"] .weather-temp{font-size:38px}
-  #view-home .home-card-wide[data-card-id="weather"] .weather-icon{font-size:34px}
-
   /* ── Home Dashboard: two INDEPENDENT vertical stacks ──────────────────────────────────
      The Grid above stretches both cards in a row to the taller one's height, which is what
      keeps its rows flush and what puts the leftover space INSIDE the shorter card. This
@@ -1894,9 +1885,6 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   .hero-workout-title{font-size:26px}
   .hero-workout-card{padding:16px}
   .hero-play-btn{width:42px;height:42px}
-  /* Wide weather keeps the banner treatment; at half width it stays phone-sized. */
-  #view-home .home-card-wide[data-card-id="weather"] .home-weather-card{padding:14px 18px}
-  #view-home .home-card-wide[data-card-id="weather"] .weather-content{width:88%;max-width:none;margin:0 auto}
 
   /* ── Budget ──
      Week/Month/Year switching and the week nav have to stay put while the cards below scroll,

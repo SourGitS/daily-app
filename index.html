@@ -84,7 +84,6 @@
 
     <!-- HOME VIEW -->
     <section id="view-home" class="swipe-panel deck-active">
-      <div class="home-customise-bar"><button class="home-edit-btn" onclick="openHomeLayoutEditor()">Customise Home</button><span id="home-customise-hint"></span></div>
       <div id="home-content"></div>
       <!-- Persistent Recent-workout card (rendered separately from the draggable cards) -->
       <div id="home-recent-card"></div>
@@ -1124,6 +1123,7 @@
         <div class="txn-flag-wrap">
           <label class="txn-flag"><input type="checkbox" id="txn-update-balance" aria-describedby="txn-balance-hint"><span class="txn-flag-t">Update this account’s balance</span></label>
           <p class="txn-flag-d" id="txn-balance-hint"></p>
+          <button type="button" class="txn-balance-setup" id="txn-balance-setup" onclick="acctTxnSetupBalance()" hidden>Set up balance tracking →</button>
         </div>
         <div id="txn-details" class="txn-details">
           <label class="txn-lbl" for="txn-note">Note <span class="txn-opt">optional</span></label>

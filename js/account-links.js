@@ -67,6 +67,7 @@ function acctLinkConfirm(){
   const d=acctToolDraft;if(!d||d.kind!=='connection')return false;
   try{
     if(d.signature!==acctLinkSignature())throw new Error('Financial records changed. Cancel and reopen to review the latest balance.');
+    if(d.expenseDraft&&(acctTxnDraft!==d.expenseDraft||acctTxnDraft.signature!==d.signature||document.getElementById('txn-account').value!==d.id||document.getElementById('txn-modal').classList.contains('hidden')))throw new Error('The expense changed. Cancel and reopen balance tracking from the current expense.');
     const value=document.getElementById('acct-link-balance').value.trim();
     if(!/^-?\d+(?:\.\d{1,2})?$/.test(value)||!Number.isSafeInteger(Math.round(Number(value)*100)))throw new Error('Enter a balance with at most two decimal places.');
     const list=loadAccounts(),a=list.find(x=>x.id===d.id),balance=Number(value);
@@ -77,7 +78,14 @@ function acctLinkConfirm(){
     a.history=[...(a.history||[]).filter(r=>r&&r.date!==getLocalDate()),{date:getLocalDate(),balance}].sort((x,y)=>x.date.localeCompare(y.date));
     if(document.getElementById('acct-link-mode').value==='linked')a.balanceLink={version:1,anchor:acctLinkAnchor(),balance,confirmedBalance:balance,date:getLocalDate(),confirmedAt:Date.now()};
     else delete a.balanceLink;
-    acctToolSave(list);acctToolClose();acctToolRefresh();showToast('Balance tracking saved');return true;
+    acctToolSave(list);acctToolClose();acctToolRefresh();
+    if(d.expenseDraft){
+      // Only this explicitly confirmed account change may refresh the still-open draft.
+      acctTxnDraft.signature=acctLinkSignature();acctTxnChoice();
+      const box=document.getElementById('txn-update-balance');box.checked=false;
+      (box.disabled?document.getElementById('txn-balance-setup'):box)?.focus();
+    }
+    showToast('Balance tracking saved');return true;
   }catch(e){document.getElementById('acct-tools-error').textContent=e.message;return false;}
 }
 function acctLinkEffect(a,kind,date){
@@ -95,11 +103,26 @@ function acctTxnOpen(existing){
 }
 function acctTxnChoice(){
   const box=document.getElementById('txn-update-balance'),hint=document.getElementById('txn-balance-hint');if(!box||!hint)return;
-  const a=loadAccounts().find(x=>x.id===document.getElementById('txn-account').value),old=acctTxnDraft?.record;
-  const settled=old&&(!old.accountLink||!loadAccounts().some(x=>x.id===old.accountLink.accountId&&x.balanceLink?.anchor===old.accountLink.anchor));
+  const list=loadAccounts(),a=list.find(x=>x.id===document.getElementById('txn-account').value),old=acctTxnDraft?.record;
+  const settled=old&&(!old.accountLink||!list.some(x=>x.id===old.accountLink.accountId&&x.balanceLink?.anchor===old.accountLink.anchor));
   const enabled=acctLinkActive(a)&&acctLinkEligible(a,'expense')&&!settled;
+  const canChoose=list.some(x=>acctLinkEligible(x,'expense'));
   box.disabled=!enabled;box.checked=!!enabled;
-  hint.textContent=settled?'This existing entry is separate from the current starting balance. Editing it updates your budget only.':enabled?'Updates this balance when you save. Uncheck if it is already included in your bank balance.':'Budget only. You can enable linked tracking in Accounts, or keep updating balances manually.';
+  hint.textContent=settled?'This existing entry is separate from the current starting balance. Editing it updates your budget only.':enabled?'Applies this expense only when checked. Leave off if it is already included in your balance.':!a?(canChoose?'Choose an account under Paid with first. Otherwise, this expense updates your budget only.':'Add a cash, savings or credit-card account in Finance → Accounts first. You can still save this expense to your budget.') :acctLinkEligible(a,'expense')?(old?'Enable linked tracking in Accounts before moving this entry, or leave balance updating off.':'This account uses manual balances. Set up linked tracking to make this option available.'):'This account uses manual balances. Linked spending supports cash, savings and credit cards.';
+  const setup=document.getElementById('txn-balance-setup');
+  if(setup){setup.hidden=!!old||enabled||!!a&&!acctLinkEligible(a,'expense')||!a&&!canChoose;setup.textContent=a?'Set up balance tracking →':'Choose an account →';}
+}
+function acctTxnSetupBalance(){
+  try{
+    acctTxnGuard();
+    const select=document.getElementById('txn-account'),a=loadAccounts().find(x=>x.id===select.value);
+    if(!a){select.focus();return;}
+    if(!acctTxnDraft||acctTxnDraft.record||acctLinkActive(a)||!acctLinkEligible(a,'expense'))return;
+    acctLinkOpen(a.id);acctToolDraft.expenseDraft=acctTxnDraft;
+    document.getElementById('acct-link-mode').value='linked';
+    const note=document.createElement('p');note.textContent='Your expense stays open underneath. After confirming your balance, choose whether this expense is already included. Balance updating will stay unchecked until you choose.';
+    document.getElementById('acct-link-mode').closest('.stg-field').before(note);
+  }catch(e){document.getElementById('txn-err').textContent=e.message;}
 }
 function acctTxnPrepare(f){
   if(!acctTxnDraft)return f;

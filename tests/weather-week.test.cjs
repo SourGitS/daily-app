@@ -20,7 +20,7 @@ function fixture(cache=entry()){
   const ctx=vm.createContext({Date:Clock,Intl,Number,Set,console,
     document:{getElementById:id=>nodes[id]||null},loadWeatherCache:()=>cache,
     weatherRefresh:args=>{calls.push(args);},escText:esc,escAttr:esc,weatherIcon:icon=>'<i>'+icon+'</i>'});
-  vm.runInContext(extractConst('WEATHER_CODES')+'\nlet _homeWeatherPeriod=null;const _homeWeatherExpanded={mobile:null,desktop:false};\n'+[
+  vm.runInContext(extractConst('WEATHER_CODES')+'\nlet _homeWeatherPeriod=null;'+extractConst('_homeWeatherExpanded')+'\n'+[
     'weatherForecastDate','weatherForecastDays','weatherForecastHours','weatherForecastTime','weatherForecastSummary',
     'homeWeatherPeriod','homeSetWeatherPeriod','homeToggleWeatherForecast','renderMobileWeatherDisclosure','renderMobileWeatherForecast','renderWeatherForecast'
   ].map(extract).join('\n'),ctx);
@@ -143,7 +143,7 @@ test('desktop drawer toggles independently and refreshes do not restart the peri
   const first=preview.dataset.weatherSlide;
   ctx.renderWeatherForecast(entry());assert.equal(preview.dataset.weatherSlide,first);
   ctx.homeToggleWeatherForecast();assert.equal(preview.inert,true);
-  assert.equal(vm.runInContext('_homeWeatherExpanded.mobile',ctx),null);
+  assert.equal(vm.runInContext('_homeWeatherExpanded.mobile',ctx),false);
   ctx.homeSetWeatherPeriod('week');assert.equal(preview.inert,false);
   assert.notEqual(preview.dataset.weatherSlide,first);
   const next=preview.dataset.weatherSlide;

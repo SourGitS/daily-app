@@ -415,8 +415,15 @@ function budPeriodRender(){
 function budPeriodOverview(){
   return false;
 }
-function budPeriodHomeCard(){
+function budPeriodHomeCard(mode){
   const m=budPeriodMoney();if(!m)return '<div class="card home-budget-card">'+homeBudgetDestination()+cardHeader('wallet','Budget')+'<h3>Your money, on your dates</h3><p class="card-cap">Choose a budget period. Your weekly history stays available.</p><button class="home-budget-add-labelled" onclick="budPeriodSetup()">Set up budget →</button></div>';
+  if(m.available===null){
+    const title=m.incomplete||m.allocationReview?'Check your budget dates':'Set your starting funds';
+    const detail=m.incomplete?'Review the weekly totals overlapping this period.':m.allocationReview?'Confirm the allocations for these budget dates.':'Record received income or confirm your starting funds.';
+    return '<div class="card home-budget-card home-budget-review">'+homeBudgetDestination()+cardHeader('wallet','Budget · '+budPeriodLabel(m.range),'')+
+      '<h3>'+title+'</h3><p class="card-cap">'+detail+'</p><span class="home-budget-review-link" aria-hidden="true">Review budget →</span>'+
+      '<div class="home-budget-footer"><button class="home-budget-add-labelled" onclick="openTxnModal({date:getLocalDate()})">＋ Add expense</button></div></div>';
+  }
   const goal=Number(m.record.goal)||0;
   return '<div class="card budget-snapshot-card home-budget-card">'+homeBudgetDestination()+cardHeader('wallet','Budget · '+budPeriodLabel(m.range),
     m.available===null?tstat('warn','Needs a date check','info',true):m.available<0?tstat('neg','Over budget','alert',true):tstat('pos','On track','check',true))+
@@ -585,9 +592,6 @@ function budPeriodEdit(id){
     else Object.entries(weeks).forEach(([w,value])=>{budgetData[w]=value;budSaveData(w);});
     document.getElementById('bud-period-dialog').close();budPeriodRefresh();
   };
-}
-function homeDesktopTraining(brief){
-  return '<div class="home-desktop-training"><div class="bp-eyebrow">'+escText(brief.eyebrow)+'</div><h2 id="hero-day-name">'+escText(brief.title)+'</h2><p id="hero-meta">'+escText(brief.meta)+'</p><button class="home-budget-add-labelled" onclick="setView(\'log\')">'+escText(brief.action)+' →</button>'+homeTrainingStrip()+'</div>';
 }
 function homeCustomiseHint(){
   const el=document.getElementById('home-customise-hint');if(!el)return;

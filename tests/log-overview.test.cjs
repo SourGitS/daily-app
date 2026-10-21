@@ -610,12 +610,10 @@ test('a saved partial claims no fraction, percentage or bar', () => {
   assert.ok(!/ of /.test(savedBranch), 'no X of Y in the saved branch');
   assert.ok(!/%/.test(savedBranch), 'no percentage in the saved branch');
   assert.ok(!/doneCount|Math\.round/.test(savedBranch), 'and nothing computing one');
-  // Home omits the progress row and the track entirely for a partial save.
+  // Shared Home training states its saved facts without reconstructing a planned total.
   const home = body('renderHome');
-  assert.match(home, /const mSavedDone=mBrief\.state==='saved'&&mBrief\.completed/);
-  assert.match(home, /mShowProgress=mBrief\.state==='ready'\|\|mBrief\.state==='inprogress'\|\|mSavedDone/);
-  assert.match(home, /const heroProgress=mShowProgress/);
-  assert.match(home, /heroProgress\+/, 'the row and track are interpolated, not hard-coded');
+  assert.match(home, /buildHomeTrainingCard\(/);
+  assert.doesNotMatch(body('buildHomeTrainingCard'),/hero-progress|doneCount|Math\.round/);
   assert.match(home, /exercise'\+\(mExCount===1\?'':'s'\)\+' saved'/);
 });
 
@@ -649,9 +647,10 @@ test('a completed saved session still presents as completed, from its own count'
   assert.equal(b.completed, true);
   assert.equal(b.exCount, 2);
   const home = body('renderHome');
-  // Completed fills the bar, and the denominator is the record's OWN exercise count.
+  // Completed retains its explicit status and the record's own saved exercise count.
   assert.match(home, /const mExCount=mBrief\.exCount\|\|0/);
-  assert.match(home, /const mDone=mBrief\.state==='inprogress'\?mBrief\.doneCount:\(mSavedDone\?mExCount:0\)/);
+  assert.match(home, /mBrief\.completed\?'COMPLETED TODAY':'SAVED TODAY'/);
+  assert.match(home, /exercise'\+\(mExCount===1\?'':'s'\)\+' saved'/);
   assert.match(body('logHeroHtml'), /b\.completed\?'Completed today':'Saved today'/);
 });
 
@@ -662,11 +661,9 @@ test('Home’s empty state agrees with Log and shows no progress at all', () => 
   assert.match(home, /mBrief\.state==='empty'\s*\r?\n?\s*\? 'No exercises configured'/);
   // 'empty' is not in the progress list, so the row, the percentage and the track are omitted.
   assert.ok(!/mShowProgress=.*'empty'/.test(home));
-  assert.match(home, /hero-workout-card'\+\(mShowProgress\?'':' hero-flat'\)/);
-  assert.match(css2, /\.hero-workout-card\.hero-flat \.hero-meta\{margin-bottom:0\}/,
-    'the omitted rows must not leave .hero-meta’s bottom margin dangling');
+  assert.doesNotMatch(body('buildHomeTrainingCard'),/hero-progress|hero-flat/);
   // Home still opens the OVERVIEW; the overview's own action opens Program.
-  assert.match(home, /onclick="setView\(\\'log\\'\)"/);
+  assert.match(body('buildHomeTrainingCard'), /onclick="setView\(\\'log\\'\)"/);
   assert.ok(!/logGoto\('program'\)/.test(home), 'Home must not bypass the overview');
   assert.match(body('logHeroHtml'), /logGoto\('program'\)/);
 });
@@ -885,7 +882,7 @@ test('Home and Log read one canonical state, and Home does not start a workout',
     'the second state calculation is what let the two surfaces disagree');
   assert.match(home, /mBrief\.dayName/, 'the same session name');
   assert.match(home, /mBrief\.state==='saved'/, 'the same saved/active distinction');
-  assert.match(home, /onclick="setView\(\\'log\\'\)"/,
+  assert.match(body('buildHomeTrainingCard'), /onclick="setView\(\\'log\\'\)"/,
     'Home opens Log › Today’s overview and stops there');
   assert.ok(!/logOpenSession|logOpenPlannedDay|saveSession/.test(home),
     'Home must not bypass the overview or begin a workout');

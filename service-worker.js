@@ -406,7 +406,8 @@
 // v393: optional linked balances, weekly bank checks, statements/repayments, reviewed savings,
 // statement CSV import and account audit records. Collapsible cards retain credit-used bars;
 // secondary controls sit behind Account options. No historical balance migration.
-const CACHE_NAME = 'daily-v393';
+// v394: responsive Home overview with embedded Budget, and inline expense tracking setup.
+const CACHE_NAME = 'daily-v394';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —

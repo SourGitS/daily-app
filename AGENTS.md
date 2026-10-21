@@ -1,5 +1,112 @@
 # Daily — Agent Handoff
 
+## v394 compact shared Home — release authorised, 2026-10-21
+
+- Francois explicitly authorised committing and pushing the completed update, superseding the
+  local-review-only restrictions below. Keep saved records, account/Firebase configuration and
+  layout choices intact. Firebase billing, functions and remote notifications remain deferred.
+- Budget now joins the blue Training card when BOTH existing widgets are enabled. The date
+  and a compact Customise control sit inside its top row; the outside date/customisation strip
+  is removed. Francois explicitly chose to KEEP the dark Last 7 days footer. Weather stays
+  separate, with the previously verified scenery and responsive forecast controls.
+- The same components serve both screen sizes. Wide combined cards use two columns within
+  360px; narrow cards stack the workout and budget and grow naturally so actions remain visible.
+  When Training is hidden, Budget uses its existing standalone position and neutral card.
+  Each hidden flag is respected. There is one Budget, with its existing readout, destination,
+  setup and expense actions. This is presentation only: no financial calculations or records change.
+- Grouping uses Training's saved placement. Budget's independent order/width/Dashboard slots
+  remain stored and are restored visually when it is standalone. Existing drag merging retains
+  the absent Budget slot; no migration or profile merge is added. Home Layout miniatures match
+  the grouping; Budget's placement controls appear when it is standalone. Its visibility toggle
+  remains available. The earlier inline expense tracking setup fix is included unchanged.
+- 622 Node checks pass, including grouping/visibility, retained slots, card content and action
+  regressions. Synthetic browser checks cover both themes, phone/tablet/desktop widths, Grid
+  and Dashboard arrangements, all eight visibility combinations, forecasts, expense/Budget/Log
+  actions, draft/cancel and responsive resizing. Rendering/disclosure leave saved sample records
+  unchanged. Physical iPhone and production Firebase remain unverified; no real records were read.
+- The ignored local review page remains `temp-analysis/home-responsive-review.html` on port
+  8784, with a Desktop/iPhone switch. Its current fixture uses revision=6 and synthetic data.
+  Service-worker cache is daily-v394. Do not include ignored review fixtures or unrelated Prompts
+  in the release commit.
+
+## v394 responsive Home — local review only, 2026-10-21
+
+- Francois authorised a shared Home design for iPhone and desktop, superseding the earlier
+  phone-unchanged / pinned-desktop-row scope below. Review is still required: no commit, push
+  or publication is authorised. Training, Budget and Weather now use the same three individual
+  widget components, controls and card treatments everywhere. All three use a 360px height;
+  width and placement follow the existing responsive containers and saved arrangements.
+- The combined phone briefing and pinned desktop row are removed. All three existing IDs
+  (`session`, `budget`, `weather`) now participate in ordinary ordering, drag, move, hide and
+  desktop width/column controls. Original profile orders, hidden flags, Grid widths, Dashboard
+  placements and timestamps are preserved; there is no forced merge of different saved phone
+  and desktop arrangements. Storage normalisers, writers, backup, auth and Firebase are unchanged.
+- The date heading, training action/history, neutral Budget card and scenic weather card share
+  the same design at every size. Budget unknown/setup guidance is also shared. Forecast starts
+  collapsed on both sizes, retaining the existing in-memory disclosure and period controls.
+  Seven daily / six hourly columns fit their card; feedback stays above the forecast and long
+  errors scroll within a bounded feedback area. No weather fetching/location rules change.
+- Home Layout now has one card list per saved arrangement, with the same move/hide controls.
+  Retained desktop Grid/Dashboard choices sit inside a collapsed arrangement disclosure.
+  The earlier v394 inline expense tracking setup fix below remains included.
+- 620 Node tests pass after replacing retired combined-hero tests with shared-widget regressions.
+  Browser checks cover 320/390/768/1023/1024/1280/1440/1920px in both themes: custom orders,
+  hidden flags, widths, Grid/Dashboard placements, all eight visibility combinations, fresh/stale/
+  long-error forecasts, existing actions, editor draft/cancel and responsive resizing. Separate
+  screenshot checks also cover 1100px. Repaint/disclosure/resize leave synthetic saved data intact.
+  Physical iPhone and production Firebase were not exercised; no real records were accessed.
+- Review server remains `node temp-analysis/home-preview-server.cjs` on 127.0.0.1:8784.
+  Open `temp-analysis/home-responsive-review.html` for a Desktop/iPhone switch over the same
+  running isolated sample-data app. Direct app: `tests/sync-browser.html?preview&ui=journal&home-cards&accent=006CCF&revision=4#home`.
+  Both are ignored local review fixtures, and external API connections are blocked.
+
+## v394 separate desktop Home cards — local review only, 2026-10-20
+
+- Francois requested an unpublished desktop preview replacing the shared mega hero with
+  independent training, budget and weather cards. No commit, push or publication is authorised.
+  Cards now have equal widths and matching 360px outer heights, including on narrow desktops.
+  Date heading is outside the cards. Training retains the accent; its factual Last 7 days strip
+  is an integrated neutral footer. Budget is neutral and unknown amounts show a reason-specific
+  review prompt on desktop only. Existing budget readers, setup/expense actions and writers stay.
+- Weather retains its scenery and existing controls, starts with the desktop forecast collapsed,
+  and opens its forecast over the scenery within the same footprint, leaving later cards in place.
+  Disclosure remains in memory.
+  Mobile's initial choice and markup are unchanged. Existing visibility/profile/layout records
+  remain intact; no store, migration, financial calculation, auth or sync changes are added.
+  Desktop Home Layout labels/miniature composition now describe separate top cards.
+- 2026-10-21 correction: desktop weather has no bright outline or double-rounded scene edge.
+  Forecast now uses the remaining space below current conditions and status, rather than an
+  absolute overlay that could cover Retry/location controls. Six hourly or seven daily columns
+  fit the available width; unusually long status text can scroll inside its own bounded region.
+  All three card footprints and the following cards stay fixed. Fresh, five-hour-stale and long
+  error states pass at 1024/1100/1240/1280/1440/1920px in both themes without overlap or clipped
+  days; phone Home remains unchanged. No weather fetching, data, location or storage behavior
+  was changed by this CSS correction.
+- Home Layout clarification: session/budget/weather remain the EXISTING widget IDs. Desktop
+  can show/hide them independently but still pins them to the top row; they cannot yet be moved
+  among ordinary cards. Making these ordinary movable desktop widgets was recommended in chat,
+  not implemented or authorised as a broader Home Layout change. Existing order/width values
+  are retained. Do not describe this preview as already offering free positioning of all cards.
+- Add expense explains why balance updating is unavailable (no account, manual tracking,
+  unsupported account or historical entry). New manual-account expenses offer the existing
+  balance-tracking confirmation inline, retaining the expense draft beneath the native dialog.
+  Cancel writes nothing. A confirmed setup refreshes only that matching draft's record guard and
+  leaves balance updating unchecked, so an already-included expense is not applied automatically.
+  Changed records, replaced/closed drafts, auth switches and failed account saves remain guarded.
+  Existing financial writers/rules are reused; no account is auto-linked and no expense is posted
+  by opening or saving tracking setup. Phone expense guidance changes; phone Home remains identical.
+- Cache prepared locally as daily-v394. All 627 Node tests, syntax and diff checks pass.
+  Synthetic Chrome covers desktop 1024/1280/1440/1920px in both themes, all eight visibility
+  combinations, budget unknown/setup states, existing actions, forecast interaction and unchanged
+  saved data during repaint/disclosure. Phone Home DOM and screenshots are identical to HEAD at
+  320/390/768/1023px in both themes. Physical iPhone and production Firebase were not exercised.
+  Linked-entry browser checks cover 320/390/1440px in both themes, including inline setup/cancel,
+  preserved drafts, click/keyboard use, manual/linked balances, storage failures and mock restore.
+- Review server: `node temp-analysis/home-preview-server.cjs`, local port 8784, opens
+  `tests/sync-browser.html?preview&ui=journal&home-cards&accent=006CCF`. This ignored fixture uses
+  synthetic training, money and weather plus a fake Firebase/localStorage implementation and
+  blocks external API connections. No real saved records were accessed or changed.
+
 ## v393 Finance release authorised — 2026-10-20
 
 - Francois explicitly authorised committing and pushing the complete Finance build after the

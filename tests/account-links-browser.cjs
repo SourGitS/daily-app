@@ -51,7 +51,25 @@ const server=http.createServer((req,res)=>{
       };
       // Manual is the default, including new spending assigned to an account.
       await openExpense(20,'cash');assert.equal(await page.locator('#txn-update-balance').isEnabled(),false);await saveExpense();assert.equal(await balance('cash'),1000);
-      await connect('cash');await connect('card');await connect('save');
+      // Setup from an expense keeps its draft and still requires explicit account confirmation.
+      await openExpense(25.50,'cash');await page.locator('#txn-merchant').fill('Draft purchase');
+      const beforeSetup=await page.evaluate(()=>({accounts:localStorage.getItem('daily_accounts'),txns:localStorage.getItem('daily_transactions')}));
+      await page.locator('#txn-balance-setup').click();await page.locator('#acct-tools-dialog').waitFor({state:'visible'});
+      assert.equal(await page.locator('#acct-link-mode').inputValue(),'linked');
+      await page.keyboard.press('Tab');assert.equal(await page.locator('#acct-tools-dialog').evaluate(d=>d.contains(document.activeElement)),true);
+      await page.keyboard.press('Escape');assert.equal(await page.locator('#acct-tools-dialog').evaluate(d=>d.open),false);
+      assert.equal(await page.locator('#txn-modal').evaluate(d=>d.classList.contains('hidden')),false);
+      assert.equal(await page.locator('#txn-amount').inputValue(),'25.5');assert.equal(await page.locator('#txn-merchant').inputValue(),'Draft purchase');
+      assert.deepEqual(await page.evaluate(()=>({accounts:localStorage.getItem('daily_accounts'),txns:localStorage.getItem('daily_transactions')})),beforeSetup);
+      await page.locator('#txn-balance-setup').click();await page.getByRole('button',{name:'Save tracking choice',exact:true}).click();
+      assert.equal(await page.locator('#acct-tools-dialog').evaluate(d=>d.open),false,await page.locator('#acct-tools-error').innerText());
+      assert.equal(await page.locator('#txn-update-balance').isEnabled(),true);assert.equal(await page.locator('#txn-update-balance').isChecked(),false);
+      assert.equal(await page.locator('#txn-merchant').inputValue(),'Draft purchase');assert.equal(await balance('cash'),1000);
+      assert.equal(await page.evaluate(()=>localStorage.getItem('daily_transactions')),beforeSetup.txns);
+      await page.locator('.txn-flag').filter({has:page.locator('#txn-update-balance')}).click();assert.equal(await page.locator('#txn-update-balance').isChecked(),true);
+      await page.locator('#txn-update-balance').focus();await page.keyboard.press('Space');assert.equal(await page.locator('#txn-update-balance').isChecked(),false);
+      await page.evaluate(()=>closeTxnModal());
+      await connect('card');await connect('save');
       await openExpense(25.50,'cash');await saveExpense();assert.equal(await balance('cash'),974.5);
       const expenseId=await page.evaluate(()=>txnData.at(-1).id);
       await page.evaluate(()=>txnSave());assert.equal(await page.evaluate(()=>txnData.length),3,'closed form cannot save twice');
@@ -96,7 +114,9 @@ const server=http.createServer((req,res)=>{
         assert.match(await page.locator('#bud-period-dialog').innerText(),/Income saved/);
         await page.evaluate(()=>{budSaveData=window.__testBudgetSave;});await page.getByRole('button',{name:'Retry weekly total',exact:true}).click();
         assert.equal(await balance('cash'),1295);assert.equal(await page.evaluate(()=>ledgerData.length),incomeCount+1);assert.equal(await page.evaluate(()=>Number(budgetData[txnWeekOf(getLocalDate())].inc_salary)),550);
-        await page.evaluate(()=>openAccounts());await page.locator('.acct-link-status button[data-account="cash"]').click();await page.locator('#acct-link-mode').selectOption('manual');await page.getByRole('button',{name:'Save tracking choice',exact:true}).click();
+        await page.evaluate(()=>openAccounts());
+        const cashOptions=page.locator('.acct-options[data-account="cash"]');if(!await cashOptions.evaluate(e=>e.open))await cashOptions.locator(':scope > summary').click();
+        await page.locator('.acct-link-status button[data-account="cash"]').click();await page.locator('#acct-link-mode').selectOption('manual');await page.getByRole('button',{name:'Save tracking choice',exact:true}).click();
         await openExpense(8,'cash');assert.equal(await page.locator('#txn-update-balance').isEnabled(),false);await saveExpense();assert.equal(await balance('cash'),1295);
         await connect('cash');assert.equal(await balance('cash'),1295,'re-enabling does not replay earlier entries');await openExpense(2,'cash');await saveExpense();assert.equal(await balance('cash'),1293);
         await page.evaluate(()=>{openAccounts();accountMarkPaid('card');});await page.locator('#acct-statement-remaining').fill('300');

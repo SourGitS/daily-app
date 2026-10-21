@@ -129,29 +129,20 @@ test('weather appearance mode keeps its existing scenes but follows violet twili
     assert.match(app, new RegExp("'" + scene + "':'#"), scene + ' keeps its existing appearance scene'));
 });
 
-// ── The phone reading cluster ─────────────────────────────────────
-
-const mobile = (() => {
-  const at = css.indexOf('@media(max-width:1023px){');
-  assert.ok(at > 0, 'the phone weather block moved');
-  return css.slice(at, css.indexOf('\n}', at));
-})();
+// ── The shared phone and desktop reading cluster ───────────────────
+const shared = fs.readFileSync(path.join(__dirname, '../css/finance-periods.css'), 'utf8');
 
 test('the temperature, icon, condition and detail line are one centred cluster', () => {
-  assert.match(mobile, /#view-home \.weather-right\{display:flex;align-items:center;/,
-    'the stack is centred against the temperature, not split across two grid rows');
-  assert.match(mobile, /#view-home \.weather-read\{[^}]*flex-direction:column/,
-    'condition and detail are one stack');
-  assert.ok(!/#view-home \.weather-right\{display:grid/.test(mobile),
-    'the two-row grid is what made the cluster read as off-centre');
+  assert.match(shared, /\.home-widget-weather \.weather-right\{[^}]*grid-template-columns:auto minmax\(0,1fr\);align-items:center/,
+    'temperature and the condition stack align within one row');
   // Left-aligned in its content area — the fix is optical alignment inside the cluster, not
   // centring the card's text.
-  assert.match(mobile, /#view-home \.weather-right\{[^}]*text-align:left/);
-  assert.match(mobile, /#view-home \.weather-temp-row\{[^}]*justify-content:flex-start/);
+  assert.match(shared, /\.home-widget-weather \.weather-right\{[^}]*text-align:left/);
+  assert.match(shared, /\.home-widget-weather \.weather-temp-row\{[^}]*justify-content:flex-start/);
 });
 
 test('the icon reads before the temperature', () => {
-  assert.ok(!/#view-home \.weather-icon\{[^}]*order:/.test(mobile),
+  assert.ok(!/\.home-widget-weather \.weather-icon\{[^}]*order:/.test(shared),
     'order:1 moved the icon after the number, so the reading led with a digit');
   const start = app.indexOf('<div class="weather-temp-row">');
   assert.ok(start >= 0, 'weather reading markup is present');
@@ -160,12 +151,11 @@ test('the icon reads before the temperature', () => {
     'DOM order is what puts the icon first now');
 });
 
-test('hierarchy and the hourly strip are unchanged', () => {
-  assert.match(mobile, /#view-home \.weather-temp\{font-size:40px/);
-  assert.match(mobile, /#view-home \.weather-condition\{font-size:13\.5px/);
-  assert.match(mobile, /#view-home \.weather-meta\{[^}]*font-size:11\.5px/);
-  // The forecast columns already centre their own contents; this change must not touch them.
-  assert.match(mobile, /#view-home \.weather-hour\{[^}]*align-items:center/);
-  assert.match(mobile, /#view-home \.weather-hour\{[^}]*flex:0 0 58px/);
-  assert.match(mobile, /#view-home \.weather-hours\{display:flex;gap:4px;max-width:100%;overflow-x:auto/);
+test('shared forecast columns fit the card and retain the temperature hierarchy', () => {
+  const font=part=>Number(shared.match(new RegExp('\\.home-widget-weather \\.'+part+'\\{[^}]*font-size:(\\d+)px'))[1]);
+  assert.ok(font('weather-temp')>font('weather-condition'));
+  assert.ok(font('weather-condition')>font('weather-meta'));
+  assert.match(shared, /\.weather-hours\{[^}]*grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
+  assert.match(shared, /\.weather-hours\.weather-week\{grid-template-columns:repeat\(7,minmax\(0,1fr\)\)/);
+  assert.match(shared, /\.weather-hours\[hidden\]\{display:none\}/);
 });
