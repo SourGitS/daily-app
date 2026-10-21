@@ -19,7 +19,7 @@ test('shared widgets reuse existing Budget and Weather content and leave other w
   }
 });
 
-test('all three widgets move through saved order on phone and desktop as drafts only',()=>{
+test('widget moves remain drafts and retain saved visibility and widths',()=>{
   for(const mode of ['mobile','desktop'])for(const id of ['session','budget','weather']){
     const draft={order:['notes',id,'review'],hidden:['review'],wide:['session'],updatedAt:25};
     const ctx=fixture(['homeWidgetMove'],{hlDraftOf:m=>{assert.equal(m,mode);return draft;},homeLayoutOrderIds:l=>l.order.slice(),renderHomeLayoutSection:()=>{},_hlFocus:null});
@@ -63,7 +63,8 @@ test('Home Layout retains visibility and exposes Budget placement when it is sta
   const state={hidden:new Set(['weather']),wide:new Set(['session']),dash:false,col:null};
   for(const mode of ['mobile','desktop'])for(const id of ['session','budget','weather']){
     const html=ctx.hlWidgetRow(id,1,3,mode,state);
-    if(id==='budget')assert.match(html,/Shown inside the blue Training card/);
+    if(mode==='desktop'&&id==='budget')assert.match(html,/Shown inside the blue Training card/);
+    else if(mode==='mobile'&&id!=='budget')assert.match(html,/compact daily overview/);
     else assert.match(html,new RegExp('Move '+id+' up'));
     assert.match(html,/homeWidgetToggle/);
     assert.equal(html.includes('hl-width-btn'),mode==='desktop'&&id!=='budget');
@@ -83,20 +84,26 @@ test('layout previews keep saved order, hidden flags and desktop full-row choice
   const before=JSON.stringify(layout);
   for(const mode of ['mobile','desktop']){
     const html=ctx.hlPreview(mode,layout);
-    assert.ok(html.indexOf('notes')<html.indexOf('Training & Budget'));
-    assert.equal((html.match(/hl-pv-name/g)||[]).length,2);
-    assert.doesNotMatch(html,/weather|hl-pv-mega|hl-pv-featured/);
+    if(mode==='desktop'){
+      assert.ok(html.indexOf('notes')<html.indexOf('Training & Budget'));
+      assert.equal((html.match(/hl-pv-name/g)||[]).length,2);
+      assert.doesNotMatch(html,/hl-pv-mega/);
+    }else{
+      assert.match(html,/hl-pv-mega/);assert.ok(html.indexOf('Daily overview')<html.indexOf('notes'));
+      assert.ok(html.indexOf('notes')<html.indexOf('budget'));assert.equal((html.match(/hl-pv-name/g)||[]).length,3);
+    }
+    assert.doesNotMatch(html,/weather|hl-pv-featured/);
     assert.equal(html.includes('is-wide'),mode==='desktop');
   }
   assert.equal(JSON.stringify(layout),before);
 });
 
-test('grouping Budget uses Training placement and keeps every input slot and hidden choice intact',()=>{
+test('phone and desktop grouping retain every input slot and hidden choice',()=>{
   const ctx=fixture(['homePresentedWidgetIds']);
-  for(let mask=0;mask<8;mask++){
+  for(const mode of ['mobile','desktop'])for(let mask=0;mask<8;mask++){
     const ids=Object.freeze(['weather','notes','budget','session'].filter(id=>id==='notes'||(mask&(1<<['session','budget','weather'].indexOf(id)))));
-    const before=JSON.stringify(ids),actual=plain(ctx.homePresentedWidgetIds(ids));
-    assert.deepEqual(actual,ids.includes('session')&&ids.includes('budget')?ids.filter(id=>id!=='budget'):[...ids]);
+    const before=JSON.stringify(ids),actual=plain(ctx.homePresentedWidgetIds(ids,mode));
+    assert.deepEqual(actual,mode==='mobile'?ids.filter(id=>!['session','weather'].includes(id)):ids.includes('session')&&ids.includes('budget')?ids.filter(id=>id!=='budget'):[...ids]);
     assert.equal(JSON.stringify(ids),before);
   }
 });
@@ -117,4 +124,13 @@ test('Home Finance link still opens current Week through its existing entry poin
   let called=false;
   const ctx=fixture(['homeOpenBudgetWeek'],{currentWeekIdx:-5,budPastEdit:true,openBudgetWeek:()=>{called=true;}});
   ctx.homeOpenBudgetWeek();assert.equal(ctx.currentWeekIdx,0);assert.equal(ctx.budPastEdit,false);assert.equal(called,true);
+});
+
+
+test('moving ordinary phone cards preserves the grouped overview slots and every saved choice',()=>{
+  const draft={order:['notes','session','weather','budget','review'],hidden:['weather'],wide:['budget'],updatedAt:25};
+  const ctx=fixture(['homeWidgetMove'],{hlDraftOf:()=>draft,homeLayoutOrderIds:l=>l.order.slice(),renderHomeLayoutSection:()=>{},_hlFocus:null});
+  ctx.homeWidgetMove('budget',-1,'mobile');
+  assert.deepEqual(plain(draft.order),['budget','session','weather','notes','review']);
+  assert.deepEqual(draft.hidden,['weather']);assert.deepEqual(draft.wide,['budget']);assert.equal(draft.updatedAt,25);
 });

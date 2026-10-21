@@ -1,5 +1,35 @@
 # Daily — Agent Handoff
 
+## v396 restore compact iPhone Home — release correction, 2026-10-21
+
+- Francois rejected the tall shared iPhone Home after reviewing the live v394 release and
+  asked to retain the former phone design. This correction supersedes the shared-phone scope
+  below. His ongoing instruction to commit and push completed work applies to this correction.
+- Phone Home restores the v393 compact workout/date/action and summary rows, grouped scenic
+  Weather, initially visible forecast, outside Customise Home control and ordinary Budget card
+  in its saved position. Desktop keeps the published v394 combined Training/Budget design,
+  in-card date/Customise control, dark Last 7 days footer and independent Weather.
+- Existing mobile/desktop orders, hidden flags, Grid widths, Dashboard slots and timestamps are
+  retained. Phone grouped Session/Weather positions remain stored; ordinary phone move controls
+  skip those slots as before. Home Layout miniatures and controls reflect the restored phone.
+  No profile rewrite, migration, financial writer/calculation, auth, Firebase or backup change.
+  The v394 inline expense tracking setup fix remains intact.
+- Phone-only CSS is isolated in css/home-phone.css and cached in daily-v396. It restores the
+  original phone cascade and weather scenery. Screenshot comparisons have zero changed pixels
+  against v393 on 320/390/768/1023px phones and against v394 on 1024/1100/1280/1440/1920px
+  desktops, in both themes, with fixed-time sample data. All 626 Node checks pass. Responsive
+  synthetic browser checks pass at 320/390/768/1023/1024/1280/1440/1920px in both themes,
+  including all eight visibility combinations, fresh/stale/long-error forecasts, Log/Budget/
+  expense actions, draft/cancel, Grid/Dashboard and resizing without saved-data changes.
+  Physical iPhone and production Firebase were not exercised; no real records were accessed.
+- Implemented in the isolated codex/restore-compact-phone-home worktree from 6b9f12c. The primary
+  checkout contains a separate unpublished v395 usability pass; none of it is included here.
+  v396 deliberately skips that pending cache number. Future work must rebase onto this release
+  and retain this phone restoration, then use a newer cache version when authorised to publish.
+- Ignored sample-data review server: node temp-analysis/phone-preview-server.cjs on 8786. Other
+  chats' 8784 review server and unpublished work were left untouched. Do not commit local review
+  fixtures, screenshots or unrelated Prompts.
+
 ## v394 compact shared Home — release authorised, 2026-10-21
 
 - Francois explicitly authorised committing and pushing the completed update, superseding the

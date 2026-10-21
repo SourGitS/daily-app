@@ -21251,7 +21251,7 @@ function weatherForecastSummary(entry,now=Date.now()){
     (!i||h.time-hours[i-1].time===60*60*1000))) return 'Clear through the next few hours.';
   return '';
 }
-const _homeWeatherExpanded={mobile:false,desktop:false};
+const _homeWeatherExpanded={mobile:null,desktop:false};
 let _homeWeatherPeriod=null;
 function weatherForecastDate(entry,time){
   if(!entry||!Number.isFinite(time)||time<=0) return '';
@@ -22260,11 +22260,13 @@ function renderHome(){
   if(typeof homeCustomiseHint==='function') homeCustomiseHint();
   const _homeLayout=homeLayout(_homeMode);
   const _visibleIds=effectiveHomeWidgetIds(homeCards,_homeMode).filter(k=>homeCards[k]);
-  const _combineBudget=_visibleIds.includes('session')&&_visibleIds.includes('budget');
+  const _combineBudget=_homeMode==='desktop'&&_visibleIds.includes('session')&&_visibleIds.includes('budget');
   if(_combineBudget)homeCards.session=buildHomeTrainingCard(heroBrief,homeCards.budget);
-  const _homeIds=homePresentedWidgetIds(_visibleIds);
+  const _homeIds=homePresentedWidgetIds(_visibleIds,_homeMode);
   const _heading=(typeof dailyUpdateBannerHtml==='function'?'<div id="home-update-announcement">'+dailyUpdateBannerHtml()+'</div>':'')+
-    (_visibleIds.includes('session')?'':'<div class="home-overview-fallback">'+homeOverviewTools(heroBrief.date)+'</div>');
+    (_homeMode==='mobile'?buildHomePhoneOverview(homeCards,_visibleIds,{...heroBrief,
+      date:localMidnight(today).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}),remaining:budLeft})
+      :_visibleIds.includes('session')?'':'<div class="home-overview-fallback">'+homeOverviewTools(heroBrief.date)+'</div>');
   // Cards that span both desktop columns are a saved per-card preference now, not a hardcoded
   // list. The class is emitted on every layout but only means anything inside the desktop
   // media query, where the grid lives.
@@ -22272,7 +22274,7 @@ function renderHome(){
   // are untouched by it, and a desktop profile still set to Grid renders exactly as before.
   const _dash=layoutIsDesktop() && homeDashOn(_homeLayout);
   const _wide=new Set(_homeMode==='desktop'&&!_dash?_homeLayout.wide:[]);
-  const _cardHtml=k=>'<div class="home-card'+(_wide.has(k)?' home-card-wide':'')+(k==='session'&&_combineBudget?' home-card-combined':'')+'" data-card-id="'+k+'">'+buildHomeWidget(k,homeCards[k])+'</div>';
+  const _cardHtml=k=>'<div class="home-card'+(_wide.has(k)?' home-card-wide':'')+(k==='session'&&_combineBudget?' home-card-combined':'')+'" data-card-id="'+k+'">'+buildHomeWidget(k,homeCards[k],_homeMode)+'</div>';
   if(_dash){
     // TWO independent vertical stacks, each sized by its own content. A tall card can only
     // push the cards BELOW IT IN ITS OWN COLUMN — which is the whole point, and the reason
@@ -22308,7 +22310,7 @@ function renderHome(){
     // at phone scale, and .home-card-wide has to keep spanning both columns in both.
     wrap.innerHTML=_heading+'<div class="home-grid-cols">'+_homeIds.map(_cardHtml).join('')+'</div>';
   } else {
-    wrap.innerHTML=_heading+'<div class="home-widget-stack">'+_homeIds.map(_cardHtml).join('')+'</div>';
+    wrap.innerHTML=_heading+_homeIds.map(_cardHtml).join('');
   }
   const _oldRecent=document.getElementById('home-recent-card'); if(_oldRecent) _oldRecent.innerHTML='';
   if(homeEditMode) applyHomeEditMode();
@@ -22322,14 +22324,16 @@ function renderHome(){
   if(_visibleIds.includes('weather')) loadWeatherWidget(); else weatherEnsureFresh();
 }
 
-// All Home widgets use the same content and controls at every screen size. The existing
-// layout resolver owns order, visibility, desktop widths and column placement.
-function homePresentedWidgetIds(ids){
+// Phone keeps its compact daily overview and ordinary Budget card. Desktop keeps the
+// reviewed combined Training/Budget card. Both read the existing saved layout choices.
+function homePresentedWidgetIds(ids,mode='desktop'){
+  if(mode==='mobile')return ids.filter(id=>id!=='session'&&id!=='weather');
   // Budget shares Training's blue surface when both are shown. Its own saved slot is kept
   // for the standalone case; rendering and dragging never rewrite that absent slot.
   return ids.includes('session')&&ids.includes('budget')?ids.filter(id=>id!=='budget'):ids.slice();
 }
-function buildHomeWidget(id,content){
+function buildHomeWidget(id,content,mode='desktop'){
+  if(mode==='mobile')return content;
   if(!['session','budget','weather'].includes(id))return content;
   return '<div class="home-widget home-widget-'+id+'">'+content+'</div>';
 }
@@ -22343,6 +22347,53 @@ function buildHomeTrainingCard(brief,budget=''){
 function homeOverviewTools(date){
   return '<header class="home-overview-tools"><h2>'+escText(date)+'</h2>'+
     '<button type="button" class="home-customise-action" onclick="openHomeLayoutEditor()" aria-label="Customise Home">Customise</button></header>';
+}
+function homeBriefRows(visible,remaining){
+  const rows=[];
+  const period=typeof budPeriodMoney==='function'?budPeriodMoney():null;
+  if(typeof budPeriodMoney==='function'&&!period&&visible.includes('budget'))rows.push({run:'budPeriodSetup()',title:'Choose your budget dates',detail:'Weekly, fortnightly or monthly',text:'Set up your budget period'});
+  if(period&&visible.includes('budget')){
+    rows.push({run:'homeOpenBudgetWeek()',title:period.available===null?'Set up your budget':fmtMoneyExact(Math.abs(period.available))+(period.available<0?' over budget':' left'),detail:budPeriodLabel(period.range),text:'Budget · '+budPeriodLabel(period.range)});
+  }
+  if(visible.includes('budget')){
+    if(typeof budPeriodMoney!=='function') rows.push({run:'homeOpenBudgetWeek()',title:remaining===null?'No income recorded':fmtMoneyExact(Math.abs(remaining))+(remaining<0?' over budget':' left'),detail:'This week',text:remaining===null
+      ?'No income recorded this week'
+      :fmtMoneyExact(Math.abs(remaining))+(remaining<0?' over budget':' left this week')});
+    const win=budTimelineWindow(),bill=billOccurrences(win.from,win.to)[0];
+    if(bill){
+      const days=Math.round((bill.date-win.from)/864e5);
+      const when=days===0?'today':days===1?'tomorrow':bill.date.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
+      // A schedule is not evidence of an unpaid bill. Keep the calendar's facts and wording.
+      rows.push({run:'openBillsCalendar()',title:bill.name+' · '+when,detail:bill.kind==='statement'?'Statement due':'Scheduled bill',text:bill.name+
+        (bill.kind==='statement'?' statement due ':' scheduled ')+when});
+    }
+  }
+  if(rows.length<2){
+    const trained=homeTrainingDays(S.sessions,getLocalDate()).filter(d=>d.count>0).length;
+    const count=trained+' day'+(trained===1?'':'s')+' trained';
+    rows.push({run:"setView('log')",title:count,detail:'Last 7 days',text:'Last 7 days · '+count});
+  }
+  return rows;
+}
+function buildHomeMobileBrief(brief,visible){
+  return '<div class="home-brief-body">'+
+    '<div class="home-brief-date">Today · '+escText(brief.date)+'</div>'+
+    '<div class="home-brief-focus"><div class="home-brief-copy">'+
+    '<div class="home-brief-label">'+cardIcon('target')+escText(brief.eyebrow)+'</div>'+
+    '<h2 class="home-brief-title" id="hero-day-name">'+escText(brief.title)+'</h2>'+
+    '<p class="home-brief-meta" id="hero-meta">'+escText(brief.meta)+'</p></div>'+
+    '<button type="button" class="home-brief-action" onclick="setView(\'log\')">'+escText(brief.action)+' <span aria-hidden="true">→</span></button></div>'+
+    '<div class="home-brief-rows">'+homeBriefRows(visible,brief.remaining).map(row=>
+      '<button type="button" class="home-brief-row" onclick="'+escAttr(row.run)+'" aria-label="'+escAttr(row.text)+'">'+
+        '<strong>'+escText(row.title)+'</strong><span>'+escText(row.detail)+'</span></button>').join('')+'</div>'+
+  '</div>';
+}
+function buildHomePhoneOverview(cards,visible,brief){
+  const ids=['session','weather'].filter(id=>visible.includes(id)&&cards[id]);
+  if(!ids.length)return '';
+  return '<section class="home-mega home-brief'+(ids.includes('session')?' has-main':'')+(ids.includes('weather')?' has-weather':'')+'" aria-label="Your day at a glance">'+
+    (ids.includes('session')?'<div data-hero-section="session">'+buildHomeMobileBrief(brief,visible)+'</div>':'')+
+    (ids.includes('weather')?'<div class="home-mega-weather" data-hero-section="weather"><div class="home-weather-window">'+cards.weather+'</div></div>':'')+'</section>';
 }
 function homeBudgetDestination(){
   return '<a class="home-budget-destination" href="#budget" aria-label="Open budget" onclick="event.preventDefault();if(!homeEditMode)homeOpenBudgetWeek()"></a>';
@@ -22799,6 +22850,7 @@ function homeWidgetMove(id,direction,mode){
   const order=homeLayoutOrderIds(l);
   const from=order.indexOf(id);
   let to=from+direction;
+  while(mode==='mobile'&&to>=0&&to<order.length&&['session','weather'].includes(order[to]))to+=direction;
   if(from<0||to<0||to>=order.length) return;
   const moved=order[to]; order[to]=order[from]; order[from]=moved;
   l.order=order;
@@ -22924,12 +22976,14 @@ function hlPvShown(layout){
 }
 function hlPreview(mode,layout){
   const enabled=hlPvShown(layout);
-  const combined=enabled('session')&&enabled('budget');
+  const combined=mode==='desktop'&&enabled('session')&&enabled('budget');
   const shown=id=>enabled(id)&&!(combined&&id==='budget');
   if(mode==='mobile'){
-    const ids=homeLayoutOrderIds(layout).filter(shown);
+    const hero=['session','weather'].filter(enabled);
+    const ids=homeLayoutOrderIds(layout).filter(shown).filter(id=>!hero.includes(id));
+    const overview=hero.length?'<div class="hl-pv-mega"><strong>Daily overview</strong>'+hero.map(id=>hlPvTile(id)).join('')+'</div>':'';
     return '<div class="hl-pv hl-pv-phone" role="group" tabindex="0" aria-label="iPhone Home preview">'+
-      '<span class="hl-pv-bar"></span>'+
+      '<span class="hl-pv-bar"></span>'+overview+
       '<div class="hl-pv-stack">'+ids.map(id=>hlPvTile(id,id==='session'?' is-hero':'',combined&&id==='session')).join('')+'</div>'+
     '</div>';
   }
@@ -22955,7 +23009,8 @@ function hlWidgetRow(id,index,count,mode,ctx){
   const w=HOME_WIDGETS.filter(x=>x.id===id)[0]; if(!w) return '';
   const off=!w.fixed&&ctx.hidden.has(id);
   const isWide=ctx.wide.has(id);
-  const embedded=id==='budget'&&!ctx.hidden.has('session')&&!ctx.hidden.has('budget');
+  const embedded=mode==='desktop'&&id==='budget'&&!ctx.hidden.has('session')&&!ctx.hidden.has('budget');
+  const phoneOverview=mode==='mobile'&&['session','weather'].includes(id);
   const other=ctx.dash?HOME_DASH_COLS.filter(c=>c.id!==ctx.col)[0]:null;
   const mv=ctx.dash?'homeDashMove(\''+id+'\',':'homeWidgetMove(\''+id+'\',';
   const mvEnd=ctx.dash?')':',\''+mode+'\')';
@@ -22970,7 +23025,7 @@ function hlWidgetRow(id,index,count,mode,ctx){
           '<span class="toggle-slider"></span></span></label>')+
     '</div>'+
     '<div class="hl-widget-preview" aria-label="Illustrative '+w.label+' card">'+(w.preview?w.preview():'')+'</div>'+
-    (embedded?'<p class="stg-help">Shown inside the blue Training card.</p>':'<div class="hl-widget-actions">'+
+    (embedded||phoneOverview?'<p class="stg-help">'+(phoneOverview?'Shown in the compact daily overview.':'Shown inside the blue Training card.')+'</p>':'<div class="hl-widget-actions">'+
       '<div class="hl-order-actions">'+
         '<button type="button" data-hl-focus="'+id+':up" aria-label="Move '+w.label+' up" '+
           'onclick="'+mv+'-1'+mvEnd+'"'+(index===0?' disabled':'')+'>↑</button>'+
@@ -23040,7 +23095,7 @@ function renderHomeLayoutSection(){
       '<div class="seg-tabs seg-fill hl-seg" role="tablist" aria-label="Home layout profile">'+
         tab('mobile','iPhone')+tab('desktop','Desktop')+
       '</div>'+
-      '<p class="stg-help">The same Home design on every screen. When Training and Budget are both shown, they share the blue card above Last 7 days. Weather stays separate.</p>'+
+      '<p class="stg-help">'+(mode==='mobile'?'The compact daily overview brings together your workout and weather. Budget keeps its saved position below.':'Training and Budget share the blue card above Last 7 days when both are shown. Weather stays separate.')+'</p>'+
       '<p class="hl-editing">You are editing the <strong>'+label+'</strong> layout'+
         (mode===layoutMode()?' — the device you are on now.':'. It applies when Daily is opened on '+
           (mode==='mobile'?'a phone.':'a desktop or laptop.'))+'</p>'+

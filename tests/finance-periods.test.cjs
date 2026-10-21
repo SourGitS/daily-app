@@ -10,7 +10,7 @@ function context(extra={}){
 }
 const period={id:'2026-10-02_2026-10-15',start:'2026-10-02',end:'2026-10-15',days:14};
 
-test('shared budget card preserves unknown and zero amounts on every screen',()=>{
+test('budget keeps the original phone unknown amount and desktop guidance',()=>{
   const c=context({lsSave:()=>{throw Error('Rendering must not save');},
     homeBudgetDestination:()=>'<a href="#budget">Budget</a>',cardHeader:(icon,label,status='')=>'<header>'+label+status+'</header>',
     tstat:(kind,label)=>'<span>'+label+'</span>',fmtMoneyExact:n=>'$'+n});
@@ -20,8 +20,9 @@ test('shared budget card preserves unknown and zero amounts on every screen',()=
   const before=JSON.stringify(money);
   assert.match(c.budPeriodHomeCard('desktop'),/Check your budget dates/);
   assert.doesNotMatch(c.budPeriodHomeCard('desktop'),/Available to spend|card-fig/);
-  assert.equal(c.budPeriodHomeCard('mobile'),c.budPeriodHomeCard());
-  assert.equal(c.budPeriodHomeCard('desktop'),c.budPeriodHomeCard('mobile'));
+  assert.match(c.budPeriodHomeCard('mobile'),/card-fig">—/);
+  assert.doesNotMatch(c.budPeriodHomeCard('mobile'),/home-budget-review/);
+  assert.equal(c.budPeriodHomeCard('desktop'),c.budPeriodHomeCard());
   assert.equal(JSON.stringify(money),before);
   money={...money,incomplete:false};assert.match(c.budPeriodHomeCard('desktop'),/Set your starting funds/);
   money={...money,allocationReview:true};assert.match(c.budPeriodHomeCard('desktop'),/Confirm the allocations/);

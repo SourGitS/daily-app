@@ -417,7 +417,7 @@ function budPeriodOverview(){
 }
 function budPeriodHomeCard(mode){
   const m=budPeriodMoney();if(!m)return '<div class="card home-budget-card">'+homeBudgetDestination()+cardHeader('wallet','Budget')+'<h3>Your money, on your dates</h3><p class="card-cap">Choose a budget period. Your weekly history stays available.</p><button class="home-budget-add-labelled" onclick="budPeriodSetup()">Set up budget →</button></div>';
-  if(m.available===null){
+  if(mode!=='mobile'&&m.available===null){
     const title=m.incomplete||m.allocationReview?'Check your budget dates':'Set your starting funds';
     const detail=m.incomplete?'Review the weekly totals overlapping this period.':m.allocationReview?'Confirm the allocations for these budget dates.':'Record received income or confirm your starting funds.';
     return '<div class="card home-budget-card home-budget-review">'+homeBudgetDestination()+cardHeader('wallet','Budget · '+budPeriodLabel(m.range),'')+

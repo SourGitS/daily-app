@@ -407,7 +407,8 @@
 // statement CSV import and account audit records. Collapsible cards retain credit-used bars;
 // secondary controls sit behind Account options. No historical balance migration.
 // v394: responsive Home overview with embedded Budget, and inline expense tracking setup.
-const CACHE_NAME = 'daily-v394';
+// v396: restore compact phone Home; desktop overview and saved data remain intact.
+const CACHE_NAME = 'daily-v396';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
@@ -443,6 +444,7 @@ const ASSETS = [
   './js/finance-accounts.js',
   './js/finance-import.js',
   './css/finance-periods.css',
+  './css/home-phone.css',
   './js/food-catalogue.js',
   './css/food-catalogue.css',
   './catalogue/food-catalogue.json',

@@ -143,7 +143,7 @@ test('desktop drawer toggles independently and refreshes do not restart the peri
   const first=preview.dataset.weatherSlide;
   ctx.renderWeatherForecast(entry());assert.equal(preview.dataset.weatherSlide,first);
   ctx.homeToggleWeatherForecast();assert.equal(preview.inert,true);
-  assert.equal(vm.runInContext('_homeWeatherExpanded.mobile',ctx),false);
+  assert.equal(vm.runInContext('_homeWeatherExpanded.mobile',ctx),null);
   ctx.homeSetWeatherPeriod('week');assert.equal(preview.inert,false);
   assert.notEqual(preview.dataset.weatherSlide,first);
   const next=preview.dataset.weatherSlide;
