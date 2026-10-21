@@ -1,5 +1,28 @@
 # Daily — Agent Handoff
 
+## v400 full weather forecast without inner scrolling — release authorised, 2026-10-22
+
+- Francois showed a remaining vertical forecast scrollbar after v399. This continues the
+  authorised fix/commit/push request. v399 removed the phone's horizontal strip but missed
+  the desktop widget's fixed-height forecast and feedback scroll areas.
+- The desktop weather wrapper/card now retain 360px as a minimum, with intrinsic height for
+  a full forecast, location controls or recovery messages. The forecast dock cannot shrink
+  below its contents. Normal content still fits the usual footprint; extra content expands
+  the card in ordinary Home flow instead of being clipped or put into an inner scroll box.
+  Fonts, icons, forecast rows, actions and scenery are retained. This supersedes the older
+  fixed-height/scrolling-error instructions. Phone markup, saved widths/order/visibility,
+  forecast fetching, storage and Firebase remain unchanged.
+- Cache daily-v400. All 629 Node checks pass. The new weather-overflow-browser.cjs reproduces
+  the original vertical overflow and verifies both forecast periods, fresh/stale/sample/
+  unavailable/long-error states, disclosure and unchanged saved data at 320/390/768/1023/
+  1024/1100/1280/1440/1920px, both themes and desktop Grid/Dashboard arrangements. It checks
+  all visible forecast rows vertically, controls and wrapper containment, plus every weather
+  descendant for internal scroll areas. Production text and Tabler icon fonts are loaded;
+  missing icons in earlier isolated fixtures understated row height. The existing Home
+  responsive suite also passes both themes at 320–1920px, preserving layout choices and
+  phone Home. All data are synthetic;
+  physical iPhone/Safari and production Firebase remain unverified.
+
 ## v399 mobile touch and forecast fixes — release authorised, 2026-10-22
 
 - Francois requested fixing mobile text highlighting, unreliable tab swipes and weather

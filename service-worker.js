@@ -411,7 +411,8 @@
 // v397: complete Daily usability updates, retaining the compact phone Home.
 // v398: expense calculator, paired desktop layout columns and five phone tabs.
 // v399: reliable mobile gestures, native editing and a fitted phone forecast without inner scrolling.
-const CACHE_NAME = 'daily-v399';
+// v400: let the desktop weather forecast and recovery messages fit without internal scrollbars.
+const CACHE_NAME = 'daily-v400';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
