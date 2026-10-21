@@ -23,7 +23,9 @@ async function readyView(page,view){await page.evaluate(view=>setView(view),view
    loadWeatherCache=()=>qaWeather;weatherEnsureFresh=()=>Promise.resolve(false);weatherRefresh=()=>{renderWeatherInto(qaWeather);return Promise.resolve(false);};_weatherStatus={state:'idle',message:''};setView('home');renderWeatherInto(qaWeather);
   },theme);
   const initial=await p.evaluate(snapshot);
-  assert.equal(await p.locator('#bottom-nav [data-view="notes"]').count(),1);
+  assert.deepEqual(await p.locator('#bottom-nav .nav-btn').evaluateAll(es=>es.map(e=>e.dataset.view)),['home','budget','log','food','stats']);
+  assert.equal(await p.locator('#swipe-deck #view-notes').count(),0);
+  assert.equal(await p.locator('#app-main > #view-notes').count(),1);
   assert.equal(await p.locator('#ds-nav [data-nav-quick="notes"]').count(),1);
   assert.equal(await p.locator('#home-weather-refresh').isVisible(),false,'healthy weather must not show refresh');
   await p.locator('#home-weather-forecast-toggle').click();await p.locator('#home-weather-week').click();
@@ -48,17 +50,17 @@ async function readyView(page,view){await page.evaluate(view=>setView(view),view
   assert.deepEqual(await p.evaluate(snapshot),initial,'navigation and viewing must preserve sample records');
   await p.locator('[data-jrn="tab"][data-tab-id="timeline"]').click();
   if([320,390,1440].includes(width))await p.screenshot({path:path.join(root,`temp-analysis/improvements-journal-${width}-${theme}.png`)});
-  // All main tabs must land on their full panel, including the new sixth swipe destination.
+  // Five phone tabs plus Journal's separate Home/sidebar destination must all land correctly.
   for(const view of ['home','budget','log','food','stats','notes'])await readyView(p,view);
-  if(width<1024){await p.locator('#bottom-nav [data-view="notes"]').click();await readyView(p,'notes');}
-  else{const gap=await p.evaluate(()=>document.querySelector('#ds-nav .nv-quick-label').getBoundingClientRect().top-document.querySelector('.ds-logo .wordmark').getBoundingClientRect().bottom);assert.ok(gap>=28,'brand needs breathing room');}
+  if(width<1024){await readyView(p,'home');await p.locator('#header-menu').click();await p.locator('#side-menu-list [data-nav-quick="notes"]').click();await readyView(p,'notes');}
+  if(width>=1024){await p.locator('#ds-nav [data-nav-quick="notes"]').click();await readyView(p,'notes');const gap=await p.evaluate(()=>document.querySelector('#ds-nav .nv-quick-label').getBoundingClientRect().top-document.querySelector('.ds-logo .wordmark').getBoundingClientRect().bottom);assert.ok(gap>=28,'brand needs breathing room');}
   if(width===390&&theme==='dark'){
    await readyView(p,'stats');
    const swipe=async direction=>p.evaluate(direction=>{const el=document.querySelector('.swipe-panel.deck-active'),r=el.getBoundingClientRect(),a=direction==='next'?.85:.15,b=1-a,y=r.top+100;
     const event=(type,x)=>{const touch=new Touch({identifier:1,target:el,clientX:r.left+r.width*x,clientY:y});return new TouchEvent(type,{bubbles:true,cancelable:true,touches:type==='touchend'?[]:[touch],changedTouches:[touch]});};
     el.dispatchEvent(event('touchstart',a));el.dispatchEvent(event('touchmove',b));el.dispatchEvent(event('touchend',b));},direction);
-   await swipe('next');await p.waitForFunction(()=>S.view==='notes'&&Math.abs(document.getElementById('view-notes').getBoundingClientRect().left)<2);
-   await swipe('previous');await p.waitForFunction(()=>S.view==='stats');
+   await swipe('next');assert.equal(await p.evaluate(()=>S.view),'stats','Stats remains the last phone tab');
+   await swipe('previous');await p.waitForFunction(()=>S.view==='food');
    await readyView(p,'home');await readyView(p,'notes');await p.goBack();await p.waitForFunction(()=>S.view==='home');await p.goForward();await p.waitForFunction(()=>S.view==='notes');
    const count=await p.evaluate(()=>jrnEntries().length);
    await p.evaluate(()=>jrnOpenEditor(null,'entry'));await p.locator('#jrn-ed-body').fill('Sample reflection kept while resizing.');

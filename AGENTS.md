@@ -1,5 +1,33 @@
 # Daily — Agent Handoff
 
+## v398 expense calculator, layout columns and five phone tabs — release authorised, 2026-10-22
+
+- Francois explicitly requested committing and pushing when complete. He then rejected the
+  sixth Journal phone tab: this supersedes v397's six-tab navigation. Keep Home, Finance,
+  Log, Food and Stats, with Log central. Journal stays a separate destination, accessible
+  from its Home card and the existing sidebar/phone-menu favourite. Its notes identity,
+  records, Entries/Notes tabs and Daily styling remain. Restore five-panel swipe geometry;
+  do not add a hidden sixth swipe slot. Keep the compact phone Home and desktop overview.
+- Add/Edit expense has a collapsed Calculator at the bottom of the scrolling form. It uses
+  independent, in-memory scratchpad state and the existing arithmetic helpers. Use result
+  explicitly fills only the draft amount, resolving a pending operation and rounding to
+  cents. Invalid/zero/unsafe amounts cannot be applied. Opening another expense resets it.
+  Cancel writes nothing; the weekly calculator and financial writers remain unchanged.
+  Save/Cancel stay outside the scrolling body. Keypad and scoped keyboard input are supported.
+- Desktop Dashboard layout controls place Today & activity and At a glance side by side,
+  matching the preview's 1.5:1 proportions. Home Layout alone gets a wider Settings detail
+  area and narrower Settings navigation. Card rows adapt within each column. Phone editing
+  stays stacked. Existing Grid, visibility, placement, draft, Apply and Cancel logic is kept.
+- Cache daily-v398. All 629 Node checks pass. Synthetic browser coverage includes calculator
+  arithmetic/apply/save/cancel/reset, unchanged balances, separate weekly state, visible
+  footer, keyboard use and paired layout controls at 320/390/568/844/1024/1100/1180/1240/
+  1440/1920px in both themes. The Home suite passes all eight visibility combinations and
+  saved arrangements across 320–1920px; account-link checks pass all six size/theme cases,
+  failures and populated mock-cloud restore. The usability suite checks five-tab navigation,
+  Home/sidebar/menu Journal routes, history, a saved entry across resizing and retained
+  weather/Finance/essential-tag behavior. All records are synthetic; physical iPhone and
+  production Firebase remain unverified. Ignored review fixtures stay outside the commit.
+
 ## v397 complete Daily usability release — authorised, 2026-10-22
 
 - Francois explicitly instructed "commit and push everything". This supersedes v395's local

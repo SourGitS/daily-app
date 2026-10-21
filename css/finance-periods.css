@@ -121,6 +121,14 @@
 #txn-modal .txn-field-pair>div{min-width:0}
 #txn-modal .txn-details{border-top:1px solid var(--border);margin-top:22px;padding-top:4px}
 #txn-modal .txn-flag-wrap{margin:16px 0 0;padding:0;border:0;background:none}
+#txn-modal .txn-calculator{margin-top:22px;border-top:1px solid var(--border);padding-top:6px}
+#txn-modal .txn-calculator summary{padding:12px 0;cursor:pointer;font-size:14px;font-weight:700;color:var(--text)}
+#txn-modal .txn-calc-body{padding:4px 0}
+#txn-modal .bcalc-display{display:block;font-size:30px;line-height:1.3}
+#txn-modal .bcalc-key{min-width:0;min-height:44px;height:48px}
+#txn-modal .txn-calc-use{width:100%;min-height:44px;margin-top:12px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--accent-text);font-family:inherit;font-size:14px;font-weight:700;cursor:pointer}
+#txn-modal .txn-calc-use:disabled{opacity:.45;cursor:default}
+#txn-modal .txn-calculator :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #txn-modal .txn-modal-footer{background:var(--surface-card);border-top:1px solid var(--border);padding-top:14px;margin-top:14px}
 #txn-modal .txn-modal-footer .secondary{flex:0 0 auto;border:0;padding-inline:18px;color:var(--muted)}
 #txn-modal .txn-modal-footer .primary{background:var(--accent-hero);border-radius:12px;min-height:48px}

@@ -2412,7 +2412,7 @@ function setView(v, direction, opts){
 // that isn't must be a direct <section> child of #app-main (see setView). Changing the list
 // without moving the markup gives you a tab you can swipe to but not tap, or the reverse.
 // #view-*{order:n} in css/layout.css must agree with this order for the same reason.
-const NAV_ORDER=['home','budget','log','food','stats','notes'];
+const NAV_ORDER=['home','budget','log','food','stats'];
 
 // ── Food: one destination, four sections, two supporting screens ──
 // Declared HERE, beside NAV_ORDER, and not next to the render functions two thousand lines
@@ -2514,8 +2514,8 @@ const NAV_QUICK_ICONS={
 // the bottom-nav button beside them.
 const NAV_QUICK_LABELS={home:'Home', budget:'Finance', log:'Log', food:'Food',
                         stats:'Stats', notes:'Journal', aihub:'Daily AI', accounts:'Accounts', settings:'Settings'};
-// Journal is part of the phone deck. The remaining extras stay pinned on both menu surfaces.
-const NAV_QUICK_EXTRA=['aihub','accounts','settings'];
+// Journal remains pinned in the sidebar and phone menu, outside the five phone tabs.
+const NAV_QUICK_EXTRA=['notes','aihub','accounts','settings'];
 const NAV_QUICK_VIEWS=NAV_ORDER.concat(NAV_QUICK_EXTRA);
 // A quick item is normally just a view, and dispatches setView with NO sub-tab — exactly what
 // pressing the bottom-nav button does — so it lands you back wherever you were inside it.
@@ -2866,7 +2866,7 @@ let _jrnResizeT=null;
 // The bottom-nav views sit side-by-side in #swipe-deck and track the finger in real
 // time; releasing spring-snaps to the nearest view. Mobile only — desktop pages via
 // .deck-active (see setView + layout.css). Order matches NAV_ORDER: home, budget, log,
-// food, stats, notes. Journal is a full panel with the same swipe and keyboard handling.
+// food, stats. Journal opens separately from Home or the sidebar/menu.
 let deckIdx = 0;
 let deckRaf = 0;      // handle of the pending touchmove frame (0 = none) — must be cancellable
 // Mirrors the gesture IIFE's own `dragging`, at module scope: vpSyncDeck must never re-page
@@ -13422,6 +13422,7 @@ function openTxnModal(opts){
   // survive a hidden modal, or the form opens already shifted up by a keyboard that is gone.
   _txnPending=null;
   txnHideConflict();
+  txnCalcReset();
   vpClearOverlayGeometry(modal);
   const body=document.getElementById('txn-modal-body'); if(body) body.scrollTop=0;
   if(modal) modal.classList.remove('hidden');
@@ -15386,6 +15387,73 @@ function bcalcBack(){
   _bcalc.entry=_bcalc.entry.length>1?_bcalc.entry.slice(0,-1):'0';
   if(_bcalc.entry==='-') _bcalc.entry='0';
   bcalcRender();
+}
+
+// The expense scratchpad owns its state. Only an explicit Use result changes the draft;
+// the weekly calculator, financial writers and account balances are never touched here.
+let _txnCalc={acc:null,op:null,entry:'0',fresh:true};
+function txnCalcStep(state,key){
+  const s=Object.assign({},state);
+  if(key==='clear') return {acc:null,op:null,entry:'0',fresh:true};
+  if(/^\d$/.test(key)){
+    if(s.fresh){s.entry=key;s.fresh=false;}
+    else if(s.entry==='0')s.entry=key;
+    else if(s.entry.replace(/[-.]/g,'').length<12)s.entry+=key;
+  }else if(key==='.'){
+    if(s.fresh){s.entry='0.';s.fresh=false;}
+    else if(!s.entry.includes('.'))s.entry+='.';
+  }else if(!Number.isFinite(Number(s.entry))){
+    return s;
+  }else if(key==='sign'){
+    if(Number(s.entry)!==0)s.entry=s.entry.startsWith('-')?s.entry.slice(1):'-'+s.entry;
+  }else if(key==='back'){
+    if(!s.fresh){s.entry=s.entry.length>1?s.entry.slice(0,-1):'0';if(s.entry==='-')s.entry='0';}
+  }else if(key==='%'){
+    s.entry=bcalcTrim(s.op!=null&&s.acc!=null?s.acc*Number(s.entry)/100:Number(s.entry)/100);s.fresh=false;
+  }else if(['+','-','*','/','='].includes(key)){
+    if(key==='='&&s.op==null)return s;
+    if(s.op!=null&&(key==='='||!s.fresh)){
+      const result=bcalcApply(s.acc,Number(s.entry),s.op);
+      if(!Number.isFinite(result))return {acc:null,op:null,entry:s.op==='/'&&Number(s.entry)===0?'Can’t divide by 0':'Result too large',fresh:true};
+      s.entry=bcalcTrim(result);
+    }
+    s.acc=key==='='?null:Number(s.entry);s.op=key==='='?null:key;s.fresh=true;
+  }
+  return s;
+}
+function txnCalcRender(){
+  const d=document.getElementById('txn-calc-display');if(d)d.textContent=_txnCalc.entry;
+  const e=document.getElementById('txn-calc-expr');
+  if(e)e.textContent=_txnCalc.op!=null?bcalcTrim(_txnCalc.acc)+' '+({'+':'+','-':'−','*':'×','/':'÷'}[_txnCalc.op]):'\u00a0';
+  const use=document.getElementById('txn-calc-use');
+  if(use)use.disabled=txnCalcAmount(txnCalcStep(_txnCalc,'=').entry)===null;
+}
+function txnCalcAmount(entry){
+  const n=Number(entry);
+  return Number.isFinite(n)&&Math.abs(n)<=Number.MAX_SAFE_INTEGER/100&&Math.round(n*100)!==0?n.toFixed(2):null;
+}
+function txnCalcReset(){
+  _txnCalc=txnCalcStep(_txnCalc,'clear');
+  const panel=document.getElementById('txn-calculator');if(panel)panel.open=false;
+  txnCalcRender();
+}
+function txnCalcPress(key){_txnCalc=txnCalcStep(_txnCalc,key);txnCalcRender();}
+function txnCalcKeyboard(event){
+  if(event.ctrlKey||event.metaKey||event.altKey)return;
+  const key=event.key==='Backspace'?'back':event.key==='Delete'?'clear':event.key;
+  if(!/^\d$/.test(key)&&!['.','+','-','*','/','%','=','back','clear'].includes(key))return;
+  event.preventDefault();event.stopPropagation();txnCalcPress(key);
+}
+function txnCalcUse(){
+  const modal=document.getElementById('txn-modal');
+  if(!modal||modal.classList.contains('hidden'))return;
+  txnCalcPress('=');
+  const amount=txnCalcAmount(_txnCalc.entry);
+  if(amount===null)return;
+  const input=document.getElementById('txn-amount');if(!input)return;
+  input.value=amount;
+  const panel=document.getElementById('txn-calculator');if(panel)panel.open=false;
+  input.focus();input.select();
 }
 
 // Savings allocation is a free per-week input (no auto-calc / no lock). The allocation target
@@ -23096,7 +23164,7 @@ function renderHomeLayoutSection(){
   const lists=dash
     ? (function(){
         const cols=homeDashColumns(layout);
-        return HOME_DASH_COLS.map(function(c){
+        return '<div class="hl-dashboard-editor">'+HOME_DASH_COLS.map(function(c){
           const ids=cols[c.id];
           return '<div class="hl-col-group">'+
             '<h3 class="hl-col-h">'+c.label+' <span>'+ids.length+' card'+(ids.length===1?'':'s')+'</span></h3>'+
@@ -23105,7 +23173,7 @@ function renderHomeLayoutSection(){
                 return hlWidgetRow(id,i,ids.length,mode,{hidden:ctx.hidden,wide:ctx.wide,dash:true,col:c.id});
               }).join(''):'<p class="stg-help">Nothing is placed here yet.</p>')+
             '</div></div>';
-        }).join('');
+        }).join('')+'</div>';
       })()
     : (function(){
         const ids=homeLayoutOrderIds(layout);

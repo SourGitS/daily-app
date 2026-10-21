@@ -80,7 +80,7 @@
 
   <main id="app-main">
 
-    <!-- Swipe deck: the six bottom-nav views page horizontally. -->
+    <!-- Swipe deck: the five bottom-nav views page horizontally. Log stays central. -->
     <div id="swipe-deck">
 
     <!-- HOME VIEW -->
@@ -663,7 +663,7 @@
          other four, and #app-main>section's absolute positioning no longer reaches it. There
          is still exactly one copy of this markup. The evidence overlay it opens deliberately
          stays OUTSIDE the deck (below #app-main) — position:fixed resolves against the deck's
-         transform, so an overlay inside it would be positioned against a 600%-wide box. -->
+         transform, so an overlay inside it would be positioned against a 500%-wide box. -->
     <section id="view-stats" class="swipe-panel">
       <div class="seg-tabs seg-scroll" id="stats-tab-row" role="tablist" aria-label="Stats sections">
         <button class="on" id="st-ov-btn" onclick="setStatsTab('overview')">Overview</button>
@@ -723,11 +723,6 @@
           <div id="bs-finance-right" class="stats-fin-col"></div>
         </div>
       </div>
-    </section>
-
-    <!-- Journal keeps its notes identity and records while joining the main swipe deck. -->
-    <section id="view-notes" class="swipe-panel">
-      <div id="notes-content"></div>
     </section>
 
     </div><!-- /#swipe-deck -->
@@ -989,6 +984,11 @@
 
 
 
+    <!-- Journal stays a separate destination reached from Home and the sidebar/menu.
+         Its notes identity and saved records are unchanged. -->
+    <section id="view-notes" class="hidden">
+      <div id="notes-content"></div>
+    </section>
   </main>
 
   <!-- The workout-history overlay was retired: its list now lives in Log › History, which is
@@ -1135,6 +1135,37 @@
           <label class="txn-lbl" for="txn-note">Note <span class="txn-opt">optional</span></label>
           <input class="modal-input" type="text" id="txn-note" placeholder="Anything worth remembering">
         </div>
+        <details id="txn-calculator" class="txn-calculator">
+          <summary>Calculator</summary>
+          <div class="txn-calc-body" role="group" aria-label="Expense calculator" onkeydown="txnCalcKeyboard(event)">
+            <div id="txn-calc-expr" class="bcalc-expr">&nbsp;</div>
+            <output id="txn-calc-display" class="bcalc-display" aria-live="polite" aria-atomic="true">0</output>
+            <div class="bcalc-pad">
+              <button type="button" class="bcalc-key fn" onclick="txnCalcPress('clear')" aria-label="Clear calculator">C</button>
+              <button type="button" class="bcalc-key fn" onclick="txnCalcPress('sign')" aria-label="Change sign">±</button>
+              <button type="button" class="bcalc-key fn" onclick="txnCalcPress('%')" aria-label="Percent">%</button>
+              <button type="button" class="bcalc-key op" onclick="txnCalcPress('/')" aria-label="Divide">÷</button>
+              <button type="button" class="bcalc-key" onclick="txnCalcPress('7')">7</button>
+              <button type="button" class="bcalc-key" onclick="txnCalcPress('8')">8</button>
+              <button type="button" class="bcalc-key" onclick="txnCalcPress('9')">9</button>
+              <button type="button" class="bcalc-key op" onclick="txnCalcPress('*')" aria-label="Multiply">×</button>
+              <button type="button" class="bcalc-key" onclick="txnCalcPress('4')">4</button>
+              <button type="button" class="bcalc-key" onclick="txnCalcPress('5')">5</button>
+              <button type="button" class="bcalc-key" onclick="txnCalcPress('6')">6</button>
+              <button type="button" class="bcalc-key op" onclick="txnCalcPress('-')" aria-label="Subtract">−</button>
+              <button type="button" class="bcalc-key" onclick="txnCalcPress('1')">1</button>
+              <button type="button" class="bcalc-key" onclick="txnCalcPress('2')">2</button>
+              <button type="button" class="bcalc-key" onclick="txnCalcPress('3')">3</button>
+              <button type="button" class="bcalc-key op" onclick="txnCalcPress('+')" aria-label="Add">+</button>
+              <button type="button" class="bcalc-key" onclick="txnCalcPress('0')">0</button>
+              <button type="button" class="bcalc-key" onclick="txnCalcPress('.')" aria-label="Decimal point">.</button>
+              <button type="button" class="bcalc-key fn" onclick="txnCalcPress('back')" aria-label="Backspace">⌫</button>
+              <button type="button" class="bcalc-key eq" onclick="txnCalcPress('=')" aria-label="Equals">=</button>
+            </div>
+            <button type="button" id="txn-calc-use" class="txn-calc-use" onclick="txnCalcUse()" disabled>Use result</button>
+            <p class="txn-flag-d">Fills the amount above. Save expense when you’re ready.</p>
+          </div>
+        </details>
         <div id="txn-err" class="txn-err" role="alert" aria-live="polite"></div>
         <button class="txn-delete hidden" id="txn-delete-btn" onclick="txnDeleteCurrent()">Delete this expense</button>
       </div>
@@ -1394,7 +1425,7 @@
     Log
   </button>
   <!-- Food replaces the separate Nutrition and Kitchen buttons; Stats takes the fifth slot it
-       lost when Kitchen arrived. Journal follows Stats. These tabs match NAV_ORDER — the icons
+       lost when Kitchen arrived. Log stays central. These five match NAV_ORDER — the icons
        here and NAV_QUICK_ICONS in js/app.js draw the same paths, so the phone tab and the
        sidebar shortcut are visibly the same thing. -->
   <button class="nav-btn" data-view="food" onclick="setView('food')">
@@ -1404,10 +1435,6 @@
   <button class="nav-btn" data-view="stats" onclick="setView('stats')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M20 8v5h-5"/></svg>
     Stats
-  </button>
-  <button class="nav-btn" data-view="notes" onclick="setView('notes')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13H4V4zM16 4v4h3M8 12h7M8 16h4"/></svg>
-    Journal
   </button>
 </nav>
 

@@ -264,6 +264,22 @@
   .hl-widget-actions{grid-area:actions;align-self:start;margin-top:9px}
 }
 .settings-field{margin-bottom:10px}
+/* Match the preview's main/summary columns. Within each column the miniature sits below
+   the heading so the controls remain usable even in Settings' narrower detail pane. */
+.hl-dashboard-editor .hl-col-group{min-width:0}
+@media(min-width:1024px){
+  #settings-detail-content:has(> #settings-homelayout-section:not(.hidden)){max-width:1240px!important}
+  .hl-dashboard-editor{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:18px;align-items:start}
+  .hl-dashboard-editor .hl-col-h{flex-wrap:wrap;gap:4px 8px;min-height:30px;align-content:start}
+  .hl-dashboard-editor .hl-widget{display:block;padding:12px;min-width:0}
+  .hl-dashboard-editor .hl-widget-preview .hl-prev{margin:10px 0 9px}
+  .hl-dashboard-editor .hl-widget-name strong{white-space:normal;overflow-wrap:anywhere}
+  .hl-dashboard-editor .hl-widget-head,.hl-dashboard-editor .hl-widget-actions{flex-wrap:wrap}
+}
+@media(min-width:1180px){
+  #view-settings .settings-main:has(#stg-detail-body > #settings-homelayout-section:not(.hidden)){max-width:1600px}
+  .stg-workspace:has(#stg-detail-body > #settings-homelayout-section:not(.hidden)){grid-template-columns:220px minmax(0,1fr)}
+}
 .settings-field label{display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:5px}
 .settings-field input,.settings-field select{width:100%;height:44px;border:1.5px solid var(--border);border-radius:8px;font-size:15px;padding:0 12px;background:var(--card);color:var(--text);-webkit-appearance:none;appearance:none}
 .settings-field input:focus,.settings-field select:focus{outline:none;border-color:var(--blue)}
