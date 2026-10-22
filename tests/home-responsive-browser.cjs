@@ -64,7 +64,8 @@ let chartSource;
     assert.equal(await page.locator('.home-training-body').evaluate(e=>e.scrollHeight<=e.clientHeight+1),true,'ordinary combined card needs internal scrolling');
     assert.equal(await page.locator('.home-mega,.home-brief,.home-desktop-overview').count(),0);
     assert.ok((await page.locator('.home-widget-session').boundingBox()).height>=360);
-    assert.equal((await page.locator('.home-widget-weather').boundingBox()).height,360);
+    const compact=await page.evaluate(()=>{const hero=document.querySelector('.home-widget-session'),r=hero.getBoundingClientRect(),blue=hero.querySelector('.home-training-strip').getBoundingClientRect().top-r.top;return {actual:document.querySelector('.home-widget-weather').getBoundingClientRect().height,target:r.width>=560?blue:270};});
+    assert.ok(compact.actual>=compact.target-1&&compact.actual<360,'collapsed weather uses the compact height with room for sample guidance: '+JSON.stringify(compact));
    }
    assert.equal(await page.locator('#home-weather-forecast-toggle').getAttribute('aria-expanded'),mode==='mobile'?'true':'false');
    if(mode==='desktop')await page.locator('#home-weather-forecast-toggle').click();

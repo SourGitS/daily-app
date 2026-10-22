@@ -21423,9 +21423,33 @@ function renderMobileWeatherDisclosure(){
   const open=_homeWeatherExpanded[toggle.dataset?.mode||'mobile']!==false;
   toggle.setAttribute('aria-expanded',String(open));
   document.getElementById('home-weather-forecast-toggle-label').textContent=open?'Hide forecast':'Show forecast';
-  // Keep the scene's space while hiding the forecast from sight, focus and assistive technology.
+  // Hidden forecast rows must leave both the keyboard order and assistive technology.
   preview.setAttribute('aria-hidden',String(!open));
   preview.inert=!open;
+}
+let _homeWeatherHeightObserver=null;
+function homeSyncWeatherHeight(){
+  const wrap=document.getElementById('home-content');if(!wrap)return;
+  const hero=wrap.querySelector('.home-widget-session');
+  const strip=hero&&hero.querySelector('.home-training-strip');
+  // Stacked narrow heroes include both sections vertically; using that combined height
+  // would make the weather card grow when its forecast is closed.
+  if(!strip||hero.getBoundingClientRect().width<560){wrap.style.removeProperty('--home-weather-collapsed-height');return;}
+  const height=strip.getBoundingClientRect().top-hero.getBoundingClientRect().top;
+  if(height<=0)return;
+  const value=height+'px';
+  if(wrap.style.getPropertyValue('--home-weather-collapsed-height')!==value)wrap.style.setProperty('--home-weather-collapsed-height',value);
+}
+function homeObserveWeatherHeight(){
+  if(_homeWeatherHeightObserver){_homeWeatherHeightObserver.disconnect();_homeWeatherHeightObserver=null;}
+  homeSyncWeatherHeight();
+  const hero=document.querySelector('#home-content .home-training-body');
+  // Fonts, saved widths and longer workout titles can all change the blue section's height.
+  // Observe the hero only; weather recovery content can grow without feeding back into it.
+  if(hero&&typeof ResizeObserver==='function'){
+    _homeWeatherHeightObserver=new ResizeObserver(homeSyncWeatherHeight);
+    _homeWeatherHeightObserver.observe(hero);
+  }
 }
 function renderMobileWeatherForecast(entry){
   renderMobileWeatherDisclosure();
@@ -22424,6 +22448,7 @@ function renderHome(){
   if(homeEditMode) applyHomeEditMode();
   homePrepareCardLinks();
   applyHomeCardCaps();   // assigns grid spans too
+  homeObserveWeatherHeight();
 
   applyDayColour();
   // Only touch geolocation/network if the widget is actually visible — a hidden card has no

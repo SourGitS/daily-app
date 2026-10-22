@@ -26,7 +26,7 @@ let chartSource;
     }return r.abort();
    });
    const p=await context.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));
-   await p.goto('http://127.0.0.1:'+server.address().port+'/tests/sync-browser.html?preview&ui=journal&finance-links');
+   await p.goto('http://127.0.0.1:'+server.address().port+'/tests/sync-browser.html?preview&ui=journal&finance-links&accent=006CCF');
    await p.waitForFunction(()=>typeof _cloudWorkoutReady!=='undefined'&&_cloudWorkoutReady&&S.view==='budget'&&budgetView==='accounts');
    await p.evaluate(theme=>{
     obDismiss();dailyUpdateDismiss();profileData.budgetRhythmSeen=2;S.theme=theme;applyTheme();
@@ -42,9 +42,10 @@ let chartSource;
    for(const composition of (width>=1024?['dashboard','grid']:['mobile'])){
     if(width>=1024)await p.evaluate(composition=>{const l=homeLayout('desktop');saveHomeLayout({...l,composition},'desktop');renderHome();},composition);
     const before=await p.evaluate(snapshot);
-    for(const state of ['fresh','stale','sample','long error','empty']){
+    for(const state of ['fresh','old observations','stale','sample','long error','empty']){
      await p.evaluate(state=>{
       overflowWeather.fetchedAt=Date.now()-(state==='stale'||state==='long error'?5*36e5:0);
+      overflowWeather.observedAt=Date.now()-(state==='old observations'?15*36e5:0);
       overflowWeather.placeholder=state==='sample';
       _weatherStatus={state:state==='stale'||state==='long error'?'error':'idle',message:''};
       renderWeatherInto(overflowWeather);
@@ -91,10 +92,31 @@ let chartSource;
       }
       await p.evaluate(()=>homeToggleWeatherForecast());
       assert.equal(await p.locator('#home-weather-forecast-toggle').getAttribute('aria-expanded'),'false');
+      if(width>=1024){
+       const closed=await p.evaluate(()=>{const hero=document.querySelector('.home-widget-session'),r=hero?.getBoundingClientRect(),card=document.querySelector('.home-weather-card'),weather=card.getBoundingClientRect();return {weather:weather.height,width:weather.width,heroWidth:r?.width,target:r?.width>=560?hero.querySelector('.home-training-strip').getBoundingClientRect().top-r.top:270,controlsBottom:card.querySelector('.weather-mobile-controls').getBoundingClientRect().bottom,cardBottom:weather.bottom};});
+       assert.ok(closed.weather>=closed.target-1,'collapsed weather must retain the compact minimum');
+       assert.ok(closed.controlsBottom<=closed.cardBottom+1,'collapsed controls must remain visible');
+       if(closed.heroWidth>=560&&closed.width>=360&&['fresh','old observations','stale'].includes(state))assert.ok(Math.abs(closed.weather-closed.target)<1.1,'ordinary collapsed weather should match the blue section: '+JSON.stringify(closed));
+       if(width===1920&&theme==='dark'&&composition==='dashboard'&&state==='old observations'&&period==='today'){
+        const clip=await p.evaluate(()=>{const h=document.querySelector('.home-widget-session').getBoundingClientRect(),w=document.querySelector('.home-weather-card').getBoundingClientRect();return {x:Math.min(h.left,w.left),y:Math.min(h.top,w.top),width:Math.max(h.right,w.right)-Math.min(h.left,w.left),height:Math.max(h.bottom,w.bottom)-Math.min(h.top,w.top)};});
+        await p.screenshot({path:path.join(root,'temp-analysis/weather-v404-collapsed.png'),clip});
+       }
+      }
       await p.evaluate(()=>homeToggleWeatherForecast());
      }
     }
     assert.deepEqual(await p.evaluate(snapshot),before,'forecast changed saved data');
+   }
+   if(width===1920){
+    const before=await p.evaluate(snapshot);
+    await p.evaluate(()=>{overflowWeather.fetchedAt=Date.now();overflowWeather.observedAt=Date.now();overflowWeather.placeholder=false;_weatherStatus={state:'idle',message:''};renderWeatherInto(overflowWeather);if(document.getElementById('home-weather-forecast-toggle').getAttribute('aria-expanded')==='true')homeToggleWeatherForecast();window.heightTestTitle=document.getElementById('hero-day-name').textContent;window.heightTestBefore=document.querySelector('.home-weather-card').getBoundingClientRect().height;const title=document.getElementById('hero-day-name');title.textContent='A much longer saved workout name';title.style.fontSize='80px';});
+    await p.waitForFunction(()=>{const hero=document.querySelector('.home-widget-session'),blue=hero.querySelector('.home-training-strip').getBoundingClientRect().top-hero.getBoundingClientRect().top,weather=document.querySelector('.home-weather-card').getBoundingClientRect().height;return blue>heightTestBefore+10&&Math.abs(blue-weather)<1.1;});
+    const tall=await p.locator('.home-weather-card').boundingBox();await p.evaluate(()=>homeToggleWeatherForecast());assert.ok((await p.locator('.home-weather-card').boundingBox()).height>=tall.height-1,'opening a forecast must not shorten a tall card');
+    await p.evaluate(()=>{const title=document.getElementById('hero-day-name');title.textContent=heightTestTitle;title.style.fontSize='';homeToggleWeatherForecast();});
+    await p.waitForFunction(()=>Math.abs(document.querySelector('.home-weather-card').getBoundingClientRect().height-heightTestBefore)<1.1);
+    await p.setViewportSize({width:1440,height:950});await p.setViewportSize({width:1920,height:950});
+    await p.waitForFunction(()=>{const hero=document.querySelector('.home-widget-session'),blue=hero.querySelector('.home-training-strip').getBoundingClientRect().top-hero.getBoundingClientRect().top;return Math.abs(document.querySelector('.home-weather-card').getBoundingClientRect().height-blue)<1.1;});
+    assert.deepEqual(await p.evaluate(snapshot),before,'measuring and resizing must not save records');
    }
    assert.deepEqual(errors,[]);console.log('PASS weather',width,theme);await context.close();
   }

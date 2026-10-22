@@ -1,5 +1,28 @@
 # Daily — Agent Handoff
 
+## v404 compact collapsed desktop weather — 2026-10-22
+
+- Francois requested that weather, with its forecast hidden, match the blue section of the
+  hero rather than extending alongside Last 7 days. This supersedes v400's 360px minimum
+  for the collapsed desktop state. Expanded forecasts retain their full, scroll-free layout.
+- A local CSS height follows the actual blue section on wide desktop cards. A ResizeObserver
+  watches only the hero, reconnects after rendering and reacts to fonts, widths and title
+  changes without writing records. Narrow stacked/absent heroes use a compact 270px minimum.
+  Weather recovery/location content may grow naturally rather than clipping controls. The
+  expanded minimum is at least 360px or the measured blue height, avoiding reverse resizing
+  for unusually tall titles. Forecast state remains in memory through existing controls.
+- Compact feedback spacing keeps routine stale-reading notices and Retry visible. Scenery
+  artwork/selection are unchanged; its collapsed frame stays anchored at the previous 80px
+  top so the lower water is cropped instead of shifting landmarks upward. Phone Home,
+  layouts, fetch/location rules, financial writers, storage and Firebase remain unchanged.
+- Cache daily-v404. All 629 Node checks pass. The production-font weather suite covers both
+  themes, Grid/Dashboard, 320/390/768/1023/1024/1100/1280/1440/1920px, fresh/old-observation/
+  stale/sample/long-error/unavailable states and both forecast periods. It checks exact
+  ordinary wide-card height, retained controls, complete forecasts without inner scrolling,
+  observer updates after title/resize changes and unchanged saved data. The Home responsive
+  suite passes 320–1920px and all visibility combinations. All data are synthetic; physical
+  Safari and production Firebase remain unverified. Standing commit/push authorisation applies.
+
 ## v403 quieter combined Home controls and status — 2026-10-22
 
 - Francois requested better styling for Customise and the On track badge. Combined desktop

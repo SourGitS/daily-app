@@ -291,9 +291,10 @@
 }
 /* Keep the usual footprint, but let a full forecast or recovery message contribute its
    natural height. A fixed 360px chain used to squeeze the forecast into an inner scroller. */
-#view-home .home-card:has(>.home-widget-weather){height:auto;min-height:360px}
-#view-home .home-card>.home-widget-weather{height:auto;min-height:360px;border:0;box-shadow:none;isolation:isolate;color:white}
-#view-home .home-widget-weather>.home-weather-card{position:relative;display:flex;flex-direction:column;flex:1;padding:18px 18px 0;min-height:360px;height:auto;margin:0;border:0;border-radius:var(--radius-card);box-shadow:none;overflow:hidden;width:100%;box-sizing:border-box;--wfx-fall-n:5;--wfx-snow-n:4}
+#view-home .home-card:has(>.home-widget-weather){--home-weather-min-height:max(360px,var(--home-weather-collapsed-height,270px));height:auto;min-height:var(--home-weather-min-height)}
+#view-home .home-card:has(>.home-widget-weather .weather-forecast-toggle[aria-expanded="false"]){--home-weather-min-height:var(--home-weather-collapsed-height,270px)}
+#view-home .home-card>.home-widget-weather{height:auto;min-height:var(--home-weather-min-height);border:0;box-shadow:none;isolation:isolate;color:white}
+#view-home .home-widget-weather>.home-weather-card{position:relative;display:flex;flex-direction:column;flex:1;padding:18px 18px 0;min-height:var(--home-weather-min-height);height:auto;margin:0;border:0;border-radius:var(--radius-card);box-shadow:none;overflow:hidden;width:100%;box-sizing:border-box;--wfx-fall-n:5;--wfx-snow-n:4}
 #view-home .home-widget-weather .home-weather-card::before,#view-home .home-widget-weather .home-weather-card::after{display:none}
 #view-home .home-widget-weather .weather-fx,#view-home .home-widget-weather .weather-legibility{border-radius:0;box-shadow:none}
 #view-home .home-widget-weather .weather-content{display:block;flex:none;min-width:0}
@@ -358,6 +359,10 @@
 #view-home .home-widget-weather .weather-meta{grid-column:1/-1;font-size:12px;line-height:1.6;margin:2px 0 0;letter-spacing:0}
 #view-home .home-widget-weather .weather-right{row-gap:6px}
 #view-home .home-widget-weather .weather-feedback{margin-top:12px;row-gap:7px}
+#view-home .home-widget-weather:has(.weather-forecast-toggle[aria-expanded="false"]) .weather-feedback{margin-top:8px;row-gap:4px}
+#view-home .home-widget-weather:has(.weather-forecast-toggle[aria-expanded="false"]) .weather-forecast-dock{margin-top:4px}
+/* Collapsing removes the lower water area without shifting the landmarks behind the text. */
+#view-home .home-widget-weather:has(.weather-forecast-toggle[aria-expanded="false"]) .weather-landscape>svg{top:80px;bottom:auto}
 #view-home .home-widget-weather .weather-freshness{font-size:12px;line-height:1.5}
 #view-home .home-widget-weather .weather-notice{font-size:12px;line-height:1.5}
 #view-home .home-widget-weather :is(.weather-retry,.weather-use-location,.weather-forecast-retry)[hidden]{display:none!important}

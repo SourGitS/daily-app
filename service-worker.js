@@ -415,7 +415,8 @@
 // v401: use the combined overview's header space and align its workout/expense actions.
 // v402: give the combined Home actions matching dimensions and typography.
 // v403: quieter overview Customise control and inline budget status.
-const CACHE_NAME = 'daily-v403';
+// v404: collapse desktop weather to the blue overview height while retaining full forecasts.
+const CACHE_NAME = 'daily-v404';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
