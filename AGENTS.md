@@ -1,5 +1,23 @@
 # Daily — Agent Handoff
 
+## v401 combined Home spacing and aligned actions — 2026-10-22
+
+- Francois requested using the empty space above Budget and aligning Open workout and Add
+  expense. His standing instruction to commit and push completed Daily updates applies.
+- In wide combined Training/Budget cards, Budget now spans the date/header row. Its heading
+  fills the former gap, with reserved room for the existing Customise control. That control
+  remains above Budget's native destination link. Workout and expense/setup actions share
+  the same bottom edge. Normal cards retain their usual minimum 360px footprint; long titles
+  or review content can expand naturally rather than overlapping the dark Last 7 days footer.
+- CSS only: phone Home, narrow stacked combined cards, standalone cards, saved layouts,
+  weather, all calculations and record writers are unchanged. Cache daily-v401.
+- All 629 Node checks pass. Production-font synthetic geometry checks cover Grid/Dashboard,
+  normal/negative/no-goal/unknown/setup budgets, short and long workout titles, both themes
+  and 1024/1100/1280/1440/1920px. They verify filled header space, aligned buttons, containment,
+  Customise hit targets, existing actions and unchanged saved data. The existing Home suite
+  also passes 320–1920px, both themes and all eight visibility combinations. No real records
+  are accessed. Physical iPhone/Safari and production Firebase remain unverified.
+
 ## v400 full weather forecast without inner scrolling — release authorised, 2026-10-22
 
 - Francois showed a remaining vertical forecast scrollbar after v399. This continues the

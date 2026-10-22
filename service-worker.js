@@ -412,7 +412,8 @@
 // v398: expense calculator, paired desktop layout columns and five phone tabs.
 // v399: reliable mobile gestures, native editing and a fitted phone forecast without inner scrolling.
 // v400: let the desktop weather forecast and recovery messages fit without internal scrollbars.
-const CACHE_NAME = 'daily-v400';
+// v401: use the combined overview's header space and align its workout/expense actions.
+const CACHE_NAME = 'daily-v401';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
