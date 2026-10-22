@@ -1,5 +1,18 @@
 # Daily — Agent Handoff
 
+## v402 matching combined Home action buttons — 2026-10-22
+
+- Francois liked the filled header and aligned actions but pointed out that the buttons
+  still differed. Both combined-card actions now share one CSS rule: 152px wide (capped to
+  available space), 44px high, identical typography, padding, colours, border and corners.
+  This applies to wide and stacked desktop combined cards. Existing labels, destinations,
+  date/Customise placement and bottom alignment remain. Phone/standalone styles are retained.
+- Cache daily-v402. All 629 Node checks pass. The overview browser suite checks equal
+  dimensions and computed styles in both themes, Grid/Dashboard and every budget state at
+  1024/1100/1280/1440/1920px. Existing action/containment/data-preservation assertions remain.
+  The Home responsive suite covers 320–1920px and all visibility combinations. Synthetic
+  data only; no financial/storage changes. Standing commit/push authorisation applies.
+
 ## v401 combined Home spacing and aligned actions — 2026-10-22
 
 - Francois requested using the empty space above Budget and aligning Open workout and Add
