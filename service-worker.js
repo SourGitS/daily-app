@@ -416,7 +416,8 @@
 // v402: give the combined Home actions matching dimensions and typography.
 // v403: quieter overview Customise control and inline budget status.
 // v404: collapse desktop weather to the blue overview height while retaining full forecasts.
-const CACHE_NAME = 'daily-v404';
+// v405: align the expanded weather card with the full overview, including Last 7 days.
+const CACHE_NAME = 'daily-v405';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —

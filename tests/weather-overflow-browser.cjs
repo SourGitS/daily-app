@@ -86,7 +86,16 @@ let chartSource;
       }
       assert.ok(geometry.controls.b<=geometry.card.b+1,label+' hides forecast controls');
       assert.ok(geometry.card.b<=geometry.wrapper.b+1,label+' escapes its Home layout slot');
-      if(width===1440&&state==='fresh')assert.equal(geometry.card.h,360,label+' unnecessarily enlarged an ordinary card');
+      if(width>=1024){
+       const hero=await p.locator('.home-widget-session').boundingBox();
+       const target=hero.width>=560?hero.height:360;
+       assert.ok(geometry.card.h>=target-1,label+' must retain the full hero height when open');
+       if(hero.width>=560&&geometry.card.r-geometry.card.l>=360&&['fresh','old observations'].includes(state))assert.ok(Math.abs(geometry.card.h-target)<1.1,label+' must align with the full hero: '+JSON.stringify({weather:geometry.card.h,target}));
+      }
+      if(width===1920&&theme==='dark'&&composition==='dashboard'&&state==='old observations'){
+       const clip=await p.evaluate(()=>{const h=document.querySelector('.home-widget-session').getBoundingClientRect(),w=document.querySelector('.home-weather-card').getBoundingClientRect();return {x:Math.min(h.left,w.left),y:Math.min(h.top,w.top),width:Math.max(h.right,w.right)-Math.min(h.left,w.left),height:Math.max(h.bottom,w.bottom)-Math.min(h.top,w.top)};});
+       await p.screenshot({path:path.join(root,'temp-analysis/weather-v405-open-'+period+'.png'),clip});
+      }
       if(width===1440&&theme==='dark'&&composition==='dashboard'&&state==='stale'&&period==='today'){
        await p.locator('.home-weather-card').screenshot({path:path.join(root,'temp-analysis/weather-overflow-after.png')});
       }
@@ -112,6 +121,7 @@ let chartSource;
     await p.evaluate(()=>{overflowWeather.fetchedAt=Date.now();overflowWeather.observedAt=Date.now();overflowWeather.placeholder=false;_weatherStatus={state:'idle',message:''};renderWeatherInto(overflowWeather);if(document.getElementById('home-weather-forecast-toggle').getAttribute('aria-expanded')==='true')homeToggleWeatherForecast();window.heightTestTitle=document.getElementById('hero-day-name').textContent;window.heightTestBefore=document.querySelector('.home-weather-card').getBoundingClientRect().height;const title=document.getElementById('hero-day-name');title.textContent='A much longer saved workout name';title.style.fontSize='80px';});
     await p.waitForFunction(()=>{const hero=document.querySelector('.home-widget-session'),blue=hero.querySelector('.home-training-strip').getBoundingClientRect().top-hero.getBoundingClientRect().top,weather=document.querySelector('.home-weather-card').getBoundingClientRect().height;return blue>heightTestBefore+10&&Math.abs(blue-weather)<1.1;});
     const tall=await p.locator('.home-weather-card').boundingBox();await p.evaluate(()=>homeToggleWeatherForecast());assert.ok((await p.locator('.home-weather-card').boundingBox()).height>=tall.height-1,'opening a forecast must not shorten a tall card');
+    assert.ok(Math.abs((await p.locator('.home-weather-card').boundingBox()).height-(await p.locator('.home-widget-session').boundingBox()).height)<1.1,'open weather must follow the full height of a longer hero');
     await p.evaluate(()=>{const title=document.getElementById('hero-day-name');title.textContent=heightTestTitle;title.style.fontSize='';homeToggleWeatherForecast();});
     await p.waitForFunction(()=>Math.abs(document.querySelector('.home-weather-card').getBoundingClientRect().height-heightTestBefore)<1.1);
     await p.setViewportSize({width:1440,height:950});await p.setViewportSize({width:1920,height:950});

@@ -1,5 +1,25 @@
 # Daily — Agent Handoff
 
+## v405 expanded weather aligned with the full hero — 2026-10-22
+
+- Francois requested that open weather align with the hero's bottom including Last 7 days,
+  while retaining the closed card's blue-section alignment. The existing local observer now
+  measures both heights, watches both the hero body and its outer card, and clears both CSS
+  values for narrow/absent heroes. Narrow fallback remains 270px closed / 360px open.
+- Normal Today and Week forecasts, including old-observation notices, fit the full desktop
+  hero height. Reduced gaps/padding provide room without shrinking fonts or icons; forecast
+  controls keep 44px targets. Recovery/location/long-error content can still expand naturally
+  rather than being clipped or put inside a scrollbar. Existing scenery, disclosure state,
+  compact closed framing, saved arrangements and phone styling are retained.
+- Cache daily-v405. All 629 Node checks pass. The production-font weather suite checks both
+  themes, Grid/Dashboard, 320–1920px, both periods and all six weather states; ordinary open
+  cards match the full hero, closed cards match its blue section, and every forecast row and
+  control remains visible. Longer-title/resize checks verify observer updates and full-height
+  alignment. The Home responsive suite also passes all widths/themes/visibility combinations.
+  All browser records are synthetic; no fetching, financial/storage writers or Firebase
+  settings change. Physical Safari/production Firebase remain unverified. Standing commit/
+  push authorisation applies; local screenshots stay ignored.
+
 ## v404 compact collapsed desktop weather — 2026-10-22
 
 - Francois requested that weather, with its forecast hidden, match the blue section of the

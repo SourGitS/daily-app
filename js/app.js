@@ -21434,11 +21434,15 @@ function homeSyncWeatherHeight(){
   const strip=hero&&hero.querySelector('.home-training-strip');
   // Stacked narrow heroes include both sections vertically; using that combined height
   // would make the weather card grow when its forecast is closed.
-  if(!strip||hero.getBoundingClientRect().width<560){wrap.style.removeProperty('--home-weather-collapsed-height');return;}
-  const height=strip.getBoundingClientRect().top-hero.getBoundingClientRect().top;
+  if(!strip||hero.getBoundingClientRect().width<560){
+    wrap.style.removeProperty('--home-weather-collapsed-height');
+    wrap.style.removeProperty('--home-weather-expanded-height');return;
+  }
+  const rect=hero.getBoundingClientRect(),height=strip.getBoundingClientRect().top-rect.top;
   if(height<=0)return;
-  const value=height+'px';
-  if(wrap.style.getPropertyValue('--home-weather-collapsed-height')!==value)wrap.style.setProperty('--home-weather-collapsed-height',value);
+  for(const [name,value] of [['--home-weather-collapsed-height',height+'px'],['--home-weather-expanded-height',rect.height+'px']]){
+    if(wrap.style.getPropertyValue(name)!==value)wrap.style.setProperty(name,value);
+  }
 }
 function homeObserveWeatherHeight(){
   if(_homeWeatherHeightObserver){_homeWeatherHeightObserver.disconnect();_homeWeatherHeightObserver=null;}
@@ -21449,6 +21453,7 @@ function homeObserveWeatherHeight(){
   if(hero&&typeof ResizeObserver==='function'){
     _homeWeatherHeightObserver=new ResizeObserver(homeSyncWeatherHeight);
     _homeWeatherHeightObserver.observe(hero);
+    const card=hero.closest('.home-widget-session');if(card)_homeWeatherHeightObserver.observe(card);
   }
 }
 function renderMobileWeatherForecast(entry){
