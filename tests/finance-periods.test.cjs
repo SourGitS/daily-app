@@ -29,6 +29,11 @@ test('budget keeps the original phone unknown amount and desktop guidance',()=>{
   money={...money,available:0,incomplete:false,allocationReview:false};
   assert.match(c.budPeriodHomeCard('desktop'),/card-fig">\$0/);
   assert.equal(c.budPeriodHomeCard('desktop'),c.budPeriodHomeCard('mobile'));
+  const snapshot=JSON.stringify(money),combined=c.budPeriodHomeCard('combined');
+  assert.match(combined,/<\/header>[\s\S]*home-budget-inline-status/);
+  assert.equal((combined.match(/On track/g)||[]).length,1);
+  assert.doesNotMatch(c.budPeriodHomeCard('mobile'),/home-budget-inline-status/);
+  assert.equal(JSON.stringify(money),snapshot);
 });
 test('one fortnightly payday funds both calendar weeks, through the DST boundary',()=>{
   const c=context(),cfg={frequency:'fortnightly',anchor:'2026-10-02'};

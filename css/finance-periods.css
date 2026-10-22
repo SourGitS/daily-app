@@ -242,6 +242,12 @@
 #view-home .home-training-budget .tstat{font-size:9px;color:#dcf8e8;background:rgba(8,40,28,.3);border-color:rgba(220,248,232,.25)}
 #view-home .home-training-budget .tstat.warn{color:#ffe2bb;background:rgba(45,25,8,.3);border-color:rgba(255,226,187,.25)}
 #view-home .home-training-budget .tstat.neg{color:#ffdad4;background:rgba(50,13,8,.3);border-color:rgba(255,218,212,.25)}
+#view-home .home-training-budget .home-budget-availability{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;margin-top:6px}
+#view-home .home-training-budget .home-budget-availability .card-fig-u{margin:0}
+#view-home .home-training-budget .home-budget-inline-status{display:inline-flex;align-items:center}
+#view-home .home-training-budget .home-budget-inline-status .tstat{padding:0;border:0;border-radius:0;background:none;font-size:11px;line-height:1.5;font-weight:650;gap:4px}
+#view-home .home-training-body.has-budget .home-customise-action.is-icon{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border:0;border-radius:10px;background:none;color:rgba(255,255,255,.75)}
+#view-home .home-training-body.has-budget .home-customise-action.is-icon:hover{background:rgba(255,255,255,.09);color:white}
 #view-home .home-training-budget .home-budget-totals{gap:10px;align-items:flex-start;flex-wrap:wrap}
 #view-home .home-training-budget .card-fig{font:600 30px/1.1 var(--font-num);letter-spacing:-1px;color:white;overflow-wrap:anywhere}
 #view-home .home-training-budget .card-fig-u{display:block;font-size:11px;line-height:1.5;color:rgba(255,255,255,.8);margin:3px 0 0}
@@ -270,10 +276,10 @@
   #view-home .home-training-body.has-budget{grid-template-rows:auto minmax(min-content,1fr)}
   #view-home .home-training-body.has-budget>.home-overview-tools{display:contents}
   #view-home .home-training-body.has-budget>.home-overview-tools h2{grid-area:1/1;align-self:center}
-  #view-home .home-training-body.has-budget>.home-overview-tools .home-customise-action{grid-area:1/2;justify-self:end;align-self:start;position:relative;z-index:3;width:88px}
+  #view-home .home-training-body.has-budget>.home-overview-tools .home-customise-action{grid-area:1/2;justify-self:end;align-self:start;position:relative;z-index:3}
   #view-home .home-training-body.has-budget>.home-training-focus{grid-area:2/1}
   #view-home .home-training-body.has-budget>.home-training-budget{grid-column:2;grid-row:1/span 2}
-  #view-home .home-training-body.has-budget .home-training-budget .card-hd{min-height:44px;box-sizing:border-box;padding-right:100px;align-items:center}
+  #view-home .home-training-body.has-budget .home-training-budget .card-hd{min-height:44px;box-sizing:border-box;padding-right:56px;align-items:center}
   #view-home .home-training-body.has-budget .home-training-focus p{margin-bottom:20px}
   #view-home .home-training-body.has-budget .home-training-action{margin-top:auto}
   #view-home .home-training-body.has-budget .home-training-budget>.card>.home-budget-add-labelled{align-self:flex-start;margin-top:auto}

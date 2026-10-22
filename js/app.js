@@ -22368,7 +22368,8 @@ function renderHome(){
   const _homeLayout=homeLayout(_homeMode);
   const _visibleIds=effectiveHomeWidgetIds(homeCards,_homeMode).filter(k=>homeCards[k]);
   const _combineBudget=_homeMode==='desktop'&&_visibleIds.includes('session')&&_visibleIds.includes('budget');
-  if(_combineBudget)homeCards.session=buildHomeTrainingCard(heroBrief,homeCards.budget);
+  if(_combineBudget)homeCards.session=buildHomeTrainingCard(heroBrief,
+    typeof budPeriodHomeCard==='function'?budPeriodHomeCard('combined'):homeCards.budget);
   const _homeIds=homePresentedWidgetIds(_visibleIds,_homeMode);
   const _heading=(typeof dailyUpdateBannerHtml==='function'?'<div id="home-update-announcement">'+dailyUpdateBannerHtml()+'</div>':'')+
     (_homeMode==='mobile'?buildHomePhoneOverview(homeCards,_visibleIds,{...heroBrief,
@@ -22446,15 +22447,16 @@ function buildHomeWidget(id,content,mode='desktop'){
   return '<div class="home-widget home-widget-'+id+'">'+content+'</div>';
 }
 function buildHomeTrainingCard(brief,budget=''){
-  return '<div class="home-training-body'+(budget?' has-budget':'')+'">'+(brief.date?homeOverviewTools(brief.date):'')+
+  return '<div class="home-training-body'+(budget?' has-budget':'')+'">'+(brief.date?homeOverviewTools(brief.date,!!budget):'')+
     '<div class="home-training-focus"><div class="bp-eyebrow">'+escText(brief.eyebrow)+'</div>'+
     '<h2 id="hero-day-name">'+escText(brief.title)+'</h2><p id="hero-meta">'+escText(brief.meta)+'</p>'+
     '<button type="button" class="home-training-action" onclick="setView(\'log\')">'+escText(brief.action)+' →</button></div>'+
     (budget?'<div class="home-training-budget" data-embedded-widget="budget">'+budget+'</div>':'')+'</div>'+homeTrainingStrip();
 }
-function homeOverviewTools(date){
+function homeOverviewTools(date,compact=false){
   return '<header class="home-overview-tools"><h2>'+escText(date)+'</h2>'+
-    '<button type="button" class="home-customise-action" onclick="openHomeLayoutEditor()" aria-label="Customise Home">Customise</button></header>';
+    '<button type="button" class="home-customise-action'+(compact?' is-icon':'')+'" onclick="openHomeLayoutEditor()" aria-label="Customise Home" title="Customise Home">'+
+    (compact?'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h3m4 0h9M4 12h9m4 0h3M4 18h2m4 0h10"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="8" cy="18" r="2"/></svg>':'Customise')+'</button></header>';
 }
 function homeBriefRows(visible,remaining){
   const rows=[];

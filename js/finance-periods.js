@@ -425,9 +425,11 @@ function budPeriodHomeCard(mode){
       '<div class="home-budget-footer"><button class="home-budget-add-labelled" onclick="openTxnModal({date:getLocalDate()})">＋ Add expense</button></div></div>';
   }
   const goal=Number(m.record.goal)||0;
+  const status=m.available===null?tstat('warn','Needs a date check','info',true):m.available<0?tstat('neg','Over budget','alert',true):tstat('pos','On track','check',true);
   return '<div class="card budget-snapshot-card home-budget-card">'+homeBudgetDestination()+cardHeader('wallet','Budget · '+budPeriodLabel(m.range),
-    m.available===null?tstat('warn','Needs a date check','info',true):m.available<0?tstat('neg','Over budget','alert',true):tstat('pos','On track','check',true))+
-    '<div class="home-budget-totals"><div><div class="card-fig">'+(m.available===null?'—':fmtMoneyExact(m.available))+'</div><div class="card-fig-u">Available to spend</div></div>'+
+    mode==='combined'?'':status)+
+    '<div class="home-budget-totals"><div><div class="card-fig">'+(m.available===null?'—':fmtMoneyExact(m.available))+'</div>'+
+    (mode==='combined'?'<div class="home-budget-availability"><div class="card-fig-u">Available to spend</div><span class="home-budget-inline-status">'+status+'</span></div>':'<div class="card-fig-u">Available to spend</div>')+'</div>'+
     '<div class="home-budget-received"><strong>'+fmtMoneyExact(m.income)+'</strong><span>Income received</span></div></div>'+
     (m.incomplete?'<p class="card-cap">Review overlapping weekly totals</p>':'')+
     '<div class="home-budget-spending"><span>Spending goal</span><strong>'+fmtMoneyExact(m.spent)+(goal?' / '+fmtMoneyExact(goal):' spent')+'</strong></div>'+

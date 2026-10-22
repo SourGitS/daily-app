@@ -414,7 +414,8 @@
 // v400: let the desktop weather forecast and recovery messages fit without internal scrollbars.
 // v401: use the combined overview's header space and align its workout/expense actions.
 // v402: give the combined Home actions matching dimensions and typography.
-const CACHE_NAME = 'daily-v402';
+// v403: quieter overview Customise control and inline budget status.
+const CACHE_NAME = 'daily-v403';
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —

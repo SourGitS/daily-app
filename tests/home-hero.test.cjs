@@ -118,6 +118,8 @@ test('combined training reuses Budget content once above the real dark history f
   assert.ok(html.indexOf('home-overview-tools')<html.indexOf('home-training-focus'));
   assert.ok(html.indexOf('Existing money and actions')<html.indexOf('home-training-strip'));
   assert.match(html,/data-embedded-widget="budget"/);assert.match(html,/aria-label="Customise Home"/);
+  assert.match(html,/home-customise-action is-icon/);assert.match(html,/title="Customise Home"/);
+  assert.doesNotMatch(ctx.buildHomeTrainingCard(brief),/home-customise-action is-icon/);
 });
 
 test('Home Finance link still opens current Week through its existing entry point',()=>{

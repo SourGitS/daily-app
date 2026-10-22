@@ -1,5 +1,24 @@
 # Daily — Agent Handoff
 
+## v403 quieter combined Home controls and status — 2026-10-22
+
+- Francois requested better styling for Customise and the On track badge. Combined desktop
+  cards now use a small sliders icon with a 44px target, accessible Customise Home name,
+  native tooltip, hover treatment and focus outline. The filled header needs only 56px of
+  reserved room. Standalone and phone Customise controls retain their text labels.
+- The combined Budget presentation places its existing status beside Available to spend,
+  using readable inline text/checkmark without a pill border or background. Negative budgets
+  retain Over budget wording and their semantic colour. Unknown/setup guidance is retained.
+  budPeriodHomeCard('combined') changes markup only; existing money readers, calculations,
+  stores and writers are unchanged. Phone and standalone Budget markup remain as before.
+- The matching action buttons, filled header and dark history footer remain. Cache v403.
+  All 629 Node checks pass. The production-font overview suite passes 1024/1100/1280/1440/
+  1920px in both themes, both arrangements and all five budget states: status placement,
+  styling, accessible icon/hit target, matching buttons, alignment, actions and unchanged
+  records. The Home responsive suite passes 320–1920px with all visibility combinations.
+  Synthetic data only; physical Safari and production Firebase remain unverified. Standing
+  commit/push authorisation applies. Review screenshots/fixtures remain ignored.
+
 ## v402 matching combined Home action buttons — 2026-10-22
 
 - Francois liked the filled header and aligned actions but pointed out that the buttons
