@@ -2444,7 +2444,9 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .acct-records[open]>summary{margin-bottom:4px}
 .acct-goal-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
 .acct-goal-heading strong{font-family:var(--font-num);font-weight:700}
-.acct-savings-check .card-fig{margin-top:6px}
+.acct-savings-check{margin:14px 0;padding:4px 0;border-top:1px solid var(--border);color:var(--muted)}
+.acct-savings-check[open]{color:var(--text)}
+.acct-savings-check p{font-size:13px;line-height:1.5}
 .acct-check-actions{margin-top:14px}
 .acct-savings-check .acct-records{margin-top:12px;padding-top:2px}
 .acct-savings-check .acct-records p{font-size:12px}

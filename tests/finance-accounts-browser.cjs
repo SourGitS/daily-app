@@ -65,8 +65,9 @@ const keys=['daily_transactions','daily_ledger','daily_budget','daily_budget_cyc
       await page.getByRole('button',{name:'Check balances',exact:true}).click();await page.locator('[data-check-account="cash"]').fill('1100');await page.locator('[data-check-account="savings"]').fill('525');await fit();
       if(width===390)await page.screenshot({path:path.join(root,'temp-analysis/finance-checkin-'+theme+'.png')});
       await page.getByRole('button',{name:'Save checked balances',exact:true}).click();assert.deepEqual((await read()).balances,[1100,525,645]);
-      assert.match(await page.locator('#accounts-savers-reconcile').innerText(),/Checked today/);
-      await page.locator('#accounts-savers-reconcile').getByText('Balance details',{exact:true}).click();assert.match(await page.locator('#accounts-savers-reconcile').innerText(),/check is complete/);
+      assert.equal(await page.locator('#accounts-savers-reconcile details').getAttribute('open'),null);
+      assert.equal(await page.locator('#accounts-savers-reconcile .card-fig').count(),0);
+      await page.locator('#accounts-savers-reconcile summary').click();assert.match(await page.locator('#accounts-savers-reconcile').innerText(),/check is complete/);
       await page.locator('#accounts-savers-reconcile').getByRole('button',{name:'Check again',exact:true}).click();assert.equal(await page.locator('[data-check-account]').count(),1);assert.match(await dialog.innerText(),/Savings balance check/);await page.getByRole('button',{name:'Cancel',exact:true}).click();
       // After checking the bank balance, a payment cannot be reversed over that newer snapshot.
       await page.getByText('Repayments (2)',{exact:true}).click();await page.getByRole('button',{name:'Review / void',exact:true}).click();await page.locator('#fin-payment-void-confirm').check();await page.getByRole('button',{name:'Void repayment',exact:true}).click();assert.match(await page.locator('#acct-tools-error').innerText(),/confirmed/);assert.deepEqual((await read()).balances,[1100,525,645]);
@@ -89,6 +90,17 @@ const keys=['daily_transactions','daily_ledger','daily_budget','daily_budget_cyc
         await page.evaluate(()=>{let list=loadAccounts();const card=list.find(a=>a.id==='card');card.repayments=card.repayments.map(p=>p.status==='pending'?{...p,status:'failed'}:p);list=acctFinPaymentBuild(list,{accountId:'card',id:'credit-payment',date:getLocalDate(),amount:'745',from:'cash',status:'posted',statementId:acctCurrentStatement(card).id,applied:'400',updateBalances:true});saveAccounts(list);openAccounts();accountMarkPaid('card');});
         assert.equal(await page.locator('#acct-statement-remaining').inputValue(),'-100.00');await page.evaluate(()=>accountConfirmStatement());assert.equal((await read()).balances[2],-100);
       }
+      // Archive a nonzero savings account from the same dialog that previously rejected it.
+      const archiveBefore=await page.evaluate(()=>loadAccounts().find(a=>a.id==='savings'));
+      await page.evaluate(()=>acctFinArchiveOpen('savings'));assert.match(await dialog.innerText(),/recorded balance of \$525/);
+      await page.getByRole('button',{name:'Cancel',exact:true}).click();assert.deepEqual(await page.evaluate(()=>loadAccounts().find(a=>a.id==='savings')),archiveBefore);
+      await page.evaluate(()=>acctFinArchiveOpen('savings'));await page.getByRole('button',{name:'Archive account',exact:true}).click();
+      const archived=await page.evaluate(()=>loadAccounts().find(a=>a.id==='savings'));assert.ok(archived.archivedAt);assert.equal(archived.current,525);assert.deepEqual(archived.history,archiveBefore.history);
+      assert.equal(await page.locator('.acct-account-card[data-account="savings"]').count(),0);
+      await page.getByText('Archived accounts (1)',{exact:true}).click();await page.getByRole('button',{name:'Restore',exact:true}).click();
+      await page.getByRole('button',{name:'Restore account',exact:true}).click();const restored=await page.evaluate(()=>loadAccounts().find(a=>a.id==='savings'));
+      assert.equal(restored.archivedAt,undefined);assert.equal(restored.current,525);assert.deepEqual(restored.history,archiveBefore.history);
+      assert.equal(await page.locator('.acct-account-card[data-account="savings"]').count(),1);
       assert.deepEqual(errors,[]);console.log(`Complete Finance assertions passed ${width}px ${theme}`);await context.close();
     }
   }finally{await browser.close();server.close();}

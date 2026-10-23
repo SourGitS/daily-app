@@ -152,22 +152,28 @@ function mergeBudgetWeeks(localData, cloudData){
 // ── Generic blob sync (Realtime Database) for simple localStorage keys ──
 // Stores the raw localStorage string under users/<uid>/<path>. Used for data added
 // after the original sync was built (budget categories, credit card, weight log).
-function syncBlobPush(path, lsKey){
+function syncBlobPush(path, lsKey, confirmSame){
   if(_bootPhase || _syncApplying) return;
   const r=fbRef(path); if(!r) return;
   setSyncStatus('Syncing…');
   // {v,t} envelope so the receiving device can compare ages. Reading side still accepts a
   // bare value for anything written by an older build (treated as age 0, i.e. beatable).
   const t=parseInt(localStorage.getItem(lsKey+'_ts')||'0',10)||0;
-  syncBlobCommit(r, localStorage.getItem(lsKey), t)
-    .then(()=>setSyncStatus('Synced ✓')).catch(()=>setSyncStatus('Sync failed'));
+  const aiUid=auth&&auth.currentUser&&auth.currentUser.uid;
+  const aiSeq=typeof dailyAICloudStart==='function'?dailyAICloudStart(aiUid,path):0;
+  syncBlobCommit(r, localStorage.getItem(lsKey), t, confirmSame)
+    .then(result=>{setSyncStatus('Synced ✓');if(typeof dailyAICloudResult==='function')dailyAICloudResult(aiUid,path,result,null,aiSeq);})
+    .catch(error=>{setSyncStatus('Sync failed');if(typeof dailyAICloudResult==='function')dailyAICloudResult(aiUid,path,null,error,aiSeq);});
 }
 // Compare against the server at commit time, not an earlier snapshot. A delayed/offline
 // upload must not replace a newer edit, and timestamp 0 must stay 0.
-function syncBlobCommit(ref, v, t){
+function syncBlobCommit(ref, v, t, confirmSame){
   if(v==null || v==='') return Promise.resolve();
   return ref.transaction(raw=>{
     const cloudT=raw&&typeof raw==='object'?(Number(raw.t)||0):0;
+    // Explicit receipt retry: recommit identical content without changing its timestamp.
+    // The server transaction still checks for intervening changes. Never force a stale copy.
+    if(confirmSame&&t===cloudT&&raw&&raw.v===v)return raw;
     if(raw!=null && raw!=='' && t<=cloudT) return;
     return {v,t};
   }, undefined, false);
@@ -221,6 +227,7 @@ function syncBlobListenTS(uid, path, lsKey, tsKey, onUpdate){
     if(local!=null&&local!=='') return syncBlobCommit(ref,local,localT());
   }).catch(()=>{});
   ref.on('value', snap=>{
+    if(typeof dailyAIStoreObserved==='function')dailyAIStoreObserved(uid,path);
     const raw=snap.val();
     if(raw==null||raw==='') return; // nothing in the cloud yet — never adopt emptiness
     const isEnvelope = raw && typeof raw==='object' && 'v' in raw;
@@ -428,6 +435,7 @@ if(firebaseReady){
     auth.getRedirectResult().catch(()=>{});
     auth.onAuthStateChanged(user=>{
   _cloudWorkoutReady=false; _cloudReadFailed=false; _cloudApplied={};
+  if(typeof dailyAIAccountChanged==='function')dailyAIAccountChanged();
   // Detach FIRST, before anything for the new account is attached. This runs on sign-out and
   // on an account switch alike, so no listener can outlive the account it was opened for.
   syncDetachAll();
@@ -713,6 +721,7 @@ if(firebaseReady){
       try{ txnData=loadTxns(); }catch(e){}
       if(typeof txnAfterChange==='function') txnAfterChange();
     });
+    syncBlobListen(user.uid,'aiRequests','daily_ai_requests',()=>{if(typeof dailyAIRefresh==='function')dailyAIRefresh();});
     syncBlobListen(user.uid,'dayCustom','wt_day_custom',()=>{ try{ dayCustom=JSON.parse(localStorage.getItem('wt_day_custom')||'{}')||{}; }catch(e){} if(S.view==='log'&&typeof renderLog==='function') renderLog(); if(S.view==='home'&&typeof renderHome==='function') renderHome(); });
     syncBlobListenTS(user.uid,'exerciseLib','wt_exercise_lib','wt_exercise_lib_ts',()=>{ if(typeof renderExerciseLibList==='function') renderExerciseLibList(); if(typeof SE!=='undefined' && SE.target>=0 && document.getElementById('se-picker-list')) document.getElementById('se-picker-list').innerHTML=sePickerListHTML(); if(S.view==='stats') refreshStatsForData(['overview','review','training']); });
     syncBlobListen(user.uid,'customMuscles','wt_custom_muscles',()=>{ try{ if(S.view==='log'&&logSubTab==='exercises'&&typeof renderMuscleFilterRow==='function') renderMuscleFilterRow(); }catch(e){} });
@@ -8537,7 +8546,7 @@ function renderDailyContextMarkdown(ctx){
 // listeners (see AGENTS.md). Half-typed request text is also not something worth mirroring to
 // the cloud.
 const aiHubState={
-  mode:'ask',
+  mode:'assistant',
   preset:'spending_review',
   scopes:['budget','transactions','subscriptions'],
   rangeKind:'last_4_weeks',
@@ -8620,7 +8629,7 @@ function closeAIHub(){
 // Preset changes rebuild the panel (they move scopes and the request text). Everything else
 // mutates in place so the textarea keeps its caret while the preview updates underneath.
 function aiHubSetMode(mode){
-  if(mode!=='ask'&&mode!=='import') return;
+  if(!['assistant','ask','import'].includes(mode)) return;
   aiHubState.mode=mode;
   renderAIHub();
 }
@@ -9012,12 +9021,14 @@ function aiValExpense(d,id){
     dupKey:txn=>!!txn&&((txn.aiActionId&&txn.aiActionId===id)||(!!srcInfo.key&&txn.srcKey===srcInfo.key)),
     collection:()=>txnData,
     apply:(meta)=>{
+      if(id.startsWith('daily_req_')&&(typeof dailyAIApplying==='undefined'||!dailyAIApplying))throw new Error('Review and apply this request on the Assistant tab.');
+      const before=txnData.slice();
       const rec=txnCreateRecord({date, catId:cat.rec.id, amount:amt, merchant, note,
         acctId:acct.rec?acct.rec.id:'', essential}, meta);
       if(srcInfo.key){ rec.srcKey=srcInfo.key; if(srcInfo.src) rec.source=srcInfo.src; }
       if(pending) rec.pendingImport=true;
-      saveTxns();
-      return {kind:'transaction'};
+      if(!saveTxns()){txnData=before;throw new Error('Expense could not be saved on this device.');}
+      return {kind:'transaction',recordId:rec.id};
     }};
 }
 
@@ -9904,7 +9915,7 @@ function applyDailyActions(rows, source){
         skipped.push(row); return;
       }
       const out=fresh.apply({aiActionId:row.id, aiSource:source||''});
-      applied.push({id:row.id, type:row.type, kind:out&&out.kind, undo:out&&out.undo, summary:fresh.summary});
+      applied.push({id:row.id, type:row.type, kind:out&&out.kind, recordId:out&&out.recordId, undo:out&&out.undo, summary:fresh.summary});
     }catch(e){
       // A partial batch is reported exactly, never rolled back: actions 1-6 that landed are
       // real records, and the safe retry is to re-paste — the source fingerprints recognise
@@ -10707,17 +10718,19 @@ function renderAIHub(){
   }).join('');
 
   const hero='<section class="aih-hero" aria-labelledby="aih-hero-title">'+
-    '<div class="aih-hero-eyebrow">Daily AI</div><h1 id="aih-hero-title">Use your Daily data with AI</h1>'+
-    '<p>Choose what you need help with. Daily prepares information from your app for ChatGPT or Claude, but nothing is sent automatically.</p>'+
-    '<div class="aih-workflow" aria-label="Ask AI workflow"><span><b>1</b> Choose a goal</span><span><b>2</b> Review your data</span><span><b>3</b> Copy for AI</span></div>'+
+    '<div class="aih-hero-eyebrow">Daily AI</div><h1 id="aih-hero-title">Your assistant, with your Daily context</h1>'+
+    '<p>Check upcoming bills, prepare an expense or share a wider review. You choose what to copy and approve every change in Daily.</p>'+
   '</section>';
   const modes='<div class="aih-modes" role="tablist" aria-label="Daily AI workflow">'+
+    '<button role="tab" aria-selected="'+(aiHubState.mode==='assistant'?'true':'false')+'" class="'+(aiHubState.mode==='assistant'?'on':'')+'" onclick="aiHubSetMode(\'assistant\')">Assistant</button>'+
     '<button role="tab" aria-selected="'+(aiHubState.mode==='ask'?'true':'false')+'" class="'+(aiHubState.mode==='ask'?'on':'')+'" onclick="aiHubSetMode(\'ask\')">Ask AI</button>'+
     '<button role="tab" aria-selected="'+(aiHubState.mode==='import'?'true':'false')+'" class="'+(aiHubState.mode==='import'?'on':'')+'" onclick="aiHubSetMode(\'import\')">Import actions</button>'+
   '</div>';
 
   let workflow='';
-  if(aiHubState.mode==='ask'){
+  if(aiHubState.mode==='assistant'){
+    workflow=dailyAIHtml();
+  } else if(aiHubState.mode==='ask'){
     workflow='<div class="aih-ask-grid">'+
       '<div class="aih-ask-build">'+
         '<section class="card aih-card aih-step-card">'+
@@ -10752,7 +10765,7 @@ function renderAIHub(){
       '<section class="card aih-card aih-inbox-card">'+aiReconHtml()+'</section>'+
     '</div>';
   }
-  wrap.innerHTML='<div class="aih-shell">'+hero+modes+workflow+'</div>';
+  wrap.innerHTML='<div class="aih-shell">'+hero+'<section id="daily-ai-identity" class="card aih-card daily-ai-identity" aria-label="Account and assistant access">'+dailyAIIdentityHtml()+'</section>'+modes+workflow+'</div>';
 }
 
 function fallbackCopy(text,done){
@@ -24325,15 +24338,12 @@ function acctSavingsCheckState(list,today){
 }
 function renderSaversReconcileCard(){
   const wrap=document.getElementById('accounts-savers-reconcile'); if(!wrap) return;
+  const expanded=!!wrap.querySelector('details')?.open;
   const today=getLocalDate();
   const monthStart=today.slice(0,8)+'01';
   const state=savingsPeriodState(monthStart,today);
   if(!state.hasSavers){
-    wrap.innerHTML='<div class="card">'+
-      cardHeader('bank','Savings balance check',statsChip('neutral','No Savers account'))+
-      '<div class="stats-data-note">Choose the account you use for savings to see its balance here.</div>'+
-      '<button type="button" class="stg-btn" onclick="acctToggleEdit()">Choose a Savers account</button>'+
-    '</div>';
+    wrap.innerHTML='';
     return;
   }
   const check=acctSavingsCheckState(state.accounts,today);
@@ -24349,15 +24359,10 @@ function renderSaversReconcileCard(){
         '<div class="bud-row-budget">'+(latest?'Last balance update '+fmtDate(latest.date):'No dated balance update yet')+'</div></div>'+
       '<strong>'+fmtMoneyExact(parseFloat(a.current)||0)+'</strong></div>';
   }).join('');
-  wrap.innerHTML='<div class="card acct-savings-check">'+
-    cardHeader('bank','Savings balance check',statsChip(check.updated?'pos':'neutral',check.label))+
-    '<div class="card-fig">'+fmtMoney(state.balance)+'</div><div class="card-cap">'+(state.accounts.length===1?_catEscHtml(state.accounts[0].name||'Savings'):'Across '+state.accounts.length+' savings accounts')+'</div>'+
-    (state.metric===null?'':'<div class="card-cap">'+escText(movement)+'</div>')+
-    '<div class="acct-check-actions"><button type="button" class="stg-btn" onclick="savingsReconcileFocus()">'+(check.updated?'Check again':'Check savings balances')+'</button></div>'+
-    '<details class="acct-records"><summary>Balance details</summary>'+
+  wrap.innerHTML='<details class="acct-records acct-savings-check"'+(expanded?' open':'')+'><summary>Savings balance check</summary>'+
       '<p>'+(check.checked?'Today’s balance check is complete.':check.updated?'Today’s balances are recorded.':'Check against your bank whenever it suits you.')+' Budget allocations and past spending stay unchanged.</p>'+
-      (state.metric===null?'<p>'+escText(movement)+'</p>':'')+rows+'</details>'+
-  '</div>';
+      '<p>'+escText(movement)+'</p>'+rows+
+      '<div class="acct-check-actions"><button type="button" class="stg-btn" onclick="savingsReconcileFocus()">'+(check.updated?'Check again':'Check savings balances')+'</button></div></details>';
 }
 function renderAccountsPage(){
   // Net worth and the payoff position are one card built by one function — they used to be

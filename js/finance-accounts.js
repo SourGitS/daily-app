@@ -313,16 +313,18 @@ function acctFinSavingsOffer(proposal){
 function acctFinArchiveOpen(id){
   const a=loadAccounts().find(a=>a.id===id);if(!a)return;
   acctToolDraft={kind:'archive',id,signature:acctLinkSignature()};
-  acctToolForm(a.archivedAt?'Restore account':'Archive account','<p>'+escText(a.name)+'. Archiving keeps its history and records. Only accounts with a zero balance, no remaining current statement and no pending repayments can be archived.</p>',
+  acctToolForm(a.archivedAt?'Restore account':'Archive account','<p>'+escText(a.name)+'. '+(a.archivedAt?
+    'Restore this account to your active accounts with its retained balance and history.':
+    'Archive this account with its recorded balance of '+fmtMoneyExact(a.current)+'. Its balance, history, statements and payment records are kept. It will be excluded from active totals and reminders. Archiving does not settle a debt or cancel a payment. You can restore it later.')+'</p>',
     'acctFinArchiveConfirm',a.archivedAt?'Restore account':'Archive account');
 }
 function acctFinArchiveConfirm(){
   if(acctToolDraft?.kind!=='archive')return false;
   return acctFinAccountSave((list,d)=>list.map(a=>{if(a.id!==d.id)return a;const next={...a};if(a.archivedAt){delete next.archivedAt;return next;}
-    if(acctFinCents(a.current)!==0||a.type==='debt'&&acctStatementRemaining(a)>0||(a.repayments||[]).some(p=>['pending','scheduled'].includes(p.status)))throw new Error('Resolve the balance, statement and pending payments before archiving.');
-    // Seal the zero balance: a later correction to an old purchase cannot revive hidden debt.
+    // Freeze its recorded balance, including nonzero assets/debts. A later historical
+    // purchase correction cannot silently change an archived account. No settlement occurs.
     if(acctLinkActive(next)){acctLinkCheckpoint(next);delete next.balanceLink;}
     next.balanceEpoch=acctFinId('balance');
     next.archivedAt=Date.now();return next;}));
 }
-function acctFinArchivedHtml(){const list=loadAccounts().filter(a=>a.archivedAt);return list.length?'<details class="card acct-records"><summary>Archived accounts ('+list.length+')</summary>'+list.map(a=>'<div class="acct-record"><strong>'+escText(a.name)+'</strong>'+acctFinButton('Restore','acctFinArchiveOpen',a.id)+'</div>').join('')+'</details>':'';}
+function acctFinArchivedHtml(){const list=loadAccounts().filter(a=>a.archivedAt);return list.length?'<details class="card acct-records"><summary>Archived accounts ('+list.length+')</summary>'+list.map(a=>'<div class="acct-record"><strong>'+escText(a.name)+'</strong><span>Retained balance '+fmtMoneyExact(a.current)+'</span>'+acctFinButton('Restore','acctFinArchiveOpen',a.id)+'</div>').join('')+'</details>':'';}

@@ -1,5 +1,43 @@
 # Daily — Agent Handoff
 
+## v406 Daily AI assistant workflow and Accounts corrections — 2026-10-23
+
+- Francois requested the Daily AI page update, then added nonzero-account archiving and a
+  quieter savings balance check. He explicitly authorised committing and pushing everything.
+- Daily AI now opens on Assistant, with a Firebase sign-in check separate from the honestly
+  labelled manual assistant connection. Date-filtered bill reports reuse billOccurrences,
+  list recorded payments separately and preserve unknown dates/amounts. Expense requests copy
+  only the request, Sydney date and existing category/account references. Their replies pass
+  strict AUD validation, then the existing Inbox preview/canonical expense writer. Existing
+  Ask AI and broad Import actions remain available. No bank/card balance or statement fields
+  change through this workflow.
+- Account-scoped daily_ai_requests / aiRequests holds durable request IDs, audit results and
+  undo tombstones. It is registered in the existing blob sync/restore/backup machinery. Loading
+  gates include the actual finance collections. Sign-in changes clear drafts/acknowledgements.
+  Cloud receipts require committed acknowledgements for the exact expense and audit record;
+  cached reads, aborted transactions and the general Synced badge do not qualify. Explicit
+  Retry can recommit identical content without advancing its timestamp or overwriting a newer
+  copy. Offline/failure states stay local and explicit. Undo reuses the Inbox path, guards
+  subsequent edits/dependencies, and remains available after reload. Recovery never re-applies
+  an interrupted request. The legacy Inbox cannot bypass the new request's reviewed apply path.
+- Automatic laptop-independent access remains unsupported: no remote MCP server, OAuth grant,
+  new credential, billing, Firebase rule or backend deployment was created. AI-ASSISTANT-SETUP.md
+  documents the working phone workflow and the proposed hosted OAuth/MCP architecture. Remote
+  writes require a server transaction and older-device compatibility work; the current
+  timestamped financial blobs are not claimed to be atomic for concurrent remote requests.
+- Accounts may be archived with nonzero balances, statements and pending repayments. The
+  dialog states exclusion from active totals/reminders and that no debt is settled or payment
+  cancelled. Records and history stay intact; linked balance calculation is checkpointed at
+  its current value before archival. Restore retains that value. Archived rows show the retained
+  balance. Savings balance check is a collapsed row below the account list, with no large
+  duplicate balance figure; the existing check action is available on expansion.
+- Cache daily-v406. All 640 Node tests pass. Synthetic browser coverage passes both themes at
+  320/390/844-landscape/1024/1440px for AI, and 320/390/1440px for full Finance plus nonzero
+  archive/cancel/restore. AI checks include retry IDs, exact receipts, reload/undo, offline
+  saves and reconnect, revoked sign-in, local-storage failure and changed-record undo guards.
+  No real financial/workout records were edited. Physical Safari and production Firebase are
+  unverified. Local screenshots and generated fixtures remain ignored.
+
 ## v405 expanded weather aligned with the full hero — 2026-10-22
 
 - Francois requested that open weather align with the hero's bottom including Last 7 days,

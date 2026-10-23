@@ -132,7 +132,7 @@
       if(complete)complete(null,result.committed,result.snapshot);return result;
     })
   });
-  const user={uid:selectedUid,displayName:selectedUid==='fixture'?'Sync test':'Fresh test account',photoURL:null};
+  const user={uid:selectedUid,displayName:selectedUid==='fixture'?'Sync test':'Fresh test account',photoURL:null,reload:()=>Promise.resolve()};
   let authChange;
   const auth={currentUser:user,getRedirectResult:()=>Promise.resolve(null),onAuthStateChanged:fn=>{authChange=fn;const t=setTimeout(()=>fn(user),50);return()=>clearTimeout(t);}};
   window.firebase={initializeApp:()=>{},auth:()=>auth,database:()=>({ref})};

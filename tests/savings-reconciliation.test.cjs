@@ -97,8 +97,8 @@ test('savings check distinguishes confirmed balances from transfers and ignores 
 });
 
 test('confirmed savings check stays complete when the older monthly opening balance is missing',()=>{
-  const wrap={innerHTML:''},account={id:'save',name:'Savings',current:500,history:[{date:'2026-10-20',balance:500}],reconciliations:[{date:'2026-10-20',confirmedBalance:500}]};
+  const wrap={innerHTML:'',querySelector:()=>null},account={id:'save',name:'Savings',current:500,history:[{date:'2026-10-20',balance:500}],reconciliations:[{date:'2026-10-20',confirmedBalance:500}]};
   const c=vm.createContext({document:{getElementById:()=>wrap},getLocalDate:()=> '2026-10-20',savingsPeriodState:()=>({hasSavers:true,accounts:[account],balance:500,metric:null}),fmtDate:String,fmtMoney:String,fmtMoneyExact:String,escText:String,_catEscHtml:String,cardHeader:(icon,title,chip)=>title+chip,statsChip:(tone,text)=>text});
   vm.runInContext(extract('acctSavingsCheckState')+'\n'+extract('renderSaversReconcileCard'),c);const before=JSON.stringify(account);c.renderSaversReconcileCard();
-  assert.match(wrap.innerHTML,/Checked today/);assert.match(wrap.innerHTML,/check is complete/);assert.match(wrap.innerHTML,/needs a balance recorded before/);assert.match(wrap.innerHTML,/Check again/);assert.doesNotMatch(wrap.innerHTML,/Reconcile balances|Update saver balances/);assert.equal(JSON.stringify(account),before);
+  assert.match(wrap.innerHTML,/<summary>Savings balance check<\/summary>/);assert.doesNotMatch(wrap.innerHTML,/<details[^>]* open|card-fig/);assert.match(wrap.innerHTML,/check is complete/);assert.match(wrap.innerHTML,/needs a balance recorded before/);assert.match(wrap.innerHTML,/Check again/);assert.doesNotMatch(wrap.innerHTML,/Reconcile balances|Update saver balances/);assert.equal(JSON.stringify(account),before);
 });
