@@ -1,0 +1,21 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "dailyConnectorOAuth": {
+      "$model": { ".indexOn": ["uidHash", "userCodeHash", "grantIdHash", "expiresAt"] }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "assistant": { ".write": false },
+        "transactions": { ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).child('assistant').child('enabled').val() !== true" },
+        "ledger": { ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).child('assistant').child('enabled').val() !== true" },
+        "aiRequests": { ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).child('assistant').child('enabled').val() !== true" },
+        "$other": {
+          ".write": "auth != null && auth.uid === $uid && $other !== 'assistant' && $other !== 'transactions' && $other !== 'ledger' && $other !== 'aiRequests'"
+        }
+      }
+    }
+  }
+}

@@ -1,5 +1,40 @@
 # Daily — Agent Handoff
 
+## v407 remote connector preparation — NOT deployed, 2026-10-23
+
+- Francois clarified Fuji is his ChatGPT Dot, then asked to prepare everything without paying
+  for services now. Work is on codex/daily-remote-connector from live v406/a9995a1. Do not
+  activate billing, hosting, credentials, grants, production rules or real test expenses.
+  Standing commit/push authorization applies to this preparation branch. No exercise cleanup.
+- Read-only inspection of his actual ChatGPT account found Add custom MCP server with URL
+  and OAuth; Fuji's cloud computer showed Ready. The blank dialog was cancelled. Official
+  Dot documentation supports cloud/mobile plugins, but this account's real OAuth connection
+  and laptop-off iPhone use remain unverified. Do not substitute a different assistant.
+- remote/ contains an OAuth/PKCE + stateless MCP service, seven narrow identity/bill/ref/
+  expense-preview/commit/result/undo tools, encrypted OAuth persistence, Cloud Run Dockerfile,
+  inactive operator scripts and candidate rules. Canonical finance functions are extracted
+  at build time; expense/idempotency/audit/undo/grant checks share one user-root transaction.
+  Stable request IDs and undo tombstones survive retries. No balance/payment/transfer writes.
+- Prepared browser bridge uses persisted baselines and server record merges for transactions,
+  ledger and aiRequests. Candidate rules block old snapshot clients for enabled users and
+  protect receipts/grants. Missing baselines, conflicting edits and interrupted local writes
+  fail closed with export/review recovery. Current production rules/config remain untouched.
+  The bridge switch is null, so live/default writers retain existing behavior. Cache v407 is
+  prepared but unpublished; use a newer cache number if another release precedes activation.
+- Assistant UI separates Daily identity from remote authorization, shows real receipts and
+  revoke/undo controls only when configured, and retains manual review, Ask AI, Import,
+  archives and the reduced savings row. No fake connect action or mobile completion claim.
+- Validation: 646 app Node checks; isolated OAuth/MCP/domain/store tests; real local Firebase
+  emulator rules/atomic concurrency/encrypted adapter tests; synthetic Assistant browser
+  checks at 320/390/844-landscape/1024/1440 in both themes, including enabled controls. No real
+  records were accessed or edited. Physical Safari, container build, production OAuth/rules
+  and iPhone laptop-off acceptance remain pending. Production npm audit is clear; development
+  Firebase emulator dependencies have advisories and are pruned from the runtime image.
+- remote/README.md is the authoritative deployment/approval/verification guide. Recommended
+  Cloud Run uses existing Firebase and requires billing even if light usage is within free
+  allowances. There is no guaranteed no-cost permanent connector. Keep this preparation
+  separate from deployed/verified status; no grant or billing approval was given.
+
 ## v406 Daily AI assistant workflow and Accounts corrections — 2026-10-23
 
 - Francois requested the Daily AI page update, then added nonzero-account archiving and a

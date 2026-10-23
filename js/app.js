@@ -167,8 +167,11 @@ function syncBlobPush(path, lsKey, confirmSame){
 }
 // Compare against the server at commit time, not an earlier snapshot. A delayed/offline
 // upload must not replace a newer edit, and timestamp 0 must stay 0.
-function syncBlobCommit(ref, v, t, confirmSame){
+function syncBlobCommit(ref, v, t, confirmSame, legacy){
   if(v==null || v==='') return Promise.resolve();
+  if(!legacy&&typeof dailyRemoteCommit==='function'){
+    const remote=dailyRemoteCommit(ref,v,t,confirmSame);if(remote)return remote;
+  }
   return ref.transaction(raw=>{
     const cloudT=raw&&typeof raw==='object'?(Number(raw.t)||0):0;
     // Explicit receipt retry: recommit identical content without changing its timestamp.
@@ -213,8 +216,11 @@ function lsSaveTS(key, value, tsKey, syncPath){
 // Built here rather than kept as a second hardcoded list because the two would drift: a new
 // store added below would sync fine but be silently skipped by a restore (see restorePush).
 const SYNC_BLOB_REG=[];
-function syncBlobListenTS(uid, path, lsKey, tsKey, onUpdate){
+function syncBlobListenTS(uid, path, lsKey, tsKey, onUpdate, legacy){
   if(!SYNC_BLOB_REG.some(b=>b.lsKey===lsKey)) SYNC_BLOB_REG.push({path, lsKey, tsKey});
+  if(!legacy&&typeof dailyRemoteListen==='function'){
+    const remote=dailyRemoteListen(uid,path,lsKey,tsKey,onUpdate);if(remote)return remote;
+  }
   const ref=db.ref('users/'+uid+'/'+path);
   const localT=()=>parseInt(localStorage.getItem(tsKey)||'0',10)||0;
   // Seed an empty cloud slot from this device (behaviour the untimestamped listener had).
@@ -9021,7 +9027,7 @@ function aiValExpense(d,id){
     dupKey:txn=>!!txn&&((txn.aiActionId&&txn.aiActionId===id)||(!!srcInfo.key&&txn.srcKey===srcInfo.key)),
     collection:()=>txnData,
     apply:(meta)=>{
-      if(id.startsWith('daily_req_')&&(typeof dailyAIApplying==='undefined'||!dailyAIApplying))throw new Error('Review and apply this request on the Assistant tab.');
+      if((id.startsWith('daily_req_')||id.startsWith('daily_remote_'))&&(typeof dailyAIApplying==='undefined'||!dailyAIApplying))throw new Error('Review and apply this request on the Assistant tab or its authorized connection.');
       const before=txnData.slice();
       const rec=txnCreateRecord({date, catId:cat.rec.id, amount:amt, merchant, note,
         acctId:acct.rec?acct.rec.id:'', essential}, meta);
@@ -10719,7 +10725,7 @@ function renderAIHub(){
 
   const hero='<section class="aih-hero" aria-labelledby="aih-hero-title">'+
     '<div class="aih-hero-eyebrow">Daily AI</div><h1 id="aih-hero-title">Your assistant, with your Daily context</h1>'+
-    '<p>Check upcoming bills, prepare an expense or share a wider review. You choose what to copy and approve every change in Daily.</p>'+
+    '<p>Check upcoming bills, review requested expenses and see their results. You control what is shared and which assistant can access Daily.</p>'+
   '</section>';
   const modes='<div class="aih-modes" role="tablist" aria-label="Daily AI workflow">'+
     '<button role="tab" aria-selected="'+(aiHubState.mode==='assistant'?'true':'false')+'" class="'+(aiHubState.mode==='assistant'?'on':'')+'" onclick="aiHubSetMode(\'assistant\')">Assistant</button>'+

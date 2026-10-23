@@ -1,0 +1,15 @@
+**/node_modules
+.git
+temp-analysis
+tests
+Prompts
+**/.env*
+**/*.local
+remote/generated
+remote/test
+remote/*-debug.log
+remote/.firebase
+**/*.local
+**/.env*
+**/*.pem
+**/*.key

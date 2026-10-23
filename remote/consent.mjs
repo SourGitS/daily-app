@@ -1,0 +1,20 @@
+const safe=value=>JSON.stringify(value).replace(/</g,'\\u003c');
+export function consentPage({firebaseConfig,csrf,uid,scopes,nonce}){
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect Daily to Fuji</title>
+<style nonce="${nonce}">body{font:17px system-ui;background:#111;color:#eee;margin:0;padding:24px}main{max-width:520px;margin:5vh auto;background:#202024;padding:24px;border-radius:20px}button,input{box-sizing:border-box;font:inherit;min-height:44px;border-radius:10px;padding:10px;width:100%;margin:6px 0}button{background:#8058b6;color:#fff;border:0;cursor:pointer}button:disabled{opacity:.5}label{display:block;margin-top:12px}p{line-height:1.5}#error{color:#ffb4ad}button:focus-visible,input:focus-visible{outline:3px solid #bda2e7}small{line-height:1.5;display:block}</style>
+<main><h1>Connect Daily to Fuji</h1><p>Sign in to your existing Daily account, then approve this connection. Daily remains the source of your records.</p>
+<div id="login"><button id="google" type="button">Sign in with Google</button><form id="email-form"><label for="email">Daily email</label><input id="email" type="email" autocomplete="username" required><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required><button type="submit">Sign in</button></form></div>
+<p id="identity" role="status">Not signed in</p><p id="permissions"></p><small>Access tokens expire after 5 minutes. Refresh access and consent expire within 30 days. Revoke any time from Daily AI. This permits recording information only: no payments, transfers, bank linking or balance changes.</small>
+<p id="error" role="alert"></p><button id="approve" type="button" disabled>Allow this Daily connection</button><button id="deny" type="button">Cancel</button></main>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script nonce="${nonce}">const config=${safe(firebaseConfig)},csrf=${safe(csrf)},interaction=${safe(uid)},scopes=${safe(scopes)};
+firebase.initializeApp(config);const auth=firebase.auth(),error=document.getElementById('error');
+auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+document.getElementById('permissions').textContent='Requested: '+scopes.map(s=>s==='bills:read'?'read scheduled bills':'read expense choices, preview and create requested expenses, retrieve receipts, undo eligible created expenses').join('; ')+'.';
+auth.onAuthStateChanged(user=>{document.getElementById('identity').textContent=user?'Daily account: '+(user.email||user.uid):'Not signed in';document.getElementById('approve').disabled=!user;document.getElementById('login').hidden=!!user;});
+document.getElementById('google').onclick=async()=>{try{error.textContent='';await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());}catch(e){error.textContent='Sign-in failed. Open this authorization page in your normal browser and try again.';}};
+document.getElementById('email-form').onsubmit=async e=>{e.preventDefault();try{error.textContent='';await auth.signInWithEmailAndPassword(document.getElementById('email').value,document.getElementById('password').value);}catch(e){error.textContent='Could not sign in. Check your Daily email and password.';}};
+async function finish(approve){try{error.textContent='';document.getElementById('approve').disabled=true;const headers={'Content-Type':'application/json'};if(approve)headers.Authorization='Bearer '+await auth.currentUser.getIdToken();const r=await fetch('/interaction/'+encodeURIComponent(interaction)+'/complete',{method:'POST',headers,body:JSON.stringify({approve,csrf})});const body=await r.json();if(!r.ok)throw Error(body.error?.message||'Connection failed.');location.assign(body.redirect);}catch(e){error.textContent=e.message;document.getElementById('approve').disabled=!auth.currentUser;}}
+document.getElementById('approve').onclick=()=>finish(true);document.getElementById('deny').onclick=()=>finish(false);
+</script></html>`;
+}

@@ -7,6 +7,7 @@ const dailyAIState={request:'',activeId:'',reply:'',preview:null,error:'',busy:f
   from:'',to:'',bills:null,verifiedUid:'',verifiedAt:0,authError:'',acks:{},ready:{}};
 let dailyAIApplying=false;
 function dailyAIAccountChanged(){
+  if(typeof dailyRemoteReset==='function')dailyRemoteReset();
   Object.assign(dailyAIState,{request:'',activeId:'',reply:'',preview:null,error:'',bills:null,verifiedUid:'',verifiedAt:0,authError:'',acks:{},ready:{}});
   dailyAIRefresh();
 }
@@ -122,7 +123,11 @@ function dailyAIValidateReply(text){
   if(!row||row.scope!==scope)throw new Error('This request was not prepared in this Daily account. Copy a request here first.');
   if(row.status!=='prepared')throw new Error('This request is already used, cancelled or undone. It will not be applied again. See Recent activity.');
   if(action.type!=='add_expense')throw new Error('Only add_expense is supported in this workflow.');
-  const d=action.data;
+  dailyAIValidateExpenseData(action.data);
+  return {parsed,row,scope};
+}
+// Shared by the reviewed browser flow and the generated server adapter.
+function dailyAIValidateExpenseData(d){
   if(!d||typeof d!=='object'||Array.isArray(d))throw new Error('The expense data is missing.');
   const fields=['amount','currency','date','merchant','categoryId','paymentAccountId','note','essential'];
   if(Object.keys(d).some(k=>!fields.includes(k)))throw new Error('The response contains unsupported expense fields. Ask your assistant to use the copied format.');
@@ -134,7 +139,7 @@ function dailyAIValidateReply(text){
   if(d.essential!==undefined&&typeof d.essential!=='boolean')throw new Error('Essential must be true or false.');
   if(!activeCats(loadVarCats()).some(c=>c.id===d.categoryId))throw new Error('Choose an existing active category ID.');
   if(!loadAccounts().some(a=>a.id===d.paymentAccountId&&!a.archivedAt))throw new Error('Choose an existing active payment account ID.');
-  return {parsed,row,scope};
+  return d;
 }
 function dailyAICheck(){
   try{const v=dailyAIValidateReply(dailyAIState.reply);dailyAIState.preview={...v,pv:previewDailyActions(v.parsed),text:dailyAIState.reply};dailyAIState.error='';}
@@ -256,12 +261,12 @@ function dailyAIIdentityHtml(){
   const user=auth&&auth.currentUser,esc=_catEscHtml;
   const checked=user&&dailyAIState.verifiedUid===user.uid;
   return '<div><strong>Daily account</strong><p>'+esc(user?(user.email||user.displayName||user.uid):'Local guest · this browser only')+'</p><small>'+esc(checked?'Sign-in verified at '+new Date(dailyAIState.verifiedAt).toLocaleTimeString('en-AU'):'Sign-in has not been verified online in this session')+'</small></div>'+
-    '<div><strong>Assistant connection</strong><p>Manual copy and review</p><small>No remote assistant is connected. Signing into Daily does not grant assistant access.</small></div>'+
+    '<div><strong>Assistant access</strong><p>Separate authorization required</p><small>Signing into Daily does not grant Fuji access. Check the Fuji connection panel for remote authorization and results.</small></div>'+
     (dailyAIState.authError?'<p class="aih-err" role="alert">'+esc(dailyAIState.authError)+'</p>':'')+
     '<div class="daily-ai-actions"><button class="aih-btn" onclick="dailyAICheckIdentity()">'+(user?'Check sign-in':'Sign into Daily')+'</button><button class="aih-btn" onclick="openProfile()">Account settings</button></div>';
 }
 function dailyAIActivityHtml(){
-  const esc=_catEscHtml,rows=dailyAIRequests().slice().reverse().slice(0,20);
+  const esc=_catEscHtml,rows=dailyAIRequests().filter(r=>!r.remote).slice().reverse().slice(0,20);
   return '<h2>Recent assistant activity</h2><p class="aih-hint">Latest 20 requests for this Daily account. Cloud confirmations are checked per change during this session. Undo is available while the expense is unchanged.</p>'+
     (rows.length?rows.map(r=>{
       const record=r.record||txnData.find(t=>t.aiActionId===r.id),state=r.status==='applying'&&record?'Expense exists · receipt needs review':r.status;
@@ -285,17 +290,15 @@ function dailyAIHtml(){
   const preview=p?'<div class="aih-inbox-preview" aria-live="polite">'+p.rows.map(r=>'<p>'+esc(r.summary||r.error||r.note)+'</p>'+(r.action?.data?.note?'<p>Note: '+esc(r.action.data.note)+'</p>':'')+(r.conflict?'<p class="aih-sensitive">'+esc(r.conflict)+'</p>':'')).join('')+
     '<p class="aih-hint">Records this expense only. Your posted card balance, pending charges and statement fields stay as recorded.</p>'+
     '<button class="aih-btn aih-btn-primary" onclick="dailyAIApply()"'+(s.busy||p.counts.new!==1?' disabled':'')+'>Apply reviewed expense</button></div>':'';
-  return errors+'<div class="daily-ai-grid"><section class="card aih-card"><h2>What bills are coming up?</h2><p class="aih-hint">Saved schedules in AUD. Dates use Australia/Sydney. A scheduled charge is not proof of an unpaid bill.</p>'+
+  return errors+(typeof dailyRemoteHtml==='function'?'<section id="daily-remote" class="card aih-card" aria-label="Fuji remote connection">'+dailyRemoteHtml()+'</section>':'')+'<div class="daily-ai-grid"><section class="card aih-card"><h2>What bills are coming up?</h2><p class="aih-hint">Saved schedules in AUD. Dates use Australia/Sydney. A scheduled charge is not proof of an unpaid bill.</p>'+
     '<div class="aih-dates"><label class="aih-date"><span>From</span><input id="daily-ai-from" type="date" value="'+esc(s.from)+'" onchange="dailyAIBillDate(\'from\',this.value)"></label><label class="aih-date"><span>To</span><input id="daily-ai-to" type="date" value="'+esc(s.to)+'" onchange="dailyAIBillDate(\'to\',this.value)"></label></div>'+
     '<div class="daily-ai-actions"><button class="aih-btn" onclick="dailyAIWeek()">This week</button><button class="aih-btn" onclick="dailyAIQueryBills()">Show scheduled bills</button></div>'+bills+'</section>'+
-    '<section class="card aih-card"><h2>Log an expense with your assistant</h2><p class="aih-hint">Use your phone keyboard’s microphone or type “Log $18.50 for lunch today on my credit card.” Copy the request to your assistant, then bring its JSON reply back here.</p>'+
+    '<section class="card aih-card"><h2>Manual expense review</h2><p class="aih-hint">This optional workflow works without a remote connection. Use your phone keyboard’s microphone or type “Log $18.50 for lunch today on my credit card.” Copy the request to your assistant, then bring its JSON reply back here.</p>'+
     '<label for="daily-ai-request">Your expense request</label><textarea id="daily-ai-request" class="aih-textarea" maxlength="2000" oninput="dailyAIState.request=this.value">'+esc(s.request)+'</textarea>'+
     '<button class="aih-btn" onclick="dailyAIPrepare()">Copy expense request</button><p class="aih-hint">Shares this request, today’s date, and existing category/account names and IDs. No balances or login credentials are included.</p>'+
     '<label for="daily-ai-reply">Assistant’s JSON reply</label><textarea id="daily-ai-reply" class="aih-textarea aih-mono" oninput="dailyAIState.reply=this.value;dailyAIState.preview=null">'+esc(s.reply)+'</textarea>'+
     '<button class="aih-btn" onclick="dailyAICheck()">Check expense</button>'+preview+'</section></div>'+
     '<section id="daily-ai-activity" class="card aih-card">'+dailyAIActivityHtml()+'</section>'+
-    '<details class="card aih-card daily-ai-setup"><summary>Setup, access and disconnecting</summary><ol><li>Open Daily in Safari or Chrome on your phone and check the account shown above.</li><li>For bills, choose dates and read the list or copy it into your assistant.</li><li>For expenses, copy a request, answer any missing details in your assistant, then paste its JSON reply here. Check and apply the preview.</li><li>Check Recent activity for the request ID, record ID and save result. Offline changes remain local until sync succeeds.</li></ol>'+
-    '<p>No assistant access grant exists in this build, so there is nothing to revoke. Cancel a prepared request to prevent it being applied. Account settings provides Daily sign-out; this is separate from assistant access. Previously copied text remains in your clipboard or chat.</p>'+
-    '<p>Automatic access while Daily is closed needs a hosted, authenticated connector. It requires hosting and OAuth setup, an account-bound consent flow, revocable bill-read and expense-create scopes, and server-side duplicate protection. These are not deployed. Browser sign-in and WebMCP do not provide a permanent mobile connection.</p>'+
-    '<p>When a connector is available, connecting, reconnecting expired access and revoking its grant must be completed through its real authorization flow. No payments, transfers or bank linking are part of this workflow.</p></details>';
+    '<details class="card aih-card daily-ai-setup"><summary>Manual workflow help</summary><ol><li>Open Daily on your phone and check the account shown above.</li><li>For bills, choose dates and read the list or copy it into your assistant.</li><li>For expenses, copy a request, answer missing details, then paste the JSON reply here. Check and apply the preview.</li><li>Check Recent activity for the request ID, record ID and save result. Offline changes remain local until sync succeeds.</li></ol>'+
+    '<p>Manual copy does not create an assistant access grant, so there is nothing to revoke for it. Cancel a prepared request to prevent applying it. Daily sign-out is in Account settings. Previously copied text remains in your clipboard or chat. Remote connection controls are separate, above.</p></details>';
 }

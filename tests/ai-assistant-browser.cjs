@@ -88,7 +88,25 @@ const sizes=process.env.AI_WIDTHS?process.env.AI_WIDTHS.split(',').map(w=>[Numbe
       assert.equal(faults.failed.count,0);assert.equal(faults.failed.state,'failed');assert.match(faults.failed.error,/could not be saved/);
       assert.equal(faults.guarded.count,1);assert.match(faults.guarded.error,/changed or removed/);
     }
-    if(width===390||width===1440){await page.evaluate(()=>{dailyAIState.error='';renderAIHub();document.getElementById('view-aihub').scrollTop=0;document.getElementById('toast-container').replaceChildren();});await page.screenshot({path:path.join(root,'temp-analysis','ai-'+width+'-'+theme+'.png'),fullPage:false});}
+    // Exercise the enabled page with explicit synthetic server receipts. Actual OAuth,
+    // network ownership and database transactions are tested in remote/test separately.
+    await page.evaluate(()=>{
+      window.DAILY_REMOTE_CONFIG={origin:'https://connector.example.test'};
+      window.testRemote={enabled:true,account:{uid:auth.currentUser.uid,email:'sample@example.test'},connections:[{id:'synthetic-grant',status:'authorized',scopes:['bills:read','expenses:create'],createdAt:Date.now(),expiresAt:Date.now()+86400000}],operations:[{requestId:'daily_remote_synthetic01',status:'committed',summary:'Lunch · $18.50',recordId:'txn_synthetic01',cloudSave:'verified'}]};
+      dailyRemoteFetch=async(path,body)=>{if(path==='/daily/revoke'){testRemote.connections[0].status='revoked';return {status:'revoked',cloudSave:'verified'};}if(path==='/daily/undo'){testRemote.operations[0].status='undone';return {status:'undone',recordId:'txn_synthetic01',cloudSave:'verified'};}return JSON.parse(JSON.stringify(testRemote));};
+      dailyAIState.error='';renderAIHub();
+    });
+    await page.getByRole('button',{name:'Check connection and results',exact:true}).click();
+    assert.match(await page.locator('#daily-remote').textContent(),/sample@example.test/);
+    assert.match(await page.locator('#daily-remote').textContent(),/expense saved to cloud/);
+    page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Undo assistant expense',exact:true}).click();
+    assert.match(await page.locator('#daily-remote').textContent(),/undo saved to cloud/);
+    page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Revoke connection',exact:true}).click();
+    assert.match(await page.locator('#daily-remote').textContent(),/revoked/);assert.equal(await page.getByRole('button',{name:'Revoke connection',exact:true}).count(),0);
+    assert.equal(await page.getByRole('link',{name:'Open ChatGPT plugins to connect or reconnect'}).getAttribute('href'),'https://chatgpt.com/plugins');
+    await page.locator('.daily-remote-setup summary').click();assert.match(await page.locator('.daily-remote-setup').textContent(),/5 minutes/);
+    assert.equal(await page.locator('#aihub-body').evaluate(el=>el.scrollWidth>el.clientWidth+1),false,'enabled page fits '+width);
+    if(width===390||width===1440){await page.evaluate(()=>{document.getElementById('view-aihub').scrollTop=0;document.getElementById('toast-container').replaceChildren();});await page.screenshot({path:path.join(root,'temp-analysis','ai-'+width+'-'+theme+'.png'),fullPage:false});}
     assert.deepEqual(errors,[]);console.log('PASS '+width+'x'+height+' '+theme);await context.close();
   }
 }finally{await browser.close();server.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

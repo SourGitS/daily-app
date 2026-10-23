@@ -1,8 +1,18 @@
-# Daily AI — supported workflow and connector plan
+# Daily AI — available now and prepared connection
 
-Updated 23 October 2026. This release implements a browser workflow. It does **not** deploy a remote assistant connector or issue an assistant access grant.
+Updated 23 October 2026. Live **v406** remains the manual browser workflow described below.
 
-## What works now
+The `codex/daily-remote-connector` branch now prepares the OAuth/MCP service, seven narrow tools, atomic expense receipts, revocation, guarded undo, protected device sync and Assistant controls. Hosting, billing, credentials, production rules and account grants remain **off**, following your request to avoid paying for anything now. Your actual ChatGPT account offers custom remote MCP with OAuth, and Fuji's cloud computer was visible; the deployed iPhone workflow still needs verification.
+
+**You can now:** use Daily's bill reader, manual expense review, Ask AI and Import actions on your phone. Existing archives and the smaller savings check remain.
+
+**You cannot yet:** ask Fuji to read/write Daily automatically with your laptop off. That requires hosting activation, consent and a real phone test. This branch does not claim that manual copying or local tests complete it.
+
+The recommended Cloud Run/Firebase setup requires billing even if usage fits free allowances. No extra AI API or paid authentication subscription is required, but permanent zero cost is not guaranteed. Nothing needs purchasing or connecting now.
+
+See the [prepared connection guide](remote/README.md) for exact configuration, required approvals, isolated tests and the bounded iPhone acceptance test. The first future step is approval of that hosting/security setup; no financial test is authorized by the code being ready.
+
+## Live v406 manual workflow
 
 Open Daily on your phone in Safari or Chrome. Open Daily AI → Assistant and check the displayed Daily account. “Check sign-in” asks Firebase to verify the current user online; it does not expose a token or connect an assistant.
 
@@ -17,21 +27,9 @@ Saving locally is not cloud proof. A “Saved to cloud” receipt requires serve
 
 No remote assistant grant exists to revoke. Cancel a prepared request to invalidate it. Account settings opens Daily's existing sign-out controls. Signing out of Daily is separate from disconnecting a future assistant connector; copied text remains in the destination chat/clipboard.
 
-## Architecture for automatic, laptop-independent access
+## Prepared automatic connection
 
-Recommended: a hosted HTTPS MCP service, authenticated by an established OAuth provider, with explicit user consent for `bills:read` and `expenses:create`. Use a server-owned mapping from the verified OAuth subject to the Daily Firebase UID; never accept a caller-selected UID. Verify issuer, audience, expiry and scope on every call, and consult revoked grants before any read/write. Reconnection must go through the real authorization flow. Do not pass Daily browser tokens to an assistant.
-
-OpenAI documents authenticated custom MCP plugins and their setup on the web. Its plugin documentation describes mobile use for plugins available to the account. Availability and the specific Daily integration still need verification on Francois's phone. A local tunnel needs a running host; browser login and WebMCP are not background mobile access.
-
-Dependencies still unresolved:
-
-1. Hosting provider, domain, cost/billing approval and deployed runtime. Existing Firebase Functions are for notifications and have not been repurposed or deployed.
-2. OAuth provider and user-to-Firebase identity linking. Persistent credentials and consent grants require approval before creation.
-3. A server-safe extraction of the existing expense validator/writer. The current financial store is a timestamped array blob. It is **not** suitable for claiming globally atomic concurrent remote expense writes. Before remote writes, integrate per-request idempotency and expense creation in one authoritative transaction, address older-device compatibility, and preserve manual/AI writers as one financial model.
-4. A preview/apply protocol with a short-lived preview token bound to subject, normalized payload and data version; request-hash conflict detection; durable result retrieval; transactional undo and tombstones; and real connection/revoke endpoints.
-5. End-to-end tests against an isolated deployed tenant, including access revocation, expiry, cross-account attempts, concurrency, lost acknowledgements, duplicate retries and mobile use with the laptop off.
-
-Only after these dependencies are implemented and approved: add the actual server URL in ChatGPT's custom MCP plugin setup, choose OAuth, complete the Daily authorization flow yourself, install/select the plugin, then verify bill reading and a reviewed test expense on your phone. There is intentionally no invented URL or Connect button in Daily today.
+The remote implementation and tested protections are now on the preparation branch. The [full connection guide](remote/README.md) replaces the earlier architecture proposal and lists exact deployment requirements. Remaining dependencies are approval/activation of hosting, credentials, IAM and rules, followed by real OAuth consent and the iPhone acceptance test. No payment, transfer or bank linking is supported.
 
 ## Verification and limits
 

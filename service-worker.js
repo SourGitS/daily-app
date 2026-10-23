@@ -417,7 +417,7 @@
 // v403: quieter overview Customise control and inline budget status.
 // v404: collapse desktop weather to the blue overview height while retaining full forecasts.
 // v405: align the expanded weather card with the full overview, including Last 7 days.
-const CACHE_NAME = 'daily-v406';
+const CACHE_NAME = 'daily-v407'; // Prepared branch; remote hosting is disabled by default.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
@@ -439,6 +439,8 @@ const ASSETS = [
   './css/home-hero.css',
   './js/app.js',
   './js/ai-assistant.js',
+  './js/ai-remote-config.js',
+  './js/ai-remote.js',
   './assets/manhua-hub-mark-v2.png',
   './assets/manhua-hub-wordmark-star.png',
   './assets/manhua-hub-wordmark-stars.png',

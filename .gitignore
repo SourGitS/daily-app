@@ -24,3 +24,12 @@ functions/node_modules/
 functions/schedule.cjs
 functions/.env*
 functions/*.local
+
+# Remote connector dependencies, generated canonical adapter, and local secrets.
+remote/node_modules/
+remote/generated/
+remote/.env*
+remote/*.local
+remote/coverage/
+remote/*-debug.log
+remote/.firebase/
