@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 412">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 412">
   <!-- Companion lettering for Daily: shared slant, cap height and baseline.
        The four-point star interrupts the A's left edge, like Daily's D. -->
   <defs><mask id="a-edge"><rect width="1180" height="412" fill="white"/>
@@ -7,7 +7,8 @@
   <g fill="#fff" fill-rule="evenodd">
     <path mask="url(#a-edge)" d="M0 412 318 0H476L484 412H312L314 356H216L173 412ZM320 130 270 245H316Z"/>
     <path d="M251 44C240 79 222 95 183 103 217 111 226 128 211 163 236 128 253 113 284 103 253 95 244 78 251 44Z"/>
-    <path d="M399 412 549 0H729C848 0 885 63 854 146 826 225 759 266 642 266H621L568 412ZM658 101 632 172H674C714 172 735 159 744 135 751 114 737 101 708 101Z"/>
-    <path d="M694 412 844 0H1024C1143 0 1180 63 1149 146 1121 225 1054 266 937 266H916L863 412ZM953 101 927 172H969C1009 172 1030 159 1039 135 1046 114 1032 101 1003 101Z"/>
+    <!-- Light contact between letters retains the joined mark without heavy overlap. -->
+    <path transform="translate(80 0)" d="M399 412 549 0H729C848 0 885 63 854 146 826 225 759 266 642 266H621L568 412ZM658 101 632 172H674C714 172 735 159 744 135 751 114 737 101 708 101Z"/>
+    <path transform="translate(140 0)" d="M694 412 844 0H1024C1143 0 1180 63 1149 146 1121 225 1054 266 937 266H916L863 412ZM953 101 927 172H969C1009 172 1030 159 1039 135 1046 114 1032 101 1003 101Z"/>
   </g>
 </svg>

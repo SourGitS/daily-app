@@ -47,3 +47,15 @@ test('Stats comparisons describe change without inventing progress or judging we
  assert.equal(compare([{value:60},{value:60}],'strength','kg'),'No change across 2 recorded sessions');
  assert.equal(compare([{value:6},{value:5},{value:3},{value:2}],'consistency','days'),'1 fewer day with workouts than the previous week');
 });
+test('phone habits show up to six inline; overflow and desktop retain a full-list action',()=>{
+ const {c}=context();let mode='mobile';c.layoutMode=()=>mode;c.getLocalDate=()=>'2026-10-28';c.habitsLog={};c.categoryHeading=()=>'<h2>Daily habits</h2>';c.escText=String;
+ for(const n of [0,4,6,7]){
+  c.habitsData=Array.from({length:n},(_,i)=>'Habit '+i);const html=c.categoryHabits();
+  assert.equal((html.match(/data-cat-habit=/g)||[]).length,Math.min(n,6));
+  assert.equal(html.includes('data-cat-action="habits"'),n>6);
+  assert.equal(html.includes('data-cat-action="habits-edit"'),n<=6);
+ }
+ c.habitsLog['2026-10-28']=[0];const html=c.categoryHabits();assert.match(html,/data-cat-habit="0" checked/,'ticking a visible row does not replace it mid-interaction');
+ assert.equal((c.categoryHabits(true).match(/data-cat-habit=/g)||[]).length,7);
+ mode='desktop';assert.equal((c.categoryHabits().match(/data-cat-habit=/g)||[]).length,2);
+});

@@ -4,15 +4,8 @@
    landscape cutouts; the existing navigation owns the bottom safe area. */
 @media(max-width:1023px){
  #view-home.category-home-active{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
- #app-header.category-home-header{background:transparent;border:0;padding:0;min-height:48px;margin:0 0 4px}
- #app-header.category-home-header #header-title .wordmark{--wordmark-size:22px;gap:0}
- #app-header.category-home-header #header-avatar,#app-header.category-home-header #header-menu{width:44px;height:44px}
- #app-header.category-home-header #header-avatar{background:var(--card);border:0}
 }
-@media(max-width:359px){#app-header.category-home-header #header-title .wordmark{--wordmark-size:19px}}
-@media(max-width:1023px) and (orientation:landscape) and (max-height:600px){#app-header.category-home-header{min-height:44px;margin-bottom:4px}}
-#view-home.category-home-active{background:#101010}
-[data-theme=light] #view-home.category-home-active{background:#eaeaea}
+#view-home.category-home-active{background:var(--bg)}
 #home-content.category-home{--cat-surface:#202020;--cat-muted:#b1b1b1;--cat-line:#ffffff12;--cat-ink:#f5f5f5;--cat-fill:linear-gradient(130deg,var(--accent-hero),var(--accent-hero-2));color:var(--cat-ink);padding:0;max-width:1440px;margin:auto}
 [data-theme=light] #home-content.category-home{--cat-surface:#f2f2f2;--cat-muted:#626262;--cat-line:#00000012;--cat-ink:#202020}
 .cat-page-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:4px 0 22px}.cat-page-heading p{font-size:11px;color:var(--cat-muted);margin-bottom:5px}.cat-page-heading h1{font-size:28px;line-height:1.2}.cat-page-heading button{display:flex;align-items:center;gap:8px}
@@ -81,6 +74,28 @@
 .cat-heading .card-hd-ico{color:inherit;opacity:.8}
 @media(min-width:1024px){.cat-training-body{flex:0 0 auto}#home-content.category-home .home-training-strip{flex:1}#view-home.category-home-active .cat-weather-scene{min-height:var(--home-weather-collapsed-height,270px)}}
 /* Compact topic controls: the visible selection is 32px high within a 44px hit area. */
+/* Desktop forecast occupies the existing history strip; it never stretches Training.
+   Recovery text can grow naturally instead of hiding controls. Phone remains unchanged. */
+@media(min-width:1024px){
+ .cat-training{align-self:start}
+ #view-home.category-home-active .cat-weather .weather-forecast-toggle{display:none!important}
+ #view-home.category-home-active .cat-weather .weather-forecast-dock{min-height:var(--cat-weather-dock-height,101px);padding:0 14px 5px;justify-content:flex-start}
+ #view-home.category-home-active .cat-weather .weather-mobile-controls{height:36px;min-height:36px;margin:0;flex:none;justify-content:flex-start}
+ #view-home.category-home-active .cat-weather #home-weather-periods button{height:36px;min-height:36px;padding:0 8px;font-size:11px}
+ #view-home.category-home-active .cat-weather .weather-preview{padding:0;margin:0;min-height:0}
+ #view-home.category-home-active .cat-weather :is(.weather-forecast-caption,.weather-summary,.weather-hour-chance){display:none!important}
+ #view-home.category-home-active .cat-weather .weather-hours{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:3px;margin:0;overflow:visible}
+ #view-home.category-home-active .cat-weather .weather-hours.weather-week{grid-template-columns:repeat(7,minmax(0,1fr))}
+ #view-home.category-home-active .cat-weather .weather-hour{display:grid;grid-template-columns:auto auto;justify-content:center;align-content:start;gap:3px 4px;min-height:0;padding:0;line-height:14px}
+ #view-home.category-home-active .cat-weather .weather-hour-time{grid-column:1/-1;font-size:10px;line-height:14px}
+ #view-home.category-home-active .cat-weather .weather-hour .ti{grid-column:1/-1;font-size:18px;line-height:20px}
+ #view-home.category-home-active .cat-weather .weather-hour-temp{font-size:12px;line-height:17px}
+ #view-home.category-home-active .cat-weather .weather-day-low{font-size:10px;line-height:17px}
+ #view-home.category-home-active .cat-weather .weather-hours:not(.weather-week) .weather-hour-temp{grid-column:1/-1}
+ #view-home.category-home-active .cat-weather .weather-city{font-size:15px;white-space:normal;text-align:left;line-height:1.5}
+ .cat-weather-condition{font-weight:500}.cat-weather-sample{font-weight:500;font-size:11px;opacity:.7}
+ #view-home.category-home-active .cat-weather-city-condition .weather-condition{display:none}
+}
 .cat-tabs.seg-tabs{display:flex;width:max-content;max-width:100%;gap:2px;padding:0;background:none;border-radius:0;align-self:center}
 .cat-tabs.seg-tabs>button{position:relative;isolation:isolate;flex:none;min-height:44px;padding:6px 9px;font-size:12px;background:transparent;box-shadow:none}
 .cat-tabs.seg-tabs>button[aria-selected=true]::before{content:'';position:absolute;z-index:-1;inset:6px 0;background:#ffffff20;border-radius:8px}
@@ -100,4 +115,37 @@
  .cat-food .cat-footer{min-height:76px}
  .cat-food .cat-footer strong{display:block;margin:0}
  .cat-stats .cat-footer{min-height:84px}
+}
+/* Phone layout editing is a viewport-sized workspace; only the miniature scrolls. */
+#category-habit-dialog{margin:auto;padding:0;width:min(440px,calc(100vw - 32px));max-height:calc(100dvh - 32px);background:var(--surface-raised);border:1px solid var(--border);border-radius:20px;overflow:hidden}
+#category-habit-dialog[open]{display:flex;flex-direction:column}
+.cat-habit-head{position:relative;padding:20px 20px 14px;border-bottom:1px solid var(--border);flex:none}
+.cat-habit-head .cat-heading{padding-right:40px;margin-bottom:8px}
+.cat-habit-head .cat-feature{margin:0}
+.cat-habit-head .cat-close{width:44px;height:44px;right:10px;top:10px;padding:0;display:grid;place-items:center;line-height:1}
+#category-habit-dialog .cat-habit-list{padding:8px 20px;overflow:auto;overscroll-behavior:contain;min-height:0}
+#category-habit-dialog .cat-habit{min-height:48px;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px;line-height:1.5}
+#category-habit-dialog .cat-habit:last-child{border-bottom:0}
+.cat-habit-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px max(14px,env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);flex:none}
+@media(max-width:1023px){.cat-habits .cat-habit{min-height:44px;line-height:1.5;padding:6px 0}.cat-habits>.cat-action{margin-top:8px}}
+@media(max-width:1023px) and (min-height:600px){
+ #view-settings-detail:has(#settings-detail-content .cat-layout-editor){display:flex!important;flex-direction:column;height:100dvh;overflow:hidden!important}
+ #view-settings-detail:has(.cat-layout-editor)>.detail-topbar{flex:none;position:relative}
+ #settings-detail-content:has(.cat-layout-editor){display:flex;flex:1;min-height:0;width:100%;padding:12px 12px max(12px,env(safe-area-inset-bottom,0px))!important}
+ #settings-detail-content>#settings-homelayout-section:has(.cat-layout-editor){flex:1;min-height:0;min-width:0}
+ #settings-detail-content .cat-layout-editor{display:flex;flex-direction:column;height:100%;min-height:0;margin:0;padding:14px!important;overflow:hidden}
+ .cat-layout-editor>*{flex-shrink:0}
+ .cat-layout-editor>header{margin:0 0 10px}
+ .cat-layout-editor>header h2{display:none}
+ .cat-layout-editor>header .stg-help{margin:0;font-size:13px;line-height:1.4}
+ .cat-layout-editor .cat-keyboard-hint{display:none}
+ .cat-layout-editor>.seg-tabs{margin:0}
+ .cat-layout-choice{margin:12px 0 6px}
+ .cat-layout-choice+.stg-help{margin:0;font-size:12px;line-height:1.4}
+ .cat-layout-workspace{flex:1;min-height:80px;max-height:none;margin:12px 0 0;padding:10px}
+ .cat-layout-selection{margin:8px 0;gap:6px 10px}
+ .cat-layout-selection label{min-height:32px;font-size:13px}
+ .cat-layout-actions{padding-top:10px}
+ #cat-layout-status{font-size:11px;line-height:1.4;margin:6px 0 0}
+ .cat-layout-error{padding:0;margin:6px 0;font-size:12px}
 }

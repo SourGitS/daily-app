@@ -150,3 +150,26 @@ test('desktop drawer toggles independently and refreshes do not restart the peri
   ctx.homeSetWeatherPeriod('week');assert.equal(preview.dataset.weatherSlide,next);
   assert.equal(calls.length,0);
 });
+
+test('Category desktop stays open without changing the phone disclosure preference',()=>{
+ const {ctx,nodes}=fixture();let desktop=true;ctx.categoryDesktopWeather=()=>desktop;
+ nodes['home-weather-forecast-toggle'].dataset.mode='desktop';
+ ctx.renderWeatherForecast(entry());ctx.homeToggleWeatherForecast();
+ assert.equal(nodes['home-weather-preview'].inert,false);
+ assert.equal(nodes['home-weather-preview'].attrs['aria-hidden'],'false');
+ assert.equal(vm.runInContext('_homeWeatherExpanded.desktop',ctx),false);
+ ctx.homeSetWeatherPeriod('today');ctx.homeSetWeatherPeriod('week');
+ assert.equal(nodes['home-weather-preview'].inert,false);
+ desktop=false;nodes['home-weather-forecast-toggle'].dataset.mode='mobile';
+ ctx.homeToggleWeatherForecast();assert.equal(nodes['home-weather-preview'].inert,true);
+ ctx.renderWeatherForecast(entry());assert.equal(nodes['home-weather-preview'].inert,true);
+});
+
+test('Category desktop leaves unavailable forecast recovery visible and focusable',()=>{
+ const {ctx,nodes}=fixture(null);ctx.categoryDesktopWeather=()=>true;
+ nodes['home-weather-forecast-toggle'].dataset.mode='desktop';
+ ctx.renderWeatherForecast(null);
+ assert.equal(nodes['home-weather-preview'].inert,false);
+ assert.equal(nodes['home-weather-forecast-empty'].hidden,false);
+ assert.equal(nodes['home-weather-forecast-retry'].hidden,false);
+});

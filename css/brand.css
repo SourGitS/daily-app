@@ -24,7 +24,7 @@
     /* White, solid lettering reads heavier than the accented Daily artwork.
        Optical sizing keeps their visible baselines aligned without separating them. */
     height:calc(var(--wordmark-size) * .9);transform:translateY(calc(var(--wordmark-size) * .05));
-    aspect-ratio:1180 / 412;font-size:0;background:currentColor;
+    aspect-ratio:1320 / 412;font-size:0;background:currentColor;
     -webkit-mask:url("../assets/brand/app-wordmark-mask.svg") center/contain no-repeat;
     mask:url("../assets/brand/app-wordmark-mask.svg") center/contain no-repeat;mask-mode:alpha;
   }

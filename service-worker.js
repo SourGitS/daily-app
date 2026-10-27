@@ -418,7 +418,8 @@
 // v404: collapse desktop weather to the blue overview height while retaining full forecasts.
 // v405: align the expanded weather card with the full overview, including Last 7 days.
 // v409: default Category Home, visual layout editor, shared wordmark and stable weather scenery.
-const CACHE_NAME = 'daily-v409'; // Remote connector hosting remains disabled.
+// v410: aligned always-open desktop forecast, shared Home header, phone layout editor and habits polish.
+const CACHE_NAME = 'daily-v410'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —

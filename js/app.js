@@ -2368,7 +2368,6 @@ function setView(v, direction, opts){
   document.querySelectorAll('#app-main > section').forEach(el=>el.classList.add('hidden'));
   if(!isSwipe){ const incoming=document.getElementById('view-'+v); if(incoming) incoming.classList.remove('hidden'); }
   document.querySelectorAll('.swipe-panel').forEach(p=>p.classList.toggle('deck-active', p.id===('view-'+v)));
-  if(typeof categorySyncHeader==='function') categorySyncHeader();
   if(typeof updateKitFab==='function') updateKitFab();   // hide the "+" when leaving Kitchen
   // Move the deck to the target panel — unless the gesture already positioned it (fromSwipe).
   if(isSwipe && !opts.fromSwipe) setDeckPosition(swipeIdx, prev!==v);
@@ -21434,6 +21433,7 @@ function homeSetWeatherPeriod(period){
   if(period==='week'&&!weatherForecastDays(entry).length) weatherRefresh({force:true,reason:'week-forecast'});
 }
 function homeToggleWeatherForecast(){
+  if(typeof categoryDesktopWeather==='function'&&categoryDesktopWeather())return;
   if(!document.getElementById('home-weather-forecast-toggle')) return;
   const mode=document.getElementById('home-weather-forecast-toggle').dataset?.mode||'mobile';
   _homeWeatherExpanded[mode]=_homeWeatherExpanded[mode]===false;
@@ -21443,7 +21443,7 @@ function renderMobileWeatherDisclosure(){
   const toggle=document.getElementById('home-weather-forecast-toggle');
   const preview=document.getElementById('home-weather-preview');
   if(!toggle||!preview) return;
-  const open=_homeWeatherExpanded[toggle.dataset?.mode||'mobile']!==false;
+  const open=(typeof categoryDesktopWeather==='function'&&categoryDesktopWeather())||_homeWeatherExpanded[toggle.dataset?.mode||'mobile']!==false;
   toggle.setAttribute('aria-expanded',String(open));
   document.getElementById('home-weather-forecast-toggle-label').textContent=open?'Hide forecast':'Show forecast';
   if(typeof categoryWeatherLabel==='function')categoryWeatherLabel();
@@ -21462,13 +21462,15 @@ function homeSyncWeatherHeight(){
   // would make the weather card grow when its forecast is closed.
   if(!strip||(category?(layoutMode()!=='desktop'||!weather||weather.style.getPropertyValue('--cat-row')!==hero.style.getPropertyValue('--cat-row')):hero.getBoundingClientRect().width<560)){
     wrap.style.removeProperty('--home-weather-collapsed-height');
-    wrap.style.removeProperty('--home-weather-expanded-height');return;
+    wrap.style.removeProperty('--home-weather-expanded-height');
+    wrap.style.removeProperty('--cat-weather-dock-height');return;
   }
   const rect=hero.getBoundingClientRect(),height=strip.getBoundingClientRect().top-rect.top;
   if(height<=0)return;
   for(const [name,value] of [['--home-weather-collapsed-height',height+'px'],['--home-weather-expanded-height',rect.height+'px']]){
     if(wrap.style.getPropertyValue(name)!==value)wrap.style.setProperty(name,value);
   }
+  if(category){const dockHeight=rect.bottom-strip.getBoundingClientRect().top+'px';if(wrap.style.getPropertyValue('--cat-weather-dock-height')!==dockHeight)wrap.style.setProperty('--cat-weather-dock-height',dockHeight);}
 }
 function homeObserveWeatherHeight(){
   if(_homeWeatherHeightObserver){_homeWeatherHeightObserver.disconnect();_homeWeatherHeightObserver=null;}
@@ -21483,6 +21485,7 @@ function homeObserveWeatherHeight(){
   }
 }
 function renderMobileWeatherForecast(entry){
+  if(typeof categoryWeatherHeading==='function')categoryWeatherHeading(entry);
   renderMobileWeatherDisclosure();
   const week=homeWeatherPeriod(entry)==='week';
   for(const period of ['today','week']) document.getElementById('home-weather-'+period).setAttribute('aria-pressed',String(week===(period==='week')));

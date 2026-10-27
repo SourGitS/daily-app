@@ -1,5 +1,46 @@
 # Daily — Agent Handoff
 
+## v410 Home refinements — release authorised, 2026-10-28
+
+- Francois explicitly requested committing and pushing all the updates from this pass,
+  superseding local-only review. Release base is ef84539 / daily-v409; cache is daily-v410.
+  App lettering has a tighter lightly touching spacing revision. Daily uses original mask
+  artwork; App is custom vector lettering, not a verified source-font match. Francois supplied
+  a Daily TV reference and asked whether the font matches; do not claim it does.
+- Francois rejected the first weather mockups: Training must keep its natural size and
+  Weather's gray forecast must match BOTH the scenery boundary and the history bottom.
+  The corrected ignored mockup measures the unchanged Training body/history, keeps forecast
+  visible, puts high/low values on one line, and places condition alongside city ("Sydney,
+  mainly clear"). A fixed desktop frame prevents the preview falling into phone layout.
+  Francois approved applying this to desktop. Category desktop now keeps forecasts open,
+  uses the existing hero observer to align both gray boundaries, and places condition beside
+  city. Today/Week keep the same normal footprint. Missing-data recovery can grow naturally
+  without stretching Training; reordered or absent Training uses the standalone weather size.
+  Phone forecast markup, disclosure, rows and condition placement remain unchanged, as do
+  legacy desktop layouts, weather fetching and consent. Mockup remains ignored at
+  temp-analysis/weather-alignment-options.html.
+- Home again uses --bg and the normal shared app header/divider, as Finance and Stats do.
+  Removed the Category-only header relocation into the scrolling Home view. Verified
+  Home/Finance/Home at 390 dark, 320 light and desktop 1280 with no horizontal overflow.
+  The existing header owns safe-area spacing; no additional top inset was introduced.
+- Phone Home Layout now fits its viewport at portrait heights >=600px. Only the miniature
+  workspace scrolls; hidden-card restore controls sit inside it and Reset/Cancel/Apply remain
+  visible. Short landscape retains natural page scrolling. Mouse capture no longer swallows
+  a miniature selection. Phone 320/390 checks cover hiding/restoring, keyboard reorder and
+  Cancel; overlay scrollHeight equals clientHeight with actions in view.
+- Phone habits show up to six rows directly, growing the card. More than six retain View all;
+  desktop keeps two rows. The full-list dialog uses a centred solid raised surface, separated
+  header/list/footer, fixed Manage/Done actions and internal scrolling for long lists.
+  Completion preserves focused checkbox and list scroll. Existing writers remain unchanged.
+  Synthetic browser cases cover 4/6/8/20 habits, both themes and 320/390 widths.
+- All 670 Node checks pass. Browser verification covers desktop 1024 light / 1280 dark,
+  ordinary and long titles, reordered cards, Today/Week switching, missing forecast recovery,
+  and 320 light / 390 dark phone disclosure. Normal paired gray boundaries and bottoms match
+  exactly, with no forecast or page overflow. Fresh fixture reports no app errors or changed
+  records. Earlier browser-log observer errors were absent from the application error report
+  and were not reproduced in the fresh app load.
+  Physical iPhone testing and production Firebase remain unverified; no sync writers changed.
+
 ## v409 Category Home release authorised — 2026-10-28
 
 - Francois approved releasing the default Category Home and the final expense-button fix.
