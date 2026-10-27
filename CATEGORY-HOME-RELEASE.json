@@ -1,0 +1,31 @@
+{
+  "status": "Release authorised 2026-10-28; publish through main/GitHub Pages",
+  "cache": "daily-v409",
+  "defaultHome": "Category Home on both devices when no explicit preference exists",
+  "existingPreferences": "Explicit enabled:false still selects the existing Home. Legacy layouts and all records are retained. Reading the new default writes no data or timestamp.",
+  "integration": {
+    "branch": "codex/category-home",
+    "base": "0455a7e07a3b3abbccd83650c3562665ba27cac5",
+    "mainVerifiedOn": "2026-10-28",
+    "main": "a9995a155f8189018cd5948780c52bf7a28d33e9",
+    "preparedConnector": "Existing v407 browser code remains present but DAILY_REMOTE_CONFIG is null. Backend hosting, billing, grants and production rules stay inactive.",
+    "earlierHomePass": "The separate uncommitted v408 pass is an earlier alternative Home design. Its home-design.css, Today/quick-entry markup and generic App lettering are superseded by this approved design, not merged over it. Its checkout is untouched.",
+    "package": "Run node scripts/prepare-home-release.cjs. It writes a new ignored temp-analysis/releases/daily-v409-* folder containing only 53 application files, .nojekyll and a SHA-256 release manifest. Backend code, fixtures, personal docs and credentials are not bundled.",
+    "publication": "User authorised release on 2026-10-28. origin/main rechecked at a9995a1; daily-v409 is newer than live v406. No migration, Firebase rule or remote service activation is needed for Category Home."
+  },
+  "validation": {
+    "nodeChecks": {"passed":667,"failed":0},
+    "layoutSync": "Eight new tests execute the real sync helpers with independent clients and synthetic cloud/storage: no boot writes; separate device layouts; cloud restore and explicit legacy choice; stale drafts; delayed stale uploads; offline reload/reconnect; failed upload recovery; account isolation, listener detach and backup registration.",
+    "browser": "Default Home and editor verified through private Wi-Fi test server at 390px; reorder, Apply, reload persistence and Reset checked. Previous desktop review covered 1024/1280/1440 in both themes, plus long/empty/hidden/reordered cases.",
+    "localServer": "Only allowlisted app assets and mocked HTML are served. Production Firebase SDK is stripped and production connections blocked. Private repo/backend files and service-worker.js return 404; POST returns 405.",
+    "releaseAcceptance": "User explicitly chose Release with the current checks on 2026-10-28 after being informed of the missing fresh signed-in production-cloud test. User reviewed the local iPhone layout. Expense button centred and action/cancel checked in the synthetic browser.",
+    "notYetVerified": ["Full physical iPhone Safari and installed-app acceptance", "Production Firebase sync with a dedicated test account", "HTTPS install/offline/update lifecycle"]
+  },
+  "iphoneTest": {
+    "start": "Set DAILY_PREVIEW_HOST to the computer's private Wi-Fi IPv4 address, then run node tests/serve-category-phone.cjs. Loopback is the default. Public and wildcard binds are rejected.",
+    "port":8795,
+    "use": "Keep the computer awake and connect the iPhone to the same Wi-Fi. Open http://<computer-private-ip>:8795/ in Safari and choose Open sample app.",
+    "checks": ["Top spacing below the real Dynamic Island/status area", "Portrait and landscape layout and bottom navigation", "Scroll, Stats tabs and weather disclosure", "Home Layout touch grip, hide/show, Apply, reload and Cancel", "Open and cancel expense and Journal editors with the keyboard", "Long and incomplete records, empty records, dark and light themes"],
+    "limits": "Sample edits stay in that tab's isolated session. They do not sync between laptop and phone. The HTTP preview does not verify service workers, offline installation, location permission or live cloud sync. No additional fake island padding is inserted in the direct phone app."
+  }
+}

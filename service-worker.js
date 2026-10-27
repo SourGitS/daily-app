@@ -417,7 +417,8 @@
 // v403: quieter overview Customise control and inline budget status.
 // v404: collapse desktop weather to the blue overview height while retaining full forecasts.
 // v405: align the expanded weather card with the full overview, including Last 7 days.
-const CACHE_NAME = 'daily-v407'; // Prepared branch; remote hosting is disabled by default.
+// v409: default Category Home, visual layout editor, shared wordmark and stable weather scenery.
+const CACHE_NAME = 'daily-v409'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
@@ -436,6 +437,9 @@ const ASSETS = [
   './css/settings.css',
   './css/review.css',
   './css/brand.css',
+  './css/home-category.css',
+  './js/home-category-model.js',
+  './js/home-category.js',
   './css/home-hero.css',
   './js/app.js',
   './js/ai-assistant.js',
@@ -467,6 +471,7 @@ const ASSETS = [
   // Runtime brand assets only. The masters, the export script and the ZIP under
   // assets/brand/refined/ are sources, not application assets, and are never precached.
   './assets/brand/daily-wordmark-mask.png',
+  './assets/brand/app-wordmark-mask.svg',
   './assets/brand/daily-wordmark-light.png',
   './assets/brand/daily-wordmark-dark.png',
   './assets/brand/daily-app-icon-192.png',

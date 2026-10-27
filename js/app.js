@@ -546,6 +546,7 @@ if(firebaseReady){
       if(!snap.val()) return;
       syncApply(()=>{
         localStorage.setItem('daily_habits', JSON.stringify(snap.val()));
+        habitsData=loadHabits();
         if(typeof renderHome==='function') renderHome();
       });
     });
@@ -705,6 +706,7 @@ if(firebaseReady){
     // timestamped sync instead — same fix as Prompt 26 applied to the budget category lists.
     syncTrack(syncBlobListen(user.uid,'homeOrder','daily_home_order',()=>{ if(S.view==='home'&&typeof renderHome==='function') renderHome(); })); // legacy order (seed source)
     syncTrack(syncHomeLayoutListen(user.uid,()=>{ if(S.view==='home'&&typeof renderHome==='function') renderHome(); if(_activeSettingsKey==='homelayout'&&typeof renderHomeLayoutSection==='function') renderHomeLayoutSection(); }));
+    if(typeof categoryAttachSync==='function') categoryAttachSync(user.uid);
     syncBlobListen(user.uid,'habitsLog','daily_habits_log',()=>{ try{ habitsLog=loadHabitsLog(); }catch(e){} if(typeof refreshHabitsUI==='function') refreshHabitsUI(); });
     syncBlobListen(user.uid,'dynamicColours','daily_dynamic_colours',()=>{ if(typeof applyDayColour==='function') applyDayColour(); });
     syncBlobListen(user.uid,'dayColors','daily_day_colors',()=>{ if(typeof applyDayColour==='function') applyDayColour(); if(S.view==='settings'&&typeof renderDayColorPickers==='function') renderDayColorPickers(); });
@@ -2366,6 +2368,7 @@ function setView(v, direction, opts){
   document.querySelectorAll('#app-main > section').forEach(el=>el.classList.add('hidden'));
   if(!isSwipe){ const incoming=document.getElementById('view-'+v); if(incoming) incoming.classList.remove('hidden'); }
   document.querySelectorAll('.swipe-panel').forEach(p=>p.classList.toggle('deck-active', p.id===('view-'+v)));
+  if(typeof categorySyncHeader==='function') categorySyncHeader();
   if(typeof updateKitFab==='function') updateKitFab();   // hide the "+" when leaving Kitchen
   // Move the deck to the target panel — unless the gesture already positioned it (fromSwipe).
   if(isSwipe && !opts.fromSwipe) setDeckPosition(swipeIdx, prev!==v);
@@ -20154,6 +20157,7 @@ function buildTodayHabitsList(){
   }).join('');
 }
 function refreshHabitsUI(){
+  if(S.view==='home'&&document.getElementById('home-content')?.classList.contains('category-home'))renderHome();
   const g=document.getElementById('habits-week-grid');
   if(g) g.innerHTML=buildHabitsWeekGrid();
   const s=document.getElementById('habits-week-stats');
@@ -21442,6 +21446,7 @@ function renderMobileWeatherDisclosure(){
   const open=_homeWeatherExpanded[toggle.dataset?.mode||'mobile']!==false;
   toggle.setAttribute('aria-expanded',String(open));
   document.getElementById('home-weather-forecast-toggle-label').textContent=open?'Hide forecast':'Show forecast';
+  if(typeof categoryWeatherLabel==='function')categoryWeatherLabel();
   // Hidden forecast rows must leave both the keyboard order and assistive technology.
   preview.setAttribute('aria-hidden',String(!open));
   preview.inert=!open;
@@ -21451,9 +21456,11 @@ function homeSyncWeatherHeight(){
   const wrap=document.getElementById('home-content');if(!wrap)return;
   const hero=wrap.querySelector('.home-widget-session');
   const strip=hero&&hero.querySelector('.home-training-strip');
+  const category=wrap.classList.contains('category-home');
+  const weather=category&&wrap.querySelector('.cat-weather');
   // Stacked narrow heroes include both sections vertically; using that combined height
   // would make the weather card grow when its forecast is closed.
-  if(!strip||hero.getBoundingClientRect().width<560){
+  if(!strip||(category?(layoutMode()!=='desktop'||!weather||weather.style.getPropertyValue('--cat-row')!==hero.style.getPropertyValue('--cat-row')):hero.getBoundingClientRect().width<560)){
     wrap.style.removeProperty('--home-weather-collapsed-height');
     wrap.style.removeProperty('--home-weather-expanded-height');return;
   }
@@ -21466,7 +21473,7 @@ function homeSyncWeatherHeight(){
 function homeObserveWeatherHeight(){
   if(_homeWeatherHeightObserver){_homeWeatherHeightObserver.disconnect();_homeWeatherHeightObserver=null;}
   homeSyncWeatherHeight();
-  const hero=document.querySelector('#home-content .home-training-body');
+  const hero=document.querySelector('#home-content .home-training-body, #home-content .cat-training-body');
   // Fonts, saved widths and longer workout titles can all change the blue section's height.
   // Observe the hero only; weather recovery content can grow without feeding back into it.
   if(hero&&typeof ResizeObserver==='function'){
@@ -21655,7 +21662,7 @@ function weatherLandscapeSvg(view){
   return '<svg viewBox="0 0 720 420" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">'+defs+art+'</svg>';
 }
 
-function buildWeatherCard(inHero){
+function buildWeatherCard(inHero,locationInSettings=false){
   const mode=layoutMode(),forecastOpen=_homeWeatherExpanded[mode]!==false;
   const d=localMidnight(getLocalDate());
   const dayLabel=d.toLocaleDateString('en-AU',{weekday:'long'});
@@ -21718,7 +21725,7 @@ function buildWeatherCard(inHero){
         '<button type="button" class="weather-retry" id="home-weather-refresh" onclick="weatherRefresh({force:true,reason:\'retry\'})" aria-label="Retry weather update" hidden><i class="ti ti-refresh" aria-hidden="true"></i><span>Retry</span></button>'+
       '</div>'+
       '<p class="weather-notice" id="home-weather-notice" role="status" aria-live="polite" hidden></p>'+
-      '<button type="button" class="weather-use-location" id="home-weather-location" onclick="weatherUseCurrentLocation()" hidden>Use my location</button></div>'+
+      (locationInSettings?'':'<button type="button" class="weather-use-location" id="home-weather-location" onclick="weatherUseCurrentLocation()" hidden>Use my location</button>')+'</div>'+
     '<div class="weather-forecast-dock"><div class="weather-mobile-controls"><div id="home-weather-periods" role="group" aria-label="Forecast period">'+
       '<button type="button" id="home-weather-today" aria-pressed="false" aria-controls="home-weather-preview" onclick="homeSetWeatherPeriod(\'today\')">Today</button>'+
       '<button type="button" id="home-weather-week" aria-pressed="false" aria-controls="home-weather-preview" onclick="homeSetWeatherPeriod(\'week\')">Week</button></div>'+
@@ -22098,6 +22105,7 @@ function homeTrainingStrip(){
 
 function renderHome(){
   const wrap=document.getElementById('home-content'); if(!wrap) return;
+  if(typeof categoryRenderHome==='function'&&categoryRenderHome(wrap))return;
   const _homeMode=layoutMode();
   const name=profileData.name||S.personalInfo.name||'';
 
@@ -23231,6 +23239,8 @@ function hlWidgetRow(id,index,count,mode,ctx){
 }
 function renderHomeLayoutSection(){
   const wrap=document.getElementById('settings-homelayout-section'); if(!wrap) return;
+  if(typeof categoryLayoutSection==='function'&&categoryLayoutSection(wrap))return;
+  if(typeof categoryLayoutOffer==='function')requestAnimationFrame(()=>categoryLayoutOffer(wrap));
   const mode=homeLayoutEditorMode();
   const layout=hlView(mode);
   const dash=mode==='desktop'&&homeDashOn(layout);
@@ -23714,8 +23724,9 @@ function txnScrollFieldIntoView(el){
 const OB_VERSION = 2;             // bump when onboarding gains steps worth re-showing existing users
 // Bump WHATS_NEW_VERSION and add an entry whenever existing users should see a "what's new"
 // popup next time they open the app. Independent of OB_VERSION (which is onboarding steps only).
-const WHATS_NEW_VERSION = 3;
+const WHATS_NEW_VERSION = 4;
 const WHATS_NEW_LOG = [
+  { v:4, items:['Home now brings each part of Daily into one clearer overview.', 'Customise Home in Settings: drag cards, hide what you do not need, and save separate phone and desktop layouts.', 'Your previous Home layout remains available in Settings → Home Layout.'] },
   { v:1, items:['New app icon and logo, everywhere in the app', 'Brighter, taller completed-exercise rows on Log', 'Exercise Library: delete moved into the edit screen'] },
   { v:2, items:['Budget: a weekly Spending goal card — set a cap for your variable spending and watch it turn red if you go over', 'Accounts: flag an account as a Savers account to keep it out of the new debt payoff total'] },
   { v:3, items:['Settings: search it — type “weight”, “colour” or “backup” and jump straight to the right card', 'Settings: the four groups are labelled, and each row shows its current value at a glance', 'Settings: every screen now uses one card layout, and saving behaves the same way everywhere'] }
@@ -25096,7 +25107,7 @@ function obHomePreviewHTML(){
 function obWelcomeHTML(){
   return '<div class="ob-center ob-welcome">'+
     '<div class="ob-welcome-brand">'+
-      '<span class="wordmark" role="img" aria-label="Daily"></span>'+
+      '<span class="wordmark" role="img" aria-label="Daily App"><span class="wordmark-daily" aria-hidden="true">Daily</span><span class="wordmark-app" aria-hidden="true">App</span></span>'+
     '</div>'+
     '<div class="ob-welcome-kicker">Everything that shapes today</div>'+
     '<div class="ob-welcome-title">Your whole day,<br>in one place.</div>'+
@@ -30751,6 +30762,7 @@ function buildHomeNotesCard(){
   return h+'</div>';
 }
 function renderHomeNotesBubble(){
+  if(document.getElementById('home-content')?.classList.contains('category-home')){renderHome();return;}
   const el=document.querySelector('#home-content [data-card-id="notes"]');
   if(el){ el.innerHTML=buildHomeNotesCard(); homePrepareCardLinks(); }
 }

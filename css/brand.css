@@ -1,99 +1,39 @@
-/* ── Brand: the DAILY wordmark ──────────────────────────────────────────────
-   Appended last, like every stylesheet before it, so it can win a tie against the placement
-   rules that size the mark. Do not reorder any of the links in index.html.
-
-   ONE element per placement, not a light/dark pair of <img>s. Its ::before artwork is painted as a
-   background colour through the PNG's own alpha channel, so the mark takes the app's colour
-   instead of shipping two baked-in copies of itself — which is what lets it follow the accent
-   the user actually chose, preset, custom, per-training-day or weather, with no second palette
-   and nothing new to store.
-
-   The ink is --accent-text, never --accent. Every accent value the app can hold is tuned to
-   CARRY white text, so using it AS text on the app background is the one place it fails: the
-   night weather scenes measure 1.7:1 against dark --bg. --accent-text is derived at runtime by
-   accentTextHex() to clear 5:1 against the current theme, which is exactly what a logo sitting
-   on --bg needs. It is theme-dependent and re-derived by applyTheme()/applyAccent(), so the
-   mark re-inks itself with no JavaScript of its own.
-
-   aspect-ratio comes from the artwork (1877 x 412). Every placement sets a height and lets the
-   width follow, so a span can neither collapse to zero nor stretch the letters. Padding adds
-   room for the frame without shrinking that artwork. The mask belongs on ::before only:
-   masking the outer span would clip away the frame as well. */
+/* Shared two-part mark: original Daily artwork in the selected accent, neutral App ink. */
 .wordmark{
-  --wordmark-pad-y:9px;
-  --wordmark-pad-x:12px;
-  --wordmark-stroke:2.1px;
-  --wordmark-radius:7px;
-  position:relative;
-  display:block;
-  box-sizing:content-box;
-  aspect-ratio:1877 / 412;
-  flex-shrink:0;
-  padding:var(--wordmark-pad-y) var(--wordmark-pad-x);
-  margin-inline:6px;
-  color:var(--accent-text,var(--text));
+  --wordmark-size:24px;--wordmark-app-ink:#f5f5f7;
+  display:inline-flex;align-items:center;flex-shrink:0;gap:0;
+  height:var(--wordmark-size);width:max-content;max-width:100%;
+  box-sizing:content-box;padding:9px 0;margin:0;
 }
-.wordmark::before{
-  content:"";
-  position:absolute;
-  inset:var(--wordmark-pad-y) var(--wordmark-pad-x);
-  background-color:currentColor;
-  -webkit-mask:url("../assets/brand/daily-wordmark-mask.png") center / contain no-repeat;
-  mask:url("../assets/brand/daily-wordmark-mask.png") center / contain no-repeat;
-  -webkit-mask-mode:alpha;
-  mask-mode:alpha;
-  pointer-events:none;
+[data-theme="light"] .wordmark{--wordmark-app-ink:var(--text)}
+.wordmark-daily,.wordmark-app{
+  display:block;flex:none;
+  font:800 italic calc(var(--wordmark-size) * 1.2)/1 var(--font-ui);
+  letter-spacing:-1px;text-transform:uppercase;
 }
-.wordmark::after{
-  content:"";
-  position:absolute;
-  inset:0;
-  border:var(--wordmark-stroke) solid currentColor;
-  border-radius:var(--wordmark-radius);
-  transform:skewX(-14deg);
-  pointer-events:none;
-}
-/* The sidebar mark (.ds-logo, sized in css/budget-home.css) takes the base frame above. It
-   used to scale it up — 11/15px padding, a 2.5px stroke, a 9px radius — for a 28px mark; at
-   24px that made the frame the heaviest line in the sidebar, so the override is gone. */
-#side-menu-title .wordmark{
-  --wordmark-pad-y:7px;
-  --wordmark-pad-x:10px;
-  --wordmark-stroke:1.8px;
-  --wordmark-radius:6px;
-  margin-inline:5px;
-}
-.ob-center .wordmark{width:calc(100% - 48px)}
-.ob-welcome-brand{height:auto;min-height:44px;padding-inline:6px}
-/* Keep the welcome artwork visible on browsers that fail to paint the PNG mask. */
-.ob-welcome .wordmark::before{
-  -webkit-mask:none;
-  mask:none;
-  background:transparent url("../assets/brand/daily-wordmark-dark.png") center / contain no-repeat;
-}
-[data-theme="light"] .ob-welcome .wordmark::before{
-  background-image:url("../assets/brand/daily-wordmark-light.png");
-}
-@media (max-width:1023px) and (orientation:landscape) and (max-height:600px){
-  #header-title .wordmark{
-    --wordmark-pad-y:6px;
-    --wordmark-pad-x:9px;
-    --wordmark-stroke:1.7px;
-    --wordmark-radius:5px;
-    margin-inline:4px;
+.wordmark-daily{color:var(--accent-text,var(--text))}
+.wordmark-app{color:var(--wordmark-app-ink)}
+@supports ((-webkit-mask-image:url("x")) or (mask-image:url("x"))){
+  .wordmark-daily{
+    height:var(--wordmark-size);aspect-ratio:1877 / 412;font-size:0;background:currentColor;
+    -webkit-mask:url("../assets/brand/daily-wordmark-mask.png") center/contain no-repeat;
+    mask:url("../assets/brand/daily-wordmark-mask.png") center/contain no-repeat;mask-mode:alpha;
+  }
+  .wordmark-app{
+    margin-left:calc(var(--wordmark-size) * -.3);
+    /* White, solid lettering reads heavier than the accented Daily artwork.
+       Optical sizing keeps their visible baselines aligned without separating them. */
+    height:calc(var(--wordmark-size) * .9);transform:translateY(calc(var(--wordmark-size) * .05));
+    aspect-ratio:1180 / 412;font-size:0;background:currentColor;
+    -webkit-mask:url("../assets/brand/app-wordmark-mask.svg") center/contain no-repeat;
+    mask:url("../assets/brand/app-wordmark-mask.svg") center/contain no-repeat;mask-mode:alpha;
   }
 }
-/* Without mask support the rule above would paint a solid accent RECTANGLE — the failure has
-   to be the artwork in plain black or white, not a coloured block where the logo should be.
-   The two PNGs are the same geometry as the mask, so nothing moves. */
-@supports not ((-webkit-mask-image:url("x")) or (mask-image:url("x"))){
-  .wordmark{color:#fff}
-  [data-theme="light"] .wordmark{color:#000}
-  .wordmark::before{
-    background-color:transparent;
-    background:url("../assets/brand/daily-wordmark-dark.png") center / contain no-repeat;
-  }
-  [data-theme="light"] .wordmark::before{
-    background:url("../assets/brand/daily-wordmark-light.png") center / contain no-repeat;
-  }
+#header-title .wordmark{--wordmark-size:22px}
+#side-menu-title .wordmark{--wordmark-size:18px;padding:7px 0}
+.ob-center .wordmark{--wordmark-size:36px;width:max-content;height:36px;margin:0 auto 18px}
+.ob-welcome-brand{height:auto;min-height:44px;padding-inline:0}
+.ob-welcome .wordmark{--wordmark-size:20px;width:max-content;max-width:100%;height:20px;max-height:none;margin:0}
+@media(max-width:1023px) and (orientation:landscape) and (max-height:600px){
+  #header-title .wordmark{--wordmark-size:16px;padding:6px 0}
 }
