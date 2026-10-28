@@ -1,5 +1,21 @@
 # Daily — Agent Handoff
 
+## v412 Desktop forecast controls — release authorised, 2026-10-28
+
+- Replaced Category desktop Weather's underlined Today/Week tabs with a compact neutral
+  segmented switch matching the app controls. Follow-up moves the switch over the lower
+  left scenery with a clear glass tint (subtle translucent fill, blur and light border),
+  leaving the existing history-height gray dock solely for centered forecast
+  rows. Scenery reserves space for controls so recovery text can grow without overlapping.
+  Mobile and legacy forecast styles are untouched.
+- Checked Today/Week, dark/light at 1024px: scenery boundary and bottom still exactly match
+  Training; forecast top/bottom gaps match, no Weather overflow. Phone controls retain their
+  existing relative position. Desktop hourly labels now use compact 6p/7p text with full
+  times retained in hover titles and list-item accessible labels; phone times and weekly
+  day labels remain unchanged. No fetching or data changes. All 671 Node checks pass.
+- Francois approved committing and pushing this complete weather pass. Release base is
+  v411 / 0078dbc; cache is daily-v412. Physical iPhone and production Firebase are unverified.
+
 ## v411 Phone Training / Budget split — release authorised, 2026-10-28
 
 - Francois requested separate phone cards in the existing styling, with desktop combined.

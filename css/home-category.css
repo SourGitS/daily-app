@@ -79,15 +79,20 @@
 @media(min-width:1024px){
  .cat-training{align-self:start}
  #view-home.category-home-active .cat-weather .weather-forecast-toggle{display:none!important}
- #view-home.category-home-active .cat-weather .weather-forecast-dock{min-height:var(--cat-weather-dock-height,101px);padding:0 14px 5px;justify-content:flex-start}
- #view-home.category-home-active .cat-weather .weather-mobile-controls{height:36px;min-height:36px;margin:0;flex:none;justify-content:flex-start}
- #view-home.category-home-active .cat-weather #home-weather-periods button{height:36px;min-height:36px;padding:0 8px;font-size:11px}
+ #view-home.category-home-active .cat-weather-scene{padding-bottom:64px}
+ #view-home.category-home-active .cat-weather .weather-forecast-dock{min-height:var(--cat-weather-dock-height,101px);padding:12px 14px;justify-content:center}
+ #view-home.category-home-active .cat-weather .weather-mobile-controls{position:absolute;top:-52px;left:14px;right:auto;height:44px;min-height:44px;margin:0;background:none;justify-content:flex-start}
+ #view-home.category-home-active .cat-weather #home-weather-periods{position:relative;isolation:isolate;gap:0;padding:0 3px}
+ #view-home.category-home-active .cat-weather #home-weather-periods::before{content:'';position:absolute;inset:4px 0;background:#18344830;border:1px solid #ffffff26;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:9px;z-index:-1}
+ #view-home.category-home-active .cat-weather #home-weather-periods button{position:relative;isolation:isolate;height:44px;min-height:44px;min-width:54px;padding:0 10px;border:0;font-size:11px;color:#ffffffb3;background:none}
+ #view-home.category-home-active .cat-weather #home-weather-periods button[aria-pressed=true]{color:#fff}
+ #view-home.category-home-active .cat-weather #home-weather-periods button[aria-pressed=true]::before{content:'';position:absolute;inset:7px 0;background:#ffffff24;border-radius:6px;z-index:-1}
  #view-home.category-home-active .cat-weather .weather-preview{padding:0;margin:0;min-height:0}
  #view-home.category-home-active .cat-weather :is(.weather-forecast-caption,.weather-summary,.weather-hour-chance){display:none!important}
  #view-home.category-home-active .cat-weather .weather-hours{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:3px;margin:0;overflow:visible}
  #view-home.category-home-active .cat-weather .weather-hours.weather-week{grid-template-columns:repeat(7,minmax(0,1fr))}
  #view-home.category-home-active .cat-weather .weather-hour{display:grid;grid-template-columns:auto auto;justify-content:center;align-content:start;gap:3px 4px;min-height:0;padding:0;line-height:14px}
- #view-home.category-home-active .cat-weather .weather-hour-time{grid-column:1/-1;font-size:10px;line-height:14px}
+ #view-home.category-home-active .cat-weather .weather-hour-time{grid-column:1/-1;font-size:11px;line-height:14px}
  #view-home.category-home-active .cat-weather .weather-hour .ti{grid-column:1/-1;font-size:18px;line-height:20px}
  #view-home.category-home-active .cat-weather .weather-hour-temp{font-size:12px;line-height:17px}
  #view-home.category-home-active .cat-weather .weather-day-low{font-size:10px;line-height:17px}

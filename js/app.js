@@ -21497,11 +21497,12 @@ function renderMobileWeatherForecast(entry){
     let icon=look[0];
     if(!week&&row.isDay===0){ if(row.code===0) icon='moon'; else if(row.code===1||row.code===2) icon='partlyNight'; }
     const time=week?row.day:weatherForecastTime(entry,row.time)||'—';
+    const compactTime=!week&&typeof categoryDesktopWeather==='function'&&categoryDesktopWeather()?time.replace(/:\d{2}/,'').replace(/\s*([ap])m$/i,'$1'):time;
     const values=week?'high '+temp(row.tempMax)+', low '+temp(row.tempMin):temp(row.tempC);
     const chance=row.rainProbability===null?'':row.rainProbability+'%';
     const label=(week?row.fullDate:time)+', '+look[1]+', '+values+(chance?', '+row.rainProbability+' percent chance of precipitation':'');
     return '<div class="weather-hour" role="listitem" aria-label="'+escAttr(label)+'">'+
-      '<span class="weather-hour-time">'+escText(time)+'</span>'+weatherIcon(icon)+
+      '<span class="weather-hour-time" title="'+escAttr(week?row.fullDate:time)+'">'+escText(compactTime)+'</span>'+weatherIcon(icon)+
       '<span class="weather-hour-temp">'+temp(week?row.tempMax:row.tempC)+'</span>'+
       (week?'<span class="weather-day-low">'+temp(row.tempMin)+'</span>':'')+
       '<span class="weather-hour-chance">'+(row.rainProbability>=20?chance:'')+'</span></div>';
