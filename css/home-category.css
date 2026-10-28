@@ -116,6 +116,20 @@
  .cat-food .cat-footer strong{display:block;margin:0}
  .cat-stats .cat-footer{min-height:84px}
 }
+/* Independent phone Budget shares the hero treatment with a quiet spending footer. */
+@media(max-width:1023px){
+ .cat-card.cat-budget>.cat-budget{padding:16px;background:var(--cat-fill);color:#fff}
+ .cat-card.cat-budget .cat-heading{margin-bottom:12px}
+ .cat-card.cat-budget .cat-figure{font-size:30px}
+ .cat-card.cat-budget .cat-track{margin-top:16px}
+ .cat-card.cat-budget .cat-budget-caption{margin-bottom:0}
+ .cat-budget-expense{flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;flex-wrap:wrap;padding:16px;min-height:76px}
+ .cat-budget-expense .cat-action{margin:0;min-width:0;min-height:44px;padding:8px 12px;gap:7px;background:var(--cat-line);color:var(--cat-ink);border:1px solid var(--cat-line);border-radius:10px;font-size:12px}
+ .cat-budget-expense .cat-expense-label{font-size:12px}
+ .cat-budget-expense .cat-expense-icon{width:14px;height:14px}
+ .cat-expense-summary{display:flex;flex:1;min-width:0;flex-direction:column;font-size:11px;line-height:1.5;color:var(--cat-muted)}
+ .cat-expense-summary strong{font-size:12px;margin:2px 0 0;overflow-wrap:anywhere}
+}
 /* Phone layout editing is a viewport-sized workspace; only the miniature scrolls. */
 #category-habit-dialog{margin:auto;padding:0;width:min(440px,calc(100vw - 32px));max-height:calc(100dvh - 32px);background:var(--surface-raised);border:1px solid var(--border);border-radius:20px;overflow:hidden}
 #category-habit-dialog[open]{display:flex;flex-direction:column}

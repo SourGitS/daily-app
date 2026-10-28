@@ -1,5 +1,31 @@
 # Daily — Agent Handoff
 
+## v411 Phone Training / Budget split — release authorised, 2026-10-28
+
+- Francois requested separate phone cards in the existing styling, with desktop combined.
+  Francois approved committing and pushing the complete phone-card pass after desktop checks.
+  Release base is v410 / a13bab9; cache is daily-v411.
+- Phone Training keeps its blue body and history footer. Follow-up: Budget now shares the
+  exact Training/Food hero gradient for local comparison. Latest comparison puts a smaller
+  muted-gray Add expense button in a neutral footer matching Food (44px touch height).
+  Beside it are the period spending goal and goal minus recorded spending, replacing the
+  repeated footer dates. Over-goal and missing/incomplete totals retain honest labels;
+  the blue available balance remains separate. Phone editor miniature reflects the footer.
+  Checked 390 dark and 320 light, matching
+  gradients, no Budget overflow and expense form open/Cancel. Desktop remains combined.
+  Budget retains its existing amount, spending bar, period and expense/setup actions. No record readers,
+  writers, sync configuration or stored layout schema change.
+- Visibility and miniatures now use the selected device mode. Phone Budget uses its saved
+  independent position and can be moved/hidden separately; desktop retains combining at
+  Training's position and its Include Budget control. Reading defaults writes nothing.
+- 671 Node checks pass. Browser checked 390 dark, 320 light empty Budget, independent editor
+  reorder/hide/Cancel, expense open/Cancel, and retained desktop grouping at 1280. No app
+  errors or horizontal overflow in the phone fixture. Physical iPhone remains unverified.
+- Final desktop review at 1280 dark and 1024 light retains the combined card, exact Weather
+  scenery/history boundary and bottom alignment, with no Home overflow. No sync writers or
+  financial records changed; this pass does not verify production Firebase.
+- Local review: http://127.0.0.1:8794/temp-analysis/category-review.html?width=390&theme=dark&scenario=everyday&island=1
+
 ## v410 Home refinements — release authorised, 2026-10-28
 
 - Francois explicitly requested committing and pushing all the updates from this pass,

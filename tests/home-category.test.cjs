@@ -8,6 +8,17 @@ test('category layout defaults on, honours explicit legacy choice and does not m
 test('combining Budget retains its standalone placement and hidden choice',()=>{
  const p=categoryProfile({enabled:true,order:['food','budget','training']},'desktop');assert.ok(!categoryVisible(p).includes('budget'));p.hidden.push('training');assert.deepEqual(categoryVisible(p).slice(0,2),['food','budget']);p.hidden.push('budget');assert.ok(!categoryVisible(p).includes('budget'));
 });
+test('phone Training and Budget keep independent positions and visibility without rewriting the profile',()=>{
+ const p=categoryProfile({enabled:true,order:['budget','weather','training']},'mobile'),before=JSON.stringify(p);
+ assert.deepEqual(categoryVisible(p,'mobile').slice(0,3),['budget','weather','training']);
+ assert.deepEqual(categoryVisible(p,'desktop').slice(0,2),['weather','training']);
+ assert.equal(JSON.stringify(p),before);
+ p.hidden=['training'];assert.ok(categoryVisible(p,'mobile').includes('budget'));
+ p.hidden=['budget'];assert.ok(categoryVisible(p,'mobile').includes('training'));
+ assert.ok(!categoryVisible(p,'mobile').includes('budget'));
+ const cells=categoryCells(categoryVisible(categoryProfile(null,'mobile'),'mobile'),'mobile');
+ assert.equal(cells.training.span,2);assert.equal(cells.budget.span,2);assert.equal(cells.budget.row,cells.training.row+1);
+});
 test('every reordered and hidden card packs in source order without grid holes',()=>{
  for(const mode of ['mobile','desktop'])for(let offset=0;offset<12;offset++){
   const p=categoryProfile(null,mode);p.order=p.order.slice(offset).concat(p.order.slice(0,offset));p.hidden=p.order.filter((_,i)=>i%3===0);const ids=categoryVisible(p),cells=categoryCells(ids,mode);let previous=0;const rows={};

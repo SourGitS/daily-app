@@ -419,7 +419,8 @@
 // v405: align the expanded weather card with the full overview, including Last 7 days.
 // v409: default Category Home, visual layout editor, shared wordmark and stable weather scenery.
 // v410: aligned always-open desktop forecast, shared Home header, phone layout editor and habits polish.
-const CACHE_NAME = 'daily-v410'; // Remote connector hosting remains disabled.
+// v411: separate phone Training/Budget cards, with a quiet expense action and spending-goal footer.
+const CACHE_NAME = 'daily-v411'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —

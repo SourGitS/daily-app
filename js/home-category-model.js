@@ -16,9 +16,9 @@ function categoryProfile(value,mode){
  // Do not stamp or persist this fallback while cloud preferences are still loading.
  return {schemaVersion:1,enabled:v.enabled!==false,order,hidden:unique(v.hidden)};
 }
-function categoryVisible(profile){
+function categoryVisible(profile,mode='desktop'){
  const ids=profile.order.filter(id=>!profile.hidden.includes(id));
- return ids.includes('training')&&ids.includes('budget')?ids.filter(id=>id!=='budget'):ids;
+ return mode!=='mobile'&&ids.includes('training')&&ids.includes('budget')?ids.filter(id=>id!=='budget'):ids;
 }
 function categoryCells(ids,mode){
  const out={},mobile=mode==='mobile',limit=mobile?2:12;let row=[],used=0,index=1;
