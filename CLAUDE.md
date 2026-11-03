@@ -648,6 +648,19 @@ opened June. Every other way into Month still remembers where you were.
 The top-level destination is still called **Budget**; renaming it to Finance is a later
 decision.
 
+## Budget payday allocation correction — v416, 2026-11-03
+
+Fixed-expense allowances follow the app's canonical weekly accrual, prorated by the number of
+days in the selected budget period. A fortnight therefore reserves two weekly shares. Bill due
+dates belong only to Outlook's cash-flow schedule and must never turn an ordinary recurring
+allowance into zero between charge dates.
+
+Periods saved by v415 with every fixed allowance at zero remain untouched until review. They
+render as **Not allocated**, offer **Review recurring amounts**, and prefill the prorated
+suggestions in the existing allocation dialog. Only Save writes them. A later explicit review,
+including an intentional zero, remains authoritative. Fixed-expense definitions, schedules,
+payments and sync paths are unchanged.
+
 ## Budget correction — v323, 2026-09-10
 
 Three v320 prescriptions are SUPERSEDED and must not be reinstated:

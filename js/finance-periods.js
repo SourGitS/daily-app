@@ -113,27 +113,36 @@ function budPeriodMoney(range,weekOverride){
   return budPeriodCompute(p,record,ledgerData,txnData,store.periods,legacy);
 }
 // A new payday-aligned period must not make the existing fixed plan appear to vanish. Build a
-// read-only suggestion from the canonical fixed-expense definitions: dated recurring charges
-// use the real occurrences inside this period, while undated commitments retain the same
-// weekly accrual the old Budget used. Nothing is written until the user reviews or edits it.
+// read-only suggestion from the canonical weekly accrual for every active fixed expense,
+// prorated to this period's length. Due dates belong to Outlook's cash-flow schedule; using
+// them here would turn ordinary recurring allowances into rows of zero between bill dates.
+// Nothing is written until the user reviews or edits the suggestion.
 function budPeriodSuggestedReserves(p){
   const reserves={};
   if(!p||!(p.days>0))return reserves;
   activeCats(loadFixCats()).forEach(c=>{
     const weekly=typeof catChargeableBudget==='function'?Number(catChargeableBudget(c))||0:0;
-    let amount=budMoneyRound(weekly*p.days/7);
-    if(c.dueDate&&typeof billIsScheduled==='function'&&billIsScheduled(c)&&typeof catOccurrencesBetween==='function'){
-      const occurrences=catOccurrencesBetween(c,localMidnight(p.start),localMidnight(p.end));
-      amount=budMoneyRound((Number(catAmount(c))||0)*occurrences.length);
-    }
-    reserves[c.id]=amount;
+    reserves[c.id]=budMoneyRound(weekly*p.days/7);
   });
   return reserves;
+}
+// v415 could save a reviewed-looking period whose every fixed allowance was zero because the
+// suggestion followed due dates rather than accruals. Keep its saved totals untouched, but
+// mark that state for an explicit repair path. allocationsReviewed means the user later made
+// a deliberate allocation decision, including a deliberate zero, and must always win.
+function budPeriodZeroPlan(p,saved){
+  if(!saved||saved.allocationsReviewed)return false;
+  if(!Object.prototype.hasOwnProperty.call(saved,'reserves'))return false;
+  if(typeof activeCats!=='function'||typeof loadFixCats!=='function'||typeof catChargeableBudget!=='function')return false;
+  const suggested=budPeriodSuggestedReserves(p),ids=Object.keys(suggested).filter(id=>Number(suggested[id])>0);
+  return !!ids.length&&ids.every(id=>!(Number(saved.reserves?.[id])>0));
 }
 // An exact saved week already defines its allocations. Reading it must neither seed a
 // second plan nor force the user to confirm the same numbers again.
 function budPeriodInheritedPlan(p,saved,basis){
-  if(saved&&(saved.fundingConfirmed||saved.allocationsReviewed||Object.prototype.hasOwnProperty.call(saved,'reserves')))return saved;
+  if(saved&&(saved.fundingConfirmed||saved.allocationsReviewed||Object.prototype.hasOwnProperty.call(saved,'reserves'))){
+    return budPeriodZeroPlan(p,saved)?{...saved,zeroFixedPlan:true}:saved;
+  }
   if(p.days!==7||localMidnight(p.start).getDay()!==1){
     return {...(saved||{}),reserves:budPeriodSuggestedReserves(p),provisionalFixedPlan:true};
   }
@@ -299,9 +308,10 @@ function budPeriodSetupFields(){
 }
 function budPeriodAdjust(){
   const p=budPeriodViewed();if(!p)return budPeriodSetup();
-  const store=budCyclesLoad(),saved=store.periods[p.id]||{},r=budPeriodInheritedPlan(p,saved),cats=activeCats(loadFixCats());
+  const store=budCyclesLoad(),saved=store.periods[p.id]||{},inherited=budPeriodInheritedPlan(p,saved),repairing=inherited.zeroFixedPlan;
+  const r=repairing?{...inherited,reserves:budPeriodSuggestedReserves(p),provisionalFixedPlan:true}:inherited,cats=activeCats(loadFixCats());
   budPeriodDialog('Allocate this budget','<p>'+escText(budPeriodLabel(p))+'</p>'+
-    (r.provisionalFixedPlan?'<p class="bp-note">Suggested from your existing fixed expenses for these dates. Review before saving; no bills or schedules have been changed.</p>':'')+
+    (repairing?'<p class="bp-note">This period currently has $0 fixed allowances. The recurring amounts below are restored as suggestions; review them before saving. No bills or schedules have been changed.</p>':r.provisionalFixedPlan?'<p class="bp-note">Suggested from your existing fixed expenses for these dates. Review before saving; no bills or schedules have been changed.</p>':'')+
     '<label>Existing money allocated to this period<input name="opening" type="number" min="0" step="0.01" value="'+(r.opening||'')+'" placeholder="0"></label>'+
     '<p class="bp-note">Only money available from before this period. Income received during these dates belongs in Record income.</p>'+
     '<label>Savings allocation<input name="savings" type="number" min="0" step="0.01" value="'+(r.savings||'')+'" placeholder="0"></label>'+
@@ -311,9 +321,9 @@ function budPeriodAdjust(){
   document.getElementById('bp-form').onsubmit=e=>{
     e.preventDefault();const f=new FormData(e.target),reserves={...(r.reserves||{})};
     cats.forEach(c=>reserves[c.id]=budMoneyRound(f.get('reserve:'+c.id)));
-    const {provisionalFixedPlan,...base}=r;
+    const {provisionalFixedPlan,zeroFixedPlan,...base}=r;
     store.periods[p.id]={...base,start:p.start,end:p.end,opening:budMoneyRound(f.get('opening')),savings:budMoneyRound(f.get('savings')),
-      goal:f.get('goal')===''?null:budMoneyRound(f.get('goal')),reserves,fundingConfirmed:true,updatedAt:Date.now()};
+      goal:f.get('goal')===''?null:budMoneyRound(f.get('goal')),reserves,fundingConfirmed:true,allocationsReviewed:true,updatedAt:Date.now()};
     budCyclesSave(store);document.getElementById('bud-period-dialog').close();budPeriodRefresh();
   };
 }
@@ -662,7 +672,8 @@ function budPeriodPaintMoney(m){
   put('budget-bar-label-l',fmtMoneyExact(used)+' allocated');put('budget-bar-label-r',m.funded?Math.round(used/m.funded*100)+'% of funds':'');
   const bar=document.getElementById('budget-bar');if(bar)bar.style.width=(m.funded?Math.min(100,Math.max(0,used/m.funded*100)):0)+'%';
   put('calc-variable',fmtMoneyExact(m.spent));put('sum-var',fmtMoneyExact(m.spent));
-  put('sum-inc',fmtMoneyExact(m.income));put('sum-fix',fmtMoneyExact(m.reserved+m.billPaid));put('plan-fix-sum',fmtMoneyExact(m.reserved+m.billPaid));
+  const fixedLabel=m.record?.zeroFixedPlan?'Not allocated':fmtMoneyExact(m.reserved+m.billPaid);
+  put('sum-inc',fmtMoneyExact(m.income));put('sum-fix',fixedLabel);put('plan-fix-sum',fixedLabel);
   put('sav-head-sum',fmtMoneyExact(m.savings));put('plan-avail',avail===null?'—':fmtMoneyExact(avail+m.spent));put('sum-plan',avail===null?'—':fmtMoneyExact(avail+m.spent));
   updateVarGoalCard(m.spent);
   if(budPeriodCardMode()){
@@ -697,7 +708,7 @@ function budPeriodRenderCards(){
   document.querySelector('#bud-closeout-card .bud-head-label span').textContent='Close out period';
   document.getElementById('closeout-state').innerHTML=tstat(r.finished?'pos':'warn',r.finished?'Period finished':'Not finished yet',r.finished?'check':'flat',true);
   let extra=document.getElementById('bud-period-tools');if(!extra){extra=document.createElement('div');extra.id='bud-period-tools';document.getElementById('bud-tools-card').appendChild(extra);}
-  extra.innerHTML='<div class="bud-spend-tools"><button class="bud-edit-btn" onclick="budPeriodAdjust()">'+(m.record.provisionalFixedPlan?'Review suggested allocations':'Allocate existing money')+'</button><button class="bud-edit-btn" onclick="budPeriodRollover()">Rollover</button><button class="bud-edit-btn" onclick="budPeriodCSV()">Export period</button></div>';
+  extra.innerHTML='<div class="bud-spend-tools"><button class="bud-edit-btn" onclick="budPeriodAdjust()">'+(m.record.zeroFixedPlan?'Review recurring amounts':m.record.provisionalFixedPlan?'Review suggested allocations':'Allocate existing money')+'</button><button class="bud-edit-btn" onclick="budPeriodRollover()">Rollover</button><button class="bud-edit-btn" onclick="budPeriodCSV()">Export period</button></div>';
   _budSecOpen.add('inc');budSecApply();budPeriodPaintMoney(m);renderOutlookCard(m.available,{});
   renderPrevWeeks();renderBudgetConfig();loadCCInput();renderDueBanner(localMidnight(p.start));budApplyLayout();restoreBudgetCollapseState();
   if(budgetView==='overview')renderBudgetOverview();else if(budgetView==='plan')renderPlan();
@@ -716,9 +727,9 @@ function budPeriodSaveFields(finish){
   next.updatedAt=Date.now();store.periods[p.id]=next;budCyclesSave(store);
 }
 function budPeriodFixedRows(m){
-  const rows=activeCats(loadFixCats()).map(c=>'<div class="bud-row bud-cat-row">'+budCatNameHtml('fix',c,true,budEditMode.fix)+
-    '<input class="bud-row-input" type="number" min="0" step="0.01" aria-label="'+escAttr(catLabel(c))+' period allowance" data-period-reserve="'+escAttr(c.id)+'" value="'+(m.record.reserves?.[c.id]??'')+'" placeholder="$0" oninput="budSaveDraft();budRecalc()">'+(budEditMode.fix?'<button class="delete-cat-btn" data-type="fix" data-id="'+escAttr(c.id)+'" aria-label="Remove category">×</button>':'')+'</div>').join('');
-  return '<div class="bud-fix-cap">'+(m.record.provisionalFixedPlan?'Suggested from your existing fixed expenses for '+escText(budPeriodLabel(m.range))+'. Review before saving.':'Allowances for '+escText(budPeriodLabel(m.range))+'.')+' Recorded bill payments use their allowance once; Outlook shows the scheduled charges.</div>'+
+  const rows=activeCats(loadFixCats()).map(c=>{const unresolved=m.record.zeroFixedPlan&&!(Number(m.record.reserves?.[c.id])>0);return '<div class="bud-row bud-cat-row">'+budCatNameHtml('fix',c,true,budEditMode.fix)+
+    '<input class="bud-row-input" type="number" min="0" step="0.01" aria-label="'+escAttr(catLabel(c))+' period allowance" data-period-reserve="'+escAttr(c.id)+'" value="'+(unresolved?'':(m.record.reserves?.[c.id]??''))+'" placeholder="'+(unresolved?'Not set':'$0')+'" oninput="budSaveDraft();budRecalc()">'+(budEditMode.fix?'<button class="delete-cat-btn" data-type="fix" data-id="'+escAttr(c.id)+'" aria-label="Remove category">×</button>':'')+'</div>';}).join('');
+  return '<div class="bud-fix-cap">'+(m.record.zeroFixedPlan?'This period has saved $0 fixed allowances. Your recurring expense amounts are still intact; review them before saving this period.':m.record.provisionalFixedPlan?'Suggested from your existing fixed expenses for '+escText(budPeriodLabel(m.range))+'. Review before saving.':'Allowances for '+escText(budPeriodLabel(m.range))+'.')+' Recorded bill payments use their allowance once; Outlook shows the scheduled charges.</div>'+
     '<div class="bud-spend-tools"><button class="bud-edit-btn" data-type="fix" data-action="bud-edit-toggle">Edit</button><button class="bud-edit-btn" onclick="openBudgetEditor()">Recurring bills</button></div>'+rows+
     (budEditMode.fix?'<button class="add-cat-btn" data-type="fix">+ Add fixed expense</button>':'')+'<button class="add-cat-btn" onclick="budPeriodRecord(\'bill_payment\')">+ Record bill payment</button>'+
     m.rows.filter(x=>x.kind==='bill_payment').map(x=>'<button class="txn-item" data-entry-id="'+escAttr(x.id)+'" onclick="budPeriodEdit(this.dataset.entryId)"><span>'+escText(loadFixCats().find(c=>c.id===x.fixCatId)?.name||'Bill')+' · '+escText(fmtDate(x.date))+'</span><span>'+fmtMoneyExact(x.amount)+'</span></button>').join('');

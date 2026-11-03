@@ -187,7 +187,7 @@ test('an explicit period allocation remains authoritative over a matching old we
   const c=context(),p={start:'2026-09-28',end:'2026-10-04',days:7},saved={fundingConfirmed:true,savings:80,reserves:{rent:90}};
   assert.deepEqual(plain(c.budPeriodInheritedPlan(p,saved)),saved);
 });
-test('changing to a payday period suggests every fixed expense without writing or changing its definition',()=>{
+test('changing to a payday period prorates every fixed expense without writing or changing its definition',()=>{
   const cats=[
     {id:'rent',name:'Rent',amount:1300,cycle:'monthly',dueDate:'2026-10-05'},
     {id:'gym',name:'Gym',amount:20,cycle:'weekly',dueDate:'2026-10-02'},
@@ -195,15 +195,22 @@ test('changing to a payday period suggests every fixed expense without writing o
     {id:'paused',name:'Paused',amount:15,cycle:'weekly',status:'paused'}
   ],before=JSON.stringify(cats);
   let writes=0;
-  const c=context({loadFixCats:()=>cats,activeCats:x=>x,catAmount:x=>x.amount,
+  const c=context({loadFixCats:()=>cats,activeCats:x=>x,
     catChargeableBudget:x=>x.status==='paused'?0:x.id==='insurance'?30:x.id==='rent'?300:20,
-    billIsScheduled:x=>!!x.dueDate&&x.status!=='paused',
-    catOccurrencesBetween:x=>Array.from({length:x.id==='gym'?2:1}),
     lsSave:()=>writes++});
   const suggested=c.budPeriodInheritedPlan(period,null);
-  assert.deepEqual(plain(suggested.reserves),{rent:1300,gym:40,insurance:60,paused:0});
+  assert.deepEqual(plain(suggested.reserves),{rent:600,gym:40,insurance:60,paused:0});
   assert.equal(suggested.provisionalFixedPlan,true);
   assert.equal(writes,0);assert.equal(JSON.stringify(cats),before);
+});
+test('an old all-zero period becomes a read-only repair state unless zero was explicitly reviewed',()=>{
+  const c=context({loadFixCats:()=>[{id:'rent'},{id:'gym'}],activeCats:x=>x,catChargeableBudget:x=>x.id==='rent'?300:20});
+  const saved={start:period.start,end:period.end,fundingConfirmed:true,reserves:{rent:0,gym:0},updatedAt:10};
+  const repair=c.budPeriodInheritedPlan(period,saved);
+  assert.equal(repair.zeroFixedPlan,true);assert.deepEqual(plain(repair.reserves),saved.reserves);
+  assert.deepEqual(plain(c.budPeriodSuggestedReserves(period)),{rent:600,gym:40});
+  const reviewed={...saved,allocationsReviewed:true};
+  assert.deepEqual(plain(c.budPeriodInheritedPlan(period,reviewed)),reviewed);
 });
 test('a placeholder period receives suggestions but reviewed or explicit allowances never change',()=>{
   const c=context({loadFixCats:()=>[{id:'rent'}],activeCats:x=>x,catChargeableBudget:()=>250});
