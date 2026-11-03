@@ -1,5 +1,14 @@
 # Daily — Agent Handoff
 
+## v423 Left-aligned phone forecast controls — 2026-11-03
+
+- Francois rejected the centred switch. Phone Today/Week now sits on the left, Forecast
+  on the right, with identical positions expanded/collapsed. Retains v422's smaller
+  visible segments, 44px targets, separated forecast grid and compact hourly labels.
+- Cache daily-v423. All 684 Node checks pass; browser checked 390 dark and 320 light,
+  collapse/reopen and Today switching, without overflow or application errors.
+  Desktop, records and fetching are unchanged. Physical Safari remains unverified.
+
 ## v422 Stable centred phone forecast controls — 2026-11-03
 
 - Francois found the expanded phone forecast cluttered and its controls too large/off-centre.

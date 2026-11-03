@@ -426,7 +426,8 @@
 // v420: bring the Category phone weather text hierarchy in line with desktop.
 // v421: shared Today/Week segmented styling on phone, retaining Forecast disclosure.
 // v422: centred compact phone forecast controls with a separated, aligned forecast grid.
-const CACHE_NAME = 'daily-v422'; // Remote connector hosting remains disabled.
+// v423: left-align the compact phone period switch beside the Forecast disclosure.
+const CACHE_NAME = 'daily-v423'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
