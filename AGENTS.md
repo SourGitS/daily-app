@@ -1,5 +1,14 @@
 # Daily — Agent Handoff
 
+## v425 Phone temperature-pair breathing room — 2026-11-03
+
+- Francois asked for slightly more high/low spacing while conserving space. Category phone
+  widths 375–1023px now use a 6px gap instead of 4px; smaller layouts retain their existing
+  spacing. The inline pairs, left controls, disclosure and forecast height remain unchanged.
+- Cache daily-v425. All 684 Node checks pass. Browser verified 390/375/320px with inline
+  pairs, 82px forecast height, no cell/page overflow and no application errors. Colour,
+  desktop, data and fetching are unchanged. Physical Safari remains unverified.
+
 ## v424 Compact inline phone forecast temperatures — 2026-11-03
 
 - Francois requested a desktop-like compact forecast, retaining the left controls. Phone
