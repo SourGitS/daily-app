@@ -1,5 +1,22 @@
 # Daily — Agent Handoff
 
+## v422 Stable centred phone forecast controls — 2026-11-03
+
+- Francois found the expanded phone forecast cluttered and its controls too large/off-centre.
+  Category phone now uses balanced grid columns: a smaller Today/Week switch centred on the
+  card, with Forecast on the right. Visible backing is 30px high, selected inset 26px;
+  actual buttons retain 44px targets. The control row stays at identical coordinates in
+  expanded/collapsed states. A divider and explicit forecast rows separate controls from data.
+- Phone hourly labels compact 7:00 pm to 7p, retaining nonzero minutes (7:30p), with full
+  times still in hover titles and accessible descriptions. Legacy labels and desktop's
+  existing formatting remain intact. No weather fetching, records or sync changes.
+- Cache daily-v422. All 684 Node checks pass, including a new time-accuracy/accessibility
+  check. Synthetic browser checks cover 390 dark and 320 dark/light, both periods,
+  repeated collapse/reopen, exact control centring, 44px targets and zero forecast overflow.
+  Desktop 1024 retains its control size and exact Training boundaries/bottom alignment.
+  No application errors observed; physical Safari remains for Francois to verify.
+  Sample expanded/collapsed screenshots stay ignored in temp-analysis/.
+
 ## v421 Phone forecast segmented control — 2026-11-03
 
 - Francois requested the desktop Today/Week styling on iPhone while retaining Forecast.

@@ -425,7 +425,8 @@
 // v419: safe dated Budget period transitions and saved-plan archive.
 // v420: bring the Category phone weather text hierarchy in line with desktop.
 // v421: shared Today/Week segmented styling on phone, retaining Forecast disclosure.
-const CACHE_NAME = 'daily-v421'; // Remote connector hosting remains disabled.
+// v422: centred compact phone forecast controls with a separated, aligned forecast grid.
+const CACHE_NAME = 'daily-v422'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —

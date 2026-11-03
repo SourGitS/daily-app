@@ -91,6 +91,22 @@ test('legacy cache shows existing hours; requesting missing week data uses the c
   ctx.homeSetWeatherPeriod('invalid');assert.equal(calls.length,1);
 });
 
+test('Category phone hourly labels fit compactly without losing nonzero minutes or full accessible times',()=>{
+ const {ctx,nodes,calls}=fixture();ctx.categoryDesktopWeather=()=>false;
+ nodes['home-content']={classList:{contains:()=>true}};
+ ctx.homeSetWeatherPeriod('today');
+ for(const [full,compact] of [['7:00 pm','7p'],['12:30 am','12:30a'],['00:00','00:00']]){
+  ctx.weatherForecastTime=()=>full;ctx.renderWeatherForecast(entry());
+  const html=nodes['home-weather-hours'].innerHTML;
+  assert.ok(html.includes('>'+compact+'</span>'));
+  assert.ok(html.includes('title="'+full+'"'));
+  assert.ok(html.includes('aria-label="'+full+', '));
+ }
+ nodes['home-content'].classList.contains=()=>false;ctx.weatherForecastTime=()=>'7:00 pm';
+ ctx.renderWeatherForecast(entry());assert.ok(nodes['home-weather-hours'].innerHTML.includes('>7:00 pm</span>'));
+ assert.equal(calls.length,0);
+});
+
 test('unavailable or expired forecasts show an honest empty state rather than recycling old days',()=>{
   const {ctx,nodes}=fixture();
   ctx.homeSetWeatherPeriod('week');

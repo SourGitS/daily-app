@@ -21497,7 +21497,12 @@ function renderMobileWeatherForecast(entry){
     let icon=look[0];
     if(!week&&row.isDay===0){ if(row.code===0) icon='moon'; else if(row.code===1||row.code===2) icon='partlyNight'; }
     const time=week?row.day:weatherForecastTime(entry,row.time)||'—';
-    const compactTime=!week&&typeof categoryDesktopWeather==='function'&&categoryDesktopWeather()?time.replace(/:\d{2}/,'').replace(/\s*([ap])m$/i,'$1'):time;
+    let compactTime=time;
+    if(!week&&typeof categoryDesktopWeather==='function'){
+      if(categoryDesktopWeather())compactTime=time.replace(/:\d{2}/,'').replace(/\s*([ap])m$/i,'$1');
+      // Keep nonzero minutes accurate while fitting six labels on a narrow phone.
+      else if(document.getElementById('home-content')?.classList.contains('category-home'))compactTime=time.replace(/:00(?=\s*[ap]m$)/i,'').replace(/\s*([ap])m$/i,'$1');
+    }
     const values=week?'high '+temp(row.tempMax)+', low '+temp(row.tempMin):temp(row.tempC);
     const chance=row.rainProbability===null?'':row.rainProbability+'%';
     const label=(week?row.fullDate:time)+', '+look[1]+', '+values+(chance?', '+row.rainProbability+' percent chance of precipitation':'');
