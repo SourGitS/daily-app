@@ -203,14 +203,37 @@ test('changing to a payday period prorates every fixed expense without writing o
   assert.equal(suggested.provisionalFixedPlan,true);
   assert.equal(writes,0);assert.equal(JSON.stringify(cats),before);
 });
-test('an old all-zero period becomes a read-only repair state unless zero was explicitly reviewed',()=>{
+test('an old all-zero period repairs even if the broken migration marked it reviewed',()=>{
   const c=context({loadFixCats:()=>[{id:'rent'},{id:'gym'}],activeCats:x=>x,catChargeableBudget:x=>x.id==='rent'?300:20});
   const saved={start:period.start,end:period.end,fundingConfirmed:true,reserves:{rent:0,gym:0},updatedAt:10};
   const repair=c.budPeriodInheritedPlan(period,saved);
   assert.equal(repair.zeroFixedPlan,true);assert.deepEqual(plain(repair.reserves),saved.reserves);
   assert.deepEqual(plain(c.budPeriodSuggestedReserves(period)),{rent:600,gym:40});
   const reviewed={...saved,allocationsReviewed:true};
-  assert.deepEqual(plain(c.budPeriodInheritedPlan(period,reviewed)),reviewed);
+  assert.equal(c.budPeriodInheritedPlan(period,reviewed).zeroFixedPlan,true);
+  const confirmed={...reviewed,zeroFixedConfirmed:true};
+  assert.deepEqual(plain(c.budPeriodInheritedPlan(period,confirmed)),confirmed);
+  assert.equal(c.budPeriodZeroConfirmed(period,{rent:0,gym:0}),true);
+  assert.equal(c.budPeriodZeroConfirmed(period,{rent:1,gym:0}),false);
+});
+test('week view labels repaired amounts as suggestions and archives rows instead of deleting them',()=>{
+  const cats=[{id:'rent',name:'Rent'}],c=context({loadFixCats:()=>cats,activeCats:x=>x,catChargeableBudget:()=>300,
+    budCatNameHtml:(type,cat)=>'<span>'+cat.name+'</span>',catLabel:x=>x.name,escAttr:x=>x,escText:x=>x,
+    fmtMoneyExact:n=>'$'+n,budPeriodLabel:()=> '2–15 Oct'});
+  c.budEditMode={fix:false};
+  const money={range:period,record:{zeroFixedPlan:true,reserves:{rent:0}},rows:[]};
+  const html=c.budPeriodFixedRows(money);
+  assert.match(html,/not genuine \$0 bills/);assert.match(html,/\$600<\/strong><small>suggested/);
+  assert.match(html,/Review &amp; apply amounts/);assert.doesNotMatch(html,/data-period-reserve="rent"/);
+  c.budEditMode.fix=true;const editing=c.budPeriodFixedRows(money);
+  assert.match(editing,/data-period-archive="rent"/);assert.doesNotMatch(editing,/delete-cat-btn/);
+});
+test('week view archive keeps the row definition and uses the reversible category archive path',()=>{
+  const cats=[{id:'rent',name:'Rent'}];let archive=null,saves=0,toast='';
+  const c=context({loadFixCats:()=>cats,catLabel:x=>x.name,confirm:()=>true,budSaveDraft:()=>saves++,
+    catArchive:(...args)=>archive=args,showToast:s=>toast=s});
+  c.budPeriodArchiveFixed('rent');
+  assert.deepEqual(plain(archive),['fix','rent',true]);assert.equal(saves,1);assert.match(toast,/history was kept/);
 });
 test('a next-period schedule change preserves the current period and inserts an explicit bridge with no gap',()=>{
   const c=context(),store={config:{frequency:'weekly',anchor:'2026-09-28'},periods:{}};

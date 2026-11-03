@@ -429,7 +429,8 @@
 // v423: left-align the compact phone period switch beside the Forecast disclosure.
 // v424: compact phone forecasts with inline daily high/low temperatures.
 // v425: give phone high/low pairs a little more space where the width allows.
-const CACHE_NAME = 'daily-v425'; // Remote connector hosting remains disabled.
+// v426: repair reviewed-looking zero fixed plans and safely archive rows from Week.
+const CACHE_NAME = 'daily-v426'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —

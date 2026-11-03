@@ -21,6 +21,9 @@
 .home-budget-add-labelled{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 16px;border:0;border-radius:12px;background:var(--accent-hero);color:#fff;font:700 12px var(--font-ui);cursor:pointer;margin-top:12px}
 .home-budget-card .home-budget-link,.home-budget-card .home-budget-spending,.home-budget-card .home-budget-spending strong{color:var(--text)}
 .bud-period-toolbar{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:12px;margin:0 0 12px}
+.bud-period-suggestion{display:flex;flex-direction:column;align-items:flex-end;min-width:90px;color:var(--text);font-variant-numeric:tabular-nums}
+.bud-period-suggestion strong{font-size:15px;line-height:1.35}.bud-period-suggestion small{font-size:10px;line-height:1.35;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.bud-period-archive{flex:none;color:var(--muted)}
 .daily-update-dialog{position:fixed;inset:0;margin:auto;width:min(420px,calc(100% - 32px));height:fit-content;max-height:calc(100dvh - 40px);overflow:auto;box-sizing:border-box;border:1px solid var(--border);border-radius:24px;padding:24px;background:var(--surface-card);color:var(--text)}
 .daily-update-dialog::backdrop{background:rgba(0,0,0,.65)}
 /* Spending cautions use warm orange, including the legacy Home pace indicator. */

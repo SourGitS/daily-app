@@ -63,6 +63,12 @@
     stores.transactions=blob([{id:'test-expense',date:'2026-10-03',amount:125,catId:'food',merchant:'Test groceries'}]);
     stores.budgetData={'2026-09-28':{wk:'2026-09-28',inc_salary:'2000',updatedAt:500}};
     stores.profile.budgetRhythmSeen=1;
+    if(params.has('zero-fixed')){
+      stores.budgetFixCats=blob([{id:'rent',name:'Saved rent',amount:250,cycle:'weekly',chargeType:'commitment'}]);
+      stores.budgetCycles=blob({config:{frequency:'fortnightly',anchor:'2026-10-02'},periods:{
+        '2026-10-30_2026-11-12':{start:'2026-10-30',end:'2026-11-12',opening:100,savings:200,goal:1000,reserves:{rent:0},fundingConfirmed:true,allocationsReviewed:true}
+      }});
+    }
   }
   if(params.has('weekly')){
     stores.budgetCycles={v:JSON.stringify({config:{frequency:'weekly',anchor:'2026-09-28'},periods:{}}),t:500};
