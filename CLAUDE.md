@@ -1263,7 +1263,7 @@ before styling any new surface:
 |---|---|---|
 | page canvas | `--bg`, completely flat | every screen background |
 | control | `--card` (dark: a FLAT `rgba(255,255,255,.055)`) | inputs, calculator keys, segmented "on" states, filter chips, search fields, dropdown sheets |
-| content card | `--surface-card` (dark: solid `#1b1b1d`) + `--surface-card-border` + `--surface-card-top` | `.card`, `.ex-card`, `.session-card`, `.week-section`, `.stg-card`, `.kit-card`, `.jrn-entry` |
+| content card | `--surface-card` + `--surface-card-border` + `--surface-card-top`; desktop aligns with Category Home (light `#f2f2f2`, dark `#202020`) while phone retains its established values | `.card`, `.ex-card`, `.session-card`, `.week-section`, `.stg-card`, `.kit-card`, `.jrn-entry` |
 | active workspace | `--surface-raised` (dark: `#222225`) + a narrow accent edge | the desktop Journal editor |
 | hero | its own accent/scene gradient | `.hero-workout-card`, `#budget-hero-card`, `.kitchen-hero-card`, `.home-weather-card` |
 
@@ -1283,7 +1283,7 @@ use "card" as a historical name while behaving like a button, a row or a preview
 
 **`.lg-card` (the Log hub's cards) is in that list now.** It read `var(--card)` with a 1px
 `var(--border)` outline until 2026-09-05, so the four Log › Today cards rendered as translucent
-wash panels with a hard edge while every other card in the app sat on a solid `#1b1b1d` with a
+wash panels with a hard edge while every other card in the app sat on the shared matte surface with a
 `0.5px --card-border` and an inset top highlight. Its own border is `0.5px solid
 var(--card-border)` to match `.card`. Anything that looks like a content card and reads
 `--card` is probably making the same mistake — check the named list before styling a new one.
@@ -2365,9 +2365,11 @@ the accent or the theme must go through those, not set `--accent` directly.
     remaining figure on an unlogged day, `Log food →` in the nutrition header, `Open →` on
     Journal, and the hero action's accessible name (`Open/Continue/Review workout` rather than
     "Go to workout").
-- **One width cap for every view**, `max-width:2200px` on `#app-main>section,#app-main
-  .swipe-panel` (see the note above about those being disjoint selector halves). Do not add a
-  per-view override — a 1180/1760 split existed briefly and letterboxed every tab except Home.
+- **One width cap for every view**, `max-width:1504px` on `#app-main>section,#app-main
+  .swipe-panel`: 1440px of content plus the shared 32px padding on each side. This matches
+  Category Home's established canvas at wide desktop sizes. Daily AI is a peer overlay, so
+  its `.aih-shell` and `.aih-grid` use the same 1440px content cap and 32px side padding.
+  Do not add a per-view override.
 - **`HOME_DEFAULT_WIDE` is a seed, not a setting.** `homeLayout()` applies it only while the
   stored layout has no `wide` array, and `saveHomeOrder()` writes the whole object back — so
   the first drag freezes the current seed into storage permanently. Changing the constant
@@ -2622,7 +2624,7 @@ the accent or the theme must go through those, not set `--accent` directly.
   in the Overview immediately rather than only on its next render.
   **`.accounts-wrap` is in normal flow, LEFT-aligned, and since v347 it takes the WHOLE Finance
   canvas on desktop** (`#view-budget .accounts-wrap{max-width:none}` in the 1024px block) —
-  the same content edge Overview, Week and Bills end on, bounded by the app-wide 2200px
+  the same content edge Overview, Week and Bills end on, bounded by the app-wide 1504px
   section cap and nothing else. Two superseded values, so neither is re-proposed: it was
   `max-width:520px;margin:0 auto` as an overlay, a centred column in the middle of a canvas
   whose every other screen starts at the content edge; and then `max-width:1120px;margin:0`,
@@ -2779,7 +2781,7 @@ the accent or the theme must go through those, not set `--accent` directly.
     padding, and the track is capped at 760px well inside the content width, where painting a
     `--bg` curtain across the rest would hide cards as they scroll up).
   - **Desktop: `max-width:760px; margin-left:0`.** The Stats strip used to be `margin:0 auto`,
-    so it floated at the middle of a 2200px canvas while the week selector, the section pills
+    so it floated at the middle of the shared desktop canvas while the week selector, the section pills
     and both card columns began at the left content edge — the only element on the page off that
     line. 760 is not new; it is the cap Log and Stats already chose.
   Budget's landscape-phone layout is the one screen with extra rules: the pinned row keeps its

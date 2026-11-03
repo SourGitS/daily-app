@@ -1045,13 +1045,13 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 /* Calorie/overview hero reads as a neutral card (no accent tint) — it inherits the matte
    surface below like any other card. */
 
-/* ── The matte content-card surface (dark) ──────────────────────────────────────
+/* ── The shared matte content-card surface ──────────────────────────────────────
    Replaces the frosted-glass treatment that used to live here:
      background: linear-gradient(180deg, rgba(255,255,255,.15), rgba(255,255,255,.09))
    That was a FULL-HEIGHT gradient, so identical cards looked different depending on how tall
    they happened to be — a short streak card read as an even light grey, a long habits list
-   read as a grey ramp, and neither was a decision anyone made. The fix is a solid charcoal:
-   the same tone at the top of a 600px card as at the bottom of a 90px one.
+   read as a grey ramp, and neither was a decision anyone made. The fix is one solid neutral
+   per theme: the same tone at the top of a 600px card as at the bottom of a 90px one.
    The blur went with it. backdrop-filter on ~40 simultaneous cards costs real compositing
    work on a phone, and it was blurring a flat #080808 page background — there is nothing
    behind these cards to see through.
@@ -1076,6 +1076,23 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   background:var(--surface-card);
   border-color:var(--surface-card-border);
   box-shadow:var(--surface-card-top);
+}
+@media(min-width:1024px){
+ .card:not(.home-weather-card),
+ .ex-card,
+ .session-card,
+ .week-section,
+ .stat-card,
+ .psw-card,
+ .budget-setup-section,
+ .se-day-card,
+ .log-timer-card,
+ .lg-card,
+ #chart-wrap{
+   background:var(--surface-card);
+   border-color:var(--surface-card-border);
+   box-shadow:var(--surface-card-top);
+ }
 }
 /* Weekly review keeps a whisper of a top sheen — a highlight, not a gradient fill. Its base
    is the same matte surface as every other card, so it no longer out-shines the real heroes. */
@@ -1144,16 +1161,11 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      direct children. `#app-main>section` reaches only the overlay views (Kitchen, Settings,
      Plans, Notes). Capping one and not the other is how the two drifted apart in the first
      place. #app-main-scoped so this outranks the plain .swipe-panel padding in layout.css. */
-  /* ONE cap for every view. It was 1180 here with a 1760 override for Home only, on the theory
-     that Home was the one screen with a grid to densify — wrong. Kitchen is a master/detail
-     split, Budget is a two-column grid, Stats is charts, and all of them were being letterboxed
-     at 1180 with dead margin either side on a wide screen while Home used 1760. That
-     inconsistency was the "squished" complaint. */
-  /* 2200, not 1760. Home derives its column count from the width available, so extra space
-     there becomes a fourth column rather than wider cards — and the linear tabs were reading
-     as letterboxed rather than as deliberately measured. At 2560 this leaves ~50px of margin
-     instead of 270. */
-  #app-main>section,#app-main .swipe-panel{width:100%;max-width:2200px;margin:0 auto;padding:40px 32px}
+  /* ONE canvas for every view. Category Home established a 1440px content width; the shared
+     container includes its 32px padding on both sides, so every main tab now begins and ends
+     on the same lines at wide desktop sizes. Below that width the existing fluid behaviour is
+     unchanged. Do not add per-view caps: that is what caused the gutters to drift apart. */
+  #app-main>section,#app-main .swipe-panel{width:100%;max-width:1504px;margin:0 auto;padding:40px 32px}
 
   /* Declared ONCE. This used to be 160px with 12px rows and a border-left rail, and
      kitchen-extras.css declared it again at 260px with 14px pill rows — the second won on load

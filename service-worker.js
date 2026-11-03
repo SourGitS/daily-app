@@ -421,7 +421,7 @@
 // v410: aligned always-open desktop forecast, shared Home header, phone layout editor and habits polish.
 // v411: separate phone Training/Budget cards, with a quiet expense action and spending-goal footer.
 // v412: glass desktop weather controls and centered forecasts with compact hourly labels.
-const CACHE_NAME = 'daily-v412'; // Remote connector hosting remains disabled.
+const CACHE_NAME = 'daily-v415'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —

@@ -43,8 +43,8 @@
      search fields, dropdown sheets. Pushing the card treatment (matte fill + edge + inset
      highlight) into --card would put a miniature card behind every one of those controls.
      Only genuine content CONTAINERS read these — see the matte rule in budget-home.css.
-     In light mode they resolve to exactly what .card already looked like, so light is
-     unchanged; the dark values are where the surface hierarchy actually lives. */
+     Phone keeps the established surface values here. The desktop breakpoint below aligns
+     this token with Category Home without silently restyling the phone app. */
   --surface-card:#ffffff;
   --surface-card-border:rgba(0,0,0,0.07);
   --surface-card-top:0 1px 3px rgba(0,0,0,0.06);
@@ -98,6 +98,10 @@
   --amber-bg:#2a1212;--amber-dark:#fca5a5;--amber-border:#5a1a1a;
   --green-bg:#0a2018;--green-dark:#6ee7b7;--green-border:#0d3b26;
   --warn-bg:#221a00;--warn-dark:#fbbf24;--warn-border:#78460d;
+}
+@media(min-width:1024px){
+  :root{--surface-card:#f2f2f2}
+  [data-theme="dark"]{--surface-card:#202020}
 }
 [data-theme="dark"] body{background:var(--bg)}
 [data-theme="dark"] #app{background:var(--bg)}

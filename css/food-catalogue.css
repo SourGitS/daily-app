@@ -1,21 +1,22 @@
-/* The launch is an editorial light surface in either app theme. All campaign ink and
-   controls are scoped here; the user's accent and everyday Food interface keep their tokens. */
+/* The catalogue itself retains its editorial paper treatment. Its small Food-overview entry
+   follows the surrounding app theme so an old launch promotion does not dominate the page. */
 .fc-entry{display:flex;align-items:center;gap:14px;width:100%;margin:14px 0 20px;padding:12px 16px;border:1px solid var(--surface-card-border);border-radius:18px;background:var(--surface-card);color:var(--text);text-align:left}
 .fc-entry img{width:66px;height:54px;object-fit:cover;border-radius:10px;flex-shrink:0}
 .fc-entry strong{display:block;font-size:14px;font-weight:800}
 .fc-entry small{display:block;margin-top:3px;color:var(--muted);font-size:12px;line-height:1.4}
 .fc-entry-arrow{margin-left:auto;font-size:23px}
-.fc-today{display:grid;grid-template-columns:minmax(0,1fr) 38%;width:100%;margin:18px 0 0;padding:0;overflow:hidden;text-align:left;border:1px solid #ded7ca;border-radius:var(--radius-card);background:#faf7f0;color:#1b1a18;cursor:pointer}
-.fc-today-copy{display:flex;flex-direction:column;align-items:flex-start;min-width:0;padding:22px 24px}
-.fc-today-eyebrow{font-size:9px;font-weight:800;line-height:1.5;letter-spacing:1.4px;text-transform:uppercase;color:#005be4}
-.fc-today strong{font-family:var(--font-num);font-size:25px;line-height:1.16;letter-spacing:-.7px;margin-top:8px}
-.fc-today-description{font-size:12px;line-height:1.6;color:#625e58;margin-top:9px;max-width:34ch}
-.fc-today-action{font-size:12px;font-weight:800;line-height:1.5;color:#005be4;margin-top:17px}
+.fc-today{display:grid;grid-template-columns:minmax(0,1fr) 96px;width:100%;margin:0;padding:0;overflow:hidden;text-align:left;border:1px solid var(--surface-card-border);border-radius:18px;background:var(--surface-card);color:var(--text);box-shadow:var(--surface-card-top);cursor:pointer}
+.fc-today-copy{display:flex;flex-direction:column;align-items:flex-start;min-width:0;padding:18px 6px 18px 18px}
+.fc-today-eyebrow{font-size:9px;font-weight:800;line-height:1.5;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
+.fc-today strong{font-family:var(--font-num);font-size:17px;line-height:1.2;letter-spacing:-.25px;margin-top:6px}
+.fc-today-description{font-size:11px;line-height:1.5;color:var(--muted);margin-top:7px;max-width:28ch}
+.fc-today-action{font-size:11px;font-weight:800;line-height:1.5;color:var(--accent-text);margin-top:13px}
 .fc-today-action>span{margin-left:4px}
-.fc-today img{display:block;width:100%;height:100%;min-height:0;object-fit:cover;object-position:45% center}
+.fc-today img{display:block;width:100%;height:100%;min-height:0;object-fit:cover;object-position:54% center;opacity:.78}
+.fc-today:hover{border-color:var(--accent);background:var(--surface-card)}
 .fc-today:hover .fc-today-action{text-decoration:underline;text-underline-offset:4px}
 .fc-today:focus-visible{outline:3px solid var(--accent-text);outline-offset:4px}
-@media(max-width:640px){.fc-today{grid-template-columns:minmax(0,1fr) 35%;margin-top:14px}.fc-today-copy{padding:17px 16px}.fc-today strong{font-size:21px}.fc-today-description{font-size:11px}.fc-today-action{font-size:11px;margin-top:13px}.fc-today-eyebrow{font-size:8px;letter-spacing:1px}}
+@media(max-width:1023px){.fc-today{grid-template-columns:minmax(0,1fr) minmax(100px,28%)}.fc-today-copy{padding:17px 16px}.fc-today strong{font-size:18px}.fc-today-description{font-size:11px}.fc-today-action{font-size:11px;margin-top:12px}.fc-today-eyebrow{font-size:8px;letter-spacing:1px}}
 .fc-dialog{--fc-paper:#faf7f0;--fc-ink:#1b1a18;--fc-muted:#625e58;--fc-blue:#005be4;box-sizing:border-box;width:min(960px,calc(100vw - 40px));height:min(790px,calc(100dvh - 48px));max-width:none;max-height:none;margin:auto;padding:0;border:0;border-radius:24px;color-scheme:light;background:var(--fc-paper);color:var(--fc-ink);box-shadow:0 28px 100px #0006;overflow:hidden;font-family:var(--font-ui)}
 .fc-dialog[open]{display:flex;flex-direction:column}
 .fc-dialog::backdrop{background:rgba(10,12,17,.65);backdrop-filter:blur(7px)}

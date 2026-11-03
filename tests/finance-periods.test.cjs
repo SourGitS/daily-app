@@ -187,6 +187,34 @@ test('an explicit period allocation remains authoritative over a matching old we
   const c=context(),p={start:'2026-09-28',end:'2026-10-04',days:7},saved={fundingConfirmed:true,savings:80,reserves:{rent:90}};
   assert.deepEqual(plain(c.budPeriodInheritedPlan(p,saved)),saved);
 });
+test('changing to a payday period suggests every fixed expense without writing or changing its definition',()=>{
+  const cats=[
+    {id:'rent',name:'Rent',amount:1300,cycle:'monthly',dueDate:'2026-10-05'},
+    {id:'gym',name:'Gym',amount:20,cycle:'weekly',dueDate:'2026-10-02'},
+    {id:'insurance',name:'Insurance',amount:130,cycle:'monthly'},
+    {id:'paused',name:'Paused',amount:15,cycle:'weekly',status:'paused'}
+  ],before=JSON.stringify(cats);
+  let writes=0;
+  const c=context({loadFixCats:()=>cats,activeCats:x=>x,catAmount:x=>x.amount,
+    catChargeableBudget:x=>x.status==='paused'?0:x.id==='insurance'?30:x.id==='rent'?300:20,
+    billIsScheduled:x=>!!x.dueDate&&x.status!=='paused',
+    catOccurrencesBetween:x=>Array.from({length:x.id==='gym'?2:1}),
+    lsSave:()=>writes++});
+  const suggested=c.budPeriodInheritedPlan(period,null);
+  assert.deepEqual(plain(suggested.reserves),{rent:1300,gym:40,insurance:60,paused:0});
+  assert.equal(suggested.provisionalFixedPlan,true);
+  assert.equal(writes,0);assert.equal(JSON.stringify(cats),before);
+});
+test('a placeholder period receives suggestions but reviewed or explicit allowances never change',()=>{
+  const c=context({loadFixCats:()=>[{id:'rent'}],activeCats:x=>x,catChargeableBudget:()=>250});
+  const placeholder={start:period.start,end:period.end,updatedAt:10};
+  const inherited=c.budPeriodInheritedPlan(period,placeholder);
+  assert.equal(inherited.reserves.rent,500);assert.equal(inherited.updatedAt,10);assert.equal(inherited.provisionalFixedPlan,true);
+  const explicit={...placeholder,reserves:{rent:375}};
+  assert.deepEqual(plain(c.budPeriodInheritedPlan(period,explicit)),explicit);
+  const confirmed={...placeholder,fundingConfirmed:true};
+  assert.deepEqual(plain(c.budPeriodInheritedPlan(period,confirmed)),confirmed);
+});
 test('moving between period breakdowns does not stamp an untouched allocation plan',()=>{
   const fields={'sav-amount':{value:'200'},'week-notes':{value:''}};
   const c=context({S:{view:'budget'},budgetView:'week',document:{getElementById:id=>fields[id],querySelectorAll:()=>[{dataset:{periodReserve:'rent'},value:'500'}]}});
