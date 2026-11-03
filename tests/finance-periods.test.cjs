@@ -212,6 +212,54 @@ test('an old all-zero period becomes a read-only repair state unless zero was ex
   const reviewed={...saved,allocationsReviewed:true};
   assert.deepEqual(plain(c.budPeriodInheritedPlan(period,reviewed)),reviewed);
 });
+test('a next-period schedule change preserves the current period and inserts an explicit bridge with no gap',()=>{
+  const c=context(),store={config:{frequency:'weekly',anchor:'2026-09-28'},periods:{}};
+  const plan=c.budPeriodTransitionPlan(store,{frequency:'fortnightly',anchor:'2026-10-06'},'2026-10-04','next');
+  assert.deepEqual(plain(plan.old),{id:'2026-09-28_2026-10-04',start:'2026-09-28',end:'2026-10-04',days:7});
+  assert.deepEqual(plain(plan.special),{id:'2026-10-05_2026-10-05',start:'2026-10-05',end:'2026-10-05',days:1});
+  assert.equal(plan.first.start,'2026-10-06');assert.equal(plan.destination.id,plan.special.id);
+  const changed=c.budPeriodApplyTransition(store,plan);
+  assert.deepEqual(changed.config,store.config);assert.equal(changed.transition.effectiveFrom,'2026-10-05');
+  assert.equal(c.budPeriodRangeForStore(changed,'2026-10-04',0).id,plan.old.id);
+  assert.equal(c.budPeriodRangeForStore(changed,'2026-10-04',1).id,plan.special.id);
+  assert.equal(c.budPeriodRangeForStore(changed,'2026-10-04',2).start,'2026-10-06');
+  assert.equal(c.budPeriodRangeForStore(changed,'2026-10-05',0).id,plan.special.id);
+  assert.equal(c.budPeriodRangeForStore(changed,'2026-10-06',0).start,'2026-10-06');
+});
+test('starting a new rhythm today closes dated activity in the old period without deleting its plan',()=>{
+  const c=context(),oldId='2026-09-28_2026-10-04',store={config:{frequency:'weekly',anchor:'2026-09-28'},periods:{[oldId]:{start:'2026-09-28',end:'2026-10-04',notes:'keep me',reserves:{rent:250}}}};
+  const plan=c.budPeriodTransitionPlan(store,{frequency:'monthly',anchor:'2026-10-01'},'2026-10-04','now');
+  assert.equal(plan.special.start,'2026-10-04');assert.equal(plan.special.end,'2026-10-31');assert.equal(plan.closedEnd,'2026-10-03');
+  const changed=c.budPeriodApplyTransition(store,plan);
+  assert.equal(changed.periods[oldId].closedEnd,'2026-10-03');assert.equal(changed.periods[oldId].notes,'keep me');
+  assert.deepEqual(plain(changed.periods[oldId].reserves),{rent:250});
+  assert.equal(c.budPeriodRangeForStore(changed,'2026-10-04',0).id,'2026-10-04_2026-10-31');
+});
+test('period transitions retarget or remove only affected rollovers and preserve unrelated history',()=>{
+  const c=context(),oldId='2026-09-28_2026-10-04',store={config:{frequency:'weekly',anchor:'2026-09-28'},periods:{
+    earlier:{start:'2026-09-21',end:'2026-09-27',notes:'history',rollover:{to:oldId,amount:75,destination:'budget'}},
+    unrelated:{start:'2026-08-01',end:'2026-08-07',rollover:{to:'2026-08-08_2026-08-14',amount:10,destination:'budget'}}}};
+  const plan=c.budPeriodTransitionPlan(store,{frequency:'fortnightly',anchor:'2026-10-06'},'2026-10-04','next');
+  assert.deepEqual(plain(plan.rolloverIds),['earlier']);
+  const retargeted=c.budPeriodApplyTransition(store,plan,'retarget');
+  assert.equal(retargeted.periods.earlier.rollover.to,plan.destination.id);assert.equal(retargeted.periods.earlier.notes,'history');
+  assert.equal(retargeted.periods.unrelated.rollover.to,'2026-08-08_2026-08-14');
+  const removed=c.budPeriodApplyTransition(store,plan,'remove');assert.equal(removed.periods.earlier.rollover,undefined);
+});
+test('cancelling a future transition restores its rollover and removes only untouched placeholders',()=>{
+  const c=context({document:{getElementById:()=>null},showToast(){}}),oldId='2026-09-28_2026-10-04';c.budPeriodRefresh=()=>{};
+  const store={config:{frequency:'weekly',anchor:'2026-09-28'},periods:{earlier:{start:'2026-09-21',end:'2026-09-27',rollover:{to:oldId,amount:75,destination:'budget'}}}};
+  const plan=c.budPeriodTransitionPlan(store,{frequency:'fortnightly',anchor:'2026-10-06'},'2026-10-04','next'),changed=c.budPeriodApplyTransition(store,plan,'retarget');
+  c.budCyclesSave(changed);c.budPeriodCancelTransition();const restored=c.budCyclesLoad();
+  assert.equal(restored.transition,undefined);assert.equal(restored.periods.earlier.rollover.to,oldId);
+  assert.equal(restored.periods[plan.special.id],undefined);assert.equal(restored.periods[oldId],undefined);
+});
+test('reading a scheduled transition and its archived periods writes nothing',()=>{
+  const saved={config:{frequency:'weekly',anchor:'2026-09-28'},periods:{old:{start:'2026-09-01',end:'2026-09-07'}},transition:{config:{frequency:'fortnightly',anchor:'2026-10-06'},effectiveFrom:'2026-10-05'}};
+  const c=context();c.budCyclesSave(saved);let writes=0;c.lsSave=()=>writes++;
+  assert.deepEqual(plain(c.budCyclesLoad().transition),saved.transition);
+  assert.equal(c.budPeriodCurrent().id,'2026-09-28_2026-10-04');assert.equal(writes,0);
+});
 test('a placeholder period receives suggestions but reviewed or explicit allowances never change',()=>{
   const c=context({loadFixCats:()=>[{id:'rent'}],activeCats:x=>x,catChargeableBudget:()=>250});
   const placeholder={start:period.start,end:period.end,updatedAt:10};
@@ -333,7 +381,7 @@ test('income setup saves explicitly, preserves other sources/history, and reject
   const concurrent=c.budCyclesLoad();concurrent.periods.newer={opening:777};c.budCyclesSave(concurrent);
   form.onsubmit({preventDefault(){},target:form});
   assert.equal(saves,1);assert.equal(cats[0].payAmount,1800);assert.equal(cats[0].payMode,'fixed');assert.equal(cats[1].name,'Other');
-  assert.equal(c.budCyclesLoad().config.sourceId,'salary');assert.equal(c.budCyclesLoad().periods.old.opening,200);
+  assert.equal(c.budCyclesLoad().transition.config.sourceId,'salary');assert.equal(c.budCyclesLoad().periods.old.opening,200);
   assert.equal(c.budCyclesLoad().periods.newer.opening,777);
   c.budIncomeEdit('salary');cats[0].name='Changed on another device';
   form.onsubmit({preventDefault(){},target:form});assert.equal(saves,1);assert.match(nodes['bp-error'].textContent,/changed elsewhere/);

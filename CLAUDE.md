@@ -661,6 +661,21 @@ suggestions in the existing allocation dialog. Only Save writes them. A later ex
 including an intentional zero, remains authoritative. Fixed-expense definitions, schedules,
 payments and sync paths are unchanged.
 
+## Budget period transition safety — v419, 2026-11-03
+
+Changing the Budget rhythm is a dated transition, not an in-place reinterpretation of history.
+The default starts after the current period; if the selected rhythm begins later, Daily inserts
+an explicitly labelled transition period so there is no uncovered or overlapping day. Starting
+today is an advanced choice and closes the old plan at yesterday for dated activity while
+retaining its original allocations, notes and scheduled end in the saved plan record.
+
+The settings dialog previews both ranges before Save and states that dated expenses, received
+income and bill payments keep their dates. Any rollover into the superseded period must be
+retargeted to the transition destination or removed explicitly. The integrated Week screen now
+exposes **Saved period plans**, including early-ended and transition plans. Scheduled changes
+can be cancelled before their effective date. Reading or previewing a transition writes nothing;
+the existing `daily_budget_cycles` blob remains the only period store and sync path.
+
 ## Budget correction — v323, 2026-09-10
 
 Three v320 prescriptions are SUPERSEDED and must not be reinstated:
