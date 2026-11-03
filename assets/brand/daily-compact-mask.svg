@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -12 770 112">
+  <defs>
+    <mask id="star-edge" maskUnits="userSpaceOnUse" x="0" y="-12" width="470" height="112">
+      <rect x="0" y="-12" width="470" height="112" fill="#fff"/>
+      <path d="M33-10C31 1 25 6 9 10C23 13 27 18 25 31C33 21 39 17 52 15C39 10 35 5 33-10Z" fill="#000" stroke="#000" stroke-width="5" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <g fill="#fff" fill-rule="evenodd" mask="url(#star-edge)">
+    <g transform="matrix(1 0 -.36 1 36 0)">
+      <path d="M0 0H49C83 0 100 17 100 49C100 82 82 100 48 100H0ZM34 32V68H47C60 68 66 62 66 50C66 38 60 32 47 32Z"/>
+      <path d="M90 100 123 0H168L205 100H168L163 83H132L127 100ZM140 56H155L147 28Z"/>
+      <path d="M210 0H247V100H210Z"/>
+      <path d="M254 0H290V68H337V100H254Z"/>
+      <path d="M306 0H346L369 33L390 0H432L387 62V100H351V62Z"/>
+    </g>
+  </g>
+  <path d="M33-10C31 1 25 6 9 10C23 13 27 18 25 31C33 21 39 17 52 15C39 10 35 5 33-10Z" fill="#fff"/>
+</svg>

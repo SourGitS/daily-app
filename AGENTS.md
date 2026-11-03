@@ -1,5 +1,22 @@
 # Daily — Agent Handoff
 
+## v418 Compact italic wordmark — 2026-11-03
+
+- Francois selected option 2, inspired by the supplied Manhua Hub mark, as a modest
+  refinement of the existing identity. Rebuilt the selected concept as SVG artwork:
+  consistent cap height, weight and slant across Daily/App, a clear word gap and one
+  integrated star on D. This is custom lettering, not a verified source-font match.
+- Shared full-frame masks in assets/brand/daily-compact-mask.svg and app-compact-mask.svg
+  keep both words aligned at every existing placement. The existing accent and theme
+  colours still apply, including the neutral default. Install icons and data paths are
+  unchanged. Cache daily-v418 includes both new masks.
+- All 683 Node checks pass. Synthetic browser review covers 1280 desktop dark/light,
+  320 dark phone header/menu/welcome, and 390 light with a purple accent, without page
+  overflow or application errors. Physical Safari and production Firebase are unverified.
+- Option 1 remains saved locally at temp-analysis/logo-options/01-geometric-dark.png;
+  option 2's concept is beside it. These previews/screenshots stay ignored. Existing
+  uncommitted Finance work in CLAUDE.md, js/finance-periods.js and its tests is separate.
+
 ## v412 Desktop forecast controls — release authorised, 2026-10-28
 
 - Replaced Category desktop Weather's underlined Today/Week tabs with a compact neutral

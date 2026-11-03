@@ -1,9 +1,9 @@
-/* Shared two-part mark: original Daily artwork in the selected accent, neutral App ink. */
+/* Compact italic wordmark: one cap height and slant, live accent with neutral App ink. */
 .wordmark{
-  --wordmark-size:24px;--wordmark-app-ink:#f5f5f7;
+  --wordmark-size:24px;--wordmark-padding:9px;--wordmark-app-ink:#f5f5f7;
   display:inline-flex;align-items:center;flex-shrink:0;gap:0;
   height:var(--wordmark-size);width:max-content;max-width:100%;
-  box-sizing:content-box;padding:9px 0;margin:0;
+  box-sizing:content-box;padding:var(--wordmark-padding) 0;margin:0;
 }
 [data-theme="light"] .wordmark{--wordmark-app-ink:var(--text)}
 .wordmark-daily,.wordmark-app{
@@ -14,26 +14,26 @@
 .wordmark-daily{color:var(--accent-text,var(--text))}
 .wordmark-app{color:var(--wordmark-app-ink)}
 @supports ((-webkit-mask-image:url("x")) or (mask-image:url("x"))){
+  .wordmark{position:relative;width:calc(var(--wordmark-size) * 6.875)}
+  /* Shared full-mark viewports preserve the designed word gap at every placement. */
+  .wordmark-daily,.wordmark-app{
+    position:absolute;left:0;bottom:var(--wordmark-padding);width:100%;height:var(--wordmark-size);
+    font-size:0;background:currentColor;mask-mode:alpha;
+  }
   .wordmark-daily{
-    height:var(--wordmark-size);aspect-ratio:1877 / 412;font-size:0;background:currentColor;
-    -webkit-mask:url("../assets/brand/daily-wordmark-mask.png") center/contain no-repeat;
-    mask:url("../assets/brand/daily-wordmark-mask.png") center/contain no-repeat;mask-mode:alpha;
+    -webkit-mask:url("../assets/brand/daily-compact-mask.svg") center/contain no-repeat;
+    mask:url("../assets/brand/daily-compact-mask.svg") center/contain no-repeat;
   }
   .wordmark-app{
-    margin-left:calc(var(--wordmark-size) * -.3);
-    /* White, solid lettering reads heavier than the accented Daily artwork.
-       Optical sizing keeps their visible baselines aligned without separating them. */
-    height:calc(var(--wordmark-size) * .9);transform:translateY(calc(var(--wordmark-size) * .05));
-    aspect-ratio:1320 / 412;font-size:0;background:currentColor;
-    -webkit-mask:url("../assets/brand/app-wordmark-mask.svg") center/contain no-repeat;
-    mask:url("../assets/brand/app-wordmark-mask.svg") center/contain no-repeat;mask-mode:alpha;
+    -webkit-mask:url("../assets/brand/app-compact-mask.svg") center/contain no-repeat;
+    mask:url("../assets/brand/app-compact-mask.svg") center/contain no-repeat;
   }
 }
 #header-title .wordmark{--wordmark-size:22px}
-#side-menu-title .wordmark{--wordmark-size:18px;padding:7px 0}
-.ob-center .wordmark{--wordmark-size:36px;width:max-content;height:36px;margin:0 auto 18px}
+#side-menu-title .wordmark{--wordmark-size:18px;--wordmark-padding:7px}
+.ob-center .wordmark{--wordmark-size:36px;width:calc(var(--wordmark-size) * 6.875);max-width:100%;height:36px;margin:0 auto 18px}
 .ob-welcome-brand{height:auto;min-height:44px;padding-inline:0}
-.ob-welcome .wordmark{--wordmark-size:20px;width:max-content;max-width:100%;height:20px;max-height:none;margin:0}
+.ob-welcome .wordmark{--wordmark-size:20px;width:calc(var(--wordmark-size) * 6.875);max-width:100%;height:20px;max-height:none;margin:0}
 @media(max-width:1023px) and (orientation:landscape) and (max-height:600px){
-  #header-title .wordmark{--wordmark-size:16px;padding:6px 0}
+  #header-title .wordmark{--wordmark-size:16px;--wordmark-padding:6px}
 }

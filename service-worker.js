@@ -421,7 +421,8 @@
 // v410: aligned always-open desktop forecast, shared Home header, phone layout editor and habits polish.
 // v411: separate phone Training/Budget cards, with a quiet expense action and spending-goal footer.
 // v412: glass desktop weather controls and centered forecasts with compact hourly labels.
-const CACHE_NAME = 'daily-v416'; // Remote connector hosting remains disabled.
+// v418: consistent compact italic Daily App wordmark with one integrated star.
+const CACHE_NAME = 'daily-v418'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
@@ -475,6 +476,8 @@ const ASSETS = [
   // assets/brand/refined/ are sources, not application assets, and are never precached.
   './assets/brand/daily-wordmark-mask.png',
   './assets/brand/app-wordmark-mask.svg',
+  './assets/brand/daily-compact-mask.svg',
+  './assets/brand/app-compact-mask.svg',
   './assets/brand/daily-wordmark-light.png',
   './assets/brand/daily-wordmark-dark.png',
   './assets/brand/daily-app-icon-192.png',
