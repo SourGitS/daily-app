@@ -117,7 +117,7 @@ function categoryRenderHome(wrap){
 function categoryWeatherLabel(){const label=document.getElementById('home-weather-forecast-toggle-label');if(label&&document.getElementById('home-content')?.classList.contains('category-home'))label.textContent='Forecast';}
 function categoryDesktopWeather(){return layoutMode()==='desktop'&&!!document.getElementById('home-content')?.classList.contains('category-home');}
 function categoryWeatherHeading(entry){
- if(!categoryDesktopWeather())return;
+ if(!document.getElementById('home-content')?.classList.contains('category-home'))return;
  const card=document.querySelector('.cat-weather'),city=document.getElementById('home-weather-city');
  if(!card||!city)return;
  card.classList.toggle('cat-weather-city-condition',!!entry);

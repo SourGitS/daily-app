@@ -1,5 +1,22 @@
 # Daily — Agent Handoff
 
+## v420 Phone Weather text hierarchy — 2026-11-03
+
+- Francois pointed out that the phone still used the older current-condition layout while
+  desktop grouped its text more cleanly. Category Home now shares the city/condition heading
+  on both devices. Phone places the icon/temperature, feels-like/high-low line and freshness
+  in a clear vertical stack. Long city/condition text wraps naturally. Forecast disclosure,
+  scenery sizing/crop, Today/Week controls and weather fetching remain intact.
+- Category phone forecast icons and precipitation labels now use the dock's theme colours,
+  fixing white icons on the light-theme dock. Legacy Home remains unchanged; no new storage,
+  financial writers, sync behaviour or weather requests. Cache daily-v420.
+- All 683 Node checks pass. Synthetic browser checks cover 390 dark, 320 light with long
+  city/condition text, stale/retry and missing-weather states at 320, Forecast collapse and
+  Today reopening, plus 1024 desktop Today/Week. Desktop scenery/history boundaries and
+  card bottoms still match Training exactly. No page overflow or application errors observed.
+  Physical iPhone/Safari and production Firebase remain unverified. Sample preview and
+  screenshots stay ignored in temp-analysis/.
+
 ## v418 Compact italic wordmark — 2026-11-03
 
 - Francois selected option 2, inspired by the supplied Manhua Hub mark, as a modest

@@ -51,6 +51,9 @@
 #view-home.category-home-active .cat-weather-scene{position:relative;isolation:isolate;min-height:270px;padding:18px;overflow:hidden}
 #view-home.category-home-active .cat-weather .weather-content,#view-home.category-home-active .cat-weather .weather-feedback{position:relative;z-index:2}
 #view-home.category-home-active .cat-weather .weather-feedback{overflow:visible;max-height:none;margin-top:12px}
+#view-home.category-home-active .cat-weather .weather-city{font-size:15px;white-space:normal;text-align:left;line-height:1.5;overflow-wrap:anywhere}
+.cat-weather-condition{font-weight:500}.cat-weather-sample{font-weight:500;font-size:11px;opacity:.7}
+#view-home.category-home-active .cat-weather-city-condition .weather-condition{display:none}
 #view-home.category-home-active .cat-weather .weather-landscape{inset:0}
 /* Forecast disclosure changes only the dock, never the scenery's crop or anchor.
    Override the legacy widget's separate expanded/collapsed SVG offsets. */
@@ -62,7 +65,13 @@
 #view-home.category-home-active .cat-weather .weather-hour-temp,#view-home.category-home-active .cat-weather #home-weather-periods button{color:var(--cat-ink)}
 #view-home.category-home-active .cat-weather .weather-day-low,#view-home.category-home-active .cat-weather .weather-hour-time{color:var(--cat-muted)}
 #view-home.category-home-active .cat-weather [hidden]{display:none!important}
-@media(max-width:1023px){#view-home.category-home-active .cat-weather-scene{min-height:210px;padding:16px}}
+@media(max-width:1023px){
+ #view-home.category-home-active .cat-weather-scene{min-height:210px;padding:16px}
+ #view-home.category-home-active .cat-weather .weather-right{grid-template-columns:minmax(0,1fr);gap:4px}
+ #view-home.category-home-active .cat-weather .weather-meta{font-size:12px;line-height:1.6;margin:0;letter-spacing:0}
+ #view-home.category-home-active .cat-weather .weather-hour .ti{color:var(--cat-ink)}
+ #view-home.category-home-active .cat-weather .weather-hour-chance{color:var(--cat-muted)}
+}
 @media(min-width:1024px) and (max-width:1240px){.cat-food-body{grid-template-columns:minmax(0,1fr) 66px}.cat-food-body .cat-ring{display:block;grid-column:2;grid-row:2;width:66px;height:66px}.cat-meals{grid-column:1/-1;grid-row:3;margin:14px 0}.cat-meals dl{grid-template-columns:repeat(4,minmax(0,1fr))}.cat-meals dl>div{flex-direction:column}.cat-food-body>.cat-action{grid-row:4;margin:8px 0 16px}.cat-food-body{grid-template-rows:auto auto auto auto}}
 
 .cat-mini{background:#202020}[data-theme=light] .cat-mini{background:#f2f2f2}.cat-dialog{background:var(--bg)}
@@ -99,9 +108,6 @@
  #view-home.category-home-active .cat-weather .weather-hour-temp{font-size:12px;line-height:17px}
  #view-home.category-home-active .cat-weather .weather-day-low{font-size:10px;line-height:17px}
  #view-home.category-home-active .cat-weather .weather-hours:not(.weather-week) .weather-hour-temp{grid-column:1/-1}
- #view-home.category-home-active .cat-weather .weather-city{font-size:15px;white-space:normal;text-align:left;line-height:1.5}
- .cat-weather-condition{font-weight:500}.cat-weather-sample{font-weight:500;font-size:11px;opacity:.7}
- #view-home.category-home-active .cat-weather-city-condition .weather-condition{display:none}
 }
 .cat-tabs.seg-tabs{display:flex;width:max-content;max-width:100%;gap:2px;padding:0;background:none;border-radius:0;align-self:center}
 .cat-tabs.seg-tabs>button{position:relative;isolation:isolate;flex:none;min-height:44px;padding:6px 9px;font-size:12px;background:transparent;box-shadow:none}
