@@ -1,5 +1,19 @@
 # Daily — Agent Handoff
 
+## v424 Compact inline phone forecast temperatures — 2026-11-03
+
+- Francois requested a desktop-like compact forecast, retaining the left controls. Phone
+  weekly rows now show day, icon and inline high/low temperatures. Visual summary/chance
+  rows are omitted as on desktop; full conditions and precipitation remain in each item's
+  accessible label. Today retains its compact time labels. Forecast is 82px tall in the
+  normal sample; controls/disclosure retain their positions and 44px targets.
+- At widths below 360px the weekly strip uses 8px more of each side inset so all seven
+  temperature pairs fit without overflow. Desktop, scenery, fetching and records unchanged.
+  Cache daily-v424. All 684 Node checks pass. Synthetic browser checked 390 dark, 320 light,
+  inline temperature alignment, cell/page containment, Forecast collapse and Today reopening.
+  No application errors; physical Safari remains for Francois to verify. Preview screenshots
+  remain ignored in temp-analysis/.
+
 ## v423 Left-aligned phone forecast controls — 2026-11-03
 
 - Francois rejected the centred switch. Phone Today/Week now sits on the left, Forecast

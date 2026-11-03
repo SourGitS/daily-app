@@ -427,7 +427,8 @@
 // v421: shared Today/Week segmented styling on phone, retaining Forecast disclosure.
 // v422: centred compact phone forecast controls with a separated, aligned forecast grid.
 // v423: left-align the compact phone period switch beside the Forecast disclosure.
-const CACHE_NAME = 'daily-v423'; // Remote connector hosting remains disabled.
+// v424: compact phone forecasts with inline daily high/low temperatures.
+const CACHE_NAME = 'daily-v424'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
