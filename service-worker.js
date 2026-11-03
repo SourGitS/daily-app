@@ -424,7 +424,8 @@
 // v418: consistent compact italic Daily App wordmark with one integrated star.
 // v419: safe dated Budget period transitions and saved-plan archive.
 // v420: bring the Category phone weather text hierarchy in line with desktop.
-const CACHE_NAME = 'daily-v420'; // Remote connector hosting remains disabled.
+// v421: shared Today/Week segmented styling on phone, retaining Forecast disclosure.
+const CACHE_NAME = 'daily-v421'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —

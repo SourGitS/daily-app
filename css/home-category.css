@@ -65,12 +65,22 @@
 #view-home.category-home-active .cat-weather .weather-hour-temp,#view-home.category-home-active .cat-weather #home-weather-periods button{color:var(--cat-ink)}
 #view-home.category-home-active .cat-weather .weather-day-low,#view-home.category-home-active .cat-weather .weather-hour-time{color:var(--cat-muted)}
 #view-home.category-home-active .cat-weather [hidden]{display:none!important}
+/* One segmented control; the phone retains its dock and Forecast disclosure. */
+#view-home.category-home-active .cat-weather #home-weather-periods{position:relative;isolation:isolate;gap:0;padding:0 3px;flex-shrink:0}
+#view-home.category-home-active .cat-weather #home-weather-periods::before{content:'';position:absolute;inset:4px 0;background:#18344830;border:1px solid #ffffff26;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:9px;z-index:-1}
+#view-home.category-home-active .cat-weather #home-weather-periods button{position:relative;isolation:isolate;height:44px;min-height:44px;min-width:54px;padding:0 10px;border:0;font-size:11px;color:#ffffffb3;background:none}
+#view-home.category-home-active .cat-weather #home-weather-periods button[aria-pressed=true]{color:#fff}
+#view-home.category-home-active .cat-weather #home-weather-periods button[aria-pressed=true]::before{content:'';position:absolute;inset:7px 0;background:#ffffff24;border-radius:6px;z-index:-1}
 @media(max-width:1023px){
  #view-home.category-home-active .cat-weather-scene{min-height:210px;padding:16px}
  #view-home.category-home-active .cat-weather .weather-right{grid-template-columns:minmax(0,1fr);gap:4px}
  #view-home.category-home-active .cat-weather .weather-meta{font-size:12px;line-height:1.6;margin:0;letter-spacing:0}
  #view-home.category-home-active .cat-weather .weather-hour .ti{color:var(--cat-ink)}
  #view-home.category-home-active .cat-weather .weather-hour-chance{color:var(--cat-muted)}
+ #view-home.category-home-active .cat-weather #home-weather-periods::before{background:var(--cat-line);border-color:var(--cat-line)}
+ #view-home.category-home-active .cat-weather #home-weather-periods button{color:var(--cat-muted)}
+ #view-home.category-home-active .cat-weather #home-weather-periods button[aria-pressed=true]{color:var(--cat-ink)}
+ #view-home.category-home-active .cat-weather #home-weather-periods button[aria-pressed=true]::before{background:var(--cat-line)}
 }
 @media(min-width:1024px) and (max-width:1240px){.cat-food-body{grid-template-columns:minmax(0,1fr) 66px}.cat-food-body .cat-ring{display:block;grid-column:2;grid-row:2;width:66px;height:66px}.cat-meals{grid-column:1/-1;grid-row:3;margin:14px 0}.cat-meals dl{grid-template-columns:repeat(4,minmax(0,1fr))}.cat-meals dl>div{flex-direction:column}.cat-food-body>.cat-action{grid-row:4;margin:8px 0 16px}.cat-food-body{grid-template-rows:auto auto auto auto}}
 
@@ -93,11 +103,6 @@
  #view-home.category-home-active .cat-weather-scene{padding-bottom:64px}
  #view-home.category-home-active .cat-weather .weather-forecast-dock{min-height:var(--cat-weather-dock-height,101px);padding:12px 14px;justify-content:center}
  #view-home.category-home-active .cat-weather .weather-mobile-controls{position:absolute;top:-52px;left:14px;right:auto;height:44px;min-height:44px;margin:0;background:none;justify-content:flex-start}
- #view-home.category-home-active .cat-weather #home-weather-periods{position:relative;isolation:isolate;gap:0;padding:0 3px}
- #view-home.category-home-active .cat-weather #home-weather-periods::before{content:'';position:absolute;inset:4px 0;background:#18344830;border:1px solid #ffffff26;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:9px;z-index:-1}
- #view-home.category-home-active .cat-weather #home-weather-periods button{position:relative;isolation:isolate;height:44px;min-height:44px;min-width:54px;padding:0 10px;border:0;font-size:11px;color:#ffffffb3;background:none}
- #view-home.category-home-active .cat-weather #home-weather-periods button[aria-pressed=true]{color:#fff}
- #view-home.category-home-active .cat-weather #home-weather-periods button[aria-pressed=true]::before{content:'';position:absolute;inset:7px 0;background:#ffffff24;border-radius:6px;z-index:-1}
  #view-home.category-home-active .cat-weather .weather-preview{padding:0;margin:0;min-height:0}
  #view-home.category-home-active .cat-weather :is(.weather-forecast-caption,.weather-summary,.weather-hour-chance){display:none!important}
  #view-home.category-home-active .cat-weather .weather-hours{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:3px;margin:0;overflow:visible}

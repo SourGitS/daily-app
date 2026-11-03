@@ -1,5 +1,18 @@
 # Daily — Agent Handoff
 
+## v421 Phone forecast segmented control — 2026-11-03
+
+- Francois requested the desktop Today/Week styling on iPhone while retaining Forecast.
+  Category Home now shares the segmented geometry, border and selected inset across devices.
+  Phone keeps the control beside its existing disclosure in the gray dock, using theme-aware
+  neutral colours. Both segments and the disclosure retain 44px touch heights. Desktop keeps
+  its glass scenery position, colours and exact Training alignment; legacy Home is unchanged.
+- CSS only, with cache daily-v421. No fetching, forecast state, record or sync changes.
+  All 683 Node checks pass. Synthetic browser checks cover 390 dark and 320 light,
+  Today/Week switching, collapse/reopen, seven weekly rows, control containment and 1024
+  desktop alignment. No page overflow or application errors. Physical Safari remains
+  unverified. Sample screenshots remain ignored in temp-analysis/.
+
 ## v420 Phone Weather text hierarchy — 2026-11-03
 
 - Francois pointed out that the phone still used the older current-condition layout while
