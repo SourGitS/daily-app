@@ -554,7 +554,7 @@ test('the Overview cards stay out of BUD_CARDS, which is the Week layout', () =>
   const ids = context.__b.BUD_CARDS.map(c => c.id);
   assert.ok(!ids.some(id => id.startsWith('bov-')));
   assert.ok(!ids.includes('budget-overview-view'));
-  assert.equal(ids.length, 8, 'the Week layout is unchanged at eight cards');
+  assert.equal(ids.length, 7, 'Fixed expenses contains Upcoming within the same card');
 });
 
 test('reading the month breakdown for a summary leaves no drill-down targets behind', () => {

@@ -71,7 +71,7 @@ test('recorded savings reduce spending once while a larger savings target keeps 
 test('income and savings recording use matching visual actions',()=>{
   const c=context({escAttr:String,escText:String,fmtDate:String,fmtMoneyExact:n=>'$'+n});
   const html=c.budPeriodRecordActivity({income:900,savingsRecorded:200,rows:[]});
-  assert.equal((html.match(/class="bud-record-tile"/g)||[]).length,2);
+  assert.equal((html.match(/class="bud-record-summary"/g)||[]).length,2);
   assert.equal((html.match(/class="bud-record-action"/g)||[]).length,2);
   assert.match(html,/Income received[\s\S]*\$900[\s\S]*Record income/);
   assert.match(html,/Savings recorded[\s\S]*\$200[\s\S]*Record savings/);
@@ -250,7 +250,7 @@ test('week view shows a calculated read-only fixed expense snapshot',()=>{
   c.budPeriodLabel=()=> '2–15 Oct';
   const money={range:period,record:{reserves:{rent:600}},rows:[]};
   const html=c.budPeriodFixedRows(money);
-  assert.match(html,/read-only snapshot/);assert.match(html,/Rent[\s\S]*\$600/);
+  assert.match(html,/Rent[\s\S]*\$600/);
   assert.match(html,/Manage recurring bills/);assert.doesNotMatch(html,/data-period-reserve|type="number"|Manage rows|data-period-archive/);
 });
 test('week view archive keeps the row definition and uses the reversible category archive path',()=>{

@@ -309,16 +309,40 @@ function budIncomeSection(range,weekly){
     (weekly&&weekIncome(weekly)-events.reduce((s,x)=>s+Number(x.amount||0),0)>.005?'<button class="bud-edit-btn" onclick="budLegacyOpen=true;renderBudgetTab()">Review older weekly totals</button>':'')+
     '<div class="bi-actions">'+(cats.length?'<button class="stg-btn primary" onclick="budPeriodRecord(\'income\')">Record income</button>':'')+'<button class="bud-edit-btn" onclick="budIncomeManage()">'+(cats.length?'Income & paydays':'+ Set up income')+'</button></div>';
 }
+let budMoneyView='income';
+function budSetMoneyView(view){
+  if(!['income','savings'].includes(view))return;
+  budMoneyView=view;budMoneyViewApply();
+}
+function budMoneyViewApply(){
+  const period=document.getElementById('bud-plan-card')?.classList.contains('is-period-recording');
+  ['income','savings'].forEach(view=>{
+    const active=view===budMoneyView,tab=document.getElementById('bud-money-'+view+'-tab'),panel=document.getElementById('bud-money-'+view);
+    if(tab){tab.classList.toggle('on',active);tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;}
+    if(panel)panel.hidden=!active;
+  });
+  // Savings stays in the DOM even on Income: existing save readers need its current value.
+  const target=document.getElementById('bud-plan-sav');if(target)target.hidden=period&&budMoneyView!=='savings';
+}
+function budMoneyViewKey(event){
+  if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+  event.preventDefault();
+  const view=event.key==='Home'?'income':event.key==='End'?'savings':budMoneyView==='income'?'savings':'income';
+  budSetMoneyView(view);document.getElementById('bud-money-'+view+'-tab')?.focus();
+}
 function budPeriodRecordActivity(m){
-  const activity=m.rows.filter(x=>x.kind==='income'||x.kind==='savings').sort((a,b)=>String(b.date).localeCompare(String(a.date))||(Number(b.createdAt)||0)-(Number(a.createdAt)||0));
-  const rows=activity.map(x=>'<button class="bud-record-row" data-entry-id="'+escAttr(x.id)+'" onclick="budPeriodEdit(this.dataset.entryId)"><span><strong>'+(x.kind==='income'?'Income':'Savings')+'</strong><small>'+escText(fmtDate(x.date))+(x.note?' · '+escText(x.note):'')+'</small></span><span>'+fmtMoneyExact(x.amount)+'</span></button>').join('');
-  const incomeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
-  const savingsIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 10v11M19 10v11M9.5 10v11M14.5 10v11M4 10h16L12 4z"/></svg>';
-  return '<div class="bud-record-pair" aria-label="Record income or savings">'+
-    '<div class="bud-record-tile"><div class="bud-record-tile-head"><span class="bud-record-icon">'+incomeIcon+'</span><span>Income received</span></div><strong>'+fmtMoneyExact(m.income)+'</strong><button class="bud-record-action" onclick="budPeriodRecord(\'income\')">+ Record income</button></div>'+
-    '<div class="bud-record-tile"><div class="bud-record-tile-head"><span class="bud-record-icon">'+savingsIcon+'</span><span>Savings recorded</span></div><strong>'+fmtMoneyExact(m.savingsRecorded)+'</strong><button class="bud-record-action" onclick="budPeriodRecord(\'savings\')">+ Record savings</button></div></div>'+(
-    rows?'<div class="bud-record-list" aria-label="Income and savings recorded in this period">'+rows+'</div>':'<p class="bud-record-empty">Nothing recorded in this period yet.</p>')+
-    '<button class="bud-record-setup" onclick="budIncomeManage()">Income &amp; paydays settings →</button>';
+  const panels=['income','savings'].map(kind=>{
+    const income=kind==='income',label=income?'Income received':'Savings recorded';
+    const activity=m.rows.filter(x=>x.kind===kind).sort((a,b)=>String(b.date).localeCompare(String(a.date))||(Number(b.createdAt)||0)-(Number(a.createdAt)||0));
+    const rows=activity.map(x=>'<button class="bud-record-row" data-entry-id="'+escAttr(x.id)+'" onclick="budPeriodEdit(this.dataset.entryId)"><span><strong>'+escText(x.note||(income?'Income':'Savings'))+'</strong><small>'+escText(fmtDate(x.date))+'</small></span><span>'+fmtMoneyExact(x.amount)+'</span></button>').join('');
+    return '<div id="bud-money-'+kind+'" role="tabpanel" aria-labelledby="bud-money-'+kind+'-tab"'+(kind===budMoneyView?'':' hidden')+'>'+
+      '<div class="bud-record-summary"><span>'+label+'</span><strong>'+fmtMoneyExact(income?m.income:m.savingsRecorded)+'</strong><button class="bud-record-action" onclick="budPeriodRecord(\''+kind+'\')">+ Record '+kind+'</button></div>'+
+      (rows?'<div class="bud-record-list" aria-label="'+label+' this period">'+rows+'</div>':'<p class="bud-record-empty">No '+(income?'income':'savings')+' recorded this period.</p>')+
+      (income&&m.legacyIncome?'<p class="bp-note">'+fmtMoneyExact(m.legacyIncome)+' is retained in older complete weekly totals.</p>':'')+
+      (income?'<button class="bud-record-setup" onclick="budIncomeManage()">Income &amp; paydays</button>':'')+'</div>';
+  }).join('');
+  return '<div class="seg-tabs bud-seg bud-money-tabs" role="tablist" aria-label="Money records" onkeydown="budMoneyViewKey(event)">'+
+    ['income','savings'].map(kind=>'<button type="button" id="bud-money-'+kind+'-tab" role="tab" aria-controls="bud-money-'+kind+'" aria-selected="'+(kind===budMoneyView)+'" tabindex="'+(kind===budMoneyView?'0':'-1')+'"'+(kind===budMoneyView?' class="on"':'')+' onclick="budSetMoneyView(\''+kind+'\')">'+(kind==='income'?'Income':'Savings')+'</button>').join('')+'</div>'+panels;
 }
 function budIncomeRecordFill(){
   const f=document.getElementById('bp-form'),c=activeCats(loadIncCats()).find(x=>x.id===f.elements.category.value);
@@ -821,7 +845,7 @@ function budPeriodPaintMoney(m){
   const bar=document.getElementById('budget-bar');if(bar)bar.style.width=(m.funded?Math.min(100,Math.max(0,used/m.funded*100)):0)+'%';
   put('calc-variable',fmtMoneyExact(m.spent));put('sum-var',fmtMoneyExact(m.spent));
   const fixedLabel=fmtMoneyExact(m.reserved+m.billPaid);
-  put('sum-inc',fmtMoneyExact(m.income));put('sum-fix',fixedLabel);put('plan-fix-sum',fixedLabel);
+  put('sum-inc',fmtMoneyExact(m.income));put('sum-fix',fixedLabel);put('bud-fixed-allowance',fixedLabel);put('plan-fix-sum',fixedLabel);
   put('sav-head-sum',fmtMoneyExact(m.savings));put('plan-avail',avail===null?'—':fmtMoneyExact(avail+m.spent));put('sum-plan',avail===null?'—':fmtMoneyExact(avail+m.spent));
   updateVarGoalCard(m.spent);
   if(budPeriodCardMode()){
@@ -846,8 +870,8 @@ function budPeriodRenderCards(){
   document.querySelector('#bud-fixed-card .bud-head-unit').textContent='/period';
   document.getElementById('bud-plan-card').classList.add('is-period-recording');
   document.querySelector('#bud-plan-card .bud-head-label span').textContent='Money in & saved';
-  document.getElementById('bud-plan-inc').innerHTML=budPeriodRecordActivity(m)+
-    (m.legacyIncome?'<p class="bp-note">'+fmtMoneyExact(m.legacyIncome)+' is retained in older complete weekly totals.</p>':'');
+  document.getElementById('bud-plan-inc').innerHTML=budPeriodRecordActivity(m);
+  budMoneyViewApply();
   const sav=document.getElementById('sav-amount');sav.disabled=false;sav.value=r.savings||'';sav.style.opacity='1';
   document.getElementById('sav-status').innerHTML='';
   const notes=document.getElementById('week-notes');notes.disabled=false;notes.value=r.notes||'';notes.placeholder='What happened this period?';
@@ -880,9 +904,8 @@ function budPeriodSaveFields(finish){
 function budPeriodFixedRows(m){
   const rows=activeCats(loadFixCats()).map(c=>{const amount=Number(m.record.reserves?.[c.id])||0;return '<div class="bud-row bud-cat-row">'+budCatNameHtml('fix',c,true,false)+
     '<span class="bud-fixed-snapshot" aria-label="Calculated allowance '+escAttr(fmtMoneyExact(amount))+'">'+fmtMoneyExact(amount)+'</span></div>';}).join('');
-  return '<div class="bud-fix-cap">Calculated automatically from Recurring bills for '+escText(budPeriodLabel(m.range))+'. This is a read-only snapshot of how much to put aside. Recorded payments use the allowance once; Outlook shows scheduled charges.</div>'+
-    '<div class="bud-spend-tools"><button class="bud-edit-btn" onclick="openBudgetEditor()">Manage recurring bills</button></div>'+rows+
-    '<button class="add-cat-btn" onclick="budPeriodRecord(\'bill_payment\')">+ Record bill payment</button>'+
+  return '<div class="bud-spend-tools"><button class="bud-edit-btn" onclick="openBudgetEditor()">Manage recurring bills</button></div>'+rows+
+    '<button class="bud-record-action bud-bill-payment" onclick="budPeriodRecord(\'bill_payment\')">+ Record bill payment</button>'+
     m.rows.filter(x=>x.kind==='bill_payment').map(x=>'<button class="txn-item" data-entry-id="'+escAttr(x.id)+'" onclick="budPeriodEdit(this.dataset.entryId)"><span>'+escText(loadFixCats().find(c=>c.id===x.fixCatId)?.name||'Bill')+' · '+escText(fmtDate(x.date))+'</span><span>'+fmtMoneyExact(x.amount)+'</span></button>').join('');
 }
 function budPeriodArchiveFixed(id){

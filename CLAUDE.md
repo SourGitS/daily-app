@@ -1,5 +1,24 @@
 # Daily — Project Reference
 
+## Budget card views — v429–v431, release authorised, 2026-11-05
+
+Budget now has one Fixed expenses card with Set aside and Upcoming tabs. The first retains
+the automatically calculated period allowance and bill-payment actions; Upcoming retains
+the existing payday projection and complete next-14-days schedule. Its former standalone
+card is removed from BUD_CARDS. Both panes stay mounted so legacy weekly save readers retain
+their fields. The session's selected view survives rendering, recalculation and resizing;
+the existing fixed-card collapse key owns the combined card. budOpenFixedCard reveals Set aside.
+Money in & saved now uses Income and Savings tabs with the same solid neutral summary and
+record action, plus separate filtered histories. The active tab survives repaint; the static
+savings target remains mounted for save readers and is visible in Savings. Legacy weekly
+views restore its visibility. Income settings are neutral, the redundant Fixed expenses link
+and period caption are removed, and bill recording uses a solid neutral 44px action. Shared
+allowance/forecast summaries also use the solid surface. No financial writers or formulas change.
+The extra explanation beneath Upcoming's total is also removed. Cache daily-v431. Francois authorised committing and pushing the complete pass;
+689 Node checks and the synthetic budget-bills-browser.cjs suite pass. The browser suite covers
+320/390/1024/1440px, both themes, historical/no-pay/undated/empty cases, keyboard tabs,
+collapse/repaint, payment cancellation, legacy fields and financial-record preservation.
+
 ## Phone forecast scenery disclosure — v368
 
 Home's mobile weather now has a 44px Hide / Show forecast button beside Today / Week.

@@ -13250,7 +13250,7 @@ function renderFixedCardBody(data,isCur){
   // and the Outlook card below states the second, so the two are pointed at each other rather
   // than left to look like a discrepancy.
   const cap='<div class="bud-fix-cap">A weekly allocation toward bills and commitments, not the amounts charged. '+
-    'Outlook shows the actual dates and amounts due.</div>';
+    'Upcoming shows the actual dates and amounts due.</div>';
   // Current week only, exactly as every other Edit control on this tab: amounts stay editable
   // whenever the week is, but add/rename/remove never appears on a stray tap.
   const tools=isCur
@@ -13272,6 +13272,7 @@ function renderFixedCardBody(data,isCur){
 // vertical scroller only.
 function budOpenFixedCard(){
   const el=document.getElementById('bud-fixed-card'); if(!el) return;
+  budSetFixedView('set-aside');
   if(el.classList.contains('bud-collapsed')){
     el.classList.remove('bud-collapsed');
     saveBudgetCollapseState();
@@ -14131,6 +14132,25 @@ function budForecastPart(f){
   '</div>';
   return {tone, sum:figure, html};
 }
+let _budFixedView='set-aside';
+function budSetFixedView(view){
+  if(!['set-aside','upcoming'].includes(view))return;
+  _budFixedView=view;
+  budFixedViewApply();
+}
+function budFixedViewApply(){
+  ['set-aside','upcoming'].forEach(view=>{
+    const active=view===_budFixedView,tab=document.getElementById('bud-fixed-'+view+'-tab'),panel=document.getElementById('bud-fixed-'+view);
+    if(tab){tab.classList.toggle('on',active);tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;}
+    if(panel)panel.hidden=!active;
+  });
+}
+function budFixedViewKey(event){
+  if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+  event.preventDefault();
+  const view=event.key==='Home'?'set-aside':event.key==='End'?'upcoming':_budFixedView==='set-aside'?'upcoming':'set-aside';
+  budSetFixedView(view);document.getElementById('bud-fixed-'+view+'-tab')?.focus();
+}
 function renderOutlookCard(available, week){
   const el=document.getElementById('bud-outlook-card'); if(!el) return;
   const undated=billsUndatedCount();
@@ -14138,6 +14158,9 @@ function renderOutlookCard(available, week){
   // project. The TIMELINE is unconditional and always runs from today, because "what is
   // coming" does not change with which week you happen to be looking at.
   const period=typeof budPeriodViewed==='function'&&!budLegacyOpen?budPeriodViewed():null;
+  const allowance=document.getElementById('bud-fixed-allowance'),rangeLabel=document.getElementById('bud-fixed-range');
+  if(allowance)allowance.textContent=document.getElementById('sum-fix')?.textContent||'—';
+  if(rangeLabel)rangeLabel.textContent=period?budPeriodLabel(period):fmtWeekLabel(getMondayOf(currentWeekIdx));
   const isCur=period?budPeriodDaysLeft(period)>0:budIsCurrentWeek();
   const f=isCur?(period?budPeriodForecast(budPeriodMoney(period)):payCycleForecast(available, week)):null;
 
@@ -14157,13 +14180,7 @@ function renderOutlookCard(available, week){
   // copy, the three-way tone and the tight threshold are decided there so the two surfaces
   // cannot word or colour the same figure differently.
   const fc=budForecastPart(f);
-  let tone=fc.tone?' '+fc.tone:'', sum=fc.sum, forecastPart=fc.html;
-  if(!f){
-    // No pay day named, or a past week: there is no honest projection, so the card leads with
-    // the schedule. .fc-card's default rail is --positive and there would be nothing to be
-    // positive about -- a green edge beside a list of charges is a verdict on nothing.
-    sum=occ.length?fmtMoneyExact(timelineTotal):'—';
-  }
+  const tone=fc.tone?' '+fc.tone:'',forecastPart=fc.html;
 
   // -- Part 2: the fortnight, complete --
   // Every occurrence, in date order, never truncated and never stopped at payday: a weekly
@@ -14175,25 +14192,16 @@ function renderOutlookCard(available, week){
       '<div class="fc-total">'+
         '<span class="fc-total-l">Total scheduled'+(hasStmt?', including card statements':'')+'</span>'+
         '<span class="fc-total-v">'+fmtMoneyExact(timelineTotal)+'</span>'+
-      '</div>'+
-      // Says which quantity this is. The weekly hero holds one week of ACCRUAL; these are the
-      // amounts that will actually be charged, so the two are not comparable and the card
-      // says so rather than letting them look like a discrepancy.
-      '<div class="fc-note">Scheduled charges are separate from your Fixed expenses allowances. This schedule does not record payments or deduct money.</div>'
+      '</div>'
     : '<div class="up-none">No scheduled bills in the next 14 days.</div>';
   const timelinePart='<div class="fc-part">'+
     '<div class="fc-part-h">Next 14 days<span class="fc-part-r">'+range+'</span></div>'+
     pastNote+rows+
   '</div>';
 
-  el.innerHTML='<div class="card fc-card'+tone+'" data-bud-key="outlook">'+
-    '<div class="sec-label bud-toggle"><span class="bud-head-label">'+cardIcon('calendar')+'<span>Outlook</span></span>'+
-      '<span class="bud-head-right"><span class="bud-head-sum">'+sum+'</span>'+BUD_CHEVRON+'</span></div>'+
-    '<div class="bud-collapse-body">'+forecastPart+timelinePart+hint+calLink+'</div>'+
-  '</div>';
-  // budRecalc replaces this markup after every edited amount. Reapply the keyed saved state so
-  // recalculating the projection cannot silently reopen a card the user minimised.
-  restoreBudgetCollapseState();
+  el.innerHTML='<div class="fc-card'+tone+'">'+forecastPart+timelinePart+hint+calLink+'</div>';
+  // Recalculating a projection keeps the selected view and the outer card's collapse state.
+  budFixedViewApply();
 }
 
 
@@ -14737,10 +14745,10 @@ function renderHeroAction(){
 // MOBILE is this order top to bottom, and it is the order the tab is meant to be read in:
 // what can I spend today (hero) → where is it going (Spending) → what is already committed
 // (Fixed expenses) → how the week is allocated (Week plan) → what needs attention before
-// payday (Outlook) → close the week → reference. Setup is a dismissible onboarding banner so
+// payday (Upcoming in Fixed expenses) → close the week → reference. Setup is a dismissible onboarding banner so
 // it leads; Stranded data is a maintenance state so it trails.
 // DESKTOP keeps that same priority reading across the two columns — Spending and Fixed on the
-// left beside Week plan and Outlook on the right, then Close out, then the tools — rather
+// left beside Week plan on the right, then Close out, then the tools — rather
 // than becoming two unrelated stacks. Spending is the long card and lives on the left, which
 // is what stops the right column running out of content a screen early.
 const BUD_CARDS=[
@@ -14748,7 +14756,6 @@ const BUD_CARDS=[
   {id:'bud-spend-card',      col:'left' },
   {id:'bud-fixed-card',      col:'left' },
   {id:'bud-plan-card',       col:'right'},
-  {id:'bud-outlook-card',    col:'right'},
   {id:'bud-closeout-card',   col:'left' },
   {id:'bud-tools-card',      col:'right'},
   {id:'bud-stranded-card',   col:'right'},
@@ -15182,6 +15189,7 @@ function renderBudgetTab(){
   if(period)currentWeekIdx=Math.round(budDateDays(weekKey(getMondayOf(0)),period.start)/7);
   document.querySelector('#bud-fixed-card .bud-head-unit').textContent='/wk';
   document.getElementById('bud-plan-card').classList.remove('is-period-recording');
+  if(typeof budMoneyViewApply==='function')budMoneyViewApply();
   document.querySelector('#bud-plan-card .bud-head-label span').textContent='Week plan';
   document.querySelector('#bud-closeout-card .bud-head-label span').textContent='Close out week';
   document.getElementById('week-notes').placeholder='What happened this week?';

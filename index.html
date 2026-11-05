@@ -224,11 +224,8 @@
       <div id="budget-overview-view" role="tabpanel" aria-labelledby="bv-overview-btn"></div>
 
       <!-- WEEK VIEW -->
-      <!-- Six groups, in the order the tab is meant to be read: the weekly hero (the one
-           authoritative result, and the primary Add expense action), Spending, Week plan,
-           Outlook until next pay, Close out week, then History &amp; tools. BUD_CARDS in
-           js/app.js is the single source for where each of the six actually sits — source
-           order below is the MOBILE order only. -->
+      <!-- BUD_CARDS in js/app.js owns the phone order and desktop columns. Fixed expenses
+           contains both the allocation snapshot and the Upcoming forecast/schedule. -->
       <div id="budget-week-view" class="hidden" role="tabpanel" aria-labelledby="bv-week-btn">
         <div id="budget-period-view"></div>
         <div id="budget-legacy-week" class="hidden">
@@ -327,16 +324,27 @@
              means only one breakdown is ever in the normal page flow. -->
         <div id="bud-spend-card" class="bud-span-2"></div>
 
-        <!-- FIXED EXPENSES — directly below Spending, and its own card again. It was a
-             section inside Week plan (v320), which meant the week's commitments and their
-             total were only visible after expanding a card whose header showed something
-             else. Its own heading and its own always-visible weekly total are the point.
-             #sum-fix keeps the id budRecalc has always written the canonical weekly fixed
-             total into; Week plan carries a quiet, non-editable echo of it (#plan-fix-sum)
-             so the income − fixed − savings arithmetic there still reads. -->
+        <!-- Keep both bill views mounted: legacy weekly save helpers still read allocation
+             fields when Upcoming is showing. The canonical total stays in #sum-fix. -->
         <div class="card" id="bud-fixed-card" data-bud-key="fix">
           <div class="sec-label bud-toggle"><span class="bud-head-label"><svg class="card-hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M12 3v6M8.5 9h7l1.5 5H7zM12 14v7"/></svg><span>Fixed expenses</span></span><span class="bud-head-right"><span class="bud-head-sum is-always" id="sum-fix">$0</span><span class="bud-head-unit">/wk</span><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span></div>
-          <div id="bud-fix-body"></div>
+          <div class="bud-bills-body">
+            <div class="seg-tabs bud-seg bud-bills-tabs" role="tablist" aria-label="Fixed expense views" onkeydown="budFixedViewKey(event)">
+              <button type="button" id="bud-fixed-set-aside-tab" class="on" role="tab" aria-selected="true" aria-controls="bud-fixed-set-aside" onclick="budSetFixedView('set-aside')">Set aside</button>
+              <button type="button" id="bud-fixed-upcoming-tab" role="tab" aria-selected="false" aria-controls="bud-fixed-upcoming" tabindex="-1" onclick="budSetFixedView('upcoming')">Upcoming</button>
+            </div>
+            <div id="bud-fixed-set-aside" role="tabpanel" aria-labelledby="bud-fixed-set-aside-tab">
+              <div class="bud-bills-allowance">
+                <div class="fc-part-h">Budget allowance<span class="fc-part-r" id="bud-fixed-range"></span></div>
+                <div class="card-fig" id="bud-fixed-allowance">—</div>
+                <div class="fc-unit">planned for fixed expenses</div>
+              </div>
+              <div id="bud-fix-body"></div>
+            </div>
+            <div id="bud-fixed-upcoming" role="tabpanel" aria-labelledby="bud-fixed-upcoming-tab" hidden>
+              <div id="bud-outlook-card"></div>
+            </div>
+          </div>
         </div>
 
         <!-- MONEY IN & SAVED — actual income and savings records first, with the quieter plan
@@ -358,7 +366,6 @@
           <div class="bud-plan-fixrow">
             <span class="bud-plan-fixrow-l">Fixed / committed</span>
             <span class="bud-plan-fixrow-v" id="plan-fix-sum">—</span>
-            <button type="button" class="bud-plan-fixrow-a" onclick="budOpenFixedCard()">Fixed expenses →</button>
           </div>
           <div class="bud-sec" id="bud-plan-sav" data-sec="sav">
             <button type="button" class="bud-sec-hd" onclick="budSecToggle('sav')" aria-expanded="false" aria-controls="bud-plan-sav-body">
@@ -392,12 +399,6 @@
           </div>
           </div>
         </div>
-
-        <!-- OUTLOOK UNTIL NEXT PAY — the pay-cycle forecast and the charges that land before
-             payday, merged. Filled by renderOutlookCard() from budRecalc's own `available`
-             figure so it can never disagree with the hero, and empty when there is neither an
-             honest forecast nor a dated charge. The full schedule lives in the Bills tab. -->
-        <div id="bud-outlook-card"></div>
 
         <!-- CLOSE OUT WEEK — notes plus the Finish action. It was the "Weekly result" card and
              led with Money left over and an On track / Over budget pill, both of which the hero

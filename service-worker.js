@@ -430,7 +430,12 @@
 // v424: compact phone forecasts with inline daily high/low temperatures.
 // v425: give phone high/low pairs a little more space where the width allows.
 // v426: repair reviewed-looking zero fixed plans and safely archive rows from Week.
-const CACHE_NAME = 'daily-v428'; // Remote connector hosting remains disabled.
+// v427: record income and savings with automatically calculated fixed snapshots.
+// v428: equal-weight income and savings panels.
+// v429: combine Set aside and Upcoming within one Fixed expenses card.
+// v430: solid neutral money views with separate Income and Savings tabs and quieter bill controls.
+// v431: remove the extra explanation beneath Upcoming's scheduled total.
+const CACHE_NAME = 'daily-v431'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
