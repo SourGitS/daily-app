@@ -540,7 +540,7 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
    the Week plan card state Income / Fixed / Savings / Available with nothing expanded. */
 .bud-sec{border-bottom:1px solid var(--border)}
 .bud-sec-head{display:flex;align-items:center;gap:8px}
-.bud-sec-hd{flex:1;min-width:0;display:flex;align-items:center;justify-content:space-between;
+.bud-sec-hd{width:100%;flex:1;min-width:0;display:flex;align-items:center;justify-content:space-between;
   gap:10px;min-height:46px;padding:0;border:none;background:transparent;color:var(--text);
   font:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .bud-sec-hd:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:8px}
@@ -563,20 +563,27 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .bud-sec-none.is-empty{font-size:12.5px;font-weight:600;color:var(--muted);line-height:1.55;
   padding:4px 2px 10px}
 
-/* Period recording leads with the two things the user actually does. Planning remains below
-   as supporting information, rather than wrapping each record action in another disclosure. */
-.bud-record-actions{display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;
-  padding:4px 0 14px}
-#bud-plan-card.is-period-recording .bud-record-actions{display:grid}
-.bud-record-actions .stg-btn{width:100%;min-height:44px;justify-content:center;margin:0}
-.bud-record-activity{border-bottom:1px solid var(--border);padding-bottom:10px}
-.bud-record-totals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.bud-record-totals>div{min-width:0;padding:12px;border:1px solid var(--border);border-radius:12px;
-  background:var(--card-soft,rgba(127,127,127,.06))}
-.bud-record-totals span{display:block;font-size:11px;font-weight:700;color:var(--muted);
-  margin-bottom:5px}
-.bud-record-totals strong{display:block;font-family:var(--font-num);font-size:19px;
-  letter-spacing:-.02em;overflow:hidden;text-overflow:ellipsis}
+/* Income and savings share one component and exactly the same visual weight. The soft accent
+   wash ties them to the app's blue hero without turning either one into the primary choice. */
+.bud-record-activity{padding:4px 0 14px}
+.bud-record-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.bud-record-tile{display:flex;flex-direction:column;min-width:0;min-height:148px;padding:13px;
+  border:1px solid rgba(var(--accent-rgb),.28);border-radius:15px;
+  background:linear-gradient(145deg,rgba(var(--accent-rgb),.17),rgba(var(--accent-rgb),.045) 72%)}
+.bud-record-tile-head{display:flex;align-items:center;gap:8px;min-width:0;color:var(--muted);
+  font-size:11px;font-weight:800}
+.bud-record-tile-head>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bud-record-icon{display:grid;place-items:center;width:28px;height:28px;flex:0 0 28px;border-radius:9px;
+  background:rgba(var(--accent-rgb),.2);color:var(--accent-text)}
+.bud-record-icon svg{width:16px;height:16px}
+.bud-record-tile>strong{display:block;margin:12px 0 10px;font-family:var(--font-num);font-size:27px;
+  line-height:1;letter-spacing:-.035em;overflow:hidden;text-overflow:ellipsis}
+.bud-record-action{display:flex;align-items:center;justify-content:center;width:100%;height:44px;min-height:44px;
+  box-sizing:border-box;margin-top:auto;padding:0 5px;border:1px solid rgba(var(--accent-rgb),.34);
+  border-radius:11px;background:rgba(var(--accent-rgb),.16);color:var(--text);font:inherit;
+  font-size:12px;font-weight:800;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.bud-record-action:hover{background:rgba(var(--accent-rgb),.24)}
+.bud-record-action:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .bud-record-list{margin-top:8px}
 .bud-record-row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;
   min-height:44px;padding:8px 2px;border:0;border-top:1px solid var(--border);background:transparent;
@@ -590,6 +597,8 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .bud-record-empty{margin:10px 2px 4px;color:var(--muted);font-size:12px}
 .bud-record-setup{border:0;background:transparent;color:var(--accent-text);font:inherit;font-size:11.5px;
   font-weight:700;padding:10px 0 2px;cursor:pointer}
+.bud-record-plan{padding:0 12px 10px;border:1px solid var(--border);border-radius:14px;
+  background:rgba(127,127,127,.035)}
 .bud-fixed-snapshot{margin-left:auto;flex-shrink:0;font-family:var(--font-num);font-size:14px;
   font-weight:800;color:var(--text)}
 
@@ -627,7 +636,12 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   letter-spacing:-.02em;color:var(--text);flex-shrink:0}
 
 @media(max-width:359px){
-  .bud-record-actions{grid-template-columns:minmax(0,1fr)}
+  .bud-record-pair{gap:7px}
+  .bud-record-tile{min-height:141px;padding:10px}
+  .bud-record-tile-head{gap:6px;font-size:10px}
+  .bud-record-icon{width:26px;height:26px;flex-basis:26px}
+  .bud-record-tile>strong{font-size:23px}
+  .bud-record-action{font-size:11px;padding-inline:5px}
 }
 
 /* ── Spending: the goal block and the two-breakdown switch ─────────

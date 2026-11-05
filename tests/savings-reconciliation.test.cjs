@@ -9,6 +9,7 @@ const path = require('node:path');
 const { extract } = require('./harness.cjs');
 
 const source = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
+const financeSource = fs.readFileSync(path.join(__dirname, '../js/finance-periods.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 const clone = value => JSON.parse(JSON.stringify(value));
 
@@ -80,7 +81,7 @@ test('no Savers account makes no claim that a Budget allocation became savings',
 
 test('visible finance language distinguishes a Budget allocation from account-backed savings', () => {
   assert.match(html, /Savings target \(optional\)/);
-  assert.match(html, /Record savings/);
+  assert.match(financeSource, /Record savings/);
   assert.match(source, /label:'Budget allocation'/);
   assert.match(source, /'Savers balance'/);
   assert.match(source, /Savings balance check/);

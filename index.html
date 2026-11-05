@@ -348,11 +348,8 @@
              amount locally and on every device). -->
         <div class="card" id="bud-plan-card" data-bud-key="plan">
             <div class="sec-label bud-toggle"><span class="bud-head-label"><svg class="card-hd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h14a3 3 0 013 3v7a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/><path d="M3 7l1.5-3H16l1 3"/><path d="M17 13h.01"/></svg><span>Money in &amp; saved</span></span><span class="bud-head-right"><span class="bud-head-sum" id="sum-plan"></span><svg class="bud-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span></div>
-          <div class="bud-record-actions" aria-label="Record budget activity">
-            <button type="button" class="stg-btn primary" onclick="budPeriodRecord('income')">+ Record income</button>
-            <button type="button" class="stg-btn" onclick="budPeriodRecord('savings')">+ Record savings</button>
-          </div>
           <div id="bud-plan-inc" class="bud-record-activity"></div>
+          <div class="bud-record-plan">
           <!-- Not a section and not editable: the fixed rows and their controls live in the
                Fixed expenses card now. This row exists only so the arithmetic below it
                (income − fixed − savings) can be read without leaving the card, and it takes
@@ -392,6 +389,7 @@
           <div class="bud-plan-avail">
             <span class="bud-plan-avail-l">Available for variable spending</span>
             <span class="bud-plan-avail-v" id="plan-avail">—</span>
+          </div>
           </div>
         </div>
 

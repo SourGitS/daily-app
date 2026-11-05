@@ -68,6 +68,15 @@ test('recorded savings reduce spending once while a larger savings target keeps 
   m=c.budPeriodCompute(period,{savings:50},events,[],{},{});
   assert.equal(m.savingsCommitted,75);assert.equal(m.savingsRemaining,0);assert.equal(m.available,925);
 });
+test('income and savings recording use matching visual actions',()=>{
+  const c=context({escAttr:String,escText:String,fmtDate:String,fmtMoneyExact:n=>'$'+n});
+  const html=c.budPeriodRecordActivity({income:900,savingsRecorded:200,rows:[]});
+  assert.equal((html.match(/class="bud-record-tile"/g)||[]).length,2);
+  assert.equal((html.match(/class="bud-record-action"/g)||[]).length,2);
+  assert.match(html,/Income received[\s\S]*\$900[\s\S]*Record income/);
+  assert.match(html,/Savings recorded[\s\S]*\$200[\s\S]*Record savings/);
+  assert.doesNotMatch(html,/primary/);
+});
 test('record savings creates one dated ledger record without changing an account balance',()=>{
   const submit={textContent:''},form={elements:{amount:{value:'125'},date:{value:'2026-10-04'},note:{value:'Emergency fund'}},querySelector:()=>submit};
   const nodes={'bp-form':form,'bud-period-dialog':{close(){}},'bp-error':{textContent:''}};const events=[];let writes=0;

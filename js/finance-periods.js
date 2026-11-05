@@ -312,7 +312,11 @@ function budIncomeSection(range,weekly){
 function budPeriodRecordActivity(m){
   const activity=m.rows.filter(x=>x.kind==='income'||x.kind==='savings').sort((a,b)=>String(b.date).localeCompare(String(a.date))||(Number(b.createdAt)||0)-(Number(a.createdAt)||0));
   const rows=activity.map(x=>'<button class="bud-record-row" data-entry-id="'+escAttr(x.id)+'" onclick="budPeriodEdit(this.dataset.entryId)"><span><strong>'+(x.kind==='income'?'Income':'Savings')+'</strong><small>'+escText(fmtDate(x.date))+(x.note?' · '+escText(x.note):'')+'</small></span><span>'+fmtMoneyExact(x.amount)+'</span></button>').join('');
-  return '<div class="bud-record-totals"><div><span>Income received</span><strong>'+fmtMoneyExact(m.income)+'</strong></div><div><span>Savings recorded</span><strong>'+fmtMoneyExact(m.savingsRecorded)+'</strong></div></div>'+(
+  const incomeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
+  const savingsIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 10v11M19 10v11M9.5 10v11M14.5 10v11M4 10h16L12 4z"/></svg>';
+  return '<div class="bud-record-pair" aria-label="Record income or savings">'+
+    '<div class="bud-record-tile"><div class="bud-record-tile-head"><span class="bud-record-icon">'+incomeIcon+'</span><span>Income received</span></div><strong>'+fmtMoneyExact(m.income)+'</strong><button class="bud-record-action" onclick="budPeriodRecord(\'income\')">+ Record income</button></div>'+
+    '<div class="bud-record-tile"><div class="bud-record-tile-head"><span class="bud-record-icon">'+savingsIcon+'</span><span>Savings recorded</span></div><strong>'+fmtMoneyExact(m.savingsRecorded)+'</strong><button class="bud-record-action" onclick="budPeriodRecord(\'savings\')">+ Record savings</button></div></div>'+(
     rows?'<div class="bud-record-list" aria-label="Income and savings recorded in this period">'+rows+'</div>':'<p class="bud-record-empty">Nothing recorded in this period yet.</p>')+
     '<button class="bud-record-setup" onclick="budIncomeManage()">Income &amp; paydays settings →</button>';
 }

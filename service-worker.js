@@ -430,7 +430,7 @@
 // v424: compact phone forecasts with inline daily high/low temperatures.
 // v425: give phone high/low pairs a little more space where the width allows.
 // v426: repair reviewed-looking zero fixed plans and safely archive rows from Week.
-const CACHE_NAME = 'daily-v427'; // Remote connector hosting remains disabled.
+const CACHE_NAME = 'daily-v428'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
