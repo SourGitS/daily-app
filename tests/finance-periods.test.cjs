@@ -61,6 +61,23 @@ test('multiple actual income sources add once; transfers and expected income can
   const m=c.budPeriodCompute(period,{},events,[{date:'2026-10-15',amount:23.45},{date:'2026-10-16',amount:99}],{},{});
   assert.equal(m.income,2120);assert.equal(m.available,2096.55);
 });
+test('recorded savings reduce spending once while a larger savings target keeps the remainder reserved',()=>{
+  const c=context(),events=[{kind:'income',date:'2026-10-02',amount:1000},{kind:'savings',date:'2026-10-03',amount:75}];
+  let m=c.budPeriodCompute(period,{savings:200},events,[],{},{});
+  assert.equal(m.savingsRecorded,75);assert.equal(m.savingsRemaining,125);assert.equal(m.savingsCommitted,200);assert.equal(m.available,800);
+  m=c.budPeriodCompute(period,{savings:50},events,[],{},{});
+  assert.equal(m.savingsCommitted,75);assert.equal(m.savingsRemaining,0);assert.equal(m.available,925);
+});
+test('record savings creates one dated ledger record without changing an account balance',()=>{
+  const submit={textContent:''},form={elements:{amount:{value:'125'},date:{value:'2026-10-04'},note:{value:'Emergency fund'}},querySelector:()=>submit};
+  const nodes={'bp-form':form,'bud-period-dialog':{close(){}},'bp-error':{textContent:''}};const events=[];let writes=0;
+  const c=context({document:{getElementById:id=>nodes[id]},FormData:class{constructor(f){this.f=f;}get(k){return this.f.elements[k]?.value||'';}has(){return false;}},
+    budgetData:{},ledgerData:events,ledgerOf:()=>[],txnWeekOf:()=> '2026-09-28',genLedgerId:()=> 'save-1',saveLedger:()=>writes++});
+  c.budPeriodDialog=()=>{};c.budPeriodRefresh=()=>{};c.budPeriodRecord('savings');
+  form.onsubmit({preventDefault(){},target:form});form.onsubmit({preventDefault(){},target:form});
+  assert.equal(submit.textContent,'Record savings');assert.equal(writes,1);assert.deepEqual(plain(events),[{id:'save-1',kind:'savings',date:'2026-10-04',amount:125,note:'Emergency fund',createdAt:events[0].createdAt,manual:true}]);
+  assert.equal(events[0].accountLink,undefined);
+});
 test('bill payment consumes its own reserve rather than deducting the same bill twice',()=>{
   const c=context(),record={opening:1000,reserves:{rent:500,phone:50},savings:100};
   const before=c.budPeriodCompute(period,record,[],[],{},{});
@@ -207,26 +224,25 @@ test('an old all-zero period repairs even if the broken migration marked it revi
   const c=context({loadFixCats:()=>[{id:'rent'},{id:'gym'}],activeCats:x=>x,catChargeableBudget:x=>x.id==='rent'?300:20});
   const saved={start:period.start,end:period.end,fundingConfirmed:true,reserves:{rent:0,gym:0},updatedAt:10};
   const repair=c.budPeriodInheritedPlan(period,saved);
-  assert.equal(repair.zeroFixedPlan,true);assert.deepEqual(plain(repair.reserves),saved.reserves);
+  assert.equal(repair.automaticFixedRepair,true);assert.deepEqual(plain(repair.reserves),{rent:600,gym:40});
+  assert.deepEqual(saved.reserves,{rent:0,gym:0});
   assert.deepEqual(plain(c.budPeriodSuggestedReserves(period)),{rent:600,gym:40});
   const reviewed={...saved,allocationsReviewed:true};
-  assert.equal(c.budPeriodInheritedPlan(period,reviewed).zeroFixedPlan,true);
+  assert.equal(c.budPeriodInheritedPlan(period,reviewed).automaticFixedRepair,true);
   const confirmed={...reviewed,zeroFixedConfirmed:true};
-  assert.deepEqual(plain(c.budPeriodInheritedPlan(period,confirmed)),confirmed);
+  assert.equal(c.budPeriodInheritedPlan(period,confirmed).automaticFixedRepair,true);
   assert.equal(c.budPeriodZeroConfirmed(period,{rent:0,gym:0}),true);
   assert.equal(c.budPeriodZeroConfirmed(period,{rent:1,gym:0}),false);
 });
-test('week view labels repaired amounts as suggestions and archives rows instead of deleting them',()=>{
+test('week view shows a calculated read-only fixed expense snapshot',()=>{
   const cats=[{id:'rent',name:'Rent'}],c=context({loadFixCats:()=>cats,activeCats:x=>x,catChargeableBudget:()=>300,
     budCatNameHtml:(type,cat)=>'<span>'+cat.name+'</span>',catLabel:x=>x.name,escAttr:x=>x,escText:x=>x,
     fmtMoneyExact:n=>'$'+n,budPeriodLabel:()=> '2–15 Oct'});
-  c.budEditMode={fix:false};
-  const money={range:period,record:{zeroFixedPlan:true,reserves:{rent:0}},rows:[]};
+  c.budPeriodLabel=()=> '2–15 Oct';
+  const money={range:period,record:{reserves:{rent:600}},rows:[]};
   const html=c.budPeriodFixedRows(money);
-  assert.match(html,/not genuine \$0 bills/);assert.match(html,/\$600<\/strong><small>suggested/);
-  assert.match(html,/Review &amp; apply amounts/);assert.doesNotMatch(html,/data-period-reserve="rent"/);
-  c.budEditMode.fix=true;const editing=c.budPeriodFixedRows(money);
-  assert.match(editing,/data-period-archive="rent"/);assert.doesNotMatch(editing,/delete-cat-btn/);
+  assert.match(html,/read-only snapshot/);assert.match(html,/Rent[\s\S]*\$600/);
+  assert.match(html,/Manage recurring bills/);assert.doesNotMatch(html,/data-period-reserve|type="number"|Manage rows|data-period-archive/);
 });
 test('week view archive keeps the row definition and uses the reversible category archive path',()=>{
   const cats=[{id:'rent',name:'Rent'}];let archive=null,saves=0,toast='';

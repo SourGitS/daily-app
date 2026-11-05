@@ -108,17 +108,21 @@ function budPeriodCompute(range,record,events,expenses,periods,legacy){
   const rows=(events||[]).filter(within),purchases=(expenses||[]).filter(within);
   const sum=items=>budMoneyRound(items.reduce((a,x)=>a+(Number(x.amount)||0),0));
   const income=sum(rows.filter(x=>x.kind==='income'))+(legacy?.income||0);
+  const savingsRecorded=sum(rows.filter(x=>x.kind==='savings'));
   const payments=rows.filter(x=>x.kind==='bill_payment');
   const paidBy={};payments.forEach(x=>{paidBy[x.fixCatId]=(paidBy[x.fixCatId]||0)+(Number(x.amount)||0);});
   const reserved=Object.entries(r.reserves||{}).reduce((a,[id,n])=>a+Math.max(0,(Number(n)||0)-(paidBy[id]||0)),0);
   const incoming=Object.values(periods||{}).reduce((a,p)=>a+(p.rollover?.to===range.id&&p.rollover.destination==='budget'?(Number(p.rollover.amount)||0):0),0);
   const outgoing=Number(r.rollover?.amount)||0;
   const spent=sum(purchases)+(legacy?.spent||0),billPaid=sum(payments),opening=Number(r.opening)||0,savings=Number(r.savings)||0;
+  // A savings target reserves money before it is moved. A dated savings record confirms the
+  // move. Use whichever is higher so recording progress towards a target never deducts it twice.
+  const savingsCommitted=Math.max(savings,savingsRecorded),savingsRemaining=Math.max(0,budMoneyRound(savings-savingsRecorded));
   const funded=income+opening+incoming;
-  const known=budMoneyRound(funded-spent-billPaid-reserved-savings-outgoing);
+  const known=budMoneyRound(funded-spent-billPaid-reserved-savingsCommitted-outgoing);
   const incomplete=!!legacy?.incomplete,allocationReview=!!legacy?.allocationReview&&!r.fundingConfirmed&&!r.allocationsReviewed;
   return {range,record:r,rows,purchases,income:budMoneyRound(income),spent:budMoneyRound(spent),billPaid,
-    reserved:budMoneyRound(reserved),opening,savings,incoming:budMoneyRound(incoming),outgoing,
+    reserved:budMoneyRound(reserved),opening,savings,savingsRecorded,savingsCommitted,savingsRemaining,incoming:budMoneyRound(incoming),outgoing,
     funded:budMoneyRound(funded),known,available:incomplete||allocationReview||(!funded&&!r.fundingConfirmed)?null:known,incomplete,allocationReview,
     legacyIncome:legacy?.income||0,legacySpent:legacy?.spent||0};
 }
@@ -158,12 +162,11 @@ function budPeriodSuggestedReserves(p){
   return reserves;
 }
 // v415 could save a reviewed-looking period whose every fixed allowance was zero because the
-// suggestion followed due dates rather than accruals. Some of those broken records also carry
-// allocationsReviewed, so that broad flag cannot prove the zeros were intentional. Only the
-// narrow zeroFixedConfirmed flag written by the current allocation form may preserve an all-zero
-// fixed plan; every older all-zero plan gets the explicit repair path without being rewritten.
+// suggestion followed due dates rather than accruals. Fixed allowances are now automatic, so an
+// all-zero snapshot cannot override active recurring amounts; users who no longer owe a bill
+// archive or change it in Recurring bills instead.
 function budPeriodZeroPlan(p,saved){
-  if(!saved||saved.zeroFixedConfirmed)return false;
+  if(!saved)return false;
   if(!Object.prototype.hasOwnProperty.call(saved,'reserves'))return false;
   if(typeof activeCats!=='function'||typeof loadFixCats!=='function'||typeof catChargeableBudget!=='function')return false;
   const suggested=budPeriodSuggestedReserves(p),ids=Object.keys(suggested).filter(id=>Number(suggested[id])>0);
@@ -177,7 +180,10 @@ function budPeriodZeroConfirmed(p,reserves){
 // second plan nor force the user to confirm the same numbers again.
 function budPeriodInheritedPlan(p,saved,basis){
   if(saved&&(saved.fundingConfirmed||saved.allocationsReviewed||Object.prototype.hasOwnProperty.call(saved,'reserves'))){
-    return budPeriodZeroPlan(p,saved)?{...saved,zeroFixedPlan:true}:saved;
+    // Old transition records could contain an all-zero fixed plan. That was never a meaningful
+    // user choice: fixed allowances are calculated from recurring expenses. Repair the read-only
+    // snapshot immediately, without rewriting the saved history merely by opening the page.
+    return budPeriodZeroPlan(p,saved)?{...saved,reserves:budPeriodSuggestedReserves(p),automaticFixedRepair:true}:saved;
   }
   if(p.days!==7||localMidnight(p.start).getDay()!==1){
     return {...(saved||{}),reserves:budPeriodSuggestedReserves(p),provisionalFixedPlan:true};
@@ -302,6 +308,13 @@ function budIncomeSection(range,weekly){
     }).join('')+(!cats.length?'<p class="bp-note">Add your income source to set up paydays and quickly record your pay.</p>':'')+
     (weekly&&weekIncome(weekly)-events.reduce((s,x)=>s+Number(x.amount||0),0)>.005?'<button class="bud-edit-btn" onclick="budLegacyOpen=true;renderBudgetTab()">Review older weekly totals</button>':'')+
     '<div class="bi-actions">'+(cats.length?'<button class="stg-btn primary" onclick="budPeriodRecord(\'income\')">Record income</button>':'')+'<button class="bud-edit-btn" onclick="budIncomeManage()">'+(cats.length?'Income & paydays':'+ Set up income')+'</button></div>';
+}
+function budPeriodRecordActivity(m){
+  const activity=m.rows.filter(x=>x.kind==='income'||x.kind==='savings').sort((a,b)=>String(b.date).localeCompare(String(a.date))||(Number(b.createdAt)||0)-(Number(a.createdAt)||0));
+  const rows=activity.map(x=>'<button class="bud-record-row" data-entry-id="'+escAttr(x.id)+'" onclick="budPeriodEdit(this.dataset.entryId)"><span><strong>'+(x.kind==='income'?'Income':'Savings')+'</strong><small>'+escText(fmtDate(x.date))+(x.note?' · '+escText(x.note):'')+'</small></span><span>'+fmtMoneyExact(x.amount)+'</span></button>').join('');
+  return '<div class="bud-record-totals"><div><span>Income received</span><strong>'+fmtMoneyExact(m.income)+'</strong></div><div><span>Savings recorded</span><strong>'+fmtMoneyExact(m.savingsRecorded)+'</strong></div></div>'+(
+    rows?'<div class="bud-record-list" aria-label="Income and savings recorded in this period">'+rows+'</div>':'<p class="bud-record-empty">Nothing recorded in this period yet.</p>')+
+    '<button class="bud-record-setup" onclick="budIncomeManage()">Income &amp; paydays settings →</button>';
 }
 function budIncomeRecordFill(){
   const f=document.getElementById('bp-form'),c=activeCats(loadIncCats()).find(x=>x.id===f.elements.category.value);
@@ -432,54 +445,51 @@ function budPeriodSetupFields(){
 }
 function budPeriodAdjust(){
   const p=budPeriodViewed();if(!p)return budPeriodSetup();
-  const store=budCyclesLoad(),saved=store.periods[p.id]||{},inherited=budPeriodInheritedPlan(p,saved),repairing=inherited.zeroFixedPlan;
-  const r=repairing?{...inherited,reserves:budPeriodSuggestedReserves(p),provisionalFixedPlan:true}:inherited,cats=activeCats(loadFixCats());
-  budPeriodDialog('Allocate this budget','<p>'+escText(budPeriodLabel(p))+'</p>'+
-    (repairing?'<p class="bp-note">This period currently has $0 fixed allowances. The recurring amounts below are restored as suggestions; review them before saving. No bills or schedules have been changed.</p>':r.provisionalFixedPlan?'<p class="bp-note">Suggested from your existing fixed expenses for these dates. Review before saving; no bills or schedules have been changed.</p>':'')+
+  const store=budCyclesLoad(),saved=store.periods[p.id]||{},r=budPeriodInheritedPlan(p,saved),calculated=budPeriodSuggestedReserves(p);
+  const reserves=r.automaticFixedRepair||r.provisionalFixedPlan||!Object.prototype.hasOwnProperty.call(r,'reserves')?calculated:{...r.reserves};
+  budPeriodDialog('Budget settings','<p>'+escText(budPeriodLabel(p))+'</p>'+
+    '<p class="bp-note">Fixed allowances are calculated automatically from Recurring bills for the length of this period. Change a recurring amount there, not in this snapshot.</p>'+
     '<label>Existing money allocated to this period<input name="opening" type="number" min="0" step="0.01" value="'+(r.opening||'')+'" placeholder="0"></label>'+
     '<p class="bp-note">Only money available from before this period. Income received during these dates belongs in Record income.</p>'+
-    '<label>Savings allocation<input name="savings" type="number" min="0" step="0.01" value="'+(r.savings||'')+'" placeholder="0"></label>'+
+    '<label>Savings target (optional)<input name="savings" type="number" min="0" step="0.01" value="'+(r.savings||'')+'" placeholder="0"><small>Reserve this much for savings. Use Record savings when you actually put money aside.</small></label>'+
     '<label>Spending goal<input name="goal" type="number" min="0" step="0.01" value="'+(r.goal??'')+'" placeholder="Optional"></label>'+
-    '<h3>Total bill allowances</h3><p class="bp-note">Include payments already recorded in this period. Only the unpaid part stays reserved, so a bill is never deducted twice. This does not mark a bill paid or move money between accounts.</p>'+
-    cats.map(c=>'<label>'+escText(catLabel(c))+'<small>'+fmtMoneyExact(Number(catAmount(c))||0)+' '+escText(catCycle(c))+'</small><input name="reserve:'+escAttr(c.id)+'" type="number" min="0" step="0.01" value="'+(r.reserves?.[c.id]??'')+'" placeholder="0"></label>').join(''));
+    '<button type="button" class="bud-edit-btn" onclick="document.getElementById(\'bud-period-dialog\').close();openBudgetEditor()">Manage recurring bills →</button>');
   document.getElementById('bp-form').onsubmit=e=>{
-    e.preventDefault();const f=new FormData(e.target),reserves={...(r.reserves||{})};
-    cats.forEach(c=>reserves[c.id]=budMoneyRound(f.get('reserve:'+c.id)));
-    const zeroFixedConfirmed=budPeriodZeroConfirmed(p,reserves);
-    const {provisionalFixedPlan,zeroFixedPlan,zeroFixedConfirmed:oldZeroFixedConfirmed,...base}=r;
+    e.preventDefault();const f=new FormData(e.target);
+    const {provisionalFixedPlan,zeroFixedPlan,zeroFixedConfirmed,automaticFixedRepair,...base}=r;
     store.periods[p.id]={...base,start:p.start,end:p.end,opening:budMoneyRound(f.get('opening')),savings:budMoneyRound(f.get('savings')),
       goal:f.get('goal')===''?null:budMoneyRound(f.get('goal')),reserves,fundingConfirmed:true,allocationsReviewed:true,updatedAt:Date.now()};
-    if(zeroFixedConfirmed)store.periods[p.id].zeroFixedConfirmed=true;
     budCyclesSave(store);document.getElementById('bud-period-dialog').close();budPeriodRefresh();
   };
 }
 function budPeriodRecord(kind){
   const balanceSignature=typeof acctLinkSignature==='function'?acctLinkSignature():null;
-  const income=kind==='income',cats=activeCats(income?loadIncCats():loadFixCats());
-  if(!cats.length){if(income)budIncomeManage();else{showToast('Add a bill in Budget setup first.');openBudgetEditor();}return;}
+  const income=kind==='income',savings=kind==='savings',cats=savings?[]:activeCats(income?loadIncCats():loadFixCats());
+  if(!savings&&!cats.length){if(income)budIncomeManage();else{showToast('Add a bill in Budget setup first.');openBudgetEditor();}return;}
   const hasUndatedIncome=income&&Object.entries(budgetData).some(([week,w])=>budDateValid(week)&&
     weekIncome(w)-ledgerOf('income').filter(x=>x.date>=week&&x.date<=budDateAdd(week,6)).reduce((sum,x)=>sum+Number(x.amount||0),0)>.005);
-  budPeriodDialog(income?'Record received income':'Record a bill payment',
-    '<label>'+(income?'Income source':'Bill')+'<select name="category">'+cats.map(c=>'<option value="'+escAttr(c.id)+'">'+escText(catLabel(c))+'</option>').join('')+'</select></label>'+
-    '<label>Amount received / paid<input name="amount" type="number" min="0.01" step="0.01" required inputmode="decimal"></label>'+
+  budPeriodDialog(income?'Record received income':savings?'Record savings':'Record a bill payment',
+    (savings?'':'<label>'+(income?'Income source':'Bill')+'<select name="category">'+cats.map(c=>'<option value="'+escAttr(c.id)+'">'+escText(catLabel(c))+'</option>').join('')+'</select></label>')+
+    '<label>'+(income?'Amount received':savings?'Amount saved':'Amount paid')+'<input name="amount" type="number" min="0.01" step="0.01" required inputmode="decimal"></label>'+
     '<label>Date<input name="date" type="date" required max="'+getLocalDate()+'" value="'+getLocalDate()+'"></label>'+
     (hasUndatedIncome?'<label id="bi-history" hidden>This week already includes income without dates<select name="weekMode"><option value="">Choose how to record this payment</option><option value="add">It is an additional payment</option><option value="record_only">It is already included — add its date only</option></select></label>':'')+
     (income?'<p id="bi-record-hint" class="bp-note"></p><details id="bi-estimate" hidden><summary>Estimate from hours</summary><label>Hours worked<input name="hours" type="number" min="0" step="0.01" inputmode="decimal"></label><button class="stg-btn" type="button" onclick="budIncomeEstimate()">Use hours × saved rate</button><p id="bi-estimate-result" class="bp-note">Check deductions before recording take-home pay.</p></details><label id="bi-duplicate" class="bi-follow" hidden><input name="duplicate" type="checkbox"><span>This is another payment on the same date<small>A payment from this source is already recorded for this day.</small></span></label>':'')+
-    (typeof acctIncomeFields==='function'?acctIncomeFields(kind):'')+
-    '<label>Note<input name="note" maxlength="200"></label><p class="bp-note">Record actual '+(income?'money received':'payments')+'. Only tick balance updating for a posted payment that is not already included in your account balance.</p>');
-  let submitted=false;
+    (!savings&&typeof acctIncomeFields==='function'?acctIncomeFields(kind):'')+
+    '<label>Note<input name="note" maxlength="200"'+(savings?' placeholder="Optional, e.g. emergency fund"':'')+'></label><p class="bp-note">'+(savings?'This records money you actually put aside. It reduces available spending, but does not move money or change an account balance.':'Record actual '+(income?'money received':'payments')+'. Only tick balance updating for a posted payment that is not already included in your account balance.')+'</p>');
+  let submitted=false;const form=document.getElementById('bp-form');
   if(income){
     budIncomeRecordFill();budIncomeRecordReview();
-    const form=document.getElementById('bp-form');
     form.elements.category.onchange=()=>{budIncomeRecordFill();budIncomeRecordReview();};
     form.elements.date.onchange=budIncomeRecordReview;
     form.querySelector('button[type="submit"]').textContent='Confirm received';
+  }else if(savings){
+    form.querySelector('button[type="submit"]').textContent='Record savings';
   }
-  document.getElementById('bp-form').onsubmit=e=>{
+  form.onsubmit=e=>{
     e.preventDefault();if(submitted)return;
     const f=new FormData(e.target),amount=budMoneyRound(f.get('amount')),date=f.get('date'),id=f.get('category');
     if(!(amount>0)||!Number.isFinite(amount)||!budDateValid(date)||date>getLocalDate()){budPeriodError('Enter a positive amount and a date on or before today.');return;}
-    if(!activeCats(income?loadIncCats():loadFixCats()).some(c=>c.id===id)){budPeriodError('This source is no longer active. Close and reopen to choose a current source.');return;}
+    if(!savings&&!activeCats(income?loadIncCats():loadFixCats()).some(c=>c.id===id)){budPeriodError('This source is no longer active. Close and reopen to choose a current source.');return;}
     if(income&&ledgerOf('income').some(x=>x.streamId===id&&x.date===date)&&!f.has('duplicate')){budIncomeRecordReview();budPeriodError('A payment is already recorded for this date. Confirm this is another payment before saving.');return;}
     const wk=txnWeekOf(date),field='inc_'+id,w=budgetData[wk]||{},before=Number(w[field])||0;
     let mode=f.get('weekMode')||'add';
@@ -488,11 +498,11 @@ function budPeriodRecord(kind){
     if(income&&mode==='record_only'&&amount>before-dated+.005){budPeriodError('This is more than the undated income left in that week. Record additional income instead.');return;}
     const entry={id:genLedgerId(),kind,date,amount,note:f.get('note'),createdAt:Date.now(),manual:true};
     if(income){entry.streamId=id;entry.weekKey=wk;entry.weekMode=mode;entry.weekBefore=before;entry.weekAfter=mode==='add'?budMoneyRound(before+amount):before;}
-    else entry.fixCatId=id;
-    try{if(typeof acctIncomePrepare==='function')acctIncomePrepare(entry,f,balanceSignature);}
+    else if(!savings)entry.fixCatId=id;
+    try{if(!savings&&typeof acctIncomePrepare==='function')acctIncomePrepare(entry,f,balanceSignature);}
     catch(err){budPeriodError(err.message);return;}
     submitted=true;ledgerData.push(entry);
-    if(saveLedger()===false){ledgerData=loadLedger();submitted=false;budPeriodError('This payment could not be saved on this device. Your balances have not changed. Please try again.');return;}
+    if(saveLedger()===false){ledgerData=loadLedger();submitted=false;budPeriodError('This record could not be saved on this device. Your balances have not changed. Please try again.');return;}
     if(income&&mode==='add'){
       const week={...w,wk,[field]:String(entry.weekAfter),draft:!w.saved,updatedAt:Date.now()};
       if(typeof acctIncomeFinishWeeks==='function'){if(!acctIncomeFinishWeeks({[wk]:week}))return;}
@@ -535,7 +545,7 @@ function budPeriodHero(m,compact){
     '<p>'+(days?days+' days left':'Period ended')+(pay?' · Next pay '+escText(fmtDate(dateStr(pay.date))):'')+'</p>'+
     (m.incomplete?'<p class="bp-warning">Some older weekly totals overlap these dates. Review Weekly history; Daily cannot assign them to individual days. Dated records and allocations below remain available.</p>':
       m.allocationReview?'<p class="bp-warning">This period overlaps older weekly bill or savings allocations. Use Adjust budget to confirm the allowances for these dates; the original plans remain in Weekly history.</p>':remaining===null?'<p>Record received income or allocate existing money to begin.</p>':'')+
-    (compact?'':statsSplit([['Received',fmtMoneyExact(m.income)],['Spent',fmtMoneyExact(m.spent+m.billPaid)],['Reserved for bills',fmtMoneyExact(m.reserved)],['Savings allocation',fmtMoneyExact(m.savings)]])+ '<p class="bp-note">A budget allocation, separate from account balances.</p>')+
+    (compact?'':statsSplit([['Received',fmtMoneyExact(m.income)],['Spent',fmtMoneyExact(m.spent+m.billPaid)],['Reserved for bills',fmtMoneyExact(m.reserved)],['Savings recorded',fmtMoneyExact(m.savingsRecorded)]])+ '<p class="bp-note">Savings records reduce spendable money but do not move an account balance.</p>')+
     '<div class="bp-actions"><button class="stg-btn primary" onclick="openTxnModal({date:getLocalDate()})">＋ Add expense</button>'+
     '<button class="stg-btn" onclick="budPeriodRecord(\'income\')">Record income</button></div></div>';
 }
@@ -552,7 +562,7 @@ function budPeriodPage(){
   const p=budPeriodViewed(),store=budCyclesLoad();
   if(!p)return '<div class="card bp-start">'+cardHeader('wallet','A budget that fits your pay')+'<h2>Choose the dates your money needs to cover.</h2><p>Weekly, fortnightly, monthly or your own dates. Add income once, record spending as it happens, and keep your bills in view.</p><div class="bp-actions"><button class="stg-btn primary" onclick="budPeriodSetup()">Choose my budget period</button><button class="stg-btn" onclick="openBudgetEditor()">Income &amp; bills setup</button></div><p class="bp-note">Existing weekly records remain in Weekly history below.</p></div>';
   const m=budPeriodMoney(p),r=m.record;
-  const entries=m.rows.filter(x=>x.kind==='income'||x.kind==='bill_payment').map(x=>({date:x.date,amount:x.amount,eventId:x.manual?x.id:null,name:x.kind==='income'?'Income · '+(loadIncCats().find(c=>c.id===x.streamId)?.name||'Income source'):'Bill payment · '+(loadFixCats().find(c=>c.id===x.fixCatId)?.name||'Bill')}))
+  const entries=m.rows.filter(x=>x.kind==='income'||x.kind==='bill_payment'||x.kind==='savings').map(x=>({date:x.date,amount:x.amount,eventId:x.manual?x.id:null,name:x.kind==='income'?'Income · '+(loadIncCats().find(c=>c.id===x.streamId)?.name||'Income source'):x.kind==='savings'?'Savings'+(x.note?' · '+x.note:''):'Bill payment · '+(loadFixCats().find(c=>c.id===x.fixCatId)?.name||'Bill')}))
     .concat(m.purchases.map(x=>({date:x.date,amount:x.amount,name:x.merchant||loadVarCats().find(c=>c.id===x.catId)?.name||'Expense',expenseId:x.id}))).sort((a,b)=>b.date.localeCompare(a.date));
   const goal=Number(r.goal)||0,goalCopy=goal?fmtMoneyExact(m.spent)+' of '+fmtMoneyExact(goal):'No spending goal set';
   return '<div class="bp-navigation"><button class="stg-btn" aria-label="Previous budget period" onclick="budPeriodNavigate(-1)">←</button><button class="stg-btn" onclick="budPeriodNavigate(0)">Current budget</button><button class="stg-btn" aria-label="Next budget period" onclick="budPeriodNavigate(1)">→</button><button class="stg-btn" onclick="budPeriodSetup()">Period settings</button><button class="stg-btn" onclick="budPeriodCSV()">Export period</button></div>'+
@@ -650,7 +660,7 @@ function budPeriodExport(){
   const store=budCyclesLoad(),config=budPeriodConfigAt(store,getLocalDate())||{};
   return {start:m.range.start,end:m.range.end,frequency:config.frequency,
     receivedIncome:m.income,purchases:m.spent,billsPaid:m.billPaid,existingMoneyAllocated:m.opening,
-    billReserveRemaining:m.reserved,savingsAllocation:m.savings,carriedIn:m.incoming,rolledOut:m.outgoing,
+    billReserveRemaining:m.reserved,savingsTarget:m.savings,savingsRecorded:m.savingsRecorded,carriedIn:m.incoming,rolledOut:m.outgoing,
     remainingSpendingBudget:m.available,incompleteLegacyDates:m.incomplete,
     legacyUndatedIncome:m.legacyIncome,legacyUndatedSpending:m.legacySpent,
     basis:'Recorded dated events plus explicitly labelled complete legacy weeks; expected pay and account balances excluded.'};
@@ -659,7 +669,7 @@ function budPeriodCSVText(m){
   const cell=value=>'"'+String(value??'').replace(/"/g,'""')+'"';
   const rows=[['Budget period',m.range.start,m.range.end],['Metric','Amount'],
     ['Received income',m.income],['Purchases',m.spent],['Bills paid',m.billPaid],['Existing money allocated',m.opening],
-    ['Bill reserve remaining',m.reserved],['Savings allocation (not deposit)',m.savings],['Carried in',m.incoming],
+    ['Bill reserve remaining',m.reserved],['Savings target',m.savings],['Savings recorded',m.savingsRecorded],['Carried in',m.incoming],
     ['Rolled out',m.outgoing],['Remaining spending budget',m.available],['Incomplete legacy dates',m.incomplete],
     ['Legacy allocations need review',m.allocationReview],['Undated legacy income included',m.legacyIncome],['Undated legacy spending included',m.legacySpent],[],
     ['Dated activity ID','Date','Kind','Amount']];
@@ -729,11 +739,12 @@ function budPeriodEdit(id){
   const entry=ledgerData.find(x=>x.id===id&&x.manual);if(!entry)return;
   const balanceSignature=typeof acctLinkSignature==='function'?acctLinkSignature():null;
   let saveFailed=false;
-  budPeriodDialog(entry.kind==='income'?'Correct received income':'Correct bill payment',
+  const savings=entry.kind==='savings';
+  budPeriodDialog(entry.kind==='income'?'Correct received income':savings?'Correct savings record':'Correct bill payment',
     '<label>Amount<input name="amount" type="number" min="0.01" step="0.01" required value="'+entry.amount+'"></label>'+
     '<label>Date<input name="date" type="date" required max="'+getLocalDate()+'" value="'+escAttr(entry.date)+'"></label>'+
     '<label>Note<input name="note" maxlength="200" value="'+escAttr(entry.note||'')+'"></label>'+
-    '<p class="bp-note">This corrects the recorded event. Income added through Budget also corrects its weekly history total. Payments linked to an older typed total keep that total and must stay within its week.</p>'+
+    '<p class="bp-note">'+(savings?'This corrects what you recorded as put aside. It does not move money or change an account balance.':'This corrects the recorded event. Income added through Budget also corrects its weekly history total. Payments linked to an older typed total keep that total and must stay within its week.')+'</p>'+
     (entry.accountLink?'<p class="bp-note">The linked balance changes only if this entry is still after the account’s latest confirmed starting balance. A newer confirmed bank balance is kept.</p>':''));
   document.getElementById('bp-form').onsubmit=e=>{
     e.preventDefault();const f=new FormData(e.target),amount=budMoneyRound(f.get('amount')),date=f.get('date');
@@ -776,7 +787,7 @@ function budPeriodCardMode(){
 }
 function budPeriodOverviewMoney(m){
   return {period:m.range,monday:localMidnight(m.range.start),key:m.range.start,
-    week:{var_goal:m.record.goal},income:m.funded,committed:m.reserved,spent:m.spent+m.billPaid,saved:m.savings,
+    week:{var_goal:m.record.goal},income:m.funded,committed:m.reserved,spent:m.spent+m.billPaid,saved:m.savingsCommitted??m.savings,
     available:m.available,variableSpent:m.spent};
 }
 function budPeriodForecast(m){
@@ -795,17 +806,17 @@ function budPeriodForecast(m){
 function budPeriodPaintMoney(m){
   // A count-up started before cloud restore must not overwrite the restored figures later.
   const put=(id,text)=>{const el=document.getElementById(id);if(el){if(el._countUpFrame){cancelAnimationFrame(el._countUpFrame);el._countUpFrame=null;}el.textContent=text;}};
-  const avail=m.available,used=m.spent+m.billPaid+m.reserved+m.savings+m.outgoing;
+  const savingsCommitted=m.savingsCommitted??m.savings,avail=m.available,used=m.spent+m.billPaid+m.reserved+savingsCommitted+m.outgoing;
   put('bud-hero-avail',avail===null?'—':fmtMoneyExact(avail));
   put('bud-hero-avail-lbl',avail!==null&&avail<0?'Over budget':'Available to spend');
   put('bud-hero-income-note',fmtMoneyExact(m.income)+' income'+(m.opening+m.incoming?' · '+fmtMoneyExact(m.opening+m.incoming)+' allocated':'') );
-  put('bud-hero-spent',fmtMoneyExact(m.spent+m.billPaid));put('bud-hero-committed',fmtMoneyExact(m.reserved));put('bud-hero-saved',fmtMoneyExact(m.savings));
+  put('bud-hero-spent',fmtMoneyExact(m.spent+m.billPaid));put('bud-hero-committed',fmtMoneyExact(m.reserved));put('bud-hero-saved',fmtMoneyExact(m.savingsRecorded??m.savings));
   put('bud-hero-pace',m.incomplete?'Older weekly totals cross these dates; check income and spending dates.':budPaceText(avail,budPeriodDaysLeft(m.range)));
   put('week-status-pill-hero',avail===null?'Check dates / income':avail<0?'⚠ Over budget':'✓ On track');
   put('budget-bar-label-l',fmtMoneyExact(used)+' allocated');put('budget-bar-label-r',m.funded?Math.round(used/m.funded*100)+'% of funds':'');
   const bar=document.getElementById('budget-bar');if(bar)bar.style.width=(m.funded?Math.min(100,Math.max(0,used/m.funded*100)):0)+'%';
   put('calc-variable',fmtMoneyExact(m.spent));put('sum-var',fmtMoneyExact(m.spent));
-  const fixedLabel=m.record?.zeroFixedPlan?'Not allocated':fmtMoneyExact(m.reserved+m.billPaid);
+  const fixedLabel=fmtMoneyExact(m.reserved+m.billPaid);
   put('sum-inc',fmtMoneyExact(m.income));put('sum-fix',fixedLabel);put('plan-fix-sum',fixedLabel);
   put('sav-head-sum',fmtMoneyExact(m.savings));put('plan-avail',avail===null?'—':fmtMoneyExact(avail+m.spent));put('sum-plan',avail===null?'—':fmtMoneyExact(avail+m.spent));
   updateVarGoalCard(m.spent);
@@ -829,9 +840,10 @@ function budPeriodRenderCards(){
   document.getElementById('bud-setup-card').innerHTML='';
   document.getElementById('bud-fix-body').innerHTML=budPeriodFixedRows(m);
   document.querySelector('#bud-fixed-card .bud-head-unit').textContent='/period';
-  document.querySelector('#bud-plan-card .bud-head-label span').textContent='Budget plan';
-  document.getElementById('bud-plan-inc').innerHTML=budPlanSection('inc','wallet','Income','sum-inc',budIncomeSection(p,null)+
-    (m.legacyIncome?'<p class="bp-note">'+fmtMoneyExact(m.legacyIncome)+' recorded in complete weekly totals.</p>':''),null,true);
+  document.getElementById('bud-plan-card').classList.add('is-period-recording');
+  document.querySelector('#bud-plan-card .bud-head-label span').textContent='Money in & saved';
+  document.getElementById('bud-plan-inc').innerHTML=budPeriodRecordActivity(m)+
+    (m.legacyIncome?'<p class="bp-note">'+fmtMoneyExact(m.legacyIncome)+' is retained in older complete weekly totals.</p>':'');
   const sav=document.getElementById('sav-amount');sav.disabled=false;sav.value=r.savings||'';sav.style.opacity='1';
   document.getElementById('sav-status').innerHTML='';
   const notes=document.getElementById('week-notes');notes.disabled=false;notes.value=r.notes||'';notes.placeholder='What happened this period?';
@@ -841,14 +853,16 @@ function budPeriodRenderCards(){
   document.querySelector('#bud-closeout-card .bud-head-label span').textContent='Close out period';
   document.getElementById('closeout-state').innerHTML=tstat(r.finished?'pos':'warn',r.finished?'Period finished':'Not finished yet',r.finished?'check':'flat',true);
   let extra=document.getElementById('bud-period-tools');if(!extra){extra=document.createElement('div');extra.id='bud-period-tools';document.getElementById('bud-tools-card').appendChild(extra);}
-  extra.innerHTML='<div class="bud-spend-tools"><button class="bud-edit-btn" onclick="budPeriodAdjust()">'+(m.record.zeroFixedPlan?'Review recurring amounts':m.record.provisionalFixedPlan?'Review suggested allocations':'Allocate existing money')+'</button><button class="bud-edit-btn" onclick="budPeriodRollover()">Rollover</button><button class="bud-edit-btn" onclick="budPeriodCSV()">Export period</button></div>'+budPeriodArchiveHtml();
+  extra.innerHTML='<div class="bud-spend-tools"><button class="bud-edit-btn" onclick="budPeriodAdjust()">Budget settings</button><button class="bud-edit-btn" onclick="budPeriodRollover()">Rollover</button><button class="bud-edit-btn" onclick="budPeriodCSV()">Export period</button></div>'+budPeriodArchiveHtml();
   _budSecOpen.add('inc');budSecApply();budPeriodPaintMoney(m);renderOutlookCard(m.available,{});
   renderPrevWeeks();renderBudgetConfig();loadCCInput();renderDueBanner(localMidnight(p.start));budApplyLayout();restoreBudgetCollapseState();
   if(budgetView==='overview')renderBudgetOverview();else if(budgetView==='plan')renderPlan();
 }
 function budPeriodSaveFields(finish){
   if(S.view!=='budget'||budgetView!=='week')return;
-  const p=budPeriodViewed(),store=budCyclesLoad(),old=store.periods[p.id]||{},next={...old,start:p.start,end:p.end};
+  const p=budPeriodViewed(),store=budCyclesLoad(),old=store.periods[p.id]||{},displayed=budPeriodInheritedPlan(p,old),next={...old,start:p.start,end:p.end};
+  if(displayed.automaticFixedRepair||displayed.provisionalFixedPlan||!Object.prototype.hasOwnProperty.call(old,'reserves'))next.reserves=budPeriodSuggestedReserves(p);
+  delete next.zeroFixedPlan;delete next.zeroFixedConfirmed;delete next.automaticFixedRepair;delete next.provisionalFixedPlan;
   const capture=(id,key)=>{const el=document.getElementById(id);if(el)next[key]=key==='notes'?el.value:el.value===''?null:budMoneyRound(el.value);};
   capture('sav-amount','savings');capture('vargoal-input','goal');capture('week-notes','notes');
   document.querySelectorAll('[data-period-reserve]').forEach(el=>{next.reserves={...(next.reserves||{}),[el.dataset.periodReserve]:budMoneyRound(el.value)};});
@@ -860,13 +874,11 @@ function budPeriodSaveFields(finish){
   next.updatedAt=Date.now();store.periods[p.id]=next;budCyclesSave(store);
 }
 function budPeriodFixedRows(m){
-  const repairing=!!m.record.zeroFixedPlan,suggested=repairing?budPeriodSuggestedReserves(m.range):{};
-  const rows=activeCats(loadFixCats()).map(c=>{const unresolved=repairing&&Number(suggested[c.id])>0&&!(Number(m.record.reserves?.[c.id])>0),amount=Number(suggested[c.id])||0;return '<div class="bud-row bud-cat-row">'+budCatNameHtml('fix',c,true,budEditMode.fix)+
-    (unresolved?'<span class="bud-period-suggestion" aria-label="Suggested allowance '+escAttr(fmtMoneyExact(amount))+'"><strong>'+fmtMoneyExact(amount)+'</strong><small>suggested</small></span>':'<input class="bud-row-input" type="number" min="0" step="0.01" aria-label="'+escAttr(catLabel(c))+' period allowance" data-period-reserve="'+escAttr(c.id)+'" value="'+(m.record.reserves?.[c.id]??'')+'" placeholder="$0" oninput="budSaveDraft();budRecalc()">')+
-    (budEditMode.fix?'<button class="bud-edit-btn bud-period-archive" data-period-archive="'+escAttr(c.id)+'" onclick="budPeriodArchiveFixed(this.dataset.periodArchive)" aria-label="Archive '+escAttr(catLabel(c))+'">Archive</button>':'')+'</div>';}).join('');
-  return '<div class="bud-fix-cap">'+(repairing?'These are not genuine $0 bills. Daily found an older broken allocation and is showing your usual amounts as suggestions. Review them before they affect this budget.':m.record.provisionalFixedPlan?'Suggested from your existing fixed expenses for '+escText(budPeriodLabel(m.range))+'. Review before saving.':'Allowances for '+escText(budPeriodLabel(m.range))+'.')+' Recorded bill payments use their allowance once; Outlook shows the scheduled charges.</div>'+
-    '<div class="bud-spend-tools">'+(repairing?'<button class="bud-edit-btn active" onclick="budPeriodAdjust()">Review &amp; apply amounts</button>':'')+'<button class="bud-edit-btn" data-type="fix" data-action="bud-edit-toggle">'+(budEditMode.fix?'Done':'Manage rows')+'</button><button class="bud-edit-btn" onclick="openBudgetEditor()">Recurring bills</button></div>'+rows+
-    (budEditMode.fix?'<button class="add-cat-btn" data-type="fix">+ Add fixed expense</button>':'')+'<button class="add-cat-btn" onclick="budPeriodRecord(\'bill_payment\')">+ Record bill payment</button>'+
+  const rows=activeCats(loadFixCats()).map(c=>{const amount=Number(m.record.reserves?.[c.id])||0;return '<div class="bud-row bud-cat-row">'+budCatNameHtml('fix',c,true,false)+
+    '<span class="bud-fixed-snapshot" aria-label="Calculated allowance '+escAttr(fmtMoneyExact(amount))+'">'+fmtMoneyExact(amount)+'</span></div>';}).join('');
+  return '<div class="bud-fix-cap">Calculated automatically from Recurring bills for '+escText(budPeriodLabel(m.range))+'. This is a read-only snapshot of how much to put aside. Recorded payments use the allowance once; Outlook shows scheduled charges.</div>'+
+    '<div class="bud-spend-tools"><button class="bud-edit-btn" onclick="openBudgetEditor()">Manage recurring bills</button></div>'+rows+
+    '<button class="add-cat-btn" onclick="budPeriodRecord(\'bill_payment\')">+ Record bill payment</button>'+
     m.rows.filter(x=>x.kind==='bill_payment').map(x=>'<button class="txn-item" data-entry-id="'+escAttr(x.id)+'" onclick="budPeriodEdit(this.dataset.entryId)"><span>'+escText(loadFixCats().find(c=>c.id===x.fixCatId)?.name||'Bill')+' · '+escText(fmtDate(x.date))+'</span><span>'+fmtMoneyExact(x.amount)+'</span></button>').join('');
 }
 function budPeriodArchiveFixed(id){

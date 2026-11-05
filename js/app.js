@@ -15181,6 +15181,7 @@ function renderBudgetTab(){
   const period=typeof budPeriodViewed==='function'&&!budLegacyOpen?budPeriodViewed():null;
   if(period)currentWeekIdx=Math.round(budDateDays(weekKey(getMondayOf(0)),period.start)/7);
   document.querySelector('#bud-fixed-card .bud-head-unit').textContent='/wk';
+  document.getElementById('bud-plan-card').classList.remove('is-period-recording');
   document.querySelector('#bud-plan-card .bud-head-label span').textContent='Week plan';
   document.querySelector('#bud-closeout-card .bud-head-label span').textContent='Close out week';
   document.getElementById('week-notes').placeholder='What happened this week?';

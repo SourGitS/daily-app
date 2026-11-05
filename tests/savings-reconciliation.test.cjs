@@ -79,7 +79,8 @@ test('no Savers account makes no claim that a Budget allocation became savings',
 });
 
 test('visible finance language distinguishes a Budget allocation from account-backed savings', () => {
-  assert.match(html, /Savings allocation/);
+  assert.match(html, /Savings target \(optional\)/);
+  assert.match(html, /Record savings/);
   assert.match(source, /label:'Budget allocation'/);
   assert.match(source, /'Savers balance'/);
   assert.match(source, /Savings balance check/);
