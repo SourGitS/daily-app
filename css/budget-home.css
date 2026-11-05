@@ -630,6 +630,7 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .bud-plan-avail-l{font-size:13px;font-weight:700;color:var(--text);min-width:0}
 .bud-plan-avail-v{font-family:var(--font-num);font-size:22px;font-weight:800;
   letter-spacing:-.02em;color:var(--text);flex-shrink:0}
+.bud-plan-avail-note{margin:7px 0 0;color:var(--muted);font-size:11px;line-height:1.5}
 
 /* ── Spending: the goal block and the two-breakdown switch ─────────
    The goal was its own card directly above Variable expenses. Inside the merged card it is a

@@ -435,7 +435,8 @@
 // v429: combine Set aside and Upcoming within one Fixed expenses card.
 // v430: solid neutral money views with separate Income and Savings tabs and quieter bill controls.
 // v431: remove the extra explanation beneath Upcoming's scheduled total.
-const CACHE_NAME = 'daily-v431'; // Remote connector hosting remains disabled.
+// v432: clarify the Money card's budget before spending versus the remaining amount above.
+const CACHE_NAME = 'daily-v432'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
