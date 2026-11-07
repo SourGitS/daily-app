@@ -19,6 +19,12 @@ const keys=['daily_transactions','daily_ledger','daily_budget','daily_budget_cyc
       assert.match(await page.locator('#accounts-hero').innerText(),/Current net worth[\s\S]*\$970/);
       assert.ok(await page.locator('#accounts-chart .nw-chart-canvas').evaluate(e=>e.getBoundingClientRect().height)<=190);
       await page.locator('#accounts-chart').getByRole('button',{name:'ALL',exact:true}).click();
+      await page.getByRole('button',{name:'Hide graph',exact:true}).press('Enter');
+      assert.equal(await page.locator('#accounts-history-plot').isVisible(),false);
+      assert.equal(await page.getByRole('button',{name:'Show graph',exact:true}).evaluate(e=>document.activeElement===e),true);
+      await page.evaluate(()=>renderAccountsPage());
+      assert.equal(await page.locator('#accounts-history-plot').isVisible(),false);
+      await page.getByRole('button',{name:'Show graph',exact:true}).press('Space');
       await page.evaluate(()=>renderAccountsPage());
       assert.equal(await page.locator('#accounts-chart canvas').isVisible(),true);
       assert.equal(await page.locator('#accounts-chart canvas').count(),1);

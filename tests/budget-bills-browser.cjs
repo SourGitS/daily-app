@@ -116,7 +116,53 @@ const snapshot=()=>Object.fromEntries(Array.from({length:localStorage.length},(_
     await aside.click();assert.equal(await page.locator('#fix-weekly').inputValue(),'35');
     assert.deepEqual(await page.evaluate(snapshot),legacyBefore);
    }
-   assert.deepEqual(errors,[]);console.log('Bill card passed',width,theme);
+   // Monday-aligned saved weeks keep their existing writers while using the new Money tabs.
+   await page.setViewportSize({width,height:950});
+   await page.evaluate(()=>{
+    const week=weekKey(getMondayOf(0)),today=getLocalDate();
+    saveFixCats([]);saveIncCats([{id:'pay',name:'Weekly pay sample',payMode:'variable',payCycle:'weekly',payDate:today}]);
+    budgetData={[week]:{wk:week,inc_pay:'250',sav_amount:'50',var_goal:'200',updatedAt:1}};
+    ledgerData=[{id:'weekly-income',kind:'income',streamId:'pay',date:today,amount:250,manual:true}];
+    txnData=[{id:'weekly-purchase',date:today,amount:80,catId:'food',merchant:'Sample groceries'}];
+    budCyclesSave({config:{frequency:'weekly',anchor:week},periods:{}});
+    budLegacyOpen=false;budPeriodSelected='';budPeriodOffset=0;currentWeekIdx=0;renderBudgetTab();
+   });
+   assert.equal(await page.evaluate(()=>budPeriodCardMode()),false,'the weekly save path is retained');
+   assert.match(await money.locator('.bud-head-label').innerText(),/Money in & saved/i);
+   assert.equal(await money.locator('.bud-week-fields').isVisible(),false);
+   await incomeTab.click();assert.match(await money.locator('#bud-money-income').innerText(),/\$250/);
+   assert.equal(await page.locator('#bud-hero-avail').innerText(),'$120');
+   const inheritedBefore=await page.evaluate(snapshot);
+   await savingsTab.click();assert.equal(await page.locator('#sav-amount').inputValue(),'50');
+   await page.evaluate(()=>{renderBudgetTab();budRecalc();});
+   assert.equal(await savingsTab.getAttribute('aria-selected'),'true');
+   assert.deepEqual(await page.evaluate(snapshot),inheritedBefore,'inherited Money tabs never migrate weekly data');
+   await money.screenshot({path:path.join(root,`temp-analysis/money-inherited-${width}-${theme}.png`)});
+   await money.getByRole('button',{name:'+ Record savings',exact:true}).click();
+   await page.locator('#bud-period-dialog').getByRole('button',{name:'Cancel',exact:true}).click();
+   assert.deepEqual(await page.evaluate(snapshot),inheritedBefore);
+   const savingsTarget=money.getByRole('button',{name:/Savings target/});
+   if(await savingsTarget.getAttribute('aria-expanded')!=='true')await savingsTarget.click();
+   await page.locator('#sav-amount').fill('75');await page.locator('#sav-amount').press('Tab');
+   assert.equal(await page.evaluate(()=>budgetData[weekKey(getMondayOf(0))].inc_pay),'250');
+   assert.equal(Number(await page.evaluate(()=>budgetData[weekKey(getMondayOf(0))].sav_amount)),75);
+   assert.equal(await page.evaluate(()=>Object.keys(budCyclesLoad().periods).length),0,'no second period plan is created');
+   assert.equal(await page.locator('#bud-hero-avail').innerText(),'$95');
+   await page.evaluate(()=>{budLegacyOpen=true;renderBudgetTab();});
+   assert.match(await money.locator('.bud-head-label').innerText(),/Week plan/i);
+   await page.evaluate(()=>{budLegacyOpen=false;renderBudgetTab();});
+   assert.equal(await savingsTab.isVisible(),true);assert.equal(await page.locator('#sav-amount').inputValue(),'75');
+   if(width===1440&&theme==='dark'){
+    await page.evaluate(()=>{ledgerData=[];renderBudgetTab();});await incomeTab.click();
+    assert.match(await money.locator('#bud-money-income').innerText(),/\$250 is retained/);
+    await money.getByRole('button',{name:'Review weekly totals',exact:true}).click();
+    assert.equal(await page.locator('#inc-pay').inputValue(),'250');
+    await money.getByRole('button',{name:'Back to received income',exact:true}).click();
+    assert.equal(await incomeTab.isVisible(),true);
+    assert.equal(await page.evaluate(()=>budgetData[weekKey(getMondayOf(0))].inc_pay),'250');
+    assert.equal(await page.locator('#bud-hero-avail').innerText(),'$95');
+   }
+   assert.deepEqual(errors,[]);console.log('Bill and inherited Money cards passed',width,theme);
    await context.close();
   }
  }finally{await browser.close();server.close();}

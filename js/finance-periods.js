@@ -339,6 +339,7 @@ function budPeriodRecordActivity(m){
       '<div class="bud-record-summary"><span>'+label+'</span><strong>'+fmtMoneyExact(income?m.income:m.savingsRecorded)+'</strong><button class="bud-record-action" onclick="budPeriodRecord(\''+kind+'\')">+ Record '+kind+'</button></div>'+
       (rows?'<div class="bud-record-list" aria-label="'+label+' this period">'+rows+'</div>':'<p class="bud-record-empty">No '+(income?'income':'savings')+' recorded this period.</p>')+
       (income&&m.legacyIncome?'<p class="bp-note">'+fmtMoneyExact(m.legacyIncome)+' is retained in older complete weekly totals.</p>':'')+
+      (income&&m.legacyIncome&&m.record?.inheritedWeeklyPlan?'<button type="button" class="bud-record-setup" onclick="budSaveDraft();_budSecOpen.add(\'inc\');budLegacyOpen=true;renderBudgetTab()">Review weekly totals</button>':'')+
       (income?'<button class="bud-record-setup" onclick="budIncomeManage()">Income &amp; paydays</button>':'')+'</div>';
   }).join('');
   return '<div class="seg-tabs bud-seg bud-money-tabs" role="tablist" aria-label="Money records" onkeydown="budMoneyViewKey(event)">'+

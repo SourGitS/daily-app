@@ -77,6 +77,7 @@ const keys=['daily_budget','daily_transactions','daily_ledger','daily_budget_cyc
         await page.locator('#save-week-btn').click();assert.equal(await dialog.evaluate(d=>d.open),false);
         assert.equal(await page.evaluate(()=>localStorage.getItem('daily_accounts')),settled,'repeat Finish cannot duplicate savings');
         await page.evaluate(()=>{const monday=weekKey(getMondayOf(0));budCyclesSave({config:{frequency:'weekly',anchor:monday},periods:{}});budLegacyOpen=false;renderBudgetTab();});
+        await page.getByRole('tab',{name:'Savings',exact:true}).click();
         await page.locator('#sav-amount').fill('75');await page.locator('#save-week-btn').click();
         assert.equal(await dialog.evaluate(d=>d.open),false,'same range in period mode cannot duplicate the weekly transfer');
         assert.equal(await page.evaluate(()=>localStorage.getItem('daily_accounts')),settled);

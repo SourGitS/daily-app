@@ -10,7 +10,7 @@ function fixture(accounts){
     fmtMoney:n=>'$'+n,fmtDate:s=>s,_catEscHtml:s=>s,a_name:a=>a.name,acctIcon:()=>'',tstat:()=>'',
     hexToRgb:()=> '83,59,126',budChartGridColors:()=>({gc:'#333',tc:'#fff'}),S:{theme:'dark'},
     Chart:class{constructor(ctx,config){charts.push(config);}destroy(){}}});
-  vm.runInContext("const _nwCharts={};let nwChartRange='all';const nwChartSeries={assets:true,debts:true};\n"+
+  vm.runInContext("const _nwCharts={};let nwChartRange='all',acctHistoryVisible=true;const nwChartSeries={assets:true,debts:true};\n"+
     ['accountEntryAt','accountsHistoryDates','nwHistoryPoints','nwChartDates','nwCompactMoney','renderNetWorthChartInto'].map(extract).join('\n'),c);
   return {c,wrap,charts};
 }
@@ -42,4 +42,14 @@ test('a real zero balance is a plotted point; undated current balances remain un
   c.renderNetWorthChartInto('accounts-chart');assert.deepEqual(copy(charts[0].data.datasets[0].data),[0]);
   const empty=fixture([{id:'none',type:'asset',current:200,history:[]}]);empty.c.renderNetWorthChartInto('accounts-chart');
   assert.equal(empty.charts.length,0);assert.match(empty.wrap.innerHTML,/dated balance/);
+});
+test('hiding Accounts history preserves its summary and never hides the Stats chart',()=>{
+  const data=recorded(),before=copy(data),{c,wrap,charts}=fixture(data);
+  vm.runInContext('acctHistoryVisible=false',c);c.renderNetWorthChartInto('accounts-chart');
+  assert.equal(charts.length,0);assert.match(wrap.innerHTML,/Show graph/);
+  assert.match(wrap.innerHTML,/aria-expanded="false"/);assert.match(wrap.innerHTML,/id="accounts-history-plot" hidden/);
+  c.renderNetWorthChartInto('bs-balance-wrap');assert.equal(charts.length,1);
+  vm.runInContext('acctHistoryVisible=true',c);c.renderNetWorthChartInto('accounts-chart');
+  assert.equal(charts.length,2);assert.match(wrap.innerHTML,/Hide graph/);
+  assert.deepEqual(copy(charts[1].data.datasets[0].data),[1000,1500,1300]);assert.deepEqual(data,before);
 });

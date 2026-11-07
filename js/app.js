@@ -15231,7 +15231,16 @@ function renderBudgetTab(){
   // Week plan's one dynamic section (Savings is static markup — #sav-amount must never
   // leave the DOM, see budWriteFields), the Fixed expenses card and the merged Spending card.
   const incWrap=document.getElementById('bud-plan-inc');
-  if(incWrap) incWrap.innerHTML=renderPlanIncSection(data,editable);
+  if(incWrap){
+    const incomeFields='<div class="bud-sec" data-sec="inc">'+renderPlanIncSection(data,editable)+'</div>';
+    // Exact inherited weeks retain their weekly writers and fields, but share the recording UI.
+    incWrap.innerHTML=period?'<div class="bud-week-fields" hidden>'+incomeFields+'</div>'+budPeriodRecordActivity(budPeriodMoney(period,data)):incomeFields;
+    if(period){
+      document.getElementById('bud-plan-card').classList.add('is-period-recording');
+      document.querySelector('#bud-plan-card .bud-head-label span').textContent='Money in & saved';
+      budMoneyViewApply();
+    }
+  }
   const fixWrap=document.getElementById('bud-fix-body');
   if(fixWrap) fixWrap.innerHTML=renderFixedCardBody(data,editable);
   const setupWrap=document.getElementById('bud-setup-card');
@@ -19797,6 +19806,13 @@ function nwHistoryPoints(){
 const _nwCharts={};
 let nwChartRange='3m';
 const nwChartSeries={assets:false,debts:false};
+let acctHistoryVisible=true;
+function acctToggleHistory(){
+  const focused=document.activeElement?.id==='accounts-history-toggle';
+  acctHistoryVisible=!acctHistoryVisible;
+  renderNetWorthChartInto('accounts-chart');
+  if(focused)document.getElementById('accounts-history-toggle')?.focus();
+}
 function nwChartRefresh(){
   ['accounts-chart','bs-balance-wrap'].forEach(id=>{ if(document.getElementById(id)) renderNetWorthChartInto(id); });
 }
@@ -19825,6 +19841,7 @@ function renderBSBalance(){ renderNetWorthChartInto('bs-balance-wrap'); }
 function renderNetWorthChartInto(wrapId){
   const wrap=document.getElementById(wrapId); if(!wrap) return;
   if(_nwCharts[wrapId]){ _nwCharts[wrapId].destroy(); _nwCharts[wrapId]=null; }
+  const accountHistory=wrapId==='accounts-chart',graphHidden=accountHistory&&!acctHistoryVisible;
   const canvasId=wrapId+'-nwcanvas';
   const history=nwHistoryPoints();
   if(!history.length){
@@ -19871,8 +19888,11 @@ function renderNetWorthChartInto(wrapId){
         // this card. Shown in BOTH mounts — it is the same truth on Stats > Finance.
         '<div class="nw-chart-mix">'+(curAssets===null?'Assets not recorded':fmtMoney(curAssets)+' recorded assets')+' · '+(curDebts===null?'Debts not recorded':fmtMoney(curDebts)+' recorded debts')+'</div>'+
         '<div class="nw-chart-verdict">'+nwChip+'</div></div>'+
-      '<div class="nw-chart-ranges">'+ranges.map(r=>'<button onclick="setNWChartRange(\''+r[0]+'\')" class="'+(nwChartRange===r[0]?'on':'')+'">'+r[1]+'</button>').join('')+'</div>'+
+      (accountHistory?'<div class="nw-chart-controls">':'')+
+      '<div class="nw-chart-ranges"'+(graphHidden?' hidden':'')+'>'+ranges.map(r=>'<button onclick="setNWChartRange(\''+r[0]+'\')" class="'+(nwChartRange===r[0]?'on':'')+'">'+r[1]+'</button>').join('')+'</div>'+
+      (accountHistory?'<button type="button" id="accounts-history-toggle" class="nw-chart-toggle" aria-expanded="'+!graphHidden+'" aria-controls="accounts-history-plot" onclick="acctToggleHistory()">'+(graphHidden?'Show graph':'Hide graph')+'</button></div>':'')+
     '</div>'+
+    (accountHistory?'<div id="accounts-history-plot"'+(graphHidden?' hidden':'')+'>':'')+
     '<div class="nw-chart-canvas"><canvas id="'+canvasId+'"></canvas></div>'+
     '<div class="nw-chart-series">'+
       '<span class="on"><i style="background:'+accent+'"></i>'+(partial&&wrapId!=='accounts-chart'?'Recorded net worth':'Net worth')+'</span>'+
@@ -19883,7 +19903,8 @@ function renderNetWorthChartInto(wrapId){
       (wrapId==='accounts-chart'?'<details class="nw-chart-notes"><summary>About this history</summary><p>Recorded balances carry forward between updates. '+(partial?'Missing balances are unknown, not zero. Dashed joins mark changes in account coverage. ':'')+'Select a point to see its records.</p></details>':partial?'<span class="nw-chart-coverage">Earlier or missing account balances are unknown, not zero. Points show only accounts recorded by that date; dashed joins mark changes in coverage. Select a point to see its records.</span>':'')+
       (stale.length?'<span class="nw-chart-stale">'+_catEscHtml(stale.map(x=>x.name+' '+x.days+'d').join(' · '))+' old</span>':'')+
       (wrapId==='bs-balance-wrap'?'<button class="stats-inline-link" onclick="openAccounts()">Open account records →</button>':'')+
-    '</div></div>';
+    '</div>'+(accountHistory?'</div>':'')+'</div>';
+  if(graphHidden)return;
   const ctx=document.getElementById(canvasId); if(!ctx) return;
   const {gc,tc}=budChartGridColors();
   const latestPoint=c=>c.dataIndex===dates.length-1?4:0;

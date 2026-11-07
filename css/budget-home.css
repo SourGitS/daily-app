@@ -566,6 +566,8 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 /* Both money views use one solid neutral surface and the same action hierarchy. */
 .bud-record-activity{padding:4px 0 14px}
 .bud-record-activity [role="tabpanel"][hidden],#bud-plan-sav[hidden]{display:none!important}
+.bud-week-fields[hidden]{display:none!important}
+#bud-plan-card.is-period-recording #sav-status{display:none}
 #view-budget .bud-money-tabs{margin:2px 0 16px;display:flex;width:100%;box-sizing:border-box}
 .bud-money-tabs button{flex:1;min-width:0;min-height:44px}
 .bud-money-tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
@@ -2475,6 +2477,10 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .nw-chart-last-label{font:500 11px var(--font-ui);color:var(--muted);letter-spacing:0}
 .acct-history .nw-chart-change{display:inline-block;margin-left:10px;font-size:11px}
 .acct-history .nw-chart-ranges button{min-height:44px}
+.acct-history .nw-chart-ranges[hidden],#accounts-history-plot[hidden]{display:none}
+.nw-chart-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.nw-chart-toggle{min-height:44px;padding:9px 12px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:10px;font:600 12px var(--font-ui);white-space:nowrap;cursor:pointer}
+.nw-chart-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .acct-history .nw-chart-series{gap:6px;padding:6px 12px 10px}
 .acct-history .nw-chart-series button{height:44px}
 .acct-history .nw-chart-verdict,.acct-history .nw-chart-mix{display:none}

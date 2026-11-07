@@ -1,5 +1,24 @@
 # Daily — Project Reference
 
+## Money card fallback and graph toggle — v436, release authorised, 2026-11-07
+
+Accounts history now has Show graph / Hide graph in its always-visible summary. It starts
+open; its session choice survives account redraws and navigation. Hiding destroys that
+canvas and reopening rebuilds it with the same range and series choices. Keyboard focus
+stays on the toggle; Stats retains its own visible chart. No new persisted preference.
+
+The older Week plan card was still shown for exact Monday-aligned weeks inheriting a saved
+weekly plan: budPeriodCardMode intentionally retains the weekly save path. That path now
+uses the same Money in & saved Income/Savings tabs and dated recording controls as period
+plans. The prior income controls stay mounted but hidden for existing readers, and explicit
+Weekly history retains the original editor with its missing Income disclosure wrapper
+restored. Undated income remains labelled with a Review weekly totals action. Savings
+target stays mounted; no period conversion, migration, financial formula, writer or sync
+change. Cache daily-v436. Francois authorised committing and pushing all pending files.
+690 Node tests and the Accounts/browser layout checks pass; inherited-week checks cover
+both themes at 320/390/1024/1440px, unchanged reads, target edits via the weekly writer,
+record cancellation, historical editing and no second period-plan creation.
+
 ## Accounts presentation — v433–v435, release authorised, 2026-11-07
 
 Accounts now leads with current net worth, assets and debts using the existing totals,
