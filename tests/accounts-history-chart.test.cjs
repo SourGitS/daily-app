@@ -27,7 +27,7 @@ test('an undated account cannot hide the recorded chart or fabricate past balanc
   const data=recorded();data.push({id:'new',name:'New account',type:'asset',current:9000,history:[]});
   const {c,wrap,charts}=fixture(data);c.renderNetWorthChartInto('accounts-chart');
   assert.equal(charts.length,1);assert.deepEqual(copy(charts[0].data.datasets[0].data),[1000,1500,1300]);
-  assert.match(wrap.innerHTML,/Recorded net worth/);assert.match(wrap.innerHTML,/coverage changed/);
+  assert.match(wrap.innerHTML,/Net worth history/);assert.match(wrap.innerHTML,/coverage changed/);
   assert.equal(charts[0].options.plugins.tooltip.callbacks.footer([{dataIndex:2}]),'2 of 3 accounts recorded · partial total');
   assert.deepEqual(copy(charts[0].data.datasets[2].data),[null,null,200]);
 });

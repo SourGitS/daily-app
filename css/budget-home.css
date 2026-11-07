@@ -1478,19 +1478,8 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   #kit-detail-overlay{display:none!important}
 }
 
-/* ── Accounts on a genuinely wide desktop ─────────────────────────────────────
-   Above ~1500px the Finance canvas is wider than one account card has any business being:
-   a name, a balance and a statement row spread across 1,600px is a table row, not a form.
-   The hero and the net-worth chart still span — they are the two things that GAIN from the
-   width — and the account cards flow into columns instead, so the canvas is filled by
-   content rather than by one very wide row and a gutter.
-   This supersedes the old "full-width stacked rather than two narrow columns" note: that was
-   written when the whole screen was capped at 1120px, where two columns really would have
-   been narrow. At 1920 these are ~780px each and at 2560 ~700px.
-   Column counts are explicit rather than auto-fill: auto-fill keeps reserving empty tracks,
-   so an account or two on an ultrawide monitor would sit in the left quarter of the row —
-   the same accidental void this whole change exists to remove. */
-@media (min-width:1500px){
+/* Account cards use two columns on ordinary desktops, with their own controls wrapping. */
+@media (min-width:1280px){
   #accounts-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
   #accounts-list>.card{margin-bottom:0}
   /* An action and a short form, sized to themselves rather than to the canvas. */
@@ -2461,8 +2450,83 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .acct-tools-dialog .stg-field input[type=checkbox]{width:auto}
 
 /* Accounts use the shared Daily surfaces, with flat rows and quieter secondary tools. */
-#accounts-list-head .acct-list-heading{margin-bottom:8px}
-.acct-list-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.acct-overview{padding:0;overflow:hidden}
+.acct-overview-body{padding:20px 20px 0;background:linear-gradient(130deg,var(--accent-hero),var(--accent-hero-2));color:#fff}
+.acct-overview-body .card-label,.acct-overview-body .card-hd-ico,.acct-overview-body .card-fig{color:#fff}
+.acct-overview-body .card-cap{color:#ffffffc7}
+.acct-overview-totals{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:20px;align-items:end;padding:6px 0 20px}
+.acct-overview-totals>div{min-width:0}
+.acct-overview-totals>div+div{border-left:1px solid #ffffff25;padding-left:20px}
+.acct-overview-totals .card-cap{margin:0 0 8px;font-weight:500}
+.acct-overview-totals .card-fig{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.acct-overview>.acct-payoff-details{border:0;margin:0;padding:8px 20px;background:#202020;color:#f5f5f5}
+[data-theme=light] .acct-overview>.acct-payoff-details{background:#f2f2f2;color:#202020}
+.acct-payoff-details .acct-payoff-detail,.acct-payoff-details>summary{color:#b1b1b1}
+[data-theme=light] .acct-payoff-details .acct-payoff-detail,[data-theme=light] .acct-payoff-details>summary{color:#626262}
+.acct-payoff-details>summary{display:flex;align-items:center;font-size:12px}
+.acct-payoff-summary{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;flex:1}
+.acct-payoff-summary strong{font-family:var(--font-num);font-size:17px;color:var(--text)}
+.acct-payoff-detail{padding:8px 0 2px;font-size:12px;line-height:1.5}
+.acct-history{padding:0;overflow:hidden;margin-bottom:12px}
+.acct-history .nw-chart-card{border:0;box-shadow:none;background:transparent;margin:0;border-radius:0}
+.acct-history .nw-chart-head{align-items:center;padding-top:14px}
+.acct-history .nw-chart-canvas{height:170px;padding:12px 14px 4px 4px}
+.acct-history .nw-chart-value{font-size:18px;display:inline-block;margin-top:6px}
+.nw-chart-last-label{font:500 11px var(--font-ui);color:var(--muted);letter-spacing:0}
+.acct-history .nw-chart-change{display:inline-block;margin-left:10px;font-size:11px}
+.acct-history .nw-chart-ranges button{min-height:44px}
+.acct-history .nw-chart-series{gap:6px;padding:6px 12px 10px}
+.acct-history .nw-chart-series button{height:44px}
+.acct-history .nw-chart-verdict,.acct-history .nw-chart-mix{display:none}
+.acct-history .nw-chart-coverage{flex-basis:100%;max-width:760px}
+.nw-chart-notes{min-width:0;max-width:520px;margin-left:auto}
+.nw-chart-notes>summary{cursor:pointer;min-height:24px}
+.nw-chart-notes p{padding-top:8px;line-height:1.6}
+.nw-chart-notes>summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.acct-maintenance{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:start;margin-top:14px;padding:12px 16px}
+.acct-maintenance #accounts-savers-reconcile:empty{display:none}
+.acct-maintenance:has(>#accounts-savers-reconcile:empty){grid-template-columns:1fr}
+.acct-maintenance .acct-savings-check{margin:0;padding:0;border:0}
+.acct-maintenance .acct-savings-check>summary{color:var(--text);font-size:13px}
+.acct-maintenance #accounts-addform{max-width:100%}
+.acct-maintenance .acct-add-account{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:10px 14px;background:var(--card);border:1px solid var(--border);font-size:13px;white-space:nowrap}
+.acct-add-account>span{font-size:18px;line-height:1}
+.acct-maintenance.is-adding #accounts-addform{grid-column:1 / -1;width:100%;max-width:460px}
+.acct-maintenance #accounts-addform>.card{margin:0}
+.acct-maintenance .acct-add-account:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(max-width:479px){
+  .acct-maintenance{grid-template-columns:minmax(0,1fr)}
+  .acct-maintenance #accounts-addform{justify-self:start}
+}
+@media(max-width:479px){
+  .acct-overview-body{padding:16px 16px 0}
+  .acct-overview>.acct-payoff-details{padding-inline:16px}
+  .acct-overview-totals{grid-template-columns:1fr 1fr;gap:18px 16px;padding-bottom:16px}
+  .acct-overview-totals .acct-overview-net{grid-column:1 / -1}
+  .acct-overview-totals>div:nth-child(2){border-left:0;padding-left:0}
+  .acct-overview-totals>div+div{padding-left:16px}
+  .acct-payoff-details>summary{gap:8px;flex-wrap:wrap}
+  .acct-payoff-summary{flex-basis:100%}
+  .acct-history .nw-chart-head{flex-wrap:wrap}
+  .acct-history .nw-chart-change{display:block;margin-left:0}
+  .acct-history .nw-chart-canvas{height:160px}
+}
+.acct-list-toolbar{display:grid;grid-template-columns:minmax(90px,1fr) auto auto;gap:12px;align-items:center;margin:18px 0 14px}
+#accounts-list-head .acct-list-heading{margin:0}
+.acct-list-actions,.acct-list-tools{display:flex;align-items:center;gap:8px;min-width:0}
+.acct-list-actions .stg-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 12px;background:var(--surface-card);border:1px solid var(--surface-card-border);border-radius:10px;font-size:13px;white-space:nowrap}
+.acct-list-actions .stg-btn svg{flex:none;width:15px;height:15px;color:inherit}
+.acct-list-actions .stg-btn:hover{background:var(--surface-raised)}
+.acct-list-tools .stg-btn{min-height:44px;padding:10px;border-color:transparent;font-size:12px}
+.acct-list-tools .acct-toolbar-edit{background:var(--card);border-color:var(--border);color:var(--text)}
+.acct-list-tools .acct-toolbar-edit.active{background:var(--track)}
+.acct-list-tools button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(max-width:767px){
+  .acct-list-toolbar{grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;margin-top:14px}
+  .acct-list-tools{grid-column:2;grid-row:1;gap:4px}
+  .acct-list-actions{grid-column:1 / -1;grid-row:2;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .acct-list-actions .stg-btn{padding-inline:8px;font-size:12px}
+}
 .acct-account-title{display:block;flex:1;min-width:0}
 .acct-account-name{display:block;font-size:15px;font-weight:700;color:var(--text);overflow-wrap:anywhere}
 .acct-account-heading .acct-category-label{margin:3px 0 0;font-size:12px;font-weight:400}
@@ -2488,13 +2552,13 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .acct-account-card .acct-link-status{gap:4px 12px;padding:0 0 10px}
 .acct-account-card .acct-link-status span{flex:1 1 120px}
 .acct-account-card .stg-btn,.acct-account-card .sav-update-btn,
-.acct-savings-check .stg-btn,.acct-list-actions .stg-btn{
+.acct-savings-check .stg-btn{
   min-height:44px;padding:9px 13px;border:1px solid var(--border);border-radius:var(--radius-pill);
   background:transparent;color:var(--text);font-family:var(--font-ui);font-size:13px;font-weight:600;line-height:1.4;
 }
 .acct-account-card .acct-link-status .stg-btn{border-color:transparent;padding-inline:0;color:var(--muted);font-size:12px}
 .acct-account-card .stg-btn:hover,.acct-account-card .sav-update-btn:hover,
-.acct-savings-check .stg-btn:hover,.acct-list-actions .stg-btn:hover{background:var(--card)}
+.acct-savings-check .stg-btn:hover{background:var(--card)}
 .acct-account-card button:focus-visible,.acct-savings-check button:focus-visible,
 .acct-list-actions button:focus-visible,.acct-records summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .acct-account-card .acct-record-actions{margin-top:10px}

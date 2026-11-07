@@ -1,5 +1,24 @@
 # Daily — Project Reference
 
+## Accounts presentation — v433–v435, release authorised, 2026-11-07
+
+Accounts now leads with current net worth, assets and debts using the existing totals,
+Home's accent gradient body and solid gray footer in both themes. Debt payoff is a compact
+expandable footer row with its existing Savers exclusion and coverage calculation. Net worth
+history is always visible immediately below the hero, with a compact 160/170px canvas,
+range/series controls and a clearly labelled last dated balance. Supporting history notes
+use an optional disclosure; the graph itself is never collapsed. Account cards follow and
+use two columns from 1280px. Range and series choices survive re-rendering. Savings balance
+check and a solid Add account action share a compact maintenance card below the list; the
+existing add form expands inside it. Stats keeps the full existing chart. No financial readers,
+writers, records or sync keys change. The account toolbar groups filled Record transfer and
+Check balances buttons, with quieter Export and Edit actions; phones use two rows and 44px
+targets. Cache daily-v435. Francois authorised committing and pushing the Accounts updates.
+All 689 Node checks and the complete synthetic Finance Accounts browser suite pass. Local
+layout checks cover 320/390/1024/1440px, both themes, visible history, missing/partial history,
+empty/negative balances, add/cancel, disclosure retention and no financial-record changes. Physical
+Safari and production sync are unverified. Sample screenshots remain in ignored temp-analysis.
+
 ## Budget card views — v429–v431, release authorised, 2026-11-05
 
 Budget now has one Fixed expenses card with Set aside and Upcoming tabs. The first retains

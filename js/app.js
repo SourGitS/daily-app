@@ -19864,8 +19864,8 @@ function renderNetWorthChartInto(wrapId){
   const ranges=[['1m','1M'],['3m','3M'],['1y','1Y'],['all','ALL']];
   wrap.innerHTML='<div class="card nw-chart-card">'+
     '<div class="nw-chart-head">'+
-      '<div><div class="nw-chart-kicker">'+acctIcon('trend',13)+(latestPointInfo.count<latestPointInfo.total?'Recorded net worth':'Net worth')+'</div>'+
-        '<div class="nw-chart-value">'+fmtMoney(curNet)+'</div>'+
+      '<div><div class="nw-chart-kicker">'+acctIcon('trend',13)+(wrapId==='accounts-chart'?'Net worth history':latestPointInfo.count<latestPointInfo.total?'Recorded net worth':'Net worth')+'</div>'+
+        '<div class="nw-chart-value">'+(wrapId==='accounts-chart'?'<span class="nw-chart-last-label">Last recorded </span>':'')+fmtMoney(curNet)+'</div>'+
         '<div class="nw-chart-change" style="color:'+(comparable?changeCol:'var(--muted)')+'">'+changeText+'</div>'+
         // Absorbed from the Accounts hero, which used to state the same figure directly above
         // this card. Shown in BOTH mounts — it is the same truth on Stats > Finance.
@@ -19875,12 +19875,12 @@ function renderNetWorthChartInto(wrapId){
     '</div>'+
     '<div class="nw-chart-canvas"><canvas id="'+canvasId+'"></canvas></div>'+
     '<div class="nw-chart-series">'+
-      '<span class="on"><i style="background:'+accent+'"></i>'+(partial?'Recorded net worth':'Net worth')+'</span>'+
+      '<span class="on"><i style="background:'+accent+'"></i>'+(partial&&wrapId!=='accounts-chart'?'Recorded net worth':'Net worth')+'</span>'+
       '<button onclick="toggleNWChartSeries(\'assets\')" class="'+(nwChartSeries.assets?'on':'')+'"><i></i>Assets</button>'+
       (debtAccts.length?'<button onclick="toggleNWChartSeries(\'debts\')" class="'+(nwChartSeries.debts?'on':'')+'"><i></i>Debts</button>':'')+
     '</div>'+
-    '<div class="nw-chart-foot">Recorded balances carried forward between updates · Latest update '+fmtDate(latest)+
-      (partial?'<span class="nw-chart-coverage">Earlier or missing account balances are unknown, not zero. Points show only accounts recorded by that date; dashed joins mark changes in coverage. Select a point to see its records.</span>':'')+
+    '<div class="nw-chart-foot">'+(wrapId==='accounts-chart'?'Latest update ':'Recorded balances carried forward between updates · Latest update ')+fmtDate(latest)+
+      (wrapId==='accounts-chart'?'<details class="nw-chart-notes"><summary>About this history</summary><p>Recorded balances carry forward between updates. '+(partial?'Missing balances are unknown, not zero. Dashed joins mark changes in account coverage. ':'')+'Select a point to see its records.</p></details>':partial?'<span class="nw-chart-coverage">Earlier or missing account balances are unknown, not zero. Points show only accounts recorded by that date; dashed joins mark changes in coverage. Select a point to see its records.</span>':'')+
       (stale.length?'<span class="nw-chart-stale">'+_catEscHtml(stale.map(x=>x.name+' '+x.days+'d').join(' · '))+' old</span>':'')+
       (wrapId==='bs-balance-wrap'?'<button class="stats-inline-link" onclick="openAccounts()">Open account records →</button>':'')+
     '</div></div>';
@@ -24314,15 +24314,7 @@ function acctChangeHtml(a){
   return '<div class="acct-change" style="color:'+(good?'var(--success)':'var(--danger)')+'">'+
     (delta>0?'▲':'▼')+' '+fmtMoney(Math.abs(delta))+' · 30d</div>';
 }
-// ── Net worth + debt payoff position ──────────────────────────────
-// Two halves of one answer: net worth is "what am I worth", the payoff position is "am I
-// actually covered". Savers accounts are held back from the second so the interest pot isn't
-// quietly counted as debt cover — they still count in the first.
-// ONE .hero-panel with the two side by side, not two stacked full-width hero cards. Those
-// flipped the whole surface green or red with their sign, which put two saturated slabs at the
-// top of the screen and made the pair read as two unrelated announcements rather than one
-// position. The verdict rides in a .tstat chip in each cell now — same rule as everywhere
-// else — and the shared graphite surface is what says these two belong together.
+// Current balances lead Accounts; the optional chart describes dated history separately.
 function renderAccountsHero(){
   const el=document.getElementById('accounts-hero'); if(!el) return;
   if(!accounts.length){ el.innerHTML=''; return; }
@@ -24338,9 +24330,9 @@ function renderAccountsHero(){
     ? tstat('pos','No debts','check',true)
     : (clear?tstat('pos','Debts covered','check',true):tstat('neg','Not yet covered','alert',true));
   const saverLine=savers.length
-    ? '<div class="acct-payoff-note">Holding back '+fmtMoney(saverTot)+' in '+
-        savers.map(a=>_catEscHtml(a.name||'Savers')).join(', ')+' — excluded from this total, still counted in net worth.</div>'
-    : '<div class="acct-payoff-note">Flip on “Savers account” below to keep an interest account out of this total.</div>';
+    ? '<div class="acct-payoff-note">'+fmtMoney(saverTot)+' in '+
+        savers.map(a=>_catEscHtml(a.name||'Savers')).join(', ')+' is held back from debt cover and included in net worth.</div>'
+    : '';
   // What KIND of debt, not just how much — only shown once there's an actual mix to report,
   // since "$2,512 cards" alone says nothing the figure above doesn't already.
   const kinds=accountsDebtsByKind();
@@ -24350,14 +24342,14 @@ function renderAccountsHero(){
   const mathLine=debts>0
     ? '<div class="acct-payoff-math">'+fmtMoney(assets-saverTot)+' spendable − '+fmtMoney(debts)+' debts</div>'
     : '';
-  // ONE cell. Net worth used to lead this panel and was then restated — same figure, same
-  // label, same source — in the .nw-chart-card immediately beneath it, roughly 340px away.
-  // It now leads that chart card instead, where the line under it is the thing it describes.
-  // What is left here is the question the chart cannot answer: am I covered?
-  el.innerHTML=budHeroPanel([
-    {icon:'target', label:'Debt payoff position', lg:true, val:fmtMoney(Math.abs(pos)),
-     sub:headline, chip:payoffChip, extra:mathLine+kindLine+saverLine},
-  ],{cols:1,colsSm:1});
+  el.innerHTML='<div class="card acct-overview"><div class="acct-overview-body">'+cardHeader('bank','Account overview')+
+    '<div class="acct-overview-totals">'+
+      '<div class="acct-overview-net"><div class="card-cap">Current net worth</div><div class="card-fig">'+fmtMoney(assets-debts)+'</div></div>'+
+      '<div><div class="card-cap">Assets</div><div class="card-fig card-fig-sm">'+fmtMoney(assets)+'</div></div>'+
+      '<div><div class="card-cap">Debts</div><div class="card-fig card-fig-sm">'+fmtMoney(debts)+'</div></div>'+
+    '</div></div><details class="acct-records acct-payoff-details"><summary><span class="acct-payoff-summary">'+
+      '<span>Debt payoff position</span><strong>'+fmtMoney(Math.abs(pos))+'</strong></span>'+payoffChip+'</summary>'+
+      '<div class="acct-payoff-detail"><div>'+headline+'</div>'+mathLine+kindLine+saverLine+'</div></details></div>';
 }
 function savingsReconcileFocus(){
   if(typeof acctFinCheckinOpen==='function'){acctFinCheckinOpen(saverAccounts().filter(a=>!a.archivedAt).map(a=>a.id));return;}
@@ -24400,10 +24392,9 @@ function renderSaversReconcileCard(){
       '<div class="acct-check-actions"><button type="button" class="stg-btn" onclick="savingsReconcileFocus()">'+(check.updated?'Check again':'Check savings balances')+'</button></div></details>';
 }
 function renderAccountsPage(){
-  // Net worth and the payoff position are one card built by one function — they used to be
-  // two, with their figure sizing kept in step by a comment that had stopped being true (40 vs
-  // 34 on mobile, 40 vs 52 on desktop). One .hero-panel sizes both from .hp-lg now.
+  const payoffOpen=!!document.querySelector('#accounts-hero .acct-payoff-details')?.open;
   renderAccountsHero();
+  if(payoffOpen) document.querySelector('#accounts-hero .acct-payoff-details')?.setAttribute('open','');
   renderSaversReconcileCard();
   // One card per account
   // Section header carrying the Edit toggle — same .bud-edit-btn / "Edit"→"Done" convention as
@@ -24411,13 +24402,14 @@ function renderAccountsPage(){
   const headEl=document.getElementById('accounts-list-head');
   if(headEl){
     headEl.innerHTML=accounts.length
-      ? '<div class="sec-label bud-toggle acct-list-heading" style="cursor:default">'+
-          '<span class="bud-head-label">Your accounts</span>'+
-          '<button class="bud-edit-btn'+(_acctEditMode?' active':'')+'" onclick="acctToggleEdit()">'+
-            (_acctEditMode?'Done':'Edit')+'</button>'+
-        '</div><div class="acct-list-actions">'+
-          '<button class="stg-btn" onclick="acctTransferOpen()">Record transfer</button>'+
-          (typeof acctFinCheckinOpen==='function'?'<button class="stg-btn" onclick="acctFinCheckinOpen()">Check balances</button><button class="stg-btn" onclick="acctFinExport()">Export Finance</button>':'')+'</div>'
+      ? '<div class="acct-list-toolbar"><div class="sec-label acct-list-heading">Your accounts</div>'+
+        '<div class="acct-list-actions">'+
+          '<button type="button" class="stg-btn" onclick="acctTransferOpen()">'+cardIcon('repeat')+'Record transfer</button>'+
+          (typeof acctFinCheckinOpen==='function'?'<button type="button" class="stg-btn" onclick="acctFinCheckinOpen()">'+cardIcon('check')+'Check balances</button>':'')+'</div>'+
+        '<div class="acct-list-tools">'+
+          (typeof acctFinCheckinOpen==='function'?'<button type="button" class="stg-btn quiet" aria-label="Export Finance" onclick="acctFinExport()">Export</button>':'')+
+          '<button type="button" class="stg-btn quiet acct-toolbar-edit'+(_acctEditMode?' active':'')+'" onclick="acctToggleEdit()">'+
+            (_acctEditMode?'Done':'Edit')+'</button></div></div>'
       : '';
   }
   const listEl=document.getElementById('accounts-list');
@@ -24569,8 +24561,9 @@ function renderAccountsPage(){
   // Add-account form / button
   const formEl=document.getElementById('accounts-addform');
   if(formEl){
+    document.getElementById('accounts-maintenance')?.classList.toggle('is-adding',_acctAddOpen);
     if(!_acctAddOpen){
-      formEl.innerHTML='<button class="add-cat-btn" style="width:100%;margin-top:4px" onclick="accountsAddOpen()">+ Add account</button>';
+      formEl.innerHTML='<button type="button" class="stg-btn acct-add-account" onclick="accountsAddOpen()"><span aria-hidden="true">+</span> Add account</button>';
     } else {
       formEl.innerHTML=
         '<div class="card">'+

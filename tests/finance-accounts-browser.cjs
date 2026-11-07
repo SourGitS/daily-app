@@ -12,6 +12,21 @@ const keys=['daily_transactions','daily_ledger','daily_budget','daily_budget_cyc
       const before=await page.evaluate(({theme,keys})=>{S.theme=theme;applyTheme();openAccounts();return Object.fromEntries(keys.map(k=>[k,localStorage.getItem(k)]));},{theme,keys});
       // The compact presentation keeps tools reachable without changing saved records.
       const originalAccounts=await page.evaluate(()=>localStorage.getItem('daily_accounts'));
+      const history=page.locator('#accounts-history');
+      await page.locator('#accounts-chart canvas').waitFor({state:'visible'});
+      assert.equal(await history.evaluate(e=>e.tagName),'SECTION');
+      assert.equal(await page.evaluate(()=>!!(document.getElementById('accounts-history').compareDocumentPosition(document.getElementById('accounts-list'))&Node.DOCUMENT_POSITION_FOLLOWING)),true);
+      assert.match(await page.locator('#accounts-hero').innerText(),/Current net worth[\s\S]*\$970/);
+      assert.ok(await page.locator('#accounts-chart .nw-chart-canvas').evaluate(e=>e.getBoundingClientRect().height)<=190);
+      await page.locator('#accounts-chart').getByRole('button',{name:'ALL',exact:true}).click();
+      await page.evaluate(()=>renderAccountsPage());
+      assert.equal(await page.locator('#accounts-chart canvas').isVisible(),true);
+      assert.equal(await page.locator('#accounts-chart canvas').count(),1);
+      await page.getByRole('button',{name:'Add account',exact:true}).click();
+      assert.equal(await page.locator('#accounts-maintenance').evaluate(e=>e.scrollWidth<=e.clientWidth+1),true);
+      await page.getByRole('button',{name:'Cancel',exact:true}).click();
+      assert.equal(await page.locator('#accounts-chart canvas').isVisible(),true);
+      assert.equal(await page.evaluate(()=>localStorage.getItem('daily_accounts')),originalAccounts);
       const cashCard=page.locator('.acct-account-card[data-account="cash"]'),card=page.locator('.acct-account-card[data-account="card"]');
       assert.equal(await page.getByRole('button',{name:'Record repayment',exact:true}).isVisible(),false);
       assert.equal(await card.locator('.acct-util-strip').isVisible(),true);

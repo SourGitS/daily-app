@@ -57,7 +57,7 @@ const keys=['daily_budget','daily_transactions','daily_ledger','daily_budget_cyc
       await page.getByRole('button',{name:'Update both balances',exact:true}).click();
       const saved=await page.evaluate(keys=>({a:loadAccounts(),movement:ledgerSavingsMovement(getLocalDate(),getLocalDate()),stores:Object.fromEntries(keys.map(k=>[k,localStorage.getItem(k)]))}),keys);
       assert.equal(saved.a[0].current,899.75);assert.equal(saved.a[1].current,150.3);assert.equal(saved.movement.contributions,100.25);assert.equal(saved.movement.transfers,1);assert.deepEqual(saved.stores,before);
-      await page.getByRole('button',{name:'+ Add account',exact:true}).click();await page.getByLabel('Account name',{exact:true}).fill('New savings');
+      await page.getByRole('button',{name:'Add account',exact:true}).click();await page.getByLabel('Account name',{exact:true}).fill('New savings');
       await page.getByLabel('Account category',{exact:true}).selectOption('savings');assert.equal(await page.getByLabel('Account name',{exact:true}).inputValue(),'New savings');
       await page.getByRole('button',{name:'Add account',exact:true}).click();
       assert.equal(await page.evaluate(()=>accounts.find(a=>a.name==='New savings').saver),true);
@@ -66,7 +66,7 @@ const keys=['daily_budget','daily_transactions','daily_ledger','daily_budget_cyc
       if(width===390&&theme==='dark'){
         await page.evaluate(()=>{budLegacyOpen=true;currentWeekIdx=0;setBudgetView('week');renderBudgetTab();});
         const accountBefore=await page.evaluate(()=>localStorage.getItem('daily_accounts'));
-        await page.getByRole('button',{name:/Savings allocation/}).click();
+        await page.getByRole('button',{name:/Savings target/}).click();
         await page.locator('#sav-amount').fill('75');await page.locator('#sav-amount').press('Tab');
         assert.equal(await page.evaluate(()=>localStorage.getItem('daily_accounts')),accountBefore,'budget draft cannot move money');
         await page.locator('#save-week-btn').click();await dialog.waitFor({state:'visible'});
