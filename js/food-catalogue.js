@@ -128,7 +128,7 @@ function foodCatalogueOpen(mode){
   if(state.mode==='story')state.seenThisSession=true;
   const dialog=document.createElement('dialog');dialog.id='food-catalogue-dialog';dialog.className='fc-dialog';
   dialog.setAttribute('aria-labelledby','fc-title');
-  dialog.innerHTML='<header class="fc-head"><img src="assets/brand/daily-wordmark-light.png" alt="Daily"><span>Food catalogue</span><button type="button" class="fc-close" aria-label="Close recipe catalogue" onclick="foodCatalogueClose()">×</button></header><div id="fc-body" class="fc-body"></div><p id="fc-status" class="fc-status" role="status" aria-live="polite"></p><footer id="fc-footer" class="fc-footer"></footer>';
+  dialog.innerHTML='<header class="fc-head"><span class="wordmark" role="img" aria-label="DailyHub">DAILYHUB</span><span>Food catalogue</span><button type="button" class="fc-close" aria-label="Close recipe catalogue" onclick="foodCatalogueClose()">×</button></header><div id="fc-body" class="fc-body"></div><p id="fc-status" class="fc-status" role="status" aria-live="polite"></p><footer id="fc-footer" class="fc-footer"></footer>';
   dialog.addEventListener('cancel',event=>{event.preventDefault();foodCatalogueClose();});
   dialog.addEventListener('keydown',event=>{
     if(state.mode!=='story'||event.altKey||event.ctrlKey||event.metaKey)return;

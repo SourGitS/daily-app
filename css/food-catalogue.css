@@ -24,8 +24,8 @@
 .fc-dialog button:focus-visible,.fc-dialog a:focus-visible{outline:3px solid var(--fc-blue);outline-offset:4px}
 .fc-dialog [tabindex="-1"]:focus{outline:none}
 .fc-head{display:flex;align-items:center;gap:18px;padding:20px 28px 12px;flex-shrink:0}
-.fc-head img{width:100px;height:25px;object-fit:contain}
-.fc-head>span{font-size:11px;text-transform:uppercase;letter-spacing:2px;color:var(--fc-muted)}
+.fc-head .wordmark{--wordmark-size:13px;--wordmark-padding:5px;--wordmark-daily-ink:#555b64;--wordmark-hub-ink:var(--fc-ink)}
+.fc-head>span:not(.wordmark){font-size:11px;text-transform:uppercase;letter-spacing:2px;color:var(--fc-muted)}
 .fc-close{width:44px;height:44px;display:grid;place-items:center;margin-left:auto;flex-shrink:0;border:1px solid #dedbd4;border-radius:50%;background:transparent;color:var(--fc-ink);font-size:29px;line-height:1}
 .fc-close:hover{background:#ece7dc}
 .fc-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;touch-action:pan-y;padding:0 28px 16px}
@@ -92,8 +92,8 @@
 @media(max-width:640px){
   .fc-dialog{width:calc(100vw - 20px);height:min(820px,calc(100dvh - 24px));border-radius:20px}
   .fc-head{padding:12px 18px 6px;gap:12px}
-  .fc-head img{width:83px;height:21px}
-  .fc-head>span{font-size:9px;letter-spacing:1px}
+  .fc-head .wordmark{--wordmark-size:11px}
+  .fc-head>span:not(.wordmark){font-size:9px;letter-spacing:1px}
   .fc-close{width:40px;height:40px}
   .fc-body{padding:0 18px 14px}
   .fc-intro-cover{display:grid;grid-template-columns:1fr;grid-template-rows:auto minmax(180px,1fr);gap:16px;align-items:stretch;min-height:100%;padding-top:10px}

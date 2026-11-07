@@ -1617,6 +1617,7 @@ function applyAccent(hex){
   // Theme-dependent, so applyTheme() re-runs this. A stale value here is the invisible-text
   // bug in mirror image — the previous theme's variant left sitting on the new background.
   root.style.setProperty('--accent-text', accentTextHex(hex, root.getAttribute('data-theme')!=='light'));
+  root.style.setProperty('--wordmark-custom-ink', String(hex || DEFAULT_ACCENT).toUpperCase() === DEFAULT_ACCENT ? '' : 'var(--accent-text)');
   // Theme-INdependent, unlike --accent-text: a hero fill carries white in both themes, so the
   // stops are the same either way and applyTheme() re-running this changes nothing.
   const hs=heroStopsFor(hex);
@@ -22932,7 +22933,7 @@ function hlPrevBalance(){
   return hlPreviewCard('Balance');
 }
 function manhuaHubWordmark(){
-  return '<span class="manhua-hub-lockup" aria-hidden="true"><span class="manhua-hub-wordmark"></span><span class="manhua-hub-signature"></span></span>';
+  return '<span class="manhua-hub-lockup" aria-hidden="true"><span class="manhua-hub-wordmark"></span><span class="wordmark manhua-hub-signature">DAILYHUB</span></span>';
 }
 function buildManhuaHubCard(){
   return '<div class="card manhua-hub-card">'+
@@ -25383,7 +25384,7 @@ function obHomePreviewHTML(){
 function obWelcomeHTML(){
   return '<div class="ob-center ob-welcome">'+
     '<div class="ob-welcome-brand">'+
-      '<span class="wordmark" role="img" aria-label="Daily App"><span class="wordmark-daily" aria-hidden="true">Daily</span><span class="wordmark-app" aria-hidden="true">App</span></span>'+
+      '<span class="wordmark" role="img" aria-label="DailyHub">DAILYHUB</span>'+
     '</div>'+
     '<div class="ob-welcome-kicker">Everything that shapes today</div>'+
     '<div class="ob-welcome-title">Your whole day,<br>in one place.</div>'+

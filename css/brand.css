@@ -1,39 +1,41 @@
-/* Compact italic wordmark: one cap height and slant, live accent with neutral App ink. */
+/* DAILY and HUB share the mockup's 798 × 112 artboard so their kerning scales with the mark. */
 .wordmark{
-  --wordmark-size:24px;--wordmark-padding:9px;--wordmark-app-ink:#f5f5f7;
-  display:inline-flex;align-items:center;flex-shrink:0;gap:0;
-  height:var(--wordmark-size);width:max-content;max-width:100%;
+  --wordmark-size:24px;
+  --wordmark-padding:9px;
+  --wordmark-width:calc(var(--wordmark-size) * 8.19375);
+  --wordmark-daily-ink:var(--wordmark-custom-ink,#aeb2b9);
+  --wordmark-hub-ink:#eef0f2;
+  display:inline-flex;align-items:center;flex-shrink:0;
+  width:var(--wordmark-width);max-width:100%;height:var(--wordmark-size);
   box-sizing:content-box;padding:var(--wordmark-padding) 0;margin:0;
+  font:italic 800 var(--wordmark-size)/1 var(--font-ui);color:var(--wordmark-daily-ink);
 }
-[data-theme="light"] .wordmark{--wordmark-app-ink:var(--text)}
-.wordmark-daily,.wordmark-app{
-  display:block;flex:none;
-  font:800 italic calc(var(--wordmark-size) * 1.2)/1 var(--font-ui);
-  letter-spacing:-1px;text-transform:uppercase;
+[data-theme="light"] .wordmark{
+  --wordmark-daily-ink:var(--wordmark-custom-ink,#555b64);
+  --wordmark-hub-ink:#1c1c1e;
 }
-.wordmark-daily{color:var(--accent-text,var(--text))}
-.wordmark-app{color:var(--wordmark-app-ink)}
 @supports ((-webkit-mask-image:url("x")) or (mask-image:url("x"))){
-  .wordmark{position:relative;width:calc(var(--wordmark-size) * 6.875)}
-  /* Shared full-mark viewports preserve the designed word gap at every placement. */
-  .wordmark-daily,.wordmark-app{
-    position:absolute;left:0;bottom:var(--wordmark-padding);width:100%;height:var(--wordmark-size);
-    font-size:0;background:currentColor;mask-mode:alpha;
+  .wordmark{position:relative;font-size:0}
+  .wordmark::before,.wordmark::after{
+    content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);
+    width:100%;height:calc(var(--wordmark-size) * 1.15);
+    -webkit-mask:var(--wordmark-mask) center/contain no-repeat;
+    mask:var(--wordmark-mask) center/contain no-repeat;mask-mode:alpha;
   }
-  .wordmark-daily{
-    -webkit-mask:url("../assets/brand/daily-compact-mask.svg") center/contain no-repeat;
-    mask:url("../assets/brand/daily-compact-mask.svg") center/contain no-repeat;
+  .wordmark::before{
+    --wordmark-mask:url("../assets/brand/dailyhub-daily.svg");
+    background-color:var(--wordmark-daily-ink);
   }
-  .wordmark-app{
-    -webkit-mask:url("../assets/brand/app-compact-mask.svg") center/contain no-repeat;
-    mask:url("../assets/brand/app-compact-mask.svg") center/contain no-repeat;
+  .wordmark::after{
+    --wordmark-mask:url("../assets/brand/dailyhub-hub.svg");
+    background-color:var(--wordmark-hub-ink);
   }
 }
 #header-title .wordmark{--wordmark-size:22px}
 #side-menu-title .wordmark{--wordmark-size:18px;--wordmark-padding:7px}
-.ob-center .wordmark{--wordmark-size:36px;width:calc(var(--wordmark-size) * 6.875);max-width:100%;height:36px;margin:0 auto 18px}
+.ob-center .wordmark{--wordmark-size:36px;width:var(--wordmark-width);max-width:100%;height:36px;margin:0 auto 18px}
 .ob-welcome-brand{height:auto;min-height:44px;padding-inline:0}
-.ob-welcome .wordmark{--wordmark-size:20px;width:calc(var(--wordmark-size) * 6.875);max-width:100%;height:20px;max-height:none;margin:0}
+.ob-welcome .wordmark{--wordmark-size:20px;width:var(--wordmark-width);max-width:100%;height:20px;max-height:none;margin:0}
 @media(max-width:1023px) and (orientation:landscape) and (max-height:600px){
   #header-title .wordmark{--wordmark-size:16px;--wordmark-padding:6px}
 }

@@ -440,7 +440,8 @@
 // v439: paired Budget action, adaptive activity and compact weekly bill agenda.
 // v440: future planning, linked targets and isolated scenarios, with history under Review.
 // v441: fill both Plan workspace segments and use the shared Targets header Edit control.
-const CACHE_NAME = 'daily-v441'; // Remote connector hosting remains disabled.
+// v443: carry the DAILYHUB wordmark through the app and offline views.
+const CACHE_NAME = 'daily-v443'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
@@ -493,12 +494,8 @@ const ASSETS = [
   './js/nutrition.js',
   // Runtime brand assets only. The masters, the export script and the ZIP under
   // assets/brand/refined/ are sources, not application assets, and are never precached.
-  './assets/brand/daily-wordmark-mask.png',
-  './assets/brand/app-wordmark-mask.svg',
-  './assets/brand/daily-compact-mask.svg',
-  './assets/brand/app-compact-mask.svg',
-  './assets/brand/daily-wordmark-light.png',
-  './assets/brand/daily-wordmark-dark.png',
+  './assets/brand/dailyhub-daily.svg',
+  './assets/brand/dailyhub-hub.svg',
   './assets/brand/daily-app-icon-192.png',
   './assets/brand/daily-app-icon-512.png',
   './assets/brand/daily-app-icon-180.png',
