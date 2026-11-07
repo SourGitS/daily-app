@@ -441,7 +441,8 @@
 // v440: future planning, linked targets and isolated scenarios, with history under Review.
 // v441: fill both Plan workspace segments and use the shared Targets header Edit control.
 // v443: carry the DAILYHUB wordmark through the app and offline views.
-const CACHE_NAME = 'daily-v443'; // Remote connector hosting remains disabled.
+// v444: training coverage, grouped library and session order, plus phone-safe Accounts controls.
+const CACHE_NAME = 'daily-v444'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
@@ -465,6 +466,7 @@ const ASSETS = [
   './js/home-category.js',
   './css/home-hero.css',
   './js/app.js',
+  './js/training.js',
   './js/ai-assistant.js',
   './js/ai-remote-config.js',
   './js/ai-remote.js',

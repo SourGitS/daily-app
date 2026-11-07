@@ -541,6 +541,7 @@ test('saving a continued partial appends a new record and never overwrites the e
   const c = retainedPartial(); retainedUi(c);
   vm.runInContext(['saveSession', 'clearSetData'].map(extract).join('\n'), c);
   c.loadExerciseLib = () => [];
+  c.exerciseSearchCatalog = () => c.loadExerciseLib();
   c.libGuessMuscle = () => 'other';
   c.getDurationMins = () => 0;
   c.checkPO = () => [];
@@ -849,11 +850,12 @@ test('Last 7 days reports facts, with no target and no consistency judgement', (
     'only the comment explaining its removal may still name it');
 });
 
-test('weight shares the Log hero while every canonical weight path stays', () => {
+test('the focused training hero leaves weight tracking on its canonical paths', () => {
   ['renderLogWeightCard', 'logTodayWeight'].forEach(n =>
     assert.ok(!source.includes('function ' + n + '('), n + ' should be gone'));
   assert.ok(!/log-weight-input/.test(source) && !/log-weight-input/.test(html));
-  assert.match(body('logHeroHtml'), /logWeightSummaryHtml\(\)/);
+  assert.doesNotMatch(body('logHeroHtml'), /logWeightSummaryHtml\(\)/);
+  assert.match(body('logHeroHtml'), /lg-training-dock/);
   const ov = slice('function renderLogOverview(){', '\n}');
   assert.ok(!/weight/i.test(ov));
   // …while the canonical weight functionality is untouched.

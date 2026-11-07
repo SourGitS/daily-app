@@ -18,6 +18,9 @@ const keys=['daily_transactions','daily_ledger','daily_budget','daily_budget_cyc
       assert.equal(await page.evaluate(()=>!!(document.getElementById('accounts-history').compareDocumentPosition(document.getElementById('accounts-list'))&Node.DOCUMENT_POSITION_FOLLOWING)),true);
       assert.match(await page.locator('#accounts-hero').innerText(),/Current net worth[\s\S]*\$970/);
       assert.ok(await page.locator('#accounts-chart .nw-chart-canvas').evaluate(e=>e.getBoundingClientRect().height)<=190);
+      assert.equal((await page.locator('#accounts-history-toggle').innerText()).trim(),'');
+      assert.ok(await page.locator('#accounts-history-toggle').evaluate(e=>e.getBoundingClientRect().width===44&&getComputedStyle(e).borderTopWidth==='0px'));
+      assert.deepEqual(await page.evaluate(()=>Array.from(document.querySelectorAll('.accounts-wrap .stg-btn,.accounts-wrap .sav-update-btn,.accounts-wrap .nw-chart-ranges button,.accounts-wrap .nw-chart-series button')).filter(b=>b.getClientRects().length&&b.scrollWidth>b.clientWidth+1).map(b=>b.textContent.trim())),[], 'account button labels fit');
       await page.locator('#accounts-chart').getByRole('button',{name:'ALL',exact:true}).click();
       await page.getByRole('button',{name:'Hide graph',exact:true}).press('Enter');
       assert.equal(await page.locator('#accounts-history-plot').isVisible(),false);

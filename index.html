@@ -135,7 +135,8 @@
             </div>
           </div>
           <div id="log-edit-bar" style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:8px">
-            <button id="log-edit-btn" data-action="log-edit-toggle" class="log-edit-btn">Edit</button>
+            <span id="log-order-hint" class="hidden">Order is saved for this training day</span>
+            <button id="log-edit-btn" data-action="log-edit-toggle" class="log-edit-btn">Edit order & exercises</button>
           </div>
           <div id="exercise-list"></div>
           <button id="log-add-exercise-btn" data-action="log-add-exercise" style="display:none;width:100%;padding:12px;margin-top:2px;border:1.5px dashed rgba(var(--accent-rgb),.4);border-radius:10px;background:transparent;color:var(--accent-text);font-size:14px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent">+ Add exercise</button>
@@ -158,21 +159,16 @@
         <div id="log-program-content"></div>
       </div>
 
-      <!-- Exercise Library, re-homed from the #view-exercise-library overlay. Same ids, same
-           handlers — only the wrapper changed, so renderExerciseLibList() and the filter row
-           are untouched. -->
+      <!-- Search and Add stay available while the grouped library scrolls. -->
       <div id="log-sub-exercises" class="hidden" role="tabpanel" aria-labelledby="lg-ex-btn">
-        <div class="log-sec-head">
-          <span class="log-sec-title">Exercise Library</span>
+        <div class="lib-header">
+          <div class="lib-title"><h1 class="log-sec-title">Exercise library</h1><div id="lib-results-count" role="status"></div></div>
+          <input id="lib-search" type="search" aria-label="Search exercise library" placeholder="Search exercises or muscles" oninput="renderExerciseLibList()" class="modal-input">
+          <button type="button" class="lib-add-btn" data-action="new-custom-exercise" aria-label="Add exercise"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add<span class="lib-add-word"> exercise</span></span></button>
         </div>
-        <div style="padding:0 0 10px">
-          <input id="lib-search" type="search" placeholder="Search exercises…" oninput="renderExerciseLibList()" class="modal-input" style="width:100%">
-        </div>
-        <!-- Category filter pills — rendered by renderMuscleFilterRow() so user-added groups appear. -->
-        <div id="lib-filter-row" class="lg-scroll-x" style="display:flex;gap:8px;padding:0 0 12px;overflow-x:auto"></div>
-        <div id="exercise-lib-list"></div>
-        <div style="padding:16px 0 calc(env(safe-area-inset-bottom,0px) + 24px)">
-          <button data-action="new-custom-exercise" style="width:100%;padding:14px;border-radius:14px;border:1px dashed var(--border);background:none;color:var(--accent-text);font-size:15px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent">+ Add custom exercise</button>
+        <div class="lib-workspace">
+          <div id="lib-filter-row" class="lib-filter-toolbar" role="group" aria-label="Exercise muscle groups"></div>
+          <div id="exercise-lib-list"></div>
         </div>
       </div>
 
@@ -1086,14 +1082,16 @@
 
   <!-- SWAP MODAL — reuses the Training Split editor's bottom-sheet picker (.se-picker*) -->
   <div class="se-picker-backdrop hidden" id="swap-backdrop" onclick="closeSwapModal()"></div>
-  <div class="se-picker hidden" id="swap-modal">
-    <div class="se-picker-head">Swap exercise<button class="se-picker-x" onclick="closeSwapModal()" aria-label="Close">×</button></div>
+  <div class="se-picker hidden" id="swap-modal" role="dialog" aria-modal="true" aria-labelledby="swap-title">
+    <div class="se-picker-head"><span id="swap-title">Swap exercise</span><button class="se-picker-x" onclick="closeSwapModal()" aria-label="Close exercise picker">×</button></div>
     <div class="se-picker-sub" id="swap-original-label"></div>
-    <input class="se-picker-search" type="text" id="swap-input" placeholder="Search or type a new name…" oninput="renderSwapList()" autocomplete="off">
-    <div class="se-picker-list" id="swap-lib-list" style="max-height:40vh"></div>
+    <div class="swap-search-row"><input class="se-picker-search" type="search" id="swap-input" aria-label="Search replacement exercises" placeholder="Search names or muscle groups" oninput="renderSwapList()" autocomplete="off" enterkeyhint="search"><button type="button" class="stg-btn" onclick="document.getElementById('swap-input').blur()">Done typing</button></div>
+    <select id="swap-muscle" aria-label="Filter replacement muscle group" onchange="renderSwapList()"></select>
+    <div id="swap-results-count" class="card-cap" role="status"></div>
+    <div class="se-picker-list" id="swap-lib-list"></div>
     <div class="se-picker-actions">
       <button class="modal-btn secondary" onclick="resetSwapDefault()">Reset to default</button>
-      <button class="modal-btn primary" onclick="confirmSwap()">Save</button>
+      <button class="modal-btn secondary" onclick="closeSwapModal()">Cancel</button>
     </div>
   </div>
 
@@ -1522,6 +1520,7 @@
 <script src="js/ai-remote.js" defer></script>
 <script src="js/home-category-model.js" defer></script>
 <script src="js/home-category.js" defer></script>
+<script src="js/training.js" defer></script>
 <script src="js/app.js" defer></script>
 </body>
 </html>

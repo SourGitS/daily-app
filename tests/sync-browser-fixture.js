@@ -53,6 +53,22 @@
       Object.keys(stores).forEach(key=>delete stores[key]);stores.profile={budgetRhythmSeen:2};
     }
   }
+  if(params.has('training')){
+    const date=offset=>{const d=new Date();d.setDate(d.getDate()+offset);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+    const upper=[{name:'Low-incline Smith chest press',sets:3},{name:'Lat pulldown',sets:3},{name:'Dumbbell shoulder press',sets:3},{name:'Cable triceps extension',sets:2},{name:'Dumbbell biceps curl',sets:2},{name:'Dead hangs',sets:2,unit:'secs'}];
+    const lower=[{name:'Smith squat',sets:4},{name:'Romanian deadlift',sets:3},{name:'Seated leg curl',sets:3},{name:'Standing calf raise',sets:3}];
+    stores.trainingSplit={v:JSON.stringify({types:[{id:'upper',name:'Upper body',exercises:upper},{id:'lower',name:'Lower body',exercises:lower}],schedule:[0,1]}),t:500};
+    const session=(id,offset,dayNum,sessionType,exercises)=>({id,date:date(offset),dayNum,sessionType,duration:45,completed:true,exercises:exercises.map(e=>({name:e.name,muscle:e.muscle||(/curl/.test(e.name)?'arms':'chest'),unit:e.unit||'reps',sets:[{weight:20,reps:8,type:'warmup'},{weight:40,reps:8,type:'working'},{weight:40,reps:9,type:'working'}]}))});
+    stores.sessions={
+      upper:session('upper',-5,1,'Upper body',[{name:upper[0].name,muscle:'chest'},{name:'Lat pulldown',muscle:'back'},{name:'Dumbbell biceps curl',muscle:'arms'}]),
+      lower:session('lower',-2,2,'Lower body',[{name:'Smith squat',muscle:'quads'},{name:'Romanian deadlift',muscle:'hamstrings'},{name:'Standing calf raise',muscle:'calves'}])};
+    stores.exerciseLib={v:JSON.stringify([{id:'incline',name:upper[0].name,muscle:' Chest ',custom:true},
+      {id:'curl',name:'Dumbbell biceps curl',muscle:'Biceps',custom:true},{id:'triceps',name:'Cable triceps extension',muscle:'triceps',custom:true},
+      {id:'seated-row',name:'Seated cable row',muscle:'BACK',custom:true},{id:'hip',name:'Hip thrust',muscle:'Glutes',custom:true},
+      {id:'plank',name:'Plank',muscle:'Core',unit:'secs',custom:true}]),t:500};
+    stores.sessions.old=session('old',-40,1,'Earlier split',[{name:'Farmer’s carry',muscle:'forearms'}]);
+    stores.profile.budgetRhythmSeen=2;
+  }
   const fresh=params.has('fresh')||selectedUid==='fresh-fixture';
   if(params.has('fresh')) Object.keys(stores).filter(k=>k!=='profile').forEach(k=>delete stores[k]);
   if(new URL(location.href).searchParams.has('period')){

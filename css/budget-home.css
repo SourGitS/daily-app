@@ -2655,18 +2655,24 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .acct-payoff-detail{padding:8px 0 2px;font-size:12px;line-height:1.5}
 .acct-history{padding:0;overflow:hidden;margin-bottom:12px}
 .acct-history .nw-chart-card{border:0;box-shadow:none;background:transparent;margin:0;border-radius:0}
-.acct-history .nw-chart-head{align-items:center;padding-top:14px}
+.acct-history .nw-chart-head{align-items:flex-start;padding-top:14px}
+.acct-history .nw-chart-head>div:first-child{min-width:0;flex:1}
 .acct-history .nw-chart-canvas{height:170px;padding:12px 14px 4px 4px}
 .acct-history .nw-chart-value{font-size:18px;display:inline-block;margin-top:6px}
 .nw-chart-last-label{font:500 11px var(--font-ui);color:var(--muted);letter-spacing:0}
 .acct-history .nw-chart-change{display:inline-block;margin-left:10px;font-size:11px}
-.acct-history .nw-chart-ranges button{min-height:44px}
+.acct-history .nw-chart-ranges{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:176px;max-width:calc(100% - 32px);margin:6px 16px 0}
+.acct-history .nw-chart-ranges button{display:flex;align-items:center;justify-content:center;min-width:0;width:100%;height:44px;min-height:44px;margin:0;padding:0 4px;line-height:1.2;text-align:center}
 .acct-history .nw-chart-ranges[hidden],#accounts-history-plot[hidden]{display:none}
-.nw-chart-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
-.nw-chart-toggle{min-height:44px;padding:9px 12px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:10px;font:600 12px var(--font-ui);white-space:nowrap;cursor:pointer}
+.nw-chart-toggle{display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;height:44px;min-height:44px;margin:-8px -8px 0 0;padding:0;background:transparent;color:var(--muted);border:0;border-radius:10px;cursor:pointer}
+.nw-chart-toggle svg{flex:none;transition:transform .16s ease}
+.nw-chart-toggle[aria-expanded="true"] svg{transform:rotate(180deg)}
 .nw-chart-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .acct-history .nw-chart-series{gap:6px;padding:6px 12px 10px}
-.acct-history .nw-chart-series button{height:44px}
+.acct-history .nw-chart-series>span,.acct-history .nw-chart-series>button{height:44px;min-height:44px;line-height:1.2}
+.accounts-wrap button,.acct-statement-dialog button{-webkit-appearance:none;appearance:none;box-sizing:border-box;font-family:var(--font-ui);text-align:center}
+.accounts-wrap .stg-btn,.accounts-wrap .sav-update-btn,.acct-statement-dialog .stg-btn{display:inline-flex;align-items:center;justify-content:center;max-width:100%;min-width:0;line-height:1.35;white-space:normal;overflow-wrap:anywhere}
+.accounts-wrap button svg{flex-shrink:0}
 .acct-history .nw-chart-verdict,.acct-history .nw-chart-mix{display:none}
 .acct-history .nw-chart-coverage{flex-basis:100%;max-width:760px}
 .nw-chart-notes{min-width:0;max-width:520px;margin-left:auto}
@@ -2697,14 +2703,14 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
   .acct-overview-totals>div+div{padding-left:16px}
   .acct-payoff-details>summary{gap:8px;flex-wrap:wrap}
   .acct-payoff-summary{flex-basis:100%}
-  .acct-history .nw-chart-head{flex-wrap:wrap}
+  .acct-history .nw-chart-head{flex-wrap:nowrap}
   .acct-history .nw-chart-change{display:block;margin-left:0}
   .acct-history .nw-chart-canvas{height:160px}
 }
 .acct-list-toolbar{display:grid;grid-template-columns:minmax(90px,1fr) auto auto;gap:12px;align-items:center;margin:18px 0 14px}
 #accounts-list-head .acct-list-heading{margin:0}
 .acct-list-actions,.acct-list-tools{display:flex;align-items:center;gap:8px;min-width:0}
-.acct-list-actions .stg-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 12px;background:var(--surface-card);border:1px solid var(--surface-card-border);border-radius:10px;font-size:13px;white-space:nowrap}
+.acct-list-actions .stg-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:0;min-height:44px;padding:10px 12px;background:var(--surface-card);border:1px solid var(--surface-card-border);border-radius:10px;font-size:13px;line-height:1.35;white-space:normal}
 .acct-list-actions .stg-btn svg{flex:none;width:15px;height:15px;color:inherit}
 .acct-list-actions .stg-btn:hover{background:var(--surface-raised)}
 .acct-list-tools .stg-btn{min-height:44px;padding:10px;border-color:transparent;font-size:12px}

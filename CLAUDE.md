@@ -1,5 +1,57 @@
 # Daily — Project Reference
 
+## v444 Log and Accounts refinement — release authorised, 2026-11-08
+
+- Francois authorised committing and pushing all session changes, including the Log redesign,
+  session reordering, category/search/swap work and the final iPhone/Accounts control fixes.
+  This integrates the local v442 review over shipped v443 branding. Preview/testing uses
+  isolated sample records. No production records or Firebase configuration were edited.
+- Today keeps the canonical `logTodayBrief()` states and guarded workout routes. Its focused
+  accent hero has an opaque neutral seven-day footer and no outer outline, matching Home.
+  Weight remains available through Stats
+  and the existing post-save prompts. Plan rows and recent sessions remain below the new map.
+- Follow-up visual refinement removes the duplicate History/Splits text links, compacts the
+  seven-day dock, and gives Coverage a single header/control row with set-count bars and a
+  clearer selected-group breakdown. The body artwork now uses curved paired muscle shapes,
+  finer anatomical divisions and neutral theme-aware surfaces. No new metrics or writers.
+- `js/training.js` owns shared read-only vocabulary, search and the front/back SVG coverage
+  view. This workout/Next workout uses the advertised plan; Last 7 days counts dated recorded
+  working sets, excluding warmups, empty, deleted, future and undated records. Saved primary
+  groups stay historical; missing classifications use labelled name inference. Custom groups
+  and generic historical Legs remain in the list, with no invented recovery or readiness.
+- Edit order & exercises exposes 44px handles, up/down buttons and Alt+Arrow keys. Pointer
+  dragging works on desktop and touch. Validated name permutations use existing dayCustom.order
+  and wt_setdata writers, retaining set objects, swaps, checks, active exercise, collapse state,
+  note and timer. The order is explicitly labelled as saved for the training day. Cancelled
+  drags and stale/incomplete permutations do not save; workout history is never reordered.
+- Library, session-add, split-add and swap share case/punctuation/word-order/abbreviation-aware
+  search. Available exercises include previous workouts, day additions and replacements;
+  hidden entries stay hidden. Current custom definitions override generated defaults. Category
+  aliases are normalized on read without a boot migration. Historical records are not rewritten.
+  Future session snapshots use the selected catalog entry's muscle/unit through the existing
+  save path, preserving metadata for exercises returning from earlier splits.
+- Francois rejected the library dropdown and bottom Add button. The library now has visible
+  counted category navigation, grouped exercise cards and a pinned search/Add toolbar. Wide
+  layouts use independent card columns; phones show wrapping group buttons. Each group header
+  uses the shared hero gradient over gray exercise rows, as requested. Filtering and cancelled
+  Add forms write nothing; category counts refresh with library changes. The browser suite
+  covers grouping/search/filtering and Add remaining reachable after scrolling to the end.
+- Swap is an opaque labelled dialog with a visible group filter, result count, full-width
+  rows and explicit new-name action. Current/duplicate choices are disabled. Phone opening
+  allows browsing without forcing the keyboard. Geometry follows visualViewport, including
+  its offset and small landscape keyboard inset; pointer selection freezes the geometry
+  until click delivery. Done typing, Cancel, Escape, focus return and keyboard containment
+  are supported. Existing entered sets block a reps/seconds reinterpretation.
+- The coverage period switch uses two equal grid columns with explicit native-button resets
+  and 44px targets. Accounts actions/dialog buttons have explicit alignment and wrapping;
+  graph visibility is an accessible, borderless header chevron with period controls inside
+  the disclosed plot. Plot visibility, focus, range/series and financial writers stay intact.
+- Cache daily-v444, 726 Node checks pass. Synthetic browser verification covers 320/390/
+  844-landscape/1024/1440 in both themes, touch/mouse/keyboard reorder, actual reload, guarded
+  unit changes and saving a partial workout with earlier records preserved. Production Firebase
+  and physical iPhone/Safari keyboard behaviour remain unverified. Review screenshots and the
+  static release candidate remain ignored in temp-analysis; the remote connector stays disabled.
+
 ## Overview and Plan — v441, release authorised, 2026-11-08
 
 Francois authorised committing and pushing all pending v437–v441 Overview and Plan work.

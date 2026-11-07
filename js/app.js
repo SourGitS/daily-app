@@ -3501,13 +3501,13 @@ function libGuessMuscle(name){
   const n=(name||'').toLowerCase();
   if(/(abs|core|plank|crunch|oblique)/.test(n)) return 'core';
   if(/(calf|calves)/.test(n)) return 'calves';
-  if(/(hamstring|leg curl|romanian|\brdl\b)/.test(n)) return 'hamstrings';
+  if(/(hamstring|leg curl|romanian|\brdl\b|stiff.?leg)/.test(n)) return 'hamstrings';
   if(/(glute|hip thrust|hip-thrust)/.test(n)) return 'glutes';
   if(/(quad|squat|lunge|leg press|leg extension)/.test(n)) return 'quads';
-  if(/(forearm|wrist|grip)/.test(n)) return 'forearms';
+  if(/(forearm|wrist|grip|dead.?hang)/.test(n)) return 'forearms';
   if(/(lower back|deadlift|hyperextension|good morning|back extension)/.test(n)) return 'lower back';
   if(/(bicep|tricep|curl|pushdown|extension)/.test(n)) return 'arms';
-  if(/(shoulder|lateral|delt|overhead)/.test(n)) return 'shoulders';
+  if(/(shoulder|lateral|delt|overhead|face.?pull|reverse.?fly)/.test(n)) return 'shoulders';
   if(/(row|pull|lat|hang|chin)/.test(n)) return 'back';
   if(/(chest|bench|incline|fly|dip|press)/.test(n)) return 'chest';
   return 'other';
@@ -3523,7 +3523,7 @@ function loadCustomMuscles(){
 function saveCustomMuscles(arr){ lsSave('wt_custom_muscles', arr, 'customMuscles'); }
 function allMuscleGroups(){
   const seen=new Set(), out=[];
-  [...BUILTIN_MUSCLES, ...loadCustomMuscles()].forEach(m=>{ const k=(m||'').toLowerCase().trim(); if(k&&!seen.has(k)){ seen.add(k); out.push(k); } });
+  [...BUILTIN_MUSCLES, ...loadCustomMuscles(), ...exerciseSearchCatalog().map(e=>e.muscle)].forEach(m=>{ const k=trainingMuscleKey(m); if(k&&!seen.has(k)){ seen.add(k); out.push(k); } });
   return out;
 }
 function muscleLabel(m){ m=(m||''); return m.charAt(0).toUpperCase()+m.slice(1); }
@@ -3553,14 +3553,18 @@ function loadLibHidden(){
 function saveLibHidden(arr){ lsSave('wt_lib_hidden', arr, 'libHidden'); }
 function loadExerciseLib(){
   let customs=[];
-  try{ const a=JSON.parse(localStorage.getItem('wt_exercise_lib')); if(Array.isArray(a)) customs=a; }catch(e){}
+  try{ const a=JSON.parse(localStorage.getItem('wt_exercise_lib')); if(Array.isArray(a)) customs=a.filter(e=>e&&typeof e.name==='string'); }catch(e){}
   const customIds=new Set(customs.map(c=>c.id));
+  const customNames=new Set(customs.map(c=>c.name.toLowerCase()));
   const hidden=new Set(loadLibHidden());
+  const definitions=splitTypes().flatMap(t=>t.exercises||[]);
   const defaults=allExerciseNames().map(name=>({
     id:'ex_def_'+name.toLowerCase().replace(/[^a-z0-9]+/g,'_'),
-    name, muscle:libGuessMuscle(name), custom:false
-  })).filter(d=>!customIds.has(d.id) && !hidden.has(d.id));
-  return [...defaults, ...customs];
+    name, muscle:libGuessMuscle(name), custom:false,
+    unit:definitions.find(e=>e.name===name)?.unit,
+    allowNegative:!!definitions.find(e=>e.name===name)?.allowNegative
+  })).filter(d=>!customIds.has(d.id) && !customNames.has(d.name.toLowerCase()) && !hidden.has(d.id));
+  return [...defaults, ...customs].filter(e=>e&&typeof e.name==='string').map(e=>({...e,muscle:trainingMuscle(e)}));
 }
 function saveExerciseLib(lib){
   // Persist only the user's customs; defaults always regenerate from the program.
@@ -3574,12 +3578,13 @@ function saveExerciseLib(lib){
 // on renderLog and whenever the library is edited.
 let _allowNegNames=new Set();
 function refreshAllowNegNames(){
-  try{ _allowNegNames=new Set(loadExerciseLib().filter(e=>e.allowNegative).map(e=>e.name)); }
+  try{ _allowNegNames=new Set(exerciseSearchCatalog().filter(e=>e.allowNegative).map(e=>e.name)); }
   catch(e){ _allowNegNames=new Set(); }
 }
 // True if an exercise takes a negative (assisted) load — either its plan definition says so
 // (the built-in Pullups) or the user flagged it in the Exercise Library.
 function exerciseAllowsNegative(ex){
+  if(ex&&S.swaps[ex.name]&&S.swaps[ex.name]!==ex.name) return _allowNegNames.has(dn(ex.name));
   if(ex && ex.allowNegative) return true;
   return !!(ex && _allowNegNames.has(ex.name));
 }
@@ -3590,10 +3595,11 @@ function exerciseAllowsNegative(ex){
 // records both load and duration.
 let _secsNames=new Set();
 function refreshSecsNames(){
-  try{ _secsNames=new Set(loadExerciseLib().filter(e=>e.unit==='secs').map(e=>e.name)); }
+  try{ _secsNames=new Set(exerciseSearchCatalog().filter(e=>e.unit==='secs').map(e=>e.name)); }
   catch(e){ _secsNames=new Set(); }
 }
 function exerciseUnit(ex){
+  if(ex&&S.swaps[ex.name]&&S.swaps[ex.name]!==ex.name) return _secsNames.has(dn(ex.name))?'secs':'reps';
   if(ex && ex.unit) return ex.unit;
   return (ex && _secsNames.has(ex.name)) ? 'secs' : 'reps';
 }
@@ -3626,19 +3632,27 @@ function closeExerciseLibrary(){
   if(S.view==='log') setLogTab('today');
   setNavActive();
 }
-// Library filter pills (All + every group). Rebuilt so user-added groups show up.
-function renderMuscleFilterRow(){
+// Canonical group order is shared by the filter rail and the section headings.
+function exerciseLibraryGroups(catalog){
+  const groups=new Map();
+  catalog.forEach(e=>{const key=trainingMuscle(e);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(e);});
+  const order=[...BUILTIN_MUSCLES,...[...groups.keys()].filter(m=>!BUILTIN_MUSCLES.includes(m)).sort()];
+  return order.filter(m=>groups.has(m)).map(m=>({muscle:m,exercises:groups.get(m)}));
+}
+function renderMuscleFilterRow(catalog){
   const row=document.getElementById('lib-filter-row'); if(!row) return;
-  row.innerHTML=['all', ...allMuscleGroups()].map(m=>
-    '<button class="muscle-filter'+(m===_libMuscle?' active':'')+'" data-muscle="'+m+'" data-action="lib-filter-muscle">'+(m==='all'?'All':_catEscHtml(muscleLabel(m)))+'</button>'
-  ).join('');
+  catalog=catalog||exerciseSearchCatalog();
+  const groups=exerciseLibraryGroups(catalog);
+  const items=[{muscle:'all',count:catalog.length},...groups.map(g=>({muscle:g.muscle,count:g.exercises.length}))];
+  if(_libMuscle!=='all'&&!groups.some(g=>g.muscle===_libMuscle))items.push({muscle:_libMuscle,count:0});
+  row.innerHTML=items.map(g=>'<button type="button" class="muscle-filter'+(g.muscle===_libMuscle?' active':'')+'" aria-pressed="'+(g.muscle===_libMuscle)+'" data-action="lib-filter-muscle" data-muscle="'+escAttr(g.muscle)+'"><span>'+escText(g.muscle==='all'?'All exercises':muscleLabel(g.muscle))+'</span><span class="lib-filter-count">'+g.count+'</span></button>').join('');
 }
 // Add/edit-exercise picker: the group pills + a "+" bubble (or an inline input while adding).
 let _addingMuscle=false;
 function renderExMuscleRow(){
   const row=document.getElementById('exlib-muscle-row'); if(!row) return;
   let h=allMuscleGroups().map(m=>
-    '<button type="button" class="exlib-muscle-pick'+(m===_newExMuscle?' active':'')+'" data-muscle="'+m+'" data-action="exlib-pick-muscle">'+_catEscHtml(muscleLabel(m))+'</button>'
+    '<button type="button" class="exlib-muscle-pick'+(m===_newExMuscle?' active':'')+'" data-muscle="'+escAttr(m)+'" data-action="exlib-pick-muscle">'+_catEscHtml(muscleLabel(m))+'</button>'
   ).join('');
   h += _addingMuscle
     ? '<input id="exlib-new-muscle" class="exlib-muscle-add-input" type="text" placeholder="New group" maxlength="16" autocomplete="off" onkeydown="if(event.key===\'Enter\'){event.preventDefault();commitAddMuscle();}" onblur="commitAddMuscle()">'
@@ -3660,21 +3674,18 @@ function commitAddMuscle(){
   renderExMuscleRow();
 }
 function renderExerciseLibList(){
-  const q=(document.getElementById('lib-search')?.value||'').toLowerCase();
-  const lib=loadExerciseLib();
-  const filtered=lib.filter(e=>(_libMuscle==='all'||e.muscle===_libMuscle)&&(!q||e.name.toLowerCase().includes(q)));
+  const q=document.getElementById('lib-search')?.value||'';
+  const catalog=exerciseSearchCatalog(),filtered=trainingFilterExercises(catalog,q,_libMuscle);
   const el=document.getElementById('exercise-lib-list'); if(!el) return;
-  el.innerHTML=filtered.map(e=>
-    '<div class="lib-row">'+
-      '<div style="flex:1;min-width:0;cursor:pointer" data-ex="'+_catEsc(e.name)+'" onclick="openExerciseDetail(this.dataset.ex)">'+
-      '<div class="lib-row-name">'+_catEscHtml(e.name)+'</div>'+
-      '<div class="lib-row-muscle">'+_catEscHtml(muscleLabel(e.muscle))+' · tap for history</div></div>'+
-      // Delete now lives inside the edit modal (openEditExercise) — see Prompt 17.
-      '<div style="display:flex;gap:6px;flex-shrink:0">'
-        +'<button class="lib-edit-btn" data-action="lib-edit-exercise" data-id="'+e.id+'" aria-label="Edit exercise">✎</button>'
-      +'</div>'+
-    '</div>'
-  ).join('')||'<div style="padding:32px 0;text-align:center;color:var(--muted)">No exercises found</div>';
+  renderMuscleFilterRow(catalog);
+  const count=document.getElementById('lib-results-count');if(count)count.textContent=filtered.length+' exercise'+(filtered.length===1?'':'s')+(_libMuscle!=='all'?' · '+muscleLabel(_libMuscle):'');
+  el.innerHTML=exerciseLibraryGroups(filtered).map(group=>'<section class="lg-card lib-group" aria-label="'+escAttr(muscleLabel(group.muscle)+' exercises')+'">'+
+    cardHeader('target',escText(muscleLabel(group.muscle)),'<span class="lib-group-count">'+group.exercises.length+'</span>')+
+    group.exercises.map(e=>'<div class="lib-row">'+
+      '<button type="button" class="lib-open" data-ex="'+escAttr(e.name)+'" aria-label="'+escAttr('View '+e.name)+'" onclick="openExerciseDetail(this.dataset.ex)">'+
+      '<span class="lib-row-name">'+escText(e.name)+'</span><span class="lib-row-muscle">'+(e.unit==='secs'?'Seconds':'Repetitions')+(e.allowNegative?' · Assisted loads':'')+'</span></button>'+
+      '<button type="button" class="lib-edit-btn" data-action="lib-edit-exercise" data-id="'+escAttr(e.id)+'" aria-label="'+escAttr('Edit '+e.name)+'"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5L9 20l-6 1 1-6L16 3Z M14 5l5 5"/></svg></button></div>').join('')+'</section>').join('')||
+    '<div class="lg-card lg-blank">'+(catalog.length?'No matches. Try fewer words or select All exercises.':'No exercises yet.')+'</div>';
 }
 // New/edit-exercise modal — replaces window.prompt() (blocked in iOS standalone PWAs).
 // The same form serves both paths; _editExId picks which. Only customs are editable:
@@ -3700,7 +3711,7 @@ function openNewExercise(){
   setTimeout(()=>{ if(nm) nm.focus(); }, 50);
 }
 function openEditExercise(id){
-  const ex=loadExerciseLib().find(e=>e.id===id);
+  const ex=exerciseSearchCatalog().find(e=>e.id===id);
   if(!ex) return;
   _editExId=id;
   _newExMuscle=ex.muscle||'other';
@@ -3736,7 +3747,7 @@ function confirmNewExercise(){
   const exUnit=(document.getElementById('exlib-unit-secs')||{}).checked?'secs':undefined;
   const lib=loadExerciseLib();
   if(_editExId){
-    const ex=lib.find(e=>e.id===_editExId);
+    const ex=lib.find(e=>e.id===_editExId)||exerciseSearchCatalog().find(e=>e.id===_editExId);
     if(ex){
       const oldName=ex.name;
       if(name!==oldName && lib.some(e=>e.id!==_editExId && e.name.toLowerCase()===name.toLowerCase())
@@ -3793,7 +3804,8 @@ document.addEventListener('click',function(e){
   if(e.target.closest('[data-action="open-exercise-library"]')){ openExerciseLibrary(); return; }
   if(e.target.closest('[data-action="close-exercise-library"]')){ closeExerciseLibrary(); return; }
   const f=e.target.closest('[data-action="lib-filter-muscle"]');
-  if(f){ _libMuscle=f.dataset.muscle; renderMuscleFilterRow(); renderExerciseLibList(); return; }
+  if(f){ _libMuscle=f.dataset.muscle; renderExerciseLibList();
+    const selected=Array.from(document.querySelectorAll('#lib-filter-row button')).find(b=>b.dataset.muscle===_libMuscle);if(selected)selected.focus({preventScroll:true});return; }
   const ed=e.target.closest('[data-action="lib-edit-exercise"]');
   if(ed){ openEditExercise(ed.dataset.id); return; }
   if(e.target.closest('[data-action="new-custom-exercise"]')){ openNewExercise(); return; }
@@ -3830,44 +3842,68 @@ function refreshActiveHighlight(){
 }
 
 // ── Drag-to-reorder exercises (edit mode, touch) ──────────────────
-// HTML5 drag-and-drop doesn't work on iOS, so use touch events. Order persists per day
+// Pointer events cover mouse and touch. Order persists per day
 // type in dayCustom.order (effectiveExercises applies it). Saved sessions are untouched.
 function logSetExerciseOrder(orderedNames){
+  const before=type(S.dayIdx).exercises.map(e=>e.name);
+  if(!Array.isArray(orderedNames)||orderedNames.length!==before.length||new Set(orderedNames).size!==before.length||orderedNames.some(n=>!before.includes(n))) return false;
+  if(orderedNames.every((n,i)=>n===before[i])) return false;
+  const checked=new Set([...S.checked].map(i=>before[i])),collapsed=new Set([...exCollapsed].map(i=>before[i]));
+  const active=before[activeExIdx];
   const base=typeForDayIdx(S.dayIdx);
   const c=dayCustomFor(base.id);
   c.order=orderedNames.slice();
   saveDayCustom();
+  S.checked=new Set(orderedNames.map((n,i)=>checked.has(n)?i:-1).filter(i=>i>=0));
+  exCollapsed=new Set(orderedNames.map((n,i)=>collapsed.has(n)?i:-1).filter(i=>i>=0));
+  activeExIdx=active?orderedNames.indexOf(active):-1;
+  saveSetData();
+  return true;
+}
+function logMoveExercise(ei,delta){
+  const names=type(S.dayIdx).exercises.map(e=>e.name),next=ei+delta;
+  if(!logEditMode||next<0||next>=names.length) return;
+  const name=names.splice(ei,1)[0];names.splice(next,0,name);
+  if(!logSetExerciseOrder(names)) return;
+  renderLog();
+  const handle=document.querySelector('#ec'+next+' .ex-drag-handle');if(handle)handle.focus({preventScroll:true});
+  showToast('Moved '+dn(name)+' to position '+(next+1));
 }
 function persistExOrderFromDOM(){
-  const exs=type(S.dayIdx).exercises; // pre-save order — card ids (ec{ei}) index into this
   const cards=[...document.querySelectorAll('#exercise-list .ex-card')];
-  const names=cards.map(c=>{ const ei=parseInt((c.id||'').replace('ec',''),10); return exs[ei]?exs[ei].name:null; }).filter(Boolean);
-  if(names.length){ logSetExerciseOrder(names); recomputeChecked(); renderLog(); }
+  const names=cards.map(c=>c.dataset.exerciseName).filter(Boolean);
+  if(names.length&&logSetExerciseOrder(names)) renderLog();
 }
 (function(){
-  let dragCard=null;
-  document.addEventListener('touchstart',function(e){
-    if(!logEditMode) return;
-    const handle=e.target.closest('.ex-drag-handle'); if(!handle) return;
+  let dragCard=null,handle=null,startY=0,moved=false,pointerId=null;
+  document.addEventListener('pointerdown',function(e){
+    if(!logEditMode||dragCard) return;
+    handle=e.target.closest('.ex-drag-handle'); if(!handle||e.button!==0) return;
     const card=handle.closest('.ex-card'); if(!card) return;
-    dragCard=card; card.classList.add('ex-dragging');
+    dragCard=card;pointerId=e.pointerId;startY=e.clientY;moved=false;card.classList.add('ex-dragging');
+    handle.setPointerCapture(e.pointerId);
     e.preventDefault();
-  },{passive:false});
-  document.addEventListener('touchmove',function(e){
-    if(!dragCard) return;
+  });
+  document.addEventListener('pointermove',function(e){
+    if(!dragCard||e.pointerId!==pointerId) return;
     e.preventDefault();
-    const t=e.touches[0];
-    const over=document.elementFromPoint(t.clientX,t.clientY);
-    const overCard=(over&&over.closest)?over.closest('.ex-card'):null;
-    if(overCard&&overCard!==dragCard&&overCard.parentElement===dragCard.parentElement){
-      const r=overCard.getBoundingClientRect();
-      const after=t.clientY>r.top+r.height/2;
-      dragCard.parentElement.insertBefore(dragCard, after?overCard.nextSibling:overCard);
+    if(Math.abs(e.clientY-startY)<6&&!moved) return;
+    moved=true;
+    const cards=[...dragCard.parentElement.children].filter(c=>c!==dragCard&&c.classList.contains('ex-card'));
+    const next=cards.find(c=>e.clientY<c.getBoundingClientRect().top+c.getBoundingClientRect().height/2);
+    dragCard.parentElement.insertBefore(dragCard,next||null);
+    let scroller=dragCard.parentElement;
+    while(scroller&&scroller.scrollHeight<=scroller.clientHeight+1)scroller=scroller.parentElement;
+    if(scroller){
+      const r=scroller.getBoundingClientRect();
+      if(e.clientY<r.top+50)scroller.scrollTop-=24;
+      if(e.clientY>r.bottom-50)scroller.scrollTop+=24;
     }
-  },{passive:false});
-  function endDrag(){ if(!dragCard) return; dragCard.classList.remove('ex-dragging'); dragCard=null; persistExOrderFromDOM(); }
-  document.addEventListener('touchend',endDrag);
-  document.addEventListener('touchcancel',endDrag);
+  });
+  function endDrag(e){if(!dragCard||e.pointerId!==pointerId)return;dragCard.classList.remove('ex-dragging');dragCard=null;handle=null;pointerId=null;
+    if(e.type==='pointercancel'||!moved)renderLog();else persistExOrderFromDOM();}
+  document.addEventListener('pointerup',endDrag);
+  document.addEventListener('pointercancel',endDrag);
 })();
 function toggleLogEdit(){ logEditMode=!logEditMode; renderLog(); }
 function logRemoveExercise(name){
@@ -3923,13 +3959,13 @@ function openAddExercise(){
 }
 function closeAddExercise(){ const m=document.getElementById('log-add-picker'); if(m) m.classList.add('hidden'); }
 function renderAddPicker(){
-  const q=(document.getElementById('logpick-search')?.value||'').toLowerCase();
-  const inDay=new Set(type(S.dayIdx).exercises.map(e=>e.name));
-  const lib=loadExerciseLib().filter(e=>!inDay.has(e.name) && (!q||e.name.toLowerCase().includes(q)));
+  const q=document.getElementById('logpick-search')?.value||'';
+  const inDay=new Set(type(S.dayIdx).exercises.flatMap(e=>[e.name.toLowerCase(),dn(e.name).toLowerCase()]));
+  const lib=trainingFilterExercises(exerciseSearchCatalog(),q).filter(e=>!inDay.has(e.name.toLowerCase()));
   const el=document.getElementById('logpick-list'); if(!el) return;
   el.innerHTML=lib.map(e=>
     '<button class="logpick-row" data-action="logpick-add" data-name="'+_catEsc(e.name)+'" data-muscle="'+e.muscle+'">'+
-      '<span class="logpick-name">'+_catEscHtml(e.name)+'</span><span class="logpick-muscle">'+e.muscle+'</span>'+
+      '<span class="logpick-name">'+_catEscHtml(e.name)+'</span><span class="logpick-muscle">'+escText(muscleLabel(e.muscle))+'</span>'+
     '</button>'
   ).join('')||'<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">Nothing to add — manage your list in the Exercise Library.</div>';
 }
@@ -4178,7 +4214,7 @@ function openMuscleEvidence(muscle,from){
   (S.sessions||[]).forEach(s=>{
     if(s.date<from) return;
     (s.exercises||[]).forEach(ex=>{
-      const resolved=ex.muscle||current[ex.name]||libGuessMuscle(ex.name)||'other';
+      const resolved=trainingMuscleKey(ex.muscle||current[ex.name]||libGuessMuscle(ex.name));
       if(resolved!==muscle) return;
       const n=(ex.sets||[]).filter(set=>{
         if(!set||set.type==='warmup') return false;
@@ -4343,7 +4379,8 @@ function renderLog(animateEntrance){
 
   // Edit-mode controls: button label + the add-exercise button visibility
   const eb=document.getElementById('log-edit-btn');
-  if(eb){ eb.textContent=logEditMode?'Done':'Edit'; eb.classList.toggle('active',logEditMode); }
+  if(eb){ eb.textContent=logEditMode?'Done':'Edit order & exercises'; eb.classList.toggle('active',logEditMode); }
+  const orderHint=document.getElementById('log-order-hint');if(orderHint)orderHint.classList.toggle('hidden',!logEditMode);
   // "+ Add exercise" is always available at the bottom of the day's list (previously it only
   // appeared in Edit mode, so adding to the session required tapping Edit first).
   const ab=document.getElementById('log-add-exercise-btn');
@@ -4467,7 +4504,7 @@ function renderExCard(ex, ei){
     exSummary=workSets.length+'×'+(last.reps||'?');
     if(last.weight) exSummary+=' @ '+last.weight+'kg';
   }
-  return `<div class="ex-card${done?' done':''}${isActive?' active':''}${collapsed?' collapsed':''}" id="ec${ei}">
+  return `<div class="ex-card${done?' done':''}${isActive?' active':''}${collapsed?' collapsed':''}" id="ec${ei}" data-exercise-name="${escAttr(ex.name)}">
     <div class="ex-top ex-top-bar" style="background:transparent">
       <div class="ex-left" onclick="setActiveExercise(${ei})" style="cursor:pointer" title="Set as current exercise">
         <div class="ex-name">${displayName}</div>
@@ -4480,7 +4517,6 @@ function renderExCard(ex, ei){
       <div style="display:flex;gap:6px;align-items:center">
         ${workTotal.length?`<span class="ex-mini-progress">${setsDoneCt}/${workTotal.length} sets</span>`:''}
         ${done?'<span class="exercise-done-check" aria-label="Exercise complete">✓</span>':''}
-        ${logEditMode ? `<span class="ex-drag-handle" aria-label="Drag to reorder" title="Hold and drag to reorder">⠿</span>` : ''}
         <button class="swap-btn" onclick="openSwapModal(${ei})" title="Swap exercise" aria-label="Swap exercise">
           <svg viewBox="0 0 24 24"><path d="M7 16V4m0 0L3 8m4-4 4 4"/><path d="M17 8v12m0 0 4-4m-4 4-4-4"/></svg>
         </button>
@@ -4490,6 +4526,7 @@ function renderExCard(ex, ei){
         ${(logEditMode && !(S.setData[ex.name]||[]).some(s=>s.done)) ? `<button class="ex-del-btn" data-action="log-del-exercise" data-name="${_catEsc(ex.name)}" aria-label="Remove exercise">×</button>` : ''}
       </div>
     </div>
+    ${logEditMode?`<div class="ex-order-controls"><button type="button" class="ex-drag-handle" aria-label="Reorder ${escAttr(displayName)}" title="Drag, or use Alt and arrow keys" onkeydown="if(event.altKey&&(event.key==='ArrowUp'||event.key==='ArrowDown')){event.preventDefault();logMoveExercise(${ei},event.key==='ArrowUp'?-1:1)}">⠿</button><span>Position ${ei+1} of ${exs.length}</span><button type="button" onclick="logMoveExercise(${ei},-1)" aria-label="Move ${escAttr(displayName)} up" ${ei===0?'disabled':''}>↑</button><button type="button" onclick="logMoveExercise(${ei},1)" aria-label="Move ${escAttr(displayName)} down" ${ei===exs.length-1?'disabled':''}>↓</button></div>`:''}
     <div class="ex-collapse-body"${collapsed?' style="height:0;opacity:0;overflow:hidden"':''}>
       ${setRows}
       <div class="set-actions">
@@ -4700,7 +4737,7 @@ function saveSession(){
   // lives under the movement actually performed — e.g. sets done after Bench→Dumbbell Press
   // are stored as "Dumbbell Press", matched literally by the per-exercise history view.
   const libByName={};
-  loadExerciseLib().forEach(e=>{ if(e&&e.name) libByName[e.name]=e; });
+  exerciseSearchCatalog().forEach(e=>{ if(e&&e.name) libByName[e.name]=e; });
   const exercises = t.exercises.map(ex=>{
     const performed=dn(ex.name);
     const libEx=libByName[performed];
@@ -5000,45 +5037,41 @@ function closeWeekReviewModal(){
 function openSwapModal(ei){
   S.swapTarget = ei;
   const ex = type(S.dayIdx).exercises[ei];
+  if(!ex) return;
+  swapTargetName=ex.name;swapTargetDay=S.dayIdx;
   const cur = S.swaps[ex.name];
   // Show the current swap (if any) in the LABEL, not the search box.
   document.getElementById('swap-original-label').textContent =
-    cur ? `${ex.name} → ${cur}. This replacement applies everywhere in your program.` : `Replacing ${ex.name} changes every occurrence until you reset it.`;
+    'Replacing '+dn(ex.name)+' · applies wherever '+ex.name+' appears in your split.';
   // Start the search box EMPTY so the whole library renders. Prefilling it with the current
   // swap name (frequently a custom name absent from the library) made renderSwapList filter
   // the list down to zero rows — the "swap list is empty / swap won't save" bug, since with
   // nothing pickable the swap could never be committed.
   document.getElementById('swap-input').value = '';
+  const filter=document.getElementById('swap-muscle');
+  filter.innerHTML='<option value="all">All muscle groups</option>'+allMuscleGroups().map(m=>'<option value="'+escAttr(m)+'">'+escText(muscleLabel(m))+'</option>').join('');
+  filter.value='all';
   // Bottom-sheet + backdrop pair, mirroring the Training Split picker's open/close.
   document.getElementById('swap-backdrop').classList.remove('hidden');
   document.getElementById('swap-modal').classList.remove('hidden');
   renderSwapList();
   swapSyncKeyboard();
-  setTimeout(()=>document.getElementById('swap-input').focus(), 100);
+  const focus=layoutIsDesktop()?document.getElementById('swap-input'):document.querySelector('#swap-modal .se-picker-x');
+  focus.focus({preventScroll:true});
 }
 function renderSwapList(){
-  const q=(document.getElementById('swap-input')?.value||'').toLowerCase();
-  const lib=loadExerciseLib();
-  const filtered=q?lib.filter(e=>e.name.toLowerCase().includes(q)):lib;
-  const groups={};
-  filtered.forEach(e=>{ const m=e.muscle||'other'; if(!groups[m]) groups[m]=[]; groups[m].push(e); });
-  // Built-in order first, then any user-added groups present — so custom-group exercises still list.
-  const ORDER=[...BUILTIN_MUSCLES, ...Object.keys(groups).filter(m=>!BUILTIN_MUSCLES.includes(m))];
+  const q=(document.getElementById('swap-input')?.value||'').trim(),lib=exerciseSearchCatalog();
+  const filtered=trainingFilterExercises(lib,q,document.getElementById('swap-muscle').value);
+  const current=type(S.dayIdx).exercises.find(e=>e.name===swapTargetName);
+  const inDay=new Set(type(S.dayIdx).exercises.filter(e=>e.name!==swapTargetName).map(e=>dn(e.name).toLowerCase()));
   const el=document.getElementById('swap-lib-list'); if(!el) return;
-  let html='';
-  ORDER.forEach(m=>{
-    if(!groups[m]||!groups[m].length) return;
-    html+='<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;padding:8px 0 2px">'
-      +m.charAt(0).toUpperCase()+m.slice(1)+'</div>';
-    groups[m].forEach(e=>{
-      // Name goes in an HTML-escaped data attribute, read back in the handler. Inlining
-      // JSON.stringify(name) put double quotes INSIDE the double-quoted onclick attribute,
-      // which truncated it to `swapPickExercise(` — so tapping a row did nothing and swaps
-      // couldn't be picked from the list at all.
-      html+='<button class="se-picker-item" data-swap="'+_catEsc(e.name)+'" onclick="swapPickExercise(this.dataset.swap)"><span>'+_catEscHtml(e.name)+'</span><span class="se-picker-muscle">'+e.muscle+'</span></button>';
-    });
-  });
-  el.innerHTML=html||'<div style="padding:12px 0;text-align:center;color:var(--muted);font-size:13px">No exercises found</div>';
+  document.getElementById('swap-results-count').textContent=filtered.length+' exercise'+(filtered.length===1?'':'s');
+  el.innerHTML=filtered.map(e=>{
+    const same=current&&dn(current.name).toLowerCase()===e.name.toLowerCase(),duplicate=inDay.has(e.name.toLowerCase());
+    return '<button type="button" class="se-picker-item swap-result" data-swap="'+escAttr(e.name)+'" onclick="swapPickExercise(this.dataset.swap)" '+(same||duplicate?'disabled':'')+'><span><strong>'+escText(e.name)+'</strong><small>'+escText(muscleLabel(e.muscle))+' · '+(e.unit==='secs'?'Seconds':'Repetitions')+'</small></span><span class="swap-result-end">'+(same?'Current':duplicate?'In this workout':'↗')+'</span></button>';
+  }).join('')||'<div class="lg-blank">No matches. Try fewer words or choose All muscle groups.</div>';
+  if(q&&!lib.some(e=>e.name.toLowerCase()===q.toLowerCase()))el.innerHTML+='<button type="button" class="se-picker-item swap-new" onclick="confirmSwap()">Use “'+escText(q)+'” as a new exercise name</button>';
+  el.scrollTop=0;
 }
 function swapPickExercise(name){
   document.getElementById('swap-input').value=name;
@@ -5051,14 +5084,22 @@ function closeSwapModal(){
   const modal=document.getElementById('swap-modal');
   modal.classList.add('hidden');
   swapClearKeyboardGeometry(modal);
+  const button=document.querySelector('#ec'+S.swapTarget+' .swap-btn');if(button)button.focus({preventScroll:true});
 }
 function confirmSwap(){
-  const ex = type(S.dayIdx).exercises[S.swapTarget];
+  const ex = type(S.dayIdx).exercises.find(e=>e.name===swapTargetName);
+  if(!ex||S.dayIdx!==swapTargetDay){closeSwapModal();return;}
   const newName = document.getElementById('swap-input').value.trim();
   // Empty box = no change: keep whatever's currently set. (The box now starts empty so the full
   // list shows, so an untouched Save must NOT wipe an existing swap.) Removing a swap is done
   // with the "Reset to default" button → resetSwapDefault().
   if(!newName){ closeSwapModal(); return; }
+  if(type(S.dayIdx).exercises.some(e=>e.name!==ex.name&&dn(e.name).toLowerCase()===newName.toLowerCase())){showToast('That exercise is already in this workout');return;}
+  const target=exerciseSearchCatalog().find(e=>e.name===newName);
+  const nextUnit=(target?target.unit:(newName===ex.name?ex.unit:null))==='secs'?'secs':'reps';
+  if(exerciseUnit(ex)!==nextUnit&&(S.setData[ex.name]||[]).some(s=>String(s.weight||'').trim()||String(s.reps||'').trim())){
+    showToast('This changes reps to seconds or back. Keep these sets and add the replacement as another exercise.');return;
+  }
   if(newName !== ex.name){
     S.swaps[ex.name] = newName;
   } else {
@@ -5067,13 +5108,12 @@ function confirmSwap(){
   saveSwaps();
   closeSwapModal();
   renderLog();
+  const button=document.querySelector('#ec'+S.swapTarget+' .swap-btn');if(button)button.focus({preventScroll:true});
 }
 function resetSwapDefault(){
-  const ex = type(S.dayIdx).exercises[S.swapTarget];
-  delete S.swaps[ex.name];
-  saveSwaps();
-  closeSwapModal();
-  renderLog();
+  const ex = type(S.dayIdx).exercises.find(e=>e.name===swapTargetName);
+  if(!ex||S.dayIdx!==swapTargetDay){closeSwapModal();return;}
+  document.getElementById('swap-input').value=ex.name;confirmSwap();
 }
 
 // ── Empty state helper ────────────────────────────────────────────
@@ -5683,15 +5723,15 @@ function renderMuscleBalance(){
   const cutoff=localMidnight(getLocalDate());
   cutoff.setDate(cutoff.getDate()-29);
   const cutoffStr=dateStr(cutoff);
-  const counts={chest:0,back:0,shoulders:0,arms:0,legs:0,core:0,other:0};
+  const counts=Object.fromEntries(allMuscleGroups().map(m=>[m,0]));
   let legacySets=0;
   S.sessions.forEach(s=>{
     if(s.date<cutoffStr) return;
     (s.exercises||[]).forEach(ex=>{
       const isLegacy=!ex.muscle;
-      const m=ex.muscle||byName[ex.name]||libGuessMuscle(ex.name);
+      const m=trainingMuscleKey(ex.muscle||byName[ex.name]||libGuessMuscle(ex.name));
       const n=(ex.sets||[]).filter(statsIsWorkingSet).length;
-      counts[counts[m]!==undefined?m:'other']+=n;
+      counts[m]=(counts[m]||0)+n;
       if(isLegacy) legacySets+=n;
     });
   });
@@ -5708,9 +5748,9 @@ function renderMuscleBalance(){
     '<div class="card-shape">'+rows.map(m=>{
       const pct=Math.round(counts[m]/max*100);
       const label=m.charAt(0).toUpperCase()+m.slice(1);
-      return '<button type="button" class="stats-muscle-row" onclick="openMuscleEvidence(\''+m+'\',\''+cutoffStr+'\')"><div class="muscle-bar-row">'+
-        '<div class="muscle-bar-label">'+label+'</div>'+
-        '<div class="muscle-bar-track"><div class="muscle-bar-fill" style="width:'+pct+'%;background:'+MUSCLE_COLOURS[m]+'"></div></div>'+
+      return '<button type="button" class="stats-muscle-row" data-muscle="'+escAttr(m)+'" onclick="openMuscleEvidence(this.dataset.muscle,\''+cutoffStr+'\')"><div class="muscle-bar-row">'+
+        '<div class="muscle-bar-label">'+escText(label)+'</div>'+
+        '<div class="muscle-bar-track"><div class="muscle-bar-fill" style="width:'+pct+'%;background:var(--accent)"></div></div>'+
         '<div class="muscle-bar-count">'+counts[m]+'</div>'+
       '</div></button>';
     }).join('')+'</div>'+
@@ -20124,6 +20164,7 @@ function renderNetWorthChartInto(wrapId){
   }).filter(Boolean);
   const latest=dates[dates.length-1];
   const ranges=[['1m','1M'],['3m','3M'],['1y','1Y'],['all','ALL']];
+  const rangeHtml='<div class="nw-chart-ranges" role="group" aria-label="Net worth history period">'+ranges.map(r=>'<button type="button" onclick="setNWChartRange(\''+r[0]+'\')" class="'+(nwChartRange===r[0]?'on':'')+'" aria-pressed="'+(nwChartRange===r[0])+'">'+r[1]+'</button>').join('')+'</div>';
   wrap.innerHTML='<div class="card nw-chart-card">'+
     '<div class="nw-chart-head">'+
       '<div><div class="nw-chart-kicker">'+acctIcon('trend',13)+(wrapId==='accounts-chart'?'Net worth history':latestPointInfo.count<latestPointInfo.total?'Recorded net worth':'Net worth')+'</div>'+
@@ -20133,11 +20174,9 @@ function renderNetWorthChartInto(wrapId){
         // this card. Shown in BOTH mounts — it is the same truth on Stats > Finance.
         '<div class="nw-chart-mix">'+(curAssets===null?'Assets not recorded':fmtMoney(curAssets)+' recorded assets')+' · '+(curDebts===null?'Debts not recorded':fmtMoney(curDebts)+' recorded debts')+'</div>'+
         '<div class="nw-chart-verdict">'+nwChip+'</div></div>'+
-      (accountHistory?'<div class="nw-chart-controls">':'')+
-      '<div class="nw-chart-ranges"'+(graphHidden?' hidden':'')+'>'+ranges.map(r=>'<button onclick="setNWChartRange(\''+r[0]+'\')" class="'+(nwChartRange===r[0]?'on':'')+'">'+r[1]+'</button>').join('')+'</div>'+
-      (accountHistory?'<button type="button" id="accounts-history-toggle" class="nw-chart-toggle" aria-expanded="'+!graphHidden+'" aria-controls="accounts-history-plot" onclick="acctToggleHistory()">'+(graphHidden?'Show graph':'Hide graph')+'</button></div>':'')+
+      (accountHistory?'<button type="button" id="accounts-history-toggle" class="nw-chart-toggle" aria-label="'+(graphHidden?'Show graph':'Hide graph')+'" title="'+(graphHidden?'Show graph':'Hide graph')+'" aria-expanded="'+!graphHidden+'" aria-controls="accounts-history-plot" onclick="acctToggleHistory()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>':rangeHtml)+
     '</div>'+
-    (accountHistory?'<div id="accounts-history-plot"'+(graphHidden?' hidden':'')+'>':'')+
+    (accountHistory?'<div id="accounts-history-plot"'+(graphHidden?' hidden':'')+'>'+rangeHtml:'')+
     '<div class="nw-chart-canvas"><canvas id="'+canvasId+'"></canvas></div>'+
     '<div class="nw-chart-series">'+
       '<span class="on"><i style="background:'+accent+'"></i>'+(partial&&wrapId!=='accounts-chart'?'Recorded net worth':'Net worth')+'</span>'+
@@ -23930,20 +23969,26 @@ function swapClearKeyboardGeometry(modal){
   modal=modal||document.getElementById('swap-modal'); if(!modal) return;
   modal.style.removeProperty('bottom');      // portrait's --nav-height lift resumes
   modal.style.removeProperty('max-height');  // back to the sheet's 72vh cap
+  modal.style.removeProperty('top');
+  modal.style.removeProperty('height');
 }
 function swapSyncKeyboard(){
   const modal=document.getElementById('swap-modal');
   if(!modal || modal.classList.contains('hidden')){ swapClearKeyboardGeometry(modal); return; }
+  if(swapPointerActive) return;
   const vv=window.visualViewport;
   // Height the keyboard is covering, in LAYOUT-viewport terms — which is what position:fixed
   // resolves against. offsetTop matters: when WebKit scrolls the visual viewport, the keyboard's
   // top edge moves with it, and ignoring that leaves the sheet floating over the keys.
   const kb = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
-  // >100px ≈ a keyboard, the same threshold adjustModalsForKeyboard uses to ignore URL-bar jitter.
-  if(!vv || layoutIsDesktop() || kb<=100){ swapClearKeyboardGeometry(modal); return; }
+  // A landscape keyboard can cover less than 100px; accept a smaller inset while search owns focus.
+  const typing=modal.contains(document.activeElement)&&document.activeElement.tagName==='INPUT';
+  if(!vv || layoutIsDesktop() || kb<=(typing?40:100)){ swapClearKeyboardGeometry(modal); return; }
   const gap=8;
-  modal.style.bottom=Math.round(kb)+'px';
-  modal.style.maxHeight=Math.max(140, Math.round(vv.height-gap*2))+'px';
+  modal.style.top=Math.round(vv.offsetTop+gap)+'px';
+  modal.style.bottom='auto';
+  modal.style.height=Math.max(120,Math.round(vv.height-gap*2))+'px';
+  modal.style.maxHeight=Math.max(120,Math.round(vv.height-gap*2))+'px';
 }
 
 // On mobile, handle keyboard appearing over inputs:
@@ -24277,15 +24322,15 @@ function renderSplitEditor(containerId){
 }
 function sePickerListHTML(){
   const d=SE.days[SE.target]; if(!d) return '';
-  const lib=loadExerciseLib().slice();
+  const lib=exerciseSearchCatalog().slice();
   if(SE.mode==='new') SE.customExercises.forEach(e=>{if(!lib.some(x=>x.name.toLowerCase()===e.name.toLowerCase())) lib.push(e);});
   const q=(SE.pickerQuery||'').toLowerCase().trim();
   const inDay=new Set((d.exercises||[]).map(e=>e.name.toLowerCase()));
-  const filtered=lib.filter(e=>!inDay.has(e.name.toLowerCase())&&(!q||e.name.toLowerCase().includes(q)));
+  const filtered=trainingFilterExercises(lib,q).filter(e=>!inDay.has(e.name.toLowerCase()));
   let out=filtered.map(e=>
     '<div class="se-picker-item">'+
       '<span class="se-picker-pick" onclick="sePick('+JSON.stringify(e.name).replace(/"/g,'&quot;')+')">'+
-        '<span>'+_catEscHtml(e.name)+'</span><span class="se-picker-muscle">'+e.muscle+'</span>'+
+        '<span>'+_catEscHtml(e.name)+'</span><span class="se-picker-muscle">'+escText(muscleLabel(e.muscle))+'</span>'+
       '</span>'+
       (SE.mode==='new'&&SE.customExercises.some(x=>x.id===e.id)?'':'<button class="se-picker-edit" onclick="event.stopPropagation();openEditExercise(\''+e.id+'\')" aria-label="Edit exercise">✎</button>')+
     '</div>'
@@ -31162,7 +31207,7 @@ function setLogTab(tab, force, opts){
   setNavActive();
   if(tab==='today')          renderLogToday();
   else if(tab==='program')   renderLogProgram();
-  else if(tab==='exercises'){ renderMuscleFilterRow(); renderExerciseLibList(); }
+  else if(tab==='exercises')  renderExerciseLibList();
   else if(tab==='history')    renderHistory();
   // The timer card lives inside #log-session, so it hides and shows with the section on its
   // own — there is no separate bar to keep in sync.
@@ -31443,18 +31488,18 @@ function logHeroHtml(b,weekHtml){
   const resume=(b.state==='saved'&&logCanContinueSaved(b.session))
     ? '<button type="button" class="lg-hero-btn lg-hero-secondary" onclick="logContinueSavedWorkout()">Continue saved workout &rarr;</button>'
     : '';
-  return '<div class="lg-hero lg-hero-with-weight"><div class="lg-training-brief">'+
+  return '<div class="lg-hero lg-training-hero"><div class="lg-training-brief">'+
     '<div class="lg-hero-current">'+
     '<div class="lg-hero-lead">'+escText(lead)+'</div>'+
     '<div class="lg-hero-title">'+escText(b.dayName)+'</div>'+
     '<div class="lg-hero-sub">'+sub+'</div>'+
     more+
     upNext+
-    '</div>'+(weekHtml||'')+
+    '</div>'+
     '<div class="lg-hero-actions">'+
     '<button type="button" class="lg-hero-btn" onclick="'+escAttr(run)+'">'+escText(act)+' &rarr;</button>'+
     resume+
-    '</div></div>'+logWeightSummaryHtml()+
+    '</div></div><div class="lg-training-dock">'+(weekHtml||'')+'</div>'+
   '</div>';
 }
 
@@ -31512,8 +31557,7 @@ function logPlanCardHtml(b){
   let t=null; try{ t=type(idx); }catch(e){}
   const exs=(t&&t.exercises)||[];
   const title=isNext?'Up next':'Today’s plan';
-  const head=cardHeader('medal',title,
-    '<button type="button" class="card-hd-act" onclick="logGoto(\'program\')">Splits &rarr;</button>');
+  const head=cardHeader('medal',title);
   if(!exs.length){
     return '<div class="lg-card">'+head+
       '<div class="lg-blank">'+escText(t&&t.name?t.name:'This training day')+
@@ -31556,8 +31600,7 @@ function logWeekCardHtml(){
   if(mins>0) cells.push(['Logged time',fmtDuration(mins)]);
   const range=budRangeLabel(localMidnight(days[0].date), today);
   return '<section class="lg-hero-week" aria-label="Last 7 days">'+
-    cardHeader('calendar','Last 7 days',
-      '<button type="button" class="card-hd-act" onclick="logGoto(\'history\')">All history &rarr;</button>')+
+    '<div class="lg-week-heading">'+cardHeader('calendar','Last 7 days')+'<span class="lg-week-range">'+escText(range)+'</span></div>'+
     statsSplit(cells)+
     '<div class="lg-consistency" role="group" aria-label="Saved sessions on each of the last seven days">'+
       days.map(d=>'<button type="button" class="lg-consistency-day'+(d.date===getLocalDate()?' today':'')+'" '+
@@ -31565,7 +31608,6 @@ function logWeekCardHtml(){
         'aria-label="'+escAttr(fmtDate(d.date)+(d.saved?': '+d.saved.count+' saved session'+(d.saved.count===1?'':'s'):': no saved session'))+'" '+
         'onclick="logGoto(\'history\')"><span>'+escText(d.label)+'</span><i'+(d.saved?' class="done" style="background:'+escAttr(d.color)+'"':'')+'></i></button>').join('')+
     '</div>'+
-    '<div class="lg-help">'+escText(range)+' — today and the six calendar days before it.</div>'+
   '</section>';
 }
 
@@ -31583,8 +31625,7 @@ function logRecentCardHtml(){
       }).join('')
     : '<div class="lg-blank">No sessions saved yet. Your first one shows up here.</div>';
   return '<div class="lg-card">'+
-    cardHeader('check','Recent sessions',
-      '<button type="button" class="card-hd-act" onclick="logGoto(\'history\')">All history &rarr;</button>')+
+    cardHeader('check','Recent sessions')+
     rows+
   '</div>';
 }
@@ -31597,6 +31638,7 @@ function renderLogOverview(){
   const b=logTodayBrief();
   el.innerHTML=
     logHeroHtml(b,logWeekCardHtml())+
+    '<section id="log-coverage" class="lg-card" aria-label="Training coverage">'+logCoverageHtml(b)+'</section>'+
     '<div class="lg-cols">'+
       '<div class="lg-col lg-col-main">'+logPlanCardHtml(b)+'</div>'+
       '<div class="lg-col lg-col-side">'+logRecentCardHtml()+'</div>'+
