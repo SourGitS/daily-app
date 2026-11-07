@@ -191,10 +191,10 @@
     <!-- BUDGET VIEW -->
     <section id="view-budget" class="swipe-panel">
       <button id="source-return-bar" class="source-return-bar hidden" type="button" onclick="returnFromSourceView()"></button>
-      <!-- Finance's FIVE views, one tablist, one selected state. Accounts used to be a
+      <!-- Finance's four views, one tablist, one selected state. Accounts used to be a
            full-screen overlay launched from a button beside this strip — it is a real Finance
            view now, with a tab and a panel like every other, so the launcher is gone and the
-           tablist holds all five.
+           tablist holds all four.
            SEG-SCROLL, not seg-fill: .seg-fill's buttons are flex:1 0 auto and never shrink, so
            the labels stay legible on a phone rather than squeezing together. Stats'
            longer tabs already scroll for exactly this reason — it is the app's existing answer,
@@ -206,15 +206,13 @@
           <button id="bv-overview-btn" class="on" role="tab" aria-selected="true" aria-controls="budget-overview-view" onclick="setBudgetView('overview')">Overview</button>
           <button id="bv-week-btn" role="tab" aria-selected="false" aria-controls="budget-week-view" onclick="setBudgetView('week')">Budget</button>
           <button id="bv-plan-btn" role="tab" aria-selected="false" aria-controls="budget-plan-view" onclick="setBudgetView('plan')">Plan</button>
-          <button id="bv-bills-btn" role="tab" aria-selected="false" aria-controls="budget-bills-view" onclick="setBudgetView('bills')">Bills</button>
           <button id="bv-accounts-btn" role="tab" aria-selected="false" aria-controls="budget-accounts-view" onclick="setBudgetView('accounts')">Accounts</button>
         </div>
       </div>
 
       <!-- OVERVIEW -->
-      <!-- Budget's current-position screen and its landing view: what is available this week,
-           what needs attention, what is due over the next fortnight, where the accounts stand
-           and how the month is going. Entirely rendered by renderBudgetOverview() — it holds
+      <!-- Finance's current position, actionable alerts and scheduled bills in List/Calendar.
+           Entirely rendered by renderBudgetOverview() — it holds
            no inputs and no static figures, so unlike the week below there is nothing here that
            has to be kept in step with budgetData while another view is showing.
            Visible by default because budgetView starts on 'overview'; the week's own div
@@ -483,27 +481,36 @@
       </div>
 
       <!-- PLAN VIEW -->
-      <!-- Month and Yearly used to be two separate destinations. Plan keeps the useful
-           information together: the current month's actual picture leads, while the year
-           ahead is a schedule of only the dated recurring bills Daily can genuinely know.
-           The existing month/year element ids stay in place so their proven renderers and
-           data readers remain unchanged. -->
-      <div id="budget-plan-view" class="hidden" role="tabpanel" aria-labelledby="bv-plan-btn" data-plan-lens="year">
-        <div id="budget-plan-lens" class="budget-plan-lens" role="group" aria-label="Plan focus">
-          <button type="button" data-plan-lens="month" aria-pressed="false" onclick="setBudgetPlanLens('month')">
-            <span class="budget-plan-lens-k">Recorded</span>
-            <strong>This month</strong>
+      <!-- Future commitments, linked targets and disposable scenarios lead. Review retains
+           the original Month/Year element ids and their existing recorded-data readers. -->
+      <div id="budget-plan-view" class="hidden" role="tabpanel" aria-labelledby="bv-plan-btn" data-plan-lens="month" data-plan-section="future">
+        <div class="seg-tabs seg-fill bud-seg plan-workspace-tabs" role="tablist" aria-label="Plan workspace" onkeydown="budPlanWorkspaceKey(event)">
+          <button type="button" id="plan-future-tab" role="tab" aria-selected="true" aria-controls="plan-future-view" onclick="setBudgetPlanSection('future')">Plan ahead</button>
+          <button type="button" id="plan-review-tab" role="tab" aria-selected="false" aria-controls="plan-review-view" tabindex="-1" onclick="setBudgetPlanSection('review')">Review</button>
+        </div>
+        <div id="plan-future-view" role="tabpanel" aria-labelledby="plan-future-tab">
+          <div class="plan-workspace-heading"><h2>Prepare for what's next</h2><p>Upcoming commitments, savings targets and room to adjust.</p></div>
+          <div class="plan-forward-grid">
+            <section id="plan-commitments" class="card" aria-label="Future commitments"></section>
+            <section id="plan-targets" class="card" aria-label="Targets"></section>
+          </div>
+          <section id="plan-scenario" class="card" aria-label="What-if scenario"></section>
+          <details class="plan-year-extension"><summary>Full year of scheduled bills</summary><div id="plan-ahead-card"></div></details>
+        </div>
+        <div id="plan-review-view" role="tabpanel" aria-labelledby="plan-review-tab" hidden>
+        <div id="budget-plan-lens" class="budget-plan-lens" role="group" aria-label="Review focus">
+          <button type="button" class="on" data-plan-lens="month" aria-pressed="true" onclick="setBudgetPlanLens('month')">
+            <strong>Monthly</strong>
           </button>
-          <button type="button" class="on" data-plan-lens="year" aria-pressed="true" onclick="setBudgetPlanLens('year')">
-            <span class="budget-plan-lens-k">Forward plan</span>
-            <strong>Year ahead</strong>
+          <button type="button" data-plan-lens="year" aria-pressed="false" onclick="setBudgetPlanLens('year')">
+            <strong>Yearly</strong>
           </button>
         </div>
         <div class="budget-plan-layout">
           <section class="budget-plan-section budget-plan-month" aria-labelledby="budget-plan-month-title">
             <div class="budget-plan-heading">
               <div class="budget-plan-eyebrow">Plan</div>
-              <h2 id="budget-plan-month-title">This month</h2>
+              <h2 id="budget-plan-month-title">Monthly review</h2>
               <p>Review what came in, what went out, and the purchases behind it.</p>
             </div>
             <div id="budget-month-view" class="budget-plan-detail">
@@ -523,17 +530,9 @@
 
           <section class="budget-plan-section budget-plan-year" aria-labelledby="budget-plan-year-title">
             <div class="budget-plan-heading">
-              <div class="budget-plan-eyebrow">Forward plan</div>
-              <h2 id="budget-plan-year-title">Year ahead</h2>
-              <p>Known scheduled bills over the next 12 months, based only on dates you have set.</p>
-            </div>
-            <div id="plan-ahead-card"></div>
-            <div class="budget-plan-history-heading">
-              <div>
-                <div class="budget-plan-eyebrow">Actuals</div>
-                <h3>Year so far</h3>
-              </div>
-              <p>Recorded income, spending and savings—not a prediction.</p>
+              <div class="budget-plan-eyebrow">Review</div>
+              <h2 id="budget-plan-year-title">Yearly review</h2>
+              <p>Recorded income, spending and savings across the selected year.</p>
             </div>
             <div id="budget-year-view" class="budget-plan-detail">
               <div class="week-nav" style="margin-bottom:16px">
@@ -560,13 +559,8 @@
             </div>
           </section>
         </div>
+        </div><!-- /#plan-review-view -->
       </div>
-
-      <!-- BILLS CALENDAR VIEW -->
-      <!-- Forward planning only: every row is generated from a recurring charge's saved
-           dueDate + cycle at render time. Nothing here writes back — see the note above
-           catOccurrencesBetween() in js/app.js. -->
-      <div id="budget-bills-view" class="hidden" role="tabpanel" aria-labelledby="bv-bills-btn"></div>
 
       <!-- ACCOUNTS VIEW -->
       <!-- Assets, debts and net worth. This was a full-screen .app-overlay (#view-accounts)
@@ -1516,6 +1510,7 @@
 <script src="js/accounts-tools.js" defer></script>
 <script src="js/account-links.js" defer></script>
 <script src="js/finance-accounts.js" defer></script>
+<script src="js/finance-plan.js" defer></script>
 <script src="js/finance-import.js" defer></script>
 <script src="js/food-catalogue.js" defer></script>
 <script src="js/notification-schedule.js" defer></script>

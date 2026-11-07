@@ -2588,7 +2588,6 @@ const NAV_TREE=[
     {id:'bud-overview', label:'Overview',   view:'budget',   sub:'overview'},
     {id:'bud-week',   label:'Budget',          view:'budget',   sub:'week'},
     {id:'bud-plan',   label:'Plan',          view:'budget',   sub:'plan'},
-    {id:'bud-bills',  label:'Bills',         view:'budget',   sub:'bills'},
     {id:'accounts',   label:'Accounts',      view:'budget',   sub:'accounts'},
   ]},
   // Was "Kitchen". The group is named for the destination it now holds, and Food library keeps
@@ -10805,7 +10804,8 @@ let currentWeekIdx     = 0;
 let currentMonthOffset = 0;
 // The Plan selector is a presentational lens, not a Finance destination or saved preference.
 // A fresh phone leads with the agreed Year ahead schedule; an in-session choice is retained.
-let budgetPlanLens     = 'year';
+let budgetPlanLens     = 'month';
+let budgetPlanSection  = 'future';
 // ── The five Finance views ────────────────────────────────────────
 // The user-facing destination is FINANCE. The internal view id stays 'budget', with it the
 // bud* prefixes, every DOM id, every storage key and the #budget route — this is a naming
@@ -10833,7 +10833,6 @@ const BUD_VIEWS=[
   {id:'overview', btn:'bv-overview-btn', panel:'budget-overview-view', row:'bud-overview', render:'renderBudgetTab'},
   {id:'week',     btn:'bv-week-btn',     panel:'budget-week-view',     row:'bud-week',     render:'renderBudgetTab'},
   {id:'plan',     btn:'bv-plan-btn',     panel:'budget-plan-view',     row:'bud-plan',     render:'renderPlan'},
-  {id:'bills',    btn:'bv-bills-btn',    panel:'budget-bills-view',    row:'bud-bills',    render:'renderBillsView'},
   {id:'accounts', btn:'bv-accounts-btn', panel:'budget-accounts-view', row:'accounts',     render:'renderAccountsPage'},
 ];
 // IN MEMORY, and 'overview' is where a fresh session lands: the current-position screen is the
@@ -12162,8 +12161,9 @@ function setBudgetView(v){
   // Month and Yearly became Plan. Keep older in-app callers and any stale open view state
   // usable rather than dropping them to Overview; keep the specific lens they originally
   // named, without writing or persisting either alias.
-  if(v==='month'){ budgetPlanLens='month'; v='plan'; }
-  else if(v==='year'){ budgetPlanLens='year'; v='plan'; }
+  if(v==='month'){ budgetPlanLens='month'; budgetPlanSection='review'; v='plan'; }
+  else if(v==='year'){ budgetPlanLens='year'; budgetPlanSection='review'; v='plan'; }
+  else if(v==='bills'){ budBillsView='calendar'; v='overview'; }
   if(!BUD_VIEWS.some(x=>x.id===v)) v='overview';
   budgetView=v;
   const row=document.getElementById('budget-view-tabs');
@@ -13989,44 +13989,7 @@ function billsChartHtml(months, heaviest){
   '</div>';
 }
 function renderBillsView(){
-  const wrap=document.getElementById('budget-bills-view'); if(!wrap) return;
-  const months=billsMonths();
-  const undated=billsUndatedCount();
-  const anyDated=months.some(m=>m.items.length>0);
-  // Heaviest of the three, only meaningful once something is actually scheduled.
-  const heaviest=anyDated
-    ? months.reduce((a,b)=>b.total>a.total?b:a)
-    : null;
-  const undatedHint=undated
-    ? '<div class="bills-hint">'+undated+' recurring charge'+(undated===1?'':'s')+
-      ' do'+(undated===1?'es':'')+' not have a billing date yet — add one in Settings → Budget setup'+
-      ' to include '+(undated===1?'it':'them')+' here.</div>'
-    : '';
-
-  const summary=budHeroPanel([{
-    icon:'calendar', label:'Bills calendar',
-    val:anyDated?fmtMoney(heaviest.total):'Nothing scheduled',
-    sub:anyDated
-      ? _catEscHtml(heaviest.label)+' has the most scheduled bills — set aside '+fmtMoney(heaviest.total)+'.'
-      : 'No dated recurring charges fall in the next three months. Add a billing date in Settings → Budget setup and it will appear here.',
-    extra:undatedHint,
-    lg:anyDated, lead:true
-  }],{cols:1,colsSm:1,className:'bills-summary'});
-
-  const chart=anyDated ? '<div class="card bills-chart-card">'+billsChartHtml(months,heaviest)+'</div>' : '';
-
-  const lists=months.map(m=>
-    '<div class="card bills-month">'+
-      '<div class="bills-month-hd">'+
-        '<span class="bills-month-name">'+_catEscHtml(m.label)+'<small>'+m.year+'</small></span>'+
-        '<span class="bills-month-total">'+(m.items.length?fmtMoney(m.total):'—')+'</span>'+
-      '</div>'+
-      (m.items.length
-        ? m.items.map(billRowHtml).join('')
-        : '<div class="bills-month-empty">No scheduled bills this month.</div>')+
-    '</div>').join('');
-
-  wrap.innerHTML=summary+chart+lists;
+  openBillsCalendar();
 }
 
 // -- Outlook: until next pay, and the next 14 days -----------------
@@ -14206,10 +14169,8 @@ function renderOutlookCard(available, week){
 
 
 // ── Budget › Overview ─────────────────────────────────────────────
-// The current-position screen, and the first of the five Budget views. It answers what can be
-// spent this week, whether the week reaches the next pay, what needs a decision, what is due
-// over the next fortnight, where the accounts stand and how the month is going — then leads
-// into Week, Bills, Month and Accounts to act on any of it.
+// Overview combines the current spending position, actionable alerts and the bill schedule.
+// Budget owns recording/allocations; Accounts and Plan retain their detailed summaries.
 //
 // It INTERPRETS what Daily already holds and computes nothing of its own: every figure comes
 // from a canonical reader (budWeekMoney → weekIncome / weekFixedTotal / weekVarTotal /
@@ -14228,6 +14189,126 @@ function renderOutlookCard(available, week){
 // for a stale preference to live.
 const BUD_OV_ATTENTION_MAX=3;
 const BUD_OV_BILL_PREVIEW=3;
+let budBillsView='list',budBillsMonthOffset=0,budBillsDay='';
+const budBillsExpandedWeeks=new Map();
+function budBillsState(){
+  const today=localMidnight(getLocalDate());
+  const first=new Date(today.getFullYear(),today.getMonth()+budBillsMonthOffset,1);
+  const end=new Date(first.getFullYear(),first.getMonth()+1,0);
+  const from=budBillsMonthOffset===0?today:first;
+  const items=billOccurrences(from,end);
+  const startKey=dateStr(from),endKey=dateStr(end);
+  const selected=budBillsDay>=startKey&&budBillsDay<=endKey?budBillsDay:(items[0]?.key||startKey);
+  return {first,from,end,items,selected,startKey,endKey,
+    label:first.toLocaleDateString('en-AU',{month:'long',year:'numeric'}),
+    total:items.reduce((sum,o)=>sum+o.amount,0)};
+}
+function budBillsRefresh(focusId){
+  const wrap=document.getElementById('bov-bills');if(!wrap)return;
+  wrap.innerHTML=budOvBillsHtml();
+  if(focusId)(document.getElementById(focusId)||document.getElementById('bov-bills-'+budBillsView+'-tab'))?.focus({preventScroll:true});
+}
+function budBillsSetView(view){
+  if(!['list','calendar'].includes(view))return;
+  budBillsView=view;budBillsRefresh('bov-bills-'+view+'-tab');
+}
+function budBillsViewKey(event){
+  if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+  event.preventDefault();
+  budBillsSetView(event.key==='Home'?'list':event.key==='End'?'calendar':budBillsView==='list'?'calendar':'list');
+}
+function budBillsMove(step){
+  budBillsMonthOffset=step===0?0:Math.max(-120,Math.min(120,budBillsMonthOffset+step));
+  budBillsDay='';
+  budBillsRefresh(document.activeElement?.id);
+}
+function budBillsSelectDay(day){
+  const s=budBillsState();if(!budDateValid(day)||day<s.startKey||day>s.endKey)return;
+  budBillsDay=day;budBillsRefresh('bov-bill-day-'+day);
+}
+function budBillsDayKey(event,day){
+  const shifts={ArrowLeft:-1,ArrowRight:1,ArrowUp:-7,ArrowDown:7};
+  let shift=shifts[event.key];
+  if(event.key==='Home')shift=-((localMidnight(day).getDay()+6)%7);
+  if(event.key==='End')shift=6-((localMidnight(day).getDay()+6)%7);
+  if(shift===undefined)return;
+  event.preventDefault();
+  const s=budBillsState(),next=budDateAdd(day,shift);
+  budBillsSelectDay(next<s.startKey?s.startKey:next>s.endKey?s.endKey:next);
+}
+function budBillsGroupHtml(day,items){
+  const total=items.reduce((sum,o)=>sum+o.amount,0);
+  return '<section class="bov-bill-group"><h3>'+escText(localMidnight(day).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}))+
+    '<span>'+fmtMoneyExact(total)+'</span></h3>'+items.map(billRowHtml).join('')+'</section>';
+}
+function budBillsListWeeks(s){
+  const weeks=new Map();
+  s.items.forEach(o=>{
+    const monday=budDateAdd(o.key,-((localMidnight(o.key).getDay()+6)%7));
+    if(!weeks.has(monday))weeks.set(monday,{key:s.startKey.slice(0,7)+'_'+monday,start:monday,items:[],total:0});
+    const week=weeks.get(monday);week.items.push(o);week.total=budMoneyRound(week.total+o.amount);
+  });
+  return [...weeks.values()].sort((a,b)=>a.start.localeCompare(b.start)).map(w=>({...w,
+    from:w.start<s.startKey?s.startKey:w.start,to:budDateAdd(w.start,6)>s.endKey?s.endKey:budDateAdd(w.start,6)}));
+}
+function budBillsListHtml(s){
+  if(!s.items.length)return '<div class="bov-bills-empty">'+(budBillsMonthOffset===0?'No more scheduled bills this month.':'No scheduled bills this month.')+'</div>';
+  return '<div class="bov-agenda">'+budBillsListWeeks(s).map((w,index)=>{
+    const days=new Map();w.items.forEach(o=>{if(!days.has(o.key))days.set(o.key,[]);days.get(o.key).push(o);});
+    const open=budBillsExpandedWeeks.has(w.key)?budBillsExpandedWeeks.get(w.key):index===0;
+    const label=w.from===w.to?localMidnight(w.from).toLocaleDateString('en-AU',{day:'numeric',month:'short'}):budRangeLabel(localMidnight(w.from),localMidnight(w.to));
+    return '<details class="bov-agenda-week" data-week="'+w.key+'"'+(open?' open':'')+'>'+
+      '<summary onclick="budBillsWeekToggle(this.parentElement)"><span class="bov-agenda-range">'+escText(label)+'</span><span class="bov-agenda-count">'+w.items.length+' '+(w.items.length===1?'charge':'charges')+'</span>'+
+      '<strong>'+fmtMoneyExact(w.total)+'</strong><span class="bov-agenda-chevron" aria-hidden="true">⌄</span></summary>'+
+      '<div class="bov-agenda-head" aria-hidden="true"><span>Due</span><span>Bill</span><span>Amount</span></div>'+
+      [...days].map(([day,items])=>'<section class="bov-agenda-day"><time datetime="'+day+'">'+
+        escText(localMidnight(day).toLocaleDateString('en-AU',{day:'numeric',month:'short'}))+'<small>'+escText(localMidnight(day).toLocaleDateString('en-AU',{weekday:'short'}))+'</small></time>'+
+        '<div>'+items.map(billRowHtml).join('')+'</div></section>').join('')+'</details>';
+  }).join('')+'</div>';
+}
+function budBillsWeekToggle(details){
+  // Remember explicit activation; native initial-open events are not a user preference.
+  if(details.isConnected)budBillsExpandedWeeks.set(details.dataset.week,!details.open);
+}
+function budBillsCalendarHtml(s){
+  const offset=(s.first.getDay()+6)%7,days=s.end.getDate(),cells=Math.ceil((offset+days)/7)*7;
+  let grid='';
+  for(let i=0;i<cells;i++){
+    const day=i-offset+1;
+    if(day<1||day>days){grid+='<span class="bov-cal-blank" aria-hidden="true"></span>';continue;}
+    const date=new Date(s.first.getFullYear(),s.first.getMonth(),day),key=dateStr(date);
+    const rows=s.items.filter(o=>o.key===key),amount=rows.reduce((sum,o)=>sum+o.amount,0),disabled=key<s.startKey;
+    const label=date.toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long'})+', '+rows.length+' scheduled '+(rows.length===1?'charge':'charges')+(rows.length?', '+fmtMoneyExact(amount):'');
+    grid+='<button type="button" id="bov-bill-day-'+key+'" class="bov-cal-day'+(key===getLocalDate()?' is-today':'')+
+      (key===s.selected?' is-selected':'')+'" data-day="'+key+'" aria-label="'+escAttr(label)+'" aria-pressed="'+(key===s.selected)+'" tabindex="'+(key===s.selected?'0':'-1')+'"'+
+      (disabled?' disabled':'')+' onclick="budBillsSelectDay(this.dataset.day)" onkeydown="budBillsDayKey(event,this.dataset.day)">'+
+      '<span>'+day+'</span>'+(rows.length?'<small>'+nwCompactMoney(amount)+'</small><i aria-hidden="true"></i>':'')+'</button>';
+  }
+  const rows=s.items.filter(o=>o.key===s.selected);
+  const detail=rows.length?budBillsGroupHtml(s.selected,rows):
+    '<div class="bov-bills-empty">Nothing scheduled on '+escText(fmtDate(s.selected))+'.</div>';
+  return '<div class="bov-calendar-layout"><div class="bov-calendar"><div class="bov-cal-weekdays" aria-hidden="true">'+
+    ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>'<span>'+d+'</span>').join('')+'</div>'+
+    '<div class="bov-cal-grid" role="group" aria-label="'+escAttr(s.label)+' scheduled bills">'+grid+'</div></div>'+
+    '<div class="bov-cal-detail" aria-live="polite">'+detail+'</div></div>';
+}
+function budOvBillsHtml(){
+  const s=budBillsState(),list=budBillsListHtml(s);
+  const undated=billsUndatedCount();
+  return '<header class="bov-bills-heading"><h2 id="bov-bills-title">'+cardIcon('calendar')+'Upcoming bills</h2>'+
+    '<button type="button" class="stg-btn quiet" onclick="openBudgetEditor()">Manage bills</button></header>'+
+    '<div class="bov-bills-controls"><div class="seg-tabs bud-seg" role="tablist" aria-label="Bill schedule view" onkeydown="budBillsViewKey(event)">'+
+      ['list','calendar'].map(view=>'<button type="button" id="bov-bills-'+view+'-tab" role="tab" aria-controls="bov-bills-'+view+'" aria-selected="'+(budBillsView===view)+'" tabindex="'+(budBillsView===view?'0':'-1')+'"'+(budBillsView===view?' class="on"':'')+' onclick="budBillsSetView(\''+view+'\')">'+(view==='list'?'List':'Calendar')+'</button>').join('')+'</div>'+
+    '<nav class="bov-bills-month" aria-label="Bill schedule month"><button type="button" id="bov-bills-prev" aria-label="Previous bill month" onclick="budBillsMove(-1)">‹</button>'+
+      '<span aria-live="polite">'+escText(s.label)+'</span><button type="button" id="bov-bills-next" aria-label="Next bill month" onclick="budBillsMove(1)">›</button>'+
+      (budBillsMonthOffset?'<button type="button" id="bov-bills-current" class="bov-bills-current" onclick="budBillsMove(0)">This month</button>':'')+'</nav></div>'+
+    '<div class="bov-bills-summary"><div><span>'+ (budBillsMonthOffset<0?'Past schedule':budBillsMonthOffset===0?'Scheduled from today':'Scheduled this month')+
+      '</span><strong>'+fmtMoneyExact(s.total)+'</strong></div><span>'+s.items.length+' scheduled '+(s.items.length===1?'charge':'charges')+'</span></div>'+
+    '<div id="bov-bills-list" role="tabpanel" aria-labelledby="bov-bills-list-tab"'+(budBillsView==='list'?'':' hidden')+'>'+list+'</div>'+
+    '<div id="bov-bills-calendar" role="tabpanel" aria-labelledby="bov-bills-calendar-tab"'+(budBillsView==='calendar'?'':' hidden')+'>'+budBillsCalendarHtml(s)+'</div>'+
+    '<footer class="bov-bills-foot"><span>Scheduled charges · separate from your budget allowances.</span>'+
+      (undated?'<button type="button" onclick="openBudgetEditor()">'+undated+' bill'+(undated===1?' needs':'s need')+' a date →</button>':'')+'</footer>';
+}
 
 // A toned row: what is wrong, the figure or date that says so, and one place to go about it.
 // `run` is the onclick body, so an item can reach any existing entry point without this
@@ -14342,10 +14423,8 @@ function budOvAttention(m, f){
 }
 function budOvAttentionHtml(m, f){
   const items=budOvAttention(m,f).slice(0,BUD_OV_ATTENTION_MAX);
-  const body=items.length
-    ? items.map(budOvItemHtml).join('')
-    : '<div class="bov-calm">'+tstat('pos','Nothing urgent right now','check')+
-      '<span>Daily found nothing here that needs a decision today.</span></div>';
+  if(!items.length)return '';
+  const body=items.map(budOvItemHtml).join('');
   return '<div class="card bov-card">'+cardHeader('alert','Needs attention')+body+'</div>';
 }
 
@@ -14477,6 +14556,192 @@ function budOvMonthHtml(){
   '</div>';
 }
 
+function budOvMonthWindow(today){
+  const start=today.slice(0,8)+'01',previousStart=budDateMonth(start,-1);
+  const previousLast=Number(budDateAdd(start,-1).slice(8));
+  const days=Number(today.slice(8)),compareDays=Math.min(days,previousLast);
+  return {start,end:today,previousStart,previousEnd:budDateAdd(previousStart,compareDays-1),
+    compareEnd:budDateAdd(start,compareDays-1),days,compareDays};
+}
+function budOvAmountValid(amount){
+  const n=Number(amount),cents=Math.round(n*100);
+  return n>0&&Number.isFinite(n)&&Number.isSafeInteger(cents)&&cents>0;
+}
+function budOvDatedMoney(start,end){
+  const inRange=x=>x&&!x.deletedAt&&budDateValid(x.date)&&x.date>=start&&x.date<=end;
+  const amountOK=x=>budOvAmountValid(x.amount);
+  const events=ledgerData.filter(x=>x&&['income','savings','bill_payment'].includes(x.kind));
+  const invalid=[...events,...txnData].filter(x=>x&&!x.deletedAt&&
+    (!budDateValid(x.date)||(inRange(x)&&!amountOK(x)))).length;
+  // The same dated-payment reader as Budget, without assigning undated weekly totals to days.
+  const m=budPeriodCompute({start,end},{},events.filter(x=>inRange(x)&&amountOK(x)),
+    txnData.filter(x=>inRange(x)&&amountOK(x)),{},null);
+  return {...m,total:budMoneyRound(m.spent+m.billPaid),invalid};
+}
+function budOvSpendGroups(m){
+  const cats=loadVarCats(),groups=new Map();
+  m.purchases.forEach(x=>{
+    const id=x.catId||'__unknown__',cat=cats.find(c=>c.id===id);
+    const group=groups.get(id)||{id,name:cat?.name||'Uncategorised',amount:0};
+    group.amount=budMoneyRound(group.amount+Number(x.amount));groups.set(id,group);
+  });
+  if(m.billPaid>0)groups.set('__bills__',{id:'__bills__',name:'Bills paid',amount:m.billPaid});
+  return [...groups.values()].sort((a,b)=>b.amount-a.amount||a.name.localeCompare(b.name));
+}
+function budOvMonthFacts(today=getLocalDate()){
+  const w=budOvMonthWindow(today),current=budOvDatedMoney(w.start,w.end);
+  const previous=budOvDatedMoney(w.previousStart,w.previousEnd);
+  const matched=w.compareEnd===w.end?current:budOvDatedMoney(w.start,w.compareEnd);
+  const legacy=budPeriodLegacy({start:w.start,end:w.end});
+  const previousLegacy=budPeriodLegacy({start:w.previousStart,end:w.previousEnd});
+  const undated=legacy.incomplete||legacy.income>0||legacy.spent>0||previousLegacy.incomplete||previousLegacy.spent>0;
+  const spendUndated=legacy.incomplete||legacy.spent>0||previousLegacy.incomplete||previousLegacy.spent>0;
+  const available=!spendUndated&&!current.invalid&&!previous.invalid&&
+    (matched.purchases.length>0||matched.billPaid>0)&&(previous.purchases.length>0||previous.billPaid>0);
+  const daily=m=>Array.from({length:w.days},(_,i)=>{
+    if(m===previous&&i>=w.compareDays)return null;
+    const date=budDateAdd(m===previous?w.previousStart:w.start,i);
+    return budMoneyRound(m.purchases.filter(x=>x.date===date).reduce((s,x)=>s+Number(x.amount),0)+
+      m.rows.filter(x=>x.kind==='bill_payment'&&x.date===date).reduce((s,x)=>s+Number(x.amount),0));
+  });
+  const currentDaily=daily(current),previousDaily=daily(previous),groups=budOvSpendGroups(current);
+  const before=budOvSpendGroups(previous),now=budOvSpendGroups(matched),ids=new Set([...now,...before].map(x=>x.id));
+  const changes=[...ids].map(id=>({name:(now.find(x=>x.id===id)||before.find(x=>x.id===id)).name,
+    amount:budMoneyRound((now.find(x=>x.id===id)?.amount||0)-(before.find(x=>x.id===id)?.amount||0))}));
+  changes.sort((a,b)=>Math.abs(b.amount)-Math.abs(a.amount));
+  return {window:w,current,previous,matched,groups,currentDaily,previousDaily,undated,
+    comparison:{available,difference:budMoneyRound(matched.total-previous.total),
+      reason:spendUndated?'Some weekly spending has no dates':current.invalid||previous.invalid?'Some records need review':'More dated spending is needed to compare',
+      driver:available&&Math.abs(changes[0]?.amount||0)>.005?changes[0]:null}};
+}
+function budOvTrendHtml(f){
+  const w=f.window,hasCurrent=f.current.total>0,hasPrevious=f.previous.total>0;
+  if(!hasCurrent&&!hasPrevious)return '<div class="bov-trend-empty">No dated spending to chart yet.</div>';
+  const cumulative=values=>{let n=0;return values.map(v=>v===null?null:(n=budMoneyRound(n+v)));};
+  const current=cumulative(f.currentDaily),previous=cumulative(f.previousDaily);
+  const max=Math.max(...current,...previous.filter(v=>v!==null),1),step=Math.pow(10,Math.floor(Math.log10(max)));
+  const ceiling=Math.ceil(max/step)*step;
+  const path=values=>values.map((v,i)=>v===null?'':(i?'L':'M')+(w.days===1?300:i/(w.days-1)*600).toFixed(2)+' '+(116-v/ceiling*110).toFixed(2)).join(' ');
+  const previousLabel=localMidnight(w.previousStart).toLocaleDateString('en-AU',{month:'short'});
+  const currentLabel=localMidnight(w.start).toLocaleDateString('en-AU',{month:'short'});
+  const dateLabel=d=>localMidnight(d).toLocaleDateString('en-AU',{day:'numeric',month:'short'});
+  const description='Cumulative recorded spending. '+currentLabel+' through '+dateLabel(w.end)+': '+fmtMoneyExact(f.current.total)+
+    '. '+previousLabel+' through '+dateLabel(w.previousEnd)+': '+fmtMoneyExact(f.previous.total)+'. Exact daily amounts follow.';
+  return '<figure class="bov-trend"><figcaption>Cumulative spending</figcaption>'+
+    '<div class="bov-trend-plot"><div class="bov-trend-axis" aria-hidden="true"><span>'+nwCompactMoney(ceiling)+'</span><span>'+nwCompactMoney(ceiling/2)+'</span><span>$0</span></div>'+
+    '<svg viewBox="0 0 600 120" preserveAspectRatio="none" role="img" aria-label="'+escAttr(description)+'">'+
+      '<path class="bov-trend-grid" d="M0 6H600 M0 61H600 M0 116H600"/>'+
+      (hasPrevious?'<path class="bov-trend-previous" d="'+path(previous)+'"/>':'')+
+      (hasCurrent?'<path class="bov-trend-current" d="'+path(current)+'"/>':'')+
+      (w.days===1&&hasCurrent?'<circle class="bov-trend-current-dot" cx="300" cy="'+(116-current[0]/ceiling*110)+'" r="3"/>':'')+
+      (w.days===1&&hasPrevious?'<circle class="bov-trend-previous-dot" cx="300" cy="'+(116-previous[0]/ceiling*110)+'" r="3"/>':'')+
+    '</svg></div><div class="bov-trend-dates" aria-hidden="true"><span>Day 1</span><span>Day '+w.days+'</span></div>'+
+    '<div class="bov-trend-legend"><span><i></i>'+escText(currentLabel)+' · '+fmtMoneyExact(f.current.total)+'</span>'+
+    (hasPrevious?'<span class="is-previous"><i></i>'+escText(previousLabel)+' · '+fmtMoneyExact(f.previous.total)+'</span>':'')+'</div></figure>'+
+    '<details class="bov-daily"><summary>Daily amounts</summary><div class="bov-daily-table"><table><caption>Recorded purchases and bills paid; unlisted payments are unknown.</caption>'+
+    '<thead><tr><th scope="col">Day</th><th scope="col">'+escText(currentLabel)+'</th><th scope="col">'+escText(previousLabel)+'</th></tr></thead><tbody>'+
+    f.currentDaily.map((n,i)=>'<tr><th scope="row">'+(i+1)+'</th><td>'+fmtMoneyExact(n)+'</td><td>'+(f.previousDaily[i]===null?'—':fmtMoneyExact(f.previousDaily[i]))+'</td></tr>').join('')+
+    '</tbody></table></div></details>';
+}
+function budOvMonthlyHtml(f){
+  const w=f.window,m=f.current,cmp=f.comparison;
+  const dateLabel=d=>localMidnight(d).toLocaleDateString('en-AU',{day:'numeric',month:'short'});
+  const month=localMidnight(w.start).toLocaleDateString('en-AU',{month:'long',year:'numeric'});
+  const compareLabel='First '+w.compareDays+' day'+(w.compareDays===1?'':'s')+' vs '+localMidnight(w.previousStart).toLocaleDateString('en-AU',{month:'short'});
+  const comparison=cmp.available?(Math.abs(cmp.difference)<.005?'Same recorded spending':fmtMoneyExact(Math.abs(cmp.difference))+' '+(cmp.difference>0?'more':'less')):'Comparison unavailable';
+  const hasRecords=m.purchases.length||m.rows.length;
+  const groupRows=f.groups.slice(0,3).map(g=>'<div class="bov-spend-group"><div><span>'+escText(g.name)+'</span><strong>'+fmtMoneyExact(g.amount)+'</strong></div>'+
+    '<div class="card-bar"><div class="card-bar-fill" style="width:'+Math.min(100,g.amount/m.total*100)+'%"></div></div></div>').join('');
+  return '<section class="card bov-month" aria-label="Monthly spending">'+cardHeader('trend','This month',
+    '<span class="bov-period-label">'+escText(month)+'</span>')+
+    '<div class="bov-month-money"><div>'+statsFigure(hasRecords?fmtMoneyExact(m.total):'—','','Recorded spending')+'</div>'+
+    statsSplit([['Income received',fmtMoneyExact(m.income)],['Savings recorded',fmtMoneyExact(m.savingsRecorded)]])+'</div>'+
+    '<div class="bov-month-costs"><span>Purchases <strong>'+fmtMoneyExact(m.spent)+'</strong></span><span>Bills paid <strong>'+fmtMoneyExact(m.billPaid)+'</strong></span></div>'+
+    '<div class="bov-comparison"><strong>'+escText(comparison)+'</strong><span>'+escText(cmp.available?compareLabel:cmp.reason)+'</span></div>'+
+    (cmp.driver?'<p class="bov-driver">Biggest change · '+escText(cmp.driver.name)+' <strong>'+(cmp.driver.amount>0?'+':'−')+fmtMoneyExact(Math.abs(cmp.driver.amount))+'</strong></p>':'')+
+    budOvTrendHtml(f)+
+    (groupRows?'<div class="bov-spend-groups"><h3>Top spending</h3>'+groupRows+'</div>':'<p class="bov-month-empty">'+(hasRecords?'No spending recorded this month yet.':'No dated activity this month yet.')+'</p>')+
+    ((f.undated||m.invalid)?'<details class="bov-coverage"><summary>Some records are excluded</summary><p>Undated weekly totals remain in Weekly history. Entries without valid dates or amounts are excluded here; the chart and comparison use dated purchases and paid bills only.</p><button type="button" class="cat-action" onclick="homeOpenBudgetWeek()">Review in Budget →</button></details>':'')+
+    '<footer class="bov-month-footer"><span>'+escText(dateLabel(w.start)+' – '+dateLabel(w.end))+' · recorded payments</span><button type="button" class="cat-action" onclick="openBudgetCurrentMonth()">View month →</button></footer></section>';
+}
+function budOvActivityRows(today=getLocalDate(),limit=6){
+  const end=today,valid=x=>x&&!x.deletedAt&&budDateValid(x.date)&&x.date<=end&&budOvAmountValid(x.amount);
+  return [...txnData.filter(valid).map(record=>({kind:'purchase',record})),
+    ...ledgerData.filter(x=>valid(x)&&['income','savings','bill_payment'].includes(x.kind)).map(record=>({kind:record.kind,record}))]
+    .sort((a,b)=>b.record.date.localeCompare(a.record.date)||(Number(b.record.createdAt)||0)-(Number(a.record.createdAt)||0)||String(a.record.id||'').localeCompare(String(b.record.id||''))).slice(0,limit);
+}
+function budOvActivityHtml(today=getLocalDate()){
+  const rows=budOvActivityRows(today,24),vars=loadVarCats(),fixed=loadFixCats(),income=loadIncCats(),accounts=loadAccounts();
+  const types={purchase:['cart','Purchase'],income:['wallet','Income received'],savings:['bank','Savings recorded'],bill_payment:['receipt','Bill paid']};
+  return '<section class="card bov-activity" aria-label="Recent activity">'+cardHeader('receipt','Recent activity',
+    '<span class="bov-period-label" data-bov-count>Latest '+Math.min(6,rows.length)+'</span>')+
+    (rows.length?'<div class="bov-activity-list">'+rows.map(({kind,record:r},index)=>{
+      const cat=(kind==='purchase'?vars:kind==='bill_payment'?fixed:income).find(c=>c.id===(r.catId||r.fixCatId||r.streamId));
+      const name=kind==='purchase'?(r.merchant||cat?.name||'Expense'):kind==='savings'?'Savings':cat?.name||types[kind][1];
+      const account=accounts.find(a=>a.id===r.acctId);
+      return '<details class="bov-activity-item"'+(index>=6?' hidden':'')+'><summary><span class="bov-activity-icon" aria-hidden="true">'+cardIcon(types[kind][0])+'</span>'+
+        '<span class="bov-activity-copy"><strong>'+escText(name)+'</strong><small>'+escText(types[kind][1]+' · '+fmtDate(r.date))+'</small></span>'+
+        '<strong class="bov-activity-amount'+(kind==='income'?' is-income':'')+'">'+(kind==='income'?'+':'')+fmtMoneyExact(Number(r.amount))+'</strong><span class="bov-activity-chevron" aria-hidden="true">⌄</span></summary>'+
+        '<div class="bov-activity-detail">'+(r.note?'<p>'+escText(r.note)+'</p>':'')+
+        (cat?'<p>'+escText(cat.name)+'</p>':'')+(account?'<p>'+escText(account.name)+'</p>':'')+
+        '<p>'+escText(r.date)+(kind==='savings'?' · Savings record; no account transfer.':'')+'</p>'+
+        (r.id&&(kind==='purchase'||r.manual)?'<button type="button" class="cat-action" data-bov-id="'+escAttr(r.id)+'" data-bov-kind="'+kind+'" onclick="budOvOpenActivity(this)">Edit record →</button>':'')+
+        '</div></details>';
+    }).join('')+'</div><p class="bov-activity-foot">Latest dated records across all months. Transfers are excluded.</p>':
+      '<div class="bov-activity-empty">No dated activity yet. Recorded purchases, income, savings and bill payments will appear here.</div>')+'</section>';
+}
+function budOvOpenActivity(button){
+  const id=button.dataset.bovId,kind=button.dataset.bovKind;
+  const row=budOvActivityRows(getLocalDate(),24).find(x=>x.kind===kind&&x.record.id===id);if(!row)return;
+  if(kind==='purchase')openTxnModal({id});
+  else if(row.record.manual)budPeriodEdit(id);
+}
+let budOvActivityObserver=null,budOvActivityFrame=0,budOvActivityHost=null;
+function budOvActivityQueue(){
+  if(!budOvActivityFrame)budOvActivityFrame=requestAnimationFrame(()=>{budOvActivityFrame=0;budOvActivityFit();});
+}
+function budOvActivityFit(){
+  const host=budOvActivityHost,month=host?.querySelector('.bov-month'),activity=host?.querySelector('.bov-activity');
+  if(!host?.isConnected||!month?.offsetWidth||!activity)return;
+  const rows=[...activity.querySelectorAll('.bov-activity-item')],list=activity.querySelector('.bov-activity-list');
+  const keep=Math.max(6,rows.findLastIndex(r=>r.open||r.contains(document.activeElement))+1);
+  let count=Math.min(keep,rows.length);
+  if(window.matchMedia('(min-width:1200px)').matches){
+    const height=month.getBoundingClientRect().height;
+    host.style.setProperty('--bov-month-height',height+'px');
+    if(list){
+      // Measure natural row content, not the grid height, so filling cannot feed back into
+      // the monthly card or repeatedly add rows. Open/focused records stay reachable.
+      rows.forEach(r=>{r.hidden=false;});
+      const chrome=activity.getBoundingClientRect().height-list.getBoundingClientRect().height;
+      const room=Math.max(0,height-chrome);
+      let used=0;count=0;
+      for(const [index,r] of rows.entries()){
+        const h=r.querySelector('summary').getBoundingClientRect().height+
+          (r.open?r.querySelector('.bov-activity-detail').getBoundingClientRect().height:0)+
+          (parseFloat(getComputedStyle(r).borderBottomWidth)||0);
+        if(index>=keep&&used+h>room+.5)break;
+        used+=h;count=index+1;
+      }
+    }
+  }else host.style.removeProperty('--bov-month-height');
+  rows.forEach((r,index)=>{r.hidden=index>=count;});
+  const label=activity.querySelector('[data-bov-count]');if(label)label.textContent='Latest '+count;
+}
+function budOvActivityMount(host){
+  if(budOvActivityObserver)budOvActivityObserver.disconnect();
+  if(budOvActivityFrame){cancelAnimationFrame(budOvActivityFrame);budOvActivityFrame=0;}
+  if(budOvActivityHost)budOvActivityHost.removeEventListener('toggle',budOvActivityQueue,true);
+  budOvActivityHost=host;
+  host.addEventListener('toggle',budOvActivityQueue,true);
+  window.addEventListener('resize',budOvActivityQueue);
+  const month=host.querySelector('.bov-month');
+  if(month&&typeof ResizeObserver==='function'){
+    budOvActivityObserver=new ResizeObserver(budOvActivityQueue);budOvActivityObserver.observe(month);
+  }
+  budOvActivityFit();
+}
+
 // The hero. ONE figure — what is actually still spendable this week — on the app's own
 // .hero-panel, so it follows the accent and carries its verdict in a .tstat chip like every
 // other hero. "Available to spend" is an allocation out of this week's income and NOT a bank
@@ -14484,40 +14749,28 @@ function budOvMonthHtml(){
 function budOvHeroHtml(m){
   const setup=m.period?m.available===null:!(m.income>0);
   const sunday=m.period?localMidnight(m.period.end):new Date(m.monday.getFullYear(), m.monday.getMonth(), m.monday.getDate()+6);
-  // ONE primary action, in EVERY state, and it is This week. The hero STATES the weekly
-  // position; Week is where every part of it is actually changed — income, the bills, the
-  // spending goal, the categories, the close-out — so it is where almost every visit to this
-  // screen ends. Month, Bills, Accounts and Yearly are one press away on the tab strip above and
-  // do not compete for attention down here.
-  // A week with no income used to be the exception: "Set up income & bills" took the lead pill
-  // and This week dropped to a quiet outline beside it. That made the hero's main button change
-  // identity depending on state, and it sent a first-time reader somewhere other than the screen
-  // every later visit goes to — when setup lives on that screen anyway, in Week's own setup card.
-  // It is supporting COPY now (see the note below), never a competing button.
-  const week='<button type="button" class="bov-act bov-act-primary bov-act-lead"'+
-    ' onclick="homeOpenBudgetWeek()">This week <span aria-hidden="true">→</span></button>';
-  // Add expense is dropped while the week is unset up: with no categories yet the modal has
-  // nothing to file a purchase against, and a second pill would dilute the one action that
-  // matters here. It is unchanged everywhere else.
-  const acts='<div class="bov-hero-acts">'+week+
-    (setup?'':'<button type="button" class="bov-act bov-act-secondary" onclick="openTxnModal()">'+
-      '<span aria-hidden="true">+</span> Add expense</button>')+
+  const week='<button type="button" class="stg-btn bov-budget-open"'+
+    ' onclick="homeOpenBudgetWeek()">Open budget <span aria-hidden="true">→</span></button>';
+  // Add expense is omitted before setup, when there may be no category to file against.
+  const acts='<div class="bov-hero-acts" role="group" aria-label="Budget actions">'+week+
+    (setup?'':'<button type="button" class="stg-btn bov-budget-add" aria-label="Add expense" title="Add expense" onclick="openTxnModal()">'+
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>')+
   '</div>';
-  const extra='<div class="bov-hero-range">'+(m.period?'Budget period':'This week')+' · '+budRangeLabel(m.monday,sunday)+'</div>'+
+  const extra='<div class="bov-hero-aside"><div class="bov-hero-range">'+(m.period?'Budget period':'This week')+' · '+budRangeLabel(m.monday,sunday)+'</div>'+
     statsSplit([
-      ['Spent',     fmtMoney(m.spent)],
-      ['Committed', fmtMoney(m.committed)],
-      ['Allocated', fmtMoney(m.saved)]
+      ['Spent',     fmtMoneyExact(m.spent)],
+      ['Committed', fmtMoneyExact(m.committed)],
+      ['Allocated', fmtMoneyExact(m.saved)]
     ])+
     '<div class="bov-hero-note">'+(setup
       ? (m.period?'Check the income dates in Budget; older weekly totals are preserved.':'Income, bills and your spending goal are set up in Budget.')
       : 'Your spending allocation — separate from your account balances.')+'</div>'+
-    acts;
-  return budHeroPanel([{
+    '</div>';
+  return '<section class="bov-position">'+budHeroPanel([{
     icon:'wallet',
     label:m.period?'Available to spend this period':'Available to spend this week',
     lg:true,
-    val: setup ? '—' : (m.available<0?'-':'')+'$'+Math.abs(m.available).toFixed(0),
+    val: setup ? '—' : fmtMoneyExact(m.available),
     sub: setup
       ? 'Record income and fixed costs to see what is left.'
       : escText(budPaceText(m.available, m.period?budPeriodDaysLeft(m.period):varGoalDaysLeft())),
@@ -14525,14 +14778,10 @@ function budOvHeroHtml(m){
       ? tstat('neg','Over budget','alert',true)
       : tstat('pos','On track','check',true)),
     extra: extra
-  }],{cols:1,colsSm:1,className:'bov-hero'});
+  }],{cols:1,colsSm:1,className:'bov-hero'})+'<footer class="bov-hero-footer">'+acts+'</footer></section>';
 }
 
-// One full-width hero, then two INDEPENDENT vertical stacks — the composition Home's Dashboard
-// settled on, for the same reason: a tall card must not stretch the card beside it. Main holds
-// the two cards you act from, summary the two you check. On a phone the wrappers simply stack,
-// which gives the required reading order (position → attention → coming up → accounts →
-// month) with no CSS `order` and no second copy of the markup.
+// Calendar facts stay independent of the payday-aligned allocation in the hero.
 function renderBudgetOverview(){
   if(typeof budPeriodOverview==='function'&&budPeriodOverview()) return;
   const wrap=document.getElementById('budget-overview-view'); if(!wrap) return;
@@ -14544,10 +14793,10 @@ function renderBudgetOverview(){
   // as budRecalc hands them to the Outlook card.
   const f=period?budPeriodForecast(period):payCycleForecast(m.available, m.week);
   wrap.innerHTML=budOvHeroHtml(m)+
-    '<div class="bov-cols">'+
-      '<div class="bov-col bov-col-main">'+budOvAttentionHtml(m,f)+budOvComingHtml(f)+'</div>'+
-      '<div class="bov-col bov-col-side">'+budOvAccountsHtml()+budOvMonthHtml()+'</div>'+
-    '</div>';
+    '<div class="bov-attention">'+budOvAttentionHtml(m,f)+'</div>'+
+    '<div class="bov-insights">'+budOvMonthlyHtml(budOvMonthFacts())+budOvActivityHtml()+'</div>'+
+    '<section id="bov-bills" class="card bov-bills" aria-labelledby="bov-bills-title">'+budOvBillsHtml()+'</section>';
+  budOvActivityMount(wrap.querySelector('.bov-insights'));
 }
 
 // ── Home: Finance check-in ────────────────────────────────────────
@@ -14631,6 +14880,7 @@ function openBillsCalendar(){
 function openBudgetCurrentMonth(){
   currentMonthOffset=0;
   budgetPlanLens='month';
+  budgetPlanSection='review';
   setBudgetView('plan');
 }
 // A new transaction is always dated today (openTxnModal defaults to getLocalDate()), so every
@@ -16299,7 +16549,12 @@ function renderPlanAhead(){
 function budPlanApplyLens(){
   const lens=budgetPlanLens==='month'?'month':'year';
   const panel=document.getElementById('budget-plan-view');
-  if(panel) panel.dataset.planLens=lens;
+  if(panel){panel.dataset.planLens=lens;panel.dataset.planSection=budgetPlanSection;}
+  ['future','review'].forEach(section=>{
+    const on=budgetPlanSection===section,tab=document.getElementById('plan-'+section+'-tab'),view=document.getElementById('plan-'+section+'-view');
+    if(tab){tab.setAttribute('aria-selected',String(on));tab.setAttribute('tabindex',on?'0':'-1');tab.classList.toggle('on',on);}
+    if(view)view.hidden=!on;
+  });
   document.querySelectorAll('#budget-plan-lens [data-plan-lens]').forEach(btn=>{
     const on=btn.dataset.planLens===lens;
     btn.classList.toggle('on',on);
@@ -16308,11 +16563,12 @@ function budPlanApplyLens(){
 }
 function setBudgetPlanLens(lens){
   budgetPlanLens=lens==='month'?'month':'year';
+  budgetPlanSection='review';
   budPlanApplyLens();
-  // The inactive phone pane is display:none. Render after the new pane is visible so Chart.js
-  // measures the real width; desktop deliberately keeps both panes current.
-  if(!layoutIsDesktop()&&typeof S!=='undefined'&&S.view==='budget'&&budgetView==='plan') renderPlan();
+  // Render after revealing the selected Review pane so charts measure its actual width.
+  if(typeof S!=='undefined'&&S.view==='budget'&&budgetView==='plan') renderPlan();
 }
+function setBudgetPlanSection(section){budgetPlanSection=section==='review'?'review':'future';renderPlan();}
 function budPlanClearMonthChart(){
   if(monthWeekChart){ monthWeekChart.destroy(); monthWeekChart=null; }
 }
@@ -16321,22 +16577,10 @@ function budPlanClearYearCharts(){
   if(yearCCChart){ yearCCChart.destroy(); yearCCChart=null; }
 }
 function renderPlan(){
-  if(typeof budPeriodReport==='function') budPeriodReport('budget-plan-view');
   budPlanApplyLens();
-  if(!layoutIsDesktop()){
-    if(budgetPlanLens==='month'){
-      budPlanClearYearCharts();
-      renderMonth();
-    } else {
-      budPlanClearMonthChart();
-      renderPlanAhead();
-      renderYear();
-    }
-    return;
-  }
-  renderMonth();
-  renderPlanAhead();
-  renderYear();
+  if(budgetPlanSection==='future'){budPlanClearMonthChart();budPlanClearYearCharts();budPlanWorkspaceRender();renderPlanAhead();return;}
+  if(budgetPlanLens==='month'){budPlanClearYearCharts();renderMonth();}
+  else{budPlanClearMonthChart();renderYear();}
 }
 layoutOnModeChange(function(){
   if(typeof S!=='undefined'&&S.view==='budget'&&budgetView==='plan') renderPlan();

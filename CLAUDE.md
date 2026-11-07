@@ -1,5 +1,137 @@
 # Daily — Project Reference
 
+## Overview and Plan — v441, release authorised, 2026-11-08
+
+Francois authorised committing and pushing all pending v437–v441 Overview and Plan work.
+This includes the merged bill views, monthly spending/trends/activity, forward planning,
+linked targets, disposable scenarios and history under Review. Earlier local-only notes
+below describe their implementation stages and are superseded by this release approval.
+
+Plan ahead / Review now fills its track with equal-width segments, using the shared
+seg-fill control with a zero basis for exact halves. Targets uses the shared card-header
+Edit button in place of its larger body action. Its accessible name remains Edit budget
+targets, and both controls keep 44px targets. No financial calculations or writers changed.
+All 717 Node checks pass. Both Overview and Plan browser suites pass at 320/390/768/1024/1440
+in dark/light, including target saves, Cancel and preservation of unrelated financial data.
+Local review also checked equal desktop segments, the 320px light Review switch and the
+restyled target editor. Desktop preview sizing is restored. Cache daily-v441; production
+Firebase and physical Safari remain unverified. No backend or migration changes.
+
+## Plan ahead, targets and Review — v440, local preview, 2026-11-07
+
+Plan now defaults to Plan ahead: three calendar months of canonical bill occurrences,
+larger-cost funding estimates, linked current-budget targets, savings-account goals and a
+disposable what-if workspace. The full-year bill schedule remains a disclosure. Review
+contains the original monthly/yearly readers, navigation and history; only its selected
+scope renders. Old Month/Year links and Overview's View month open the corresponding Review.
+
+Current-budget savings reservations and spending goals can be edited directly in Plan.
+The dialog names the current range and previews the savings effect on available spending.
+Inherited Monday weeks use the existing per-week writer; explicit/custom periods use their
+existing budgetCycles record. Other periods, funding confirmations, fixed allowances,
+income, payments and account balances are preserved. Explicit seven-day period records
+own their targets even if they retained an obsolete inheritance marker. Save validates
+cents, rejects changed local records/account/date context, skips no-ops and verifies local
+persistence. A failed weekly save restores the in-memory original. No target edit creates
+an actual savings/income/transfer event or changes the usual spending default.
+
+Savings balance goals reuse each active Saver account's savingsPlan and the existing guarded
+account writer. Editing amount/date preserves its balance, history and transfer preferences.
+Goal-date contribution suggestions use the recorded balance, cap at the amount still needed,
+and enter the current budget only through the explicit Review suggested savings dialog.
+They are not automatic recurring allocations or evidence that money reached an account.
+
+Scenarios require user-entered starting funds and everyday spending; future income defaults
+to zero. Income/spending/savings assumptions are spread in exact cents over calendar days;
+known bills/statements retain their dates. Users can mark exact charges as funded outside
+their starting money. Results retain the first shortfall even if later assumed income
+recovers, show monthly amounts, and disclose undated bills. Inputs/results are memory-only,
+survive Review, invalidate changed schedules and reset across owners/reload. They never write
+financial records. No new storage key, migration, backend or production sync setting.
+
+Cache daily-v440 includes js/finance-plan.js. All 717 Node checks pass. Synthetic Plan browser
+coverage passes 320/390/768/1024/1440 in both themes: scenarios/covered costs, Review history,
+cancel/no-write checks, actual weekly/custom-period target saves linked back to Budget,
+account-goal updates preserving balances, and empty/undated cases. Overview regression checks
+also pass. The local server was refreshed on 8799 to allow the new registered public module.
+Local only and uncommitted; physical Safari and production Firebase remain unverified.
+Screenshots and the isolated generated fixture remain ignored in temp-analysis/tests.
+
+## Overview refinements — v439, local preview, 2026-11-07
+
+Open budget now leads a solid neutral paired control in the gray hero footer. Its attached
+48px plus action retains the Add expense accessible name and existing capture form; both
+controls have at least 44px targets. Before setup, Open budget remains available alone.
+
+At desktop widths with two columns, Recent activity follows the monthly card's height and
+reveals additional actual records to use the space. Up to 24 candidates are mounted; phones
+retain six by default. A local observer reacts to monthly disclosures, fonts and resizing.
+It measures natural row content without stretching the monthly card, and preserves any open
+or focused record when fitting. It replaces its observer on redraw and deduplicates its
+resize handler. No preference, financial record, timestamp or sync writer was added.
+
+Bills List is now a compact weekly agenda: the nearest scheduled week starts open, later
+weeks show charge counts and exact totals, and dated rows align names/amounts without
+repeating a daily subtotal. All charges remain available. Native week disclosures remember
+explicit choices in memory across List/Calendar changes, with month boundaries clipped
+correctly. Calendar and recurrence/payment calculations are unchanged.
+
+Cache daily-v439. Local only and uncommitted. All 705 Node checks pass. The synthetic browser
+suite passes 320/390/768/1024/1440 in both themes, including Budget/plus capture and Cancel,
+activity filling and expanded extra records, weekly agenda disclosure persistence, Calendar,
+empty/long/undated records and unchanged financial stores. Physical Safari and production
+Firebase remain unverified. Local screenshots stay ignored in temp-analysis/.
+
+## Overview spending context — v438, local preview, 2026-11-07
+
+Overview now places This month and Recent activity above the merged bill schedule. The
+monthly card separates recorded purchases and actual bill payments, with income received
+and savings records alongside. Calendar ranges ignore the selected budget period. A compact
+cumulative SVG chart, accessible daily-amount table, top spending groups and largest category
+change explain the month so far. Comparison matches the first N calendar days of the prior
+month, clamping both comparison windows for shorter months while retaining the full current
+total. No extrapolation, expected income, transfers, reserves or savings targets enter spending.
+
+Both charts and totals use the canonical dated-payment computation. Undated weekly totals
+remain in history and are disclosed; uncertain spending coverage or invalid amounts suppress
+comparisons. Missing history gets an empty state, and day-one charts retain visible points.
+Recent activity shows the latest six dated purchases/income/savings/bill payments across
+months, with native expandable details and the established expense/manual-record editors.
+Deleted, future and invalid records are excluded. Viewing writes no financial data, stamps
+or preferences. No new financial writer, migration, sync path or backend change.
+
+Neutral shared cards and quiet footer actions follow the current app styling. Desktop uses
+two independent cards; narrower screens stack them. The isolated overview preview flag now
+has synthetic current/prior-month examples. Existing saved finances are not accessed.
+Cache daily-v438. Local only; no commit or push requested. All 703 Node checks pass.
+Browser coverage includes 320/390/768/1024/1440 in both themes, daily disclosure, activity
+edit/Cancel, month destination, bill List/Calendar, empty/undated/long records and unchanged
+financial stores. Physical Safari and production Firebase remain unverified. Screenshots
+remain ignored in temp-analysis/.
+
+## Overview and Bills merge — v437, local preview, 2026-11-07
+
+Finance now has Overview, Budget, Plan and Accounts. Overview pairs a compact balance hero
+and gray action footer with real attention items and the complete bill schedule. The
+repeated Accounts/month cards are no longer rendered. Upcoming bills has List/Calendar
+tabs, shared month controls and a selected-day detail list. Current month starts today;
+other months show their full scheduled range. The calendar supports arrow/Home/End keys
+and exposes exact amounts in accessible day labels. View/month/day choices are session-only.
+Manage bills opens the existing editor. Older bills routes and openBillsCalendar reach
+Overview > Calendar; the standalone tab/panel/sidebar row are removed. Bill occurrences,
+statement amounts, funding readers, writers, records and sync configuration are unchanged.
+Scheduled totals remain separate from budget allowances. Hero amounts now retain cents.
+Follow-up: Open budget uses Home's quiet text action in the gray footer, replacing its
+boxed button. The subsequent v438 pass adds the calendar-month spending context.
+The 39 focused Overview checks pass after this styling change. Local browser verified
+its borderless 44px action, Budget destination and return to Overview.
+Cache daily-v437. Local only, no commit or push requested. The overview query flag adds
+synthetic bill examples solely to the isolated preview fixture.
+694 Node checks and overview-bills-browser.cjs pass. Browser coverage: 320/390/768/1024/1440,
+both themes, List/Calendar, month changes, keyboard/day selection, old calendar shortcuts,
+bill-manager open/Done, empty/undated schedules and unchanged financial stores. Physical
+Safari and production Firebase are unverified; screenshots remain ignored in temp-analysis.
+
 ## Money card fallback and graph toggle — v436, release authorised, 2026-11-07
 
 Accounts history now has Show graph / Hide graph in its always-visible summary. It starts

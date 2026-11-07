@@ -108,6 +108,35 @@
     stores.ledger=blob([{id:'preview-income',date,amount:250,kind:'income',streamId:'salary',acctId:'cash',accountLink:effect('cash','income'),manual:true,weekMode:'add',weekKey:week,weekBefore:0,weekAfter:250,createdAt:1}]);
     stores.budgetData={[week]:{wk:week,inc_salary:'250',sav_amount:'50',var_goal:'200',updatedAt:500}};
     stores.budgetCycles=blob({config:{frequency:'weekly',anchor:week},periods:{}});
+    if(params.has('overview')){
+      const dueIn=n=>format(new Date(day.getFullYear(),day.getMonth(),day.getDate()+n));
+      stores.budgetFixCats=blob([
+        {id:'gym',name:'Gym — sample',amount:14,cycle:'weekly',chargeType:'subscription',dueDate:dueIn(2)},
+        {id:'internet',name:'Internet — sample',amount:65,cycle:'monthly',chargeType:'bill',dueDate:dueIn(2)},
+        {id:'cover',name:'Insurance — sample',amount:45,cycle:'fortnightly',chargeType:'bill',dueDate:dueIn(5)},
+        {id:'storage',name:'Cloud storage — sample',amount:5,cycle:'monthly',chargeType:'subscription',dueDate:dueIn(8)}
+      ]);
+      const monthStart=new Date(day.getFullYear(),day.getMonth(),1),previousStart=new Date(day.getFullYear(),day.getMonth()-1,1);
+      const currentDay=day.getDate(),pastDays=Math.min(currentDay,new Date(day.getFullYear(),day.getMonth(),0).getDate());
+      const at=(start,n)=>format(new Date(start.getFullYear(),start.getMonth(),n));
+      stores.budgetVarCats=blob([{id:'food',name:'Food',icon:'cart'},{id:'travel',name:'Transport'},{id:'social',name:'Eating out'}]);
+      const purchases=JSON.parse(stores.transactions.v),events=JSON.parse(stores.ledger.v);
+      events[0].amount=500;events[0].weekAfter=500;stores.budgetData[week].inc_salary='500';
+      [[1,65.2,'food','Weekly groceries'],[3,18.6,'travel','Train fare'],[5,42.5,'social','Lunch with friends'],[6,23.4,'food','Fresh groceries']].forEach(([n,amount,catId,merchant])=>{
+        if(n<currentDay)purchases.push({id:'preview-month-'+n,date:at(monthStart,n),amount,catId,merchant,createdAt:n});
+      });
+      [[1,78.9,'food'],[3,25.5,'travel'],[5,65,'social'],[6,31,'food']].forEach(([n,amount,catId])=>{
+        if(n<=pastDays)purchases.push({id:'preview-prior-'+n,date:at(previousStart,n),amount,catId,merchant:'Previous month — sample',createdAt:n});
+      });
+      events.push({id:'preview-savings',kind:'savings',date,amount:50,manual:true,note:'Put aside this month',createdAt:3},
+        {id:'preview-bill-paid',kind:'bill_payment',fixCatId:'gym',date,amount:14,manual:true,note:'Gym payment — sample',createdAt:4},
+        {id:'preview-prior-pay',kind:'income',streamId:'salary',date:at(previousStart,1),amount:800,createdAt:1},
+        {id:'preview-prior-bill',kind:'bill_payment',fixCatId:'gym',date:at(previousStart,pastDays),amount:14,createdAt:2});
+      stores.transactions=blob(purchases);stores.ledger=blob(events);
+      if(params.has('plan')){
+        const list=JSON.parse(stores.accounts.v);list.find(a=>a.id==='savings').savingsPlan.targetDate=format(new Date(day.getFullYear(),day.getMonth()+6,day.getDate()));stores.accounts=blob(list);
+      }
+    }
   }
   const initial=clone(stores),listeners=new Map(),writes=[],errors=[];
   window.addEventListener('error',e=>errors.push(e.message));
@@ -144,7 +173,9 @@
   window.firebase={initializeApp:()=>{},auth:()=>auth,database:()=>({ref})};
   window.addEventListener('load',()=>setTimeout(()=>{
     if(params.has('finance-links')){
-      obDismiss();dailyUpdateDismiss();openAccounts();
+      obDismiss();dailyUpdateDismiss();if(params.has('plan')){setView('budget');setBudgetView('plan');
+        const form=document.getElementById('plan-scenario-form');form.elements.starting.value='1500';form.elements.spending.value='650';form.elements.savings.value='100';budPlanScenarioRun({preventDefault(){},target:form});
+      }else if(params.has('overview'))openBudgetOverview();else openAccounts();
       const banner=document.createElement('p');banner.textContent='Local preview · sample money only. Changes here do not affect your saved finances.';
       banner.style='padding:12px;border:1px solid var(--border);border-radius:12px;font-size:13px;color:var(--muted)';
       document.getElementById('view-budget').prepend(banner);return;

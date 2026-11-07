@@ -53,10 +53,10 @@ function views() {
 
 // ── The view registry ─────────────────────────────────────────────
 
-test('Finance holds five views in order, and a fresh session lands on Overview', () => {
+test('Finance holds four views with Bills in Overview, and a fresh session lands there', () => {
   const { BUD_VIEWS, budgetView } = views();
   assert.deepEqual(BUD_VIEWS.map(v => v.id),
-    ['overview', 'week', 'plan', 'bills', 'accounts']);
+    ['overview', 'week', 'plan', 'accounts']);
   assert.equal(budgetView, 'overview', 'a fresh session must enter Finance on the Overview');
   // Every entry is complete: a missing field is a view that lights no tab, shows no panel,
   // selects no sidebar row or renders nothing.
@@ -96,7 +96,7 @@ test('Accounts is a registered Finance view with exactly one tab and one panel',
   assert.equal(acct[0].render, 'renderAccountsPage', 'the existing renderer, not a new one');
   assert.equal(acct[0].row, 'accounts', 'it keeps the nav row id it already had');
   // Order: Overview · Week · Plan · Bills · Accounts.
-  assert.equal(BUD_VIEWS.findIndex(v => v.id === 'accounts'), 4);
+  assert.equal(BUD_VIEWS.findIndex(v => v.id === 'accounts'), 3);
   // One tab, inside the tablist, and one panel.
   assert.equal((html.match(/id="bv-accounts-btn"/g) || []).length, 1);
   assert.equal((html.match(/id="budget-accounts-view"/g) || []).length, 1);
@@ -257,7 +257,7 @@ test('selecting the last Finance tab reveals it after the panel restores the scr
     elements[view.btn] = {
       classList: { toggle(name, on) { if (on) selected.add(name); else selected.delete(name); } },
       setAttribute(name, value) { this[name] = value; },
-      getBoundingClientRect() { return { left: 16 + index * 60 - scrollLeft, width: 60 }; }
+      getBoundingClientRect() { return { left: 16 + index * 90 - scrollLeft, width: 90 }; }
     };
     const panel = { hidden: view.id !== 'overview' };
     panel.classList = { toggle(name, hidden) { panel.hidden = hidden; } };
@@ -345,6 +345,17 @@ test('Overview has its own entry point, and explicit Week and Bills links keep t
   // Stats' source-week link is explicit about needing the week, and must stay that way.
   assert.match(body('openBudgetWeekFromStats'), /setBudgetView\('week'\)/);
 });
+test('older Bills destinations select Calendar inside Overview without an extra Finance panel',()=>{
+  const rendered=[],c=vm.createContext({
+    BUD_VIEWS:views().BUD_VIEWS,budgetView:'week',budBillsView:'list',
+    document:{getElementById:()=>null},segSetOn(){},segScrollToTab(){},setNavActive(){},
+    budRenderView:v=>rendered.push(v)
+  });
+  vm.runInContext(extract('setBudgetView'),c);c.setBudgetView('bills');
+  assert.equal(c.budgetView,'overview');assert.equal(c.budBillsView,'calendar');
+  assert.deepEqual(rendered,['overview']);
+  assert.match(body('renderBillsView'),/openBillsCalendar\(\)/);
+});
 
 // ── "This month" opens THIS month ─────────────────────────────────
 // The card always describes the current calendar month (getMonthDate(0)), so its action has to
@@ -376,6 +387,7 @@ test('openBudgetCurrentMonth resets the month index, selects its lens, then open
 test('only the "This month" card resets the offset — every other Plan entry point remembers', () => {
   // The card's own action.
   assert.match(body('budOvMonthHtml'), /onclick="openBudgetCurrentMonth\(\)"/);
+  assert.match(body('budOvMonthlyHtml'), /onclick="openBudgetCurrentMonth\(\)"/);
   assert.ok(!/onclick="setBudgetView\(\\'month\\'\)"/.test(body('budOvMonthHtml')));
   // The Plan tab and the History & tools link stay on the plain dispatcher: both mean "the
   // Month workspace", and a control that silently rewound your position is the worse bug.
@@ -392,10 +404,10 @@ test('only the "This month" card resets the offset — every other Plan entry po
   assert.ok(!/openBudgetCurrentMonth/.test(body('setView')));
   assert.ok(!/currentMonthOffset/.test(body('setBudgetView')),
     'switching views must not touch the month index');
-  // Exactly one caller in the whole file, plus the declaration.
+  // Both calendar-month summaries use it; ordinary Plan navigation never does.
   assert.equal((source.match(/openBudgetCurrentMonth/g) || [])
-    .length - (source.match(/\/\/.*openBudgetCurrentMonth/g) || []).length, 2,
-    'one declaration and one caller');
+    .length - (source.match(/\/\/.*openBudgetCurrentMonth/g) || []).length, 3,
+    'one declaration and the two calendar-month summary callers');
 });
 
 test('legacy Month and Yearly view values normalize to Plan rather than Overview', () => {
@@ -611,6 +623,7 @@ function hero(m) {
     function tstat(kind,label){ return '<tstat kind="'+kind+'">'+label+'</tstat>'; }
     function escText(s){ return String(s); }
     function fmtMoney(n){ return '$'+Math.round(n); }
+    function fmtMoneyExact(n){ return '$'+n; }
   `, context);
   vm.runInContext(extract('budOvHeroHtml'), context);
   context.m = m;
@@ -618,25 +631,25 @@ function hero(m) {
 }
 const WEEK = { monday: new Date(2026, 8, 7), income: 1200, available: 350, spent: 210, committed: 480, saved: 160 };
 
-test('This week is the hero primary action, and the only other control is quick capture', () => {
+test('Budget leads the paired action and quick capture retains an accessible plus button', () => {
   const html = hero(WEEK);
   const buttons = html.match(/<button[^>]*>/g) || [];
   assert.equal(buttons.length, 2, 'exactly two actions: the destination and quick capture');
   assert.ok(buttons.every(b => /type="button"/.test(b)), 'real buttons, so they are keyboard reachable');
-  // Order and emphasis both say which one is primary.
-  assert.match(buttons[0], /bov-act-primary/);
-  assert.match(buttons[0], /bov-act-lead/);
+  assert.match(buttons[0], /class="stg-btn bov-budget-open"/);
   assert.match(buttons[0], /homeOpenBudgetWeek\(\)/);
-  assert.match(html, />This week /);
-  assert.ok(!/bov-act-primary/.test(buttons[1]), 'quick capture must not compete with it');
+  assert.match(html, />Open budget /);
   assert.match(buttons[1], /openTxnModal\(\)/);
+  assert.match(buttons[1], /aria-label="Add expense"/);
+  assert.match(buttons[1], /bov-budget-add/);
+  assert.ok(!/>[^<]*Add expense/.test(html), 'the side action uses its plus icon with an accessible name');
   // The other Finance views belong to the tab strip.
   ['month', 'bills', 'accounts', 'year'].forEach(v =>
     assert.ok(!html.includes("setBudgetView('" + v + "')"), v + ' must not appear in the hero'));
   assert.ok(!/Open week/.test(html), 'the retired label is gone');
 });
 
-test('This week stays the primary action before anything is set up', () => {
+test('the main Budget action stays reachable before setup', () => {
   const html = hero({ ...WEEK, income: 0 });
   const buttons = html.match(/<button[^>]*>/g) || [];
   // ONE action. "Set up income & bills" used to take the lead pill here, which made the hero's
@@ -644,8 +657,7 @@ test('This week stays the primary action before anything is set up', () => {
   // the screen every later visit goes to.
   assert.equal(buttons.length, 1, 'no second button may compete with This week');
   assert.match(buttons[0], /homeOpenBudgetWeek\(\)/);
-  assert.match(buttons[0], /bov-act-primary/);
-  assert.match(buttons[0], /bov-act-lead/);
+  assert.match(buttons[0], /class="stg-btn bov-budget-open"/);
   assert.ok(!/openBudgetSetup/.test(html), 'setup is copy here, not a button');
   // Setup is still explained, and still named where it actually lives.
   assert.match(html, /Income, bills and your spending goal are set up in Budget/);
@@ -670,4 +682,6 @@ test('the hero keeps every figure it already stated', () => {
   assert.match(html, /\$50 a day for 3 more days/, 'the shared pace line');
   assert.match(html, /This week · 7-13 Sept/);
   assert.match(html, /separate from your account balances/, 'the allocation caveat stays');
+  const exact=hero({...WEEK,available:87.76,spent:454.89});
+  assert.match(exact,/val="\$87.76"/);assert.match(exact,/Spent=\$454.89/);
 });

@@ -435,8 +435,12 @@
 // v429: combine Set aside and Upcoming within one Fixed expenses card.
 // v430: solid neutral money views with separate Income and Savings tabs and quieter bill controls.
 // v431: remove the extra explanation beneath Upcoming's scheduled total.
-// v436: toggle the Accounts graph and show Money recording tabs on inherited weekly plans.
-const CACHE_NAME = 'daily-v436'; // Remote connector hosting remains disabled.
+// v437: merge scheduled Bills into Overview with shared List and Calendar views.
+// v438: add dated monthly spending, matching-day trends and recent activity to Overview.
+// v439: paired Budget action, adaptive activity and compact weekly bill agenda.
+// v440: future planning, linked targets and isolated scenarios, with history under Review.
+// v441: fill both Plan workspace segments and use the shared Targets header Edit control.
+const CACHE_NAME = 'daily-v441'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
@@ -476,6 +480,7 @@ const ASSETS = [
   './js/accounts-tools.js',
   './js/account-links.js',
   './js/finance-accounts.js',
+  './js/finance-plan.js',
   './js/finance-import.js',
   './css/finance-periods.css',
   './css/home-phone.css',

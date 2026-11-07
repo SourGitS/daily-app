@@ -68,11 +68,11 @@ test('quick access stays separate from groups with nine labelled destinations an
   assert.ok(!groups.includes('data-nav-quick'));
 });
 
-test('Finance children follow the five registered tabs exactly, including Accounts after Bills', () => {
+test('Finance children follow the four registered tabs after merging Bills into Overview', () => {
   const f = fixture(), rows = f.NAV_TREE.find(g => g.id === 'money').rows;
   assert.deepEqual(rows.map(r => [r.id, r.view, r.sub]),
     f.BUD_VIEWS.map(v => [v.row, 'budget', v.id]));
-  assert.deepEqual(rows.map(r => r.label), ['Overview', 'Budget', 'Plan', 'Bills', 'Accounts']);
+  assert.deepEqual(rows.map(r => r.label), ['Overview', 'Budget', 'Plan', 'Accounts']);
 });
 
 test('Weekly review has one Stats home in tab order and supporting destinations remain reachable', () => {
