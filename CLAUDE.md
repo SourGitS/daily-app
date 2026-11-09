@@ -1,5 +1,22 @@
 # Daily — Project Reference
 
+## v447 Food Today scope correction — release authorised, 2026-11-09
+
+- Francois clarified that the approved Food redesign belongs to the “What would you like
+  to eat?” recipe card on Food > Today. He explicitly requested committing and pushing
+  when done. The v445 change to Home Food was a mistaken scope interpretation: its renderer,
+  styles and Home Layout miniature are restored exactly to their pre-v445 presentation.
+- Food Today's main recipe chooser now keeps its heading, search, meal categories and
+  limits in the shared accent body. All recipes and Reset filters use a solid gray action
+  footer. Existing routes, filters, input IDs and refresh identity stay intact; the separate
+  calorie log, recipe values and food records are unchanged. Training and Accounts retain
+  their approved v445/v446 designs.
+- Cache daily-v447. All 726 Node checks pass. Browser verification covers 320/390/768/1024/
+  1440 in both themes, flush footer edges, 44px actions, search focus through refresh,
+  filter retention after Recipes/Today navigation, Reset and unchanged records. Home's
+  restored action/recipe placements and containment also pass. Physical Safari and
+  production Firebase remain unverified; local previews and screenshots stay ignored.
+
 ## v446 Accounts history in the hero — release authorised, 2026-11-09
 
 - Francois requested the net worth graph as a dropdown inside the Accounts hero's gray

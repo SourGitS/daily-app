@@ -2352,13 +2352,17 @@ button.aih-row{cursor:pointer}
    colour or a night weather scene all produce a deep surface white text can sit on, and the
    hero re-inks itself with no re-render. .kitchen-hero-card is the Recipe Book's featured
    surface and is deliberately untouched by any of this. */
-.fo-chooser{position:relative;overflow:hidden;border-radius:var(--radius-hero);color:#fff;padding:18px;
-  background:linear-gradient(152deg,var(--accent-hero,#4A4A52) 0%,var(--accent-hero,#4A4A52) 52%,var(--accent-hero-2,#26262C) 100%);
-  box-shadow:0 6px 16px rgba(0,0,0,.18);text-shadow:0 1px 2px rgba(0,0,0,.18)}
+.fo-chooser{position:relative;overflow:hidden;border-radius:var(--radius-hero);color:#fff;padding:0;
+  background:linear-gradient(130deg,var(--accent-hero),var(--accent-hero-2))}
+.fo-chooser-body{padding:24px}
+.fo-chooser .fo-chooser-actions{display:flex;align-items:center;gap:10px;padding:14px 24px;text-shadow:none}
+.fo-chooser .fo-chooser-actions .fo-reset{flex:0 1 auto;width:auto;margin:0;padding:10px 12px;background:transparent;color:var(--muted);font-size:13px}
+.fo-chooser .fo-chooser-actions .fo-recipes-open{width:260px;max-width:100%;margin-left:auto}
+@media(max-width:600px){.fo-chooser-body{padding:22px 20px 20px}.fo-chooser .fo-chooser-actions{padding:14px 20px}.fo-chooser .fo-chooser-actions .fo-reset{flex:0 0 auto;padding-inline:8px;font-size:12px}.fo-chooser .fo-chooser-actions .fo-recipes-open{flex:1;min-width:0;width:auto;font-size:13px}}
 .fo-chooser>*{position:relative;z-index:1}
 .fo-chooser .card-label{color:rgba(255,255,255,.82)}
 .fo-chooser .card-hd-ico{color:inherit;opacity:.92}
-.fo-chooser h1{margin:2px 0 16px;font-family:var(--font-num);font-size:27px;letter-spacing:-.8px;line-height:1.15;color:#fff}
+.fo-chooser h1{margin:2px 0 16px;font-family:var(--font-ui);font-size:28px;font-weight:800;letter-spacing:-.7px;line-height:1.2;color:#fff}
 .fo-search{display:block}
 .fo-search .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .fo-search input,.fo-limits input{box-sizing:border-box;width:100%;min-width:0;min-height:42px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;font-size:13px;padding:10px 12px}
@@ -2444,18 +2448,18 @@ button.aih-row{cursor:pointer}
   .fo-support{margin-top:0;gap:16px}
   .fo-card{padding:20px}
   /* The hero belongs to the MAIN column only — the supporting summaries stay matte cards. */
-  .fo-chooser{padding:22px 22px 20px}
   #kit-detail-overlay.kit-detail-from-today{left:260px;padding:24px 32px 0}
   #kit-sheet-overlay.kit-sheet-from-today{left:260px}
   #kit-detail-overlay.kit-detail-from-today #kit-detail-overlay-inner{max-width:900px;margin:0 auto}
 }
 @media(min-width:1024px) and (max-width:1199px){.fo-recipes{grid-template-columns:minmax(0,1fr)}.fo-columns{gap:14px;grid-template-columns:minmax(0,1.3fr) minmax(240px,1fr)}}
-@media(max-width:350px){.fo-card,.fo-chooser{padding:14px}.fo-chooser h1{font-size:25px}.fo-card .card-label,.fo-chooser .card-label{font-size:9px}.fo-card .card-hd,.fo-chooser .card-hd{gap:5px}.fo-categories{gap:5px}.fo-categories button{padding:7px 8px}.fo-recipe{padding:14px}}
+@media(max-width:350px){.fo-card{padding:14px}.fo-chooser-body{padding:20px 16px}.fo-chooser .fo-chooser-actions{padding-inline:16px}.fo-chooser h1{font-size:25px}.fo-card .card-label,.fo-chooser .card-label{font-size:9px}.fo-card .card-hd,.fo-chooser .card-hd{gap:5px}.fo-categories{gap:5px}.fo-categories button{padding:7px 8px}.fo-recipe{padding:14px}}
 @media(orientation:landscape) and (max-width:1023px) and (max-height:600px){
   .fo-columns{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(220px,1fr);gap:12px;align-items:start}
   .fo-support{margin-top:0;gap:12px}
   .fo-card{padding:16px}
-  .fo-chooser{padding:16px}
+  .fo-chooser-body{padding:16px}
+  .fo-chooser .fo-chooser-actions{padding:12px 16px}
   .fo-chooser h1{font-size:25px;margin-bottom:13px}
   #kit-detail-overlay.kit-detail-from-today,#kit-sheet-overlay.kit-sheet-from-today{left:calc(var(--rail-w) + env(safe-area-inset-left,0px));right:env(safe-area-inset-right,0px)}
   #kit-sheet-overlay.kit-sheet-from-today .modal-box{padding-bottom:18px}

@@ -444,7 +444,8 @@
 // v444: training coverage, grouped library and session order, plus phone-safe Accounts controls.
 // v445: Training and Food put information in the accent body and actions in a neutral footer.
 // v446: Accounts net worth history expands within the hero's gray footer.
-const CACHE_NAME = 'daily-v446'; // Remote connector hosting remains disabled.
+// v447: restore Home Food and apply the neutral action footer to Food Today's recipe hero.
+const CACHE_NAME = 'daily-v447'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
