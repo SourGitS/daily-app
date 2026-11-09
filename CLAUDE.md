@@ -1,5 +1,30 @@
 # Daily — Project Reference
 
+## v448 Habit controls and budget-period popup — release authorised, 2026-11-09
+
+- Francois authorised committing and pushing this complete pass. He disliked Home's native
+  white habit squares and reported that the budget-period
+  picker rendered poorly with unclear options. Habit inputs now use rounded 20px neutral
+  controls, an accent checked state and visible keyboard focus, inside the existing 44/48px
+  labelled rows. They retain native checkbox semantics, existing indices/writers, dialog
+  focus restoration and a native forced-colors fallback.
+- The shared budget dialog now has a fixed header/action area and an internally scrolling
+  body. Radio/checkbox controls no longer inherit the full-width text-field treatment.
+  The existing income-source Archive action moves into the scrolling body. Setup explains
+  own dates versus following paydays, each frequency, the schedule anchor and both switch
+  timings. Its preview shows current/new ranges and handles a same-day start without an
+  invalid closing date. Custom dates remain labelled as a range rather than automatic pay.
+- Canonical date/transition calculations, rollover rules and financial writers are unchanged.
+  Existing validation failures have clearer messages. Browsing/Cancel still write nothing;
+  the existing explicit Save path retains stale-draft protection and historical plans.
+- Cache daily-v448. All 726 Node checks pass. The new budget-controls browser suite covers
+  320/390/844-landscape/1024/1440 in both themes: all date choices, containment and scrolling,
+  fixed actions, both saved transition timings, exact historical-plan preservation, shared
+  income/savings/settings dialogs and native habit toggling/keyboard focus. The linked-Finance
+  browser suite also passes all six size/theme combinations and its synthetic restore/reload check.
+  Records are isolated samples. Physical Safari and production Firebase remain unverified.
+  Local screenshots remain ignored.
+
 ## v447 Food Today scope correction — release authorised, 2026-11-09
 
 - Francois clarified that the approved Food redesign belongs to the “What would you like

@@ -417,7 +417,7 @@ test('income setup saves explicitly, preserves other sources/history, and reject
   let cats=[{id:'salary',name:'Salary',payCycle:'weekly',payDate:'2026-09-28',payAmount:1000},{id:'side',name:'Other',payCycle:'irregular'}];
   let saves=0;
   const fields={name:'Salary updated',mode:'fixed',cycle:'fortnightly',amount:'1800',payDate:'2026-10-02',secondDay:'',follow:true};
-  const action={before(){},textContent:''},form={};
+  const action={append(){},textContent:''},form={};
   const nodes={'bp-form':form,'bp-error':{}};
   const c=context({loadIncCats:()=>plain(cats),saveIncCats:v=>{cats=plain(v);saves++;},activeCats:x=>x,incomePayCycle:x=>x.payCycle||'weekly',getHourlyRate:()=>0,
     incomeNextPay:()=>null,escText:x=>x,escAttr:x=>x,INC_PAY_CYCLES:[{id:'weekly',label:'Weekly'},{id:'fortnightly',label:'Fortnightly'}],

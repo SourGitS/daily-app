@@ -208,7 +208,8 @@ function budPeriodRefresh(){
 function budPeriodDialog(title,html){
   let d=document.getElementById('bud-period-dialog');
   if(!d){d=document.createElement('dialog');d.id='bud-period-dialog';d.className='bp-dialog';document.body.appendChild(d);}
-  d.innerHTML='<form id="bp-form"><div class="bp-dialog-head"><h2>'+escText(title)+'</h2><button type="button" aria-label="Close" onclick="document.getElementById(\'bud-period-dialog\').close()">×</button></div>'+html+'<p id="bp-error" role="alert"></p><div class="bp-actions"><button type="button" class="stg-btn" onclick="document.getElementById(\'bud-period-dialog\').close()">Cancel</button><button type="submit" class="stg-btn primary">Save</button></div></form>';
+  d.setAttribute('aria-labelledby','bp-dialog-title');
+  d.innerHTML='<form id="bp-form"><div class="bp-dialog-head"><h2 id="bp-dialog-title">'+escText(title)+'</h2><button type="button" aria-label="Close" onclick="document.getElementById(\'bud-period-dialog\').close()">×</button></div><div class="bp-dialog-content">'+html+'<p id="bp-error" role="alert"></p></div><div class="bp-actions"><button type="button" class="stg-btn" onclick="document.getElementById(\'bud-period-dialog\').close()">Cancel</button><button type="submit" class="stg-btn primary">Save</button></div></form>';
   if(!d.open)d.showModal();return d;
 }
 function budPeriodError(message){document.getElementById('bp-error').textContent=message;}
@@ -248,7 +249,7 @@ function budIncomeEdit(id){
   d.querySelector('.bp-actions button[type="submit"]').textContent='Save income source';
   if(id){
     const archive=document.createElement('button');archive.type='button';archive.className='bud-edit-btn';archive.textContent='Archive source';
-    archive.onclick=()=>budIncomeArchive(id,true);d.querySelector('.bp-actions').before(archive);
+    archive.onclick=()=>budIncomeArchive(id,true);d.querySelector('.bp-dialog-content').append(archive);
   }
   document.getElementById('bp-form').onsubmit=e=>{
     e.preventDefault();
@@ -409,10 +410,9 @@ function budPeriodSetupPreview(){
   const config=budPeriodSetupCandidate(),mode=f.elements.transitionMode?.value||'next',plan=budPeriodTransitionPlan(budCyclesLoad(),config,getLocalDate(),mode);
   if(!plan){box.innerHTML='<p class="bp-warning">Choose valid budget dates to preview this change.</p>';return;}
   const current=budPeriodLabel(plan.old),destination=budPeriodLabel(plan.destination);
-  let copy=mode==='now'?'<p><strong>Starts today.</strong> '+escText(current)+' will close on '+escText(fmtDate(plan.closedEnd))+' for dated activity. The new transition budget is '+escText(destination)+'.</p>':
-    '<p><strong>Starts after this budget.</strong> '+escText(current)+' stays unchanged. The next budget is '+escText(destination)+'.</p>';
-  if(plan.special)copy+='<p class="bp-note">A '+plan.special.days+'-day transition period ('+escText(budPeriodLabel(plan.special))+') '+(mode==='now'?'aligns today with the new rhythm.':'prevents a gap or overlap before the new rhythm begins.')+'</p>';
-  copy+='<p class="bp-note">Recorded expenses, income and bill payments keep their dates. Previous allocations and notes remain in Saved period plans.</p>';
+  let copy='<h3 class="bp-preview-title">Change preview</h3><dl class="bp-preview-dates"><div><dt>Current budget</dt><dd>'+escText(current)+'</dd><small>'+(mode==='next'?'Kept unchanged':plan.closedEnd?'Ends '+escText(fmtDate(plan.closedEnd)):'New dates apply from today')+'</small></div><div><dt>'+(mode==='now'?'Starts today':'Next budget')+'</dt><dd>'+escText(destination)+'</dd><small>Starts '+escText(fmtDate(plan.effectiveFrom))+'</small></div></dl>';
+  if(plan.special)copy+='<p class="bp-note">The first budget is '+plan.special.days+' days to line up the new dates.'+(config.frequency==='custom'?'':' Regular periods begin '+escText(fmtDate(mode==='now'?budDateAdd(plan.first.end,1):plan.first.start))+'.')+'</p>';
+  copy+='<p class="bp-note">Past transactions keep their recorded dates. Previous allocations and notes stay in Saved period plans.</p>';
   if(plan.rolloverIds.length)copy+='<label>Existing rollover'+(plan.rolloverIds.length>1?'s':'')+'<select name="rolloverAction"><option value="retarget">Carry into '+escText(destination)+'</option><option value="remove">Remove the saved rollover</option></select><small>This changes the budget allocation only; it does not move money between accounts.</small></label>';
   box.innerHTML=copy;
 }
@@ -436,22 +436,24 @@ function budPeriodSetup(){
   const sources=activeCats(loadIncCats()).filter(c=>budIncomePeriodConfig(c));
   const main=sources[0];
   const frequency=config.frequency||main?.payCycle||'weekly',anchor=config.anchor||main?.payDate||dateStr(getMondayOf(0));
-  budPeriodDialog('Choose your budget period','<p>Choose the dates your spending budget covers. Your income sources can each have their own pay schedule.</p>'+
-    '<label>Budget dates<select name="source" onchange="budPeriodSetupFields()"><option value="">Choose my own dates</option>'+sources.map(c=>'<option value="'+escAttr(c.id)+'"'+((config.sourceId===c.id||!store.config&&main===c)?' selected':'')+'>Follow '+escText(catLabel(c))+' payday</option>').join('')+'</select></label><div id="bp-custom-dates">'+
-    '<label>Budget frequency<select name="frequency" onchange="budPeriodSetupFields()">'+BUD_PERIOD_FREQUENCIES.map(([id,label])=>'<option value="'+id+'"'+(frequency===id?' selected':'')+'>'+label+'</option>').join('')+'</select></label>'+
-    '<label>Starting date<input type="date" name="anchor" required value="'+escAttr(anchor)+'" onchange="budPeriodSetupPreview()"></label>'+
-    '<label id="bp-second-day">Second day of each month<input type="number" name="secondDay" min="1" max="31" value="'+(Number(config.secondDay)||'')+'" onchange="budPeriodSetupPreview()"></label>'+
-    '<label id="bp-end-date">Ending date<input type="date" name="end" value="'+escAttr(config.end||'')+'" onchange="budPeriodSetupPreview()"></label></div>'+
-    (current?'<fieldset><legend>When should this change start?</legend><label><input type="radio" name="transitionMode" value="next" checked onchange="budPeriodSetupPreview()"> After the current budget ends <small>Recommended — keeps this period unchanged.</small></label><label><input type="radio" name="transitionMode" value="now" onchange="budPeriodSetupPreview()"> Start today <small>Closes the current period at yesterday for dated activity.</small></label></fieldset><div id="bp-transition-preview"></div>':'')+
+  const frequencyLabels={weekly:'Weekly (7 days)',fortnightly:'Every 2 weeks (14 days)',monthly:'Monthly',semimonthly:'Twice a month',custom:'Custom date range'};
+  const d=budPeriodDialog('Choose your budget period','<p class="bp-intro">Choose the dates your budget covers and when the change takes effect.</p>'+
+    '<label>Budget dates<select name="source" aria-describedby="bp-source-help" onchange="budPeriodSetupFields()"><option value="">Set my own schedule</option>'+sources.map(c=>'<option value="'+escAttr(c.id)+'"'+((config.sourceId===c.id||!store.config&&main===c)?' selected':'')+'>Follow '+escText(catLabel(c))+' paydays</option>').join('')+'</select><small id="bp-source-help"></small></label><div id="bp-custom-dates">'+
+    '<label>Budget frequency<select name="frequency" aria-describedby="bp-frequency-help" onchange="budPeriodSetupFields()">'+BUD_PERIOD_FREQUENCIES.map(([id])=>'<option value="'+id+'"'+(frequency===id?' selected':'')+'>'+frequencyLabels[id]+'</option>').join('')+'</select><small id="bp-frequency-help"></small></label>'+
+    '<label>Schedule start date<input type="date" name="anchor" required value="'+escAttr(anchor)+'" onchange="budPeriodSetupPreview()"><small>A date this schedule is based on. Choose below when to switch your current budget.</small></label>'+
+    '<label id="bp-second-day">Second day of the month<input type="number" name="secondDay" min="1" max="31" placeholder="e.g. 15" value="'+(Number(config.secondDay)||'')+'" onchange="budPeriodSetupPreview()"><small>Use a different day from the schedule start date.</small></label>'+
+    '<label id="bp-end-date">Budget end date<input type="date" name="end" value="'+escAttr(config.end||'')+'" onchange="budPeriodSetupPreview()"><small>Both the start and end date count toward this budget.</small></label></div>'+
+    (current?'<fieldset class="bp-transition-choices"><legend>When should the new dates start?</legend><label class="bp-choice"><input type="radio" name="transitionMode" value="next" checked onchange="budPeriodSetupPreview()"><span><strong>After this budget ends</strong><small class="bp-choice-badge">Recommended</small><small>Keep the current period unchanged, then switch to the new schedule.</small></span></label><label class="bp-choice"><input type="radio" name="transitionMode" value="now" onchange="budPeriodSetupPreview()"><span><strong>Start today</strong><small>Use the new dates now. Earlier transactions keep their recorded dates.</small></span></label></fieldset><div id="bp-transition-preview" aria-live="polite"></div>':'')+
     (store.transition&&today<store.transition.effectiveFrom?'<button type="button" class="bud-edit-btn" onclick="budPeriodCancelTransition()">Cancel scheduled change</button>':'')+
-    '<p class="bp-note">Saved period plans, dated records and weekly history stay available.</p>');
+    '<p class="bp-note">Changing budget dates does not change your income sources or their paydays.</p>');
+  d.querySelector('button[type="submit"]').textContent='Save budget dates';
   budPeriodSetupFields();
   document.getElementById('bp-form').onsubmit=e=>{
     e.preventDefault();const f=new FormData(e.target),source=activeCats(loadIncCats()).find(c=>c.id===f.get('source'));
     let latest=budCyclesLoad();
     if(JSON.stringify({config:latest.config,transition:latest.transition||null})!==baseline){budPeriodError('Budget dates changed elsewhere. Close and reopen to use the latest schedule.');return;}
     const next=source?budIncomePeriodConfig(source):{frequency:f.get('frequency'),anchor:f.get('anchor'),end:f.get('end'),secondDay:f.get('secondDay')};
-    if(!budPeriodRange(next,today,0)){budPeriodError('Choose valid dates. Custom periods can cover 1–366 days.');return;}
+    if(!budPeriodRange(next,today,0)){budPeriodError(next?.frequency==='semimonthly'?'Choose two different days of the month, from 1 to 31.':next?.frequency==='custom'?'Choose a valid start and end date covering 1–366 days.':'Choose a valid schedule start date.');return;}
     const previous=budPeriodRangeForStore(latest,today,0);
     if(!previous){latest.config=next;delete latest.transition;}
     else{
@@ -470,6 +472,9 @@ function budPeriodSetupFields(){
   wrap.hidden=follow;wrap.querySelectorAll('input,select').forEach(el=>el.disabled=follow);
   document.getElementById('bp-second-day').hidden=f.elements.frequency.value!=='semimonthly';
   document.getElementById('bp-end-date').hidden=f.elements.frequency.value!=='custom';
+  const sourceHelp=document.getElementById('bp-source-help'),frequencyHelp=document.getElementById('bp-frequency-help');
+  if(sourceHelp){const source=activeCats(loadIncCats()).find(c=>c.id===f.elements.source.value);sourceHelp.textContent=follow?'Budget dates will follow '+(source?catLabel(source):'the selected source')+' paydays. Edit that payday under Income & paydays.':'Choose your budget schedule below, separate from your paydays.';}
+  if(frequencyHelp)frequencyHelp.textContent=({weekly:'A new budget starts every 7 days.',fortnightly:'A new budget starts every 14 days.',monthly:'Starts on the same calendar day each month; shorter months use their last day.',semimonthly:'Use two calendar start days, such as the 1st and 15th. Shorter months use their last day.',custom:'Set a start and end date. Check the change preview below before saving.'})[f.elements.frequency.value]||'';
   budPeriodSetupPreview();
 }
 function budPeriodAdjust(){
