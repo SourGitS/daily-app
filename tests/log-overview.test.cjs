@@ -447,9 +447,10 @@ test('saved hero keeps history primary and only offers continuation for a matchi
   const hero = c.logHeroHtml(c.logTodayBrief());
   const buttons = [...hero.matchAll(/<button\b[^>]*>(.*?)<\/button>/g)];
   assert.equal(buttons.length, 2);
-  assert.equal(buttons[0][1], 'View in history &rarr;');
+  const buttonText=button=>button[1].replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim();
+  assert.equal(buttonText(buttons[0]), 'View in history &rarr;');
   assert.match(buttons[0][0], /onclick="logGoto\('history'\)"/);
-  assert.equal(buttons[1][1], 'Continue saved workout &rarr;');
+  assert.equal(buttonText(buttons[1]), 'Continue saved workout &rarr;');
   assert.match(buttons[1][0], /lg-hero-secondary/);
   assert.match(buttons[1][0], /onclick="logContinueSavedWorkout\(\)"/);
   c.S.sessions[0].completed = true;
@@ -504,7 +505,7 @@ test('Saved → open → Saved → note-only edit → In progress keeps the note
   c.S.sessionNote = 'One more set after a short rest';
   c.logBackToOverview();
   assert.equal(c.brief().state, 'inprogress');
-  assert.match(c.logHeroHtml(c.logTodayBrief()), /Continue workout &rarr;/);
+  assert.match(c.logHeroHtml(c.logTodayBrief()).replace(/<[^>]*>/g,''), /Continue workout &rarr;/);
   assert.doesNotMatch(c.logHeroHtml(c.logTodayBrief()), /Continue saved workout/);
   c.logOpenSession();
   assert.equal(c.S.sessionNote, 'One more set after a short rest');

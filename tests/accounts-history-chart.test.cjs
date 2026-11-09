@@ -43,13 +43,13 @@ test('a real zero balance is a plotted point; undated current balances remain un
   const empty=fixture([{id:'none',type:'asset',current:200,history:[]}]);empty.c.renderNetWorthChartInto('accounts-chart');
   assert.equal(empty.charts.length,0);assert.match(empty.wrap.innerHTML,/dated balance/);
 });
-test('hiding Accounts history preserves its summary and never hides the Stats chart',()=>{
+test('collapsing Accounts history retains its disclosure and never hides the Stats chart',()=>{
   const data=recorded(),before=copy(data),{c,wrap,charts}=fixture(data);
   vm.runInContext('acctHistoryVisible=false',c);c.renderNetWorthChartInto('accounts-chart');
-  assert.equal(charts.length,0);assert.match(wrap.innerHTML,/Show graph/);
+  assert.equal(charts.length,0);assert.match(wrap.innerHTML,/Show net worth history/);
   assert.match(wrap.innerHTML,/aria-expanded="false"/);assert.match(wrap.innerHTML,/id="accounts-history-plot" hidden/);
   c.renderNetWorthChartInto('bs-balance-wrap');assert.equal(charts.length,1);
   vm.runInContext('acctHistoryVisible=true',c);c.renderNetWorthChartInto('accounts-chart');
-  assert.equal(charts.length,2);assert.match(wrap.innerHTML,/Hide graph/);
+  assert.equal(charts.length,2);assert.match(wrap.innerHTML,/Hide net worth history/);
   assert.deepEqual(copy(charts[1].data.datasets[0].data),[1000,1500,1300]);assert.deepEqual(data,before);
 });

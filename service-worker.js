@@ -442,7 +442,9 @@
 // v441: fill both Plan workspace segments and use the shared Targets header Edit control.
 // v443: carry the DAILYHUB wordmark through the app and offline views.
 // v444: training coverage, grouped library and session order, plus phone-safe Accounts controls.
-const CACHE_NAME = 'daily-v444'; // Remote connector hosting remains disabled.
+// v445: Training and Food put information in the accent body and actions in a neutral footer.
+// v446: Accounts net worth history expands within the hero's gray footer.
+const CACHE_NAME = 'daily-v446'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —

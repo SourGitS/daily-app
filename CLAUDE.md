@@ -1,5 +1,40 @@
 # Daily — Project Reference
 
+## v446 Accounts history in the hero — release authorised, 2026-11-09
+
+- Francois requested the net worth graph as a dropdown inside the Accounts hero's gray
+  section, then explicitly authorised committing and pushing all pending changes. This
+  includes the v445 Training and Food hero pass below and supersedes its local-only status.
+- The gray hero dock retains the independent debt-payoff explanation and now contains a
+  labelled Net worth history disclosure. It starts collapsed, uses a full-width 48px button
+  with a quiet chevron and supports Enter/Space with focus retained. The former standalone
+  history card is removed. Empty dated histories retain an honest explanation on expansion.
+- The same chart reader, records, period/series controls and evidence links remain intact.
+  Expanding creates the chart at its visible size; collapsing destroys its instance. Its
+  in-memory selection/open state survives Accounts rerenders. Stats Finance remains separate
+  and visible. No balances, payments, financial calculations or sync writers changed.
+- Cache daily-v446. All 726 Node checks pass. The complete Accounts browser workflow passes
+  320/390/1440 in both themes, including default collapse, keyboard/focus, range and series
+  retention, one chart after rerender, and existing statement/check-in/transfer/archive flows.
+  Training and Food verification is recorded below. Physical iPhone/Safari and production
+  Firebase remain unverified. Review screenshots and static candidates stay ignored.
+
+## v445 Training and Food hero actions — local preview, 2026-11-09
+
+- Francois approved the isolated hero study and requested applying it locally. Log Today now
+  keeps its canonical workout brief and seven-day summary together in the accent body, with
+  the existing guarded action in a solid gray footer. Desktop places the summary beside the
+  workout; phones stack it below. Saved partials retain their secondary continuation action.
+- Category Home Food keeps its calories, known/unknown meal figures and recipe idea in blue.
+  Log food uses the same neutral 44px Settings-button treatment as Training/Finance and still
+  calls the existing Food action. Its Home Layout miniature now names the footer action.
+  No readers, financial calculations, records, sync paths or legacy Home cards changed.
+- Cache daily-v445. All 726 Node checks pass; the Training workspace browser suite passes
+  320/390/844-landscape/1024/1440 in both themes. Food passes 320/390/768/1024/1440 in both
+  themes for normal, partial and empty data, containment and opening its existing destination
+  without changing nutrition records. Physical iPhone/Safari remains unverified. Local
+  sample servers and screenshots stay ignored in temp-analysis. Nothing committed or pushed.
+
 ## v444 Log and Accounts refinement — release authorised, 2026-11-08
 
 - Francois authorised committing and pushing all session changes, including the Log redesign,

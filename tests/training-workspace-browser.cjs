@@ -53,7 +53,7 @@ const snapshot=()=>JSON.stringify({sessions:S.sessions,storage:Object.fromEntrie
    const surface=await p.locator('.lg-training-dock').evaluate(e=>getComputedStyle(e).backgroundColor);
    assert.match(surface,/rgb\(/,label+' opaque neutral footer');
    assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),label+' overview width');
-   await p.getByRole('button',{name:'Open workout →',exact:true}).click();
+   await p.getByRole('button',{name:'Open workout',exact:true}).click();
    await p.evaluate(()=>{
     const name=type(S.dayIdx).exercises[0].name;S.setData[name]=[{weight:'55',reps:'8',type:'working',done:true}];
     S.sessionNote='Preserved session note';S.sessionStart=Date.now()-30000;recomputeChecked();saveSetData();renderLog();

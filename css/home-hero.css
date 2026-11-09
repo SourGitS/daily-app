@@ -166,3 +166,13 @@
 
 
 @media(prefers-reduced-motion:reduce){.weather-landscape *{animation:none!important}}
+
+/* Training and Food share Finance's neutral action treatment below their accent body. */
+.hero-action-footer{padding:14px 20px;background:#202020;color:var(--text);flex-shrink:0}
+[data-theme=light] .hero-action-footer{background:#f2f2f2}
+.hero-action-footer .stg-btn{appearance:none;-webkit-appearance:none;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-width:0;min-height:44px;margin:0;padding:10px 16px;background:var(--track);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--font-ui);font-size:14px;font-weight:700;line-height:1.35;text-align:left;white-space:normal}
+.hero-action-footer .stg-btn:hover{background:var(--card)}
+.hero-action-footer .stg-btn:focus-visible{outline:2px solid var(--accent-text);outline-offset:3px}
+.hero-action-footer .stg-btn svg{width:17px;height:17px;flex:none;stroke-width:1.7}
+.hero-action-footer .stg-btn>span:not(.hero-action-end){min-width:0;overflow-wrap:anywhere}
+.hero-action-footer .hero-action-end{margin-left:auto;flex:none;font-size:18px;line-height:1;font-weight:400}

@@ -20091,7 +20091,7 @@ function nwHistoryPoints(){
 const _nwCharts={};
 let nwChartRange='3m';
 const nwChartSeries={assets:false,debts:false};
-let acctHistoryVisible=true;
+let acctHistoryVisible=false;
 function acctToggleHistory(){
   const focused=document.activeElement?.id==='accounts-history-toggle';
   acctHistoryVisible=!acctHistoryVisible;
@@ -20124,14 +20124,16 @@ function nwCompactMoney(v){
 }
 function renderBSBalance(){ renderNetWorthChartInto('bs-balance-wrap'); }
 function renderNetWorthChartInto(wrapId){
-  const wrap=document.getElementById(wrapId); if(!wrap) return;
   if(_nwCharts[wrapId]){ _nwCharts[wrapId].destroy(); _nwCharts[wrapId]=null; }
+  const wrap=document.getElementById(wrapId); if(!wrap) return;
   const accountHistory=wrapId==='accounts-chart',graphHidden=accountHistory&&!acctHistoryVisible;
+  const disclosureStart=accountHistory?'<button type="button" id="accounts-history-toggle" class="acct-history-toggle" aria-label="'+(graphHidden?'Show net worth history':'Hide net worth history')+'" aria-expanded="'+!graphHidden+'" aria-controls="accounts-history-plot" onclick="acctToggleHistory()">'+acctIcon('trend',14)+'<span>Net worth history</span><svg class="acct-history-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div id="accounts-history-plot"'+(graphHidden?' hidden':'')+'>':'';
+  const disclosureEnd=accountHistory?'</div>':'';
   const canvasId=wrapId+'-nwcanvas';
   const history=nwHistoryPoints();
   if(!history.length){
     const why='Record a dated balance in Accounts to start your net worth history. Current balances alone cannot establish past values.';
-    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+acctIcon('trend',13)+'Net worth over time</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">'+why+'</div></div>';
+    wrap.innerHTML=disclosureStart+(accountHistory?'<p class="acct-history-empty">'+why+'</p>':'<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+acctIcon('trend',13)+'Net worth over time</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">'+why+'</div></div>')+disclosureEnd;
     return;
   }
   const dates=nwChartDates(history.map(p=>p.date));
@@ -20165,18 +20167,18 @@ function renderNetWorthChartInto(wrapId){
   const latest=dates[dates.length-1];
   const ranges=[['1m','1M'],['3m','3M'],['1y','1Y'],['all','ALL']];
   const rangeHtml='<div class="nw-chart-ranges" role="group" aria-label="Net worth history period">'+ranges.map(r=>'<button type="button" onclick="setNWChartRange(\''+r[0]+'\')" class="'+(nwChartRange===r[0]?'on':'')+'" aria-pressed="'+(nwChartRange===r[0])+'">'+r[1]+'</button>').join('')+'</div>';
-  wrap.innerHTML='<div class="card nw-chart-card">'+
+  wrap.innerHTML=disclosureStart+'<div class="card nw-chart-card">'+
     '<div class="nw-chart-head">'+
-      '<div><div class="nw-chart-kicker">'+acctIcon('trend',13)+(wrapId==='accounts-chart'?'Net worth history':latestPointInfo.count<latestPointInfo.total?'Recorded net worth':'Net worth')+'</div>'+
+      '<div>'+(accountHistory?'':'<div class="nw-chart-kicker">'+acctIcon('trend',13)+(latestPointInfo.count<latestPointInfo.total?'Recorded net worth':'Net worth')+'</div>')+
         '<div class="nw-chart-value">'+(wrapId==='accounts-chart'?'<span class="nw-chart-last-label">Last recorded </span>':'')+fmtMoney(curNet)+'</div>'+
         '<div class="nw-chart-change" style="color:'+(comparable?changeCol:'var(--muted)')+'">'+changeText+'</div>'+
         // Absorbed from the Accounts hero, which used to state the same figure directly above
         // this card. Shown in BOTH mounts — it is the same truth on Stats > Finance.
         '<div class="nw-chart-mix">'+(curAssets===null?'Assets not recorded':fmtMoney(curAssets)+' recorded assets')+' · '+(curDebts===null?'Debts not recorded':fmtMoney(curDebts)+' recorded debts')+'</div>'+
         '<div class="nw-chart-verdict">'+nwChip+'</div></div>'+
-      (accountHistory?'<button type="button" id="accounts-history-toggle" class="nw-chart-toggle" aria-label="'+(graphHidden?'Show graph':'Hide graph')+'" title="'+(graphHidden?'Show graph':'Hide graph')+'" aria-expanded="'+!graphHidden+'" aria-controls="accounts-history-plot" onclick="acctToggleHistory()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>':rangeHtml)+
+      (accountHistory?'':rangeHtml)+
     '</div>'+
-    (accountHistory?'<div id="accounts-history-plot"'+(graphHidden?' hidden':'')+'>'+rangeHtml:'')+
+    (accountHistory?rangeHtml:'')+
     '<div class="nw-chart-canvas"><canvas id="'+canvasId+'"></canvas></div>'+
     '<div class="nw-chart-series">'+
       '<span class="on"><i style="background:'+accent+'"></i>'+(partial&&wrapId!=='accounts-chart'?'Recorded net worth':'Net worth')+'</span>'+
@@ -20187,7 +20189,7 @@ function renderNetWorthChartInto(wrapId){
       (wrapId==='accounts-chart'?'<details class="nw-chart-notes"><summary>About this history</summary><p>Recorded balances carry forward between updates. '+(partial?'Missing balances are unknown, not zero. Dashed joins mark changes in account coverage. ':'')+'Select a point to see its records.</p></details>':partial?'<span class="nw-chart-coverage">Earlier or missing account balances are unknown, not zero. Points show only accounts recorded by that date; dashed joins mark changes in coverage. Select a point to see its records.</span>':'')+
       (stale.length?'<span class="nw-chart-stale">'+_catEscHtml(stale.map(x=>x.name+' '+x.days+'d').join(' · '))+' old</span>':'')+
       (wrapId==='bs-balance-wrap'?'<button class="stats-inline-link" onclick="openAccounts()">Open account records →</button>':'')+
-    '</div>'+(accountHistory?'</div>':'')+'</div>';
+    '</div></div>'+disclosureEnd;
   if(graphHidden)return;
   const ctx=document.getElementById(canvasId); if(!ctx) return;
   const {gc,tc}=budChartGridColors();
@@ -24658,9 +24660,10 @@ function renderAccountsHero(){
       '<div class="acct-overview-net"><div class="card-cap">Current net worth</div><div class="card-fig">'+fmtMoney(assets-debts)+'</div></div>'+
       '<div><div class="card-cap">Assets</div><div class="card-fig card-fig-sm">'+fmtMoney(assets)+'</div></div>'+
       '<div><div class="card-cap">Debts</div><div class="card-fig card-fig-sm">'+fmtMoney(debts)+'</div></div>'+
-    '</div></div><details class="acct-records acct-payoff-details"><summary><span class="acct-payoff-summary">'+
+    '</div></div><div class="acct-overview-dock"><details class="acct-records acct-payoff-details"><summary><span class="acct-payoff-summary">'+
       '<span>Debt payoff position</span><strong>'+fmtMoney(Math.abs(pos))+'</strong></span>'+payoffChip+'</summary>'+
-      '<div class="acct-payoff-detail"><div>'+headline+'</div>'+mathLine+kindLine+saverLine+'</div></details></div>';
+      '<div class="acct-payoff-detail"><div>'+headline+'</div>'+mathLine+kindLine+saverLine+'</div></details>'+
+      '<section id="accounts-history" class="acct-history" aria-label="Net worth history"><div id="accounts-chart"></div></section></div></div>';
 }
 function savingsReconcileFocus(){
   if(typeof acctFinCheckinOpen==='function'){acctFinCheckinOpen(saverAccounts().filter(a=>!a.archivedAt).map(a=>a.id));return;}
@@ -31486,7 +31489,7 @@ function logHeroHtml(b,weekHtml){
     ? '<div class="lg-hero-note">'+b.savedCount+' sessions saved today — this is the latest.</div>'
     : '';
   const resume=(b.state==='saved'&&logCanContinueSaved(b.session))
-    ? '<button type="button" class="lg-hero-btn lg-hero-secondary" onclick="logContinueSavedWorkout()">Continue saved workout &rarr;</button>'
+    ? '<button type="button" class="stg-btn lg-hero-secondary" onclick="logContinueSavedWorkout()">Continue saved workout <span class="hero-action-end" aria-hidden="true">&rarr;</span></button>'
     : '';
   return '<div class="lg-hero lg-training-hero"><div class="lg-training-brief">'+
     '<div class="lg-hero-current">'+
@@ -31496,10 +31499,12 @@ function logHeroHtml(b,weekHtml){
     more+
     upNext+
     '</div>'+
+    (weekHtml||'')+
+    '</div><footer class="lg-training-dock hero-action-footer">'+
     '<div class="lg-hero-actions">'+
-    '<button type="button" class="lg-hero-btn" onclick="'+escAttr(run)+'">'+escText(act)+' &rarr;</button>'+
+    '<button type="button" class="stg-btn" onclick="'+escAttr(run)+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 7 11 11M4 9l5-5M15 20l5-5M2 7l5-5M17 22l5-5"/></svg><span>'+escText(act)+'</span> <span class="hero-action-end" aria-hidden="true">&rarr;</span></button>'+
     resume+
-    '</div></div><div class="lg-training-dock">'+(weekHtml||'')+'</div>'+
+    '</div></footer>'+
   '</div>';
 }
 
