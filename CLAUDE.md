@@ -1,5 +1,26 @@
 # Daily — Project Reference
 
+## v449 Food Today recipe options — release authorised, 2026-11-11
+
+- Francois approved the local preview and requested committing and pushing this pass.
+  He requested that Food > Today's recipe option cards follow the app's styling,
+  including a different Cook button. Cards now use the shared gray surface, radius and
+  header icon vocabulary, a clear meal/time row, larger recipe title and separated
+  per-serving figures. Their divided action footer has a quiet Compare control and a
+  neutral Start cooking action with an arrow. Selected comparison uses the button state
+  instead of an accent outline around the card. Home and the main Food chooser are unchanged.
+- Existing recipe detail, comparison and canonical cooking handlers are retained, including
+  protein-option selection and invalid-option guards. Nutrition readers, missing/partial
+  states, servings, filters, food logs, shopping and financial writers are unchanged.
+  Conflicting recipe-card rules were removed from finance-periods.css.
+- Cache daily-v449. All 726 Node checks pass. Isolated browser checks cover 320/390/
+  844-landscape/1024/1200/1440 in dark/light, including 44px controls, card/page containment,
+  long names/options, missing/partial nutrition, disabled invalid options and comparison.
+  Detail/cooking round trips preserve filters and records; the advertised protein option
+  reaches the cooking session. No application errors observed. Physical Safari and
+  production Firebase remain unverified. Local sample fixtures/screenshots remain ignored.
+  The local preview remains available on port 8803.
+
 ## v448 Habit controls and budget-period popup — release authorised, 2026-11-09
 
 - Francois authorised committing and pushing this complete pass. He disliked Home's native

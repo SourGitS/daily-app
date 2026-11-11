@@ -26209,14 +26209,14 @@ function foodOverviewRecipeHTML(item){
   const values=[];
   if(item.calories!=null)values.push('<span><strong>'+kitTrim(item.calories)+'</strong> kcal</span>');
   if(item.protein!=null)values.push('<span><strong>'+kitTrim(item.protein)+'</strong> g protein</span>');
-  return '<article class="fo-recipe'+(selected?' is-compared':'')+'">'+
-    '<div class="fo-recipe-top"><div class="fo-recipe-art" aria-hidden="true">'+kitEsc(kitCardEmoji(item.recipe))+'</div><div class="fo-recipe-title"><h3><button class="fo-recipe-open" onclick="foodOverviewView('+arg+')">'+kitEsc(item.name)+'</button></h3>'+
-    '<div class="fo-time">'+kitEsc(category)+' · '+time+(item.minutes==null&&item.proteinMinutes!=null?' · Protein step: '+kitTrim(item.proteinMinutes)+' min':'')+'</div>'+
-    (item.optionLabel?'<div class="fo-option">'+kitEsc(item.optionLabel)+' option</div>':'')+'</div></div>'+
-    '<div class="fo-nutrition">'+(values.length?values.join('<span aria-hidden="true">·</span>')+'<small>per serving</small>':'<span class="fo-nutrition-missing">Nutrition not added</span>')+'</div>'+
+  return '<article class="fo-recipe'+(selected?' is-compared':'')+'" data-fo-recipe="'+kitEsc(item.id)+'" aria-label="'+kitEsc(item.name)+'">'+
+    '<div class="fo-recipe-body"><div class="fo-recipe-meta">'+cardHeader('pot',kitEsc(category))+'<span class="fo-time">'+time+(item.minutes==null&&item.proteinMinutes!=null?' · Protein step: '+kitTrim(item.proteinMinutes)+' min':'')+'</span></div>'+
+    '<h3><button type="button" class="fo-recipe-open" onclick="foodOverviewView('+arg+')">'+kitEsc(item.name)+'</button></h3>'+
+    (item.optionLabel?'<div class="fo-option">'+kitEsc(item.optionLabel)+' option</div>':'')+
+    '<div class="fo-recipe-facts">'+(values.length?'<p class="fo-serving-label">Per serving</p><div class="fo-nutrition">'+values.join('')+'</div>':'<p class="fo-nutrition-missing">Nutrition not added</p>')+'</div>'+
     (values.length&&(item.nutritionState==='partial'||item.partialReview||item.calories==null||item.protein==null)?'<div class="fo-partial">Partial nutrition</div>':'')+
     (!item.resolved.ok?'<p class="fo-note">Review this recipe’s protein options before cooking.</p>':'')+
-    '<div class="fo-recipe-actions"><button class="fo-link fo-compare" aria-pressed="'+selected+'" onclick="foodOverviewCompare('+arg+')">'+(selected?'Selected ✓':'Compare a serving')+'</button><button class="fo-btn fo-btn-primary" onclick="foodOverviewCook('+arg+')"'+(!item.resolved.ok?' disabled':'')+'>Cook</button></div></article>';
+    '</div><footer class="fo-recipe-actions"><button type="button" class="stg-btn fo-compare" aria-label="'+kitEsc((selected?'Clear comparison for ':'Compare a serving of ')+item.name)+'" aria-pressed="'+selected+'" onclick="foodOverviewCompare('+arg+')">'+(selected?'Selected ✓':'Compare')+'</button><button type="button" class="stg-btn fo-cook" onclick="foodOverviewCook('+arg+')"'+(!item.resolved.ok?' disabled':'')+'><span>Start cooking</span><span aria-hidden="true">→</span></button></footer></article>';
 }
 
 function foodOverviewResultsHTML(model){
@@ -26235,7 +26235,7 @@ function foodOverviewGoalHTML(model){
   const item=model.comparison;
   if(item){
     html+='<div class="fo-comparison"><span class="fo-eyebrow">Serving comparison</span><strong>'+kitEsc(item.name)+(item.optionLabel?' · '+kitEsc(item.optionLabel):'')+'</strong><p>'+(item.calories==null?'Calories unknown for this serving.':'One serving: '+kitTrim(item.calories)+' kcal'+(target>0?' · '+Math.round(item.calories/target*100)+'% of your daily target':''))+'</p><small>A portion comparison only. This does not record food eaten.</small></div>';
-  }else html+='<p class="fo-note">Choose “Compare a serving” on a recipe to see it here.</p>';
+  }else html+='<p class="fo-note">Select Compare on a recipe to see a serving here.</p>';
   return html+'<button class="fo-link" onclick="openHealthSettings()">'+(target==null?'Set calorie target':'Calorie settings')+' →</button>';
 }
 function foodOverviewShoppingHTML(model){

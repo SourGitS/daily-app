@@ -112,24 +112,7 @@
 #view-home .home-budget-card .home-budget-goal-note{font-size:11px;margin:0}
 #view-home .home-budget-card .home-budget-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;width:100%}
 #view-home .home-budget-card .home-budget-add-labelled{margin:0;padding:8px 12px;min-height:44px}
-/* Compact recipe choices and focused money entry. */
-.fo-recipe{padding:16px;gap:12px;box-shadow:none}
-.fo-recipe-top{min-height:0;gap:12px;align-items:flex-start}
-.fo-recipe-art{flex-basis:36px;height:36px;font-size:23px;border-radius:10px;background:transparent}
-.fo-recipe h3{margin:0;font-size:16px;line-height:1.35}
-.fo-recipe-open{border:0;padding:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;min-height:32px}
-.fo-recipe-open:hover{text-decoration:underline;text-underline-offset:3px}
-.fo-recipe .fo-time{margin:3px 0 0;font-size:12px;line-height:1.5}
-.fo-recipe .fo-nutrition{gap:4px 7px;font-size:12px;line-height:1.5;margin-left:48px}
-.fo-recipe .fo-nutrition strong{font-size:14px;letter-spacing:0}
-.fo-recipe .fo-nutrition small{flex-basis:auto;font-size:11px;align-self:baseline}
-.fo-nutrition-missing,.fo-partial{color:var(--muted);font-size:12px}
-.fo-partial{margin:-8px 0 0 48px}
-.fo-recipe .fo-recipe-actions{align-items:center;justify-content:space-between;gap:12px;padding-top:10px;border-top:1px solid var(--border)}
-.fo-recipe .fo-recipe-actions .fo-compare{flex:0 1 auto;min-height:44px;margin:0;font-size:12px;text-align:left;align-self:center}
-.fo-recipe .fo-recipe-actions .fo-btn{flex:0 0 auto;min-height:44px;padding:9px 20px}
-.fo-recipe .fo-note{margin:0;font-size:12px}
-.fo-recipe button:focus-visible{outline:2px solid var(--accent-text);outline-offset:3px}
+/* Focused money entry. */
 #txn-modal .modal-box{background:var(--surface-card);color:var(--text)}
 #txn-modal .txn-modal-topbar{padding-bottom:12px;border-bottom:1px solid var(--border);margin-bottom:16px}
 #txn-modal .txn-modal-topbar .modal-title{margin:0;font-family:var(--font-num);font-size:21px;letter-spacing:-.4px}

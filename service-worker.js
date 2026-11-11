@@ -446,7 +446,8 @@
 // v446: Accounts net worth history expands within the hero's gray footer.
 // v447: restore Home Food and apply the neutral action footer to Food Today's recipe hero.
 // v448: compact habit checks and a contained, clearer budget-period dialog.
-const CACHE_NAME = 'daily-v448'; // Remote connector hosting remains disabled.
+// v449: refine Food Today's recipe option cards and their neutral cooking controls.
+const CACHE_NAME = 'daily-v449'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
