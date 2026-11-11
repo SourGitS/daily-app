@@ -2017,6 +2017,8 @@ function sessionFormat(ms){
 }
 function rtUpdateSessionLabels(){
   const txt=sessionFormat(sessionGetElapsed());
+  const action=document.querySelector('#log-day-hero .ldh-action');
+  if(action) action.hidden=!!S.sessionStart;
   const bar=document.getElementById('rt-bar-session');
   if(bar) bar.textContent=txt;
   const fs=document.getElementById('rt-fs-session');
@@ -2079,31 +2081,25 @@ function rtPause(){
   updateLapFab();
 }
 function rtToggle(){ rtRunning ? rtPause() : rtStart(); }
-// The rest timer used to be a strip inside the day hero's footer. It's now its own card
-// directly under it: the body still opens the fullscreen timer (data-action="timer-expand",
-// unchanged), and the start/stop control sits on the card itself rather than only existing
-// once you've expanded it.
+function rtRestControlHTML(){
+  return (rtRunning?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>Pause rest</span>':'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg><span>Start rest</span>');
+}
 function renderTimerCard(){
   const el=document.getElementById('log-timer-card'); if(!el) return;
   el.innerHTML=
     '<div class="log-timer-card">'+
       '<button class="lt-body" data-action="timer-expand" aria-label="Open timer">'+
-        '<span class="lt-dot'+(rtRunning?' running':'')+'"></span>'+
-        '<span class="lt-metric lt-rest-metric">'+
-          '<span class="lt-label">Rest</span>'+
-          '<span id="rt-bar-time" class="lt-time">0.0</span>'+
-        '</span>'+
-        '<span class="lt-divider" aria-hidden="true"></span>'+
         '<span class="lt-metric lt-session-metric">'+
           '<span class="lt-label">Session</span>'+
-          '<span id="rt-bar-session" class="lt-session">0:00</span>'+
+          '<span id="rt-bar-session" class="lt-session">'+sessionFormat(sessionGetElapsed())+'</span>'+
+        '</span>'+
+        '<span class="lt-metric lt-rest-metric">'+
+          '<span class="lt-label">Rest</span>'+
+          '<span id="rt-bar-time" class="lt-time">'+lapFabClock(rtGetElapsed())+'</span>'+
         '</span>'+
         '<svg class="lt-expand" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>'+
       '</button>'+
-      '<button id="lt-toggle" class="lt-toggle'+(rtRunning?' running':'')+'" onclick="rtToggle();renderTimerCard();rtUpdateDisplay(rtGetElapsed());rtUpdateSessionLabels()">'+
-        (rtRunning
-          ?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>Pause rest</span>'
-          :'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg><span>Start rest</span>')+
+      '<button type="button" id="lt-toggle" class="lt-toggle'+(rtRunning?' running':'')+'" onclick="rtToggle();rtUpdateDisplay(rtGetElapsed());rtUpdateSessionLabels()">'+rtRestControlHTML()+
       '</button>'+
     '</div>';
 }
@@ -2111,10 +2107,12 @@ function rtTick(){ rtUpdateDisplay(rtGetElapsed()); }
 
 function rtUpdateDisplay(ms){
   const txt=rtFormat(ms);
-  const bar=document.getElementById('rt-bar-time'); if(bar) bar.textContent=txt;
+  const bar=document.getElementById('rt-bar-time'); if(bar) bar.textContent=lapFabClock(ms);
   const fs=document.getElementById('rt-fs-time'); if(fs) fs.textContent=txt;
 }
 function rtUpdateControls(){
+  const inline=document.getElementById('lt-toggle');
+  if(inline){ inline.innerHTML=rtRestControlHTML(); inline.classList.toggle('running',rtRunning); }
   const barBtn=document.getElementById('rt-bar-toggle');
   if(barBtn) barBtn.textContent=rtRunning?'Pause':'Start';
   const fsBtn=document.getElementById('rt-fs-toggle');
@@ -2161,7 +2159,7 @@ function updateLapFab(){
   // clocks, so the floating pill would be redundant (and covered anyway).
   const fs=document.getElementById('rt-fullscreen');
   const fsOpen=fs && !fs.classList.contains('hidden');
-  f.style.display=(rtRunning && S.view==='log' && !fsOpen) ? 'flex' : 'none';
+  f.style.display=(rtRunning && S.view==='log' && logSubTab==='today' && logTodayView==='session' && !fsOpen) ? 'flex' : 'none';
   updateLapFabText(); // show the current lap time immediately when the button appears
 }
 // Sync all timer UI to current state (called when entering the Log tab).
@@ -4328,37 +4326,32 @@ function renderLog(animateEntrance){
   // Make sure every effective exercise (incl. ones just added) has a starting set row.
   t.exercises.forEach(ex=>{ if(!S.setData[ex.name]) S.setData[ex.name]=[{weight:'',reps:'',type:'working',done:false}]; });
 
-  // Day hero card — arrow-navigated, per-day muscle colour, progress + TODAY badge.
+  // Session progress stays above the neutral action/timer dock.
   const done=S.checked.size, total=t.exercises.length;
   const pct = total ? Math.round(done/total*100) : 0;
-  // Hero tint follows the SAME rule as the accent (applyDayColour): dynamic colours ON →
-  // this day's assigned colour; OFF → the fixed static accent (restColor). Reading the raw
-  // day colour unconditionally was the bug — with dynamic OFF the accent went static but this
-  // card stayed the day's colour (e.g. green for Legs), so the static pick looked overridden.
-  const heroRgb = hexToRgb(currentAccentHex());
   const isToday = S.dayIdx === suggestDay();
   const heroEl = document.getElementById('log-day-hero');
   if(heroEl){
     heroEl.innerHTML =
-      '<div class="log-day-hero-card" style="background:linear-gradient(150deg, rgba('+heroRgb+',.9), rgba('+heroRgb+',.55) 55%, rgba('+heroRgb+',.35));box-shadow:0 16px 40px rgba('+heroRgb+',.3)">'+
+      '<div class="log-day-hero-card"><div class="ldh-main">'+
         '<div class="ldh-nav">'+
           '<button class="ldh-arrow" onclick="logDayStep(-1)" aria-label="Previous day">&#8249;</button>'+
-          '<div class="ldh-center" onclick="logGoToday()">'+
-            '<div class="ldh-name">'+t.name+'</div>'+
+          '<button type="button" class="ldh-center" onclick="logGoToday()" aria-label="Go to suggested training day">'+
+            '<span class="ldh-name">'+escText(t.name)+'</span>'+
             '<div class="ldh-sub">Day '+(S.dayIdx+1)+' of '+scheduleLen()+(isToday?'<span class="ldh-today">TODAY</span>':'')+'</div>'+
-          '</div>'+
+          '</button>'+
           '<button class="ldh-arrow" onclick="logDayStep(1)" aria-label="Next day">&#8250;</button>'+
         '</div>'+
         '<div class="ldh-progress-row"><span>'+done+' of '+total+' done</span><span>'+pct+'%</span></div>'+
         '<div class="ldh-bar"><div class="ldh-bar-fill" style="width:'+pct+'%"></div></div>'+
-        (!S.sessionStart?'<button class="ldh-start" onclick="startWorkout()">Start workout</button>':'')+
-      '</div>';
+        '</div><div class="ldh-dock">'+
+        '<div id="log-timer-card"></div>'+
+        (!S.sessionStart?'<div class="ldh-action"><button type="button" class="stg-btn ldh-start" onclick="startWorkout()"><span>Start workout</span><span aria-hidden="true">→</span></button></div>':'')+
+        '</div></div>';
     renderTimerCard();
     rtUpdateDisplay(rtGetElapsed()); rtUpdateSessionLabels(); // sync the freshly-rendered timer
-    // The continuous gradient-breathe always runs; the one-time entrance pop/bar-fill/badge only
-    // replay on tab-entry or day-switch (animateEntrance), not on every re-render from a set tick.
     const heroCard = heroEl.querySelector('.log-day-hero-card');
-    if(heroCard){ heroCard.classList.add('ldh-breathe'); if(animateEntrance) heroCard.classList.add('ldh-enter'); }
+    if(heroCard && animateEntrance) heroCard.classList.add('ldh-enter');
     const barFill = heroEl.querySelector('.ldh-bar-fill');
     if(barFill && animateEntrance){ barFill.style.setProperty('--bar-target', pct+'%'); barFill.classList.add('ldh-bar-animate'); }
     if(animateEntrance){
@@ -4471,7 +4464,7 @@ function renderExCard(ex, ei){
     // iOS decimal keypad has no minus key. For exercises that allow negative loads (e.g. assisted
     // pullups), overlay a ± button inside the kg field so the sign can be set without a keyboard
     // minus — kept inside the input's grid cell so the row layout is unchanged.
-    const kgInput = `<input class="set-kg" type="number" inputmode="decimal" ${minAttr} step="0.5"
+    const kgInput = `<input class="set-kg" type="number" inputmode="decimal" ${minAttr} step="0.5" aria-label="${escAttr(displayName)} set ${si+1} weight in kg"
         placeholder="${isWarmup?'bw':'kg'}" value="${s.weight}"
         onfocus="focusExercise(${ei})" onchange="updSet(${ei},${si},'weight',this.value)">`;
     const kgCell = allowNeg
@@ -4479,11 +4472,10 @@ function renderExCard(ex, ei){
       : kgInput;
     return `
     <div class="set-row${isWarmup?' set-warmup':''}${s.done?' set-done':''}">
-      <button class="set-warmup-btn${isWarmup?' active':''}" onclick="toggleWarmup(${ei},${si})" aria-label="Toggle warmup">W</button>
-      <div class="set-num">${numLabel}</div>
+      <button type="button" class="set-warmup-btn${isWarmup?' active':''}" onclick="toggleWarmup(${ei},${si})" aria-pressed="${isWarmup}" aria-label="Set ${si+1}: ${isWarmup?'warm-up. Mark as working set':'working set. Mark as warm-up'}">${numLabel}</button>
       ${kgCell}
-      <span class="set-sep">${unit==='secs'?'for':'×'}</span>
       <input class="set-reps${unit==='secs'?' set-secs':''}" type="number" inputmode="numeric" min="0"
+        aria-label="${escAttr(displayName)} set ${si+1} ${unit==='secs'?'seconds':'repetitions'}"
         placeholder="${unit==='secs'?'secs':unit}" value="${s.reps}"
         onfocus="focusExercise(${ei})" onchange="updSet(${ei},${si},'reps',this.value)">
       <button class="set-check${s.done?' done':''}" onclick="toggleSetDone(${ei},${si})" aria-label="Mark set done">✓</button>
@@ -4507,11 +4499,12 @@ function renderExCard(ex, ei){
   return `<div class="ex-card${done?' done':''}${isActive?' active':''}${collapsed?' collapsed':''}" id="ec${ei}" data-exercise-name="${escAttr(ex.name)}">
     <div class="ex-top ex-top-bar" style="background:transparent">
       <div class="ex-left" onclick="setActiveExercise(${ei})" style="cursor:pointer" title="Set as current exercise">
-        <div class="ex-name">${displayName}</div>
+        <div class="ex-name">${escText(displayName)}</div>
+        <div class="ex-session-meta">${escText(muscleLabel(trainingMuscle(exerciseSearchCatalog().find(e=>e.name===displayName)||{name:displayName})))}${isActive?' · Current exercise':''}${done?' · Complete':''}</div>
         ${exSummary?`<div class="ex-collapse-summary">${exSummary}</div>`:''}
         ${isSwapped?`<div class="swap-badge">Replacing ${_catEscHtml(ex.name)}</div>`:''}
         ${ex.sessionOnly?`<div class="session-only-badge">Today only <button type="button" data-action="log-promote-exercise" data-name="${_catEsc(ex.name)}">Add to ${_catEscHtml(type(S.dayIdx).name)}</button></div>`:''}
-        ${ex.note?`<div style="font-size:11px;color:rgba(255,255,255,0.7);margin-top:2px">${ex.note}</div>`:''}
+        ${ex.note?`<div class="ex-session-note">${escText(ex.note)}</div>`:''}
         ${badge?`<div class="ex-badges">${badge}</div>`:''}
       </div>
       <div style="display:flex;gap:6px;align-items:center">
@@ -4528,6 +4521,7 @@ function renderExCard(ex, ei){
     </div>
     ${logEditMode?`<div class="ex-order-controls"><button type="button" class="ex-drag-handle" aria-label="Reorder ${escAttr(displayName)}" title="Drag, or use Alt and arrow keys" onkeydown="if(event.altKey&&(event.key==='ArrowUp'||event.key==='ArrowDown')){event.preventDefault();logMoveExercise(${ei},event.key==='ArrowUp'?-1:1)}">⠿</button><span>Position ${ei+1} of ${exs.length}</span><button type="button" onclick="logMoveExercise(${ei},-1)" aria-label="Move ${escAttr(displayName)} up" ${ei===0?'disabled':''}>↑</button><button type="button" onclick="logMoveExercise(${ei},1)" aria-label="Move ${escAttr(displayName)} down" ${ei===exs.length-1?'disabled':''}>↓</button></div>`:''}
     <div class="ex-collapse-body"${collapsed?' style="height:0;opacity:0;overflow:hidden"':''}>
+      <div class="set-col-labels" aria-hidden="true"><span>Set</span><span>kg</span><span>${unit==='secs'?'Seconds':'Reps'}</span></div>
       ${setRows}
       <div class="set-actions">
         <button class="add-set-btn" onclick="addSet(${ei})">+ Add set</button>
@@ -5143,40 +5137,7 @@ function renderHistory(){
     list.innerHTML=emptyState('🏋️','No sessions yet','Log your first workout to start tracking your progress','Go to Log →',"closeWorkoutHistory();setView('log')");
     return;
   }
-  list.innerHTML = [...S.sessions].reverse().map((s,ri)=>{
-    const i = S.sessions.length-1-ri;
-    const tc = splitTypes().find(t=>t.name===s.sessionType)||splitTypes()[0];
-    const summary = s.exercises.map(e=>`${_catEscHtml(e.name)} (${e.sets.length} sets)`).join(' · ');
-    const detail = s.exercises.map(ex=>`
-      <div class="session-ex-row">
-        <div class="session-ex-name">${_catEscHtml(ex.name)}</div>
-        ${ex.sets.map((set,si)=>{
-          return `<div class="session-set-line">Set ${si+1}: ${fmtLoggedSet(set,exerciseUnit(ex))}</div>`;
-        }).join('')}
-      </div>`).join('');
-
-    const dayStr = Number.isFinite(Number(s.dayNum)) && Number(s.dayNum)>0 ? ` · Day ${Number(s.dayNum)}` : '';
-    const durStr = s.duration ? ` · ${fmtDuration(s.duration)}` : '';
-    return `<div class="session-card" data-session-date="${escAttr(s.date||'')}">
-      <div class="session-card-top">
-        <div class="session-date-str">${fmtDate(s.date)}${dayStr}${durStr}</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          ${s.effort&&effortMeta(s.effort)?`<div class="session-effort-pill" title="Session effort">${effortMeta(s.effort).emoji} ${effortMeta(s.effort).label}</div>`:''}
-          <div class="session-type-pill ${tc.id}">${s.sessionType}</div>
-          <button class="session-del-x" onclick="deleteSession('${s.id}')" title="Delete session" aria-label="Delete session">✕</button>
-        </div>
-      </div>
-      <div class="session-summary">${summary}</div>
-      <div class="session-expand" id="se${i}">${detail}
-        <button class="delete-btn" onclick="deleteSession('${s.id}')">Delete session</button>
-      </div>
-      ${s.note?`<div class="session-note-block" id="sn${i}">${s.note.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`:''}
-      <div class="hist-toggle-row">
-        <button class="hist-toggle-btn" onclick="toggleExpand('se${i}',this)">Show sets ▾</button>
-        ${s.note?`<button class="hist-toggle-btn" onclick="toggleExpand('sn${i}',this)">Notes ▾</button>`:''}
-      </div>
-    </div>`;
-  }).join('');
+  list.innerHTML = S.sessions.map((s,i)=>s?logHistoryCardHTML(s,i):'').reverse().join('');
 }
 
 function toggleExpand(id, btn){
@@ -31212,6 +31173,7 @@ function setLogTab(tab, force, opts){
   else if(tab==='program')   renderLogProgram();
   else if(tab==='exercises')  renderExerciseLibList();
   else if(tab==='history')    renderHistory();
+  if(typeof updateLapFab==='function') updateLapFab();
   // The timer card lives inside #log-session, so it hides and shows with the section on its
   // own — there is no separate bar to keep in sync.
   if(changed||force){

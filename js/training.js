@@ -90,7 +90,12 @@ function logCoverageExercises(b){
     return {...ex,name,muscle:match?match.muscle:libGuessMuscle(name)};
   });
 }
-function logBodySvg(model,back){
+function logBodySvg(model,back,options){
+  options=options||{};
+  const selectedMuscle=options.selected==null?logCoverageMuscle:options.selected;
+  const recorded=options.recorded||logCoverageMode==='week';
+  const action=options.sessionKey==null?'logSelectMuscle(this.dataset.muscle)':'logHistorySelectMuscle(this.dataset.sessionKey,this.dataset.muscle,this)';
+  const context=options.sessionKey==null?'':' data-session-key="'+escAttr(options.sessionKey)+'"';
   const pair=d=>[d,{d,mirror:true}];
   const shapes={
     shoulders:pair('M57 68 C48 67 40 74 39 84 C38 91 41 97 47 98 C52 89 57 83 63 79Z'),
@@ -133,10 +138,10 @@ function logBodySvg(model,back){
     '<g class="lg-body-outline"><path d="M77 14 C83 8 97 8 103 14 C108 21 107 36 102 44 L96 51 84 51 78 44 C73 36 72 22 77 14Z"/>'+
     '<path d="'+half+'"/><path d="'+half+'" transform="translate(180 0) scale(-1 1)"/></g>'+
     Object.entries(shapes).map(([muscle,paths])=>{
-      const count=model.groups[muscle]||0,selected=muscle===logCoverageMuscle;
+      const count=model.groups[muscle]||0,selected=muscle===selectedMuscle;
       return '<g role="button" tabindex="0" class="lg-body-muscle'+(count?' has-work':'')+(selected?' selected':'')+'" '+
-        'style="--coverage-opacity:'+(count?(.38+.62*count/max).toFixed(2):0)+'" aria-label="'+escAttr(muscleLabel(muscle)+', '+count+' '+(logCoverageMode==='week'?'recorded':'planned')+' sets')+'" aria-pressed="'+selected+'" '+
-        'data-muscle="'+escAttr(muscle)+'" onclick="logSelectMuscle(this.dataset.muscle)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();logSelectMuscle(this.dataset.muscle)}">'+
+        'style="--coverage-opacity:'+(count?(.38+.62*count/max).toFixed(2):0)+'" aria-label="'+escAttr(muscleLabel(muscle)+', '+count+' '+(recorded?'recorded':'planned')+' sets')+'" aria-pressed="'+selected+'" '+
+        'data-muscle="'+escAttr(muscle)+'"'+context+' onclick="'+action+'" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();'+action+'}">'+
         paths.map(p=>'<path d="'+(typeof p==='string'?p:p.d)+'"'+(p.mirror?' transform="translate(180 0) scale(-1 1)"':'')+'/>').join('')+'</g>';
     }).join('')+
     '<g class="lg-body-definition"><path d="'+(back?'M90 67V172 M60 202Q74 210 88 203 M92 203Q106 210 120 202':'M90 73V176 M64 169Q74 175 79 181 M116 169Q106 175 101 181')+'"/>'+
@@ -173,6 +178,75 @@ function renderLogCoverage(){
   el.innerHTML=logCoverageHtml(logTodayBrief());
   if(muscle){const button=Array.from(el.querySelectorAll(onMap?'.lg-body-muscle':'.lg-muscle-chip')).find(b=>b.dataset.muscle===muscle)||Array.from(el.querySelectorAll('.lg-body-muscle')).find(b=>b.dataset.muscle===muscle);if(button)button.focus({preventScroll:true});}
   else if(period){const button=Array.from(el.querySelectorAll('.lg-coverage-tabs button')).find(b=>b.textContent===period);if(button)button.focus({preventScroll:true});}
+}
+
+function trainingSessionCoverage(session){
+  const groups=Object.create(null),rows=[];let inferred=0;
+  (Array.isArray(session&&session.exercises)?session.exercises:[]).forEach((ex,index)=>{
+    if(!ex||typeof ex.name!=='string') return;
+    const sets=(Array.isArray(ex.sets)?ex.sets:[]).filter(s=>s&&typeof s==='object');
+    const working=sets.filter(statsIsWorkingSet).length;
+    const muscle=ex.muscle?trainingMuscleKey(ex.muscle):libGuessMuscle(ex.name);
+    rows.push({index,name:ex.name,muscle,sets,working,unit:ex.unit});
+    if(working) groups[muscle]=(groups[muscle]||0)+working;
+    if(!ex.muscle||ex.muscleSource==='inferred') inferred+=working;
+  });
+  return {groups,rows,inferred,total:Object.values(groups).reduce((n,v)=>n+v,0)};
+}
+const logHistoryState=new Map();
+function logHistoryKey(session,index){ return session.id==null?'legacy-'+index:String(session.id); }
+function logHistoryRecord(key){ return (S.sessions||[]).find((s,i)=>s&&logHistoryKey(s,i)===key); }
+function logHistoryDisclosure(details){
+  const key=details.dataset.sessionKey,state=logHistoryState.get(key)||{muscle:''};
+  state.open=details.open;logHistoryState.set(key,state);
+  if(details.open){
+    const session=logHistoryRecord(key),body=details.querySelector('.hist-preview');
+    if(session&&body) body.innerHTML=logHistoryPreviewHTML(session,key,state.muscle);
+  }
+}
+function logHistorySelectMuscle(key,muscle,source){
+  const session=logHistoryRecord(key);if(!session) return;
+  const detail=Array.from(document.querySelectorAll('#history-list .session-card')).find(e=>e.dataset.sessionKey===key);
+  if(!detail||!detail.open) return;
+  const onMap=source&&source.classList.contains('lg-body-muscle');
+  logHistoryState.set(key,{open:true,muscle});
+  detail.querySelector('.hist-preview').innerHTML=logHistoryPreviewHTML(session,key,muscle);
+  const next=Array.from(detail.querySelectorAll(onMap?'.lg-body-muscle':'.hist-muscle')).find(e=>e.dataset.muscle===muscle);
+  if(next) next.focus({preventScroll:true});
+}
+function logHistoryPreviewHTML(session,key,selected){
+  const model=trainingSessionCoverage(session),keys=Object.keys(model.groups).sort((a,b)=>model.groups[b]-model.groups[a]||a.localeCompare(b));
+  const rows=selected?model.rows.filter(r=>r.muscle===selected):model.rows;
+  const options={selected:selected||'',recorded:true,sessionKey:key};
+  const chips=['',...keys].map(m=>'<button type="button" class="hist-muscle'+(m===(selected||'')?' on':'')+'" aria-pressed="'+(m===(selected||''))+'" data-session-key="'+escAttr(key)+'" data-muscle="'+escAttr(m)+'" onclick="logHistorySelectMuscle(this.dataset.sessionKey,this.dataset.muscle,this)">'+escText(m?muscleLabel(m):'All exercises')+(m?'<strong>'+model.groups[m]+'</strong>':'')+'</button>').join('');
+  const exercises=rows.map(row=>{
+    const unit=row.unit||((typeof _secsNames!=='undefined'&&_secsNames.has(row.name))?'secs':'reps');
+    let working=0,warmup=0;
+    return '<section class="hist-exercise"><h4>'+escText(row.name)+'</h4><div class="hist-exercise-meta">'+escText(muscleLabel(row.muscle))+' · '+row.working+' working '+(row.working===1?'set':'sets')+'</div>'+
+      row.sets.map(set=>'<div class="hist-set-line"><span>'+(set.type==='warmup'?'Warm-up '+(++warmup):'Set '+(++working))+'</span><strong>'+escText(fmtLoggedSet(set,unit))+'</strong></div>').join('')+'</section>';
+  }).join('');
+  return '<div class="hist-preview-layout"><section class="hist-coverage">'+cardHeader('target','Muscles worked')+
+    '<div class="lg-body-panel"><div class="lg-body-pair">'+logBodySvg(model,false,options)+logBodySvg(model,true,options)+'</div><div class="lg-coverage-key"><i></i> Working sets</div></div>'+
+    '<div class="hist-muscles" role="group" aria-label="Filter session exercises by muscle">'+chips+'</div>'+
+    '<details class="hist-map-note"><summary>About this map'+(model.inferred?' · estimated groups':'')+'</summary><p>Saved primary muscle groups and recorded working sets. Warm-ups are excluded. Older entries without a group use the exercise name. Custom and broad groups stay in the list. This shows coverage, not recovery.</p></details></section>'+
+    '<section class="hist-sets">'+cardHeader('list',selected?escText(muscleLabel(selected))+' exercises':'Recorded sets')+(exercises||'<p class="hist-empty">No exercises recorded for this muscle group.</p>')+'</section></div>'+
+    (session.note?'<section class="hist-note"><h4>Session notes</h4><p>'+escText(session.note)+'</p></section>':'')+
+    (session.id==null?'':'<footer class="hist-preview-footer"><button type="button" class="stg-btn hist-delete" data-session-id="'+escAttr(session.id)+'" onclick="deleteSession(this.dataset.sessionId)">Delete session</button></footer>');
+}
+function logHistoryCardHTML(session,index){
+  const key=logHistoryKey(session,index),state=logHistoryState.get(key)||{open:false,muscle:''};
+  const model=trainingSessionCoverage(session),keys=Object.keys(model.groups).sort((a,b)=>model.groups[b]-model.groups[a]||a.localeCompare(b));
+  const status=session.completed===true?'Completed':session.completed===false?'Partial workout':'Saved workout';
+  const effort=session.effort&&effortMeta(session.effort);
+  const day=Number(session.dayNum),duration=Number(session.duration);
+  const meta=[Number.isFinite(day)&&day>0?'Day '+day:'',Number.isFinite(duration)&&duration>0?fmtDuration(duration):'',status].filter(Boolean).join(' · ');
+  return '<details class="session-card hist-session" data-session-key="'+escAttr(key)+'" data-session-date="'+escAttr(session.date||'')+'" ontoggle="logHistoryDisclosure(this)"'+(state.open?' open':'')+'><summary class="hist-preview-toggle">'+
+    cardHeader('calendar',escText(session.date?fmtDate(session.date):'Date not recorded'))+
+    '<div class="hist-title-row"><h3>'+escText(session.sessionType||'Workout')+'</h3><span class="hist-chevron" aria-hidden="true">⌄</span></div>'+
+    '<p class="hist-meta">'+escText(meta)+(effort?' · '+escText(effort.label):'')+'</p>'+
+    '<div class="hist-card-bottom"><span>'+model.rows.length+' '+(model.rows.length===1?'exercise':'exercises')+'<span aria-hidden="true"> · </span>'+model.total+' working '+(model.total===1?'set':'sets')+'</span><span class="hist-preview-label">View workout</span></div>'+
+    (keys.length?'<div class="hist-group-tags">'+keys.slice(0,4).map(m=>'<span>'+escText(muscleLabel(m))+'</span>').join('')+(keys.length>4?'<span>+'+(keys.length-4)+'</span>':'')+'</div>':'')+
+    '</summary><div class="hist-preview">'+(state.open?logHistoryPreviewHTML(session,key,state.muscle):'')+'</div></details>';
 }
 document.addEventListener('keydown',function(event){
   const modal=document.getElementById('swap-modal');if(!modal||modal.classList.contains('hidden'))return;

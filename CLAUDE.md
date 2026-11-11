@@ -1,5 +1,39 @@
 # Daily — Project Reference
 
+## v450 Workout session and History — release authorised, 2026-11-11
+
+- Francois approved the local preview, requested moving Start workout below the timer row,
+  and authorised committing and pushing the complete update.
+  He asked to combine the History preview proposal with the session hero, timer and
+  exercise-card refinements. The logger now shares the app's accent hero body and solid gray
+  action dock. Session/Rest clocks sit above Start workout at the bottom of that dock;
+  the workout action disappears after starting. Start/Pause rest
+  uses a neutral control and the UI font. The compact rest clock uses whole seconds while
+  fullscreen keeps tenths. Timer timestamps, laps, session starts and save behavior remain
+  unchanged. The floating lap action follows the active set logger and hides on History,
+  other Log tabs and the overview, while the timer continues running.
+- Exercise cards use matte surfaces, a current-exercise label, visible muscle group and
+  kg/reps-or-seconds column labels. The set number doubles as the existing warm-up toggle;
+  completion controls are 44px. Add set/Warmup/Add exercise share neutral button styling.
+  Existing input handlers, negative-load sign controls, swaps, order, collapse and draft/save
+  paths are retained. The old continuous hero opacity animation is omitted.
+- History cards use native expandable summaries with dates, workout names, recorded totals
+  and muscle labels. Opening mounts the shared front/back diagram, muscle filters, all saved
+  sets (warm-ups labelled separately), notes and the existing confirmed Delete action.
+  Saved muscle/unit metadata wins over today's library and swaps. Missing legacy muscle
+  groups are inferred from names and labelled as estimates; broad/custom groups remain listed.
+  No planned completion is reconstructed and partial/legacy saves remain honestly labelled.
+  Disclosure/filter state is memory-only and independent from Today coverage. Browsing writes
+  no records, and no sync/restore/financial writers or storage keys were added.
+- Cache daily-v450 includes css/workout-session.css. All 733 Node checks pass, including
+  seven new history/timer correctness checks. The existing workout browser suite passes all
+  ten size/theme combinations, including real reorder, swap, reload and partial-save paths.
+  New session/History coverage passes 320/390/527/844-landscape/1024/1440 in both themes:
+  containment, touch controls, both clock colors, timers, disclosure/keyboard/map filters,
+  long/legacy/custom data, saved units, notes and unchanged historical records. All records
+  are isolated samples. Physical Safari and production Firebase remain unverified.
+  The local sample preview remains on port 8804.
+
 ## v449 Food Today recipe options — release authorised, 2026-11-11
 
 - Francois approved the local preview and requested committing and pushing this pass.
