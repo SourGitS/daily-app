@@ -1,4 +1,14 @@
 // Shared, read-only exercise vocabulary. Original names remain the history join keys.
+let logChromeObserver=null;
+function logObserveChrome(){
+ const view=document.getElementById('view-log'),nav=document.getElementById('log-topnav'),header=document.querySelector('.lib-header');
+ if(!view||!nav||!header) return;
+ const measure=()=>{const n=nav.getBoundingClientRect().height,h=header.getBoundingClientRect().height;if(n)view.style.setProperty('--log-nav-height',n+'px');if(h)view.style.setProperty('--lib-header-height',h+'px');};
+ if(!logChromeObserver&&typeof ResizeObserver!=='undefined'){
+  logChromeObserver=new ResizeObserver(measure);logChromeObserver.observe(nav);logChromeObserver.observe(header);
+ }
+ measure();
+}
 function trainingSearchText(value){
   return String(value||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
     .replace(/pull[ -]?ups?/g,'pull up').replace(/push[ -]?ups?/g,'push up')

@@ -1,0 +1,38 @@
+#journal-root.jrn-planner{display:block}
+.jp-view-switch{display:flex;gap:4px;padding:4px;border-radius:10px;background:var(--track);max-width:360px;margin-top:18px}
+.jp-view-switch button{flex:1;min-width:0;min-height:44px;border:0;border-radius:8px;color:var(--muted);background:transparent;font:700 12px var(--font-ui);cursor:pointer}
+.jp-view-switch button.on{background:var(--surface-card);color:var(--text)}
+.jp-layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,1fr);gap:18px;margin-top:24px;align-items:start}
+.jp-calendar,.jp-agenda-card{min-width:0;padding:20px;border:1px solid var(--surface-card-border);border-radius:var(--radius-card);background:var(--surface-card);box-shadow:var(--surface-card-top)}
+.jp-month{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.jp-month h2{flex:1;font:800 22px/1.3 var(--font-ui);letter-spacing:-.5px;min-width:0}
+.jp-month .stg-btn{min-height:44px;padding:8px 12px;background:transparent;font-size:11px}
+.jp-arrow{width:44px;height:44px;flex:none;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--text);font:24px var(--font-ui);cursor:pointer}
+.jp-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.jp-filters button{min-height:44px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--muted);padding:8px 10px;font:600 11px var(--font-ui);cursor:pointer}
+.jp-filters button.on{border-color:var(--border);background:var(--track);color:var(--text)}
+.jp-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.jp-weekday{text-align:center;padding:8px 0;font-size:10px;color:var(--muted)}
+.jp-day{display:flex;flex-direction:column;align-items:flex-start;gap:7px;min-width:0;min-height:78px;padding:10px 8px;border:1px solid var(--border);border-radius:9px;background:transparent;color:var(--text);font:600 12px var(--font-ui);cursor:pointer}
+.jp-day.selected{border-color:var(--accent-text);background:rgba(var(--accent-rgb),.12)}
+.jp-day.today .jp-day-num{text-decoration:underline;text-underline-offset:4px;text-decoration-color:var(--accent-text)}
+.jp-day-num{line-height:1.4}.jp-day-dots{display:flex;gap:3px;flex-wrap:wrap;min-height:5px}
+.jp-dot{display:inline-block;width:6px;height:6px;flex:none;border-radius:50%;background:var(--accent-text)}
+.jp-dot.note{background:#d8993b}.jp-dot.bill{background:#52b788}
+.jp-day-peek{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:var(--muted);font-weight:500}
+.jp-day-peek small{display:block;font-size:9px}
+.jp-legend{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:10px;color:var(--muted);margin-top:18px}.jp-legend>span{display:inline-flex;align-items:center;gap:5px}
+.jp-agenda{display:flex;flex-direction:column;gap:14px;min-width:0}
+.jp-agenda-card header h2{font-size:20px;letter-spacing:-.4px;margin-top:8px}.jp-agenda-card .card-hd{margin:0}
+.jp-agenda-card h3{font-size:14px}.jp-agenda-card h3 small{color:var(--muted);font-size:11px;margin-left:6px}
+.jp-agenda-actions{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 12px}
+.jp-agenda-actions .stg-btn,.jp-help .stg-btn{min-height:44px;padding:10px 12px;background:var(--track);font-size:11px;white-space:normal}
+.jp-event{display:flex;align-items:center;gap:9px;min-width:0;width:100%;min-height:64px;padding:12px 0;border:0;border-bottom:1px solid var(--border);background:transparent;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.jp-event:last-child{border-bottom:0}.jp-event>span:not(.jp-event-arrow){flex:1;min-width:0}
+.jp-event strong{display:block;font-size:12px;line-height:1.5;overflow-wrap:anywhere}.jp-event small{display:block;color:var(--muted);font-size:10px;margin-top:3px;line-height:1.5}
+.jp-event>b{font:700 12px var(--font-ui);text-align:right;max-width:40%;overflow-wrap:anywhere}.jp-event-arrow{color:var(--muted)}
+.jp-empty,.jp-help p{font-size:12px;line-height:1.7;color:var(--muted);padding:10px 0}.jp-help .stg-btn{margin-top:10px}
+.jp-day:focus-visible,.jp-view-switch button:focus-visible,.jp-event:focus-visible,.jp-arrow:focus-visible,.jp-filters button:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
+@media(max-width:1100px){.jp-layout{grid-template-columns:minmax(0,1fr)}.jp-day{min-height:70px}}
+@media(max-width:600px){.jp-calendar,.jp-agenda-card{padding:14px}.jp-month{gap:5px}.jp-month h2{font-size:18px}.jp-days{gap:3px}.jp-day{min-height:48px;padding:7px 3px;align-items:center;font-size:12px;gap:6px}.jp-day-peek{display:none}.jp-filters{gap:2px}.jp-filters button{padding:7px;font-size:10px}.jp-view-switch{max-width:none}.jp-layout{margin-top:18px}.jp-weekday{font-size:9px}}
+@media(max-width:359px){.jp-month h2{flex-basis:100%;margin-bottom:5px}.jp-month .stg-btn{margin-right:auto}}

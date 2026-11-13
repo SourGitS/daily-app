@@ -663,7 +663,7 @@ if(firebaseReady){
     // ── Sync data added after the original sync was built ──
     const budEditing=()=>{ const a=document.activeElement; return a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'); };
     incCatRef = syncTrack(syncBlobListenTS(user.uid,'budgetIncCats','daily_budget_inc_cats','daily_budget_inc_cats_ts',()=>{ if(S.view==='budget'&&!budEditing()) renderBudgetTab(); }));
-    fixCatRef = syncTrack(syncBlobListenTS(user.uid,'budgetFixCats','daily_budget_fix_cats','daily_budget_fix_cats_ts',()=>{ if(S.view==='budget'&&!budEditing()) renderBudgetTab(); }));
+    fixCatRef = syncTrack(syncBlobListenTS(user.uid,'budgetFixCats','daily_budget_fix_cats','daily_budget_fix_cats_ts',()=>{ if(S.view==='budget'&&!budEditing()) renderBudgetTab(); if(typeof jrnPlannerRefreshSchedule==='function') jrnPlannerRefreshSchedule(); }));
     varCatRef = syncTrack(syncBlobListenTS(user.uid,'budgetVarCats','daily_budget_var_cats','daily_budget_var_cats_ts',()=>{ if(S.view==='budget'&&!budEditing()) renderBudgetTab(); }));
     ccRef     = syncTrack(syncBlobListen(user.uid,'creditCard','daily_cc',()=>{ if(S.view==='home'&&typeof renderHome==='function') renderHome(); }));
     syncTrack(syncBlobListen(user.uid,'ccLog','daily_cc_log',()=>{ ccLog=loadCCLog(); if(S.view==='stats'&&statsSubTab==='finance') renderBSBalance(); }));
@@ -677,6 +677,7 @@ if(firebaseReady){
     // value still takes the normal offline-wins path. Then attach the live listener as usual.
     const _acctRerender=()=>{
       accounts=loadAccounts();
+      if(typeof jrnPlannerRefreshSchedule==='function') jrnPlannerRefreshSchedule();
       if(S.view==='home'&&typeof renderHome==='function') renderHome();
       if(S.view==='budget'&&typeof renderBudgetTab==='function') renderBudgetTab();
       if(S.view==='stats') refreshStatsForData(['overview','review','finance']);
@@ -3218,9 +3219,10 @@ const BACK_CHEVRON='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" 
 
   function dismiss(o, fn){
     if(!animates()){ if(fn) fn(); return; }
+    const journalToken=o.id==='jrn-editor'?o._jrnOpenToken:null;
     o.classList.remove('ov-drag');
     o.style.transform='translateX(100%)';
-    setTimeout(()=>{ o.style.transform=''; if(fn) fn(); }, DUR);
+    setTimeout(()=>{ if(o.id==='jrn-editor'&&o._jrnOpenToken!==journalToken)return; o.style.transform=''; if(fn) fn(); }, DUR);
   }
 
   document.addEventListener('click',function(e){
@@ -30221,6 +30223,7 @@ function renderNotes(){ renderJournal(); }
 //               writing.
 function renderJournal(){
   const wrap=document.getElementById('notes-content'); if(!wrap) return;
+  if(typeof jrnPlannerActive==='function'&&jrnPlannerActive()){jrnRenderPlanner(wrap);return;}
   jrnDetachEditor();
   const desktop=jrnIsDesktop();
   // Pick the selection BEFORE the pane is built, so the list can mark the selected row and the
@@ -30234,7 +30237,7 @@ function renderJournal(){
   const rail = desktop
     ? jrnNavHtml()
     : (jrnQ()||jrnTab!=='timeline'?'':jrnTodayHtml())+jrnBodyHtml()+(jrnTab==='timeline'?jrnLoopsHtml():'')+(jrnQ()?'':jrnReflectLinkHtml());
-  const head='<header class="jrn-page-head">'+jrnHeadHtml()+'<p>Your days, thoughts and notes.</p></header>';
+  const head='<header class="jrn-page-head">'+jrnHeadHtml()+'<p>Your days, thoughts and notes.</p>'+(typeof jrnPlannerControls==='function'?jrnPlannerControls():'')+'</header>';
   wrap.innerHTML = desktop
     ? '<div id="journal-root">'+head+'<div class="jrn-rail">'+rail+'</div><div class="jrn-detail" id="jrn-detail"></div></div>'
     : '<div id="journal-root">'+head+rail+'</div>';
@@ -30359,18 +30362,19 @@ function jrnMountDetail(){
   }
 }
 function jrnHeadHtml(){
+  const planning=typeof jrnPlannerActive==='function'&&jrnPlannerActive();
   const searchIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
   const calIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
   let h='<div class="jrn-head">'+
     '<h1 class="jrn-head-title">Journal</h1>'+
     '<button class="jrn-head-btn'+(jrnSearchOpen?' on':'')+'" data-jrn="search-toggle" aria-label="Search Journal" aria-pressed="'+(jrnSearchOpen?'true':'false')+'">'+searchIco+'</button>'+
-    '<button class="jrn-head-btn" data-jrn="cal" aria-label="Jump to a date">'+calIco+'</button>'+
+    '<button class="jrn-head-btn" data-jrn="cal" aria-label="'+(typeof jrnPlannerShow==='function'?'Calendar view':'Jump to a date')+'">'+calIco+'</button>'+
   '</div>';
   if(jrnSearchOpen){
     const q=jrnQ();
-    const n = q ? jrnEntries().filter(r=>jrnMatch(r,q)).length + jrnNotesAll().filter(r=>jrnMatch(r,q)).length : 0;
+    const n = q ? planning ? jrnPlannerRead().events.filter(e=>e.date.startsWith(jrnPlannerState.month)||e.overdue).length : jrnEntries().filter(r=>jrnMatch(r,q)).length + jrnNotesAll().filter(r=>jrnMatch(r,q)).length : 0;
     h+='<div class="jrn-search-wrap">'+
-      '<input id="jrn-search" class="jrn-search" type="search" placeholder="Search entries, notes and tags" value="'+escAttr(jrnQuery)+'" autocomplete="off">'+
+      '<input id="jrn-search" class="jrn-search" type="search" placeholder="'+(planning?'Search notes, entries and bills':'Search entries, notes and tags')+'" value="'+escAttr(jrnQuery)+'" autocomplete="off">'+
       (jrnQuery?'<button class="jrn-search-clear" data-jrn="search-clear">Clear</button>':'')+
     '</div>';
     if(q) h+='<div class="jrn-search-count">'+n+' match'+(n===1?'':'es')+'</div>';
@@ -30711,9 +30715,12 @@ function jrnLoadEditor(id, kind){
   return true;
 }
 function jrnOpenEditor(id, kind){
+  jrnEdFlush();
   const existed = !!(id && loadNotes().find(r=>r.id===id&&!r.deletedAt));
   if(!jrnLoadEditor(id, kind)) return;
+  if(typeof jrnPlannerEditorOpen==='function')jrnPlannerEditorOpen();
   const ed=document.getElementById('jrn-editor');
+  if(ed){ed._jrnOpenToken=(ed._jrnOpenToken||0)+1;ed.style.transform='';}
   if(jrnIsDesktop()){
     jrnSelId=jrnEdId;
     renderJournal();
@@ -30861,6 +30868,7 @@ function jrnCloseEditor(){
   jrnDetachEditor();
   jrnEdId=null; jrnEdPending=null; jrnSelId=null;
   jrnListsDirty=false;
+  if(typeof jrnPlannerEditorClosed==='function')jrnPlannerEditorClosed();
   renderJournal();
   if(typeof renderHomeNotesBubble==='function') renderHomeNotesBubble();
 }
@@ -30966,7 +30974,7 @@ document.addEventListener('click',function(e){
   if(act==='search-toggle'){ jrnSearchOpen=!jrnSearchOpen; if(!jrnSearchOpen) jrnQuery=''; renderJournal();
     if(jrnSearchOpen){ const s=document.getElementById('jrn-search'); if(s) s.focus(); } return; }
   if(act==='search-clear'){ jrnQuery=''; jrnRefreshListsKeepFocus(); return; }
-  if(act==='cal'){ jrnOpenCal(); return; }
+  if(act==='cal'){ if(typeof jrnPlannerShow==='function')jrnPlannerShow('calendar');else jrnOpenCal(); return; }
   if(act==='cal-prev'){ jrnCalShift(-1); return; }
   if(act==='cal-next'){ jrnCalShift(1); return; }
   if(act==='cal-pick'){ jrnJumpTo(el.getAttribute('data-date')); return; }
@@ -31174,6 +31182,7 @@ function setLogTab(tab, force, opts){
   else if(tab==='exercises')  renderExerciseLibList();
   else if(tab==='history')    renderHistory();
   if(typeof updateLapFab==='function') updateLapFab();
+  if(typeof logObserveChrome==='function') logObserveChrome();
   // The timer card lives inside #log-session, so it hides and shows with the section on its
   // own — there is no separate bar to keep in sync.
   if(changed||force){

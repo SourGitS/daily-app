@@ -39,6 +39,18 @@ test('each week resets pace, including Australian daylight-saving week',()=>{
 test('habit logs distinguish absent days, explicit zero, duplicates and deleted indices',()=>{
  const r=pace({habitLog:{'2026-10-19':[],'2026-10-20':[0,0,1,5,6,-1,'2']}});assert.deepEqual(r.map(d=>d.habits),[0,3,null]);
 });
+test('Home activity uses matching scored ticks and leaves unknown days unscored',()=>{
+ const {c,memory,pushes}=context();
+ c.escAttr=s=>String(s);c.categoryDate=s=>s;c.getLocalDate=()=> '2026-10-21';c.localMidnight=d=>new Date(d+'T12:00:00Z');
+ c.fmtMoneyExact=n=>'$'+n;c.categoryHeading=()=>'';c.categoryLink=()=>'';
+ c.categoryActivityModel=()=>Array.from({length:7},(_,i)=>({date:'2026-10-'+(15+i),state:['on','over','unknown','no-target','no-entries','on','over'][i],habits:[6,3,0,null,6,null,2][i],habitCount:6,allowance:null}));
+ const html=c.categoryActivity();assert.equal((html.match(/role="img"/g)||[]).length,14);
+ assert.equal((html.match(/<svg /g)||[]).length,9);assert.doesNotMatch(html,/cat-habit-meter|width:.*%|>!</);
+ assert.match(html,/All habits complete/);assert.match(html,/0 of 6 habits completed/);assert.match(html,/No habit log/);
+ assert.equal(memory.size,0);assert.equal(pushes.length,0);
+ c.categoryActivityModel=()=>Array.from({length:7},(_,i)=>({date:'2026-10-'+(15+i),state:'unknown',habits:0,habitCount:0,allowance:null}));
+ assert.doesNotMatch(c.categoryActivity(),/<svg /);assert.match(c.categoryActivity(),/No habits set/);
+});
 test('meal totals distinguish unknown calories, missing meals and a real zero',()=>{
  const entries=[{meal:'breakfast',nutritionStatus:'known',nutrition:{calories:480}},{meal:'lunch',nutritionStatus:'known',nutrition:{calories:300}},{meal:'lunch',nutritionStatus:'unknown',nutrition:{}},{meal:'snacks',nutritionStatus:'known',nutrition:{calories:0}}];
  const r=categoryMealModel({entries},[['breakfast','Breakfast'],['lunch','Lunch'],['dinner','Dinner'],['snacks','Snacks']]);assert.deepEqual(r.map(x=>x.calories),[480,300,null,0]);assert.equal(r[1].unknown,1);assert.equal(r[2].count,0);

@@ -448,7 +448,8 @@
 // v448: compact habit checks and a contained, clearer budget-period dialog.
 // v449: refine Food Today's recipe option cards and their neutral cooking controls.
 // v450: unified workout logger hero, neutral set cards and expandable muscle-map history.
-const CACHE_NAME = 'daily-v450'; // Remote connector hosting remains disabled.
+// v451: matching Home activity ticks, contained Log scrolling and Journal planning calendar.
+const CACHE_NAME = 'daily-v451'; // Remote connector hosting remains disabled.
 importScripts('./js/notification-storage.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
@@ -461,6 +462,8 @@ const ASSETS = [
   './css/layout.css',
   './css/workout.css',
   './css/workout-session.css',
+  './css/journal-planner.css',
+  './js/journal-planner.js',
   './css/nutrition-modals.css',
   './css/budget-home.css',
   './css/kitchen-extras.css',

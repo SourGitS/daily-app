@@ -48,6 +48,7 @@
 <link rel="stylesheet" href="css/notifications.css">
 <link rel="stylesheet" href="css/home-category.css">
 <link rel="stylesheet" href="css/workout-session.css">
+<link rel="stylesheet" href="css/journal-planner.css">
 </head>
 <body>
 <div id="app">
@@ -100,11 +101,13 @@
          overlays, and openExerciseLibrary()/openWorkoutHistory() now route here instead, so
          every old entry point still works against one copy. -->
     <section id="view-log" class="swipe-panel">
+      <div class="log-topnav page-topnav" id="log-topnav">
       <div class="seg-tabs seg-fill" id="log-tab-row" role="tablist" aria-label="Workout sections">
         <button class="on" id="lg-today-btn" role="tab" aria-selected="true" aria-controls="log-sub-today" onclick="setLogTab('today')">Today</button>
         <button id="lg-prog-btn" role="tab" aria-selected="false" aria-controls="log-sub-program" onclick="setLogTab('program')">Splits</button>
         <button id="lg-ex-btn" role="tab" aria-selected="false" aria-controls="log-sub-exercises" onclick="setLogTab('exercises')">Exercises</button>
         <button id="lg-hist-btn" role="tab" aria-selected="false" aria-controls="log-sub-history" onclick="setLogTab('history')">History</button>
+      </div>
       </div>
 
       <div id="log-sub-today" role="tabpanel" aria-labelledby="lg-today-btn">
@@ -589,11 +592,13 @@
          Food library and Nutrition Review are SUPPORTING screens, not a fifth and sixth tab:
          they are peer overlays outside this transformed deck (see below #app-main). -->
     <section id="view-food" class="swipe-panel">
+      <div class="page-topnav">
       <div class="seg-tabs seg-fill" id="food-tab-row" role="tablist" aria-label="Food sections">
         <button class="on" id="food-tab-today" role="tab" aria-selected="true" aria-controls="food-today" onclick="foodSetTab('today')">Today</button>
         <button id="food-tab-recipes" role="tab" aria-selected="false" aria-controls="kit-recipes" onclick="foodSetTab('recipes')">Recipes</button>
         <button id="food-tab-shopping" role="tab" aria-selected="false" aria-controls="kit-shopping" onclick="foodSetTab('shopping')">Shopping</button>
         <button id="food-tab-pantry" role="tab" aria-selected="false" aria-controls="kit-pantry" onclick="foodSetTab('pantry')">Pantry</button>
+      </div>
       </div>
 
       <!-- Today keeps the recipe overview and the existing food logger in one primary section. -->
@@ -659,6 +664,7 @@
          stays OUTSIDE the deck (below #app-main) — position:fixed resolves against the deck's
          transform, so an overlay inside it would be positioned against a 500%-wide box. -->
     <section id="view-stats" class="swipe-panel">
+        <div class="page-topnav">
       <div class="seg-tabs seg-scroll" id="stats-tab-row" role="tablist" aria-label="Stats sections">
         <button class="on" id="st-ov-btn" onclick="setStatsTab('overview')">Overview</button>
         <button id="st-rev-btn" onclick="setStatsTab('review')">Review</button>
@@ -667,6 +673,7 @@
         <button id="st-nut-btn" onclick="setStatsTab('nutrition')">Nutrition</button>
         <button id="st-fin-btn" onclick="setStatsTab('finance')">Finance</button>
       </div>
+        </div>
       <div id="sub-overview">
         <div id="overview-content"></div>
       </div>
@@ -1517,6 +1524,7 @@
 <script src="js/home-category-model.js" defer></script>
 <script src="js/home-category.js" defer></script>
 <script src="js/training.js" defer></script>
+<script src="js/journal-planner.js" defer></script>
 <script src="js/app.js" defer></script>
 </body>
 </html>

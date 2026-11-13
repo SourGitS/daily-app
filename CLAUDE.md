@@ -1,5 +1,43 @@
 # Daily — Project Reference
 
+## v451 Home ticks, pinned headers and Journal planning — 2026-11-13
+
+- Francois requested matching ticks in Home's Last 7 days card. Spending and habits now use
+  identical green/amber check tiles: within weekly pace/all habits complete versus over
+  pace/not all complete. The habit meter and visible fractions are removed. Missing results
+  and zero configured habits remain neutral and unscored. Dates, counts, pace amounts and
+  today's provisional status remain in accessible labels/tooltips. Existing readers and
+  current habit-count semantics are unchanged; no historical data is backfilled.
+- His scrolling screenshot showed content peeking above Exercise Library's sticky search
+  bar, to the right of the capped tabs. Log, Food and Stats now have full-width opaque tab
+  backings. Log measures its tab backing and library header with a ResizeObserver, keeping
+  the search bar and desktop category rail aligned through font/viewport changes. Short
+  landscape retains the independent pane scroller. No navigation or record identity changes.
+- Francois chose Calendar first for Journal. The month grid and selected-day agenda display
+  journal entries, existing reminder/expiry notes and canonical Finance billOccurrences.
+  Filters, search, month paging, Today and arrow-key date navigation are memory-only. Bills
+  are scheduled charges/statements, never inferred paid/overdue statuses; they link to
+  Finance and write no financial data. Unknown/zero scheduled amounts are not shown as a
+  known payable amount. The calendar refreshes when recurring bills or Accounts arrive via
+  sync, including a direct Journal launch before Finance finishes loading. Overdue notes
+  remain saved and visible.
+- Add task/note opens the existing note editor with the selected due date prefilled in the
+  unsaved draft. Write entry and Entries & notes retain the existing editor/list, moods,
+  tags, pinning and Trash. Schema 2, note fields, per-record sync and financial writers are
+  unchanged; there are no new persisted stores. Empty dated drafts still write nothing.
+  Explicit note switches flush pending text, and a Journal overlay-open token prevents a
+  previous delayed close animation from closing a newly opened editor.
+- Cache daily-v451 includes journal-planner.js/css. All 738 Node checks pass. The new browser
+  suite passes 320/390/844-landscape/1024/1440/1920 in both themes: tick alignment and missing
+  states, repeated scrolling/header hit testing, library search, Food/Stats header coverage,
+  Calendar navigation/filters/search, direct Journal loading, incoming bill/statement updates,
+  bill links, blank cancellation, dated expiry-note saving and
+  exact preservation of older notes and Finance records. It also checks rapid editor reopen
+  and retention of pending text. Existing workout reorder/swap/save and session/History
+  suites pass all ten/twelve size/theme combinations. All records are isolated samples;
+  physical Safari and production Firebase remain unverified.
+  Local preview on port 8805. Francois approved committing and pushing this update to main.
+
 ## v450 Workout session and History — release authorised, 2026-11-11
 
 - Francois approved the local preview, requested moving Start workout below the timer row,

@@ -58,13 +58,21 @@ function categoryActivityModel(){
  });
  return categoryPaceModel({dates,today:getLocalDate(),weekly,transactions:txnData,habitLog:habitsLog,habitCount:habitsData.length});
 }
+function categoryActivityMark(state,label){
+ const scored=state==='on'||state==='over';
+ return '<span><i class="cat-day-mark '+(scored?state:'unscored')+'" role="img" title="'+escAttr(label)+'" aria-label="'+escAttr(label)+'">'+(scored?'<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 10 4 4 8-8"/></svg>':'<span aria-hidden="true">—</span>')+'</i></span>';
+}
 function categoryActivity(){
  const data=categoryActivityModel(),labels={on:'Within weekly pace',over:'Above weekly pace','no-target':'No weekly spending target','no-entries':'No spending entries',unknown:'Spending needs a date check',future:'Future day'};
  const row=(name,content)=>'<div class="cat-week-row"><span class="cat-week-label">'+name+'</span>'+content+'</div>';
  return categoryHeading('activity',categoryDate(data[0].date)+' – '+categoryDate(data[6].date))+'<div class="cat-week" role="group" aria-label="Habits and weekly spending pace">'+
  row('',data.map(d=>'<span><b>'+localMidnight(d.date).toLocaleDateString('en-AU',{weekday:'short'})+'</b><small>'+localMidnight(d.date).getDate()+'</small></span>').join(''))+
- row('Spending',data.map(d=>'<span><i class="cat-day-mark '+d.state+'" title="'+escAttr(categoryDate(d.date)+': '+labels[d.state]+(d.allowance!==null?' · '+fmtMoneyExact(d.spent)+' recorded / '+fmtMoneyExact(d.allowance)+' pace':''))+'" aria-label="'+escAttr(labels[d.state])+'">'+(d.state==='on'?'✓':d.state==='over'?'!':'—')+'</i></span>').join(''))+
- row('Habits',data.map(d=>'<span aria-label="'+escAttr(d.habits===null?'No habit log':d.habits+' of '+d.habitCount+' habits')+'"><i class="cat-habit-meter"><i style="width:'+(d.habits!==null&&d.habitCount?d.habits/d.habitCount*100:0)+'%"></i></i><small>'+(d.habits===null?'—':d.habits+'/'+d.habitCount)+'</small></span>').join(''))+'</div><p class="cat-caption">Weekly spending pace · ✓ within · ! above · — unscored. Today is so far.</p>'+categoryLink('activity','Open spending in Budget');
+ row('Spending',data.map(d=>categoryActivityMark(d.state,'Spending · '+categoryDate(d.date)+': '+labels[d.state]+(d.allowance!==null?' · '+fmtMoneyExact(d.spent)+' recorded / '+fmtMoneyExact(d.allowance)+' pace':'')+(d.date===getLocalDate()?' · Today so far':''))).join(''))+
+ row('Habits',data.map(d=>{
+  const state=d.habits===null||!d.habitCount?'unscored':d.habits===d.habitCount?'on':'over';
+  const label=!d.habitCount?'No habits set':d.habits===null?'No habit log':d.habits+' of '+d.habitCount+' habits completed'+(state==='on'?' · All habits complete':' · Not all habits complete');
+  return categoryActivityMark(state,'Habits · '+categoryDate(d.date)+': '+label+(d.date===getLocalDate()?' · Today so far':''));
+ }).join(''))+'</div><div class="cat-caption cat-week-key" aria-label="Status key"><span><i class="cat-key-dot on" aria-hidden="true"></i>On track</span><span><i class="cat-key-dot over" aria-hidden="true"></i>Needs attention</span><span>— Unscored</span><small>Today so far.</small></div>'+categoryLink('activity','Open spending in Budget');
 }
 function categoryHabits(all=false){
  const done=new Set((habitsLog[getLocalDate()]||[]).filter(i=>i>=0&&i<habitsData.length));
