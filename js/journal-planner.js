@@ -52,6 +52,7 @@ function jrnPlannerCalendarHTML(model){
   '<div class="jp-days" role="group" aria-label="'+escAttr(jrnMonthLabel(model.month+'-01'))+'">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x=>'<span class="jp-weekday">'+x+'</span>').join('')+cells+'</div><footer class="jp-legend">'+[['note','Tasks & notes'],['entry','Journal'],['bill','Scheduled bills']].map(([id,label])=>'<span><i class="jp-dot '+id+'" aria-hidden="true"></i>'+label+'</span>').join('')+'</footer></section>';
 }
 function jrnRenderPlanner(wrap){
+ const focused=document.activeElement,control=wrap.contains(focused)&&focused.closest('button[data-jp]');
  jrnDetachEditor();const ed=document.getElementById('jrn-editor');if(ed)ed.classList.remove('inline','open');
  const model=jrnPlannerRead(),today=model.today,selected=model.selected,overdue=model.overdue.filter(e=>e.date!==selected);
  const agenda='<aside class="jp-agenda"><section class="jp-agenda-card"><header>'+cardHeader('calendar',selected===today?'Today':escText(jrnLongDay(selected)))+'<h2>'+escText(jrnLongDay(selected))+'</h2></header><div class="jp-agenda-actions"><button type="button" class="stg-btn" data-jp="new-note">+ Task / note</button>'+(selected<=today?'<button type="button" class="stg-btn" data-jp="write">Write entry</button>':'')+'</div>'+
@@ -59,6 +60,11 @@ function jrnRenderPlanner(wrap){
   (overdue.length?'<section class="jp-agenda-card"><h3>Overdue notes <small>'+overdue.length+'</small></h3>'+overdue.slice(0,5).map(e=>jrnPlannerEventHTML({...e,detail:e.detail+' · '+jrnLongDay(e.date)})).join('')+(overdue.length>5?'<button type="button" class="stg-btn" data-jp="notes">View all notes</button>':'')+'</section>':'')+
   '<section class="jp-agenda-card jp-help"><p>Tasks and expiry notes stay saved after their date. Bills show the Finance schedule.</p><button type="button" class="stg-btn" data-jp="notes">Browse all notes</button></section></aside>';
  wrap.innerHTML='<div id="journal-root" class="jrn-planner"><header class="jrn-page-head">'+jrnHeadHtml()+'<p>Your days, notes and plans.</p>'+jrnPlannerControls()+'</header><div class="jp-layout">'+jrnPlannerCalendarHTML(model)+agenda+'</div></div>';
+ if(control){
+  const actions=wrap.querySelectorAll('button[data-jp]');
+  const match=Array.from(actions).find(b=>['jp','date','filter','id'].every(k=>b.dataset[k]===control.dataset[k]));
+  (match||(control.dataset.jp==='day'&&wrap.querySelector('.jp-day.selected'))||null)?.focus({preventScroll:true});
+ }
 }
 function jrnPlannerShow(view){
  jrnPlannerState.view=view;jrnPlannerState.returnToCalendar=false;

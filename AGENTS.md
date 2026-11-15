@@ -1,5 +1,11 @@
 # Daily — Agent Handoff
 
+## v452 review fixes — release authorised, 2026-11-16
+
+- The local verification report at `temp-analysis/fix-review-20261116/Daily-app-fix-verification.html` links the 34 v451 findings to repeatable checks in `tests/` and `remote/test/`. The browser app, default Firebase rules and prepared connector rules have changes in this checkout.
+- The default app stores pending expense and ledger edits by record ID. A same-record conflict retains a local recovery copy and has a review action in Settings. A synced backup replaces only the supplied stores after a server check. Updated clients and matching Firebase rules protect restore boundaries across reconnects.
+- Francois authorised publishing v452 to GitHub Pages and deploying the matching `database.rules.json` to the default Daily Realtime Database. Older clients can receive a write rejection after a store adopts the new format. Refresh those clients before retrying. The connector and remote notifications are disabled. All 790 app checks passed. Sync and restore tests used synthetic accounts and local emulators. Physical iPhone acceptance remains pending.
+
 ## v425 Phone temperature-pair breathing room — 2026-11-03
 
 - Francois asked for slightly more high/low spacing while conserving space. Category phone

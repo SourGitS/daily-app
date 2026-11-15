@@ -18,6 +18,9 @@ function dailyScopedStorage(native, scope){
     return out;
   };
   return {scope,
+    keys,
+    logicalKey:k=>typeof k==='string'&&(shared(k)||scope==='legacy'&&appKey(k))?k:
+      typeof k==='string'&&scope!=='legacy'&&k.startsWith(prefix)?k.slice(prefix.length):null,
     getItem:k=>native.getItem(physical(String(k))),
     setItem:(k,v)=>native.setItem(physical(String(k)),String(v)),
     removeItem:k=>native.removeItem(physical(String(k))),
@@ -37,14 +40,12 @@ function dailySwitchAccount(user){
   const destination=dailyScopedStorage(dailyNativeStorage,target);
   if(user&&(localStorage.scope==='legacy'||localStorage.scope==='guest')){
     let profile={};try{profile=JSON.parse(localStorage.getItem('daily_profile')||'{}')||{};}catch(e){}
-    const meaningful=!!profile.onboardingVersion||['wt_sessions','daily_budget','daily_transactions'].some(k=>{
-      const v=localStorage.getItem(k);return v&&v!=='[]'&&v!=='{}'&&v!=='null';
-    });
+    const meaningful=!!profile.onboardingVersion||dailyHasOfflineRecords(localStorage);
     if(!meaningful)dailyKeepOnboardingDraft(user.uid);
     const hasDestination=Array.from({length:destination.length},(_,i)=>destination.key(i)).some(k=>k!=='daily_weather_cache');
     if(meaningful&&!hasDestination&&confirm('This browser has existing offline Daily data. Does it belong to '+(user.displayName||'this account')+'?\n\nOK: attach it to this account. Cancel: load only this account’s cloud data. The previous offline copy is retained on this device.')){
       for(let i=0;i<localStorage.length;i++){
-        const k=localStorage.key(i);if(k!=='daily_weather_cache')destination.setItem(k,localStorage.getItem(k));
+        const k=localStorage.key(i);if(k!=='daily_weather_cache'&&!k.startsWith('daily_finance_seen_'))destination.setItem(k,localStorage.getItem(k));
       }
     }
   }
@@ -58,6 +59,30 @@ function dailySwitchAccount(user){
   });
   revoke.catch(()=>{}).finally(()=>window.location.reload());
   return true;
+}
+function dailyHasOfflineRecords(storage){
+  const stores=['wt_sessions','wt_weight','wt_notes','daily_budget','daily_transactions','daily_ledger',
+    'daily_accounts','daily_reviews','daily_savings_log','wt_plans','kitchen_recipes',
+    'daily_nutrition_log','daily_my_foods','daily_habits_log','daily_cal_history','daily_saved_foods',
+    'daily_cc_log','wt_exercise_lib','kitchen_shopping_selected','kitchen_shopping_manual','wt_calories'];
+  const records=stores.some(key=>{
+    const raw=storage.getItem(key);
+    if(!raw)return false;
+    try{
+      const value=JSON.parse(raw);
+      if(!value||typeof value!=='object')return false;
+      if(key==='daily_nutrition_log')return !!(Object.keys(value.entries||{}).length||Object.keys(value.legacyTotals||{}).length);
+      if(key==='daily_my_foods')return !!Object.keys(value.foods||{}).length;
+      if(key==='wt_calories')return !!value.entries?.length;
+      if(key==='wt_plans'&&!Array.isArray(value))return !!value.plans?.length;
+      return Object.keys(value).length>0;
+    }catch(e){return false;}
+  });
+  if(records)return true;
+  // These stores are seeded during startup. Only a deliberate edit advances their timestamp.
+  return ['kitchen_pantry','daily_budget_cycles','daily_budget_inc_cats','daily_budget_fix_cats',
+    'daily_budget_var_cats','daily_habits','daily_weight_goal','wt_split'].some(key=>
+    storage.getItem(key)!==null&&Number(storage.getItem(key+'_ts'))>0);
 }
 function dailyKeepOnboardingDraft(uid){
   if(typeof obData==='undefined'||typeof obStep==='undefined'||obStep<1)return;

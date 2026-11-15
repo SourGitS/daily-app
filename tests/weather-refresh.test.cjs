@@ -240,6 +240,25 @@ test('clearing weather invalidates an outstanding request without resurrecting t
   assert.equal(f.status().state, 'idle');
 });
 
+test('clear location reports each cleanup outcome and waits for the server receipt', async () => {
+  const f=fixture();
+  let finish;
+  f.ctx.dailyClearWeatherResponses=async()=>{};
+  f.ctx.fbRef=()=>({remove:()=>new Promise(resolve=>{finish=resolve;})});
+  const pending=f.ctx.weatherClearSaved();
+  await f.settle();
+  assert.match(vm.runInContext('weatherClearReceipt.message',f.ctx),/Waiting for cloud confirmation/);
+  assert.equal(f.toasts.length,0);
+  finish(); await pending;
+  assert.match(f.toasts.at(-1),/cleared from this device.*cloud location cleared/i);
+
+  f.ctx.dailyClearWeatherResponses=async()=>{throw Error('cache unavailable');};
+  f.ctx.fbRef=()=>({remove:async()=>{throw Error('denied');}});
+  await f.ctx.weatherClearSaved();
+  assert.match(f.toasts.at(-1),/Device cleanup was incomplete.*Cloud deletion failed/);
+  assert.equal(vm.runInContext('weatherClearReceipt.pending',f.ctx),false);
+});
+
 test('a late response cannot overwrite newer cache data even from the same coordinates', async () => {
   const f = fixture();
   const pending = f.ctx.weatherRefreshStored();
@@ -383,6 +402,7 @@ test('Weather details distinguish forecast model time in the location timezone f
 test('provider parsing keeps unavailable hourly values null and uses absolute forecast instants', async () => {
   const f = fixture();
   const pending = f.ctx.fetchWeatherAt(-33.8, 151.2);
+  assert.equal(f.requests[0].options.cache,'no-store');
   assert.match(f.requests[0].url, /timeformat=unixtime/);
   assert.match(f.requests[0].url, /forecast_days=7/);
   assert.match(f.requests[0].url, /hourly=temperature_2m,weather_code,is_day,precipitation_probability,precipitation/);

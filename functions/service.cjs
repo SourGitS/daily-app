@@ -26,10 +26,12 @@ async function manage(root,uid,data,schedule,now=Date.now()){
   if(['register','update','renew'].includes(data.action))validateZone(data.zone);
   if(['register','update'].includes(data.action)&&JSON.stringify(data.preferences||{}).length>12000)throw new Error('Settings are too large.');
   const ref=root.child(device);
-  let rejected=false;
   const result=await ref.transaction(old=>{
-    rejected=false;
-    if(data.action!=='register'&&(!old||old.uid!==uid||old.token!==data.token)){rejected=true;return;}
+    if(data.action!=='register'){
+      // Let Firebase compare an initially empty local cache with the server.
+      if(old===null)return null;
+      if(old.uid!==uid||old.token!==data.token)return;
+    }
     if(data.action==='register'){
       const last=old?.uid===uid?{...(old.last||{})}:{},today=schedule.clock(new Date(now),data.zone).day;
       schedule.channels.forEach(k=>{
@@ -46,7 +48,7 @@ async function manage(root,uid,data,schedule,now=Date.now()){
     if(data.action==='renew')return {...old,zone:data.zone,expiresAt:now+lease,revision:old.zone===data.zone?old.revision:Math.max(now,(old.revision||0)+1)};
     return {...old,preferences:schedule.normalise(data.preferences),enabled:true,revision:Math.max(now,(old.revision||0)+1),zone:data.zone,expiresAt:now+lease};
   });
-  if(rejected||!result.committed)throw new Error('This notification connection belongs to another account or has expired. Reconnect.');
+  if(!result.committed||!result.snapshot.val())throw new Error('This notification connection belongs to another account or has expired. Reconnect.');
   return {device};
 }
 async function deliver(ref,record,sessions,send,schedule,now=Date.now()){
@@ -57,12 +59,13 @@ async function deliver(ref,record,sessions,send,schedule,now=Date.now()){
   for(const event of events){
     // Claim before send: a timeout has an unknown delivery outcome and must not be retried.
     const claim=await ref.transaction(current=>{
+      if(current===null)return null;
       if(!current?.enabled||current.token!==record.token||current.revision!==record.revision||current.expiresAt<=now)return;
       const currentSessions=current.trainedDate===date?{...sessions,local:{date}}:sessions;
       if(!schedule.due(current.preferences,new Date(now),current.zone,currentSessions,current.last).some(e=>e.id===event.id))return;
       return {...current,last:{...current.last,[event.channel]:{day:event.day,id:event.id,status:'claimed',at:now,wordIndex:((current.last?.[event.channel]?.wordIndex??-1)+1)%3}}};
     });
-    if(!claim.committed)continue;
+    if(!claim.committed||!claim.snapshot.val())continue;
     const fresh=(await ref.once('value')).val();
     if(!fresh?.enabled||fresh.token!==record.token||fresh.revision!==record.revision||event.channel.startsWith('workout')&&fresh.trainedDate===date)continue;
     const clock=schedule.clock(new Date(now),record.zone),quiet=schedule.normalise(record.preferences).quiet;
@@ -73,7 +76,7 @@ async function deliver(ref,record,sessions,send,schedule,now=Date.now()){
     try{await send(record.subscription,JSON.stringify(payload),{TTL:ttl,urgency:'normal',timeout:10000});}
     catch(e){
       if(e.statusCode===404||e.statusCode===410){
-        await ref.transaction(v=>v?.token===record.token?{...v,enabled:false,expiredSubscription:true}:undefined);
+        await ref.transaction(v=>v===null?null:v.token===record.token?{...v,enabled:false,expiredSubscription:true}:undefined);
       }
       // No payloads, subscription URLs or account data in logs.
       console.warn('Notification send failed',e.statusCode||'transport');

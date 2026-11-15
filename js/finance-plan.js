@@ -28,14 +28,15 @@ function budPlanCommitments(today=getLocalDate(),months=3){
     return {key:start.slice(0,7),start:i?start:today,end:budDateAdd(budDateMonth(start,1),-1),items:rows,
       total:budMoneyRound(rows.reduce((n,o)=>n+o.amount,0))};
   });
-  return {range,items,months:buckets,unscheduled:billsUndatedCount(),total:budMoneyRound(buckets.reduce((n,m)=>n+m.total,0))};
+  return {range,items,months:buckets,unscheduled:billsUndatedCount(),unpriced:items.filter(o=>o.amount===null).length,total:budMoneyRound(buckets.reduce((n,m)=>n+m.total,0))};
 }
 function budPlanScenario(input,commitments){
   const starting=acctMoney(input.starting),income=acctMoney(input.income),spending=acctMoney(input.spending),savings=acctMoney(input.savings||'0');
   const cents=n=>Math.round(n*100),range=commitments.range,covered=new Set(input.covered||[]),due=new Map();
-  let coveredTotal=0;
+  let coveredTotal=0,unpriced=0;
   commitments.items.forEach(o=>{
     if(covered.has(budPlanChargeKey(o))){coveredTotal+=cents(o.amount);return;}
+    if(o.amount===null){unpriced++;return;}
     due.set(o.key,(due.get(o.key)||0)+cents(o.amount));
   });
   const monthly={income:cents(income),spending:cents(spending),savings:cents(savings)};
@@ -55,7 +56,7 @@ function budPlanScenario(input,commitments){
     row.end=date;row.closing=balance/100;
   }
   rows.forEach(r=>{['income','spending','savings','bills'].forEach(k=>{r[k]/=100;});});
-  return {range,rows,ending:balance/100,lowest:lowest/100,gap:Math.max(0,-lowest)/100,firstShortfall,coveredTotal:coveredTotal/100,unscheduled:commitments.unscheduled||0};
+  return {range,rows,ending:unpriced?null:balance/100,lowest:lowest/100,gap:Math.max(0,-lowest)/100,firstShortfall,unpriced,coveredTotal:coveredTotal/100,unscheduled:commitments.unscheduled||0};
 }
 function budPlanBudgetSignature(){
   return JSON.stringify([budPlanOwner(),budCyclesLoad(),budgetData,budLoadData(),ledgerData,txnData,lsLoad('daily_accounts',[]),loadIncCats(),loadFixCats(),budDefaults]);
@@ -85,9 +86,10 @@ function budPlanGoalFacts(accountsList,range,today=getLocalDate()){
 function budPlanCommitmentsHtml(c,state){
   const max=Math.max(...c.months.map(m=>m.total),1),busiest=c.months.reduce((a,b)=>b.total>a.total?b:a);
   const label=d=>localMidnight(d).toLocaleDateString('en-AU',{day:'numeric',month:'short'});
-  const large=[...c.items].sort((a,b)=>b.amount-a.amount).slice(0,3),undated=billsUndatedCount();
+  const large=c.items.filter(o=>o.amount!==null).sort((a,b)=>b.amount-a.amount).slice(0,3),undated=billsUndatedCount();
   return cardHeader('calendar','Future commitments','<span class="plan-muted">Next 3 calendar months</span>')+
-    statsFigure(c.items.length?fmtMoneyExact(c.total):'—','','Scheduled from '+escText(label(c.range.start))+' to '+escText(label(c.range.end)))+
+    statsFigure(c.items.length?fmtMoneyExact(c.total):'—','',(c.unpriced?'Known amounts from ':'Scheduled from ')+escText(label(c.range.start))+' to '+escText(label(c.range.end)))+
+    (c.unpriced?'<p class="plan-caption">'+c.unpriced+' scheduled '+(c.unpriced===1?'charge has':'charges have')+' no recorded price. Totals include only known amounts.</p>':'')+
     (c.items.length?'<div class="plan-months">'+c.months.map((m,i)=>'<div class="plan-month"><div><strong>'+escText(localMidnight(m.start).toLocaleDateString('en-AU',{month:'long',year:'numeric'}))+'</strong><b>'+fmtMoneyExact(m.total)+'</b></div>'+
       '<div class="card-bar"><div class="card-bar-fill" style="width:'+(m.total/max*100)+'%"></div></div><small>'+(i===0?'Remaining dates · ':'')+m.items.length+' scheduled '+(m.items.length===1?'charge':'charges')+'</small></div>').join('')+'</div>':'')+
     (c.items.length?'<p class="plan-caption">Heaviest month · '+escText(localMidnight(busiest.start).toLocaleDateString('en-AU',{month:'long'}))+' '+fmtMoneyExact(busiest.total)+'</p>':'<p class="plan-caption">Add billing dates to see future commitments.</p>')+
@@ -204,9 +206,10 @@ function budPlanScenarioCoverageRefresh(){
   const form=document.getElementById('plan-scenario-form');if(!form)return;
   budPlanScenarioCapture(form);const d=budPlanEnsureDraft(),c=budPlanCommitments(getLocalDate(),d.months),held=new Set(d.covered);
   const host=document.getElementById('plan-covered-options');
-  host.innerHTML=c.items.length?c.items.map(o=>'<label class="plan-covered-row"><input type="checkbox" data-covered="'+escAttr(budPlanChargeKey(o))+'"'+(held.has(budPlanChargeKey(o))?' checked':'')+'><span>'+escText(o.name)+'<small>'+escText(fmtDate(o.key))+'</small></span><strong>'+fmtMoneyExact(o.amount)+'</strong></label>').join(''):'<p class="plan-caption">No scheduled charges in these dates.</p>';
+  host.innerHTML=c.items.length?c.items.map(o=>'<label class="plan-covered-row"><input type="checkbox" data-covered="'+escAttr(budPlanChargeKey(o))+'"'+(held.has(budPlanChargeKey(o))?' checked':'')+'><span>'+escText(o.name)+'<small>'+escText(fmtDate(o.key))+'</small></span><strong>'+(o.amount===null?'Amount not set':fmtMoneyExact(o.amount))+'</strong></label>').join(''):'<p class="plan-caption">No scheduled charges in these dates.</p>';
 }
 function budPlanScenarioResultHtml(result){
+  if(result.unpriced)return '<div class="plan-scenario-outcome"><strong>Ending funds unknown</strong><p>'+result.unpriced+' scheduled '+(result.unpriced===1?'charge needs a price':'charges need prices')+'. Enter the amounts or mark a charge covered if its funding is already held separately.</p></div>';
   const monthLabel=key=>localMidnight(key+'-01').toLocaleDateString('en-AU',{month:'short',year:'numeric'});
   const fullDate=date=>localMidnight(date).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});
   return '<div class="plan-scenario-outcome'+(result.firstShortfall?' has-gap':'')+'">'+

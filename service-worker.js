@@ -449,8 +449,10 @@
 // v449: refine Food Today's recipe option cards and their neutral cooking controls.
 // v450: unified workout logger hero, neutral set cards and expandable muscle-map history.
 // v451: matching Home activity ticks, contained Log scrolling and Journal planning calendar.
-const CACHE_NAME = 'daily-v451'; // Remote connector hosting remains disabled.
+// v452: record-aware financial sync, guarded restore, scoped offline caching and review fixes.
+const CACHE_NAME = 'daily-v452';
 importScripts('./js/notification-storage.js');
+importScripts('./js/cache-scope.js');
 
 // Relative to this script's own location (whatever path GitHub Pages serves it under —
 // used to be hardcoded to /workout-tracker/, which broke outright when the repo was
@@ -485,10 +487,12 @@ const ASSETS = [
   './assets/manhua-hub-wordmark-stars.png',
   './js/notification-schedule.js',
   './js/notification-storage.js',
+  './js/cache-scope.js',
   './js/notification-config.js',
   './js/notifications.js',
   './css/notifications.css',
   './js/account-storage.js',
+  './js/sync-integrity.js',
   './js/finance-periods.js',
   './js/accounts-tools.js',
   './js/account-links.js',
@@ -521,63 +525,75 @@ const ASSETS = [
   'https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js'
 ];
 
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
-  );
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
-});
-
-self.addEventListener('fetch', event => {
-  // Only handle GET requests; let Firebase auth/DB and non-GET requests pass through
-  if (event.request.method !== 'GET') return;
-
-  const url = new URL(event.request.url);
-  // Network-first for the app shell (HTML/CSS/JS) so code updates take effect
-  // immediately and you never get a stale/mismatched index.html + app.js combo.
-  const isAppShell = event.request.mode === 'navigate' ||
-    /\.(?:html|js|css)$/.test(url.pathname);
-
-  if (isAppShell) {
-    event.respondWith(
-      // cache:'no-cache' forces a revalidation against the server. A plain fetch() here uses the
-      // DEFAULT cache mode, which the browser may satisfy from its own HTTP cache — so
-      // "network-first" was still capable of returning a stale app.js, and a deployed fix could
-      // sit unseen behind a disk-cached copy. This asks the server every time and falls back to
-      // the SW cache only when genuinely offline.
-      fetch(new Request(event.request.url, {cache: 'no-cache', credentials: 'same-origin'})).then(response => {
-        if (response && response.status === 200 && response.type !== 'opaque') {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-        }
-        return response;
-      }).catch(() => caches.match(event.request))
-    );
-    return;
+const scope=self.registration.scope;
+const prefix=dailyCachePrefix(scope),shellCache=prefix+CACHE_NAME;
+const assets=new Set(ASSETS.map(asset=>new URL(asset,scope).href));
+const home=new URL('./',scope),index=new URL('index.html',scope);
+const appShellURL=url=>url.origin===home.origin&&(url.pathname===home.pathname||url.pathname===index.pathname);
+function assetKey(url){
+  if(assets.has(url.href))return url.href;
+  // Installed icons retain their versioned URLs on some devices.
+  if(url.origin===home.origin&&/^\?v=\d+$/.test(url.search)){
+    const plain=new URL(url);plain.search='';
+    if(assets.has(plain.href)&&plain.pathname.endsWith('.png'))return plain.href;
   }
-
-  // Cache-first for everything else (images, CDN libraries)
-  event.respondWith(
-    caches.match(event.request).then(cached => {
-      const networkFetch = fetch(event.request).then(response => {
-        if (response && response.status === 200 && response.type !== 'opaque') {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-        }
-        return response;
-      }).catch(() => cached);
-      return cached || networkFetch;
-    })
-  );
+  if(url.origin==='https://cdn.jsdelivr.net'&&url.pathname.startsWith('/npm/@tabler/icons-webfont@3.24.0/dist/'))return url.href;
+  if(url.origin==='https://fonts.gstatic.com'&&/^\/s\/(manrope|spacegrotesk)\//.test(url.pathname))return url.href;
+  if(url.origin==='https://fonts.googleapis.com'&&url.pathname==='/css2'&&url.searchParams.getAll('family').every(f=>/^(Manrope|Space Grotesk):/.test(f)))return url.href;
+  return null;
+}
+self.addEventListener('install',event=>{
+  event.waitUntil(caches.open(shellCache).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()));
+});
+self.addEventListener('activate',event=>{
+  event.waitUntil((async()=>{
+    for(const name of await caches.keys()){
+      if(name===shellCache)continue;
+      if(name.startsWith(prefix)){await caches.delete(name);continue;}
+      if(!/^daily-v\d+$/.test(name))continue;
+      const cache=await caches.open(name);
+      if(!await dailyOwnsLegacyCache(name,cache,scope))continue;
+      const keys=await cache.keys();
+      // Old releases shared a cache name across installation paths. Retire a
+      // complete legacy cache only when its contents can be attributed to us.
+      const otherPath=keys.some(req=>{const u=new URL(req.url);return u.origin===home.origin&&!assets.has(u.href)&&!appShellURL(u)&&!assetKey(u);});
+      if(!otherPath){await caches.delete(name);continue;}
+      for(const req of keys){
+        const u=new URL(req.url);
+        if(dailyIsWeatherURL(req.url)||appShellURL(u)||(u.origin===home.origin&&assetKey(u)))await cache.delete(req);
+      }
+    }
+    await self.clients.claim();
+  })());
+});
+async function serveAsset(req,key,navigation){
+  let cache;
+  try{cache=await caches.open(shellCache);}catch{return fetch(req);}
+  const refresh=navigation||/\.(html|js|css)$/.test(new URL(key).pathname);
+  if(!refresh){const hit=await cache.match(key);if(hit)return hit;}
+  try{
+    const response=await fetch(req,{cache:refresh?'no-cache':'default'});
+    // An app navigation may carry account-specific query parameters. Only
+    // cache canonical shell responses. The URL in the address bar stays intact.
+    if(response.ok&&response.type!=='opaque'&&!response.redirected&&
+       !/\b(private|no-store)\b/i.test(response.headers.get('Cache-Control')||'')&&
+       (!navigation||!new URL(req.url).search)){
+      try{await cache.put(key,response.clone());}catch(e){/* A full cache must not hide an online response. */}
+    }
+    return response;
+  }catch(error){
+    const hit=await cache.match(key)||(navigation&&await cache.match(index.href));
+    if(hit)return hit;
+    throw error;
+  }
+}
+self.addEventListener('fetch',event=>{
+  const req=event.request;
+  if(req.method!=='GET'||req.cache==='no-store'||req.headers.has('Authorization'))return;
+  const url=new URL(req.url),navigation=req.mode==='navigate';
+  if(navigation&&!appShellURL(url))return;
+  const key=navigation?home.href:assetKey(url);
+  if(key)event.respondWith(serveAsset(req,key,navigation));
 });
 
 self.addEventListener('push',event=>{

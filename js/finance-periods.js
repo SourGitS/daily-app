@@ -63,11 +63,19 @@ function budPeriodRangeAt(store,date){
   }
   return budPeriodRange(store?.config,date,0);
 }
+function budPeriodAdjacent(store,range,direction){
+  const target=direction>0?budDateAdd(range.end,1):budDateAdd(range.start,-1);
+  const next=budPeriodRangeAt(store,target),config=budPeriodConfigAt(store,target);
+  if(config?.frequency==='custom'&&next&&(target<next.start||target>next.end)){
+    return budPeriodRange(config,target,Math.floor(budDateDays(config.anchor,target)/next.days));
+  }
+  return next;
+}
 function budPeriodRangeForStore(store,date,offset=0){
   let range=budPeriodRangeAt(store,date);if(!range)return null;
   const steps=Math.abs(Number(offset)||0),direction=Number(offset)<0?-1:1;
   for(let i=0;i<steps;i++){
-    const target=direction>0?budDateAdd(range.end,1):budDateAdd(range.start,-1),next=budPeriodRangeAt(store,target);
+    const next=budPeriodAdjacent(store,range,direction);
     if(!next||next.id===range.id)return null;range=next;
   }
   return range;
@@ -80,7 +88,7 @@ function budPeriodFirstOnOrAfter(config,date){
 function budCyclesLoad(){
   const v=lsLoad('daily_budget_cycles',null);
   const store=v&&typeof v==='object'&&!Array.isArray(v)?{config:v.config||null,periods:v.periods||{},...(v.transition&&typeof v.transition==='object'?{transition:v.transition}:{})}:{config:null,periods:{}};
-  if(store.config?.sourceId){
+  if(store.config?.sourceId&&!store.transition){
     const source=activeCats(loadIncCats()).find(c=>c.id===store.config.sourceId),follow=source&&budIncomePeriodConfig(source);
     if(follow)store.config={...store.config,...follow};
   }
@@ -105,7 +113,16 @@ function budPeriodLabel(p){
 function budMoneyRound(n){return Math.round((Number(n)||0)*100)/100;}
 function budPeriodCompute(range,record,events,expenses,periods,legacy){
   const r=record||{},within=x=>x&&budDateValid(x.date)&&x.date>=range.start&&x.date<=range.end&&!x.deletedAt;
-  const rows=(events||[]).filter(within),purchases=(expenses||[]).filter(within);
+  const rows=(events||[]).filter(within),purchases=[];
+  let carrySpent=0,partialCarry=false;
+  for(const expense of expenses||[]){
+    if(!expense||expense.deletedAt||!budDateValid(expense.date))continue;
+    if(typeof txnIsCarryRecord==='function'&&txnIsCarryRecord(expense)){
+      const start=budDateValid(expense.carryWeek)?expense.carryWeek:txnWeekOf(expense.date),end=budDateAdd(start,6);
+      if(start>=range.start&&end<=range.end)carrySpent+=Number(expense.amount)||0;
+      else if(start<=range.end&&end>=range.start&&Number(expense.amount))partialCarry=true;
+    }else if(within(expense))purchases.push(expense);
+  }
   const sum=items=>budMoneyRound(items.reduce((a,x)=>a+(Number(x.amount)||0),0));
   const income=sum(rows.filter(x=>x.kind==='income'))+(legacy?.income||0);
   const savingsRecorded=sum(rows.filter(x=>x.kind==='savings'));
@@ -114,17 +131,18 @@ function budPeriodCompute(range,record,events,expenses,periods,legacy){
   const reserved=Object.entries(r.reserves||{}).reduce((a,[id,n])=>a+Math.max(0,(Number(n)||0)-(paidBy[id]||0)),0);
   const incoming=Object.values(periods||{}).reduce((a,p)=>a+(p.rollover?.to===range.id&&p.rollover.destination==='budget'?(Number(p.rollover.amount)||0):0),0);
   const outgoing=Number(r.rollover?.amount)||0;
-  const spent=sum(purchases)+(legacy?.spent||0),billPaid=sum(payments),opening=Number(r.opening)||0,savings=Number(r.savings)||0;
+  const undatedSpent=budMoneyRound(carrySpent+(legacy?.spent||0));
+  const spent=sum(purchases)+undatedSpent,billPaid=sum(payments),opening=Number(r.opening)||0,savings=Number(r.savings)||0;
   // A savings target reserves money before it is moved. A dated savings record confirms the
   // move. Use whichever is higher so recording progress towards a target never deducts it twice.
   const savingsCommitted=Math.max(savings,savingsRecorded),savingsRemaining=Math.max(0,budMoneyRound(savings-savingsRecorded));
   const funded=income+opening+incoming;
   const known=budMoneyRound(funded-spent-billPaid-reserved-savingsCommitted-outgoing);
-  const incomplete=!!legacy?.incomplete,allocationReview=!!legacy?.allocationReview&&!r.fundingConfirmed&&!r.allocationsReviewed;
+  const incomplete=!!legacy?.incomplete||partialCarry,allocationReview=!!legacy?.allocationReview&&!r.fundingConfirmed&&!r.allocationsReviewed;
   return {range,record:r,rows,purchases,income:budMoneyRound(income),spent:budMoneyRound(spent),billPaid,
     reserved:budMoneyRound(reserved),opening,savings,savingsRecorded,savingsCommitted,savingsRemaining,incoming:budMoneyRound(incoming),outgoing,
     funded:budMoneyRound(funded),known,available:incomplete||allocationReview||(!funded&&!r.fundingConfirmed)?null:known,incomplete,allocationReview,
-    legacyIncome:legacy?.income||0,legacySpent:legacy?.spent||0};
+    legacyIncome:legacy?.income||0,legacySpent:undatedSpent};
 }
 function budPeriodLegacy(range,weeks){
   let income=0,spent=0,incomplete=false,allocationReview=false;
@@ -427,6 +445,15 @@ function budPeriodCancelTransition(){
   if(t.special){const id=t.special.start+'_'+t.special.end,r=periods[id],keys=Object.keys(r||{}).filter(k=>!['start','end','transitionPeriod','updatedAt'].includes(k));if(r?.transitionPeriod&&!keys.length)delete periods[id];}
   const source=periods[t.sourcePeriodId];
   if(source?.transitionedAt===t.updatedAt){const {transitionedAt,...rest}=source;if(!t.sourceExisted&&Object.keys(rest).every(k=>['start','end'].includes(k)))delete periods[t.sourcePeriodId];else periods[t.sourcePeriodId]=rest;}
+  // Cancelling restores the old dates. A source edited while scheduling the switch
+  // may now describe a different payday, so keep those dates as a manual schedule.
+  if(store.config?.sourceId){
+    const source=activeCats(loadIncCats()).find(c=>c.id===store.config.sourceId);
+    const follow=source&&budIncomePeriodConfig(source);
+    if(!follow||['frequency','anchor','secondDay'].some(key=>(follow[key]||'')!==(store.config[key]||''))){
+      store.config={...store.config};delete store.config.sourceId;
+    }
+  }
   store.periods=periods;delete store.transition;budCyclesSave(store);budPeriodOffset=0;budPeriodSelected='';
   document.getElementById('bud-period-dialog')?.close();budPeriodRefresh();showToast('Scheduled budget change cancelled');
 }
@@ -477,9 +504,21 @@ function budPeriodSetupFields(){
   if(frequencyHelp)frequencyHelp.textContent=({weekly:'A new budget starts every 7 days.',fortnightly:'A new budget starts every 14 days.',monthly:'Starts on the same calendar day each month; shorter months use their last day.',semimonthly:'Use two calendar start days, such as the 1st and 15th. Shorter months use their last day.',custom:'Set a start and end date. Check the change preview below before saving.'})[f.elements.frequency.value]||'';
   budPeriodSetupPreview();
 }
+function budPeriodEditBaseline(store,period){
+  return JSON.stringify([budPlanOwner(),store.config,store.transition,store.periods[period.id],
+    budPeriodViewed()?.id,budPeriodInheritedPlan(period,store.periods[period.id]),budPeriodSuggestedReserves(period)]);
+}
+function budPeriodSubmitEdit(store,id){
+  budCyclesSave(store);
+  if(JSON.stringify(budCyclesLoad().periods[id])!==JSON.stringify(store.periods[id])){
+    budPeriodError('This budget could not be saved on this device. Your form is still open.');return;
+  }
+  document.getElementById('bud-period-dialog').close();budPeriodRefresh();
+}
 function budPeriodAdjust(){
   const p=budPeriodViewed();if(!p)return budPeriodSetup();
   const store=budCyclesLoad(),saved=store.periods[p.id]||{},r=budPeriodInheritedPlan(p,saved),calculated=budPeriodSuggestedReserves(p);
+  const baseline=budPeriodEditBaseline(store,p);
   const reserves=r.automaticFixedRepair||r.provisionalFixedPlan||!Object.prototype.hasOwnProperty.call(r,'reserves')?calculated:{...r.reserves};
   budPeriodDialog('Budget settings','<p>'+escText(budPeriodLabel(p))+'</p>'+
     '<p class="bp-note">Fixed allowances are calculated automatically from Recurring bills for the length of this period. Change a recurring amount there, not in this snapshot.</p>'+
@@ -490,10 +529,12 @@ function budPeriodAdjust(){
     '<button type="button" class="bud-edit-btn" onclick="document.getElementById(\'bud-period-dialog\').close();openBudgetEditor()">Manage recurring bills →</button>');
   document.getElementById('bp-form').onsubmit=e=>{
     e.preventDefault();const f=new FormData(e.target);
+    const latest=budCyclesLoad();
+    if(baseline!==budPeriodEditBaseline(latest,p)){budPeriodError('This budget changed. Close and reopen settings to review the latest figures.');return;}
     const {provisionalFixedPlan,zeroFixedPlan,zeroFixedConfirmed,automaticFixedRepair,...base}=r;
-    store.periods[p.id]={...base,start:p.start,end:p.end,opening:budMoneyRound(f.get('opening')),savings:budMoneyRound(f.get('savings')),
+    latest.periods[p.id]={...base,start:p.start,end:p.end,opening:budMoneyRound(f.get('opening')),savings:budMoneyRound(f.get('savings')),
       goal:f.get('goal')===''?null:budMoneyRound(f.get('goal')),reserves,fundingConfirmed:true,allocationsReviewed:true,updatedAt:Date.now()};
-    budCyclesSave(store);document.getElementById('bud-period-dialog').close();budPeriodRefresh();
+    budPeriodSubmitEdit(latest,p.id);
   };
 }
 function budPeriodRecord(kind){
@@ -556,18 +597,23 @@ function budIncomeRecordReview(){
 function budPeriodRollover(){
   const p=budPeriodViewed(),m=p&&budPeriodMoney(p);if(!m)return;
   if(p.end>=getLocalDate()){showToast('Rollover is available after this budget period ends.');return;}
-  const store=budCyclesLoad(),r=store.periods[p.id]||{},next=budPeriodRangeForStore(store,budDateAdd(p.end,1),0);
+  const store=budCyclesLoad(),r=store.periods[p.id]||{},next=budPeriodAdjacent(store,p,1);
   if(!next||next.start<=p.end){showToast('Choose the next budget dates before rolling over.');return;}
   const max=m.available===null?0:Math.max(0,m.available+m.outgoing);
+  const baseline=budPeriodEditBaseline(store,p);
   budPeriodDialog('Choose what carries forward','<p>'+escText(budPeriodLabel(p))+' → '+escText(budPeriodLabel(next))+'</p>'+
     '<label>Amount<input type="number" name="amount" min="0" max="'+max+'" step="0.01" value="'+(r.rollover?.amount||max)+'"></label>'+
     '<label>Use this money<select name="destination">'+[['budget','Carry into the next budget'],['savings','Reserve as a savings allocation'],['unallocated','Leave unallocated']].map(([id,label])=>'<option value="'+id+'"'+(r.rollover?.destination===id?' selected':'')+'>'+label+'</option>').join('')+'</select></label>'+
     '<p class="bp-note">This moves a budget allocation, not money in your accounts. No income or savings deposit is created.</p>');
   document.getElementById('bp-form').onsubmit=e=>{
     e.preventDefault();const f=new FormData(e.target),amount=budMoneyRound(f.get('amount'));
-    if(m.incomplete||amount<0||amount>max){budPeriodError('Only a known positive remainder can be rolled over. Review the period first.');return;}
-    store.periods[p.id]={...r,start:p.start,end:p.end,rollover:{to:next.id,amount,destination:f.get('destination')},updatedAt:Date.now()};
-    budCyclesSave(store);document.getElementById('bud-period-dialog').close();budPeriodRefresh();
+    const latest=budCyclesLoad(),current=budPeriodMoney(p),destination=budPeriodAdjacent(latest,p,1);
+    if(baseline!==budPeriodEditBaseline(latest,p)||current.available!==m.available||destination?.id!==next.id){
+      budPeriodError('The budget or available amount changed. Close and reopen rollover to review it.');return;
+    }
+    if(current.available===null||amount<0||amount>max){budPeriodError('Only a known remainder can be rolled over. Review the period first.');return;}
+    latest.periods[p.id]={...r,start:p.start,end:p.end,rollover:{to:next.id,amount,destination:f.get('destination')},updatedAt:Date.now()};
+    budPeriodSubmitEdit(latest,p.id);
   };
 }
 function budPeriodHero(m,compact){
@@ -585,7 +631,7 @@ function budPeriodHero(m,compact){
 }
 function budPeriodScheduleHtml(p){
   const bills=billOccurrences(localMidnight(p.start),localMidnight(p.end));
-  return bills.length?bills.map(b=>'<div class="bp-row"><span>'+escText(b.name)+'<small>'+escText(fmtDate(b.key||dateStr(b.date)))+' · Scheduled bill</small></span><strong>'+fmtMoneyExact(b.amount)+'</strong></div>').join(''):'<p class="bp-note">No dated bills scheduled in these dates.</p>';
+  return bills.length?bills.map(b=>'<div class="bp-row"><span>'+escText(b.name)+'<small>'+escText(fmtDate(b.key||dateStr(b.date)))+' · Scheduled bill</small></span><strong>'+(b.amount===null?'Amount not set':fmtMoneyExact(b.amount))+'</strong></div>').join(''):'<p class="bp-note">No dated bills scheduled in these dates.</p>';
 }
 function budPeriodArchiveHtml(store=budCyclesLoad()){
   const rows=Object.entries(store.periods||{}).filter(([,r])=>budDateValid(r?.start)&&budDateValid(r?.closedEnd||r?.end)&&(r.closedEnd||r.end)>=r.start).sort((a,b)=>b[1].start.localeCompare(a[1].start));
@@ -707,7 +753,7 @@ function budPeriodCSVText(m){
     ['Rolled out',m.outgoing],['Remaining spending budget',m.available],['Incomplete legacy dates',m.incomplete],
     ['Legacy allocations need review',m.allocationReview],['Undated legacy income included',m.legacyIncome],['Undated legacy spending included',m.legacySpent],[],
     ['Dated activity ID','Date','Kind','Amount']];
-  m.rows.filter(x=>['income','bill_payment'].includes(x.kind)).forEach(x=>rows.push([x.id,x.date,x.kind,x.amount]));
+  m.rows.filter(x=>['income','bill_payment','savings'].includes(x.kind)).forEach(x=>rows.push([x.id,x.date,x.kind,x.amount]));
   m.purchases.forEach(x=>rows.push([x.id,x.date,'purchase',x.amount]));
   return rows.map(row=>row.map(cell).join(',')).join('\r\n');
 }
@@ -720,7 +766,7 @@ function budPeriodCSV(){
 function budRecordedRange(start,end){
   const range={id:start+'_'+end,start,end,days:budDateDays(start,end)+1};
   const legacy=budPeriodLegacy(range),m=budPeriodCompute(range,{},ledgerData,txnData,{},legacy);
-  m.hasRecords=m.rows.some(r=>['income','bill_payment'].includes(r.kind))||m.purchases.length>0||legacy.income>0||legacy.spent>0;
+  m.hasRecords=m.rows.some(r=>['income','bill_payment'].includes(r.kind))||m.purchases.length>0||m.legacyIncome>0||m.legacySpent!==0;
   return m;
 }
 function budRecordedSpend(start,end){
@@ -834,8 +880,9 @@ function budPeriodForecast(m){
     used[id]=true;const due=bills.filter(x=>x.kind==='charge'&&x.cat?.id===id&&dateStr(x.date)<=m.range.end).reduce((s,x)=>s+x.amount,0);
     addBack+=Math.min(due,Math.max(0,Number(m.record.reserves?.[id]||0)-(paid[id]||0)));});
   // Do not extrapolate a period allocation beyond its own end.
-  const projected=m.available===null||dateStr(until)>m.range.end?null:budMoneyRound(m.available+addBack-scheduled);
-  return {pay,until,bills,scheduled,addBack,available:m.available,projected,period:true};
+  const unpriced=bills.filter(b=>b.amount===null).length;
+  const projected=m.available===null||unpriced||dateStr(until)>m.range.end?null:budMoneyRound(m.available+addBack-scheduled);
+  return {pay,until,bills,scheduled,addBack,unpriced,available:m.available,projected,period:true};
 }
 function budPeriodPaintMoney(m){
   // A count-up started before cloud restore must not overwrite the restored figures later.

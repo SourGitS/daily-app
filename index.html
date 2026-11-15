@@ -2,7 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Daily">
@@ -920,6 +920,7 @@
             <!-- Sync state is a value, so it reads as a row rather than being crammed into the
                  card head, where a long status squeezes the description into a narrow column. -->
             <div class="stg-row"><span class="stg-row-txt"><span class="stg-row-label">Cloud sync</span></span><span class="stg-row-val" id="sync-status">&#8212;</span></div>
+            <button id="finance-sync-review" type="button" class="stg-btn" onclick="dailyFinanceReview()" hidden>Review financial sync conflict</button>
             <div class="stg-actions stack">
               <button class="stg-btn primary" onclick="exportAllData()">Export all data (JSON)</button>
             </div>
@@ -1063,10 +1064,6 @@
   <div id="kit-detail-overlay" style="display:none"><div id="kit-detail-overlay-inner"></div></div>
 
   <!-- Kitchen: add/edit recipe form (bottom sheet) -->
-  <div id="kit-import-overlay" class="modal-overlay hidden" onclick="if(event.target===this)kitCloseImport()">
-    <div class="modal-box" id="kit-import-box"></div>
-  </div>
-
   <div id="paste-restore-overlay" class="modal-overlay hidden" onclick="if(event.target===this)closePasteRestore()">
     <div class="modal-box" id="paste-restore-box"></div>
   </div>
@@ -1494,19 +1491,25 @@
   <div class="modal-box" id="nutrition-food-box"></div>
 </div>
 
+<div id="kit-import-overlay" class="modal-overlay hidden" onclick="if(event.target===this)kitCloseImport()">
+  <div class="modal-box" id="kit-import-box"></div>
+</div>
+
 <!-- HTML PLAN VIEWER -->
 <div id="plan-html-overlay" style="display:none;position:fixed;inset:0;z-index:200;background:var(--bg);flex-direction:column">
   <div style="display:flex;align-items:center;gap:12px;padding:12px 16px 12px;border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0">
     <button onclick="plansCloseHTML()" style="background:none;border:none;font-size:28px;line-height:1;color:var(--text);cursor:pointer;padding:0 4px">&#8249;</button>
     <span id="plan-html-title" style="font-size:17px;font-weight:700;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
   </div>
-  <iframe id="plan-html-frame" sandbox="allow-scripts allow-same-origin" style="flex:1;border:none;width:100%;background:#fff" srcdoc=""></iframe>
+  <iframe id="plan-html-frame" title="Imported plan" sandbox="allow-scripts" referrerpolicy="no-referrer" style="flex:1;border:none;width:100%;background:#fff" srcdoc=""></iframe>
 </div>
 
 <div id="toast-container" aria-live="polite"></div>
 
 <script src="js/account-storage.js" defer></script>
+<script src="js/sync-integrity.js" defer></script>
 <script src="js/nutrition.js" defer></script>
+<script src="js/cache-scope.js" defer></script>
 <script src="js/finance-periods.js" defer></script>
 <script src="js/accounts-tools.js" defer></script>
 <script src="js/account-links.js" defer></script>

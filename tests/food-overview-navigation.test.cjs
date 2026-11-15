@@ -7,9 +7,10 @@ const {extract}=require('./harness.cjs');
 const nutrition=fs.readFileSync(path.join(__dirname,'../js/nutrition.js'),'utf8');
 const copy=x=>JSON.parse(JSON.stringify(x));
 function nutritionFunction(name){
-  const start=nutrition.indexOf('function '+name+'('),end=nutrition.indexOf('\n',start);
+  const start=nutrition.search(new RegExp('^(?:async )?function '+name+'\\(','m'));
   assert.ok(start>=0,name+' exists');
-  return nutrition.slice(start,end);
+  const end=nutrition.indexOf('\n',start),firstLine=nutrition.slice(start,end).trimEnd();
+  return firstLine.endsWith('}')?firstLine:nutrition.slice(start,nutrition.indexOf('\n}',end)+2);
 }
 
 function fixture(){
@@ -128,8 +129,8 @@ test('nutOpen retains its explicit logger and entry-highlight contract',()=>{
   assert.equal(highlighted,'[data-nut-entry="food-42"]');
 });
 
-test('logging a selected catalogue/custom/recipe food returns to the detailed logger and saves one unchanged snapshot',()=>{
-  ['catalog','custom','recipe'].forEach(kind=>{
+test('logging a selected catalogue/custom/recipe food returns to the detailed logger and saves one unchanged snapshot',async()=>{
+  for(const kind of ['catalog','custom','recipe']){
     const {c,get,renders,writes,history}=fixture();
     vm.runInContext(nutritionFunction('nutLogSelected')+'\n'+nutritionFunction('nutCloseFoodSheet'),c);
     c.nutSelected={id:kind==='recipe'?'recipe:r1':'f1',kind,name:'Selected food',recipe:{id:'r1'}};
@@ -139,11 +140,11 @@ test('logging a selected catalogue/custom/recipe food returns to the detailed lo
     c.nutLog={entries:{existing:{id:'existing',name:'Earlier food'}}};c.nutPrefs={recent:['other','f1']};
     c.nutId=()=> 'food-new';c.getLocalDate=()=> '2026-09-13';
     let saves=0,prefs=0;
-    c.nutSaveLog=()=>{saves++;};c.nutSavePrefs=()=>{prefs++;};c.nutRefreshConsumers=()=>c.foodRefreshToday();
+    c.nutSaveMeals=rows=>{saves++;for(const row of rows)c.nutLog.entries[row.id]=row;return true;};c.nutSavePrefs=()=>{prefs++;};c.nutRefreshConsumers=()=>c.foodRefreshToday();
     get('nut-log-meal').value='lunch';
     c.foodOpenLog();
     if(kind==='custom')c.foodOpenLibrary();
-    c.nutLogSelected();
+    await c.nutLogSelected();
     assert.equal(c.foodState.todayView,'log');
     assert.equal(c.foodState.tab,'today');
     assert.equal(history.at(-1).url,'/daily/#food/log');
@@ -157,20 +158,20 @@ test('logging a selected catalogue/custom/recipe food returns to the detailed lo
     assert.equal(c.nutLog.entries['food-new'].meal,'lunch');
     assert.equal(c.nutLog.entries['food-new'].proteinOptionId,kind==='recipe'?'beef':null);
     assert.deepEqual(writes,[],'routing adds no writes beyond the explicitly invoked existing save helpers');
-  });
+  }
 });
 
-test('manual and Unknown entry saves retain the active logger without changing existing snapshot fields',()=>{
-  [false,true].forEach(unknown=>{
+test('manual and Unknown entry saves retain the active logger without changing existing snapshot fields',async()=>{
+  for(const unknown of [false,true]){
     const {c,get,renders,history,writes}=fixture();
     vm.runInContext(nutritionFunction('nutSaveManual')+'\n'+nutritionFunction('nutCloseFoodSheet'),c);
     c.nutPos=v=>Number(v)>0?Number(v):null;c.nutNum=v=>v===''||v==null?null:Number(v);c.nutRound=(v,d)=>Math.round(v*10**d)/10**d;
     c.nutId=()=> 'food-manual';c.getLocalDate=()=> '2026-09-13';c.nutEditId=null;c.nutLog={entries:{}};
-    let saves=0;c.nutSaveLog=()=>{saves++;};c.nutRefreshConsumers=()=>c.foodRefreshToday();
+    let saves=0;c.nutSaveMeals=rows=>{saves++;for(const row of rows)c.nutLog.entries[row.id]=row;return true;};c.nutRefreshConsumers=()=>c.foodRefreshToday();
     const inputs={'name':'Lunch','qty':'1','cal':'350','pro':'20','carb':'','fat':'','meal':'lunch','measure':'bowl'};
     Object.entries(inputs).forEach(([key,value])=>{get('nut-man-'+key).value=value;});
     get('nut-man-unknown').checked=unknown;
-    c.foodOpenLog();c.nutSaveManual();
+    c.foodOpenLog();await c.nutSaveManual();
     assert.equal(c.foodState.todayView,'log');
     assert.equal(history.at(-1).url,'/daily/#food/log');
     assert.equal(renders.at(-1),'log');assert.equal(saves,1);
@@ -178,7 +179,7 @@ test('manual and Unknown entry saves retain the active logger without changing e
     assert.equal(c.nutLog.entries['food-manual'].nutrition.calories,unknown?null:350);
     assert.equal(c.nutLog.entries['food-manual'].measureLabel,'bowl');
     assert.deepEqual(writes,[]);
-  });
+  }
 });
 
 test('Nutrition Review opened from Today returns to its overview and preserves chooser state',()=>{

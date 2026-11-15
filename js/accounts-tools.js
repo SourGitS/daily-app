@@ -3,10 +3,10 @@
 // Records live with their account so both sides of a balance update persist together.
 // Opening a screen or saving a budget draft never creates a financial movement.
 let acctToolDraft=null;
-function acctMoney(value,optional){
+function acctMoney(value,optional,signed=false){
   const text=String(value??'').trim();
   if(optional&&text==='')return null;
-  if(!/^\d+(?:\.\d{1,2})?$/.test(text))throw new Error('Use an amount of 0 or more with at most two decimal places.');
+  if(!(signed?/^-?\d+(?:\.\d{1,2})?$/:/^\d+(?:\.\d{1,2})?$/).test(text))throw new Error(signed?'Use a balance with at most two decimal places.':'Use an amount of 0 or more with at most two decimal places.');
   const cents=Math.round(Number(text)*100);
   if(!Number.isSafeInteger(cents))throw new Error('That amount is too large.');
   return cents/100;
@@ -161,7 +161,7 @@ function acctTransferBuild(list,input){
   return list.map(a=>{
     if(a.id!==from.id&&a.id!==to.id)return a;
     const change=a.id===from.id||a.type==='debt'?-amount:amount;
-    const current=(Math.round(acctMoney(a.current)*100)+Math.round(change*100))/100;
+    const current=(Math.round(acctMoney(a.current,false,true)*100)+Math.round(change*100))/100;
     if(!Number.isSafeInteger(Math.round(current*100)))throw new Error('The resulting balance is too large.');
     const history=[...(a.history||[]).filter(r=>r&&r.date!==today),{date:today,balance:current}].sort((a,b)=>a.date.localeCompare(b.date));
     const next={...a,current,history,balanceMovements:[...(a.balanceMovements||[]),receipt]};

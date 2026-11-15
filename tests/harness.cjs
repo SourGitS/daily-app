@@ -84,6 +84,7 @@ class Cloud {
       child: key => db.ref(path + '/' + key),
       once: () => Promise.resolve(db.snap(path)),
       on: (_, fn) => { db.listeners.set(path, fn); },
+      off: (_, fn) => { if(!fn||db.listeners.get(path)===fn)db.listeners.delete(path); },
       transaction: (fn, complete, applyLocally) => {
         assert.equal(applyLocally, false, 'do not publish speculative empty-cache writes');
         fn(null); // Firebase may first invoke with an empty client cache.
@@ -114,10 +115,11 @@ function app(cloud = new Cloud(), storage = new Store()) {
   const names = ['lsLoad','stampFor','lsSave','lsSaveTS','fbRef','syncBlobCommit','syncBlobPush',
     'syncBlobListenTS','syncBlobListen','wtReadRecords','wtRecordTime','wtRecordKey','wtMergeRecords',
     'wtPushRecords','wtAttachRecords','wtPersistRecords','persist','persistWeights','load','loadWeights',
-    'finishOnboarding','restoreFromText','fbSeedIfEmpty','syncApply','syncTrack','syncDetachAll',
+    'finishOnboarding','restoreFromText','aiActValidDate','fbSeedIfEmpty','syncApply','syncTrack','syncDetachAll',
     'mergeBudgetWeeks','budPushWeeks','budPushConfig','syncBudgetDataToFirebase',
     'savingsTime','pushSavings','mergeSavings','saveBudgetConfig'];
   vm.runInContext(names.map(extract).join('\n'), ctx);
+  vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../js/sync-integrity.js'),'utf8'), ctx);
   return ctx;
 }
 const session = (id, updatedAt = 0, extra = {}) => ({ id, date: '2026-09-07', exercises: [{ name: 'Squat', sets: [{ weight: 100, reps: 5 }] }], updatedAt, ...extra });

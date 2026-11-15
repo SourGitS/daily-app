@@ -154,6 +154,7 @@ function nutLoadRaw(key,fallback){ try{const v=JSON.parse(localStorage.getItem(k
 function nutNormalLog(raw){
   const out={schemaVersion:1,entries:{},legacyTotals:{}};
   if(!raw||typeof raw!=='object') return out;
+  if(Number.isFinite(raw.restoreAt)&&raw.restoreAt>0)out.restoreAt=raw.restoreAt;
   Object.entries(raw.entries||{}).forEach(([id,e])=>{
     if(!e||typeof e!=='object'||!/^\d{4}-\d{2}-\d{2}$/.test(String(e.date||''))) return;
     const meal=NUT_MEALS.some(x=>x[0]===e.meal)?e.meal:'snacks';
@@ -174,48 +175,122 @@ function nutNormalFoods(raw){
 }
 function nutEntryClock(e){ return Math.max(nutNum(e&&e.updatedAt)||0,nutNum(e&&e.deletedAt)||0,nutNum(e&&e.createdAt)||0); }
 function nutMergeLogs(a,b){
-  a=nutNormalLog(a); b=nutNormalLog(b); const out={schemaVersion:1,entries:{},legacyTotals:Object.assign({},a.legacyTotals,b.legacyTotals)};
-  new Set([...Object.keys(a.entries),...Object.keys(b.entries)]).forEach(id=>{const x=a.entries[id],y=b.entries[id];if(!x)out.entries[id]=y;else if(!y)out.entries[id]=x;else{const xc=nutEntryClock(x),yc=nutEntryClock(y);out.entries[id]=yc>xc?y:xc>yc?x:(y.deletedAt&&!x.deletedAt?y:x);}});
+  a=nutNormalLog(a); b=nutNormalLog(b);
+  const restoreAt=Math.max(a.restoreAt||0,b.restoreAt||0),out={schemaVersion:1,entries:{},legacyTotals:{}};
+  if(restoreAt)out.restoreAt=restoreAt;
+  for(const log of [a,b]){
+    const current=(log.restoreAt||0)===restoreAt;
+    if(current)Object.assign(out.legacyTotals,log.legacyTotals);
+    for(const [id,row] of Object.entries(log.entries)){
+      const t=nutEntryClock(row),old=out.entries[id];
+      if(!current&&t<=restoreAt)continue;
+      if(!old||t>nutEntryClock(old)||(t===nutEntryClock(old)&&row.deletedAt&&!old.deletedAt))out.entries[id]=row;
+    }
+  }
   return out;
 }
-function nutSaveLog(push){
-  if(typeof lsSave==='function') lsSave(NUT_LOG_KEY,nutLog);
-  else localStorage.setItem(NUT_LOG_KEY,JSON.stringify(nutLog));
-  if(push!==false) nutPushLog();
+function nutCloudLog(raw){
+  const value=raw&&raw.v?JSON.parse(raw.v):raw||{};
+  if(raw?.restoreAt)value.restoreAt=Math.max(value.restoreAt||0,raw.restoreAt);
+  return value;
+}
+function nutEnvelope(log){
+  return {v:JSON.stringify(log),t:Math.max(Date.now(),log.restoreAt||0),...(log.restoreAt?{restoreAt:log.restoreAt}:{})};
+}
+// Every local writer (user action, migration or cloud listener) shares this lock.
+// IndexedDB read/write transactions serialize across tabs on browsers without Web Locks.
+function nutWithLogLock(write){
+  const name='daily-food-log:'+localStorage.scope;
+  if(typeof navigator!=='undefined'&&navigator.locks) return navigator.locks.request(name,write);
+  return new Promise((resolve,reject)=>{
+    const open=indexedDB.open('daily-food-write-lock',1);
+    open.onupgradeneeded=()=>open.result.createObjectStore('locks');
+    open.onerror=()=>reject(open.error);
+    open.onsuccess=()=>{
+      const db=open.result,tx=db.transaction('locks','readwrite');let result,failed;
+      tx.objectStore('locks').get(name).onsuccess=()=>{
+        try{result=write();}catch(error){failed=error;tx.abort();}
+      };
+      tx.onabort=()=>{db.close();reject(failed||tx.error);};
+      tx.oncomplete=()=>{db.close();resolve(result);};
+    };
+  });
+}
+function nutCommitLog(change,age){
+  const stored=localStorage.getItem(NUT_LOG_KEY);
+  const disk=stored===null?null:JSON.parse(stored);
+  const next=change(nutMergeLogs(disk,nutLog));
+  const encoded=JSON.stringify(next);
+  if(encoded!==stored && (stored!==null||next.restoreAt||Object.keys(next.entries).length||Object.keys(next.legacyTotals).length)){
+    localStorage.setItem(NUT_LOG_KEY,encoded);
+    // Entry revisions carry conflict information. A timestamp failure after the data
+    // commit cannot make retrying an insertion safe.
+    try{if(age!=null)localStorage.setItem(NUT_LOG_KEY+'_ts',String(age));}catch(e){}
+  }
+  nutLog=next;
+  return next;
+}
+let nutMealSaving=false;
+async function nutSaveMeals(entries,base){
+  if(nutMealSaving)return false;
+  nutMealSaving=true;
+  try{
+    await nutWithLogLock(()=>nutCommitLog(latest=>{
+      for(const row of entries){
+        const previous=latest.entries[row.id];
+        if(previous&&(!base||JSON.stringify(previous)!==JSON.stringify(base))){
+          throw new Error('changed-entry');
+        }
+        if(base&&!previous)throw new Error('changed-entry');
+        latest.entries[row.id]={...row,updatedAt:Math.max(row.updatedAt,nutEntryClock(previous)+1,(latest.restoreAt||0)+1)};
+      }
+      return latest;
+    },Date.now()));
+  }catch(error){
+    showToast(error.message==='changed-entry'?'This entry changed. Reopen it to edit the latest version.':'Food could not be saved on this device. Please try again.');
+    return false;
+  }finally{nutMealSaving=false;}
+  nutPushLog();
+  return true;
 }
 function nutSaveFoods(){ if(typeof lsSave==='function')lsSave(NUT_FOODS_KEY,nutMyFoods,'nutritionFoods');else localStorage.setItem(NUT_FOODS_KEY,JSON.stringify(nutMyFoods)); }
 function nutSavePrefs(){ if(typeof lsSave==='function')lsSave(NUT_PREFS_KEY,nutPrefs,'nutritionPrefs');else localStorage.setItem(NUT_PREFS_KEY,JSON.stringify(nutPrefs)); }
 function nutPushLog(){
   if(!(typeof fbRef==='function')) return; const ref=fbRef('nutritionLog'); if(!ref)return;
-  const local=nutLog, now=Date.now();
-  ref.transaction(raw=>{let cloud={};try{cloud=raw&&raw.v?JSON.parse(raw.v):raw||{};}catch(e){}const merged=nutMergeLogs(cloud,local);return {v:JSON.stringify(merged),t:now};},undefined,false);
+  const local=nutLog;
+  ref.transaction(raw=>nutEnvelope(nutMergeLogs(nutCloudLog(raw),local)),undefined,false).catch(()=>setSyncStatus('Sync failed'));
 }
 function nutSyncListen(uid){
   if(!(typeof db!=='undefined'&&db))return;
   if(typeof SYNC_BLOB_REG!=='undefined'&&!SYNC_BLOB_REG.some(b=>b.lsKey===NUT_LOG_KEY))SYNC_BLOB_REG.push({path:'nutritionLog',lsKey:NUT_LOG_KEY,tsKey:NUT_LOG_KEY+'_ts'});
-  const ref=db.ref('users/'+uid+'/nutritionLog');
-  ref.on('value',snap=>{
-    const raw=snap.val(); let cloud={}; try{cloud=raw&&raw.v?JSON.parse(raw.v):raw||{};}catch(e){}
-    const merged=nutMergeLogs(nutLog,cloud); const before=JSON.stringify(nutLog), after=JSON.stringify(merged); nutLog=merged;
+  const ref=syncTrack(db.ref('users/'+uid+'/nutritionLog'));
+  ref.on('value',async snap=>{try{
+    if(!auth.currentUser||auth.currentUser.uid!==uid)return;
+    const cloud=nutCloudLog(snap.val());
+    const before=JSON.stringify(nutLog);
+    const merged=await nutWithLogLock(()=>auth.currentUser?.uid===uid?nutCommitLog(latest=>nutMergeLogs(latest,cloud)):null);
+    if(!merged||!auth.currentUser||auth.currentUser.uid!==uid)return;
+    const after=JSON.stringify(merged);
     // Applying a cloud snapshot is not a local edit: anything the refresh saves must keep the
     // age it already had rather than being stamped fresh and echoed back up.
-    if(before!==after){localStorage.setItem(NUT_LOG_KEY,after);
+    if(before!==after){
       if(typeof syncApply==='function') syncApply(()=>nutRefreshConsumers()); else nutRefreshConsumers();}
     // Converge the cloud inside a TRANSACTION, re-merging against whatever is there at commit
     // time. A plain set() of this merge would erase an entry a third device wrote in the gap
     // between the snapshot above and this write.
     const cloudNorm=JSON.stringify(nutNormalLog(cloud));
     if(cloudNorm!==after) ref.transaction(raw=>{
-      let now={}; try{ now=raw&&raw.v?JSON.parse(raw.v):raw||{}; }catch(e){}
+      const now=nutCloudLog(raw);
       const out=nutMergeLogs(now,merged), outStr=JSON.stringify(out);
       if(outStr===JSON.stringify(nutNormalLog(now))) return;   // cloud already holds it all
-      return {v:outStr,t:Date.now()};
-    },undefined,false);
+      return nutEnvelope(out);
+    },undefined,false).catch(()=>setSyncStatus('Sync failed'));
+  }catch(error){setSyncStatus('Sync failed');}
   });
 }
 function nutMigrateLegacy(){
   let changed=false; nutLog=nutNormalLog(nutLoadRaw(NUT_LOG_KEY,nutLog));
-  const day=nutLoadRaw('wt_calories',null);
+  const day=nutLog.restoreAt?null:nutLoadRaw('wt_calories',null);
   if(day&&/^\d{4}-\d{2}-\d{2}$/.test(String(day.date||''))&&Array.isArray(day.entries))day.entries.forEach((e,i)=>{
     if(!e||typeof e!=='object')return; const kcal=nutNum(e.kcal); const id='legacy-'+day.date+'-'+i+'-'+nutHash(JSON.stringify([e.name,e.kcal,e.category,e.recipeId,e.servings])); if(nutLog.entries[id])return;
     nutLog.entries[id]={id,date:day.date,meal:NUT_MEALS.some(x=>x[0]===e.category)?e.category:'snacks',name:String(e.name||'Legacy food'),quantity:nutPos(e.servings)||1,
@@ -223,14 +298,24 @@ function nutMigrateLegacy(){
       nutrition:{calories:kcal,protein:nutNum(e.protein),carbs:nutNum(e.carbs),fat:nutNum(e.fat)},nutritionStatus:kcal==null?'unknown':'known',source:'legacy',
       foodId:null,recipeId:e.recipeId||null,proteinOptionId:e.proteinOptionId||null,servings:nutPos(e.servings),createdAt:0,updatedAt:0,deletedAt:null}; changed=true;
   });
-  const hist=nutLoadRaw('daily_cal_history',{}); Object.entries(hist||{}).forEach(([date,v])=>{const c=nutNum(v&&typeof v==='object'?v.calories:v);if(c!=null&&!nutLog.legacyTotals[date]){nutLog.legacyTotals[date]={calories:c,source:'daily_cal_history'};changed=true;}});
+  const hist=nutLog.restoreAt?{}:nutLoadRaw('daily_cal_history',{}); Object.entries(hist||{}).forEach(([date,v])=>{const c=nutNum(v&&typeof v==='object'?v.calories:v);if(c!=null&&!nutLog.legacyTotals[date]){nutLog.legacyTotals[date]={calories:c,source:'daily_cal_history'};changed=true;}});
   nutMyFoods=nutNormalFoods(nutLoadRaw(NUT_FOODS_KEY,nutMyFoods)); const saved=nutLoadRaw('daily_saved_foods',[]);
   if(Array.isArray(saved))saved.forEach((f,i)=>{const c=nutNum(f&&f.kcal),name=String(f&&f.name||'').trim();if(!name||c==null)return;const id='legacy-food-'+nutHash(name.toLowerCase()+'|'+c+'|'+i);if(nutMyFoods.foods[id])return;nutMyFoods.foods[id]={id,name,aliases:[],category:'My Foods',basis:'serving',servingLabel:'saved serving',servingGrams:null,nutrition:{calories:c,protein:null,carbs:null,fat:null},createdAt:0,updatedAt:0,deletedAt:null,source:'legacy saved food'};changed=true;});
   nutPrefs=nutLoadRaw(NUT_PREFS_KEY,{schemaVersion:1,favourites:{},recent:[]});if(!nutPrefs.favourites)nutPrefs.favourites={};if(!Array.isArray(nutPrefs.recent))nutPrefs.recent=[];
-  if(changed){nutSaveLog(false);nutSaveFoods();}
+  if(changed){
+    const migrated=nutLog,age=typeof stampFor==='function'?stampFor(NUT_LOG_KEY):0;
+    nutWithLogLock(()=>nutCommitLog(latest=>nutMergeLogs(migrated,latest),age)).catch(()=>showToast('Could not save the migrated food log on this device.'));
+    nutSaveFoods();
+  }
   nutRefreshLegacyViews(); return changed;
 }
 function nutInit(){nutMigrateLegacy();}
+if(typeof window!=='undefined')window.addEventListener?.('storage',e=>{
+  if(localStorage.logicalKey?.(e.key)!==NUT_LOG_KEY)return;
+  // Events from rapid writes may arrive out of order. Read the current snapshot.
+  const current=nutNormalLog(nutLoadRaw(NUT_LOG_KEY,nutLog));
+  if(JSON.stringify(current)!==JSON.stringify(nutLog)){nutLog=current;nutRefreshConsumers();}
+});
 function nutRefreshLegacyViews(){
   if(typeof S==='undefined')return; const date=typeof getLocalDate==='function'?getLocalDate():new Date().toLocaleDateString('en-CA'); const entries=nutEntries(date);
   S.dailyLog={date,entries:entries.map(e=>({name:e.name,kcal:e.nutritionStatus==='known'?e.nutrition.calories:null,category:e.meal,protein:e.nutrition.protein,carbs:e.nutrition.carbs,fat:e.nutrition.fat,recipeId:e.recipeId,servings:e.servings,_nutId:e.id,_unknown:e.nutritionStatus==='unknown'}))};
@@ -242,7 +327,10 @@ function nutRefreshLegacyViews(){
 function nutRefreshConsumers(){nutRefreshLegacyViews();if(typeof renderHome==='function'&&typeof S!=='undefined'&&S.view==='home')renderHome();if(typeof refreshStatsForData==='function')refreshStatsForData(['overview','review','nutrition']);if(typeof foodRefreshToday==='function')foodRefreshToday();if(typeof foodRefreshSupport==='function')foodRefreshSupport();}
 function nutEntries(date){return Object.values(nutLog.entries).filter(e=>e&&e.date===date&&!e.deletedAt).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));}
 function nutDaySummary(date){
-  const entries=nutEntries(date),legacy=nutLog.legacyTotals[date]; if(!entries.length)return legacy?{status:'legacy',calories:legacy.calories,unknown:0,entries:[],macroComplete:false,macros:null}:{status:'missing',calories:null,unknown:0,entries:[],macroComplete:false,macros:null};
+  const entries=nutEntries(date);
+  // Migrated item tombstones also mark this date as itemised after its last meal is deleted.
+  const legacy=nutLog.legacyTotals[date]&&!Object.values(nutLog.entries).some(e=>e.date===date&&e.source==='legacy')?nutLog.legacyTotals[date]:null;
+  if(!entries.length)return legacy?{status:'legacy',calories:legacy.calories,unknown:0,entries:[],macroComplete:false,macros:null}:{status:'missing',calories:null,unknown:0,entries:[],macroComplete:false,macros:null};
   let calories=0,unknown=0;const macros={protein:0,carbs:0,fat:0};let macroComplete=true;
   entries.forEach(e=>{const known=e.nutritionStatus==='known'&&nutNum(e.nutrition.calories)!=null;if(known)calories+=e.nutrition.calories;else{unknown++;macroComplete=false;}['protein','carbs','fat'].forEach(k=>{const v=known?nutNum(e.nutrition[k]):null;if(v==null)macroComplete=false;else macros[k]+=v;});});
   return {status:unknown?'partial':'complete',calories:nutRound(calories,0),unknown,entries,macroComplete,macros};
@@ -326,17 +414,58 @@ function nutSetSelectedRecipeOption(id){nutSelectedOptionId=id;nutRenderQuantity
 function nutRenderQuantity(){const box=document.getElementById('nutrition-food-box'),f=nutSelected,b=nutSelectedBasis(f);if(!box||!b)return;const options=f.kind==='recipe'&&typeof kitOptionsOf==='function'?kitOptionsOf(f.recipe):[],optionField=options.length?'<div class="nut-field full"><label>Protein option</label><select onchange="nutSetSelectedRecipeOption(this.value)">'+options.map(o=>'<option value="'+o.id+'"'+(o.id===nutSelectedOptionId?' selected':'')+'>'+nutEsc(o.label)+'</option>').join('')+'</select></div>':'',defaultQty=f.kind==='custom'&&f.basis==='per100g'&&!f.servingGrams?100:1;box.innerHTML='<div class="modal-header"><button class="back-btn" onclick="nutRenderFoodSheet()" aria-label="Back">←</button><div class="modal-title">'+nutEsc(f.name)+'</div></div><div class="modal-body"><div class="nut-sheet-fields">'+optionField+'<div class="nut-field"><label>Quantity</label><input id="nut-qty" type="number" min="0.01" step="0.25" value="'+defaultQty+'" oninput="nutUpdateLive()"></div><div class="nut-field"><label>Measure</label><select id="nut-measure" onchange="nutUpdateLive()">'+b.measures.map((m,i)=>'<option value="'+nutEsc(m.id)+'"'+(i===1?' selected':'')+'>'+nutEsc(m.label)+'</option>').join('')+'</select><div class="nut-field full"><label>Meal</label><select id="nut-log-meal">'+NUT_MEALS.map(x=>'<option value="'+x[0]+'"'+(nutMeal===x[0]?' selected':'')+'>'+x[1]+'</option>').join('')+'</select></div></div></div><div id="nut-live" class="nut-live"></div><div class="nut-inline-actions"><button class="nut-small-btn" onclick="nutToggleFavourite(\''+nutEsc(f.id)+'\')">'+(nutPrefs.favourites[f.id]?'★ Favourite':'☆ Add favourite')+'</button></div><div class="nut-sheet-actions"><button class="modal-btn secondary" onclick="nutCloseFoodSheet()">Cancel</button><button class="modal-btn primary" onclick="nutLogSelected()">Log food</button></div></div>';nutUpdateLive();}
 function nutSelectionNutrition(){const f=nutSelected,b=nutSelectedBasis(f),q=nutPos(document.getElementById('nut-qty')&&document.getElementById('nut-qty').value);if(!f||!b||!q)return null;const mid=(document.getElementById('nut-measure')||{}).value,measure=b.measures.find(m=>m.id===mid)||b.measures[0];if(b.status==='unknown')return {quantity:q,measure,nutrition:{calories:null,protein:null,carbs:null,fat:null},status:'unknown',grams:null};if(b.per100){const grams=measure.grams*q;return {quantity:q,measure,nutrition:nutScale(b.per100,grams),status:'known',grams};}const n={};Object.keys(b.perServing).forEach(k=>n[k]=nutNum(b.perServing[k])==null?null:nutRound(b.perServing[k]*q,1));return {quantity:q,measure,nutrition:n,status:n.calories==null?'unknown':'known',grams:null};}
 function nutUpdateLive(){const el=document.getElementById('nut-live'),x=nutSelectionNutrition();if(!el)return;el.textContent=!x?'Enter a quantity greater than zero.':x.status==='unknown'?'Nutrition is unknown. This day will be marked Partial.':Math.round(x.nutrition.calories)+' kcal · '+(x.nutrition.protein==null?'—':nutRound(x.nutrition.protein,1)+' g protein')+' · '+(x.nutrition.carbs==null?'—':nutRound(x.nutrition.carbs,1)+' g carbs')+' · '+(x.nutrition.fat==null?'—':nutRound(x.nutrition.fat,1)+' g fat');}
-function nutLogSelected(){const f=nutSelected,x=nutSelectionNutrition();if(!f||!x){showToast('Enter a valid quantity');return;}const now=Date.now(),id=nutId('food-'),meal=(document.getElementById('nut-log-meal')||{}).value||nutMeal,recipe=f.kind==='recipe'?f.recipe:null,b=nutSelectedBasis(f),snapName=f.name+(b&&b.optionLabel?' · '+b.optionLabel:'');nutLog.entries[id]={id,date:getLocalDate(),meal,name:snapName,quantity:x.quantity,measureId:x.measure.id,measureLabel:x.measure.label,grams:x.grams,nutrition:x.nutrition,nutritionStatus:x.status,source:f.kind,foodId:f.kind==='catalog'||f.kind==='custom'?f.id:null,recipeId:recipe?recipe.id:null,proteinOptionId:recipe&&b?b.optionId:null,servings:recipe?x.quantity:null,createdAt:now,updatedAt:now,deletedAt:null};nutPrefs.recent=[f.id,...nutPrefs.recent.filter(v=>v!==f.id)].slice(0,20);nutSavePrefs();nutSaveLog();nutCloseFoodSheet();if(typeof foodOpenLog==='function')foodOpenLog();nutRefreshConsumers();showToast('Food logged');}
+async function nutLogSelected(){
+  const f=nutSelected,x=nutSelectionNutrition();
+  if(!f||!x){showToast('Enter a valid quantity');return;}
+  const now=Date.now(),id=nutId('food-'),meal=document.getElementById('nut-log-meal')?.value||nutMeal;
+  const recipe=f.kind==='recipe'?f.recipe:null,basis=nutSelectedBasis(f);
+  const entry={id,date:getLocalDate(),meal,name:f.name+(basis?.optionLabel?' · '+basis.optionLabel:''),
+    quantity:x.quantity,measureId:x.measure.id,measureLabel:x.measure.label,grams:x.grams,nutrition:x.nutrition,
+    nutritionStatus:x.status,source:f.kind,foodId:['catalog','custom'].includes(f.kind)?f.id:null,
+    recipeId:recipe?.id||null,proteinOptionId:recipe?basis?.optionId||null:null,servings:recipe?x.quantity:null,
+    createdAt:now,updatedAt:now,deletedAt:null};
+  if(!await nutSaveMeals([entry]))return;
+  nutPrefs.recent=[f.id,...nutPrefs.recent.filter(v=>v!==f.id)].slice(0,20);nutSavePrefs();
+  nutCloseFoodSheet();if(typeof foodOpenLog==='function')foodOpenLog();nutRefreshConsumers();showToast('Food logged');
+}
 function nutToggleFavourite(id){nutPrefs.favourites[id]=!nutPrefs.favourites[id];if(!nutPrefs.favourites[id])delete nutPrefs.favourites[id];nutSavePrefs();if(nutSelected&&nutSelected.id===id){const btn=document.querySelector('#nutrition-food-box .nut-inline-actions .nut-small-btn');if(btn)btn.textContent=nutPrefs.favourites[id]?'★ Favourite':'☆ Add favourite';}else nutRenderFoods();}
-function nutOpenManual(entry){nutSelected={id:'manual',kind:'manual',name:entry&&entry.name||''};nutEditId=entry&&entry.id||null;nutEditBase=entry?{quantity:entry.quantity,nutrition:Object.assign({},entry.nutrition)}:null;const box=document.getElementById('nutrition-food-box'),ov=document.getElementById('nutrition-food-overlay');if(!box||!ov)return;const n=entry&&entry.nutrition||{};box.innerHTML='<div class="modal-header"><button class="back-btn" onclick="'+(entry?'nutCloseFoodSheet()':'nutRenderFoodSheet()')+'" aria-label="Back">←</button><div class="modal-title">'+(entry?'Edit entry':'Manual entry')+'</div></div><div class="modal-body"><div class="nut-sheet-fields"><div class="nut-field full"><label>Food name</label><input id="nut-man-name" value="'+nutEsc(entry&&entry.name||'')+'"></div><div class="nut-field"><label>Quantity</label><input id="nut-man-qty" type="number" min="0.01" step="0.25" value="'+(entry?entry.quantity:1)+'" oninput="nutEditScale()"></div><div class="nut-field"><label>Serving / measure</label><input id="nut-man-measure" value="'+nutEsc(entry&&entry.measureLabel||'serving')+'"></div><div class="nut-field full"><label>Meal</label><select id="nut-man-meal">'+NUT_MEALS.map(x=>'<option value="'+x[0]+'"'+((entry?entry.meal:nutMeal)===x[0]?' selected':'')+'>'+x[1]+'</option>').join('')+'</select></div><div class="nut-field full"><label><input id="nut-man-unknown" type="checkbox"'+(entry&&entry.nutritionStatus==='unknown'?' checked':'')+' onchange="nutManualToggle()"> Nutrition is explicitly Unknown</label></div><div class="nut-field"><label>Calories</label><input class="nut-man-num" id="nut-man-cal" type="number" min="0" value="'+(n.calories==null?'':n.calories)+'"></div><div class="nut-field"><label>Protein (g, optional)</label><input class="nut-man-num" id="nut-man-pro" type="number" min="0" value="'+(n.protein==null?'':n.protein)+'"></div><div class="nut-field"><label>Carbs (g, optional)</label><input class="nut-man-num" id="nut-man-carb" type="number" min="0" value="'+(n.carbs==null?'':n.carbs)+'"></div><div class="nut-field"><label>Fat (g, optional)</label><input class="nut-man-num" id="nut-man-fat" type="number" min="0" value="'+(n.fat==null?'':n.fat)+'"></div></div><div class="nut-sheet-actions">'+(entry?'<button class="modal-btn secondary" style="color:var(--danger)" onclick="nutDeleteEntry(\''+entry.id+'\')">Delete</button>':'<button class="modal-btn secondary" onclick="nutCloseFoodSheet()">Cancel</button>')+'<button class="modal-btn primary" onclick="nutSaveManual()">Save</button></div></div>';ov.classList.remove('hidden');nutManualToggle();}
+function nutOpenManual(entry){nutSelected={id:'manual',kind:'manual',name:entry&&entry.name||''};nutEditId=entry&&entry.id||null;nutEditBase=entry?{entry:structuredClone(entry),quantity:entry.quantity,nutrition:Object.assign({},entry.nutrition)}:null;const box=document.getElementById('nutrition-food-box'),ov=document.getElementById('nutrition-food-overlay');if(!box||!ov)return;const n=entry&&entry.nutrition||{};box.innerHTML='<div class="modal-header"><button class="back-btn" onclick="'+(entry?'nutCloseFoodSheet()':'nutRenderFoodSheet()')+'" aria-label="Back">←</button><div class="modal-title">'+(entry?'Edit entry':'Manual entry')+'</div></div><div class="modal-body"><div class="nut-sheet-fields"><div class="nut-field full"><label>Food name</label><input id="nut-man-name" value="'+nutEsc(entry&&entry.name||'')+'"></div><div class="nut-field"><label>Quantity</label><input id="nut-man-qty" type="number" min="0.01" step="0.25" value="'+(entry?entry.quantity:1)+'" oninput="nutEditScale()"></div><div class="nut-field"><label>Serving / measure</label><input id="nut-man-measure" value="'+nutEsc(entry&&entry.measureLabel||'serving')+'"></div><div class="nut-field full"><label>Meal</label><select id="nut-man-meal">'+NUT_MEALS.map(x=>'<option value="'+x[0]+'"'+((entry?entry.meal:nutMeal)===x[0]?' selected':'')+'>'+x[1]+'</option>').join('')+'</select></div><div class="nut-field full"><label><input id="nut-man-unknown" type="checkbox"'+(entry&&entry.nutritionStatus==='unknown'?' checked':'')+' onchange="nutManualToggle()"> Nutrition is explicitly Unknown</label></div><div class="nut-field"><label>Calories</label><input class="nut-man-num" id="nut-man-cal" type="number" min="0" value="'+(n.calories==null?'':n.calories)+'"></div><div class="nut-field"><label>Protein (g, optional)</label><input class="nut-man-num" id="nut-man-pro" type="number" min="0" value="'+(n.protein==null?'':n.protein)+'"></div><div class="nut-field"><label>Carbs (g, optional)</label><input class="nut-man-num" id="nut-man-carb" type="number" min="0" value="'+(n.carbs==null?'':n.carbs)+'"></div><div class="nut-field"><label>Fat (g, optional)</label><input class="nut-man-num" id="nut-man-fat" type="number" min="0" value="'+(n.fat==null?'':n.fat)+'"></div></div><div class="nut-sheet-actions">'+(entry?'<button class="modal-btn secondary" style="color:var(--danger)" onclick="nutDeleteEntry(\''+entry.id+'\')">Delete</button>':'<button class="modal-btn secondary" onclick="nutCloseFoodSheet()">Cancel</button>')+'<button class="modal-btn primary" onclick="nutSaveManual()">Save</button></div></div>';ov.classList.remove('hidden');nutManualToggle();}
 function nutEditScale(){if(!nutEditBase||!nutPos(nutEditBase.quantity))return;const q=nutPos(document.getElementById('nut-man-qty')?.value);if(!q)return;const ratio=q/nutEditBase.quantity;[['calories','nut-man-cal'],['protein','nut-man-pro'],['carbs','nut-man-carb'],['fat','nut-man-fat']].forEach(([k,id])=>{const el=document.getElementById(id),v=nutNum(nutEditBase.nutrition[k]);if(el&&v!=null)el.value=nutRound(v*ratio,1);});}
 function nutManualToggle(){const u=document.getElementById('nut-man-unknown')&&document.getElementById('nut-man-unknown').checked;document.querySelectorAll('.nut-man-num').forEach(x=>x.disabled=u);}
-function nutSaveManual(){const name=(document.getElementById('nut-man-name').value||'').trim(),q=nutPos(document.getElementById('nut-man-qty').value),unknown=document.getElementById('nut-man-unknown').checked;if(!name||!q){showToast('Add a name and valid quantity');return;}const cal=nutNum(document.getElementById('nut-man-cal').value);if(!unknown&&cal==null){showToast('Add calories or choose Unknown');return;}const now=Date.now(),id=nutEditId||nutId('food-'),old=nutLog.entries[id]||{},ratio=old.quantity&&q? q/old.quantity:1;nutLog.entries[id]={id,date:old.date||getLocalDate(),meal:document.getElementById('nut-man-meal').value,name,quantity:q,measureId:old.measureId||'manual',measureLabel:(document.getElementById('nut-man-measure').value||'serving').trim(),grams:nutPos(old.grams)?nutRound(old.grams*ratio,2):null,nutrition:{calories:unknown?null:cal,protein:unknown?null:nutNum(document.getElementById('nut-man-pro').value),carbs:unknown?null:nutNum(document.getElementById('nut-man-carb').value),fat:unknown?null:nutNum(document.getElementById('nut-man-fat').value)},nutritionStatus:unknown?'unknown':'known',source:old.source||'manual',foodId:old.foodId||null,recipeId:old.recipeId||null,proteinOptionId:old.proteinOptionId||null,servings:old.servings?nutRound(old.servings*ratio,2):null,createdAt:old.createdAt||now,updatedAt:now,deletedAt:null};nutSaveLog();nutCloseFoodSheet();nutRefreshConsumers();showToast(nutEditId?'Entry updated':'Food logged');}
+async function nutSaveManual(){
+  const value=key=>document.getElementById('nut-man-'+key).value;
+  const name=value('name').trim(),q=nutPos(value('qty')),unknown=document.getElementById('nut-man-unknown').checked;
+  if(!name||!q){showToast('Add a name and valid quantity');return;}
+  const cal=nutNum(value('cal'));
+  if(!unknown&&cal==null){showToast('Add calories or choose Unknown');return;}
+  const editing=!!nutEditId,old=editing?nutEditBase?.entry:null;
+  if(editing&&!old){showToast('Reopen the food entry to edit it.');return;}
+  const now=Date.now(),id=nutEditId||nutId('food-'),ratio=old?.quantity?q/old.quantity:1;
+  const entry={...old,id,date:old?.date||getLocalDate(),meal:value('meal'),name,quantity:q,measureId:old?.measureId||'manual',
+    measureLabel:(value('measure')||'serving').trim(),grams:nutPos(old?.grams)?nutRound(old.grams*ratio,2):null,
+    nutrition:{calories:unknown?null:cal,protein:unknown?null:nutNum(value('pro')),carbs:unknown?null:nutNum(value('carb')),fat:unknown?null:nutNum(value('fat'))},
+    nutritionStatus:unknown?'unknown':'known',source:old?.source||'manual',foodId:old?.foodId||null,recipeId:old?.recipeId||null,
+    proteinOptionId:old?.proteinOptionId||null,servings:old?.servings?nutRound(old.servings*ratio,2):null,
+    createdAt:old?.createdAt??now,updatedAt:now,deletedAt:null};
+  if(!await nutSaveMeals([entry],old))return;
+  nutCloseFoodSheet();nutRefreshConsumers();showToast(editing?'Entry updated':'Food logged');
+}
 function nutEditEntry(id){const e=nutLog.entries[id];if(e&&!e.deletedAt)nutOpenManual(e);}
-function nutDeleteEntry(id){const e=nutLog.entries[id];if(!e||!confirm('Delete this food entry?'))return;const now=Date.now();e.deletedAt=now;e.updatedAt=now;nutSaveLog();nutCloseFoodSheet();nutRefreshConsumers();showToast('Entry deleted');}
+async function nutDeleteEntry(id){
+  const entry=nutEditId===id&&nutEditBase?.entry?nutEditBase.entry:nutLog.entries[id];
+  if(!entry||!confirm('Delete this food entry?'))return;
+  const now=Date.now();
+  if(!await nutSaveMeals([{...entry,deletedAt:now,updatedAt:now}],entry))return;
+  nutCloseFoodSheet();nutRefreshConsumers();showToast('Entry deleted');
+}
 function nutOpenCustomFood(){const box=document.getElementById('nutrition-food-box'),ov=document.getElementById('nutrition-food-overlay');if(!box||!ov)return;box.innerHTML='<div class="modal-header"><button class="back-btn" onclick="nutRenderFoodSheet()">←</button><div class="modal-title">Create My Food</div></div><div class="modal-body"><div class="nut-sheet-fields"><div class="nut-field full"><label>Name</label><input id="nut-custom-name" placeholder="Brand and food"></div><div class="nut-field full"><label>Label values are</label><select id="nut-custom-basis"><option value="serving">Per serving</option><option value="per100g">Per 100 g</option></select></div><div class="nut-field"><label>Serving label</label><input id="nut-custom-label" value="serving"></div><div class="nut-field"><label>Serving grams (optional)</label><input id="nut-custom-grams" type="number" min="0"></div><div class="nut-field"><label>Calories for selected basis</label><input id="nut-custom-cal" type="number" min="0"></div><div class="nut-field"><label>Protein (g)</label><input id="nut-custom-pro" type="number" min="0"></div><div class="nut-field"><label>Carbs (g)</label><input id="nut-custom-carb" type="number" min="0"></div><div class="nut-field"><label>Fat (g)</label><input id="nut-custom-fat" type="number" min="0"></div></div><div class="nut-sheet-actions"><button class="modal-btn secondary" onclick="nutCloseFoodSheet()">Cancel</button><button class="modal-btn primary" onclick="nutSaveCustomFood()">Save food</button></div></div>';ov.classList.remove('hidden');}
 function nutSaveCustomFood(){const name=(document.getElementById('nut-custom-name').value||'').trim(),cal=nutNum(document.getElementById('nut-custom-cal').value),basis=document.getElementById('nut-custom-basis').value;if(!name||cal==null){showToast('Add a name and valid calories');return;}if(Object.values(nutMyFoods.foods).some(f=>!f.deletedAt&&f.name.toLowerCase()===name.toLowerCase())){showToast('A My Food with that name already exists');return;}const now=Date.now(),id=nutId('myfood-');nutMyFoods.foods[id]={id,name,aliases:[],category:'My Foods',basis:basis==='per100g'?'per100g':'serving',servingLabel:(document.getElementById('nut-custom-label').value||'serving').trim(),servingGrams:nutPos(document.getElementById('nut-custom-grams').value),nutrition:{calories:cal,protein:nutNum(document.getElementById('nut-custom-pro').value),carbs:nutNum(document.getElementById('nut-custom-carb').value),fat:nutNum(document.getElementById('nut-custom-fat').value)},source:'nutrition label',createdAt:now,updatedAt:now,deletedAt:null};nutSaveFoods();nutSelected=Object.assign({kind:'custom'},nutMyFoods.foods[id]);nutRenderQuantity();}
-function nutCopyPreviousMeal(meal,date){const src=nutEntries(date).filter(e=>e.meal===meal);if(!src.length)return;const now=Date.now();src.forEach((e,i)=>{const id=nutId('food-');nutLog.entries[id]=Object.assign({},JSON.parse(JSON.stringify(e)),{id,date:getLocalDate(),createdAt:now+i,updatedAt:now+i,deletedAt:null});});nutSaveLog();nutRefreshConsumers();showToast('Copied '+src.length+' item'+(src.length===1?'':'s'));}
+async function nutCopyPreviousMeal(meal,date){
+  const now=Date.now(),today=getLocalDate();
+  const entries=nutEntries(date).filter(e=>e.meal===meal).map((e,i)=>({...e,id:nutId('food-'),date:today,createdAt:now+i,updatedAt:now+i,deletedAt:null}));
+  if(!entries.length||!await nutSaveMeals(entries))return;
+  nutRefreshConsumers();showToast('Copied '+entries.length+' item'+(entries.length===1?'':'s'));
+}
 function nutManageCustomFood(id){const f=nutMyFoods.foods[id],box=document.getElementById('nutrition-food-box'),ov=document.getElementById('nutrition-food-overlay');if(!f||f.deletedAt||!box||!ov)return;box.innerHTML='<div class="modal-header"><button class="back-btn" onclick="nutCloseFoodSheet()">←</button><div class="modal-title">Manage My Food</div></div><div class="modal-body"><div class="nut-sheet-fields"><div class="nut-field full"><label>Name</label><input id="nut-mf-name" value="'+nutEsc(f.name)+'"></div><div class="nut-field full"><label>Label values are</label><select id="nut-mf-basis"><option value="serving"'+(f.basis==='per100g'?'':' selected')+'>Per serving</option><option value="per100g"'+(f.basis==='per100g'?' selected':'')+'>Per 100 g</option></select></div><div class="nut-field"><label>Serving label</label><input id="nut-mf-label" value="'+nutEsc(f.servingLabel||'serving')+'"></div><div class="nut-field"><label>Serving grams (optional)</label><input id="nut-mf-grams" type="number" min="0" value="'+(f.servingGrams==null?'':f.servingGrams)+'"></div><div class="nut-field"><label>Calories for selected basis</label><input id="nut-mf-cal" type="number" min="0" value="'+f.nutrition.calories+'"></div><div class="nut-field"><label>Protein</label><input id="nut-mf-pro" type="number" min="0" value="'+(f.nutrition.protein==null?'':f.nutrition.protein)+'"></div><div class="nut-field"><label>Carbs</label><input id="nut-mf-carb" type="number" min="0" value="'+(f.nutrition.carbs==null?'':f.nutrition.carbs)+'"></div><div class="nut-field"><label>Fat</label><input id="nut-mf-fat" type="number" min="0" value="'+(f.nutrition.fat==null?'':f.nutrition.fat)+'"></div></div><div class="nut-inline-actions"><button class="nut-small-btn" onclick="nutToggleFavourite(\''+id+'\')">'+(nutPrefs.favourites[id]?'★ Favourite':'☆ Add favourite')+'</button></div><div class="nut-sheet-actions"><button class="modal-btn secondary" style="color:var(--danger)" onclick="nutDeleteCustomFood(\''+id+'\')">Delete</button><button class="modal-btn primary" onclick="nutUpdateCustomFood(\''+id+'\')">Save</button></div></div>';ov.classList.remove('hidden');}
 function nutUpdateCustomFood(id){const f=nutMyFoods.foods[id],name=(document.getElementById('nut-mf-name').value||'').trim(),cal=nutNum(document.getElementById('nut-mf-cal').value);if(!f||!name||cal==null){showToast('Add a name and valid calories');return;}if(Object.values(nutMyFoods.foods).some(x=>x.id!==id&&!x.deletedAt&&x.name.toLowerCase()===name.toLowerCase())){showToast('A My Food with that name already exists');return;}f.name=name;f.basis=document.getElementById('nut-mf-basis').value==='per100g'?'per100g':'serving';f.servingLabel=(document.getElementById('nut-mf-label').value||'serving').trim();f.servingGrams=nutPos(document.getElementById('nut-mf-grams').value);f.nutrition={calories:cal,protein:nutNum(document.getElementById('nut-mf-pro').value),carbs:nutNum(document.getElementById('nut-mf-carb').value),fat:nutNum(document.getElementById('nut-mf-fat').value)};f.updatedAt=Date.now();nutSaveFoods();nutCloseFoodSheet();nutRenderFoods();showToast('My Food updated');}
 function nutDeleteCustomFood(id){const f=nutMyFoods.foods[id];if(!f||!confirm('Delete “'+f.name+'” from My Foods?\n\nPast food-log entries keep their saved snapshot.'))return;f.deletedAt=Date.now();f.updatedAt=f.deletedAt;delete nutPrefs.favourites[id];nutSaveFoods();nutSavePrefs();nutCloseFoodSheet();nutRenderFoods();showToast('My Food deleted');}
@@ -377,4 +506,13 @@ function nutReviewRecipe(id){
   box.innerHTML='<div class="modal-header"><button class="back-btn" onclick="nutCloseFoodSheet()">←</button><div class="modal-title">Nutrition Review</div></div><div class="modal-body"><div style="font-size:16px;font-weight:800">'+nutEsc(r.name)+'</div><div class="nut-entry-sub" style="margin:4px 0 12px">'+a.resolved+' of '+a.rows.length+' shared ingredients confirmed</div><div class="nut-inline-actions"><button class="nut-small-btn" onclick="nutReviewConfirmAll(\''+id+'\')">Confirm all exact matches with safe measures</button></div><div class="nut-food-list nut-sheet-list" style="margin-top:10px">'+rows+'</div>'+calc+'<div class="nut-sheet-actions"><button class="modal-btn secondary" onclick="nutReviewApply(\''+id+'\',false)">Save confirmed links</button>'+(overallComplete?'<button class="modal-btn primary" onclick="nutReviewApply(\''+id+'\',true)">Use calculated values</button>':'')+'</div></div>';ov.classList.remove('hidden');
 }
 function nutReviewApply(id,useCalculated){const r=kitRecipes.find(x=>x.id===id);if(!r)return;document.querySelectorAll('.nut-link-check:checked').forEach(el=>{const ing=nutRecipeIngredientRef(r,el.dataset.token),food=nutFoodById(el.dataset.food);if(!ing||!food)return;const res=nutIngResolve(ing,food);if(res.grams){ing.foodId=food.id;ing.measureId=res.measureId||'resolved';ing.resolvedGrams=nutRound(res.grams,2);}});const a=nutRecipeAudit(r),variants=nutVariantAudits(r),complete=variants.length?variants.every(v=>v.audit.complete):a.complete;r.nutritionCalculation={status:complete?'calculated':'partial',resolvedIngredients:a.resolved,totalIngredients:a.rows.length,whole:a.whole,perServing:a.per,proteinOptions:variants.map(v=>({id:v.option.id,label:v.option.label,status:v.audit.complete?'calculated':'partial',perServing:v.audit.per,resolvedIngredients:v.audit.resolved,totalIngredients:v.audit.rows.length})),calculatedAt:Date.now(),source:NUT_CATALOG_SOURCE.dataset};if(useCalculated){if(!complete){showToast('Resolve every ingredient in every option first');nutReviewRecipe(id);return;}if(variants.length){variants.forEach(v=>{v.option.calories=v.audit.per.calories;v.option.protein=v.audit.per.protein;v.option.carbs=v.audit.per.carbs;v.option.fat=v.audit.per.fat;v.option.nutritionBasis='calculated';});r.calories=null;r.protein=null;r.carbs=null;r.fat=null;}else{r.calories=a.per.calories;r.protein=a.per.protein;r.carbs=a.per.carbs;r.fat=a.per.fat;}r.nutritionBasis='calculated';}else if(!complete)r.nutritionBasis='partial';else if(r.nutritionBasis!=='calculated')r.nutritionBasis=(variants.length?variants.some(v=>nutNum(v.option.calories)!=null):nutNum(r.calories)!=null)?'manual':'missing';kitSaveRecipes();nutRenderRecipes();nutReviewRecipe(id);showToast(useCalculated?'Calculated nutrition accepted':'Confirmed links saved; manual values preserved');}
-function nutLogRecipeSnapshot(r,rv,servings,meal,source){const now=Date.now(),n=rv&&rv.nutrition||{},known=nutNum(n.calories)!=null,id=nutId('food-');nutLog.entries[id]={id,date:getLocalDate(),meal,name:r.name+(rv.optionLabel?' · '+rv.optionLabel:''),quantity:servings,measureId:'serving',measureLabel:'serving',grams:null,nutrition:{calories:known?nutRound(n.calories*servings,1):null,protein:nutNum(n.protein)==null?null:nutRound(n.protein*servings,1),carbs:nutNum(n.carbs)==null?null:nutRound(n.carbs*servings,1),fat:nutNum(n.fat)==null?null:nutRound(n.fat*servings,1)},nutritionStatus:known?'known':'unknown',source:source||'recipe',foodId:null,recipeId:r.id,proteinOptionId:rv.optionId||null,servings,createdAt:now,updatedAt:now,deletedAt:null};nutSaveLog();nutRefreshConsumers();return id;}
+async function nutLogRecipeSnapshot(r,rv,servings,meal,source){
+  const now=Date.now(),n=rv?.nutrition||{},known=nutNum(n.calories)!=null,id=nutId('food-');
+  const scaled=key=>nutNum(n[key])==null?null:nutRound(n[key]*servings,1);
+  const entry={id,date:getLocalDate(),meal,name:r.name+(rv.optionLabel?' · '+rv.optionLabel:''),quantity:servings,
+    measureId:'serving',measureLabel:'serving',grams:null,nutrition:{calories:scaled('calories'),protein:scaled('protein'),carbs:scaled('carbs'),fat:scaled('fat')},
+    nutritionStatus:known?'known':'unknown',source:source||'recipe',foodId:null,recipeId:r.id,proteinOptionId:rv.optionId||null,
+    servings,createdAt:now,updatedAt:now,deletedAt:null};
+  if(!await nutSaveMeals([entry]))return null;
+  nutRefreshConsumers();return id;
+}

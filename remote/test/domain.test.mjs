@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {connectorService,blob,hash,mergeRecords,syncFinancialBlob} from '../domain.mjs';
+import {connectorService,blob,hash,mergeRecords,syncFinancialBlob,undoCreatedExpense} from '../domain.mjs';
 import {financeContext} from '../generated/finance.mjs';
 
 import {fixture,now} from './fixtures.mjs';
@@ -33,6 +33,18 @@ test('ownership, model-supplied UID, token expiry, revoked grants and scope chec
   for(const p of [{...f.principal,expiresAt:now},{...f.principal,grantId:'wrong'},{...f.principal,scopes:['bills:read']}])await assert.rejects(f.service.references(p));
   f.roots.alice.assistant.grants.grant1.revokedAt=now;
   await assert.rejects(f.service.identity(f.principal),{code:'REVOKED'});
+});
+test('expense receipts and undo follow the issuing grant while owner management can undo',async()=>{
+  const f=fixture(),id={requestId:f.requestId};
+  f.roots.alice.assistant.grants.second=structuredClone(f.roots.alice.assistant.grants.grant1);
+  const second={...f.principal,grantId:'second'};
+  const preview=await f.service.preview(f.principal,{...id,expense:f.expense});
+  assert.equal((await f.service.result(f.principal,id)).status,'pending');
+  await assert.rejects(f.service.result(second,id),{code:'NOT_FOUND'});
+  await f.service.commit(f.principal,{...id,previewToken:preview.previewToken});
+  await assert.rejects(f.service.undo(second,id),{code:'NOT_FOUND'});
+  assert.equal(blob(f.roots.alice,'transactions').length,1);
+  assert.equal(undoCreatedExpense(f.roots.alice,'alice',id.requestId,now).status,'undone');
 });
 test('essential ambiguity, precision, unsupported actions and archived references are refused',async()=>{
   for(const [key,value] of [['amount',0],['amount',1.001],['amount','18.5'],['currency','USD'],['merchant',''],['date','2026-02-30'],['categoryId','unknown'],['paymentAccountId',''],['pending',true]]){

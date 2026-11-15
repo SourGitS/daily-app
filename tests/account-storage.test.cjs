@@ -56,3 +56,15 @@ test('restoring an existing cloud profile discards a pending onboarding draft in
   f.c.window.sessionStorage={getItem:k=>drafts.get(k)||null,removeItem:k=>drafts.delete(k)};f.c.showOnboarding=()=>resumed++;
   f.c.dailyResumeOnboardingDraft('A',true);assert.equal(resumed,0);assert.equal(drafts.size,0);
 });
+test('first sign-in recognises independent food, weight, shopping and edited settings without claiming seeded defaults',()=>{
+  const examples={daily_nutrition_log:{entries:{one:{name:'Oats'}}},wt_weight:[{date:'2026-11-16',weight:70}],
+    kitchen_shopping_manual:[{id:'milk',name:'Milk'}],wt_calories:{date:'2026-11-16',entries:[{name:'Soup'}]}};
+  for(const [key,value] of Object.entries(examples)){
+    const f=fixture({[key]:JSON.stringify(value)},true);f.c.dailySwitchAccount({uid:'A'});
+    assert.equal(f.confirms,1,key);assert.equal(f.c.dailyScopedStorage(f.native,'user:A').getItem(key),JSON.stringify(value));
+  }
+  const seed={daily_nutrition_log:'{"entries":{},"legacyTotals":{}}',wt_weight:'[]',wt_calories:'{"date":"2026-11-16","entries":[]}',
+    kitchen_pantry:'{"pantries":{"home":{"name":"Home"}}}',kitchen_pantry_ts:'0'};
+  const empty=fixture(seed);empty.c.dailySwitchAccount({uid:'A'});assert.equal(empty.confirms,0);
+  const edited=fixture({...seed,kitchen_pantry_ts:'123'},true);edited.c.dailySwitchAccount({uid:'A'});assert.equal(edited.confirms,1);
+});

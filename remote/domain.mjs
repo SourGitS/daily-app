@@ -20,7 +20,10 @@ export function blob(root,path){
   return structuredClone(result);
 }
 export function put(root,path,rows,now){
-  root[path]={v:JSON.stringify(rows),t:Math.max(now,(Number(root[path]?.t)||0)+1)};
+  const previous=root[path];
+  root[path]={v:JSON.stringify(rows),t:Math.max(now,(Number(previous?.t)||0)+1),
+    ...(['transactions','ledger'].includes(path)?{recordSync:1}:{}),
+    ...(previous?.restoreAt?{restoreAt:previous.restoreAt}:{})};
 }
 export const dataOf=root=>Object.fromEntries(['transactions','ledger','accounts','budgetVarCats','budgetFixCats'].map(p=>[p,blob(root,p)]));
 function requireId(id){if(typeof id!=='string'||!/^daily_remote_[A-Za-z0-9_-]{8,120}$/.test(id))fail('INVALID_REQUEST_ID','Use one stable daily_remote_ request ID for this expense, including retries.');}
@@ -49,8 +52,15 @@ export function mergeRecords(base,local,cloud){
 function dependent(root,id){
   return blob(root,'ledger').some(r=>r&&r.expenseId===id);
 }
-export function undoCreatedExpense(root,uid,id,now){
-  requireId(id);const rows=blob(root,'aiRequests'),i=rows.findIndex(r=>r.id===id&&r.remote===true&&r.scope==='user:'+uid),row=rows[i];
+function remoteOperationIndex(rows,uid,id,grantId){
+  requireId(id);
+  return rows.findIndex(row=>row.id===id&&row.remote===true&&row.scope==='user:'+uid&&
+    (grantId===undefined||row.grantId===grantId));
+}
+// The owner-authenticated management action can undo any remote expense in the account.
+// MCP operations supply their grant and may only act on records created by that grant.
+export function undoCreatedExpense(root,uid,id,now,grantId){
+  const rows=blob(root,'aiRequests'),i=remoteOperationIndex(rows,uid,id,grantId),row=rows[i];
   if(!row)fail('NOT_FOUND','No remote operation with that ID exists in this Daily account.');
   if(row.status==='undone')return row;
   if(row.status!=='committed')fail('NOT_UNDOABLE','Only a committed expense created through this connection can be undone.');
@@ -90,7 +100,11 @@ export function connectorService(store,{previewKey,clock=Date.now}={}){
   const run=(p,scope,fn)=>store.transaction(p.uid,root=>{const now=clock();authorize(root,p,scope,now);return fn(structuredClone(root),now);});
   const referenceHash=(data,payload,warnings)=>hash({account:data.accounts.find(a=>a.id===payload.paymentAccountId),category:data.budgetVarCats.find(c=>c.id===payload.categoryId),warnings});
   const validate=(data,payload,id)=>{try{return financeContext(data).validate(payload,id);}catch(e){fail('INVALID_EXPENSE',e.message);}};
-  const getRow=(root,p,id)=>{requireId(id);const row=blob(root,'aiRequests').find(r=>r.id===id&&r.remote===true&&r.scope==='user:'+p.uid);if(!row)fail('NOT_FOUND','No operation with that ID exists in this Daily account.');return row;};
+  const getRow=(root,p,id)=>{
+    const rows=blob(root,'aiRequests'),index=remoteOperationIndex(rows,p.uid,id,p.grantId);
+    if(index<0)fail('NOT_FOUND','No operation with that ID exists for this connection.');
+    return rows[index];
+  };
   return {
     identity:p=>run(p,null,(root,now)=>({root,result:{status:'connected',accountId:p.uid,email:p.email||null,scopes:authorize(root,p,null,now).scopes,accessExpiresAt:p.expiresAt,grantExpiresAt:root.assistant.grants[p.grantId].expiresAt,today:financeContext({}).today(new Date(now)),timezone:'Australia/Sydney',currency:'AUD'}})),
     bills:(p,input)=>{requireKeys(input,['from','to']);return run(p,'bills:read',root=>({root,result:financeContext(dataOf(root)).bills(input.from,input.to)}));},
@@ -112,7 +126,6 @@ export function connectorService(store,{previewKey,clock=Date.now}={}){
       const recordId='txn_'+randomUUID();
       return run(p,'expenses:create',(root,now)=>{
         const row=getRow(root,p,input.requestId);
-        if(row.grantId!==p.grantId)fail('PREVIEW_ACCOUNT','Preview belongs to a different connection.');
         const a=Buffer.from(String(input.previewToken||'')),b=Buffer.from(sign(row));
         if(a.length!==b.length||!timingSafeEqual(a,b))fail('INVALID_PREVIEW','The preview token does not match this exact request.');
         if(row.status!=='pending')return {root,result:receipt(row)};
@@ -133,7 +146,7 @@ export function connectorService(store,{previewKey,clock=Date.now}={}){
     result:(p,input)=>{requireKeys(input,['requestId']);return run(p,'expenses:create',root=>({root,result:receipt(getRow(root,p,input.requestId))}));},
     undo:(p,input)=>{
       requireKeys(input,['requestId']);return run(p,'expenses:create',(root,now)=>{
-        const row=undoCreatedExpense(root,p.uid,input.requestId,now);return {root,result:receipt(row)};
+        const row=undoCreatedExpense(root,p.uid,input.requestId,now,p.grantId);return {root,result:receipt(row)};
       });
     }
   };

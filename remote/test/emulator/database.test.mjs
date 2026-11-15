@@ -8,6 +8,8 @@ import {fixture,now} from '../fixtures.mjs';
 import {connectorService,blob,hash,syncFinancialBlob} from '../../domain.mjs';
 import {firebaseStore} from '../../firebase-store.mjs';
 import {oauthAdapter} from '../../oauth-adapter.mjs';
+import notifications from '../../../functions/service.cjs';
+import notificationSchedule from '../../../js/notification-schedule.js';
 
 // Hard guard before any SDK initialization. These tests can never target production.
 const host=process.env.FIREBASE_DATABASE_EMULATOR_HOST;
@@ -20,6 +22,14 @@ test('real RTDB rules, transactions, encrypted OAuth persistence and concurrent 
   const db=getDatabase(app),db2=getDatabase(app2),store=firebaseStore(db),store2=firebaseStore(db2);
   t.after(async()=>{await env.cleanup();await deleteApp(app);await deleteApp(app2);});
   const f=fixture();await db.ref().set({users:f.roots});
+  await t.test('fresh notification process can disable an existing device and rejects an absent device',async()=>{
+    const device='a'.repeat(64),token='11111111-1111-4111-8111-111111111111';
+    await db.ref('notificationDevices/'+device).set({uid:'alice',token,enabled:true});
+    const devices=db2.ref('notificationDevices');
+    await notifications.manage(devices,'alice',{action:'disable',device,token},notificationSchedule,now);
+    assert.equal((await db.ref('notificationDevices/'+device+'/enabled').get()).val(),false);
+    await assert.rejects(notifications.manage(devices,'alice',{action:'disable',device:'b'.repeat(64),token},notificationSchedule,now));
+  });
   const alice=env.authenticatedContext('alice').database(),bob=env.authenticatedContext('bob').database(),guest=env.unauthenticatedContext().database();
   await t.test('owner reads, cross-account and anonymous access, private OAuth and old snapshots',async()=>{
     await assertSucceeds(alice.ref('users/alice/transactions').once('value'));
@@ -33,6 +43,12 @@ test('real RTDB rules, transactions, encrypted OAuth persistence and concurrent 
     await assertFails(alice.ref('users/alice').update({'assistant/enabled':false,transactions:{v:'[]',t:now+999999}}));
     await assertFails(bob.ref('users/alice/sessions').set({id:'bad'}));
     await assertSucceeds(alice.ref('users/alice/sessions/new').set({id:'synthetic'}));
+    for(const path of ['sessions','weights']){
+      const collection=bob.ref('users/bob/'+path);
+      await assertSucceeds(collection.set({__dailyRestoredAt:now}));
+      await assertFails(collection.child('stale').set({updatedAt:now+1000,restoreGeneration:now-1}));
+      await assertSucceeds(collection.child('fresh').set({updatedAt:now+1,restoreGeneration:now}));
+    }
     await db.ref('users/bob/assistant').remove();
     await assertSucceeds(bob.ref('users/bob/transactions').set({v:'[]',t:now}));
     await assertFails(bob.ref('users/bob/assistant/enabled').set(true));

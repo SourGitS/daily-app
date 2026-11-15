@@ -101,10 +101,19 @@ function syncPersonalInfoToFirebase(){ if(_bootPhase||_syncApplying) return; con
 function syncBudDefaultsToFirebase(){ if(_bootPhase||_syncApplying) return; const r=fbRef('budgetDefaults'); if(r) r.set(budDefaults); }
 // When the caller knows which week changed, write ONLY that week's node — a device
 // holding a stale copy of other weeks then can't clobber them, whatever it does.
-// The whole-blob set survives only as the fallback for calls with no key.
+// Without a named week, each known week still compares its own revision at the server.
 function syncBudgetDataToFirebase(changedKey){
   const r=fbRef('budgetData'); if(!r) return;
-  if(changedKey && budgetData[changedKey]) return r.child(changedKey).set(budgetData[changedKey]);
+  if(changedKey && budgetData[changedKey]){
+    const sent=JSON.stringify(budgetData[changedKey]),uid=auth.currentUser.uid;
+    return budPushWeeks(r,[changedKey],true).then(([result])=>{
+      if(!result||result.committed||auth.currentUser?.uid!==uid||sent!==JSON.stringify(budgetData[changedKey]))return;
+      const kept=result.snapshot.val();if(!kept||JSON.stringify(kept)===sent)return;
+      budgetData[changedKey]=kept;
+      localStorage.setItem('daily_budget',JSON.stringify(budgetData));
+      showToast('Another device changed this budget week. Its version was kept. Reopen the week to review it.');
+    }).catch(()=>setSyncStatus('Sync failed'));
+  }
   // No key given: write every week INDIVIDUALLY rather than replacing the node. The whole-node
   // form could only ever say "these are all the weeks that exist", which a device holding a
   // stale copy has no standing to claim — a week added elsewhere since this device last synced
@@ -112,12 +121,13 @@ function syncBudgetDataToFirebase(changedKey){
   return budPushWeeks(r, Object.keys(budgetData||{}));
 }
 // Write the named weeks as separate children, newest-updatedAt wins per week.
-function budPushWeeks(ref, keys){
+function budPushWeeks(ref, keys, keepTies){
   if(!ref||!keys||!keys.length) return Promise.resolve();
   return Promise.all(keys.filter(k=>budgetData&&budgetData[k]).map(k=>{
     const week=budgetData[k];
     return ref.child(k).transaction(cloud=>{
-      if(cloud && ((cloud.updatedAt||0) > (week.updatedAt||0))) return;
+      if(cloud && ((cloud.updatedAt||0) > (week.updatedAt||0)||
+          keepTies&&(cloud.updatedAt||0)===(week.updatedAt||0))) return;
       return week;
     },undefined,false);
   }));
@@ -161,7 +171,9 @@ function syncBlobPush(path, lsKey, confirmSame){
   const t=parseInt(localStorage.getItem(lsKey+'_ts')||'0',10)||0;
   const aiUid=auth&&auth.currentUser&&auth.currentUser.uid;
   const aiSeq=typeof dailyAICloudStart==='function'?dailyAICloudStart(aiUid,path):0;
-  syncBlobCommit(r, localStorage.getItem(lsKey), t, confirmSame)
+  const ordinaryFinance=typeof dailyFinancePaths!=='undefined'&&dailyFinancePaths[path]&&dailyFinanceUsesDefault();
+  const saving=ordinaryFinance?dailyFinanceCommit(aiUid,path,r,confirmSame):syncBlobCommit(r,localStorage.getItem(lsKey),t,confirmSame);
+  saving
     .then(result=>{setSyncStatus('Synced ✓');if(typeof dailyAICloudResult==='function')dailyAICloudResult(aiUid,path,result,null,aiSeq);})
     .catch(error=>{setSyncStatus('Sync failed');if(typeof dailyAICloudResult==='function')dailyAICloudResult(aiUid,path,null,error,aiSeq);});
 }
@@ -222,6 +234,9 @@ function syncBlobListenTS(uid, path, lsKey, tsKey, onUpdate, legacy){
     const remote=dailyRemoteListen(uid,path,lsKey,tsKey,onUpdate);if(remote)return remote;
   }
   const ref=db.ref('users/'+uid+'/'+path);
+  if(typeof dailyFinancePaths!=='undefined'&&dailyFinancePaths[path]&&dailyFinanceUsesDefault()){
+    return dailyFinanceListen(uid,path,ref,onUpdate);
+  }
   const localT=()=>parseInt(localStorage.getItem(tsKey)||'0',10)||0;
   // Seed an empty cloud slot from this device (behaviour the untimestamped listener had).
   // Seeded at the local timestamp — which is 0 for a store this device has never actually
@@ -321,8 +336,11 @@ function syncDetachAll(){
   _syncRefs.splice(0).forEach(r=>{ try{ r.off(); }catch(e){} });
 }
 function setSyncStatus(txt){
+  const conflict=typeof dailyFinanceConflicts!=='undefined'&&dailyFinanceConflicts.size>0;
+  const review=document.getElementById('finance-sync-review');
+  if(review)review.hidden=!conflict;
   const el=document.getElementById('sync-status');
-  if(el) el.textContent=txt;
+  if(el)el.textContent=conflict&&/^(Synced|Syncing|Sync failed)/.test(txt)?'Financial sync needs review':txt;
 }
 
 // ── Generic localStorage load/save ────────────────────────────────
@@ -421,7 +439,7 @@ function fbReconcile(path, lsKey, get, set, render, seedWhen){
   ref.once('value').then(snap=>{
     if(snap.exists()){
       syncApply(()=>{
-        set(snap.val());
+        set(dailyRestoreUnwrap(snap.val()));
         localStorage.setItem(lsKey, JSON.stringify(get()));
         if(render) render();
       });
@@ -475,14 +493,18 @@ if(firebaseReady){
     // One-time migration: fold the old duplicate weight log (daily_weight_log locally,
     // users/{uid}/weightLog in the cloud) into the canonical weights store, then delete
     // both copies. Per-date conflicts keep the wt_weight value (mergeLegacyWeightEntries).
-    db.ref('users/'+user.uid+'/weightLog').once('value').then(snap=>{
+    const legacyWeightRef=db.ref('users/'+user.uid+'/weightLog');
+    Promise.all([legacyWeightRef.once('value'),weightDbRef.child(DAILY_RESTORE_MARK).once('value')]).then(([snap,mark])=>{
+      if(auth.currentUser?.uid!==user.uid)return;
+      if(mark.val())localStorage.setItem('wt_weight_restore_ts',String(mark.val()));
       const v=snap.val();
       if(v){ try{ const arr=JSON.parse(v); if(Array.isArray(arr)) _wtLegacyCloud=arr; }catch(e){} }
       mergeLegacyWeightEntries();
       // Keep the legacy source until its replacement has actually reached the server.
-      persistWeights().then(()=>{
+      const legacyDates=new Set([...lsLoad('daily_weight_log',[],Array.isArray),...(_wtLegacyCloud||[])].map(w=>w&&w.date));
+      persistWeights().then(()=>wtPushRecords(weightDbRef,wtReadRecords('wt_weight').filter(w=>legacyDates.has(w.date)),'date')).then(()=>{
         localStorage.removeItem('daily_weight_log');
-        return db.ref('users/'+user.uid+'/weightLog').remove();
+        return legacyWeightRef.remove();
       }).catch(()=>setSyncStatus('Sync failed'));
     }).catch(()=>setSyncStatus('Sync failed'));
 
@@ -496,7 +518,7 @@ if(firebaseReady){
     piRef.on('value', snap=>{
       if(!snap.val()) return;
       syncApply(()=>{
-        S.personalInfo = snap.val();
+        S.personalInfo = dailyRestoreUnwrap(snap.val());
         localStorage.setItem('wt_personalinfo', JSON.stringify(S.personalInfo));
         renderSettings();
         foodRefreshToday();
@@ -509,8 +531,9 @@ if(firebaseReady){
     // Initial sync: MERGE local + cloud (newest-per-date wins) and push the union back, so a
     // local-only/newer update is never lost and the cloud catches up.
     savRef.once('value').then(snap=>{
-      const cloud = snap.exists() ? Object.values(snap.val()||{}) : [];
-      savingsLog = mergeSavings(savingsLog, cloud);
+      const cutoff=dailyRestoreCutoff(snap.val());
+      const cloud=dailyAfterRestore(Object.values(snap.val()||{}),cutoff,savingsTime);
+      savingsLog=mergeSavings(dailyAfterRestore(savingsLog,cutoff,savingsTime),cloud);
       localStorage.setItem('daily_savings_log', JSON.stringify(savingsLog));
       // Converge the cloud with the entries it is MISSING or holds an older copy of, one child
       // at a time. Writing the whole node here meant an entry added elsewhere between this read
@@ -528,7 +551,8 @@ if(firebaseReady){
       const data=snap.val();
       if(!data) return;
       syncApply(()=>{
-        savingsLog = mergeSavings(savingsLog, Object.values(data));
+        const cutoff=dailyRestoreCutoff(data);
+        savingsLog=mergeSavings(dailyAfterRestore(savingsLog,cutoff,savingsTime),dailyAfterRestore(Object.values(data),cutoff,savingsTime));
         localStorage.setItem('daily_savings_log', JSON.stringify(savingsLog));
         if(typeof renderHome==='function') renderHome();
       });
@@ -545,7 +569,7 @@ if(firebaseReady){
     habitsRef.on('value', snap=>{
       if(!snap.val()) return;
       syncApply(()=>{
-        localStorage.setItem('daily_habits', JSON.stringify(snap.val()));
+        localStorage.setItem('daily_habits', JSON.stringify(dailyRestoreUnwrap(snap.val())));
         habitsData=loadHabits();
         if(typeof renderHome==='function') renderHome();
       });
@@ -588,14 +612,15 @@ if(firebaseReady){
       if(data){
         const active=document.activeElement;
         const editing=active&&(active.tagName==='INPUT'||active.tagName==='TEXTAREA');
-        if(editing) return; // never overwrite budgetData while user has focus in an input
+        if(editing&&!dailyRestoreCutoff(data)) return;
         syncApply(()=>{
         const scrubbed=scrubSavingsTarget(data); // strip the removed savings target from incoming cloud data
         // Merge per week (newer updatedAt wins) rather than adopting the cloud blob
         // wholesale — see mergeBudgetWeeks. If local had newer weeks, push the merge
         // result back so the cloud converges too. No loop: the echoed snapshot merges
         // to an identical result, so cloudNeedsUpdate comes back false.
-        const merged=mergeBudgetWeeks(budgetData, data);
+        const cutoff=dailyRestoreCutoff(data);
+        const merged=mergeBudgetWeeks(dailyAfterRestoreMap(budgetData,cutoff),dailyAfterRestoreMap(data,cutoff));
         budgetData=merged.data;
         localStorage.setItem('daily_budget',JSON.stringify(budgetData));
         // Converge per WEEK. `budDataRef.set(budgetData)` replaced the whole node, so a week
@@ -614,7 +639,7 @@ if(firebaseReady){
       if(snap.exists()){
         const val=snap.val()||{};
         const fix=a=>Array.isArray(a)?a:Object.values(a||{});
-        if(Array.isArray(val.incomeStreams)||val.incomeStreams){
+        if(Array.isArray(val.incomeStreams)||val.incomeStreams||val.updatedAt){
           const cloudCfg={
             incomeStreams:fix(val.incomeStreams),
             fixedExpenses:fix(val.fixedExpenses),
@@ -1094,7 +1119,14 @@ function jrnRef(){
 // One record per write. The whole-array set() this replaces meant two open devices silently
 // overwrote each other: the second to save pushed its own stale copy of every OTHER record too.
 function jrnPushOne(rec){
-  try{ const r=jrnRef(); if(r) r.child(rec.id).set(rec); }catch(e){ console.warn('journal sync failed',e); }
+  const ref=jrnRef();
+  if(ref) return jrnCommitNote(ref,rec);
+}
+function jrnCommitNote(ref,rec){
+  return ref.child(rec.id).transaction(current=>{
+    if(current&&Math.max(Number(current.updatedAt)||0,Number(current.deletedAt)||0)>=rec.updatedAt)return;
+    return rec;
+  },undefined,false).catch(()=>setSyncStatus('Sync failed'));
 }
 function jrnPut(rec){
   const out=jrnNormalise(Object.assign({}, rec, {schemaVersion:JRN_SCHEMA, updatedAt:Date.now()}));
@@ -1150,7 +1182,8 @@ function jrnAttachSync(uid){
     const cloud=(val==null?[]:(wasArray?val:Object.values(val)))
       .map(jrnNormalise).filter(Boolean);
     const local=loadNotes();
-    const m=jrnMerge(local, cloud);
+    const cutoff=dailyRestoreCutoff(val);
+    const m=jrnMerge(dailyAfterRestore(local,cutoff,wtRecordTime),dailyAfterRestore(cloud,cutoff,wtRecordTime));
     const sig=a=>JSON.stringify(a.map(r=>r.id+':'+r.updatedAt).sort());
     const changed = sig(local)!==sig(m.records);
     if(changed) jrnSaveLocal(m.records);
@@ -1159,10 +1192,17 @@ function jrnAttachSync(uid){
       // leave the old numeric keys behind as duplicates alongside the new ones. The payload is
       // the merge result, so this replaces the node with a superset of what it held — never
       // with less. The echo comes back object-shaped, so this cannot loop.
-      const keyed={}; m.records.forEach(r=>{ keyed[r.id]=r; });
-      try{ ref.set(keyed); }catch(e){ console.warn('journal rekey failed',e); }
+      ref.transaction(current=>{
+        if(current==null)return Object.fromEntries(m.records.map(r=>[r.id,r]));
+        const mark=dailyRestoreCutoff(current);
+        const currentRecords=Object.values(current).map(jrnNormalise).filter(Boolean);
+        const merged=jrnMerge(dailyAfterRestore(m.records,mark,wtRecordTime),dailyAfterRestore(currentRecords,mark,wtRecordTime));
+        const needsRekey=Object.entries(current).some(([key,row])=>row?.id&&String(row.id)!==key);
+        if(!Array.isArray(current)&&!needsRekey&&!merged.localNewer.length)return;
+        return {...Object.fromEntries(merged.records.map(r=>[r.id,r])),...(mark?{[DAILY_RESTORE_MARK]:mark}:{})};
+      },undefined,false).catch(()=>setSyncStatus('Sync failed'));
     } else if(m.localNewer.length){
-      m.localNewer.forEach(r=>{ try{ ref.child(r.id).set(r); }catch(e){} });
+      m.localNewer.forEach(r=>jrnCommitNote(ref,r));
     }
     if(changed) jrnRerender();
   });
@@ -1259,7 +1299,8 @@ const S = {
 let exCollapsed = new Set(); // session-only exercise card collapse state
 
 window.addEventListener('storage',e=>{
-  if(e.key!=='wt_sessions'&&e.key!=='wt_weight') return;
+  const key=localStorage.logicalKey?localStorage.logicalKey(e.key):e.key;
+  if(key!=='wt_sessions'&&key!=='wt_weight') return;
   S.sessions=load();
   S.weights=loadWeights();
   if(S.view==='home') renderHome();
@@ -1296,10 +1337,15 @@ function wtPushRecords(ref,records,field,timeOf){
 }
 function wtAttachRecords(ref,key,field,onUpdate){
   ref.on('value',snap=>{
-    const cloud=Object.values(snap.val()||{});
-    const local=wtReadRecords(key);
+    const raw=snap.val(),serverCutoff=dailyRestoreCutoff(raw);
+    const localCutoff=Number(localStorage.getItem(key+'_restore_ts'))||0,cutoff=serverCutoff||localCutoff;
+    const cloud=dailyWorkoutGeneration(Object.values(raw||{}),serverCutoff);
+    const local=dailyWorkoutGeneration(wtReadRecords(key),cutoff);
     const merged=wtMergeRecords(local,cloud,field);
-    try{ localStorage.setItem(key,JSON.stringify(merged)); }catch(e){ setSyncStatus('Local save failed'); return; }
+    try{
+      if(serverCutoff&&serverCutoff!==localCutoff)localStorage.setItem(key+'_restore_ts',String(serverCutoff));
+      localStorage.setItem(key,JSON.stringify(merged));
+    }catch(e){ setSyncStatus('Local save failed'); return; }
     onUpdate(merged.filter(r=>!r.deletedAt));
     const cloudMap=new Map(cloud.filter(r=>r&&r[field]).map(r=>[wtRecordKey(r,field),r]));
     const pending=merged.filter(r=>{
@@ -1314,21 +1360,23 @@ function wtAttachRecords(ref,key,field,onUpdate){
 // the SAME stores, so a stale device cannot resurrect them by reconnecting.
 function wtPersistRecords(key,field,records,changed,deleted,ref){
   const disk=wtReadRecords(key);
-  let merged=wtMergeRecords(records,disk,field);
+  const cutoff=Number(localStorage.getItem(key+'_restore_ts'))||0;
+  let merged=wtMergeRecords(dailyWorkoutGeneration(records,cutoff),disk,field);
+  let edits=[];
   if(!_bootPhase){
-    const edits=records.filter(r=>changed.includes(String(r[field]))).map(r=>{
+    edits=records.filter(r=>changed.includes(String(r[field]))).map(r=>{
       const old=merged.find(x=>String(x[field])===String(r[field]));
-      return {...r,updatedAt:Math.max(Date.now(),wtRecordTime(old)+1),deletedAt:null};
+      return {...r,...(cutoff?{restoreGeneration:cutoff}:{}),updatedAt:Math.max(Date.now(),cutoff+1,wtRecordTime(old)+1),deletedAt:null};
     });
     deleted.forEach(id=>{
       const old=merged.find(r=>String(r[field])===String(id));
-      const t=Math.max(Date.now(),wtRecordTime(old)+1);
-      edits.push({...old,[field]:id,updatedAt:t,deletedAt:t});
+      const t=Math.max(Date.now(),cutoff+1,wtRecordTime(old)+1);
+      edits.push({...old,[field]:id,...(cutoff?{restoreGeneration:cutoff}:{}),updatedAt:t,deletedAt:t});
     });
     merged=wtMergeRecords(merged,edits,field);
   }
   localStorage.setItem(key,JSON.stringify(merged));
-  return {records:merged.filter(r=>!r.deletedAt), upload:_bootPhase?Promise.resolve():wtPushRecords(ref,merged,field)};
+  return {records:merged.filter(r=>!r.deletedAt), upload:wtPushRecords(ref,edits,field)};
 }
 function persist(changed=[],deleted=[]){
   try{
@@ -2296,7 +2344,8 @@ let statsSubTab = 'overview';
 // name after the first replaceState.
 function dailyHistoryView(v){return ['home','budget','log','food','stats','settings','notes','plans','nutrition','kitchen'].includes(v);}
 function dailyHistoryTarget(raw,state){
-  const value=String(raw||'');
+  let value;
+  try{value=decodeURIComponent(String(raw||''));}catch(e){value='home';}
   const parts=value.split('/');
   const view=parts[0];
   if(!dailyHistoryView(view)) return null;
@@ -3302,9 +3351,12 @@ function refreshHomeTab(){
   if(fb){ fb.style.transition='opacity .2s ease'; fb.style.opacity='.5'; setTimeout(()=>fb.style.opacity='1',300); }
 }
 function dailyApplyHistoryView(state){
-  const raw=state&&state.dailyView||decodeURIComponent(location.hash.replace(/^#/,''));
+  const raw=state&&state.dailyView||location.hash.replace(/^#/,'');
   const target=dailyHistoryTarget(raw,state);
   if(!target) return;
+  if(target.view==='home'&&raw!=='home'){
+    try{history.replaceState({dailyView:'home'},'',dailyHistoryUrl('home'));}catch(e){}
+  }
   if(target.view!==S.view) setView(target.view,null,{fromHistory:true,logTab:target.logTab,foodTab:target.foodTab,foodTodayView:target.foodTodayView});
   else if(target.view==='log'){
     logTodayView='overview';
@@ -7185,7 +7237,11 @@ function exportData(){
     s.exercises.forEach(ex=>{
       ex.sets.forEach((set,si)=>{
         // Effort is session-level, repeated on each of the session's set rows
-        rows.push([s.date,s.dayNum,s.sessionType,ex.name,si+1,set.weight||'',set.reps||'',s.effort||''].join(','));
+        rows.push([s.date,s.dayNum,s.sessionType,ex.name,si+1,set.weight??'',set.reps??'',s.effort??''].map((v,i)=>{
+          let cell=String(v??'');
+          if((i===2||i===3)&&/^\s*[=+@-]/.test(cell))cell="'"+cell;
+          return /[",\r\n]/.test(cell)?'"'+cell.replace(/"/g,'""')+'"':cell;
+        }).join(','));
       });
     });
   });
@@ -7211,7 +7267,7 @@ function exportAllData(){
     // expanded, and the sidebar it belongs to only exists on a laptop; daily_budget_ui is
     // which spending breakdown the Budget week is showing. None mean anything on another
     // device.
-    if(key && /^(daily_weather_cache|daily_pantry_ui|daily_nav_ui|daily_budget_ui)/.test(key)) continue;
+    if(key && (/^(daily_weather_cache|daily_pantry_ui|daily_nav_ui|daily_budget_ui|daily_finance_pending_|daily_finance_seen_)/.test(key)||key.endsWith('_restore_ts'))) continue;
     if(key && /^(daily_|wt_|kitchen_)/.test(key)) data[key]=localStorage.getItem(key);
   }
   const backup={ app:'daily', version:1, exported:new Date().toISOString(), data };
@@ -7242,48 +7298,39 @@ function restoreFromText(text, report){
   // Accept both {data:{...}} (this app's format) and a flat {key:value} object
   const data=(parsed && parsed.data && typeof parsed.data==='object') ? parsed.data : parsed;
   if(!data || typeof data!=='object') return fail('That is valid JSON, but not a Daily backup.');
-  const keys=Object.keys(data).filter(k=>/^(daily_|wt_|kitchen_)/.test(k));
+  const keys=Object.keys(data).filter(k=>/^(daily_|wt_|kitchen_)/.test(k)&&!/^daily_finance_(pending|seen)_/.test(k));
   if(!keys.length) return fail('No Daily data found in that text.');
   const signedIn = !!(firebaseReady && auth && auth.currentUser && db);
-  if(!confirm('Restore '+keys.length+' data keys from this backup?\n\n'+
-    'This replaces the data on this device'+
+  if(localStorage.scope?.startsWith('user:')&&(!signedIn||localStorage.scope!=='user:'+auth.currentUser.uid))
+    return fail('Reconnect and wait for this account to finish signing in before restoring its backup.');
+  let plan;
+  try { plan=dailyRestoreStage(data,Date.now()); }
+  catch(error){return fail('Backup was not restored. '+error.message);}
+  if(!confirm('Restore '+plan.writes.size/2+' data keys from this backup?\n\n'+
+    'This replaces the supplied data on this device'+
     (signedIn?' AND in your synced account, on every device.':'.'))) return false;
-  keys.forEach(k=>{
-    if(/_ts$/.test(k)) return; // re-stamped below — never restore a stale timestamp
-    const v=data[k];
-    localStorage.setItem(k, typeof v==='string' ? v : JSON.stringify(v));
-  });
-  // A restore is authoritative: the file is meant to BECOME the truth, not to be merged
-  // with whatever the cloud happens to hold. Restoring the backup's own _ts values would
-  // do the exact opposite — they are by definition older than anything saved since, so the
-  // first sync after reload reads the cloud as "newer" and wipes the restore. Stamping now
-  // is what makes the restored copy win.
-  const now=Date.now();
-  // Record conflict timestamps must also reflect this explicit restore, not the age of
-  // the backup. Otherwise a newer cloud record could undo the restored workout/weight.
-  ['wt_sessions','wt_weight'].forEach(key=>{
-    if(!keys.includes(key)) return;
-    const records=wtReadRecords(key).map(r=>({...r,updatedAt:now,...(r.deletedAt?{deletedAt:now}:{})}));
-    localStorage.setItem(key,JSON.stringify(records));
-  });
-  if(keys.indexOf('daily_home_layout')>=0){
-    const layouts=homeLayoutsNormalise(localStorage.getItem('daily_home_layout'),now);
-    layouts.mobile.updatedAt=now;
-    layouts.desktop.updatedAt=now;
-    localStorage.setItem('daily_home_layout',JSON.stringify(layouts));
+  if(!signedIn){
+    try{dailyRestoreWriteLocal(plan);}
+    catch(error){return fail('Could not store this backup. Free some storage and retry.');}
+    alert('Data restored on this device. Reloading…');location.reload();return true;
   }
-  keys.forEach(k=>{ if(!/_ts$/.test(k)) localStorage.setItem(k+'_ts', String(now)); });
-  if(!signedIn){ alert('Data restored. Reloading…'); location.reload(); return true; }
-  // Signed in: push before reloading. The cloud-wins stores (profile, budget defaults,
-  // personal info, habits) adopt the cloud copy unconditionally when their listeners
-  // re-attach, so a restore of those only survives if it reaches the cloud first.
-  restorePushToCloud().then(ok=>{
-    alert(ok ? 'Data restored and synced to your account. Reloading…'
-             : 'Data restored on this device, but syncing to the cloud failed.\n\n'+
-               'Do not open Daily on another device until you have retried, or the older '+
-               'cloud copy may overwrite this one.');
-    location.reload();
-  });
+  const uid=auth.currentUser.uid;
+  if(typeof dailyAccountMatches==='function'&&!dailyAccountMatches(auth.currentUser))return fail('Wait for the account change to finish before restoring.');
+  if(typeof _cloudWorkoutReady!=='undefined'&&!_cloudWorkoutReady)return fail('Wait for your account to finish loading before restoring a synced backup.');
+  if(typeof navigator!=='undefined'&&navigator.onLine===false)return fail('Reconnect before restoring your synced account.');
+  if(dailyRestoreBusy)return fail('A restore is already in progress.');
+  plan.localBefore=new Map([...plan.writes.keys()].map(key=>[key,localStorage.getItem(key)]));
+  dailyRestoreBusy=true;
+  restorePushToCloud(plan,uid).then(()=>{
+    if(auth.currentUser?.uid!==uid)return;
+    if(dailyRestoreLocalChanged(plan,true)){
+      fail('The cloud backup was restored, but this device changed during restore. Its newer copy is retained. Export it before retrying.');return;
+    }
+    try{dailyRestoreWriteLocal(plan);}
+    catch(error){alert('The supplied cloud records were restored, but some device-only settings could not be saved. Keep the backup and free storage before retrying.');location.reload();return;}
+    alert('Data restored and synced to your account. Reloading…');location.reload();
+  }).catch(error=>{if(auth.currentUser?.uid===uid)fail('Cloud restore failed. Keep your backup and retry. '+error.message);})
+    .finally(()=>{dailyRestoreBusy=false;});
   return true;
 }
 function openPasteRestore(){
@@ -7317,60 +7364,33 @@ function doPasteRestore(){
   // The overlay stays open on failure so the pasted text is not lost.
   restoreFromText(txt, m=>{ if(msg) msg.textContent=m; });
 }
-// Full-replacement push of every synced store, used only by a restore. Ordinary saves must
-// never call this — merge-on-write is right for day-to-day editing across two devices, and
-// wholesale replacement is right only when the user has explicitly said "this file is the
-// truth". Sessions and weights are replaced rather than unioned for that reason: after a
-// restore the union would resurrect exactly the entries the backup was taken to be rid of.
-function restorePushToCloud(){
-  if(!(firebaseReady && auth && auth.currentUser && db)) return Promise.resolve(false);
-  const uid=auth.currentUser.uid, jobs=[];
-  let failed=false;
-  const put=(path,val)=>jobs.push(
-    db.ref('users/'+uid+'/'+path).set(val).catch(()=>{ failed=true; }));
-  const putJSON=(path,key)=>{
-    const raw=localStorage.getItem(key); if(raw==null||raw==='') return;
-    try{ put(path, JSON.parse(raw)); }catch(err){}
-  };
-  // Keyed collections — same id scheme each listener writes, so the shapes still match.
-  const putKeyed=(path,key,idOf)=>{
-    const raw=localStorage.getItem(key); if(raw==null||raw==='') return;
-    try{
-      const arr=JSON.parse(raw); if(!Array.isArray(arr)) return;
-      put(path, Object.fromEntries(arr.filter(x=>x&&idOf(x)).map(x=>[idOf(x),x])));
-    }catch(err){}
-  };
-  ['profile:daily_profile','budgetDefaults:daily_budget_defaults',
-   'personalInfo:wt_personalinfo','habits:daily_habits','budgetData:daily_budget']
-    .forEach(pair=>{ const [p,k]=pair.split(':'); putJSON(p,k); });
-  // Journal, keyed by record id like sessions and weights. Without this a restore never reached
-  // the cloud at all, and the reload that follows it silently replaced the restored notes with
-  // the older cloud copy while the app reported success. loadNotes() normalises on the way out,
-  // so restoring a pre-Journal backup lands in the cloud already in the current shape.
-  try{
-    const jrn=loadNotes();
-    if(jrn.length) put('notes', Object.fromEntries(jrn.map(r=>[r.id, r])));
-  }catch(err){}
-  // Weekly reviews are keyed by their Monday, not by an id, so putKeyed's array shape does not
-  // fit — but the node still has to be pushed or a restore would leave the cloud copy in place
-  // and the reload would pull it straight back over the restored one (the Journal bug).
-  try{
-    const rv=wkrLoadReviews();
-    if(Object.keys(rv).length) put(WKR_REVIEWS_PATH, rv);
-  }catch(err){}
-  putKeyed('sessions','wt_sessions', s=>String(s.id||''));
-  putKeyed('weights','wt_weight', w=>String(w.date||'').replace(/-/g,''));
-  putKeyed('savingsLog','daily_savings_log', s=>String(s.date||'').replace(/-/g,''));
-  // Blob stores, as the {v,t} envelope the listeners expect, at the freshly stamped time.
-  SYNC_BLOB_REG.forEach(b=>{
-    const raw=localStorage.getItem(b.lsKey); if(raw==null||raw==='') return;
-    put(b.path, {v:raw, t:parseInt(localStorage.getItem(b.tsKey)||'0',10)||Date.now()});
-  });
+// Replace only the stores supplied by a validated backup.
+let dailyRestoreBusy=false;
+async function restorePushToCloud(plan,uid){
+  if(auth.currentUser?.uid!==uid)return Promise.reject(Error('The signed-in account changed.'));
+  const connected=await db.ref('.info/connected').once('value');
+  if(connected.val()!==true)throw Error('Reconnect before restoring a synced account.');
+  if(auth.currentUser?.uid!==uid)throw Error('The signed-in account changed.');
   setSyncStatus('Restoring…');
-  return Promise.all(jobs).then(()=>{
-    setSyncStatus(failed?'Sync failed':'Synced ✓');
-    return !failed;
-  });
+  // Refuse a delayed restore if another device changed a supplied store in the meantime.
+  // Reading the root is necessary to compare and replace several related stores atomically.
+  const ref=db.ref('users/'+uid),keepCached=()=>{};
+  // The SDK drops a one-time root snapshot when the read finishes. Hold a listener until
+  // the transaction settles so its first comparison uses that snapshot, even on a cold tab.
+  ref.on('value',keepCached);
+  try{
+    const before=(await ref.once('value')).val()||{},keys=Object.keys(plan.updates);
+    dailyRestoreAdvanceWorkouts(plan,before);
+    if(auth.currentUser?.uid!==uid)throw Error('The signed-in account changed.');
+    const result=await ref.transaction(current=>{
+      if(auth.currentUser?.uid!==uid)return;
+      if(dailyRestoreLocalChanged(plan,false))return;
+      if(keys.some(key=>dailyRemoteStable(current?.[key])!==dailyRemoteStable(before[key])))return;
+      return {...current,...plan.updates};
+    },undefined,false);
+    if(!result.committed)throw Error('Records changed during restore. Review the latest data and retry.');
+    return result;
+  }finally{ref.off('value',keepCached);}
 }
 
 // ── Daily + AI: context export ───────────────────────────────────
@@ -9296,7 +9316,7 @@ function aiLedgerWrite(rec, meta, srcKey, src){
   if(src) out.source=src;
   if(meta&&meta.aiActionId){ out.aiActionId=meta.aiActionId; out.aiSource=meta.aiSource||''; }
   ledgerData.push(out);
-  saveLedger();
+  if(saveLedger()===false)throw Error('The ledger entry could not be saved on this device.');
   return out;
 }
 // The one duplicate test every financial action shares: the same action id applied before, OR
@@ -9677,10 +9697,18 @@ function aiValBalanceSnapshot(d,id){
         a.history=kept;
         // `current` follows the newest dated reading only — an older import never rewrites it.
         if(!kept.some(e=>e.date>date)) a.current=bal;
-        saveAccounts(list);
       }
-      aiLedgerWrite({kind:'balance_note', date:date, amount:bal, acctId:a.id, balanceKind:kind,
+      const audit=aiLedgerWrite({kind:'balance_note', date:date, amount:bal, acctId:a.id, balanceKind:kind,
         applied:writesHistory}, meta, '', ledgerNormaliseSource(d.source));
+      if(writesHistory){
+        saveAccounts(list);
+        const saved=loadAccounts().find(item=>String(item.id)===String(a.id));
+        if(!saved?.history?.some(entry=>entry.date===date&&Number(entry.balance)===Number(bal))){
+          ledgerData=ledgerData.filter(entry=>entry.id!==audit.id);
+          if(saveLedger()===false)throw Error('The balance did not save and its audit entry could not be removed. Review the ledger before retrying.');
+          throw Error('The balance snapshot could not be saved on this device.');
+        }
+      }
       return {kind:'balance snapshot', undo:Object.assign({ledger:true, balance:writesHistory}, undo)};
     }};
 }
@@ -9775,7 +9803,7 @@ function aiValUpdateExpense(d,id){
       trail.push({at:Date.now(), actionId:(meta&&meta.aiActionId)||'', source:(meta&&meta.aiSource)||'',
         reason:reason, before:before});
       t.corrections=trail.slice(-20);
-      saveTxns();
+      if(saveTxns()===false)throw Error('The expense correction could not be saved on this device.');
       return {kind:'expense correction', undo:{expenseId:expenseId, before:before, actionId:(meta&&meta.aiActionId)||''}};
     }};
 }
@@ -9951,7 +9979,11 @@ function aiUndoLastApply(){
   let removed=0, restored=0;
   const before=txnData.length;
   txnData=txnData.filter(t=>!(t&&t.aiActionId&&ids.indexOf(t.aiActionId)>=0));
-  if(txnData.length!==before){ removed+=before-txnData.length; saveTxns(); txnAfterChange(); }
+  if(txnData.length!==before){
+    const count=before-txnData.length;
+    if(saveTxns()===false)return {removed,restored,changed:0,failed:true};
+    removed+=count;txnAfterChange();
+  }
   const fixCats=BUD_CAT_LOAD.fix();
   const keptCats=fixCats.filter(c=>!(c&&c.aiActionId&&ids.indexOf(c.aiActionId)>=0));
   if(keptCats.length!==fixCats.length){ removed+=fixCats.length-keptCats.length; BUD_CAT_SAVE.fix(keptCats);
@@ -9970,7 +10002,11 @@ function aiUndoLastApply(){
   // Ledger records this apply created, matched by exact aiActionId — same rule as transactions.
   const beforeL=ledgerData.length;
   ledgerData=ledgerData.filter(r=>!(r&&r.aiActionId&&ids.indexOf(r.aiActionId)>=0));
-  if(ledgerData.length!==beforeL){ removed+=beforeL-ledgerData.length; saveLedger(); }
+  if(ledgerData.length!==beforeL){
+    const count=beforeL-ledgerData.length;
+    if(saveLedger()===false)return {removed,restored,changed:removed+restored,failed:true};
+    removed+=count;
+  }
   // An income action may also have moved the week's stored total. Restore it only while the
   // applied value is still the one on record; a manual edit afterwards always wins over Undo.
   (last.items||[]).filter(x=>x&&x.type==='add_income'&&x.undo&&x.undo.week).forEach(x=>{
@@ -9996,18 +10032,18 @@ function aiUndoLastApply(){
   });
   // Expense corrections: restore the exact fields Apply changed, and drop the audit entry it
   // wrote. Skipped when the value has moved on since, for the same reason as the goal undo.
-  (last.items||[]).filter(x=>x&&x.type==='update_expense'&&x.undo).forEach(x=>{
+  for(const x of (last.items||[]).filter(x=>x&&x.type==='update_expense'&&x.undo)){
     const u=x.undo;
-    const t=(txnData||[]).find(y=>y&&String(y.id)===String(u.expenseId)); if(!t) return;
+    const t=(txnData||[]).find(y=>y&&String(y.id)===String(u.expenseId)); if(!t) continue;
     const trail=Array.isArray(t.corrections)?t.corrections:[];
     const mine=trail[trail.length-1];
-    if(!mine||mine.actionId!==u.actionId) return;
+    if(!mine||mine.actionId!==u.actionId) continue;
     Object.keys(u.before||{}).forEach(f=>{ t[f]=u.before[f]; });
     t.corrections=trail.slice(0,-1);
     if(!t.corrections.length) delete t.corrections;
-    saveTxns();
+    if(saveTxns()===false)return {removed,restored,changed:removed+restored,failed:true};
     restored++;
-  });
+  }
   const beforeR=kitRecipes.length;
   kitRecipes=kitRecipes.filter(r=>!(r&&r.aiActionId&&ids.indexOf(r.aiActionId)>=0));
   if(kitRecipes.length!==beforeR){ removed+=beforeR-kitRecipes.length; kitSaveRecipes(); }
@@ -10200,6 +10236,10 @@ function aiInboxApply(){
 }
 function aiInboxUndo(){
   const r=aiUndoLastApply();
+  if(r.failed){
+    showToast('Undo stopped because a financial change could not be saved. Check your records before retrying.');
+    renderAIHub();return;
+  }
   aiInboxState.result=null;
   if(typeof showToast==='function') showToast(r.changed?('Undid '+r.changed+' change'+(r.changed===1?'':'s')):'Nothing to undo');
   renderAIHub();
@@ -11200,14 +11240,15 @@ function billOccurrences(from, to){
   const out=[];
   loadFixCats().forEach(c=>{
     if(!billIsScheduled(c)||!c.dueDate) return;
-    const amount=parseFloat(catAmount(c))||0;
+    const raw=catAmount(c),value=Number(raw);
+    const amount=raw!=null&&String(raw).trim()!==''&&Number.isFinite(value)&&value>=0?value:null;
     catOccurrencesBetween(c, from, to).forEach(d=>{
       out.push({kind:'charge', cat:c, date:d, key:dateStr(d), amount:amount,
                 name:catLabel(c), acctName:(catPaymentAccount(c)||{}).name||''});
     });
   });
   (Array.isArray(accounts)?accounts:[]).forEach(a=>{
-    if(!a||a.type!=='debt'||!a.tracksStatement||!a.dueDate||(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))<=0) return;
+    if(!a||a.archivedAt||a.type!=='debt'||!a.tracksStatement||!a.dueDate||(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))<=0) return;
     const d=localMidnight(String(a.dueDate).slice(0,10));
     if(isNaN(d.getTime())||dateStr(d)!==String(a.dueDate).slice(0,10)||d<from||d>to) return;
     out.push({kind:'statement', acct:a, date:d, key:dateStr(d),
@@ -11372,8 +11413,9 @@ function payCycleForecast(available, week){
     // charge that is not part of this week's fixed total at all. See weekFixedContribution.
     addBack += weekFixedContribution(wk, b.cat.id);
   });
-  const projected=(available==null)?null:(available+addBack-scheduled);
-  return {pay, until, bills, scheduled, addBack,
+  const unpriced=bills.filter(b=>b.amount===null).length;
+  const projected=(available==null||unpriced)?null:(available+addBack-scheduled);
+  return {pay, until, bills, scheduled, addBack, unpriced,
           available:(available==null?null:available), projected};
 }
 function catUpdateField(type,id,field,val){
@@ -11838,12 +11880,12 @@ ensureAccountsMigrated();
 // it's excluded only from the debt-payoff position below, which answers a different question:
 // "if I paid everything off today with the money I'm willing to spend, where would I land?"
 function acctIsSaver(a){ return !!(a && a.type==='asset' && a.saver); }
-function accountsSaverTotal(){ return accounts.filter(acctIsSaver).reduce((s,a)=>s+(parseFloat(a.current)||0),0); }
+function accountsSaverTotal(){ return accounts.filter(a=>a&&!a.archivedAt&&acctIsSaver(a)).reduce((s,a)=>s+(parseFloat(a.current)||0),0); }
 // Spendable assets (everything except the savers accounts) minus every debt.
 // Negative → short by that much. Positive → clear, with that much spare.
 function accountsPayoffPosition(){ return (accountsAssetsTotal()-accountsSaverTotal())-accountsDebtsTotal(); }
-function accountsAssetsTotal(){ return accounts.filter(a=>a&&a.type==='asset').reduce((s,a)=>s+(parseFloat(a.current)||0),0); }
-function accountsDebtsTotal(){  return accounts.filter(a=>a&&a.type==='debt' ).reduce((s,a)=>s+(parseFloat(a.current)||0),0); }
+function accountsAssetsTotal(){ return accounts.filter(a=>a&&!a.archivedAt&&a.type==='asset').reduce((s,a)=>s+(parseFloat(a.current)||0),0); }
+function accountsDebtsTotal(){  return accounts.filter(a=>a&&!a.archivedAt&&a.type==='debt').reduce((s,a)=>s+(parseFloat(a.current)||0),0); }
 function accountsNetWorth(){ return accountsAssetsTotal()-accountsDebtsTotal(); }
 
 // Savings has two deliberately separate facts. `sav_amount` is the amount reserved in a
@@ -11859,7 +11901,7 @@ function savingsPeriodState(from,to){
   const today=getLocalDate();
   const end=(!to||to>today)?today:to;
   const start=from&&from<=end?from:end;
-  const savers=saverAccounts();
+  const savers=saverAccounts().filter(a=>end!==today||!a.archivedAt);
   const result={from:start,to:end,hasSavers:!!savers.length,accounts:savers,
     balance:savers.reduce((sum,a)=>sum+(parseFloat(a.current)||0),0),
     closingBalance:null,openingBalance:null,balanceChange:null,
@@ -11931,7 +11973,7 @@ const ACCT_ICONS={
 const ACCT_DEBT_SHORT={card:'cards',loan:'loans',person:'owed to people',bill:'bills'};
 function accountsDebtsByKind(){
   const byKind={};
-  accounts.filter(a=>a&&a.type==='debt').forEach(a=>{
+  accounts.filter(a=>a&&!a.archivedAt&&a.type==='debt').forEach(a=>{
     const amt=parseFloat(a.current)||0; if(!amt) return;
     const key=ACCT_DEBT_SHORT[a.category]||'other';
     byKind[key]=(byKind[key]||0)+amt;
@@ -12000,6 +12042,7 @@ function accountLogBalance(id, bal){
 // at boot and again from the weights cloud listener (which replaces S.weights wholesale).
 let _wtLegacyCloud=null; // parsed cloud copy, fetched once at sign-in
 function mergeLegacyWeightEntries(){
+  if(Number(localStorage.getItem('wt_weight_restore_ts'))>0)return false;
   const srcs=[];
   const local=lsLoad('daily_weight_log', []);
   if(Array.isArray(local)) srcs.push(...local);
@@ -12768,8 +12811,12 @@ function weekFixedContribution(d, id){
 // entry therefore still works exactly as before wherever no transaction has been logged, which
 // is what makes this safe to roll out onto live data.
 function loadTxns(){ const a=lsLoad('daily_transactions', []); return Array.isArray(a)?a:[]; }
-let txnData = loadTxns();
+let txnData = dailyFinanceRecover('transactions',loadTxns());
 function saveTxns(){
+  if(typeof dailyFinanceWrite==='function'&&dailyFinanceUsesDefault()){
+    try{txnData=dailyFinanceWrite('transactions',txnData);if(typeof acctLinkRefresh==='function')acctLinkRefresh();return true;}
+    catch(error){dailyFinanceIssue('transactions',error);txnData=dailyFinanceView('transactions',loadTxns());return false;}
+  }
   lsSave('daily_transactions', txnData, 'transactions');
   const ok=JSON.stringify(loadTxns())===JSON.stringify(txnData);
   if(ok&&typeof acctLinkRefresh==='function')acctLinkRefresh();
@@ -12798,8 +12845,12 @@ function genTxnId(){ return 'txn_'+Date.now()+'_'+Math.floor(Math.random()*1e4);
 //               accrued weekly from fixRates; adding the payment to variable spending would
 //               count the same money twice, so it is recorded here and excluded from Spent.
 function loadLedger(){ const a=lsLoad('daily_ledger', []); return Array.isArray(a)?a:[]; }
-let ledgerData = loadLedger();
+let ledgerData = dailyFinanceRecover('ledger',loadLedger());
 function saveLedger(){
+  if(typeof dailyFinanceWrite==='function'&&dailyFinanceUsesDefault()){
+    try{ledgerData=dailyFinanceWrite('ledger',ledgerData);if(typeof acctLinkRefresh==='function')acctLinkRefresh();return true;}
+    catch(error){dailyFinanceIssue('ledger',error);ledgerData=dailyFinanceView('ledger',loadLedger());return false;}
+  }
   lsSave('daily_ledger', ledgerData, 'ledger');
   const ok=JSON.stringify(loadLedger())===JSON.stringify(ledgerData);
   if(ok&&typeof acctLinkRefresh==='function')acctLinkRefresh();
@@ -13658,10 +13709,11 @@ function txnParkDormantManual(wk,catId){
 // and the save are one user action rather than two independent writes.
 let _txnPending=null;
 function txnReadForm(){
-  const amtRaw=(document.getElementById('txn-amount').value||'').replace(/[^0-9.\-]/g,'');
-  const amt=parseFloat(amtRaw);
+  const amtRaw=document.getElementById('txn-amount').value.trim();
+  const valid=/^-?\$?(?:(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?|\.\d{1,2})$/.test(amtRaw);
+  const amt=valid?Number(amtRaw.replace(/[$,]/g,'')):NaN;
   const err=document.getElementById('txn-err');
-  if(isNaN(amt)||amt===0){ err.textContent='Enter an amount.'; document.getElementById('txn-amount').focus(); return null; }
+  if(!Number.isSafeInteger(Math.round(amt*100))||amt===0){ err.textContent='Enter a nonzero amount with up to two decimal places.'; document.getElementById('txn-amount').focus(); return null; }
   if(!_txnCatId){ err.textContent='Pick a category.'; return null; }
   err.textContent='';
   return {date:document.getElementById('txn-date').value||getLocalDate(),
@@ -13960,7 +14012,7 @@ function billRowHtml(o){
     icon+
     '<span class="bill-row-name"><span class="bill-row-title">'+_catEscHtml(o.name)+'</span>'+
       metaHtml+'</span>'+
-    '<span class="bill-row-amt">'+fmtMoneyExact(o.amount)+'</span>'+
+    '<span class="bill-row-amt">'+(o.amount==null?'Amount not set':fmtMoneyExact(o.amount))+'</span>'+
   '</div>';
 }
 // The three-month chart. Deliberately CSS bars rather than Chart.js: three values need a
@@ -14060,6 +14112,7 @@ function fcSplit(cells){
 // caller does not re-derive either. Pure; it reads the forecast it is handed and nothing else.
 function budForecastPart(f){
   if(!f) return {tone:'is-plain', sum:null, html:''};
+  if(f.unpriced)return {tone:'is-plain',sum:null,html:'<div class="fc-part"><div class="fc-part-h">Until next pay</div><p>Projection unavailable. '+f.unpriced+' scheduled '+(f.unpriced===1?'charge needs a price':'charges need prices')+'. Known charges total '+fmtMoneyExact(f.scheduled)+'.</p></div>'};
   // is-plain when there is no projection: the figure is then the BILLS DUE, and the default
   // treatment paints it --positive — a green $41.94 under “in scheduled bills before payday”
   // states money going out as a good outcome. Nothing has been judged, so nothing is coloured.
@@ -14157,7 +14210,7 @@ function renderOutlookCard(available, week){
   const rows=occ.length
     ? '<div class="fc-timeline">'+occ.map(billRowHtml).join('')+'</div>'+
       '<div class="fc-total">'+
-        '<span class="fc-total-l">Total scheduled'+(hasStmt?', including card statements':'')+'</span>'+
+        '<span class="fc-total-l">'+(occ.some(b=>b.amount===null)?'Known scheduled amounts':'Total scheduled')+(hasStmt?', including card statements':'')+'</span>'+
         '<span class="fc-total-v">'+fmtMoneyExact(timelineTotal)+'</span>'+
       '</div>'
     : '<div class="up-none">No scheduled bills in the next 14 days.</div>';
@@ -14243,7 +14296,7 @@ function budBillsDayKey(event,day){
 function budBillsGroupHtml(day,items){
   const total=items.reduce((sum,o)=>sum+o.amount,0);
   return '<section class="bov-bill-group"><h3>'+escText(localMidnight(day).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}))+
-    '<span>'+fmtMoneyExact(total)+'</span></h3>'+items.map(billRowHtml).join('')+'</section>';
+    '<span>'+(items.some(b=>b.amount===null)?'Known amounts · ':'')+fmtMoneyExact(total)+'</span></h3>'+items.map(billRowHtml).join('')+'</section>';
 }
 function budBillsListWeeks(s){
   const weeks=new Map();
@@ -14347,7 +14400,7 @@ function budOvAttention(m, f){
   // 1. An overdue tracked statement is the only item here that is a FACT rather than a
   //    projection, which is why it leads.
   (Array.isArray(accounts)?accounts:[]).forEach(a=>{
-    if(!a||a.type!=='debt'||!a.tracksStatement||!a.dueDate||(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))<=0) return;
+    if(!a||a.archivedAt||a.type!=='debt'||!a.tracksStatement||!a.dueDate||(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))<=0) return;
     const n=acctDueDays(a);
     if(n===null||n>=0) return;
     const bal=typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0);
@@ -14389,7 +14442,7 @@ function budOvAttention(m, f){
     const rest=soon.length>1?' · '+(soon.length-1)+' more within three days':'';
     items.push({tone:'warn', icon:'alert',
       title:escText(first.name)+(first.kind==='statement'?' statement':'')+' is due '+when,
-      body:fmtMoneyExact(first.amount)+rest,
+      body:(first.amount===null?'Amount not set':fmtMoneyExact(first.amount))+rest,
       act:'View bills', run:'openBillsCalendar()'});
   }
 
@@ -14454,7 +14507,7 @@ function budOvComingHtml(f){
     ? '<div class="fc-timeline">'+shown.map(billRowHtml).join('')+'</div>'+
       (more>0?'<div class="bov-more">'+more+' more scheduled in this period</div>':'')+
       '<div class="fc-total">'+
-        '<span class="fc-total-l">Total scheduled'+(hasStmt?', including card statements':'')+'</span>'+
+        '<span class="fc-total-l">'+(occ.some(b=>b.amount===null)?'Known scheduled amounts':'Total scheduled')+(hasStmt?', including card statements':'')+'</span>'+
         '<span class="fc-total-v">'+fmtMoneyExact(total)+'</span>'+
       '</div>'+
       '<div class="fc-note">Scheduled charges are separate from your Fixed expenses allowances. This schedule does not record payments or deduct money.</div>'
@@ -14480,7 +14533,7 @@ function budOvComingHtml(f){
 function budOvAccountsHtml(){
   const head=cardHeader('bank','Accounts',
     '<button type="button" class="card-hd-act" onclick="openAccounts(this)">Open accounts →</button>');
-  if(!Array.isArray(accounts)||!accounts.length){
+  if(!Array.isArray(accounts)||!accounts.some(a=>a&&!a.archivedAt)){
     return '<div class="card bov-card">'+head+
       '<div class="bov-empty">No accounts yet. Add your savings, cards and anything else you want tracked, and your net worth and debt position appear here.</div>'+
       '<button type="button" class="bov-act bov-act-wide" onclick="openAccounts(this)">Add an account →</button>'+
@@ -14499,7 +14552,7 @@ function budOvAccountsHtml(){
   // The nearest tracked statement in either direction. acctDueText() already names an overdue
   // one as overdue, and that is the only case coloured.
   const stmt=accounts
-    .filter(a=>a&&a.type==='debt'&&a.tracksStatement&&(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))>0&&a.dueDate&&acctDueDays(a)!==null)
+    .filter(a=>a&&!a.archivedAt&&a.type==='debt'&&a.tracksStatement&&(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))>0&&a.dueDate&&acctDueDays(a)!==null)
     .sort((a,b)=>acctDueDays(a)-acctDueDays(b))[0]||null;
   const stmtRow=stmt
     ? '<div class="fin-line"><span class="fin-line-l">'+escText(stmt.name||'Card')+' statement'+
@@ -14579,7 +14632,8 @@ function budOvDatedMoney(start,end){
     (!budDateValid(x.date)||(inRange(x)&&!amountOK(x)))).length;
   // The same dated-payment reader as Budget, without assigning undated weekly totals to days.
   const m=budPeriodCompute({start,end},{},events.filter(x=>inRange(x)&&amountOK(x)),
-    txnData.filter(x=>inRange(x)&&amountOK(x)),{},null);
+    txnData.filter(x=>x&&!x.deletedAt&&amountOK(x)),{},null);
+  m.spent=budMoneyRound(m.spent-m.legacySpent);
   return {...m,total:budMoneyRound(m.spent+m.billPaid),invalid};
 }
 function budOvSpendGroups(m){
@@ -14598,8 +14652,9 @@ function budOvMonthFacts(today=getLocalDate()){
   const matched=w.compareEnd===w.end?current:budOvDatedMoney(w.start,w.compareEnd);
   const legacy=budPeriodLegacy({start:w.start,end:w.end});
   const previousLegacy=budPeriodLegacy({start:w.previousStart,end:w.previousEnd});
-  const undated=legacy.incomplete||legacy.income>0||legacy.spent>0||previousLegacy.incomplete||previousLegacy.spent>0;
-  const spendUndated=legacy.incomplete||legacy.spent>0||previousLegacy.incomplete||previousLegacy.spent>0;
+  const carryUndated=[current,matched,previous].some(m=>m.incomplete||m.legacySpent!==0);
+  const spendUndated=carryUndated||legacy.incomplete||legacy.spent>0||previousLegacy.incomplete||previousLegacy.spent>0;
+  const undated=spendUndated||legacy.income>0;
   const available=!spendUndated&&!current.invalid&&!previous.invalid&&
     (matched.purchases.length>0||matched.billPaid>0)&&(previous.purchases.length>0||previous.billPaid>0);
   const daily=m=>Array.from({length:w.days},(_,i)=>{
@@ -14670,7 +14725,7 @@ function budOvMonthlyHtml(f){
 }
 function budOvActivityRows(today=getLocalDate(),limit=6){
   const end=today,valid=x=>x&&!x.deletedAt&&budDateValid(x.date)&&x.date<=end&&budOvAmountValid(x.amount);
-  return [...txnData.filter(valid).map(record=>({kind:'purchase',record})),
+  return [...txnData.filter(x=>valid(x)&&(typeof txnIsCarryRecord!=='function'||!txnIsCarryRecord(x))).map(record=>({kind:'purchase',record})),
     ...ledgerData.filter(x=>valid(x)&&['income','savings','bill_payment'].includes(x.kind)).map(record=>({kind:record.kind,record}))]
     .sort((a,b)=>b.record.date.localeCompare(a.record.date)||(Number(b.record.createdAt)||0)-(Number(a.record.createdAt)||0)||String(a.record.id||'').localeCompare(String(b.record.id||''))).slice(0,limit);
 }
@@ -14831,7 +14886,7 @@ function buildFinanceCheckinCard(){
     const when=days===0?'today':days===1?'tomorrow':'in '+days+' days';
     lines.push('<div class="fin-line"><span class="fin-line-l">'+_catEscHtml(next.name)+
       (next.kind==='statement'?' <em>statement</em>':'')+
-      '<small>'+when+'</small></span><span class="fin-line-r">'+fmtMoneyExact(next.amount)+'</span></div>');
+      '<small>'+when+'</small></span><span class="fin-line-r">'+(next.amount===null?'Amount not set':fmtMoneyExact(next.amount))+'</span></div>');
   }
   if(f&&f.projected!=null){
     lines.push('<div class="fin-line"><span class="fin-line-l">Projected after bills</span>'+
@@ -15082,7 +15137,7 @@ function budResolveConflict(catId,action){
       merchant:TXN_CARRY_MERCHANT, note:TXN_CARRY_NOTE});
     rec.carrySource=TXN_CARRY_SOURCE;
     rec.carryWeek=wk;
-    saveTxns();
+    if(saveTxns()===false){showToast('The expense could not be saved. Your previous weekly total was kept.');return;}
   }
   if(action==='restore'){
     if(d[dfield]!==undefined){ d[field]=d[dfield]; delete d[dfield]; }
@@ -15565,7 +15620,7 @@ function renderDueBanner(monday){
   const mondayStr=weekKey(monday);
   const sun=new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+6);
   const sundayStr=weekKey(sun);
-  const hits=accounts.filter(a=>a&&a.type==='debt'&&a.tracksStatement&&(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))>0&&a.dueDate&&acctDueDays(a)!==null
+  const hits=accounts.filter(a=>a&&!a.archivedAt&&a.type==='debt'&&a.tracksStatement&&(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))>0&&a.dueDate&&acctDueDays(a)!==null
     && String(a.dueDate).slice(0,10)>=mondayStr && String(a.dueDate).slice(0,10)<=sundayStr);
   if(!hits.length){ el.innerHTML=''; return; }
   el.innerHTML=hits.map(a=>{
@@ -18393,7 +18448,8 @@ function wkrAttachSync(uid){
   const ref=db.ref('users/'+uid+'/'+WKR_REVIEWS_PATH);
   ref.on('value', snap=>{
     const local=wkrLoadReviews();
-    const {merged, localNewer}=wkrMergeReviews(local, wkrNormaliseReviews(snap.val()));
+    const raw=snap.val(),cutoff=dailyRestoreCutoff(raw);
+    const {merged, localNewer}=wkrMergeReviews(dailyAfterRestoreMap(local,cutoff), wkrNormaliseReviews(dailyAfterRestoreMap(raw,cutoff)));
     const changed=wkrReviewsSig(local)!==wkrReviewsSig(merged);
     wkrReviews=merged;
     if(changed) wkrSaveLocalReviews();
@@ -20104,7 +20160,7 @@ function renderNetWorthChartInto(wrapId){
   const partial=points.some(p=>p.count<p.total);
   // Assets, debts and net worth at each recorded date (each account carried forward from its
   // last known balance on/before that date — same convention as the old CC line).
-  const assetAccts=accounts.filter(a=>a&&a.type==='asset'), debtAccts=accounts.filter(a=>a&&a.type==='debt');
+  const assetAccts=accounts.filter(a=>a&&!a.archivedAt&&a.type==='asset'), debtAccts=accounts.filter(a=>a&&!a.archivedAt&&a.type==='debt');
   const assetsData=points.map(p=>assetAccts.length&&!p.assetCount?null:p.assets);
   const debtsData=points.map(p=>debtAccts.length&&!p.debtCount?null:p.debts);
   const netData=points.map(p=>p.net);
@@ -20121,7 +20177,7 @@ function renderNetWorthChartInto(wrapId){
   const changeText=!comparable?(points.length===1?'First recorded balance':'Account coverage changed — change not compared'):(change>0?'+':change<0?'−':'')+fmtMoney(Math.abs(change))+
     (changePct===null?'':' · '+(changePct>0?'+':'')+changePct.toFixed(1)+'%');
   const accent=(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#FF6B35').trim();
-  const stale=accounts.filter(a=>a&&(a.history||[]).length).map(a=>{
+  const stale=accounts.filter(a=>a&&!a.archivedAt&&(a.history||[]).length).map(a=>{
     const h=a.history.slice().filter(e=>e&&e.date).sort((x,y)=>x.date<y.date?-1:1);
     if(!h.length) return null;
     const days=Math.floor((localMidnight(getLocalDate())-localMidnight(h[h.length-1].date))/864e5);
@@ -20312,7 +20368,7 @@ function addBSGoal(){
 function loadHabits(){
   return lsLoad('daily_habits',
     ['Morning workout','Hit calorie goal','Log budget','8h sleep','Drink 2L water'],
-    d=>Array.isArray(d)&&d.length>0);
+    d=>Array.isArray(d));
 }
 function loadHabitsLog(){ return lsLoad('daily_habits_log', {}); }
 function saveHabitsLog(){ lsSave('daily_habits_log', habitsLog, 'habitsLog'); }
@@ -21295,7 +21351,7 @@ function fetchWeatherAt(lat,lon,signal){
         '&current=temperature_2m,apparent_temperature,weather_code,is_day,cloud_cover,wind_speed_10m,wind_direction_10m'+
         '&hourly=temperature_2m,weather_code,is_day,precipitation_probability,precipitation'+
         '&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset&forecast_days=7&timezone=auto&timeformat=unixtime',
-        signal?{signal}:undefined)
+        {cache:'no-store',signal})
     .then(r=>{ if(!r.ok) throw new Error('weather HTTP '+r.status); return r.json(); })
     .then(data=>{
       const c=data&&data.current;
@@ -21460,27 +21516,47 @@ function weatherRefreshStored(){
 function weatherUseCurrentLocation(){
   return weatherRefresh({force:true,useCurrentLocation:true,reason:'location'});
 }
+const weatherClearReceipt={pending:false,message:''};
 // Clears the device cache, and — because the user asked for exactly that — also removes the
 // obsolete users/<uid>/weatherCache node that older builds uploaded coordinates to. Nothing
 // else reads that node; this is the only place it is ever deleted.
 function weatherClearSaved(){
+  if(weatherClearReceipt.pending) return;
+  weatherClearReceipt.pending=true;
+  weatherClearReceipt.message='Clearing saved weather and location…';
   weatherCancelRequest();
   _weatherLastAttemptAt=0; _weatherLastAttemptKey='';
+  let removed=true;
   try{
     localStorage.removeItem('daily_weather_cache');
     localStorage.removeItem('daily_weather_cache_ts');
-  }catch(e){}
-  let cloud=false;
-  try{
-    const ref=(typeof fbRef==='function')?fbRef('weatherCache'):null;
-    if(ref){ cloud=true; ref.remove().catch(function(){}); }
-  }catch(e){}
+  }catch(e){ removed=false; }
   weatherSetStatus('idle','');
   if(accentMode()==='weather' && typeof applyDayColour==='function') applyDayColour();
   setWeatherPlaceholderScene();
   renderWeatherPrompt();
-  if(typeof renderWeatherSection==='function') renderWeatherSection();
-  if(typeof showToast==='function') showToast(cloud?'Saved location cleared (device and cloud)':'Saved location cleared');
+  return (async()=>{
+    try{
+      if(typeof dailyClearWeatherResponses==='function') await dailyClearWeatherResponses();
+    }catch(e){ removed=false; }
+    const localMessage=removed?'Saved weather and location cleared from this device.':'Device cleanup was incomplete. Retry clearing the saved location.';
+    let cloudMessage='';
+    try{
+      const ref=(typeof fbRef==='function')?fbRef('weatherCache'):null;
+      if(ref){
+        weatherClearReceipt.message=localMessage+' Waiting for cloud confirmation.';
+        if(typeof renderWeatherSection==='function') renderWeatherSection();
+        await ref.remove();
+        cloudMessage=' Legacy cloud location cleared.';
+      }else if(localStorage.scope?.startsWith('user:')){
+        cloudMessage=' Cloud deletion could not be confirmed. Reconnect and retry.';
+      }
+    }catch(e){ cloudMessage=' Cloud deletion failed. Reconnect and retry.'; }
+    weatherClearReceipt.pending=false;
+    weatherClearReceipt.message=localMessage+cloudMessage;
+    if(typeof renderWeatherSection==='function') renderWeatherSection();
+    if(typeof showToast==='function') showToast(weatherClearReceipt.message);
+  })();
 }
 // ── Settings → Weather ────────────────────────────────────────────
 // Appearance could already be set to follow the sky, but nothing anywhere said WHICH sky —
@@ -21555,14 +21631,14 @@ function renderWeatherSection(){
       (c&&c.lat!=null
         ? '<details class="wx-details"'+(coordinatesOpen?' open':'')+'><summary>Stored coordinates</summary>'+
           '<div class="wx-coords">'+escText(Number(c.lat).toFixed(4))+', '+escText(Number(c.lon).toFixed(4))+
-          '<br><span class="stg-help">Kept on this device only. Never uploaded, never included in a backup file.</span></div></details>'
+          '<br><span class="stg-help">Daily stores these coordinates on this device and excludes them from account sync and backups.</span></div></details>'
         : '')+
       '<div class="stg-actions stack">'+
         '<button type="button" class="stg-btn primary"'+(busy&&_weatherRequest&&_weatherRequest.useLocation?' disabled':'')+' onclick="weatherUseCurrentLocation()">'+
           (weatherIsReal(c)?'Update current location':'Use current location')+'</button>'+
         '<button type="button" class="stg-btn"'+((busy||!c||c.lat==null)?' disabled':'')+' onclick="weatherRefreshStored()">Refresh at the saved location</button>'+
       '</div>'+
-      '<p class="stg-help">"Use current location" asks your device for a fresh position every time, even when coordinates are already saved.</p>'+
+      '<p class="stg-help">Use current location asks your device for a fresh position. Daily sends the coordinates to Open-Meteo for your forecast and uses the saved coordinates for refreshes.</p>'+
       '<p class="stg-help">Your browser and your phone’s settings control the permission, not Daily. If it is blocked, allow location for this site there and come back. Some browsers (including Safari) never report the status, which shows as Unknown — that does not mean blocked.</p>'+
       '<button type="button" class="stg-link" onclick="openSettingsSection(\'appearance\',\'stg-card-theme\')">Choose or turn off weather-driven colour →</button>'+
     '</div>'+
@@ -21571,8 +21647,9 @@ function renderWeatherSection(){
     '<div class="stg-card stg-danger-zone" id="stg-card-wx-danger">'+
       stgCardHead('alert','Danger zone','Removes the cached reading and coordinates from this device, so old coordinates stop being reused. If you are signed in it also deletes the obsolete copy an earlier version of Daily uploaded.')+
       '<div class="stg-actions stack">'+
-        '<button type="button" class="stg-btn danger"'+(!c?' disabled':'')+' onclick="weatherClearSaved()">Clear saved weather &amp; location</button>'+
+        '<button type="button" class="stg-btn danger"'+(weatherClearReceipt.pending?' disabled':'')+' onclick="weatherClearSaved()">Clear saved weather &amp; location</button>'+
       '</div>'+
+      '<p class="stg-help" role="status">'+escText(weatherClearReceipt.message)+'</p>'+
     '</div>';
   renderAccentCurrent();
 }
@@ -22591,7 +22668,7 @@ function renderHome(){
   // Net Worth & Accounts widget (daily_accounts): total balance, per-account list
   // (tap to expand/collapse), net worth, and any tracked statement debt + due date.
   const _nw=accountsNetWorth(), _assets=accountsAssetsTotal(), _debts=accountsDebtsTotal();
-  const _acctRows=accounts.map(a=>{
+  const _acctRows=accounts.filter(a=>a&&!a.archivedAt).map(a=>{
     const isD=a&&a.type==='debt';
     const util=(typeof acctUtilisation==='function')?acctUtilisation(a):null;
     const cat=(typeof acctCategoryLabel==='function')?acctCategoryLabel(a):null;
@@ -22605,7 +22682,7 @@ function renderHome(){
     '</div>';
   }).join('');
   const _stmtRows=accounts
-    .filter(a=>a&&a.type==='debt'&&a.tracksStatement&&(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))>0)
+    .filter(a=>a&&!a.archivedAt&&a.type==='debt'&&a.tracksStatement&&(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))>0)
     .map(a=>{
       const dueTxt=acctDueText(a);
       return '<div style="font-size:12px;font-weight:600;color:var(--amber-dark);background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:7px 10px;margin-top:8px">'+
@@ -24593,9 +24670,9 @@ function acctChangeHtml(a){
 // Current balances lead Accounts; the optional chart describes dated history separately.
 function renderAccountsHero(){
   const el=document.getElementById('accounts-hero'); if(!el) return;
-  if(!accounts.length){ el.innerHTML=''; return; }
+  if(!accounts.some(a=>a&&!a.archivedAt)){ el.innerHTML=''; return; }
   const assets=accountsAssetsTotal(), debts=accountsDebtsTotal();
-  const savers=accounts.filter(acctIsSaver);
+  const savers=accounts.filter(a=>a&&!a.archivedAt&&acctIsSaver(a));
   const saverTot=accountsSaverTotal();
   const pos=accountsPayoffPosition();
   const clear=pos>=0;
@@ -25564,7 +25641,7 @@ function obWeatherSectionHTML(){
     (real
       ? '<div class="ob-weather-ok">That’s your local sky, and Daily’s colour follows it from here. Change or clear it any time in Settings → Weather.</div>'
       : '<button class="ob-btn-skip ob-btn-block ob-weather-use" id="ob-weather-btn" onclick="obWeatherUse()">Use my location</button>'+
-        '<div class="ob-weather-note" id="ob-weather-note">A sample sky is shown above. Your location is used only to fetch the local forecast, it stays on this device and is never uploaded — and nothing is requested until you press the button. You can carry on without it and turn weather on later in Settings → Weather.</div>');
+        '<div class="ob-weather-note" id="ob-weather-note">Use my location sends your coordinates to Open-Meteo for the forecast. Daily keeps a copy on this device for refreshes. You can skip this and enable it later in Settings → Weather.</div>');
 }
 function obWeatherCardHTML(){
   const c=(typeof loadWeatherCache==='function')?loadWeatherCache():null;
@@ -27240,7 +27317,7 @@ function kitRenderFeatured(){
   wrap.innerHTML=
     '<div class="kitchen-hero-card">'+
       '<p class="card-label">'+label+'</p>'+
-      '<p class="kitchen-hero-name">'+(r.emoji?r.emoji+' ':'')+kitEsc(r.name)+'</p>'+
+      '<p class="kitchen-hero-name">'+(r.emoji?kitEsc(r.emoji)+' ':'')+kitEsc(r.name)+'</p>'+
       ((cal||time)?'<div style="display:flex;gap:8px;align-items:center;margin-top:8px">'+cal+time+'</div>':'')+
       '<button class="kitchen-hero-btn" onclick="kitOpenDetail(\''+r.id+'\')">View Recipe →</button>'+
     '</div>';
@@ -27276,7 +27353,7 @@ function kitRenderList(){
       }
       return '<div class="kit-card kit-c-'+(r.category||'dinner')+fav+sel+'" onclick="kitOpenDetail(\''+r.id+'\')">'+
         '<div class="kit-card-top">'+
-          '<div class="kit-cat-tile" aria-hidden="true">'+kitCardEmoji(r)+'</div>'+
+          '<div class="kit-cat-tile" aria-hidden="true">'+kitEsc(kitCardEmoji(r))+'</div>'+
           '<div class="kit-card-name">'+kitEsc(r.name)+'</div>'+
           // No favourite star on the card face: favouriting lives in the ⋯ menu, and the card
           // says it with the accent edge .kit-card-favourite draws. One control per card.
@@ -27499,7 +27576,7 @@ function kitRenderDetail(id,target){
         'aria-pressed="'+(r.favourite?'true':'false')+'" aria-label="'+(r.favourite?'Remove from favourites':'Add to favourites')+'">'+
         (r.favourite?'★':'☆')+'</button>'+kitDetailMoreHTML(r.id)+
     '</div>'+
-    (r.emoji?'<div class="kit-detail-emoji">'+r.emoji+'</div>':'')+
+    (r.emoji?'<div class="kit-detail-emoji">'+kitEsc(r.emoji)+'</div>':'')+
     '<div class="kit-detail-name">'+kitEsc(r.name)+'</div>'+
     '<div class="kit-card-meta" style="margin-bottom:14px"><span class="kit-cat-tag kit-cat-'+r.category+'">'+r.category+'</span>'+(r.batchPrep?'<span class="kit-batch-badge">🍱 Batch</span>':'')+cookInfo+tags+'</div>'+
     (r.description?'<div class="kit-card-desc" style="margin-bottom:16px">'+kitEsc(r.description)+'</div>':'')+
@@ -27627,20 +27704,21 @@ function kitLogManualEstimate(){
       '<label class="kit-form-field"><span>Fat (g)</span><input id="kit-log-est-fat" type="number" min="0" step="0.1" inputmode="decimal"></label>'+
     '</div><div class="kit-sheet-actions"><button class="modal-btn secondary" onclick="kitLogRender()">Back</button><button class="modal-btn primary" onclick="kitLogSaveEstimate()">Log estimate</button></div>');
 }
-function kitLogSaveEstimate(){
+async function kitLogSaveEstimate(){
   const r=kitRecipes.find(x=>x.id===kitLogState.recipeId); if(!r) return;
   const read=(id,required)=>{const raw=String((document.getElementById(id)||{}).value||'').trim();if(!raw)return required?NaN:null;const n=Number(raw);return Number.isFinite(n)&&n>=0?n:NaN;};
   const total={calories:read('kit-log-est-cal',true),protein:read('kit-log-est-pro',false),carbs:read('kit-log-est-carb',false),fat:read('kit-log-est-fat',false)};
   if(Object.values(total).some(v=>Number.isNaN(v))){showToast('Use non-negative numbers and add calories');return;}
   const n=kitLogState.servings,rv=kitResolve(r,kitLogState.optionId,r.servings),per={};
   Object.keys(total).forEach(k=>{per[k]=total[k]==null?null:Math.round(total[k]/n*10)/10;});
-  const id=typeof nutLogRecipeSnapshot==='function'?nutLogRecipeSnapshot(r,Object.assign({},rv,{nutrition:per}),n,kitLogState.category,'recipe-manual'):null;
-  if(!id){showToast('Nutrition log is unavailable');return;}
+  if(typeof nutLogRecipeSnapshot!=='function'){showToast('Nutrition log is unavailable');return;}
+  const id=await nutLogRecipeSnapshot(r,Object.assign({},rv,{nutrition:per}),n,kitLogState.category,'recipe-manual');
+  if(!id)return;
   kitSheetClose();showToast('Logged '+kitTrim(n)+' serving'+(n===1?'':'s')+' · manual estimate');
   const dov=document.getElementById('kit-detail-overlay');if(dov)dov.style.display='none';updateKitFab();
   if(typeof nutOpen==='function')nutOpen(kitLogState.category,id);
 }
-function kitLogConfirm(){
+async function kitLogConfirm(){
   const r=kitRecipes.find(x=>x.id===kitLogState.recipeId); if(!r) return;
   const rv=kitResolve(r,kitLogState.optionId,r.servings);
   const n=kitLogState.servings;
@@ -27656,8 +27734,10 @@ function kitLogConfirm(){
   if(rv.optionId){ entry.proteinOptionId=rv.optionId; entry.proteinLabel=rv.optionLabel; }
   const m=k=>rv.nutrition[k]==null?null:Math.round(rv.nutrition[k]*n*10)/10;
   ['protein','carbs','fat'].forEach(k=>{ const val=m(k); if(val!=null) entry[k]=val; });
-  const nutEntryId=typeof nutLogRecipeSnapshot==='function'?nutLogRecipeSnapshot(r,rv,n,kitLogState.category):null;
-  if(!nutEntryId){
+  const canonical=typeof nutLogRecipeSnapshot==='function';
+  const nutEntryId=canonical?await nutLogRecipeSnapshot(r,rv,n,kitLogState.category):null;
+  if(canonical&&!nutEntryId)return;
+  if(!canonical){
     const today=getLocalDate(); if(S.dailyLog.date!==today)S.dailyLog={date:today,entries:[]};
     entry.kcal=kcal; entry._unknown=kcal==null; S.dailyLog.entries.push(entry); persistDailyLog();
   }
@@ -28147,7 +28227,7 @@ function kitOpenForm(id){
     '</div>'+
     '<input type="hidden" id="kit-f-id" value="'+(editing?editing.id:'')+'">'+
     '<div class="kit-f-emoji-row">'+
-      '<input id="kit-f-emoji" class="kit-f-emoji-input" type="text" value="'+(r.emoji||'🍽️')+'" maxlength="4" placeholder="🍽️">'+
+      '<input id="kit-f-emoji" class="kit-f-emoji-input" type="text" value="'+kitEsc(r.emoji||'🍽️')+'" maxlength="4" placeholder="🍽️">'+
       '<input id="kit-f-name" class="kit-f-name-input" type="text" value="'+kitEsc(r.name||'')+'" placeholder="Recipe name" autocomplete="off">'+
     '</div>'+
     '<div class="settings-2col">'+
@@ -29826,7 +29906,7 @@ try {
   checkReminders();
   // Boot is over: from here every save is a real edit and stamps the current time.
   _bootPhase = false;
-  const initialTarget=dailyHistoryTarget(decodeURIComponent(location.hash.replace(/^#/,'')));
+  const initialTarget=dailyHistoryTarget(location.hash.replace(/^#/,''));
   if(initialTarget&&(initialTarget.view!==S.view||initialTarget.view==='log'||initialTarget.view==='food')){
     setView(initialTarget.view,null,{fromHistory:true,logTab:initialTarget.logTab,foodTab:initialTarget.foodTab,foodTodayView:initialTarget.foodTodayView});
   }
@@ -31978,8 +32058,12 @@ function plansOpenHTML(id){
   const title=document.getElementById('plan-html-title');
   if(!overlay||!frame) return;
   if(title) title.textContent=plan.name;
-  frame.srcdoc=plan.content;
+  // A sandboxed frame created inside the hidden viewer can stay blank in Chrome.
+  // Mount a fresh copy with the same isolation once its container is visible.
+  const visibleFrame=frame.cloneNode(false);
+  visibleFrame.srcdoc=plan.content;
   overlay.style.display='flex';
+  frame.replaceWith(visibleFrame);
 }
 
 function plansCloseHTML(){

@@ -101,6 +101,17 @@ const recipe = (extra = {}) => ({
   steps: ['Cook the rice.'], ...extra
 });
 
+test('a recipe imported with punctuation in its emoji displays literal text in the featured card', () => {
+  const c = context();
+  const result = c.kitParseImport(JSON.stringify(recipe({ emoji: '🍲 <Rice> & "Tea"' })));
+  assert.equal(result.recipes.length, 1);
+  c.kitRecipes = result.recipes;
+  c.kitResolveDefault = r => c.kitResolve(r, null, r.servings);
+  vm.runInContext(extract('kitRenderFeatured'), c);
+  c.kitRenderFeatured();
+  assert.match(c.__nodes['kitchen-featured'].innerHTML, /🍲 &lt;Rice&gt; &amp; &quot;Tea&quot;/);
+});
+
 // ── Quantity parsing ─────────────────────────────────────────────
 
 test('ordinary numbers, decimals and numeric strings parse as themselves', () => {

@@ -110,6 +110,13 @@ test('active split is matched against live configuration, never the selected or 
   assert.deepEqual(writes, []);
 });
 
+test('the imported plan viewer has a separate origin and supports interactive plans', () => {
+  const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '../index.html'), 'utf8');
+  const frame = html.match(/<iframe\b[^>]*\bid="plan-html-frame"[^>]*>/)[0];
+  assert.deepEqual(frame.match(/\bsandbox="([^"]*)"/)[1].split(/\s+/), ['allow-scripts']);
+  assert.match(frame, /\breferrerpolicy="no-referrer"/);
+});
+
 test('workout collection preserves legacy records and keeps imported HTML in Plans', () => {
   const { c, data, writes } = fixture([saved('a'), legacy, documentPlan]);
   const before = data.get('wt_plans');
