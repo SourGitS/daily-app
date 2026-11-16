@@ -9,12 +9,29 @@ test('a new Home starts in the curated card order for its device',()=>{
  assert.deepEqual(categoryVisible(desktop,'desktop'),[
   'training','weather','activity','habits','shopping','weight','records','food','stats','journal','review'
  ]);
- assert.deepEqual(phone.hidden,[]);assert.deepEqual(desktop.hidden,[]);
+ assert.deepEqual(phone.hidden,['planner']);assert.deepEqual(desktop.hidden,['planner']);
  assert.ok(desktop.order.includes('budget'),'Budget remains included in the desktop Training card');
 });
 test('category layout defaults on, honours explicit legacy choice and does not mutate input',()=>{
  const input={enabled:true,order:['food','bogus','food','training'],hidden:['weather','weather','bogus']},before=JSON.stringify(input);
- const p=categoryProfile(input,'mobile');assert.equal(JSON.stringify(input),before);assert.deepEqual(p.order.slice(0,2),['food','training']);assert.equal(p.order.length,12);assert.deepEqual(p.hidden,['weather']);assert.equal(categoryProfile('{bad','mobile').enabled,true);assert.equal(categoryProfile(null,'desktop').enabled,true);assert.equal(categoryProfile({enabled:false},'mobile').enabled,false);
+ const p=categoryProfile(input,'mobile');assert.equal(JSON.stringify(input),before);assert.deepEqual(p.order.slice(0,2),['food','training']);assert.equal(p.order.length,model.CATEGORY_HOME_CARDS.length);assert.deepEqual(p.hidden,['weather','planner']);assert.equal(categoryProfile('{bad','mobile').enabled,true);assert.equal(categoryProfile(null,'desktop').enabled,true);assert.equal(categoryProfile({enabled:false},'mobile').enabled,false);
+});
+test('Planner is opt-in for saved layouts and can occupy a full row without moving earlier cards',()=>{
+ for(const mode of ['mobile','desktop']){
+  const oldOrder=model.CATEGORY_HOME_CARDS.map(card=>card.id).filter(id=>id!=='planner').reverse();
+  const oldLayout={enabled:true,order:oldOrder,hidden:['stats','budget']};
+  const upgraded=categoryProfile(JSON.stringify(oldLayout),mode);
+  assert.deepEqual(upgraded.order,[...oldOrder,'planner']);
+  assert.deepEqual(upgraded.hidden,[...oldLayout.hidden,'planner']);
+  const originalVisible=categoryVisible(oldLayout,mode);
+  assert.deepEqual(categoryVisible(upgraded,mode),originalVisible);
+  upgraded.hidden=upgraded.hidden.filter(id=>id!=='planner');
+  const restored=categoryProfile(JSON.stringify(upgraded),mode);
+  assert.deepEqual(restored,upgraded);
+  const {planner,...earlier}=categoryCells(categoryVisible(restored,mode),mode);
+  assert.deepEqual(earlier,categoryCells(originalVisible,mode));
+  assert.deepEqual(planner,{row:earlier[originalVisible.at(-1)].row+1,span:mode==='mobile'?2:12});
+ }
 });
 test('combining Budget retains its standalone placement and hidden choice',()=>{
  const p=categoryProfile({enabled:true,order:['food','budget','training']},'desktop');assert.ok(!categoryVisible(p).includes('budget'));p.hidden.push('training');assert.deepEqual(categoryVisible(p).slice(0,2),['food','budget']);p.hidden.push('budget');assert.ok(!categoryVisible(p).includes('budget'));
@@ -31,8 +48,8 @@ test('phone Training and Budget keep independent positions and visibility withou
  assert.equal(cells.training.span,2);assert.equal(cells.budget.span,2);assert.equal(cells.training.row,cells.budget.row+1);
 });
 test('every reordered and hidden card packs in source order without grid holes',()=>{
- for(const mode of ['mobile','desktop'])for(let offset=0;offset<12;offset++){
-  const p=categoryProfile(null,mode);p.order=p.order.slice(offset).concat(p.order.slice(0,offset));p.hidden=p.order.filter((_,i)=>i%3===0);const ids=categoryVisible(p),cells=categoryCells(ids,mode);let previous=0;const rows={};
+ for(const mode of ['mobile','desktop'])for(let offset=0;offset<model.CATEGORY_HOME_CARDS.length;offset++){
+  const p=categoryProfile(null,mode);p.order=p.order.slice(offset).concat(p.order.slice(0,offset));p.hidden=p.order.filter((_,i)=>i%3===0);const ids=categoryVisible(p,mode),cells=categoryCells(ids,mode);let previous=0;const rows={};
   ids.forEach(id=>{assert.ok(cells[id].row>=previous);previous=cells[id].row;rows[previous]=(rows[previous]||0)+cells[id].span;});Object.values(rows).forEach(total=>assert.equal(total,mode==='mobile'?2:12));
  }
  assert.deepEqual(categoryCells([],'mobile'),{});

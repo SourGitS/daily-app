@@ -6,6 +6,7 @@
 <title>DailyHub · Planner preview</title>
 <style>
   *{box-sizing:border-box}
+  [hidden]{display:none!important}
   :root{color-scheme:dark;font:15px/1.45 system-ui,sans-serif;color:#ededed;background:#121212}
   body{max-width:1536px;margin:auto;padding:18px clamp(12px,3vw,36px) 32px}
   h1{font-size:clamp(20px,3vw,28px);letter-spacing:-.04em;margin:0}
@@ -31,6 +32,11 @@
 <body>
 <header><h1>Planner preview</h1><span class="meta">Local sample account</span></header>
 <div class="tools">
+  <div id="compare-layouts" class="device" role="group" aria-label="Compare Home layouts" hidden>
+    <button type="button" data-layout="phone">iPhone · on</button>
+    <button type="button" data-layout="desktop-on">Desktop · on</button>
+    <button type="button" data-layout="desktop-off">Desktop · off</button>
+  </div>
   <label>Screen <select id="screen">
     <option value="week">Planner · Week</option><option value="review">Weekly Review · Priorities</option>
     <option value="month">Planner · Month</option><option value="editor">Planner · Add action</option>
@@ -55,20 +61,52 @@
   const params=new URLSearchParams(location.search);
   const frame=document.getElementById('app-frame'), box=document.getElementById('frame-box'), stage=document.getElementById('stage');
   const screen=document.getElementById('screen'), direct=document.getElementById('direct');
+  const compare=location.pathname==='/home-planner';
+  const choices=[...document.querySelectorAll('[data-layout]')];
+  let layout=params.get('layout');
+  if(!choices.some(button=>button.dataset.layout===layout))layout='phone';
   if([...screen.options].some(option=>option.value===params.get('screen')))screen.value=params.get('screen');
   let device=params.get('device')==='desktop'?'desktop':'phone';
   function size(){
-    const desktop=device==='desktop',width=desktop?Math.max(1280,stage.clientWidth):390,height=desktop?900:844;
-    const scale=Math.min(1,stage.clientWidth/width);
+    const desktop=device==='desktop',width=desktop?Math.max(1280,stage.clientWidth):390;
+    let height=desktop?900:844,scale=Math.min(1,stage.clientWidth/width);
+    if(compare&&innerHeight>=650){
+      const available=innerHeight-stage.offsetTop-12;
+      if(desktop)height=Math.max(600,Math.min(height,Math.floor(available/scale)));
+      else scale=Math.min(scale,available/height);
+    }
     frame.width=width;frame.height=height;frame.style.transform='scale('+scale+')';
     box.style.width=width*scale+'px';box.style.height=height*scale+'px';
     for(const id of ['phone','desktop'])document.getElementById(id).setAttribute('aria-pressed',String(id===device));
   }
-  function updateURL(){const url=new URL(location.href);url.searchParams.set('screen',screen.value);url.searchParams.set('device',device);history.replaceState(null,'',url);}
-  function openScreen(){direct.href='/app?screen='+screen.value;frame.src=direct.href;updateURL();}
+  function openScreen(){
+    const url=new URL(location.href);
+    if(compare){
+      device=layout==='phone'?'phone':'desktop';
+      choices.forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.layout===layout)));
+      direct.href='/app?screen=home-planner-'+(layout==='desktop-off'?'off':'on');
+      url.searchParams.set('layout',layout);
+    }else{
+      direct.href='/app?screen='+screen.value;
+      url.searchParams.set('screen',screen.value);url.searchParams.set('device',device);
+    }
+    size();frame.src=direct.href;history.replaceState(null,'',url);
+  }
+  if(compare){
+    document.querySelector('h1').textContent='Home · Planner card';
+    document.title='DailyHub · Home Planner card';
+    document.querySelector('details').hidden=true;
+    screen.closest('label').hidden=true;
+    document.getElementById('phone').hidden=document.getElementById('desktop').hidden=true;
+    document.getElementById('compare-layouts').hidden=false;
+    choices.forEach(button=>button.onclick=()=>{layout=button.dataset.layout;openScreen();});
+  }
   screen.addEventListener('change',openScreen);
-  for(const id of ['phone','desktop'])document.getElementById(id).onclick=()=>{device=id;size();updateURL();};
+  for(const id of ['phone','desktop'])document.getElementById(id).onclick=()=>{
+    device=id;size();const url=new URL(location.href);url.searchParams.set('device',device);history.replaceState(null,'',url);
+  };
   new ResizeObserver(size).observe(stage);
+  addEventListener('resize',size);
   size();openScreen();
 </script>
 </body>

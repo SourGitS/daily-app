@@ -2,9 +2,32 @@
 window.Chart = class {constructor(){this.data={};this.options={};} destroy(){} update(){} resize(){}};
 addEventListener('load', () => {
   const timer=setInterval(() => {
-    if(typeof _cloudWorkoutReady==='undefined'||!_cloudWorkoutReady)return;
+    if(typeof _cloudWorkoutReady==='undefined'||!_cloudWorkoutReady||_bootPhase||_syncApplying)return;
     clearInterval(timer);
     obDismiss();dailyUpdateDismiss();
+    const screen=new URLSearchParams(location.search).get('screen');
+    if(screen==='home-planner-on'||screen==='home-planner-off'){
+      if(performance.getEntriesByType('navigation')[0]?.type!=='reload'){
+        const show=screen==='home-planner-on';
+        for(const mode of ['mobile','desktop']){
+          const profile=categoryLoad(mode);
+          if(profile.hidden.includes('planner')===show){
+            profile.hidden=show?profile.hidden.filter(id=>id!=='planner'):[...profile.hidden,'planner'];
+            categorySave(mode,profile);
+          }
+        }
+        setView('home');
+        renderHome();
+        document.fonts.ready.then(()=>requestAnimationFrame(()=>{
+          let scroll=document.querySelector('#home-content');
+          while(scroll&&!(scroll.scrollHeight>scroll.clientHeight&&/auto|scroll/.test(getComputedStyle(scroll).overflowY)))scroll=scroll.parentElement;
+          scroll=scroll||document.scrollingElement;
+          scroll.scrollTop=scroll.scrollHeight;
+        }));
+      }
+      document.documentElement.dataset.previewReady=screen;
+      return;
+    }
     const today=getLocalDate(), weekday=new Date(today+'T12:00:00Z').getUTCDay();
     const monday=jrnPlannerAdd(today,-((weekday+6)%7)), prior=jrnPlannerAdd(monday,-7);
     const source={week:prior,text:'Get the bike serviced',occurrence:0};
@@ -12,7 +35,6 @@ addEventListener('load', () => {
       const task=plannerCreateTask({title:'Call the bike shop',date:jrnPlannerAdd(monday,1),source});
       if(task)sessionStorage.setItem('planner-preview-seeded','1');
     }
-    const screen=new URLSearchParams(location.search).get('screen');
     // Opening a gallery example selects that screen once. A browser reload exercises
     // the app's normal route and saved Month/Week preference.
     if(performance.getEntriesByType('navigation')[0]?.type==='reload'){

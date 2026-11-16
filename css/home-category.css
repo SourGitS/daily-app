@@ -45,6 +45,24 @@
 /* Let the tile's native tooltip receive hover above the full-card Budget link. */
 @media(hover:hover){.cat-day-mark{position:relative;z-index:2;cursor:pointer}}
 .cat-journal{padding-left:28px;background-image:linear-gradient(to right,transparent 15px,var(--cat-line) 15px,var(--cat-line) 16px,transparent 16px)}.cat-journal blockquote{font-size:13px;line-height:1.8;font-style:italic;padding-bottom:9px;margin:0 0 14px;background:repeating-linear-gradient(to bottom,transparent 0,transparent calc(1.8em - 1px),var(--cat-line) calc(1.8em - 1px),var(--cat-line) 1.8em);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}.cat-journal .cat-action{padding:9px 14px;border:1.5px solid var(--cat-line);border-radius:10px;text-align:center}.cat-journal .cat-action svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.cat-planner>.cat-heading{margin-bottom:4px}
+.cat-planner>.cat-copy{margin:6px 0 0}
+.cat-planner-actions{display:grid;min-width:0}
+.cat-planner-task{
+ display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:0;min-height:44px;
+ padding:8px 0;border:0;border-radius:0;background:transparent;text-align:start;color:var(--cat-ink);
+ font:700 13px/1.45 var(--font-ui);cursor:pointer;
+}
+.cat-planner-task>span{min-width:0;overflow-wrap:anywhere}
+.cat-planner-task time{flex:none;color:var(--cat-muted);font-size:11px;font-weight:500}
+.cat-planner-task+.cat-planner-task{border-top:1px solid var(--cat-line)}
+.cat-planner-task:focus-visible{outline:2px solid var(--accent-text);outline-offset:-2px;border-radius:6px}
+@media(hover:hover){.cat-planner-task:hover>span{text-decoration:underline;text-underline-offset:3px}}
+@media(min-width:1024px){
+ .cat-planner-actions{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:18px}
+ .cat-planner-task{flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;padding-block:4px}
+ .cat-planner-task+.cat-planner-task{border-top:0;border-inline-start:1px solid var(--cat-line);padding-inline-start:18px}
+}
 .cat-review>.cat-heading{margin-bottom:0}
 .cat-review-facts{
  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-content:center;

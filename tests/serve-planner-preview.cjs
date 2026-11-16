@@ -9,7 +9,7 @@ if(lan&&lan!==hosts[0]){
   if(!net.isIPv4(lan)||!/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(lan))throw Error('Choose the private network address used by this computer.');
   hosts.push(lan);
 }
-const screens=new Set(['week','review','month','editor','log','finance']);
+const screens=new Set(['week','review','month','editor','log','finance','home-planner-on','home-planner-off']);
 const sample=plannerSampleFiles();
 // The optional local font mirror lets the phone use the app's fonts without a CDN request.
 const fonts=new Map(), fontDir=process.env.DAILY_PREVIEW_FONT_DIR;
@@ -29,12 +29,14 @@ function handler(req,res){
   function reply(status,type,body){res.writeHead(status,{...headers,'Content-Type':type});res.end(req.method==='HEAD'?undefined:body);}
   if(!['GET','HEAD'].includes(req.method))return reply(405,'text/plain','Read only');
   const url=new URL(req.url,'http://localhost');
-  if(url.pathname==='/')return reply(200,'text/html; charset=utf-8',read('planner-layouts.html'));
+  if(url.pathname==='/'||url.pathname==='/home-planner')return reply(200,'text/html; charset=utf-8',read('planner-layouts.html'));
   if(url.pathname==='/app'){
     const screen=screens.has(url.searchParams.get('screen'))?url.searchParams.get('screen'):'week';
     const query=new URLSearchParams('preview&week-preview&home-cards&planner-review&polish&ui=journal&accent=385c72&switch=planner-week');
     query.set('screen',screen);
-    const view={review:'stats',finance:'budget',log:'log'}[screen]||'notes';
+    const home=screen.startsWith('home-planner-');
+    if(home)query.set('switch',screen);
+    const view=home?'home':({review:'stats',finance:'budget',log:'log'}[screen]||'notes');
     res.writeHead(302,{...headers,Location:'/tests/sync-browser.html?'+query+'#'+view});return res.end();
   }
   if(url.pathname==='/planner-preview-boot.js')return reply(200,'application/javascript',read('planner-preview-boot.js'));

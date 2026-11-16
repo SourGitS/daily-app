@@ -24,3 +24,21 @@ if(params.has('week-preview')){
   }
   if(stores.notes?.call)stores.notes.call.title='Collect the parcel';
 }
+
+if(['home-planner-on','home-planner-off'].includes(params.get('screen'))){
+  const relativeDate=offset=>{
+    const day=new Date();
+    day.setDate(day.getDate()+offset);
+    return [day.getFullYear(),String(day.getMonth()+1).padStart(2,'0'),String(day.getDate()).padStart(2,'0')].join('-');
+  };
+  // Both examples start with the very same records, including one finished action.
+  const task=(id,title,offset,done=false)=>{
+    const date=relativeDate(offset);
+    return {id,title,date,originalDate:date,done,createdAt:500,updatedAt:500,doneAt:done?500:0};
+  };
+  stores.plannerTasks=Object.fromEntries([
+    task('sample-bike','Book the bike service',0),
+    task('sample-walk','Plan the coastal walk',3),
+    task('sample-library','Return the library books',-1,true)
+  ].map(row=>[row.id,row]));
+}

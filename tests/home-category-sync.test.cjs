@@ -41,7 +41,7 @@ test('Reset previews the device default; Cancel retains a saved arrangement and 
  const desktop=a.storage.getItem(key('desktop')),phone=a.storage.getItem(key('mobile'));
  a.c.categoryDraft('mobile');a.editorAction('reset');
  assert.deepEqual(a.c.categoryDraft('mobile').order,model.categoryProfile(null,'mobile').order);
- assert.deepEqual(a.c.categoryDraft('mobile').hidden,[]);
+ assert.deepEqual(a.c.categoryDraft('mobile').hidden,['planner']);
  a.editorAction('cancel');
  assert.equal(a.storage.getItem(key('mobile')),phone);
  a.c.categoryDraft('mobile');a.editorAction('reset');a.editorAction('apply');
@@ -53,6 +53,18 @@ test('two devices sync phone and desktop independently and never write legacy la
  a.c.categorySave('mobile',saved(true,['weather'],['food','training']));b.c.categorySave('desktop',saved(true,['journal'],['stats','training']));await cloud.settle();cloud.emit(path('mobile'));cloud.emit(path('desktop'));
  for(const d of [a,b]){assert.equal(d.c.categoryLoad('mobile').hidden[0],'weather');assert.equal(d.c.categoryLoad('desktop').hidden[0],'journal');assert.equal(d.c.categoryLoad('mobile').order[0],'food');assert.equal(d.c.categoryLoad('desktop').order[0],'stats');}
  assert.equal(cloud.get('users/u/homeLayout').v,'legacy');assert.equal(cloud.get('users/u/transactions').v,'expenses');assert.ok(cloud.writes.every(w=>/categoryHome(Mobile|Desktop)$/.test(w.path)));
+});
+test('enabling Planner on desktop survives sync and reload without enabling it on phone',async()=>{
+ const cloud=new MultiCloud(),first=device(cloud),second=device(cloud);
+ first.attach();second.attach();
+ const draft=first.c.categoryDraft('desktop');
+ draft.hidden=draft.hidden.filter(id=>id!=='planner');
+ first.c.categorySave('desktop',draft);
+ await cloud.settle();cloud.emit(path('desktop'));await cloud.settle();
+ const reloaded=device(cloud,'u',second.native);
+ assert.ok(model.categoryVisible(reloaded.c.categoryLoad('desktop'),'desktop').includes('planner'));
+ assert.ok(!model.categoryVisible(reloaded.c.categoryLoad('mobile'),'mobile').includes('planner'));
+ assert.equal(cloud.get(path('mobile')),null);
 });
 test('fresh-device cloud restore respects an explicit old-layout choice and its timestamp',async()=>{
  const value=JSON.stringify(saved(false,['stats'])),cloud=new MultiCloud({users:{u:{categoryHomeMobile:{v:value,t:700}}}}),a=device(cloud);a.attach();cloud.emit(path('mobile'));await cloud.settle();

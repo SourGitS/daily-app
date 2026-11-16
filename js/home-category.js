@@ -20,7 +20,7 @@ function categorySave(mode,value){
 function categoryEscape(v){return escText(String(v??''));}
 function categoryDate(v){return v?fmtDate(v):'';}
 function categoryHeading(id,meta=''){const c=CATEGORY_HOME_CARDS.find(c=>c.id===id);return '<header class="cat-heading"><h2>'+cardIcon(c.icon)+c.label+'</h2>'+(meta?'<small>'+categoryEscape(meta)+'</small>':'')+'</header>';}
-function categoryLink(id,label,week){return '<a class="cat-route" href="#'+id+'" data-cat-nav="'+id+'"'+(week?' data-week="'+escAttr(week)+'"':'')+' aria-label="'+escAttr(label||'Open '+CATEGORY_HOME_CARDS.find(c=>c.id===id)?.label)+'"><span aria-hidden="true">↗</span></a>';}
+function categoryLink(id,label,week){return '<a class="cat-route" href="#'+(id==='planner'?'notes':id)+'" data-cat-nav="'+id+'"'+(week?' data-week="'+escAttr(week)+'"':'')+' aria-label="'+escAttr(label||'Open '+CATEGORY_HOME_CARDS.find(c=>c.id===id)?.label)+'"><span aria-hidden="true">↗</span></a>';}
 function categoryAction(action,label,primary=false){const expense=action==='expense';return '<button type="button" class="cat-action'+(primary?' cat-primary':'')+(expense?' stg-btn':'')+'" data-cat-action="'+action+'"'+(expense?' aria-label="Add expense"':'')+'>'+label+'</button>';}
 function categoryTraining(profile){
  const combined=layoutMode()==='desktop'&&!profile.hidden.includes('budget');
@@ -100,6 +100,22 @@ function categoryStats(){
  return '<div class="cat-blue cat-stats-body">'+categoryHeading('stats')+'<div class="cat-tabs seg-tabs" role="tablist" aria-label="Stats topic">'+[['strength','Strength'],['weight','Weight'],['consistency','Consistency']].map(([id,label])=>'<button type="button" role="tab" data-cat-topic="'+id+'" aria-selected="'+(id===categoryTopic)+'">'+label+'</button>').join('')+'</div><div class="cat-stat-summary"><div><h3>'+categoryEscape(m.title)+'</h3>'+(last?'<p class="cat-stat-date">'+(categoryTopic==='consistency'?'Week of ':'Latest · ')+categoryDate(last.date)+'</p>':'')+'</div><p class="cat-figure">'+(last?last.value:'—')+'<small>'+categoryEscape(m.unit)+'</small></p></div>'+(chart?'<div class="cat-chart">'+chart+'</div>':'')+'</div><footer class="cat-footer"><strong>'+categoryEscape(categoryStatsComparison(m.rows,categoryTopic,m.unit))+'</strong><span>'+categoryEscape(m.caption)+'</span></footer>'+categoryLink('stats');
 }
 function categoryJournal(){const entries=jrnEntries().slice().sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)),e=entries[0],text=e?(e.body||e.title||'Untitled'):'A thought, a small win, or something to remember.';return categoryHeading('journal',e?categoryDate(e.dateAbout):'')+'<blockquote>'+categoryEscape(text)+'</blockquote>'+categoryAction('journal-write','<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6ZM14 5l5 5M4 16l4 4"/></svg>Write a note')+categoryLink('journal');}
+function categoryPlannerActions(){
+ return plannerTasks().filter(task=>!task.done).sort((a,b)=>
+  a.date.localeCompare(b.date)||a.title.localeCompare(b.title)||a.id.localeCompare(b.id)
+ ).slice(0,2);
+}
+function categoryPlanner(){
+ const tasks=categoryPlannerActions(),year=getLocalDate().slice(0,4);
+ const rows=tasks.map(task=>{
+  const date=categoryDate(task.date)+(task.date.startsWith(year)?'':' '+task.date.slice(0,4));
+  const label=task.title+', '+date+', open in Planner Week';
+  return '<button type="button" class="cat-planner-task" data-cat-planner-task="'+escAttr(task.id)+'" aria-label="'+escAttr(label)+'">'+
+   '<span>'+categoryEscape(task.title)+'</span><time datetime="'+escAttr(task.date)+'">'+categoryEscape(date)+'</time></button>';
+ }).join('');
+ return categoryHeading('planner')+categoryLink('planner','Open Planner Week')+
+  (rows?'<div class="cat-planner-actions">'+rows+'</div>':'<p class="cat-copy">No unfinished actions.</p>');
+}
 function categoryReviewWeek(){
  const preferred=wkrPendingWeek()||weekKey(getMondayOf(-1)),weeks=wkrVisibleWeeks();
  if(weeks.includes(preferred))return preferred;
@@ -146,7 +162,7 @@ function categoryReview(){
 }
 function categoryWeather(){return '<div class="home-widget home-widget-weather">'+buildWeatherCard(true,true).replace('<div class="weather-fx"','<div class="cat-weather-scene"><div class="weather-fx"').replace('<div class="weather-forecast-dock">','</div><div class="weather-forecast-dock">')+'</div>';}
 function categoryCard(id,profile){
- const builders={training:()=>categoryTraining(profile),budget:()=>categoryBudget(false),weather:categoryWeather,activity:categoryActivity,food:categoryFood,stats:categoryStats,habits:categoryHabits,shopping:categoryShopping,weight:categoryWeight,records:categoryRecord,journal:categoryJournal,review:categoryReview};
+ const builders={training:()=>categoryTraining(profile),budget:()=>categoryBudget(false),weather:categoryWeather,activity:categoryActivity,food:categoryFood,stats:categoryStats,habits:categoryHabits,shopping:categoryShopping,weight:categoryWeight,records:categoryRecord,journal:categoryJournal,review:categoryReview,planner:categoryPlanner};
  return '<article class="cat-card cat-'+id+(id==='training'?' home-widget-session':'')+'" data-cat-id="'+id+'">'+builders[id]()+'</article>';
 }
 // Home shares the normal app header with Finance and Stats.
@@ -184,9 +200,24 @@ function categoryRefreshReview(restoreFocus=false){
   card.querySelector(selector)?.focus({preventScroll:true});
  }
 }
+function categoryRefreshPlanner(){
+ if(S.view!=='home')return;
+ const card=document.querySelector('#home-content .cat-planner');
+ if(!card)return;
+ const focused=card.contains(document.activeElement)?document.activeElement:null;
+ card.innerHTML=categoryPlanner();
+ if(focused){
+  const buttons=Array.from(card.querySelectorAll('[data-cat-planner-task]'));
+  const taskId=focused.dataset.catPlannerTask;
+  const next=taskId&&(buttons.find(button=>button.dataset.catPlannerTask===taskId)||buttons[0]);
+  (next||card.querySelector('[data-cat-nav]')).focus({preventScroll:true});
+ }
+}
+window.addEventListener('planner-tasks-changed',categoryRefreshPlanner);
 function categoryNavigate(id,week){
  if(id==='training'){const b=logTodayBrief();logOpenPlannedDay(b.dayIdx);return;}
  if(['budget','activity'].includes(id)){homeOpenBudgetWeek();return;}
+ if(id==='planner'){jrnPlannerOpenWeek(getLocalDate());return;}
  if(id==='food'){openFoodToday();return;}if(id==='shopping'){openFoodShopping();return;}if(id==='journal'){setView('notes');return;}
  if(id==='review'){wkrOpenWeek(week||categoryReviewWeek());return;}
  setView('stats');if(id==='stats'){setStatsTab(categoryTopic==='weight'?'body':'training');return;}if(id==='weight')setStatsTab('body');else if(id==='records')setStatsTab('training');
@@ -194,6 +225,13 @@ function categoryNavigate(id,week){
 function categoryHabitDialog(){let d=document.getElementById('category-habit-dialog');if(!d){d=document.createElement('dialog');d.id='category-habit-dialog';d.className='cat-dialog';d.setAttribute('aria-labelledby','cat-habit-title');document.body.append(d);}const focus=d.contains(document.activeElement)?document.activeElement.dataset.catHabit:null,top=d.querySelector('.cat-habit-list')?.scrollTop||0;d.innerHTML=categoryHabits(true);d.querySelector('h2').id='cat-habit-title';if(!d.open)d.showModal();d.querySelector('.cat-habit-list').scrollTop=top;if(focus!=null)d.querySelector('[data-cat-habit="'+focus+'"]')?.focus({preventScroll:true});}
 document.addEventListener('change',e=>{const input=e.target.closest('[data-cat-habit]');if(!input)return;toggleHabit(Number(input.dataset.catHabit));if(S.view==='home')renderHome();if(document.getElementById('category-habit-dialog')?.open)categoryHabitDialog();});
 document.addEventListener('click',e=>{
+ const row=e.target.closest('[data-cat-planner-task]');
+ if(row){
+  const task=plannerTasks().find(item=>item.id===row.dataset.catPlannerTask);
+  if(task&&!task.done)jrnPlannerOpenWeek(task.date,task.id);
+  else {categoryRefreshPlanner();showToast('This action is no longer on your list.');}
+  return;
+ }
  const nav=e.target.closest('[data-cat-nav]');if(nav){e.preventDefault();categoryNavigate(nav.dataset.catNav,nav.dataset.week);return;}
  const topic=e.target.closest('[data-cat-topic]');if(topic){categoryTopic=topic.dataset.catTopic;const el=document.querySelector('.cat-card.cat-stats');if(el){el.innerHTML=categoryStats();el.querySelector('[data-cat-topic="'+categoryTopic+'"]').focus();}return;}
  const a=e.target.closest('[data-cat-action]');if(!a)return;
@@ -226,6 +264,7 @@ function categoryMini(id,p,mode){
  if(id==='shopping')text=kitShopCountLeft(kitShopComputePlan())+' items to pick up';
  if(id==='records')text=computePRHistory().at(-1)?.name||'Your first milestone';
  if(id==='journal')text=jrnEntries()[0]?.title||'A thought for today';
+ if(id==='planner')text=categoryPlannerActions().map(task=>task.title).join(' · ')||'No unfinished actions.';
  if(id==='review')text='Training · Spending · Food logs';
  if(id==='weather'){text='Weather';foot='Forecast';}
  return '<span class="cat-mini-content'+(blue?' is-hero':'')+(id==='weather'?' is-weather':'')+'"><strong>'+label+'</strong><span>'+categoryEscape(text)+'</span></span>'+(foot?'<span class="cat-mini-foot">'+categoryEscape(foot)+'</span>':'');

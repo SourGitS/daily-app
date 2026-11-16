@@ -1,5 +1,11 @@
 # Daily — Agent Handoff
 
+## v462 optional Home Planner card — 2026-11-17
+
+- Home → Customise → Show Planner adds a neutral card above Customise in the selected phone or desktop layout. Fresh, existing and reset layouts start with Planner hidden. Enabling it preserves the positions of the other cards.
+- The card shows the first two unfinished Planner actions by their current planned dates, including overdue actions. The rows stack on phones and sit side by side on desktop. Tapping an action opens its week and focuses the matching task.
+- All 815 app checks passed. Chrome and WebKit verified the layout at 320, 390, 1024 and 1440px, including opt-in, reload, moving and completing actions, and updates from another simulated device. The offline shell upgrade check passed. Francois approved publication for testing in his installed iPhone app.
+
 ## v461 Daily AI, Accounts and Home Weekly Review — 2026-11-17
 
 - Daily AI opens with the shared workflow tabs. Assistant starts with Scheduled bills for the current Sydney week, Ask AI opens the editable prompt and its starting point, and Import actions starts with the response field. Account verification and Fuji connection details are available in every mode.

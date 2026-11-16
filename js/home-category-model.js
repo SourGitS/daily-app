@@ -5,22 +5,26 @@ const CATEGORY_HOME_CARDS=[
  {id:'habits',label:'Daily habits',span:3,icon:'check'}, {id:'shopping',label:'Shopping',span:3,icon:'cart'},
  {id:'weight',label:'Weight',span:3,icon:'scale'}, {id:'records',label:'Personal best',span:3,icon:'trophy'},
  {id:'food',label:'Food',span:6,icon:'pot'}, {id:'stats',label:'Stats',span:6,icon:'trend'},
- {id:'journal',label:'Journal',span:6,icon:'note'}, {id:'review',label:'Weekly review',span:6,icon:'calendar'}
+ {id:'journal',label:'Journal',span:6,icon:'note'}, {id:'review',label:'Weekly review',span:6,icon:'calendar'},
+ {id:'planner',label:'Planner',span:12,icon:'calendar'}
 ];
 // Desktop follows the registry order; Budget shares Training's card when both are visible.
 const CATEGORY_HOME_PHONE_ORDER=[
  'weather','activity','review','budget','training','food',
- 'habits','stats','shopping','weight','records','journal'
+ 'habits','stats','shopping','weight','records','journal','planner'
 ];
 function categoryProfile(value,mode){
  let v=value;try{if(typeof v==='string')v=JSON.parse(v);}catch(e){v=null;}v=v&&typeof v==='object'?v:{};
  const ids=CATEGORY_HOME_CARDS.map(c=>c.id),valid=new Set(ids);
  const defaults=mode==='mobile'?CATEGORY_HOME_PHONE_ORDER:ids;
  const unique=a=>[...new Set((Array.isArray(a)?a:[]).filter(id=>valid.has(id)))];
- const order=unique(v.order);defaults.forEach(id=>{if(!order.includes(id))order.push(id);});
+ const order=unique(v.order),hidden=unique(v.hidden);
+ // Fresh and pre-Planner layouts have no saved position for this optional card.
+ if(!order.includes('planner')&&!hidden.includes('planner'))hidden.push('planner');
+ defaults.forEach(id=>{if(!order.includes(id))order.push(id);});
  // New Home is the read-time default; an explicit legacy choice remains authoritative.
  // Do not stamp or persist this fallback while cloud preferences are still loading.
- return {schemaVersion:1,enabled:v.enabled!==false,order,hidden:unique(v.hidden)};
+ return {schemaVersion:1,enabled:v.enabled!==false,order,hidden};
 }
 function categoryVisible(profile,mode='desktop'){
  const ids=profile.order.filter(id=>!profile.hidden.includes(id));
