@@ -457,7 +457,8 @@
 // v457: place the desktop sidebar Add button beside the account profile.
 // v458: Planner Week tasks and linked Weekly Review priorities.
 // v459: curated Home order and iPhone landscape layout.
-const CACHE_NAME = 'daily-v459';
+// v460: shared neutral dark card fill on phone and desktop.
+const CACHE_NAME = 'daily-v460';
 importScripts('./js/notification-storage.js');
 importScripts('./js/cache-scope.js');
 

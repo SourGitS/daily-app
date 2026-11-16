@@ -1,5 +1,10 @@
 # Daily — Agent Handoff
 
+## v460 shared dark card colour — 2026-11-17
+
+- Home and regular dark-mode cards share the same `#202020` fill at every width, over the `#121212` page background. Light mode retains its existing device-specific colours.
+- All 810 app checks passed. Chrome and WebKit with sample data verified Home, Planner, Log and Finance at 390×844, 844×390 and 1440×900 and compared phone and desktop light mode against v459.
+
 ## v459 Home defaults and iPhone landscape — release authorised, 2026-11-17
 
 - Read both device arrangements in the live Home layout editor. The phone factory order is Weather, Last 7 days, Weekly review, Budget, Training, Food, Daily habits, Stats, Shopping, Weight, Personal best, Journal. The desktop default already matches the saved arrangement, with Budget included in Training. Fresh profiles and Reset use those orders. Opening Home does not save a layout or overwrite a personal arrangement.

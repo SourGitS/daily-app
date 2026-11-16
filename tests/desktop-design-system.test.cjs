@@ -11,13 +11,18 @@ const home = read('css/home-category.css');
 const layout = read('css/budget-home.css');
 const kitchen = read('css/kitchen-extras.css');
 
-test('ordinary content cards share the Category Home surface in both themes', () => {
+test('dark content cards share the Home fill at every width and stay distinct from the page', () => {
+  const darkTheme = base.match(/\[data-theme="dark"\]\s*\{([^}]*)\}/)[1];
+  assert.match(darkTheme, /--bg:#121212;/);
+  assert.match(darkTheme, /--surface-card:#202020;/);
+  assert.match(home, /#home-content\.category-home\{--cat-surface:var\(--surface-card\)/);
+});
+
+test('light content cards keep their phone fill and match Home on desktop', () => {
   assert.match(base, /--surface-card:#ffffff;/);
-  assert.match(base, /\[data-theme="dark"\]\{[\s\S]*?--surface-card:#1b1b1d;/);
-  assert.match(base, /@media\(min-width:1024px\)\{\s*:root\{--surface-card:#f2f2f2\}\s*\[data-theme="dark"\]\{--surface-card:#202020\}/);
-  assert.match(home, /#home-content\.category-home\{--cat-surface:#202020/);
+  assert.match(base, /@media\(min-width:1024px\)\{\s*:root\{--surface-card:#f2f2f2\}\s*\}/);
   assert.match(home, /\[data-theme=light\] #home-content\.category-home\{--cat-surface:#f2f2f2/);
-  assert.match(home, /@media\(min-width:1024px\)\{#home-content\.category-home,\[data-theme=light\] #home-content\.category-home\{--cat-surface:var\(--surface-card\)\}\}/);
+  assert.match(home, /@media\(min-width:1024px\)\{\[data-theme=light\] #home-content\.category-home\{--cat-surface:var\(--surface-card\)\}\}/);
   assert.match(layout, /@media\(min-width:1024px\)\{\s*\.card:not\(\.home-weather-card\),[\s\S]*?#chart-wrap\{\s*background:var\(--surface-card\);/);
 });
 
