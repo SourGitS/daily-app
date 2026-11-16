@@ -22047,6 +22047,11 @@ function weatherLandscapeSvg(view){
   return '<svg viewBox="0 0 720 420" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">'+defs+art+'</svg>';
 }
 
+function homeTodayDateHtml(){
+  const key=getLocalDate();
+  const label=localMidnight(key).toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long'});
+  return '<time datetime="'+key+'">'+escText(label)+'</time>';
+}
 function buildWeatherCard(inHero,locationInSettings=false){
   const mode=layoutMode(),forecastOpen=_homeWeatherExpanded[mode]!==false;
   const d=localMidnight(getLocalDate());
@@ -22081,7 +22086,7 @@ function buildWeatherCard(inHero,locationInSettings=false){
     '</div>'+
     '<div class="weather-legibility weather-legibility-left" aria-hidden="true"></div>'+
     '<div class="weather-legibility weather-legibility-right" aria-hidden="true"></div>'+
-    '<div class="weather-card-date">'+escText(d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}))+'</div>'+
+    '<div class="weather-card-date">'+homeTodayDateHtml()+'</div>'+
     '<div class="weather-content">'+
       '<div class="weather-left">'+
         '<div class="weather-heading">'+
@@ -30337,7 +30342,7 @@ function renderJournal(){
   const rail = desktop
     ? jrnNavHtml()
     : (jrnQ()||jrnTab!=='timeline'?'':jrnTodayHtml())+jrnBodyHtml()+(jrnTab==='timeline'?jrnLoopsHtml():'')+(jrnQ()?'':jrnReflectLinkHtml());
-  const head='<header class="jrn-page-head">'+jrnHeadHtml()+'<p>Your days, thoughts and notes.</p>'+(typeof jrnPlannerControls==='function'?jrnPlannerControls():'')+'</header>';
+  const head=jrnHeadHtml();
   wrap.innerHTML = desktop
     ? '<div id="journal-root">'+head+'<div class="jrn-rail">'+rail+'</div><div class="jrn-detail" id="jrn-detail"></div></div>'
     : '<div id="journal-root">'+head+rail+'</div>';
@@ -30465,10 +30470,9 @@ function jrnHeadHtml(plannerModel){
   const planning=typeof jrnPlannerActive==='function'&&jrnPlannerActive();
   const searchIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
   const calIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
-  let h='<div class="jrn-head">'+
-    '<h1 class="jrn-head-title">Planner</h1>'+
+  let h='<header class="jrn-page-head"><div class="jrn-head">'+
+    (typeof jrnPlannerControls==='function'?jrnPlannerControls():'<button class="jrn-head-btn" data-jrn="cal" aria-label="Jump to a date">'+calIco+'</button>')+
     '<button class="jrn-head-btn'+(jrnSearchOpen?' on':'')+'" data-jrn="search-toggle" aria-label="Search Planner" aria-pressed="'+(jrnSearchOpen?'true':'false')+'">'+searchIco+'</button>'+
-    '<button class="jrn-head-btn" data-jrn="cal" aria-label="'+(typeof jrnPlannerShow==='function'?'Calendar view':'Jump to a date')+'">'+calIco+'</button>'+
     (typeof sharedAddButtonHtml==='function'?sharedAddButtonHtml():'')+
   '</div>';
   if(jrnSearchOpen){
@@ -30484,7 +30488,7 @@ function jrnHeadHtml(plannerModel){
     '</div>';
     if(q) h+='<div class="jrn-search-count">'+n+' match'+(n===1?'':'es')+'</div>';
   }
-  return h;
+  return h+'</header>';
 }
 // Today's entries, newest first. One reader for every surface that asks the question.
 function jrnTodayEntries(){
@@ -31077,7 +31081,7 @@ document.addEventListener('click',function(e){
   if(act==='restore'&&id){ jrnRestore(id); jrnRefreshLists(); return; }
   if(act==='tab'){ jrnTab=el.getAttribute('data-tab-id')||'timeline'; renderJournal(); return; }
   if(act==='search-toggle'){ jrnSearchOpen=!jrnSearchOpen; if(!jrnSearchOpen) jrnQuery=''; renderJournal();
-    if(jrnSearchOpen){ const s=document.getElementById('jrn-search'); if(s) s.focus(); } return; }
+    document.querySelector(jrnSearchOpen?'#jrn-search':'.jrn-head [data-jrn="search-toggle"]')?.focus({preventScroll:true}); return; }
   if(act==='search-clear'){ jrnQuery=''; jrnRefreshListsKeepFocus(); return; }
   if(act==='cal'){ if(typeof jrnPlannerShow==='function')jrnPlannerShow('calendar');else jrnOpenCal(); return; }
   if(act==='cal-prev'){ jrnCalShift(-1); return; }
@@ -31682,13 +31686,12 @@ function logWeekCardHtml(){
   const range=budRangeLabel(localMidnight(days[0].date), today);
   return '<section class="lg-hero-week" aria-label="Last 7 days">'+
     '<div class="lg-week-heading">'+cardHeader('calendar','Last 7 days')+'<span class="lg-week-range">'+escText(range)+'</span></div>'+
-    statsSplit(cells)+
     '<div class="lg-consistency" role="group" aria-label="Saved sessions on each of the last seven days">'+
       days.map(d=>'<button type="button" class="lg-consistency-day'+(d.date===getLocalDate()?' today':'')+'" '+
         (d.date===getLocalDate()?'aria-current="date" ':'')+
         'aria-label="'+escAttr(fmtDate(d.date)+(d.saved?': '+d.saved.count+' saved session'+(d.saved.count===1?'':'s'):': no saved session'))+'" '+
         'onclick="logGoto(\'history\')"><span>'+escText(d.label)+'</span><i'+(d.saved?' class="done" style="background:'+escAttr(d.color)+'"':'')+'></i></button>').join('')+
-    '</div>'+
+    '</div>'+statsSplit(cells)+
   '</section>';
 }
 

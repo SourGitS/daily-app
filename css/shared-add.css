@@ -15,14 +15,12 @@
 .shared-add-phone .shared-add-plus::before,.shared-add-phone .shared-add-plus::after{width:17px}
 .shared-add-trigger:focus-visible,#shared-add-dialog button:focus-visible{outline:2px solid var(--accent-text);outline-offset:-2px}
 @media(max-width:1023px){
-  .cat-page-heading .shared-add-desktop,.jrn-head .shared-add-desktop{display:none}
+  .jrn-head .shared-add-desktop{display:none}
 }
 @media(min-width:1024px){
   .shared-add-phone{display:none}
-  .cat-page-heading>[data-cat-action="layout"]{margin-inline-start:auto}
-  .cat-page-heading .shared-add-trigger{margin-inline-start:-8px}
   .shared-add-sidebar{align-self:flex-start;margin:8px 16px}
-  body:has(#view-home.deck-active .cat-page-heading, #view-notes.deck-active .jrn-head) .shared-add-sidebar{display:none}
+  body:has(#view-notes.deck-active .jrn-head) .shared-add-sidebar{display:none}
 }
 #shared-add-dialog{
   position:fixed;inset:auto;margin:0;padding:8px;box-sizing:border-box;

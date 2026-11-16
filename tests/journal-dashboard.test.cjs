@@ -198,7 +198,7 @@ test('Planner occupies the fifth phone tab and keeps the existing notes route an
   assert.deepEqual(NAV_ORDER, ['home', 'budget', 'log', 'food', 'notes']);
   const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
   const deck=html.slice(html.indexOf('<div id="swipe-deck">'),html.indexOf('</div><!-- /#swipe-deck -->'));
-  assert.match(deck,/<section id="view-notes" class="swipe-panel">/);
+  assert.match(deck,/<section id="view-notes" class="swipe-panel" aria-label="Planner">/);
   assert.ok(html.slice(html.indexOf('<nav id="bottom-nav">'),html.indexOf('</nav>',html.indexOf('<nav id="bottom-nav">'))).includes('data-view="notes"'));
   assert.deepEqual(NAV_QUICK.map(q => q.id),
     ['home', 'budget', 'log', 'food', 'stats', 'notes', 'aihub', 'accounts', 'settings']);

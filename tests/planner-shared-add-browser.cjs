@@ -36,8 +36,23 @@ async function openHome(browser, size, serve) {
 function cardLayout(page) {
   return page.locator('.cat-grid [data-cat-id]').evaluateAll(cards => cards.map(card => {
     const {x,y,width,height}=card.getBoundingClientRect();
-    return {id:card.dataset.catId, box:[x,y,width,height]};
+    return {id:card.dataset.catId, box:[x,y-card.parentElement.getBoundingClientRect().top,width,height]};
   }));
+}
+
+async function checkHomeLayout(page) {
+  const home=page.locator('#home-content');
+  const grid=home.locator('.cat-grid');
+  const customise=home.getByRole('button',{name:'Customise Home layout'});
+  const gridBox=await grid.boundingBox(), buttonBox=await customise.boundingBox();
+  assert.ok(buttonBox.y>=gridBox.y+gridBox.height-1,'Customise follows the last card');
+  assert.ok(Math.abs(buttonBox.x-gridBox.x)<1&&Math.abs(buttonBox.width-gridBox.width)<1&&buttonBox.height>=44,'Customise spans the cards');
+  const weather=home.locator('.cat-weather');
+  if (await weather.count()) {
+    const date=await weather.locator('.weather-card-date time').boundingBox();
+    const city=await weather.locator('.weather-city').boundingBox();
+    assert.ok(date&&date.y+date.height<=city.y+1,'date is visible above the city');
+  } else assert.ok(await home.locator('.cat-layout-footer time').isVisible(),'date survives a hidden Weather card');
 }
 
 async function compareHome(browser, size, page) {
@@ -206,6 +221,7 @@ async function checkNavigation(page,phone) {
       const label=[size.width,size.theme,size.scenario].filter(Boolean).join(' ');
       try {
         await compareHome(browser,size,page);
+        await checkHomeLayout(page);
         assert.equal(await page.locator('#view-home .jp-next-up').count(),0);
         if (!size.scenario) {
           let capture;

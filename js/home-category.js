@@ -116,8 +116,11 @@ function categoryRenderHome(wrap){
  const mode=layoutMode(),profile=categoryLoad(mode);wrap.classList.toggle('category-home',profile.enabled);document.getElementById('view-home').classList.toggle('category-home-active',profile.enabled);
  if(!profile.enabled)return false;
  const visible=categoryVisible(profile,mode),cells=categoryCells(visible,mode);
- const add=typeof sharedAddButtonHtml==='function'?sharedAddButtonHtml():'';
- wrap.innerHTML='<header class="cat-page-heading"><div><p>'+localMidnight(getLocalDate()).toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long'})+'</p><h1>Today</h1></div><button type="button" class="stg-btn" data-cat-action="layout" aria-label="Home layout settings">'+cardIcon('grid')+'<span>Customise</span></button>'+add+'</header><div class="cat-grid">'+visible.map(id=>categoryCard(id,profile)).join('')+'</div>'+(visible.length?'':'<p class="cat-empty">Your cards are hidden. Use Customise to add them back.</p>');
+ const cards=visible.map(id=>categoryCard(id,profile)).join('');
+ const empty=visible.length?'':'<p class="cat-empty">Your cards are hidden. Use Customise to add them back.</p>';
+ const footerDate=visible.includes('weather')?'':homeTodayDateHtml();
+ wrap.innerHTML='<h1 class="cat-page-title">Today</h1><div class="cat-grid">'+cards+'</div>'+empty+
+   '<footer class="cat-layout-footer">'+footerDate+'<button type="button" class="stg-btn" data-cat-action="layout" aria-label="Customise Home layout">Customise</button></footer>';
  wrap.querySelectorAll('[data-cat-id]').forEach(el=>{const c=cells[el.dataset.catId];el.style.setProperty('--cat-span',c.span);el.style.setProperty('--cat-row',c.row);});
  applyDayColour();homeObserveWeatherHeight();
  if(visible.includes('weather')){loadWeatherWidget();categoryWeatherLabel();}else weatherEnsureFresh();

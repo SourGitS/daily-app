@@ -15,8 +15,6 @@
 /* ── Screen shell ── */
 #journal-root{display:flex;flex-direction:column;gap:20px}
 .jrn-page-head{grid-column:1/-1;min-width:0}
-.jrn-page-head>p{margin:6px 0 0;font-size:14px;line-height:1.5;color:var(--muted)}
-.jrn-page-head .jrn-head-title{margin:0;font-size:28px;letter-spacing:-.035em}
 .jrn-page-head .jrn-head-btn{min-width:44px;min-height:44px;border-radius:12px;background:var(--surface-card)}
 .jrn-browse-tabs{display:flex;gap:4px;padding:4px;margin:0 0 18px;border-radius:12px;background:var(--track)}
 .jrn-browse-tabs .jrn-pill{flex:1;min-width:0;min-height:44px;border:0;border-radius:9px;background:none;font-size:13px;color:var(--muted)}
@@ -34,15 +32,14 @@
   #journal-root>.jrn-loops{padding:20px;border:1px solid var(--surface-card-border);border-radius:var(--radius-card);background:var(--surface-card);box-shadow:var(--surface-card-top)}
   .jrn-entry{padding:16px}
 }
-@media(min-width:1024px){.jrn-page-head .jrn-head-title{font-size:34px}}
 @media(min-width:1240px){
   #journal-root .jrn-rail{padding:18px;max-height:calc(100dvh - 160px);border:1px solid var(--surface-card-border);border-radius:var(--radius-card);background:var(--surface-card);box-shadow:var(--surface-card-top)}
   #journal-root #jrn-editor.inline{background:var(--surface-card);border-color:var(--surface-card-border);box-shadow:var(--surface-card-top)}
   #journal-root #jrn-editor.inline::before{display:none}
 }
 
-.jrn-head{display:flex;align-items:center;gap:8px;margin-bottom:2px}
-.jrn-head-title{font-size:22px;font-weight:800;color:var(--text);flex:1;min-width:0;letter-spacing:-.02em}
+.jrn-head{display:flex;align-items:center;gap:8px}
+.jrn-head+.jrn-search-wrap{margin-top:10px}
 .jrn-head-btn{width:38px;height:38px;border-radius:12px;border:1px solid var(--border);background:var(--card);
   color:var(--text-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;
   -webkit-tap-highlight-color:transparent}

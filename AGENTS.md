@@ -1,5 +1,12 @@
 # Daily — Agent Handoff
 
+## v455 Home, Planner and workout layout — release authorised, 2026-11-16
+
+- Category Home shows the local date above the city in Weather. If Weather is hidden the date sits above the full-width Customise button at the end of Home. Customise opens the existing layout editor, including when every card is hidden. The desktop sidebar provides Home’s shared Add. At 390px the first card starts 52px higher. The v454 comparison checks Home card order, size and position relative to the grid.
+- Planner opens on the standard segmented view switch beside Search. The month and its navigation sit on the shared hero gradient above the neutral calendar. The Calendar tab also serves the old calendar icon’s purpose. At 390px the calendar starts 99px higher. Tab switching, search focus, date navigation, filters, Next up and writing were checked using synthetic records.
+- The Log hero groups the seven dates under their range, with the weekly totals above the action footer. A ready workout at 390px measures 283px, down from 345px. Saved sessions, longer names and extra actions can grow naturally. Workout and date controls retain at least 44px of height.
+- All 795 Node checks passed. Chrome phone and desktop checks covered dark and light themes, layout changes, navigation and saved workout actions. Physical iPhone Safari testing remains pending.
+
 ## v454 phone header, Add and Home refinements — release authorised, 2026-11-16
 
 - The phone header uses a 52px portrait bar and a 19px wordmark. The Manhua Hub reference supplied by Francois sets the profile tile proportions: a 44px rounded square with 12px corners, a 32px inset photo with 8px corners, and a small outlined gear inside the lower-right edge. The plain plus and the profile tile each have a 44px tap target. The tile opens the navigation menu with Account as its first destination. Touch opens Add with neutral rows. Keyboard activation focuses Expense and Escape returns to Add.

@@ -452,7 +452,8 @@
 // v452: record-aware financial sync, guarded restore, scoped offline caching and review fixes.
 // v453: shared Add, Planner phone navigation and the calendar's Next up agenda.
 // v454: neutral charcoal theme, rounded-square profile menu, touch focus in Add, shorter activity card and remembered phone forecast.
-const CACHE_NAME = 'daily-v454';
+// v455: move the Home date and layout control, compact the Log workout card and align Planner with the shared tabs and hero styling.
+const CACHE_NAME = 'daily-v455';
 importScripts('./js/notification-storage.js');
 importScripts('./js/cache-scope.js');
 

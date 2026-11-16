@@ -45,7 +45,7 @@ function jrnPlannerRefreshSchedule(){
  if(typeof S==='object'&&S.view==='notes'&&jrnPlannerActive())jrnRerender();
 }
 function jrnPlannerControls(){
- return '<div class="jp-view-switch" role="group" aria-label="Planner view"><button type="button" class="'+(jrnPlannerActive()?'on':'')+'" aria-pressed="'+jrnPlannerActive()+'" data-jp="calendar">Calendar</button><button type="button" class="'+(!jrnPlannerActive()?'on':'')+'" aria-pressed="'+!jrnPlannerActive()+'" data-jp="writing">Entries & notes</button></div>';
+ return '<div class="seg-tabs seg-fill jp-view-switch" role="group" aria-label="Planner view"><button type="button" class="'+(jrnPlannerActive()?'on':'')+'" aria-pressed="'+jrnPlannerActive()+'" data-jp="calendar">Calendar</button><button type="button" class="'+(!jrnPlannerActive()?'on':'')+'" aria-pressed="'+!jrnPlannerActive()+'" data-jp="writing">Entries & notes</button></div>';
 }
 function jrnPlannerLoading(){
  return !!(auth&&auth.currentUser&&!_cloudWorkoutReady&&!_cloudReadFailed&&navigator.onLine!==false);
@@ -78,9 +78,9 @@ function jrnPlannerCalendarHTML(model){
   const label=jrnLongDay(date)+(date===model.today?' · Today':'')+(events.length?' · '+events.map(e=>e.detail+': '+e.title).join('; '):' · Nothing scheduled');
   cells+='<button type="button" class="jp-day'+(date===model.selected?' selected':'')+(date===model.today?' today':'')+'" data-jp="day" data-date="'+date+'" aria-pressed="'+(date===model.selected)+'"'+(date===model.today?' aria-current="date"':'')+' aria-label="'+escAttr(label)+'" tabindex="'+(date===model.selected?'0':'-1')+'" onkeydown="jrnPlannerKey(event,this.dataset.date)"><span class="jp-day-num">'+d+'</span><span class="jp-day-dots">'+types.map(t=>'<i class="jp-dot '+t+'" aria-hidden="true"></i>').join('')+'</span>'+(events.length?'<span class="jp-day-peek">'+escText(events[0].title)+(events.length>1?'<small>+'+(events.length-1)+' more</small>':'')+'</span>':'')+'</button>';
  }
- return '<section class="jp-calendar" aria-label="Planning calendar"><header class="jp-month"><h2>'+escText(jrnMonthLabel(model.month+'-01'))+'</h2><button type="button" class="stg-btn" data-jp="today">Today</button><button type="button" class="jp-arrow" data-jp="prev" aria-label="Previous month">‹</button><button type="button" class="jp-arrow" data-jp="next" aria-label="Next month">›</button></header>'+
-  '<div class="jp-filters" role="group" aria-label="Calendar items">'+[['all','All'],['note','Tasks & notes'],['entry','Journal'],['bill','Bills']].map(([id,label])=>'<button type="button" data-jp="filter" data-filter="'+id+'" aria-pressed="'+(jrnPlannerState.filter===id)+'" class="'+(jrnPlannerState.filter===id?'on':'')+'">'+label+'</button>').join('')+'</div>'+
-  '<div class="jp-days" role="group" aria-label="'+escAttr(jrnMonthLabel(model.month+'-01'))+'">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x=>'<span class="jp-weekday">'+x+'</span>').join('')+cells+'</div><footer class="jp-legend">'+[['note','Tasks & notes'],['entry','Journal'],['bill','Scheduled bills'],['workout','Training']].map(([id,label])=>'<span><i class="jp-dot '+id+'" aria-hidden="true"></i>'+label+'</span>').join('')+'</footer></section>';
+ return '<section class="jp-calendar" aria-label="Planning calendar"><header class="jp-month"><h2>'+escText(jrnMonthLabel(model.month+'-01'))+'</h2><div class="jp-month-nav"><button type="button" class="stg-btn" data-jp="today">Today</button><button type="button" class="jp-arrow" data-jp="prev" aria-label="Previous month">‹</button><button type="button" class="jp-arrow" data-jp="next" aria-label="Next month">›</button></div></header>'+
+  '<div class="jp-calendar-body"><div class="jp-filters" role="group" aria-label="Calendar items">'+[['all','All'],['note','Tasks & notes'],['entry','Journal'],['bill','Bills']].map(([id,label])=>'<button type="button" data-jp="filter" data-filter="'+id+'" aria-pressed="'+(jrnPlannerState.filter===id)+'" class="'+(jrnPlannerState.filter===id?'on':'')+'">'+label+'</button>').join('')+'</div>'+
+  '<div class="jp-days" role="group" aria-label="'+escAttr(jrnMonthLabel(model.month+'-01'))+'">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x=>'<span class="jp-weekday">'+x+'</span>').join('')+cells+'</div><footer class="jp-legend">'+[['note','Tasks & notes'],['entry','Journal'],['bill','Scheduled bills'],['workout','Training']].map(([id,label])=>'<span><i class="jp-dot '+id+'" aria-hidden="true"></i>'+label+'</span>').join('')+'</footer></div></section>';
 }
 function jrnPlannerAgendaActions(canWrite){
  return '<div class="jp-agenda-actions"><button type="button" class="stg-btn" data-jp="new-note">+ Task / note</button>'+(canWrite?'<button type="button" class="stg-btn" data-jp="write">Write entry</button>':'')+'</div>';
@@ -118,7 +118,7 @@ function jrnRenderPlanner(wrap){
  const agenda='<aside class="jp-agenda">'+(next?jrnPlannerNextHTML(model):jrnPlannerDayHTML(model))+
   (overdue.length?'<section class="jp-agenda-card"><h3>Overdue notes <small>'+overdue.length+'</small></h3>'+overdue.slice(0,5).map(e=>jrnPlannerEventHTML({...e,detail:e.detail+' · '+jrnLongDay(e.date)})).join('')+(overdue.length>5?'<button type="button" class="stg-btn" data-jp="notes">View all notes</button>':'')+'</section>':'')+
   '<section class="jp-agenda-card jp-help"><p>Tasks and expiry notes stay saved after their date. Bills show the Finance schedule.</p><button type="button" class="stg-btn" data-jp="notes">Browse all notes</button></section></aside>';
- wrap.innerHTML='<div id="journal-root" class="jrn-planner"><header class="jrn-page-head">'+jrnHeadHtml(model)+'<p>Your days, notes and plans.</p>'+jrnPlannerControls()+'</header><div class="jp-layout">'+jrnPlannerCalendarHTML(model)+agenda+'</div></div>';
+ wrap.innerHTML='<div id="journal-root" class="jrn-planner">'+jrnHeadHtml(model)+'<div class="jp-layout">'+jrnPlannerCalendarHTML(model)+agenda+'</div></div>';
  jrnPlannerWatchDay();
  if(search){
   const input=wrap.querySelector('#jrn-search');if(input){input.focus({preventScroll:true});input.setSelectionRange(...search);}
@@ -173,7 +173,10 @@ if(typeof document!=='undefined')document.addEventListener('visibilitychange',()
 });
 if(typeof document!=='undefined')document.addEventListener('click',e=>{
  const el=e.target.closest&&e.target.closest('[data-jp]');if(!el)return;const act=el.dataset.jp;
- if(act==='calendar'||act==='writing')jrnPlannerShow(act);
+ if(act==='calendar'||act==='writing'){
+  jrnPlannerShow(act);
+  document.querySelector('.jp-view-switch .on')?.focus({preventScroll:true});
+ }
  else if(act==='prev'||act==='next')jrnPlannerShift(act==='prev'?-1:1);
  else if(act==='today')jrnPlannerPick(getLocalDate(),false,true);
  else if(act==='selected-day')jrnPlannerPick(getLocalDate());
