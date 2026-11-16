@@ -31,7 +31,7 @@
     background-color:var(--wordmark-hub-ink);
   }
 }
-#header-title .wordmark{--wordmark-size:22px}
+#header-title .wordmark{--wordmark-size:19px;--wordmark-padding:7px}
 #side-menu-title .wordmark{--wordmark-size:18px;--wordmark-padding:7px}
 .ob-center .wordmark{--wordmark-size:36px;width:var(--wordmark-width);max-width:100%;height:36px;margin:0 auto 18px}
 .ob-welcome-brand{height:auto;min-height:44px;padding-inline:0}

@@ -73,7 +73,7 @@ test('staging retains old-format records, explicit empties, tombstones and raw s
 });
 
 test('device-local weather and sync metadata from an old backup are ignored',()=>{
-  const a=app(),plan=a.dailyRestoreStage({wt_theme:'dark',daily_weather_cache:'{}',
+  const a=app(),plan=a.dailyRestoreStage({wt_theme:'dark',daily_weather_cache:'{}',daily_weather_forecast_mobile:'closed',
     daily_finance_seen_transactions:'100',daily_finance_pending_ledger_1:'{}',daily_budget_ui:'{}'},101);
   assert.deepEqual([...plan.writes.keys()],['wt_theme','wt_theme_ts']);
 });

@@ -77,17 +77,21 @@ function authUserPhoto(user){
   return provider?provider.photoURL:'';
 }
 function updateHeaderAvatar(){
-  const btn=document.getElementById('header-avatar'); if(!btn) return;
+  const face=document.querySelector('#header-menu .header-avatar-face'); if(!face) return;
   const user=(firebaseReady&&auth)?auth.currentUser:null;
   const photo=authUserPhoto(user);
+  const name=String(profileData.name||S.personalInfo?.name||user?.displayName||'').trim();
+  if(name)face.textContent=Array.from(name)[0].toUpperCase();
+  else face.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2"/></svg>';
   if(photo){
-    btn.innerHTML='<img src="'+photo+'" referrerpolicy="no-referrer" alt="" style="width:100%;height:100%;object-fit:cover">';
-    btn.style.background='transparent';
-  } else {
-    const name=profileData.name||S.personalInfo?.name||'';
-    const initial=name?name.charAt(0).toUpperCase():'?';
-    btn.innerHTML='<span style="font-size:14px;font-weight:700;color:var(--accent-text);line-height:1">'+initial+'</span>';
-    btn.style.background='#2a2a2a';
+    const img=new Image();
+    img.referrerPolicy='no-referrer';
+    img.alt='';
+    img.hidden=true;
+    img.onload=()=>{img.hidden=false;};
+    img.onerror=()=>img.remove();
+    face.appendChild(img);
+    img.src=photo;
   }
 }
 // Boot AND cloud-apply are both suppressed: a render triggered by an incoming snapshot must
@@ -1515,7 +1519,7 @@ function applyTheme(){
   const meta = document.querySelector('meta[name="theme-color"]');
   if(meta){
     const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
-    meta.content = bg || (isDark ? '#080808' : '#f2f2f7');
+    meta.content = bg || (isDark ? '#121212' : '#f2f2f7');
   }
   // --accent-text is derived against the theme's background, so a theme change invalidates it.
   // applyTheme() is the one path EVERY theme change goes through (setTheme, the Firebase
@@ -1576,9 +1580,8 @@ function hexToRgb(hex){
 // Every accent the app can hold — ACCENT_PRESETS, WEATHER_ACCENTS, the per-day colours — was
 // tuned to CARRY white text, i.e. checked >=4.5:1 with #fff sitting on top. Using the accent
 // AS text on the app background is the opposite test, and ~90 call sites do exactly that
-// (color:var(--accent-text) on links, badges, "Manage Accounts →"). Measured against the dark --bg
-// #080808 every one of them fails: the daytime blues land at 4.38:1 and the night skies at
-// 1.7:1, which is invisible rather than merely low.
+// (color:var(--accent-text) on links, badges, "Manage Accounts →"). For example, a dark
+// night-sky accent needs a lighter foreground when it appears directly on the page.
 // --accent-text is the same hue and saturation, lifted (dark theme) or deepened (light theme)
 // in lightness only, until it clears the threshold — so accent TEXT is readable while --accent
 // itself keeps the tuning that white-on-accent needs. Both tokens are always set together.
@@ -1623,13 +1626,10 @@ function _hslToHex(hu,s,l){
   else { const q = l<.5 ? l*(1+s) : l+s-l*s, p=2*l-q; r=f(p,q,hu+1/3); g=f(p,q,hu); b=f(p,q,hu-1/3); }
   return '#'+[r,g,b].map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
 }
-// isDark decides both the background to test against and which way to move: on #080808 the
-// accent has to get lighter, on #f2f2f7 darker. Most accents already pass in light mode (the
-// blue preset #0072EA at 4.10:1 is the notable exception), so this usually returns hex
-// unchanged there and only really bites in dark mode.
+// A foreground below the target gets lighter in dark mode and darker in light mode.
 function accentTextHex(hex, isDark){
   if(!/^#[0-9a-fA-F]{6}$/.test(hex||'')) return hex;
-  const bg = isDark ? '#080808' : '#f2f2f7';
+  const bg = isDark ? '#121212' : '#f2f2f7';
   if(_contrastRatio(hex,bg) >= ACCENT_TEXT_TARGET) return hex;
   const [hu,s,l]=_hexToHsl(hex);
   const dir = isDark ? 1 : -1;
@@ -4016,17 +4016,38 @@ document.addEventListener('click',function(e){
   if(trainEx){ selectTrainingExercise(trainEx.dataset.trainingEx); return; }
 });
 
+layoutOnModeChange(mode=>{if(mode==='desktop')closeMenu();});
 function toggleMenu(){
   const o=document.getElementById('menu-overlay'), m=document.getElementById('side-menu');
   if(!o||!m) return;
-  const open=m.classList.contains('open');
-  o.classList.toggle('open',!open);
-  m.classList.toggle('open',!open);
+  if(m.classList.contains('open')){closeMenu();return;}
+  m.inert=false;
+  o.classList.add('open');
+  m.classList.add('open');
+  document.getElementById('header-menu').setAttribute('aria-expanded','true');
+  m.scrollTop=0;
+  m.querySelector('.side-menu-close').focus({preventScroll:true});
 }
 function closeMenu(){
-  const o=document.getElementById('menu-overlay'), m=document.getElementById('side-menu');
-  if(o) o.classList.remove('open');
-  if(m) m.classList.remove('open');
+  const m=document.getElementById('side-menu');
+  if(!m?.classList.contains('open'))return;
+  document.getElementById('menu-overlay').classList.remove('open');
+  m.classList.remove('open');
+  m.inert=true;
+  const trigger=document.getElementById('header-menu');
+  trigger.setAttribute('aria-expanded','false');
+  const focusTarget=layoutIsDesktop()?(document.querySelector('#ds-nav .nv-qrow.is-on')||document.querySelector('#ds-nav .nv-qrow')):trigger;
+  focusTarget?.focus({preventScroll:true});
+}
+function menuKeydown(event){
+  if(event.key==='Escape'){event.preventDefault();closeMenu();return;}
+  if(event.key!=='Tab')return;
+  const visible=[...event.currentTarget.querySelectorAll('button:not(:disabled)')].filter(button=>button.getClientRects().length&&getComputedStyle(button).visibility==='visible');
+  const first=visible[0],last=visible[visible.length-1];
+  if(event.shiftKey?event.target===first:event.target===last){
+    event.preventDefault();
+    (event.shiftKey?last:first).focus();
+  }
 }
 function openMenuSection(s){
   closeMenu();
@@ -7248,7 +7269,7 @@ function exportAllData(){
     // expanded, and the sidebar it belongs to only exists on a laptop; daily_budget_ui is
     // which spending breakdown the Budget week is showing. None mean anything on another
     // device.
-    if(key && (/^(daily_weather_cache|daily_pantry_ui|daily_nav_ui|daily_budget_ui|daily_finance_pending_|daily_finance_seen_)/.test(key)||key.endsWith('_restore_ts'))) continue;
+    if(key && (/^(daily_weather_cache|daily_weather_forecast_mobile|daily_pantry_ui|daily_nav_ui|daily_budget_ui|daily_finance_pending_|daily_finance_seen_)/.test(key)||key.endsWith('_restore_ts'))) continue;
     if(key && /^(daily_|wt_|kitchen_)/.test(key)) data[key]=localStorage.getItem(key);
   }
   const backup={ app:'daily', version:1, exported:new Date().toISOString(), data };
@@ -21720,7 +21741,22 @@ function weatherForecastSummary(entry,now=Date.now()){
     (!i||h.time-hours[i-1].time===60*60*1000))) return 'Clear through the next few hours.';
   return '';
 }
-const _homeWeatherExpanded={mobile:null,desktop:false};
+function loadMobileForecastExpanded(){
+  try{
+    const saved=localStorage.getItem('daily_weather_forecast_mobile');
+    if(saved==='closed') return false;
+    if(saved==='open') return true;
+  }catch(e){}
+  return null;
+}
+const _homeWeatherExpanded={mobile:loadMobileForecastExpanded(),desktop:false};
+function setHomeForecastExpanded(mode,open){
+  if((_homeWeatherExpanded[mode]!==false)===open) return;
+  _homeWeatherExpanded[mode]=open;
+  if(mode==='mobile'){
+    try{ localStorage.setItem('daily_weather_forecast_mobile',open?'open':'closed'); }catch(e){}
+  }
+}
 let _homeWeatherPeriod=null;
 function weatherForecastDate(entry,time){
   if(!entry||!Number.isFinite(time)||time<=0) return '';
@@ -21765,7 +21801,7 @@ function homeSetWeatherPeriod(period){
   const changed=_homeWeatherPeriod!==period;
   _homeWeatherPeriod=period;
   const mode=document.getElementById('home-weather-forecast-toggle')?.dataset?.mode||'mobile';
-  _homeWeatherExpanded[mode]=true;
+  setHomeForecastExpanded(mode,true);
   const entry=loadWeatherCache();
   renderWeatherForecast(entry);
   const preview=document.getElementById('home-weather-preview');
@@ -21776,7 +21812,7 @@ function homeToggleWeatherForecast(){
   if(typeof categoryDesktopWeather==='function'&&categoryDesktopWeather())return;
   if(!document.getElementById('home-weather-forecast-toggle')) return;
   const mode=document.getElementById('home-weather-forecast-toggle').dataset?.mode||'mobile';
-  _homeWeatherExpanded[mode]=_homeWeatherExpanded[mode]===false;
+  setHomeForecastExpanded(mode,_homeWeatherExpanded[mode]===false);
   renderMobileWeatherDisclosure();
 }
 function renderMobileWeatherDisclosure(){

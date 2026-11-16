@@ -9,7 +9,7 @@ function entry(){return {timezone:'Australia/Sydney',utcOffsetSeconds:36000,
   daily:[day('2026-10-02T14:00:00Z'),day('2026-10-03T14:00:00Z'),day('2026-10-04T13:00:00Z'),
     day('2026-10-05T13:00:00Z'),day('2026-10-06T13:00:00Z'),day('2026-10-07T13:00:00Z'),day('2026-10-08T13:00:00Z')],
   hourly:[{time:NOW+HOUR,tempC:18,code:0,isDay:0,rainProbability:0,precipitation:0}]};}
-function fixture(cache=entry()){
+function fixture(cache=entry(),storage=new Map()){
   const nodes={},calls=[];
   for(const id of ['periods','today','week','hours','summary','forecast-caption','forecast-empty','forecast-retry','preview','forecast-toggle','forecast-toggle-label']){
     nodes['home-weather-'+id]={hidden:false,textContent:'',innerHTML:'',attrs:{},dataset:{},classes:new Set(),
@@ -19,10 +19,11 @@ function fixture(cache=entry()){
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const ctx=vm.createContext({Date:Clock,Intl,Number,Set,console,
     document:{getElementById:id=>nodes[id]||null},loadWeatherCache:()=>cache,
+    localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
     weatherRefresh:args=>{calls.push(args);},escText:esc,escAttr:esc,weatherIcon:icon=>'<i>'+icon+'</i>'});
   vm.runInContext(extractConst('WEATHER_CODES')+'\nlet _homeWeatherPeriod=null;'+extractConst('_homeWeatherExpanded')+'\n'+[
     'weatherForecastDate','weatherForecastDays','weatherForecastHours','weatherForecastTime','weatherForecastSummary',
-    'homeWeatherPeriod','homeSetWeatherPeriod','homeToggleWeatherForecast','renderMobileWeatherDisclosure','renderMobileWeatherForecast','renderWeatherForecast'
+    'loadMobileForecastExpanded','setHomeForecastExpanded','homeWeatherPeriod','homeSetWeatherPeriod','homeToggleWeatherForecast','renderMobileWeatherDisclosure','renderMobileWeatherForecast','renderWeatherForecast'
   ].map(extract).join('\n'),ctx);
   return {ctx,nodes,calls,put:value=>{cache=value;}};
 }
@@ -149,6 +150,32 @@ test('selecting a period reveals a hidden forecast and missing data stays access
   ctx.homeToggleWeatherForecast();
   assert.equal(nodes['home-weather-preview'].inert,false);
   assert.equal(nodes['home-weather-forecast-retry'].hidden,false);
+});
+
+test('phone forecast restores its choice on startup and desktop use preserves it',()=>{
+  const store=new Map(),key='daily_weather_forecast_mobile';
+  const first=fixture(entry(),store);
+  first.ctx.renderWeatherForecast(entry());first.ctx.homeSetWeatherPeriod('week');
+  assert.equal(first.nodes['home-weather-preview'].inert,false);
+  assert.equal(store.has(key),false,'viewing the default does not write a choice');
+  first.ctx.homeToggleWeatherForecast();
+  assert.equal(store.get(key),'closed');
+
+  const reopened=fixture(entry(),store);
+  reopened.ctx.renderWeatherForecast(entry());
+  assert.equal(reopened.nodes['home-weather-preview'].inert,true);
+  const toggle=reopened.nodes['home-weather-forecast-toggle'];
+  toggle.dataset.mode='desktop';reopened.ctx.categoryDesktopWeather=()=>true;
+  reopened.ctx.renderWeatherForecast(entry());reopened.ctx.homeSetWeatherPeriod('today');
+  assert.equal(reopened.nodes['home-weather-preview'].inert,false);
+  assert.equal(store.get(key),'closed');
+  toggle.dataset.mode='mobile';reopened.ctx.categoryDesktopWeather=()=>false;
+  reopened.ctx.renderWeatherForecast(entry());
+  assert.equal(toggle.attrs['aria-expanded'],'false');
+  reopened.ctx.homeSetWeatherPeriod('today');
+  assert.equal(store.get(key),'open');
+  const expanded=fixture(entry(),store);expanded.ctx.renderWeatherForecast(entry());
+  assert.equal(expanded.nodes['home-weather-preview'].inert,false);
 });
 
 test('desktop drawer toggles independently and refreshes do not restart the period slide',()=>{

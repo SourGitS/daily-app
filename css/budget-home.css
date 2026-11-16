@@ -1091,7 +1091,7 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
    read as a grey ramp, and neither was a decision anyone made. The fix is one solid neutral
    per theme: the same tone at the top of a 600px card as at the bottom of a 90px one.
    The blur went with it. backdrop-filter on ~40 simultaneous cards costs real compositing
-   work on a phone, and it was blurring a flat #080808 page background — there is nothing
+   work on a phone, and it was blurring a flat page background — there is nothing
    behind these cards to see through.
    The SELECTOR LIST IS THE POINT: this is a narrow, named set of genuine content containers,
    not `[class*="card"]`. Controls that happen to read var(--card) (inputs, calculator keys,
@@ -1515,7 +1515,7 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .ob-theme-opt.selected{border-color:var(--accent)}
 .ob-theme-mini{border-radius:12px;padding:9px;overflow:hidden;display:block}
 .ob-theme-mini-light{background:#f2f2f7}
-.ob-theme-mini-dark{background:#080808}
+.ob-theme-mini-dark{background:#121212}
 .ob-theme-name{text-align:center;font-size:14px;font-weight:700;color:var(--text);margin-top:8px}
 .ob-theme-check{color:var(--accent-text)}
 /* Goal segmented control */
@@ -2036,7 +2036,7 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
    different line from the other two. */
 .bills-col-tag{font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
   color:var(--accent-text);white-space:nowrap;margin-top:-4px;height:12px;line-height:12px}
-/* Dark mode: the low-alpha bars need more presence against #080808, and a white cap at .55
+/* Dark mode: the low-alpha bars need more presence against the dark surface, and a white cap at .55
    over a dark accent is harsher than it is over a light one. */
 [data-theme="dark"] .bills-col-bar{background:rgba(var(--accent-rgb),.55)}
 [data-theme="dark"] .bills-col-cap{background:rgba(255,255,255,.42)}

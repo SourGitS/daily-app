@@ -47,6 +47,10 @@ test('Home activity uses matching scored ticks and leaves unknown days unscored'
  const html=c.categoryActivity();assert.equal((html.match(/role="img"/g)||[]).length,14);
  assert.equal((html.match(/<svg /g)||[]).length,9);assert.doesNotMatch(html,/cat-habit-meter|width:.*%|>!</);
  assert.match(html,/All habits complete/);assert.match(html,/0 of 6 habits completed/);assert.match(html,/No habit log/);
+ assert.doesNotMatch(html,/Status key|>Today so far\.</);
+ assert.match(html,/aria-label="Spending · 2026-10-21: Above weekly pace · Today so far"/);
+ assert.match(html,/aria-label="Habits · 2026-10-21: 2 of 6 habits completed · Not all habits complete · Today so far"/);
+ assert.match(html,/aria-label="Spending · 2026-10-19: No spending entries"/);
  assert.equal(memory.size,0);assert.equal(pushes.length,0);
  c.categoryActivityModel=()=>Array.from({length:7},(_,i)=>({date:'2026-10-'+(15+i),state:'unknown',habits:0,habitCount:0,allowance:null}));
  assert.doesNotMatch(c.categoryActivity(),/<svg /);assert.match(c.categoryActivity(),/No habits set/);

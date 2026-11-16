@@ -1,5 +1,12 @@
 # Daily — Agent Handoff
 
+## v454 phone header, Add and Home refinements — release authorised, 2026-11-16
+
+- The phone header uses a 52px portrait bar and a 19px wordmark. The Manhua Hub reference supplied by Francois sets the profile tile proportions: a 44px rounded square with 12px corners, a 32px inset photo with 8px corners, and a small outlined gear inside the lower-right edge. The plain plus and the profile tile each have a 44px tap target. The tile opens the navigation menu with Account as its first destination. Touch opens Add with neutral rows. Keyboard activation focuses Expense and Escape returns to Add.
+- Last 7 days ends after the Habits row. Each status still exposes its date, meaning and provisional status for today. The phone forecast remembers an explicit collapse or expansion across app restarts on that device and account. Desktop Category Home keeps its full forecast.
+- Francois chose neutral charcoal `#121212` for the dark canvas, theme tint and installed app launch colours. Accent text contrast uses the same canvas. The palette was checked through dark/light switches on Home, Planner and Finance.
+- All 795 app checks passed. Chrome touch and keyboard checks covered Add and the menu, and Home/Planner passed at 320–1920px across both themes. The forecast retained both choices across full browser restarts with isolated storage. Physical iPhone Safari testing remains pending.
+
 ## v453 Planner and shared Add — release authorised, 2026-11-16
 
 - Planner takes the fifth phone tab. Food and Planner support swiping in both directions. Stats is available in the phone menu and desktop sidebar. Existing `#notes` and `#stats` links and browser history still work. Journal writing and history live under Entries & notes.

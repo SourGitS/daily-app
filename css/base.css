@@ -70,8 +70,8 @@
 
 /* ── Dark mode (momentum) — overrides colour tokens only; layout/type stay shared ── */
 [data-theme="dark"]{
-  --bg:#080808;
-  --bg-rgb:8,8,8;
+  --bg:#121212;
+  --bg-rgb:18,18,18;
   /* FLAT, not a gradient. This was a 180deg white wash, which meant every surface reading
      --card stretched the same fade over whatever height it happened to be: invisible on a
      38px input, an obvious grey ramp down a 600px card. A control surface wants one tone. */
@@ -79,7 +79,7 @@
   --card-border:rgba(255,255,255,.10);
   --card-top:inset 0 1px 0 rgba(255,255,255,.07);
   /* Matte charcoal, SOLID: the same colour at the top of a tall card as at the bottom, so a
-     card's height stops being a visual property. Visibly lighter than --bg (#080808) without
+     card's height stops being a visual property. Visibly lighter than the page without
      approaching the heroes, which keep their gradients. */
   --surface-card:#1b1b1d;
   --surface-card-border:rgba(255,255,255,.085);

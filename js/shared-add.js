@@ -79,7 +79,8 @@ function sharedAddSelect(kind){
     button.setAttribute('aria-expanded','true');
     dialog.showModal();
     positionMenu();
-    choices.firstElementChild.focus({preventScroll:true});
+    // A tap opens on the heading. Keyboard activation goes straight to the first action.
+    if(event.detail===0) choices.firstElementChild.focus({preventScroll:true});
   });
 
   dialog.addEventListener('click',event=>{

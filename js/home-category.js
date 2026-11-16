@@ -65,14 +65,14 @@ function categoryActivityMark(state,label){
 function categoryActivity(){
  const data=categoryActivityModel(),labels={on:'Within weekly pace',over:'Above weekly pace','no-target':'No weekly spending target','no-entries':'No spending entries',unknown:'Spending needs a date check',future:'Future day'};
  const row=(name,content)=>'<div class="cat-week-row"><span class="cat-week-label">'+name+'</span>'+content+'</div>';
- return categoryHeading('activity',categoryDate(data[0].date)+' – '+categoryDate(data[6].date))+'<div class="cat-week" role="group" aria-label="Habits and weekly spending pace">'+
+ return categoryHeading('activity',categoryDate(data[0].date)+' – '+categoryDate(data[6].date))+'<div class="cat-week" role="group" aria-label="Habits and weekly spending pace" data-cat-nav="activity">'+
  row('',data.map(d=>'<span><b>'+localMidnight(d.date).toLocaleDateString('en-AU',{weekday:'short'})+'</b><small>'+localMidnight(d.date).getDate()+'</small></span>').join(''))+
  row('Spending',data.map(d=>categoryActivityMark(d.state,'Spending · '+categoryDate(d.date)+': '+labels[d.state]+(d.allowance!==null?' · '+fmtMoneyExact(d.spent)+' recorded / '+fmtMoneyExact(d.allowance)+' pace':'')+(d.date===getLocalDate()?' · Today so far':''))).join(''))+
  row('Habits',data.map(d=>{
   const state=d.habits===null||!d.habitCount?'unscored':d.habits===d.habitCount?'on':'over';
   const label=!d.habitCount?'No habits set':d.habits===null?'No habit log':d.habits+' of '+d.habitCount+' habits completed'+(state==='on'?' · All habits complete':' · Not all habits complete');
   return categoryActivityMark(state,'Habits · '+categoryDate(d.date)+': '+label+(d.date===getLocalDate()?' · Today so far':''));
- }).join(''))+'</div><div class="cat-caption cat-week-key" aria-label="Status key"><span><i class="cat-key-dot on" aria-hidden="true"></i>On track</span><span><i class="cat-key-dot over" aria-hidden="true"></i>Needs attention</span><span>— Unscored</span><small>Today so far.</small></div>'+categoryLink('activity','Open spending in Budget');
+ }).join(''))+'</div>'+categoryLink('activity','Open spending in Budget');
 }
 function categoryHabits(all=false){
  const done=new Set((habitsLog[getLocalDate()]||[]).filter(i=>i>=0&&i<habitsData.length));

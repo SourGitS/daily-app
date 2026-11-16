@@ -99,7 +99,7 @@ function dailyRestoreStage(data, time) {
     k!==DAILY_RESTORE_MARK && !['__proto__','prototype','constructor'].includes(k);
   for (const [key,input] of Object.entries(data)) {
     if(!/^(daily_|wt_|kitchen_)/.test(key) || /_ts$/.test(key)||/^daily_finance_(pending|seen)_/.test(key)||
-       ['daily_weather_cache','daily_pantry_ui','daily_nav_ui','daily_budget_ui'].includes(key)) continue;
+       ['daily_weather_cache','daily_weather_forecast_mobile','daily_pantry_ui','daily_nav_ui','daily_budget_ui'].includes(key)) continue;
     const raw = typeof input==='string'?input:JSON.stringify(input);
     let value = input;
     if(dailyRestoreArrayKeys.has(key)||dailyRestoreObjectKeys.has(key)||key==='wt_notes'||

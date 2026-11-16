@@ -60,6 +60,21 @@ test('saving the current weather colour does not save the dormant fixed colour o
   assert.deepEqual(writes.map(w => [w.key, w.syncPath]), [['daily_accent_favourites', 'accentFavourites']]);
 });
 
+test('dark launch colours and accent text match the charcoal page canvas', () => {
+  const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+  const canvas = read('css/base.css').match(/\[data-theme="dark"\]\s*\{\s*--bg:\s*(#[\da-f]{6});/i)[1];
+  const manifest = JSON.parse(read('manifest.json'));
+  const { c } = fixture();
+
+  assert.equal(canvas, '#121212');
+  assert.equal(manifest.background_color, canvas);
+  assert.equal(manifest.theme_color, canvas);
+  assert.equal(read('index.html').match(/<meta name="theme-color" content="([^"]+)"/)[1], canvas);
+  // This grey cleared the target against the previous canvas and needs lifting on charcoal.
+  const text = c.accentTextHex('#808080', true);
+  assert.ok(c._contrastRatio(text, canvas) >= 5);
+});
+
 test('Purple replaces only the selectable green preset; the default and stored greens are untouched', () => {
   const { c } = fixture();
   const source = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');

@@ -1157,7 +1157,7 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
    This replaced twelve literal .ds-item buttons in index.html, a similar-but-different list
    built by buildSideMenu(), and a third in renderQuickSettingsMenu().
    The shared phone selection uses an accent TINT plus a rail plus a weight change — never by tint
-   alone. The default accent is a neutral grey that vanishes as a 3px bar on #080808, which is
+   alone. The default accent is a neutral grey that can be hard to see as a thin bar, which is
    why the rail is --accent-text and not --accent (same reason the Journal rail is). Colour is
    never the only cue: the weight change carries it with no colour at all.
    Any number of groups can be open at once — see navResolveOpen() in js/app.js. The expand
@@ -1808,7 +1808,7 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
    fixed ~30px; the max() keeps it safe if cover is ever restored. */
 #bottom-nav{ padding-bottom: max(30px, calc(env(safe-area-inset-bottom, 0px) + 8px)); }
 
-/* ── Slide-out settings menu (header "---" button) ───────────────── */
+/* ── Phone navigation drawer ───────────────── */
 #menu-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s ease;z-index:50}
 #menu-overlay.open{opacity:1;visibility:visible}
 /* Drawer pinned to the top of the below-status-bar viewport — no env(safe-area-inset-top)
@@ -1817,9 +1817,11 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
 #side-menu.open{transform:translateX(0)}
 #side-menu-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
 #side-menu-title .wordmark{height:18px}
-.side-menu-close{background:transparent;border:none;color:var(--muted);font-size:24px;line-height:1;cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;padding:0}
+#side-menu-account{display:flex;align-items:center;gap:12px;min-height:44px;flex-shrink:0;margin:10px 10px 0;padding:0 14px;border:0;border-radius:12px;background:var(--track);color:var(--text);font:600 14px var(--font-ui);text-align:left;cursor:pointer}
+.side-menu-close{background:transparent;border:none;color:var(--muted);font-size:24px;line-height:1;cursor:pointer;width:44px;height:44px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;padding:0}
+#side-menu .nv-group:not(.is-open) .nv-rows{visibility:hidden}
 #side-menu-list{display:flex;flex-direction:column;padding:14px 10px 20px;gap:2px}
-/* The hamburger's rows are the shared .nv-* nav tree now (see above); .side-menu-item,
+/* The drawer's rows are the shared .nv-* nav tree now (see above); .side-menu-item,
    .smi-label, .smi-chev, .side-menu-divider and .side-menu-group-label are retired. */
 
 /* ══ Design system · Tier-1 hero cards (card-hierarchy consolidation, Part 1) ══════════════

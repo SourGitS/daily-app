@@ -451,7 +451,8 @@
 // v451: matching Home activity ticks, contained Log scrolling and Journal planning calendar.
 // v452: record-aware financial sync, guarded restore, scoped offline caching and review fixes.
 // v453: shared Add, Planner phone navigation and the calendar's Next up agenda.
-const CACHE_NAME = 'daily-v453';
+// v454: neutral charcoal theme, rounded-square profile menu, touch focus in Add, shorter activity card and remembered phone forecast.
+const CACHE_NAME = 'daily-v454';
 importScripts('./js/notification-storage.js');
 importScripts('./js/cache-scope.js');
 

@@ -5,8 +5,8 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#080808",
-  "theme_color": "#080808",
+  "background_color": "#121212",
+  "theme_color": "#121212",
   "icons": [
     {
       "src": "assets/brand/daily-app-icon-192.png",

@@ -68,11 +68,23 @@ async function checkActions(page, phone, capture) {
     accounts, ledger:ledgerData, food:nutLog});
   const before = await page.evaluate(records);
   const launch = page.locator('[data-shared-add]:visible');
-  await launch.click();
+  const choices = page.locator('#shared-add-choices button');
+  if (phone) await launch.tap();
+  else await launch.click();
+  assert.equal(await page.locator('#shared-add-title').evaluate(e=>document.activeElement===e),true,'pointer opens on the Add heading');
+  assert.equal(await choices.evaluateAll(rows=>rows.every(row=>getComputedStyle(row).backgroundColor==='rgba(0, 0, 0, 0)' && !row.matches(':focus-visible'))),true,'no choice is highlighted on open');
   if (capture) await capture('add');
   await page.keyboard.press('Escape');
   assert.equal(await launch.evaluate(e=>document.activeElement===e),true,'dismiss restores focus');
+  await launch.press('Enter');
+  assert.equal(await choices.first().evaluate(e=>e.dataset.addKind==='expense' && e.matches(':focus-visible')),true,'keyboard opens on a visibly focused Expense');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(()=>document.activeElement.dataset.addKind),'food');
+  await page.keyboard.press('Escape');
   if (phone) {
+    await launch.tap();
+    assert.equal(await choices.evaluateAll(rows=>rows.every(row=>!row.matches(':focus'))),true,'a new tap clears the previous keyboard choice');
+    await page.getByRole('button',{name:'Close Add menu'}).tap();
     const box = await launch.boundingBox();
     assert.ok(box.width>=44 && box.height>=44,'phone Add touch target');
   }
@@ -141,7 +153,32 @@ async function checkNavigation(page,phone) {
     const buttons=page.locator('#bottom-nav [data-view]');
     assert.equal(await buttons.last().getAttribute('data-view'),'notes');
     assert.equal((await buttons.last().innerText()).trim(),'Planner');
-    await page.locator('#header-menu').click();
+    const menu=page.getByRole('button',{name:'Menu',exact:true});
+    assert.deepEqual(await page.locator('#header-actions button').evaluateAll(list=>list.map(b=>b.getAttribute('aria-label'))),['Add','Menu']);
+    const tile=await menu.evaluate(button=>{
+      const face=button.querySelector('.header-avatar-face'), gear=button.querySelector('.header-avatar-gear');
+      const outer=button.getBoundingClientRect(), inner=face.getBoundingClientRect(), badge=gear.getBoundingClientRect();
+      return {
+        size:[outer.width,outer.height], photoSize:[inner.width,inner.height],
+        corners:[getComputedStyle(button).borderTopLeftRadius,getComputedStyle(face).borderTopLeftRadius],
+        filled:getComputedStyle(button).backgroundColor!=='rgba(0, 0, 0, 0)',
+        gearInside:badge.right<=outer.right && badge.bottom<=outer.bottom && badge.left<inner.right
+      };
+    });
+    assert.deepEqual(tile,{size:[44,44],photoSize:[32,32],corners:['12px','8px'],filled:true,gearInside:true});
+    assert.equal(await menu.getAttribute('aria-controls'),'side-menu');
+    assert.equal(await menu.getAttribute('aria-expanded'),'false');
+    await menu.press('Enter');
+    assert.equal(await menu.getAttribute('aria-expanded'),'true');
+    await page.keyboard.press('Escape');
+    assert.equal(await menu.evaluate(b=>b===document.activeElement),true);
+    assert.equal(await page.locator('#side-menu').evaluate(e=>e.inert),true);
+    await menu.tap();
+    await page.locator('#side-menu-account').tap();
+    assert.equal(await menu.getAttribute('aria-expanded'),'false');
+    await page.locator('#view-settings-detail #settings-account-section').getByRole('button',{name:'Sign out'}).waitFor();
+    await page.locator('#view-settings-detail [data-back="closeSettingsSection"]').click();
+    await menu.click();
     await page.locator('#side-menu-list [data-nav-quick="stats"]').click();
   } else await page.locator('#ds-nav [data-nav-quick="stats"]').click();
   await page.waitForFunction(()=>S.view==='stats');
