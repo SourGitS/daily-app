@@ -45,7 +45,15 @@ function dailySwitchAccount(user){
     const hasDestination=Array.from({length:destination.length},(_,i)=>destination.key(i)).some(k=>k!=='daily_weather_cache');
     if(meaningful&&!hasDestination&&confirm('This browser has existing offline Daily data. Does it belong to '+(user.displayName||'this account')+'?\n\nOK: attach it to this account. Cancel: load only this account’s cloud data. The previous offline copy is retained on this device.')){
       for(let i=0;i<localStorage.length;i++){
-        const k=localStorage.key(i);if(k!=='daily_weather_cache'&&!k.startsWith('daily_finance_seen_'))destination.setItem(k,localStorage.getItem(k));
+        const k=localStorage.key(i);
+        if(k==='daily_weather_cache'||k==='daily_planner_tasks_restore_ts'||k==='daily_planner_guest_tasks'||k.startsWith('daily_finance_seen_'))continue;
+        destination.setItem(k,localStorage.getItem(k));
+        // Attaching this guest's actions is an explicit import. A guest restore generation
+        // belongs to that device, not to the signed-in user's cloud history.
+        if(k==='daily_planner_tasks'&&typeof plannerTasks==='function'){
+          const ids=plannerTasks().map(row=>row.id);
+          if(ids.length)destination.setItem('daily_planner_guest_tasks',JSON.stringify(ids));
+        }
       }
     }
   }
@@ -62,7 +70,7 @@ function dailySwitchAccount(user){
 }
 function dailyHasOfflineRecords(storage){
   const stores=['wt_sessions','wt_weight','wt_notes','daily_budget','daily_transactions','daily_ledger',
-    'daily_accounts','daily_reviews','daily_savings_log','wt_plans','kitchen_recipes',
+    'daily_accounts','daily_reviews','daily_planner_tasks','daily_savings_log','wt_plans','kitchen_recipes',
     'daily_nutrition_log','daily_my_foods','daily_habits_log','daily_cal_history','daily_saved_foods',
     'daily_cc_log','wt_exercise_lib','kitchen_shopping_selected','kitchen_shopping_manual','wt_calories'];
   const records=stores.some(key=>{

@@ -123,3 +123,62 @@ test('boot and cloud apply cannot upload a review, even with a stored timestamp'
  a._bootPhase=true;a.wkrPushReview('2026-09-14');a._bootPhase=false;a._syncApplying=1;a.wkrPushReview('2026-09-14');await a.cloud.settle();
  assert.deepEqual(a.cloud.writes,[]);
 });
+
+test('personal priorities save and reload without a money plan; an empty edit writes nothing',()=>{
+ const a=fixture(),week='2026-09-14';
+ a.run('wkrPlan=wkrNormalisePlan({enabled:false})');
+ assert.equal(a.wkrCommitPriorities(week,[],['','','']),'');
+ assert.deepEqual(a.writes,[]);
+ assert.equal(a.wkrCommitPriorities(week,[],[' Get the bike serviced ','','']),'');
+ const saved=a.wkrLoadReviews()[week];
+ assert.deepEqual([...saved.reflection.priorities],['Get the bike serviced']);
+ assert.equal(saved.nextWeek,null);
+ assert.equal(a.run('wkrPlan.enabled'),false);
+ assert.deepEqual(a.writes,['daily_reviews']);
+});
+
+test('editing personal priorities protects a newer window and frozen reviews',()=>{
+ const a=fixture(),week='2026-09-14';
+ a.wkrCommitPriorities(week,[],['Initial']);
+ const updated=a.wkrLoadReviews();
+ updated[week].reflection.priorities=['Changed elsewhere'];updated[week].updatedAt+=10;
+ a.storage.setItem('daily_reviews',JSON.stringify(updated));
+ assert.match(a.wkrCommitPriorities(week,['Initial'],['Stale replacement']),/changed/);
+ assert.equal(a.wkrLoadReviews()[week].reflection.priorities[0],'Changed elsewhere');
+ a.run('wkrReviews["2026-09-14"].status="completed"');
+ assert.match(a.wkrCommitPriorities(week,['Changed elsewhere'],['New intention']),/completed/);
+ assert.equal(a.writes.length,1);
+});
+
+test('saved priorities keep their linked action after reorder, across older plan formats and duplicate wording',()=>{
+ const a=fixture(),week='2026-09-14',source={week,text:'Bike',occurrence:1};
+ const rec={reflection:{priorities:['Walk','Bike','Bike']},nextWeek:{priorities:['Bike','Train']}};
+ const task={id:'task',source,title:'Call the shop',date:'2026-09-23',originalDate:'2026-09-22',done:true};
+ const rows=a.wkrPriorityRows(week,rec,[task]);
+ assert.deepEqual(Array.from(rows,r=>[r.source.text,r.source.occurrence]),[['Walk',0],['Bike',0],['Bike',1],['Train',0]]);
+ assert.equal(rows[2].task,task);
+ assert.equal(rows[1].task,null);
+ const edited=a.wkrPriorityRows(week,{reflection:{priorities:['Replacement']}},[task]);
+ assert.equal(edited[0].task,null);
+ assert.equal(edited[1].task,task);
+ assert.equal(edited[1].source.text,'Bike');
+});
+
+test('current outcomes render in the origin and following review without updating a completed review',()=>{
+ const a=fixture(),week='2026-09-07';
+ a.fmtDate=s=>s;a.escText=s=>String(s);a.cardHeader=(_icon,s)=>'<h3>'+s+'</h3>';
+ const task={id:'one',source:{week,text:'Get the bike serviced',occurrence:0},title:'Call the shop',date:'2026-09-16',originalDate:'2026-09-15',done:true};
+ a.plannerTasks=()=>[task];
+ const rec=a.wkrNormaliseRecord({status:'completed',reflection:{priorities:['Get the bike serviced']}},week);
+ const before=JSON.stringify(rec);
+ for(const [selected,review] of [[week,rec],['2026-09-14',null]]){
+   const html=a.wkrPriorityCardHtml(selected,review);
+   assert.match(html,/Get the bike serviced/);assert.match(html,/Call the shop/);
+   assert.match(html,/Done · 2026-09-16 · Moved from 2026-09-15/);
+   assert.match(html,/data-task-id="one"/);
+ }
+ assert.ok(a.wkrVisibleWeeks().includes(week));
+ task.done=false;
+ assert.match(a.wkrPriorityCardHtml(week,rec),/Planned · 2026-09-16/);
+ assert.equal(JSON.stringify(rec),before);assert.deepEqual(a.writes,[]);
+});

@@ -1,5 +1,11 @@
 # Daily — Agent Handoff
 
+## v458 Planner Week and Weekly Review — release authorised, 2026-11-17
+
+- Week and Month share their date header and navigation. Week puts unfinished actions first and shows dated calendar records beside them on desktop. Finance, the action editor and the priority editor use the same form layout. The local screen picker runs these real layouts at phone and desktop sizes. Start it with `node tests/serve-planner-preview.cjs`. For an iPhone on the same network, set `DAILY_PREVIEW_HOST` to the computer’s private IPv4 address before starting the server. The default local address is `http://127.0.0.1:8822/`.
+- A saved personal priority can be scheduled without setting up a budget. Each linked action keeps the original priority, first planned date, current date and completion. Separate date and completion edits merge across devices. Task updates, account switching and backup/restore use an account-scoped store. Ordinary notes, bills and historical reviews retain their existing records.
+- All 807 app checks passed. The Review-to-Week round trip was exercised at 320, 390 and 1440px including undo and reload. The 11-check local database emulator suite verified two devices merging edits and a queued edit respecting a later restore. Browser checks used sample accounts. Francois approved publishing v458 to GitHub Pages for physical iPhone testing.
+
 ## v457 desktop sidebar Add placement — release authorised, 2026-11-16
 
 - The sidebar footer places + Add to the right of the account name and sync status. The menu opens above the footer and Escape returns focus to Add. Checked at 1307×883, 1024×768 and a short desktop window with a long account name. Phone uses the header plus and desktop Planner uses its toolbar. All 795 Node checks and the shared Add browser suite passed.

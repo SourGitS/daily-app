@@ -455,7 +455,8 @@
 // v455: move the Home date and layout control, compact the Log workout card and align Planner with the shared tabs and hero styling.
 // v456: compact the Planner month and filters into one hero, and show Log totals above the seven-day history.
 // v457: place the desktop sidebar Add button beside the account profile.
-const CACHE_NAME = 'daily-v457';
+// v458: Planner Week tasks and linked Weekly Review priorities.
+const CACHE_NAME = 'daily-v458';
 importScripts('./js/notification-storage.js');
 importScripts('./js/cache-scope.js');
 
@@ -470,6 +471,7 @@ const ASSETS = [
   './css/workout.css',
   './css/workout-session.css',
   './css/journal-planner.css',
+  './js/planner-tasks.js',
   './js/journal-planner.js',
   './css/shared-add.css',
   './js/shared-add.js',

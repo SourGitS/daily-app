@@ -689,6 +689,7 @@ if(firebaseReady){
     // to tell two devices apart, so whichever saved second pushed its own stale copy of every
     // other record and the first device's edit vanished with no conflict and no error.
     syncTrack(jrnAttachSync(user.uid));
+    syncTrack(plannerAttachTasks(user.uid));
 
     // ── Sync data added after the original sync was built ──
     const budEditing=()=>{ const a=document.activeElement; return a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'); };
@@ -7269,7 +7270,7 @@ function exportAllData(){
     // expanded, and the sidebar it belongs to only exists on a laptop; daily_budget_ui is
     // which spending breakdown the Budget week is showing. None mean anything on another
     // device.
-    if(key && (/^(daily_weather_cache|daily_weather_forecast_mobile|daily_pantry_ui|daily_nav_ui|daily_budget_ui|daily_finance_pending_|daily_finance_seen_)/.test(key)||key.endsWith('_restore_ts'))) continue;
+    if(key && (/^(daily_weather_cache|daily_weather_forecast_mobile|daily_planner_period|daily_planner_guest_tasks|daily_pantry_ui|daily_nav_ui|daily_budget_ui|daily_finance_pending_|daily_finance_seen_)/.test(key)||key.endsWith('_restore_ts'))) continue;
     if(key && /^(daily_|wt_|kitchen_)/.test(key)) data[key]=localStorage.getItem(key);
   }
   const backup={ app:'daily', version:1, exported:new Date().toISOString(), data };
@@ -7382,7 +7383,7 @@ async function restorePushToCloud(plan,uid){
   ref.on('value',keepCached);
   try{
     const before=(await ref.once('value')).val()||{},keys=Object.keys(plan.updates);
-    dailyRestoreAdvanceWorkouts(plan,before);
+    dailyRestoreAdvanceGenerations(plan,before);
     if(auth.currentUser?.uid!==uid)throw Error('The signed-in account changed.');
     const result=await ref.transaction(current=>{
       if(auth.currentUser?.uid!==uid)return;
@@ -18494,7 +18495,17 @@ function wkrReviewStartOptions(value){
 // start. Unreviewed Budget history before that point is not a task and stays out of the picker.
 function wkrVisibleWeeks(){
   const start=wkrPlanStartWeek();
-  return wkrReviewableWeeks().filter(week=>week>=start||!!wkrReview(week));
+  const weeks=new Set(wkrReviewableWeeks().filter(week=>week>=start||!!wkrReview(week)));
+  if(typeof plannerTasks==='function'){
+    const current=weekKey(getMondayOf(0));
+    plannerTasks().forEach(({source})=>{
+      if(!source)return;
+      weeks.add(source.week);
+      const following=wkrShiftWeek(source.week,1);
+      if(following<=current)weeks.add(following);
+    });
+  }
+  return [...weeks].sort().reverse();
 }
 function wkrWeekLabel(week){
   const mon=localMidnight(week);
@@ -18687,7 +18698,8 @@ let _wrSaveTimer=null;
 let _wrSaveWeek=null;
 function wkrFlushPending(){
   clearTimeout(_wrSaveTimer);
-  if(_wrSaveWeek){const week=_wrSaveWeek;_wrSaveWeek=null;wkrSaveReview(week);}
+  if(_wrSaveWeek){const week=_wrSaveWeek;_wrSaveWeek=null;return wkrSaveReview(week);}
+  return true;
 }
 window.addEventListener('pagehide',wkrFlushPending);
 window.addEventListener('beforeunload',e=>{
@@ -18780,14 +18792,6 @@ function wkrPatchText(path,value){ wkrPatch(path,String(value==null?'':value),tr
 function wkrPatchNum(path,value){
   const raw=String(value==null?'':value).trim();
   wkrPatch(path, raw===''?null:wkrNum(raw,0), true);
-}
-function wkrPatchPriority(i,value){
-  const week=wkrCurrentWeek(); if(!week) return;
-  const rec=wkrEnsureRecord(week);
-  const list=rec.reflection.priorities.slice();
-  while(list.length<3) list.push('');
-  list[i]=String(value==null?'':value);
-  wkrPatch('reflection.priorities', list, true);
 }
 function wkrToggleCheck(path,on){ wkrPatch(path,!!on,false); }
 
@@ -19592,16 +19596,148 @@ function wkrReflectionSectionHtml(week, rec, plan){
         'A wrong category, a missing transaction, a target that is out of date')+
     '</div>';
 
-  const pri=r.priorities.slice(); while(pri.length<3) pri.push('');
-  const priorities='<div class="card wkr-span">'+cardHeader('target','Three priorities for next week')+
-    pri.slice(0,3).map((v,i)=>wkrField('Priority '+(i+1),
-      '<input class="wkr-input" type="text" value="'+wkrAttr(v)+'" placeholder="'+
-      (i===0?'The one that matters most':'')+'" oninput="wkrPatchPriority('+i+',this.value)">')).join('')+
-  '</div>';
-
-  return questions+openText+priorities;
+  return questions+openText+wkrPriorityCardHtml(week,rec);
 }
 
+// Reflection and an accepted money plan can each contain priorities in older reviews.
+// Identical text shared by the two editors represents one intention. A second deliberate
+// occurrence in either list is still separately plannable.
+function wkrPriorityRows(week,rec,tasks){
+  const rows=new Map();
+  const key=(text,occurrence)=>JSON.stringify([text,occurrence]);
+  const lists=[rec?.reflection?.priorities||[],rec?.nextWeek?.priorities||[]];
+  lists.forEach((list,listIndex)=>{
+    const counts=new Map();
+    list.forEach(value=>{
+      const text=String(value||'').trim();if(!text)return;
+      const occurrence=counts.get(text)||0;counts.set(text,occurrence+1);
+      const id=key(text,occurrence);
+      if(!rows.has(id))rows.set(id,{source:{week,text,occurrence},note:listIndex?'From the money plan':'',task:null});
+    });
+  });
+  tasks.forEach(task=>{
+    const source=task.source;if(!source||source.week!==week)return;
+    const id=key(source.text,source.occurrence||0);
+    const row=rows.get(id)||{source,note:'Previously planned'};
+    row.task=task;rows.set(id,row);
+  });
+  return [...rows.values()];
+}
+function wkrPriorityRowHtml({source,task,note}){
+  const title=escText(source.text);
+  const taskStatus=task
+    ? (task.done?'Done':'Planned')+' · '+fmtDate(task.date)+(task.originalDate!==task.date?' · Moved from '+fmtDate(task.originalDate):'')
+    : '';
+  return '<div class="wkr-row wkr-priority-row"><div class="wkr-row-l"><strong class="wkr-row-name">'+title+'</strong>'+
+    (task&&task.title!==source.text?'<span class="wkr-priority-action">'+escText(task.title)+'</span>':'')+
+    (task?'<span class="wkr-row-meta">'+escText(taskStatus)+'</span>':note?'<span class="wkr-row-meta">'+escText(note)+'</span>':'')+'</div>'+
+    (task?'<button type="button" class="wkr-btn" data-task-id="'+wkrAttr(task.id)+'" aria-label="View '+wkrAttr(task.title)+' in Planner" onclick="wkrViewPlannedAction(this)">View in Planner</button>':
+      '<button type="button" class="wkr-btn" data-priority="'+wkrAttr(source.text)+'" data-occurrence="'+source.occurrence+'" aria-label="Plan this priority: '+wkrAttr(source.text)+'" onclick="wkrPlanPriority(this)">Plan this</button>')+
+    '</div>';
+}
+function wkrPriorityCardHtml(week,rec){
+  const tasks=typeof plannerTasks==='function'?plannerTasks():[];
+  const rows=wkrPriorityRows(week,rec,tasks);
+  const previous=wkrShiftWeek(week,-1);
+  const prior=tasks.filter(t=>t.source?.week===previous).sort((a,b)=>a.date.localeCompare(b.date)||a.title.localeCompare(b.title));
+  const done=rec?.status==='completed';
+  if(done&&!rows.length&&!prior.length)return '<section class="wkr-priority-card" data-week="'+wkrAttr(week)+'" hidden></section>';
+  const nextLabel=escText(wkrWeekLabel(wkrShiftWeek(week,1)));
+  return '<section class="card wkr-priority-card" data-week="'+wkrAttr(week)+'" tabindex="-1" aria-label="Weekly priorities">'+
+    (prior.length
+      ? cardHeader('target','From last week’s review')+prior.map(task=>wkrPriorityRowHtml({source:task.source,task})).join('')+
+        (!done||rows.length?'<div class="wkr-sec-divider">For next week · '+nextLabel+'</div>':'')
+      : cardHeader('target','Priorities for next week')+'<div class="wkr-priority-week">'+nextLabel+'</div>')+
+    rows.map(wkrPriorityRowHtml).join('')+
+    (!done?'<div class="wkr-actions"><button type="button" class="wkr-btn" data-edit-priorities onclick="wkrEditPriorities(this)">'+
+      (rec?.reflection?.priorities.some(p=>p.trim())?'Edit priorities':'Set priorities')+'</button></div>':'')+
+    '</section>';
+}
+function wkrViewPlannedAction(button){
+  const task=plannerTasks().find(item=>item.id===button.dataset.taskId);
+  if(task){jrnPlannerOpenWeek(task.date,task.id);return;}
+  wkrRefreshPriorityCards();showToast('This action is no longer in Planner.');
+}
+function wkrPlanPriority(button){
+  if(!wkrFlushPending())return;
+  const week=button.closest('[data-week]').dataset.week;
+  const source={week,text:button.dataset.priority,occurrence:Number(button.dataset.occurrence)};
+  const rec=wkrReview(week);
+  if(!wkrPriorityRows(week,rec,[]).some(row=>row.source.text===source.text&&row.source.occurrence===source.occurrence)){
+    wkrRefreshPriorityCards();showToast('This priority changed. Choose a saved priority to plan.');return;
+  }
+  const next=wkrShiftWeek(week,1),today=dateStr(new Date());
+  jrnPlannerTaskDialog({source,date:next>today?next:today,onSave(task){
+    wkrRefreshPriorityCards();
+    const target=[...document.querySelectorAll('.wkr-priority-card [data-task-id]')].find(el=>el.dataset.taskId===task.id);
+    target?.focus({preventScroll:true});
+  }});
+}
+function wkrRefreshPriorityCards(){
+  document.querySelectorAll('.wkr-priority-card').forEach(card=>{
+    const week=card.dataset.week,focus=card.contains(document.activeElement)?document.activeElement.dataset:null;
+    card.outerHTML=wkrPriorityCardHtml(week,wkrReview(week));
+    if(focus){
+      const controls=[...document.querySelectorAll('.wkr-priority-card button')];
+      const target=controls.find(el=>focus.taskId?el.dataset.taskId===focus.taskId:
+        focus.priority?el.dataset.priority===focus.priority&&el.dataset.occurrence===focus.occurrence:
+        el.hasAttribute('data-edit-priorities'));
+      target?.focus({preventScroll:true});
+    }
+  });
+}
+window.addEventListener('planner-tasks-changed',wkrRefreshPriorityCards);
+function wkrOpenPriorityWeek(week,taskId){
+  wkrOpenWeek(week);
+  if(wkrUI.week!==week)return;
+  const card=document.querySelector('.wkr-priority-card');
+  const target=taskId&&card?[...card.querySelectorAll('[data-task-id]')].find(el=>el.dataset.taskId===taskId):null;
+  const focus=target||card;
+  focus?.focus({preventScroll:true});focus?.scrollIntoView({block:'nearest'});
+}
+function wkrCommitPriorities(week,original,values){
+  const saved=wkrLoadReviews();
+  wkrReviews=wkrMergeReviews(saved,wkrReviews).merged;
+  const rec=wkrReview(week),current=rec?.reflection.priorities||[];
+  if(rec?.status==='completed')return 'This review was completed. Reopen it to edit its priorities.';
+  if(JSON.stringify(original)!==JSON.stringify(current))return 'These priorities changed. Cancel and reopen to see the saved version.';
+  const priorities=values.map(value=>value.trim());
+  while(priorities.length&&!priorities[priorities.length-1])priorities.pop();
+  if(JSON.stringify(priorities)===JSON.stringify(current))return '';
+  const draft=rec?{...rec,reflection:{...rec.reflection,priorities}}:wkrBlankRecord(week);
+  draft.reflection.priorities=priorities;wkrReviews[week]=draft;
+  if(wkrSaveReview(week))return '';
+  if(wkrReviews[week]===draft){
+    if(rec)wkrReviews[week]=rec;else delete wkrReviews[week];
+  }
+  return 'Could not save these priorities. Your entries are still here.';
+}
+function wkrEditPriorities(button){
+  if(!wkrFlushPending())return;
+  const week=button.closest('[data-week]').dataset.week,rec=wkrReview(week);
+  if(rec?.status==='completed')return;
+  const scope=localStorage.scope,original=(rec?.reflection.priorities||[]).slice();
+  const dialog=document.createElement('dialog');
+  const fields='<p class="bp-intro">'+escText(wkrWeekLabel(wkrShiftWeek(week,1)))+'</p>'+
+    [0,1,2].map(i=>'<label>Priority '+(i+1)+'<input name="priority" value="'+wkrAttr(original[i]||'')+'"></label>').join('')+
+    '<p role="alert" class="wkr-priority-error"></p>';
+  const form=dailyFormDialogLayout(dialog,'wkr-priority-title','Priorities for next week',fields,'Save priorities');
+  document.body.appendChild(dialog);
+  form.onsubmit=event=>{
+    event.preventDefault();
+    const error=scope===localStorage.scope&&!document.body.inert
+      ? wkrCommitPriorities(week,original,[...dialog.querySelectorAll('input')].map(el=>el.value))
+      : 'The signed-in account changed. Cancel and reopen in your current account.';
+    if(error){dialog.querySelector('[role="alert"]').textContent=error;return;}
+    dialog.close();wkrRefreshPriorityCards();
+  };
+  dialog.addEventListener('close',()=>{
+    dialog.remove();
+    document.querySelector('.wkr-priority-card [data-edit-priorities]')?.focus({preventScroll:true});
+  },{once:true});
+  dialog.showModal();
+  form.querySelector('input').focus();
+}
 // The handoff between this week and next: the allocations that will apply, what is already
 // known to be coming, the sales focus, and the three priorities. Assembled from what is saved,
 // never invented — an empty review produces an honestly empty summary.
@@ -19735,12 +19871,11 @@ function wkrNextCardHtml(week,rec,plan,opts){
     '<div class="wkr-next-allocations">'+rows.map(r=>'<div class="wkr-row"><span>'+escText(r[0])+'</span><b>'+fmtMoneyExact(r[1])+'</b></div>').join('')+'</div>'+
     '<div class="wkr-help">'+wkrNextBalanceHtml(n)+'</div>'+
     (n.note?'<p class="wkr-reset-note">'+escText(n.note)+'</p>':'')+
-    (n.priorities.some(Boolean)?'<ul class="wkr-priorities">'+n.priorities.filter(Boolean).map(p=>'<li>'+escText(p)+'</li>').join('')+'</ul>':'')+
     action+'</div>';
 }
 function wkrNextEditorHtml(week,rec,plan){
   const d=wkrUI.nextDraft;
-  if(!d)return wkrNextCardHtml(week,rec,plan)+wkrSuggestionsHtml(week,rec,plan);
+  if(!d)return wkrPriorityCardHtml(week,rec)+wkrNextCardHtml(week,rec,plan)+wkrSuggestionsHtml(week,rec,plan);
   const input=(key,val)=>'<input class="wkr-input" type="number" min="0" step="0.01" inputmode="decimal" value="'+wkrAttr(val==null?'':val)+'" oninput="wkrNextSet(\''+key+'\',this.value)">';
   const fields=WKR_GROUPS.map(g=>[g.id,d.money.groupLabels[g.id]]).concat([['savings','Savings'],['buffer','Buffer']]);
   const stale=wkrUI.nextBase!==wkrNextRevision(week);
@@ -19790,6 +19925,7 @@ function wkrOverviewHtml(week,rec,plan){
       wkrWeekSummaryHtml(week,rec,plan)+
       wkrNextCardHtml(week,rec,plan,{compact:true})+
     '</div>'+
+    wkrPriorityCardHtml(week,rec)+
     wkrInsightsHtml()+
     wkrSuggestionsHtml(week,rec,plan);
 }
@@ -19876,15 +20012,18 @@ function wkrStatusChip(rec){
 }
 function wkrWeeklyReviewHtml(){
   if(!wkrPlan.enabled&&!wkrUI.setup&&!wkrUI.planDraft){
+    const week=wkrCurrentWeek(),weeks=wkrVisibleWeeks();
+    const priorities='<div class="wkr-wrap">'+(weeks.length>1?wkrWeekPickerHtml(week,weeks):'')+
+      wkrPriorityCardHtml(week,wkrReview(week))+'</div>';
     // A plan that exists but has been switched off keeps its own re-entry, so turning it back
     // on is one press and never re-runs setup over the top of saved values.
-    if(wkrPlan.updatedAt) return '<div class="wkr-wrap"><div class="card">'+
+    if(wkrPlan.updatedAt) return priorities+'<div class="wkr-wrap"><div class="card">'+
       cardHeader('check','Weekly review', statsChip('neutral','Off'))+
       '<div class="wkr-blank">Weekly Review is switched off. Your plan and every completed review are '+
       'still saved.</div><div class="wkr-actions">'+
       '<button type="button" class="wkr-btn primary" onclick="wkrTurnOn()">Turn it back on</button>'+
       '</div></div></div>';
-    return wkrSetupChooserHtml();
+    return priorities+wkrSetupChooserHtml();
   }
   if(wkrUI.setup||wkrUI.planDraft) return wkrSetupFormHtml();
 
@@ -19939,13 +20078,7 @@ function wkrWeeklyReviewHtml(){
         '<h3 class="wkr-head-t">Weekly review</h3>'+
         wkrStatusChip(rec)+
       '</div>'+
-      '<div class="wkr-weekbar">'+
-        '<label class="wkr-week-lbl" for="wkr-week-select">Week reviewed</label>'+
-        '<select id="wkr-week-select" onchange="wkrSetWeek(this.value)">'+
-          weeks.map(w=>'<option value="'+w+'"'+(w===week?' selected':'')+'>'+escText(wkrWeekLabel(w))+
-            (wkrReviews[w]?(wkrReviews[w].status==='completed'?' ✓':' •'):'')+'</option>').join('')+
-        '</select>'+
-      '</div>'+
+      wkrWeekPickerHtml(week,weeks)+
       '<div class="wkr-tabs" role="group" aria-label="Review sections">'+
         sections.map(s=>'<button type="button" class="'+(wkrUI.section===s.id?'on':'')+'" '+
           'aria-pressed="'+(wkrUI.section===s.id?'true':'false')+'" '+
@@ -19973,6 +20106,13 @@ function wkrWeeklyReviewHtml(){
         'anywhere — Ask Daily AI prepares text for you to copy.</div>'+
     '</div>'+
   '</div>';
+}
+function wkrWeekPickerHtml(week,weeks){
+  return '<div class="wkr-weekbar"><label class="wkr-week-lbl" for="wkr-week-select">Week reviewed</label>'+
+    '<select id="wkr-week-select" onchange="wkrSetWeek(this.value)">'+
+    weeks.map(w=>'<option value="'+w+'"'+(w===week?' selected':'')+'>'+escText(wkrWeekLabel(w))+
+      (wkrReviews[w]?(wkrReviews[w].status==='completed'?' ✓':' •'):'')+'</option>').join('')+
+    '</select></div>';
 }
 
 // ── Home / Review nudge ─────────────────────────────────────────
@@ -30480,7 +30620,7 @@ function jrnHeadHtml(plannerModel){
     let n=0;
     if(q&&planning){
       const model=plannerModel||jrnPlannerRead(),upcoming=new Set(jrnPlannerState.showNext?model.upcoming:[]);
-      n=model.events.filter(e=>e.date.startsWith(model.month)||e.overdue||upcoming.has(e)).length;
+      n=model.weekEvents?model.weekEvents.length:model.events.filter(e=>e.date.startsWith(model.month)||e.overdue||upcoming.has(e)).length;
     }else if(q)n=jrnEntries().filter(r=>jrnMatch(r,q)).length+jrnNotesAll().filter(r=>jrnMatch(r,q)).length;
     h+='<div class="jrn-search-wrap">'+
       '<input id="jrn-search" class="jrn-search" type="search" aria-label="Search Planner" placeholder="'+(planning?'Search your calendar':'Search entries, notes and tags')+'" value="'+escAttr(jrnQuery)+'" autocomplete="off">'+

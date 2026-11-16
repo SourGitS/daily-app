@@ -1,10 +1,25 @@
 const test=require('node:test'),assert=require('node:assert/strict');
-const {jrnPlannerDate,jrnPlannerAdd,jrnPlannerModel,jrnPlannerWorkout}=require('../js/journal-planner.js');
+const {jrnPlannerDate,jrnPlannerAdd,jrnPlannerWeekRange,jrnPlannerModel,jrnPlannerWorkout}=require('../js/journal-planner.js');
 const model=extra=>jrnPlannerModel({month:'2026-11',selected:'2026-11-13',today:'2026-11-13',notes:[],bills:[],...extra});
 test('planner validates real calendar dates and moves across DST and month boundaries',()=>{
  for(const d of ['2026-11-13','2024-02-29'])assert.equal(jrnPlannerDate(d),true);
  for(const d of ['2026-02-29','2026-02-31','2026-13-01','bad','2026-1-2'])assert.equal(jrnPlannerDate(d),false);
  assert.equal(jrnPlannerAdd('2026-10-04',1),'2026-10-05');assert.equal(jrnPlannerAdd('2026-12-31',1),'2027-01-01');
+});
+test('Planner weeks run Monday through Sunday across months, years and DST',()=>{
+ for(const day of ['2026-12-28','2026-12-31','2027-01-03']){
+  assert.deepEqual(jrnPlannerWeekRange(day),{start:'2026-12-28',end:'2027-01-03'});
+ }
+ assert.deepEqual(jrnPlannerWeekRange('2026-10-04'),{start:'2026-09-28',end:'2026-10-04'});
+});
+test('calendar keeps completed actions on their date and searches by the original priority',()=>{
+ const tasks=[{id:'one',title:'Ring the shop',date:'2026-11-13',done:false,source:{text:'Fix the bike'}},
+  {id:'two',title:'Replace tyre',date:'2026-11-13',done:true,source:{text:'Fix the bike'}}];
+ const m=model({tasks,filter:'note',query:'bike'});
+ assert.deepEqual(m.selectedEvents.map(e=>e.title),['Replace tyre','Ring the shop']);
+ assert.deepEqual(m.upcoming.map(e=>e.id),['one']);
+ assert.equal(model({tasks,filter:'entry'}).events.length,0);
+ assert.equal(model({tasks,filter:'bill'}).events.length,0);
 });
 test('planner places entries by their day and notes by due date, without deleting expired notes',()=>{
  const notes=[{id:'e',kind:'entry',dateAbout:'2026-11-13',title:'Day'},

@@ -223,11 +223,23 @@ function budPeriodRefresh(){
   if(S.view==='home')renderHome();
   if(S.view==='stats')refreshStatsForData(['finance','overview','review']);
 }
+// Use the same header, scrollable fields and fixed actions for an explicit-save editor.
+// Callers supply escaped field markup and own validation, saving and return focus.
+function dailyFormDialogLayout(dialog,titleId,title,fields,submitLabel='Save'){
+  dialog.classList.add('bp-dialog');
+  dialog.setAttribute('aria-labelledby',titleId);
+  dialog.innerHTML='<form><div class="bp-dialog-head"><h2 id="'+escAttr(titleId)+'">'+escText(title)+'</h2>'+
+    '<button type="button" data-dialog-close aria-label="Close">×</button></div>'+
+    '<div class="bp-dialog-content">'+fields+'</div><div class="bp-actions">'+
+    '<button type="button" class="stg-btn" data-dialog-close>Cancel</button>'+
+    '<button type="submit" class="stg-btn primary">'+escText(submitLabel)+'</button></div></form>';
+  for(const button of dialog.querySelectorAll('[data-dialog-close]'))button.onclick=()=>dialog.close();
+  return dialog.querySelector('form');
+}
 function budPeriodDialog(title,html){
   let d=document.getElementById('bud-period-dialog');
-  if(!d){d=document.createElement('dialog');d.id='bud-period-dialog';d.className='bp-dialog';document.body.appendChild(d);}
-  d.setAttribute('aria-labelledby','bp-dialog-title');
-  d.innerHTML='<form id="bp-form"><div class="bp-dialog-head"><h2 id="bp-dialog-title">'+escText(title)+'</h2><button type="button" aria-label="Close" onclick="document.getElementById(\'bud-period-dialog\').close()">×</button></div><div class="bp-dialog-content">'+html+'<p id="bp-error" role="alert"></p></div><div class="bp-actions"><button type="button" class="stg-btn" onclick="document.getElementById(\'bud-period-dialog\').close()">Cancel</button><button type="submit" class="stg-btn primary">Save</button></div></form>';
+  if(!d){d=document.createElement('dialog');d.id='bud-period-dialog';document.body.appendChild(d);}
+  dailyFormDialogLayout(d,'bp-dialog-title',title,html+'<p id="bp-error" role="alert"></p>').id='bp-form';
   if(!d.open)d.showModal();return d;
 }
 function budPeriodError(message){document.getElementById('bp-error').textContent=message;}

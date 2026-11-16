@@ -29,6 +29,12 @@
 #review-content .wkr-next-allocations b{font-family:var(--font-num);text-align:right;overflow-wrap:anywhere}
 #review-content .wkr-priorities{padding-left:22px;margin:12px 0;color:var(--text);font-size:14px;line-height:1.65}
 #review-content .wkr-priorities li+li{margin-top:8px}
+.wkr-priority-week{font-size:13px;color:var(--muted);margin:0 0 8px}
+.wkr-priority-row{align-items:center;gap:12px}
+.wkr-priority-row .wkr-btn{flex:none}
+.wkr-priority-action{font-size:13px;color:var(--text-2);overflow-wrap:anywhere}
+.wkr-priority-error{color:var(--danger)}
+.wkr-priority-error:empty{display:none}
 #review-content .wkr-reset-note{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.6}
 #review-content .wkr-insights-heading h3{font-size:18px;margin:12px 0 5px}
 #review-content .wkr-insights-heading p{font-size:13px;line-height:1.5;color:var(--text-2);margin:0 0 8px}

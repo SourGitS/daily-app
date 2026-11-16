@@ -26,7 +26,7 @@
 .jp-day.today .jp-day-num{text-decoration:underline;text-underline-offset:4px;text-decoration-color:var(--accent-text)}
 .jp-day-num{line-height:1.4}.jp-day-dots{display:flex;gap:3px;flex-wrap:wrap;min-height:5px}
 .jp-dot{display:inline-block;width:6px;height:6px;flex:none;border-radius:50%;background:var(--accent-text)}
-.jp-dot.note{background:#d8993b}.jp-dot.bill{background:#52b788}
+.jp-dot.note,.jp-dot.task{background:#d8993b}.jp-dot.bill{background:#52b788}
 .jp-dot.workout{background:#839bd3}
 .jp-day-peek{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:var(--muted);font-weight:500}
 .jp-day-peek small{display:block;font-size:9px}
@@ -55,3 +55,43 @@
 @media(max-width:1100px){.jp-layout{grid-template-columns:minmax(0,1fr)}.jp-day{min-height:70px}}
 @media(max-width:600px){.jp-calendar{--jp-inset:14px}.jp-agenda-card{padding:14px}.jp-month{gap:6px}.jp-month h2{font-size:22px}.jp-days{gap:3px}.jp-day{min-height:48px;padding:7px 3px;align-items:center;font-size:12px;gap:6px}.jp-day-peek{display:none}.jp-weekday{font-size:9px}}
 @media(max-width:359px){.jp-month h2{font-size:18px}.jp-month-nav{gap:2px}}
+
+/* Week uses the calendar's gradient and controls with the Log/Finance hierarchy:
+   date at the top, actions on a neutral surface, and related records alongside. */
+.jp-week-card{margin-top:16px}
+.jp-week-hero{padding-block:14px}
+.jp-week-kicker{margin:0 0 4px;font:700 10px/1.25 var(--font-ui);letter-spacing:.04em;text-transform:uppercase;opacity:.8}
+.jp-week-columns{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)}
+.jp-week-section{min-width:0;padding:12px var(--jp-inset) 16px}
+.jp-week-context{border-left:1px solid var(--border)}
+.jp-week-heading,.jp-week-day h4{display:flex;align-items:center}
+.jp-week-heading{min-height:44px;justify-content:space-between;gap:8px}
+.jp-week-heading h3{margin:0;font:700 16px/1.4 var(--font-ui);letter-spacing:-.02em}
+.jp-week-heading>.stg-btn,.jp-task-actions .stg-btn{min-height:44px;margin:0;padding:6px 11px;font-size:12px}
+.jp-week-day{padding-block:8px;border-top:1px solid var(--border)}
+.jp-week-day h4{margin:0 0 4px;font:650 11px/1.4 var(--font-ui);color:var(--muted)}
+.jp-week-section .jp-event{min-height:50px;padding:7px 0}
+.jp-task{display:flex;align-items:flex-start;gap:10px;padding-block:6px}
+.jp-task+.jp-task{padding-top:12px}
+.jp-task-content{min-width:0;flex:1}
+.jp-source-link{display:block;width:100%;min-height:44px;padding:0;background:transparent;border:0;font:inherit;text-align:left;color:inherit;cursor:pointer}
+.jp-task-content strong,.jp-edit-task{display:block;overflow-wrap:anywhere;font:700 14px/1.45 var(--font-ui)}
+.jp-source-link small{display:block;margin-top:2px;font:500 11px/1.45 var(--font-ui);color:var(--muted);overflow-wrap:anywhere}
+.jp-task-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:5px}
+.jp-task-actions .jp-text-btn{min-width:44px}
+.jp-week-details{border-top:1px solid var(--border)}
+.jp-week-details>summary{align-content:center;min-height:44px;font:650 12px/1.4 var(--font-ui);cursor:pointer}
+.jp-week-details>summary span{color:var(--muted);margin-left:4px}
+.jp-week-section .jp-empty{margin:0}
+.jp-source-link:focus-visible,.jp-week-details>summary:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px;border-radius:4px}
+.jp-form-error{color:var(--danger,var(--text));overflow-wrap:anywhere}
+.jp-form-error:empty{display:none}
+@media(max-width:1100px){
+ .jp-week-columns{grid-template-columns:minmax(0,1fr)}
+ .jp-week-context{border-left:0;border-top:1px solid var(--border)}
+}
+@media(max-width:600px){
+ .jp-week-hero{padding-block:10px}
+ .jp-week-section{padding-block:8px 12px}
+}
+@media(max-width:359px){.jp-view-switch>button{padding-inline:7px}}

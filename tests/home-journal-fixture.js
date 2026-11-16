@@ -9,3 +9,12 @@ if(params.has('planner-review')){
  const groups=['chest','back','shoulders','arms','quads','hamstrings','calves','glutes','lower back','forearms','core','other'];
  stores.exerciseLib=blob(Array.from({length:60},(_,i)=>({id:'review-move-'+i,name:groups[i%groups.length]+' movement '+(Math.floor(i/groups.length)+1),muscle:groups[i%groups.length],custom:true})));
 }
+
+if(params.has('week-preview')){
+  const monday=new Date();
+  monday.setDate(monday.getDate()-((monday.getDay()+6)%7)-7);
+  const week=[monday.getFullYear(),String(monday.getMonth()+1).padStart(2,'0'),String(monday.getDate()).padStart(2,'0')].join('-');
+  stores.weeklyReviews={[week]:{week,status:'draft',createdAt:500,updatedAt:500,
+    reflection:{priorities:['Get the bike serviced','Make time for a long walk']}}};
+  if(stores.notes?.call)stores.notes.call.title='Collect the parcel';
+}

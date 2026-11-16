@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DailyHub · Planner preview</title>
+<style>
+  *{box-sizing:border-box}
+  :root{color-scheme:dark;font:15px/1.45 system-ui,sans-serif;color:#ededed;background:#121212}
+  body{max-width:1536px;margin:auto;padding:18px clamp(12px,3vw,36px) 32px}
+  h1{font-size:clamp(20px,3vw,28px);letter-spacing:-.04em;margin:0}
+  header,.tools,.device{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  header,.tools{justify-content:space-between}
+  .tools{margin:12px 0}
+  label,.meta{color:#aaa;font-size:13px}
+  select,button,a{font:inherit;color:inherit}
+  button,select{min-height:44px;background:#252525;border:1px solid #404040;border-radius:9px;padding:6px 12px}
+  button{cursor:pointer}
+  button[aria-pressed=true]{background:#384e5b;border-color:#7899ac}
+  a{color:#abcfe5;text-underline-offset:3px}
+  a:focus-visible,button:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid #a4cde7;outline-offset:2px}
+  #stage{width:100%;display:grid;justify-items:center;background:#1a1a1a;border-radius:14px;padding:0;overflow:hidden}
+  #frame-box{position:relative;max-width:100%}
+  iframe{position:absolute;top:0;left:0;border:0;outline:1px solid #353535;outline-offset:-1px;border-radius:12px;transform-origin:top left;background:#121212}
+  details{max-width:780px;margin:16px auto 0;color:#c7c7c7;font-size:14px}
+  summary{cursor:pointer;padding:6px 0}
+  dd{margin:0 0 10px}dt{font-weight:650;color:white}
+  @media(max-width:520px){body{padding:10px}header .meta{font-size:12px}.tools{gap:6px}button,select{font-size:14px}.device{gap:5px}}
+</style>
+</head>
+<body>
+<header><h1>Planner preview</h1><span class="meta">Local sample account</span></header>
+<div class="tools">
+  <label>Screen <select id="screen">
+    <option value="week">Planner · Week</option><option value="review">Weekly Review · Priorities</option>
+    <option value="month">Planner · Month</option><option value="editor">Planner · Add action</option>
+    <option value="log">Log · Today</option><option value="finance">Finance · Overview</option>
+  </select></label>
+  <div class="device" role="group" aria-label="Preview size">
+    <button type="button" id="phone" aria-pressed="true">Phone</button>
+    <button type="button" id="desktop" aria-pressed="false">Desktop</button>
+    <a id="direct" href="/app?screen=week" target="_blank" rel="noopener">Open full size</a>
+  </div>
+</div>
+<main id="stage"><div id="frame-box"><iframe id="app-frame" width="390" height="844" title="Interactive DailyHub sample"></iframe></div></main>
+<details><summary>Try the flow and see the layout references</summary>
+<p>Move <strong>Call the bike shop</strong> to another day and mark it done. Use its Weekly Review link to see the original priority. From Review, try <strong>Plan this</strong> on the walk priority and give it a date of your own.</p>
+<dl>
+  <dt>Overview · Log and Finance</dt><dd>Lead with one useful item or figure, then show supporting information and the primary action.</dd>
+  <dt>Browse and act · Planner Month and Week</dt><dd>Use the shared segmented controls and gradient date header. Week brings incomplete actions first. Related calendar items use the existing dated rows.</dd>
+  <dt>Edit and return · Add action</dt><dd>Use the Finance form layout with labelled inputs, an explicit save and a cancel action. Try closing it with Escape and continuing from the same screen.</dd>
+</dl>
+</details>
+<script>
+  const params=new URLSearchParams(location.search);
+  const frame=document.getElementById('app-frame'), box=document.getElementById('frame-box'), stage=document.getElementById('stage');
+  const screen=document.getElementById('screen'), direct=document.getElementById('direct');
+  if([...screen.options].some(option=>option.value===params.get('screen')))screen.value=params.get('screen');
+  let device=params.get('device')==='desktop'?'desktop':'phone';
+  function size(){
+    const desktop=device==='desktop',width=desktop?Math.max(1280,stage.clientWidth):390,height=desktop?900:844;
+    const scale=Math.min(1,stage.clientWidth/width);
+    frame.width=width;frame.height=height;frame.style.transform='scale('+scale+')';
+    box.style.width=width*scale+'px';box.style.height=height*scale+'px';
+    for(const id of ['phone','desktop'])document.getElementById(id).setAttribute('aria-pressed',String(id===device));
+  }
+  function updateURL(){const url=new URL(location.href);url.searchParams.set('screen',screen.value);url.searchParams.set('device',device);history.replaceState(null,'',url);}
+  function openScreen(){direct.href='/app?screen='+screen.value;frame.src=direct.href;updateURL();}
+  screen.addEventListener('change',openScreen);
+  for(const id of ['phone','desktop'])document.getElementById(id).onclick=()=>{device=id;size();updateURL();};
+  new ResizeObserver(size).observe(stage);
+  size();openScreen();
+</script>
+</body>
+</html>

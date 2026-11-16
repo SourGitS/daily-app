@@ -1,4 +1,4 @@
-// Serve only the app's cached assets and sample records, entirely inside Playwright.
+// The browser tests and the local preview use the same app files and synthetic account.
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -12,12 +12,11 @@ const contentTypes = {
   '.png': 'image/png', '.woff2': 'font/woff2', '.json': 'application/json'
 };
 
-function plannerFixture(revision) {
+function plannerSampleFiles(revision) {
   const cache = new Map();
   function source(file) {
-    if (!cache.has(file)) cache.set(file, revision
-      ? execFileSync('git', ['show', revision + ':' + file], {cwd:root, maxBuffer:16*1024*1024})
-      : read(file));
+    if (!revision) return read(file);
+    if (!cache.has(file)) cache.set(file, execFileSync('git', ['show', revision + ':' + file], {cwd:root, maxBuffer:16*1024*1024}));
     return cache.get(file);
   }
   const manifest = source('service-worker.js').toString().match(/const ASSETS = (\[[\s\S]*?\]);/)[1];
@@ -27,6 +26,18 @@ function plannerFixture(revision) {
     .replace(/<script src="https:\/\/www\.gstatic\.com\/firebasejs\/[^"]+"><\/script>/g, '');
   const samples = ['tests/category-home-fixture.js', 'tests/home-journal-fixture.js'].map(file => read(file).toString()).join('\n');
   const fixture = read('tests/sync-browser-fixture.js').toString().replace('const initial=clone(stores)', () => samples + '\nconst initial=clone(stores)');
+  return file => {
+    let body;
+    if (file === 'tests/sync-browser.html') body = html;
+    else if (file === 'tests/sync-browser-fixture.js') body = fixture;
+    else if (file && file !== 'index.html' && allowed.has(file)) body = source(file);
+    else return null;
+    return {contentType:contentTypes[path.extname(file)] || 'application/octet-stream', body};
+  };
+}
+
+function plannerFixture(revision) {
+  const sample = plannerSampleFiles(revision);
   return async context => {
     await context.addInitScript(() => {
       window.Chart = class {constructor(){this.data={};this.options={};} destroy(){} update(){} resize(){}};
@@ -35,14 +46,9 @@ function plannerFixture(revision) {
       const url = new URL(route.request().url());
       if (url.origin !== origin) return route.abort();
       const file = decodeURIComponent(url.pathname).slice(1);
-      let body;
-      if (file === 'tests/sync-browser.html') body = html;
-      else if (file === 'tests/sync-browser-fixture.js') body = fixture;
-      else if (allowed.has(file) && file) body = source(file);
-      else return route.fulfill({status:404, body:''});
-      return route.fulfill({contentType:contentTypes[path.extname(file)] || 'application/octet-stream', body});
+      return route.fulfill(sample(file) || {status:404, body:''});
     });
   };
 }
 
-module.exports = {plannerFixture, fixtureURL:origin + '/tests/sync-browser.html'};
+module.exports = {plannerFixture, plannerSampleFiles, fixtureURL:origin + '/tests/sync-browser.html'};

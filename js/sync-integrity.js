@@ -26,9 +26,10 @@ const dailyRestoreSpecial = {
   daily_profile:'profile', daily_budget_defaults:'budgetDefaults', wt_personalinfo:'personalInfo',
   daily_habits:'habits', daily_budget:'budgetData', daily_budget_config:'budgetConfig',
   daily_weight_goal:'weightGoal', daily_subscriptions:'subscriptions', wt_notes:'notes',
-  daily_reviews:'weeklyReviews', wt_sessions:'sessions', wt_weight:'weights', daily_savings_log:'savingsLog'
+  daily_reviews:'weeklyReviews', daily_planner_tasks:'plannerTasks', wt_sessions:'sessions', wt_weight:'weights', daily_savings_log:'savingsLog'
 };
-const dailyRestoreArrayKeys = new Set(['wt_sessions','wt_weight','daily_savings_log','daily_accounts',
+const dailyRestoreGenerationalStores = {wt_sessions:'id',wt_weight:'date',daily_planner_tasks:'id'};
+const dailyRestoreArrayKeys = new Set(['wt_sessions','wt_weight','daily_planner_tasks','daily_savings_log','daily_accounts',
   'daily_transactions','daily_ledger','daily_ai_requests','kitchen_recipes','daily_habits','daily_subscriptions',
   'daily_budget_inc_cats','daily_budget_fix_cats','daily_budget_var_cats','daily_income_streams','daily_cc_log',
   'daily_home_order','daily_accent_favourites','wt_exercise_lib','wt_custom_muscles','wt_lib_hidden',
@@ -92,14 +93,14 @@ function dailyRestoreStage(data, time) {
   // Accounts attaches after its initial migration read. A restore may arrive before that read finishes.
   registered.set('daily_accounts','accounts');
   registered.set('daily_nutrition_log','nutritionLog');
-  const recordKeys = { wt_sessions:'id', wt_weight:'date', daily_savings_log:'date', wt_notes:'id',
+  const recordKeys = { ...dailyRestoreGenerationalStores, daily_savings_log:'date', wt_notes:'id',
     daily_transactions:'id', daily_ledger:'id', daily_accounts:'id', daily_ai_requests:'id' };
   const object = dailyRestoreObject;
   const validKey = k => typeof k==='string' && k && !/[.#$\[\]/\u0000-\u001f\u007f]/.test(k) &&
     k!==DAILY_RESTORE_MARK && !['__proto__','prototype','constructor'].includes(k);
   for (const [key,input] of Object.entries(data)) {
     if(!/^(daily_|wt_|kitchen_)/.test(key) || /_ts$/.test(key)||/^daily_finance_(pending|seen)_/.test(key)||
-       ['daily_weather_cache','daily_weather_forecast_mobile','daily_pantry_ui','daily_nav_ui','daily_budget_ui'].includes(key)) continue;
+       ['daily_weather_cache','daily_weather_forecast_mobile','daily_planner_period','daily_planner_guest_tasks','daily_pantry_ui','daily_nav_ui','daily_budget_ui'].includes(key)) continue;
     const raw = typeof input==='string'?input:JSON.stringify(input);
     let value = input;
     if(dailyRestoreArrayKeys.has(key)||dailyRestoreObjectKeys.has(key)||key==='wt_notes'||
@@ -107,8 +108,8 @@ function dailyRestoreStage(data, time) {
       try { value=JSON.parse(raw); } catch { throw Error('Invalid JSON in '+key+'.'); }
       dailyRestoreCheckStore(key,value);
     }
-    const isWorkout=key==='wt_sessions'||key==='wt_weight';
-    const revision=isWorkout?Math.max(time,(Number(localStorage.getItem(key+'_restore_ts'))||0)+1):time;
+    const hasGeneration=Object.hasOwn(dailyRestoreGenerationalStores,key);
+    const revision=hasGeneration?Math.max(time,(Number(localStorage.getItem(key+'_restore_ts'))||0)+1):time;
     let encoded=raw, keyed=null;
     if(recordKeys[key]) {
       const field=recordKeys[key], rows=Array.isArray(value)?value:Object.values(value), ids=new Set();
@@ -123,17 +124,19 @@ function dailyRestoreStage(data, time) {
            !row.exercises.every(ex=>object(ex)&&Array.isArray(ex.sets)&&ex.sets.every(object))))throw Error('Invalid workout in '+key+'.');
         if(key==='wt_weight'&&!deleted&&!dailyRestoreNumber(row.weight))throw Error('Invalid weight in '+key+'.');
         if(key==='daily_savings_log'&&!dailyRestoreNumber(row.balance))throw Error('Invalid savings balance in '+key+'.');
+        if(key==='daily_planner_tasks'&&!plannerReadTask(row))throw Error('Invalid Planner action in '+key+'.');
         if(['daily_transactions','daily_ledger'].includes(key)&&!deleted&&
            (!dailyRestoreDate(row.date)||!dailyRestoreNumber(row.amount)))throw Error('Invalid financial record in '+key+'.');
         if(key==='daily_accounts'&&(!['asset','debt'].includes(row.type)||typeof row.name!=='string'))throw Error('Invalid account in '+key+'.');
         if(key==='daily_ai_requests'&&typeof row.status!=='string')throw Error('Invalid request status in '+key+'.');
         ids.add(idText);
       }
-      if(['wt_sessions','wt_weight','daily_savings_log','wt_notes'].includes(key)) {
+      if(hasGeneration||key==='daily_savings_log'||key==='wt_notes') {
         const stamped=rows.map(row => {
           if(key==='daily_savings_log')return {...row,t:time};
-          const record=key==='wt_notes'?jrnNormalise(row):row;
-          return {...record,updatedAt:revision,...(isWorkout?{restoreGeneration:revision}:{}),
+          const record=key==='wt_notes'?jrnNormalise(row):key==='daily_planner_tasks'?plannerReadTask(row):row;
+          return {...record,updatedAt:revision,...(hasGeneration?{restoreGeneration:revision}:{}),
+            ...(key==='daily_planner_tasks'?{dateAt:record.dateAt?revision:0,doneAt:record.doneAt?revision:0}:{}),
             ...(record.deletedAt!=null?{deletedAt:Number(record.deletedAt)>0?revision:null}:{})};
         });
         encoded=JSON.stringify(stamped);
@@ -176,25 +179,26 @@ function dailyRestoreStage(data, time) {
   if(!writes.size)throw Error('No restorable Daily data was found.');
   return {writes,updates,time};
 }
-function dailyRestoreAdvanceWorkouts(plan,before){
+function dailyRestoreAdvanceGenerations(plan,before){
   // Even a lagging device, or two restores in one millisecond, must create a distinct
   // generation. The compare-and-swap below still checks the exact snapshot used here.
-  for(const [key,path] of [['wt_sessions','sessions'],['wt_weight','weights']]){
+  for(const [key,field] of Object.entries(dailyRestoreGenerationalStores)){
     if(!plan.writes.has(key))continue;
+    const path=dailyRestoreSpecial[key];
     const last=dailyRestoreCutoff(before[path]),stage=plan.updates[path];
     if(last<dailyRestoreCutoff(stage))continue;
     const generation=last+1,rows=JSON.parse(plan.writes.get(key)).map(row=>({
       ...row,restoreGeneration:generation,updatedAt:generation,...(row.deletedAt?{deletedAt:generation}:{})
     }));
     plan.writes.set(key,JSON.stringify(rows));
-    const field=key==='wt_sessions'?'id':'date';
     plan.updates[path]={...Object.fromEntries(rows.map(row=>[wtRecordKey(row,field),row])),[DAILY_RESTORE_MARK]:generation};
   }
 }
 function dailyRestoreWriteLocal(plan) {
   const previous=new Map();
   try {
-    for(const key of ['wt_sessions','wt_weight'])if(plan.writes.has(key)){
+    if(plan.writes.has('daily_planner_tasks'))plan.writes.set('daily_planner_guest_tasks',null);
+    for(const key of Object.keys(dailyRestoreGenerationalStores))if(plan.writes.has(key)){
       plan.writes.set(key+'_restore_ts',String(dailyRestoreCutoff(plan.updates[dailyRestoreSpecial[key]])));
     }
     for(const [path,key] of Object.entries(dailyFinancePaths))if(plan.writes.has(key)){
@@ -223,8 +227,8 @@ function dailyRestoreEquivalent(key,a,b){
     const normalize=raw=>{
       let value=JSON.parse(raw);
       if(key==='daily_reviews'&&typeof wkrNormaliseReviews==='function')value=wkrNormaliseReviews(value);
-      if(Array.isArray(value)&&['wt_notes','wt_sessions','wt_weight','daily_savings_log'].includes(key)){
-        const field=key==='wt_notes'||key==='wt_sessions'?'id':'date';
+      if(Array.isArray(value)&&(dailyRestoreGenerationalStores[key]||key==='wt_notes'||key==='daily_savings_log')){
+        const field=dailyRestoreGenerationalStores[key]||(key==='wt_notes'?'id':'date');
         value.sort((l,r)=>String(l[field]).localeCompare(String(r[field])));
       }
       const compact=v=>{

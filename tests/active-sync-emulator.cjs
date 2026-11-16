@@ -103,6 +103,39 @@ test('active Daily app with independent authenticated RTDB clients', {timeout: 5
   t.after(() => Promise.all(releaseApps.map(app => app.delete())));
   if (releaseSdk) t.diagnostic('Application clients use the release browser SDK ' + releaseSdk.SDK_VERSION + '.');
 
+  await t.test('Planner merges a reschedule with an offline completion, then respects a restore during a queued undo', async () => {
+    const uid = 'planner-week', key = 'daily_planner_tasks';
+    const server = env.authenticatedContext(uid).database().ref('users/' + uid + '/plannerTasks');
+    const first = device(env,uid), second = device(env,uid);
+    for (const client of [first,second]) {
+      client.window.dispatchEvent = () => {};
+      client.Event = Event;
+      vm.runInContext(readProject('js/planner-tasks.js'),client);
+      client.plannerAttachTasks(uid);
+    }
+    const action = {title:'Call the bike shop',date:'2026-11-17',
+      source:{week:'2026-11-09',text:'Get the bike serviced',occurrence:0}};
+    const task = first.plannerCreateTask(action);
+    await until(() => second.plannerTasks().length === 1,'second device sees linked action');
+    second.db.goOffline();
+    assert.equal(second.plannerCreateTask(action).id,task.id);
+    assert.equal(second.plannerSetTaskDone(task.id,true).done,true);
+    first.plannerMoveTask(task.id,'2026-11-18');
+    second.db.goOnline();
+    await until(() => [first,second].every(c => c.plannerTasks().some(row => row.done && row.date === '2026-11-18')),
+      'date and completion arrive on both independent clients');
+    const synced = (await server.once('value')).val();
+    assert.deepEqual(Object.keys(synced),[task.id]);
+    assert.equal(synced[task.id].originalDate,'2026-11-17');
+    second.db.goOffline();
+    second.plannerSetTaskDone(task.id,false);
+    const response = await restore(first,{[key]:[]});
+    assert.match(response,/restored and synced/);
+    second.db.goOnline();
+    await until(() => second.plannerTasks().length === 0,'peer honours restored empty week');
+    assert.deepEqual(Object.keys((await server.once('value')).val()),['__dailyRestoredAt']);
+  });
+
   for (const path of ['transactions', 'ledger']) {
     await t.test(path + ' retries a cold first write and merges two independently created records', async () => {
       const uid = 'sync-' + path;

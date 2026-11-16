@@ -158,12 +158,18 @@
   window.addEventListener('error',e=>errors.push(e.message));
   window.addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
   const root={users:{fixture:stores,'fresh-fixture':{}}};
+  // The interactive preview remembers its mock server across reloads within this tab.
+  const previewCloudKey=params.has('week-preview')&&switchKey?switchKey+'-cloud':null;
+  if(previewCloudKey&&sessionStorage.getItem(previewCloudKey)){
+    root.users=JSON.parse(sessionStorage.getItem(previewCloudKey));
+  }
   const get=p=>clone(p.split('/').reduce((v,k)=>v&&v[k],root)??null);
   const snapshot=p=>{const v=get(p);return {val:()=>clone(v),exists:()=>v!==null};};
   const put=(p,v)=>{
     const keys=p.split('/'); let n=root;
     for(const k of keys.slice(0,-1))n=n[k]||=( {} );
     if(v===null)delete n[keys.at(-1)];else n[keys.at(-1)]=clone(v);
+    if(previewCloudKey)sessionStorage.setItem(previewCloudKey,JSON.stringify(root.users));
     writes.push(p);
     for(const [path,callbacks] of listeners)if(path===p||p.startsWith(path+'/')){
       for(const fn of callbacks)queueMicrotask(()=>fn(snapshot(path)));
