@@ -1,5 +1,9 @@
 # Daily — Agent Handoff
 
+## v457 desktop sidebar Add placement — release authorised, 2026-11-16
+
+- The sidebar footer places + Add to the right of the account name and sync status. The menu opens above the footer and Escape returns focus to Add. Checked at 1307×883, 1024×768 and a short desktop window with a long account name. Phone uses the header plus and desktop Planner uses its toolbar. All 795 Node checks and the shared Add browser suite passed.
+
 ## v456 compact Planner header and Log history order — release authorised, 2026-11-16
 
 - Planner’s month navigation and four calendar filters share one accent gradient. On the 390px phone preview the weekdays start 39px closer to the top of the card than in v455. The filter buttons keep 44px touch targets and share their pressed state with assistive technology. Physical iPhone Safari testing remains pending.

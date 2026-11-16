@@ -85,7 +85,13 @@ async function checkActions(page, phone, capture) {
   const launch = page.locator('[data-shared-add]:visible');
   const choices = page.locator('#shared-add-choices button');
   if (phone) await launch.tap();
-  else await launch.click();
+  else {
+    const profile=await page.locator('.ds-info').boundingBox();
+    const add=await launch.boundingBox();
+    assert.ok(add.x>=profile.x+profile.width-1,'Add sits to the right of the account details');
+    assert.ok(Math.abs((add.y+add.height/2)-(profile.y+profile.height/2))<1,'Add and the profile share a row');
+    await launch.click();
+  }
   assert.equal(await page.locator('#shared-add-title').evaluate(e=>document.activeElement===e),true,'pointer opens on the Add heading');
   assert.equal(await choices.evaluateAll(rows=>rows.every(row=>getComputedStyle(row).backgroundColor==='rgba(0, 0, 0, 0)' && !row.matches(':focus-visible'))),true,'no choice is highlighted on open');
   if (capture) await capture('add');
