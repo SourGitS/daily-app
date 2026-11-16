@@ -45,7 +45,20 @@
 /* Let the tile's native tooltip receive hover above the full-card Budget link. */
 @media(hover:hover){.cat-day-mark{position:relative;z-index:2;cursor:pointer}}
 .cat-journal{padding-left:28px;background-image:linear-gradient(to right,transparent 15px,var(--cat-line) 15px,var(--cat-line) 16px,transparent 16px)}.cat-journal blockquote{font-size:13px;line-height:1.8;font-style:italic;padding-bottom:9px;margin:0 0 14px;background:repeating-linear-gradient(to bottom,transparent 0,transparent calc(1.8em - 1px),var(--cat-line) calc(1.8em - 1px),var(--cat-line) 1.8em);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}.cat-journal .cat-action{padding:9px 14px;border:1.5px solid var(--cat-line);border-radius:10px;text-align:center}.cat-journal .cat-action svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-.cat-review-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding-bottom:16px;border-bottom:1px solid var(--cat-line);margin-bottom:12px}.cat-review-facts strong{font:600 18px/1.4 var(--font-num)}.cat-review-facts span{display:block;font-size:11px;color:var(--cat-muted);margin-top:5px}.cat-empty{padding:28px 0;color:var(--cat-muted)}
+.cat-review>.cat-heading{margin-bottom:0}
+.cat-review-facts{
+ display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-content:center;
+ flex:1 0 auto;margin:0;padding:18px 0 8px;text-align:center;
+}
+.cat-review-facts>div{min-width:0;display:flex;flex-direction:column;gap:4px;overflow-wrap:anywhere}
+.cat-review-facts dt{font-size:11px;line-height:1.4;color:var(--cat-muted)}
+.cat-review-facts dd{order:-1;margin:0;font:600 18px/1.4 var(--font-num);font-variant-numeric:tabular-nums}
+.cat-review-next{border-top:1px solid var(--cat-line);padding-top:9px;overflow-wrap:anywhere}
+.cat-review-next .cat-copy,.cat-review-next .cat-caption{margin:0}
+.cat-review-next .cat-caption{display:block;margin-bottom:3px}
+.cat-review-next .cat-caption+.cat-copy{font-weight:700;color:var(--cat-ink)}
+.cat-review-next .cat-action{margin:6px 0 0;padding:8px 12px;border:1px solid var(--cat-line);border-radius:10px;background:var(--cat-line)}
+.cat-empty{padding:28px 0;color:var(--cat-muted)}
 #view-home.category-home-active .cat-weather .home-widget-weather{height:100%;min-height:0}#view-home.category-home-active .cat-weather .home-weather-card{margin:0;border:0;border-radius:0;min-height:370px;height:100%;box-shadow:none}#view-home.category-home-active .cat-weather .weather-forecast-dock{background:var(--cat-surface);color:var(--cat-ink);flex-shrink:0}#view-home.category-home-active .cat-weather .weather-forecast-toggle{font-size:13px;background:none;border:0;color:var(--cat-ink);min-height:44px}#view-home.category-home-active .cat-weather .weather-mobile-controls{background:var(--cat-surface)}
 .cat-dialog{padding:24px;width:min(460px,calc(100vw - 24px));max-height:85dvh;overflow:auto;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:20px}.cat-dialog::backdrop{background:#0009}.cat-dialog .cat-heading{padding-right:30px}.cat-close{position:absolute;right:12px;top:10px;width:44px;height:44px;background:none;border:0;color:var(--muted);font-size:24px}.cat-dialog .cat-action{margin-top:16px}
 /* Visual Settings editor; one draft editor shared by the Home shortcut and Settings. */

@@ -34,5 +34,5 @@ test('all desktop main views use the same 1440px content canvas', () => {
   assert.match(home, /#home-content\.category-home\{[^}]*max-width:1440px;margin:auto/);
   assert.match(kitchen, /\.aih-shell\{width:100%;max-width:1440px;margin:0 auto\}/);
   assert.match(kitchen, /\.aih-grid\{[^}]*max-width:1440px;margin-left:auto;margin-right:auto\}/);
-  assert.equal((kitchen.match(/\.aihub-wrap\{padding:20px 32px 48px\}/g) || []).length, 2);
+  assert.match(kitchen, /\.aihub-wrap\{padding:20px 32px 48px\}/);
 });

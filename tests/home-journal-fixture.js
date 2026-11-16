@@ -16,5 +16,11 @@ if(params.has('week-preview')){
   const week=[monday.getFullYear(),String(monday.getMonth()+1).padStart(2,'0'),String(monday.getDate()).padStart(2,'0')].join('-');
   stores.weeklyReviews={[week]:{week,status:'draft',createdAt:500,updatedAt:500,
     reflection:{priorities:['Get the bike serviced','Make time for a long walk']}}};
+  if(params.has('home-focus')){
+    stores.reviewPlan={v:JSON.stringify({enabled:true,reviewStartWeek:week,updatedAt:500}),t:500};
+    stores.weeklyReviews=params.get('home-focus')==='completed'
+      ? {[week]:{week,status:'completed',completedAt:500,updatedAt:500,reflection:{priorities:[]}}}
+      : {};
+  }
   if(stores.notes?.call)stores.notes.call.title='Collect the parcel';
 }

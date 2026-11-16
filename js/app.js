@@ -8669,6 +8669,16 @@ function aiHubSetMode(mode){
   if(!['assistant','ask','import'].includes(mode)) return;
   aiHubState.mode=mode;
   renderAIHub();
+  document.getElementById('aih-tab-'+mode)?.focus({preventScroll:true});
+}
+function aiHubModeKey(event){
+  const tabs=Array.from(event.currentTarget.querySelectorAll('[role="tab"]'));
+  const index=tabs.indexOf(event.target);
+  if(index<0)return;
+  const next={Home:0,End:tabs.length-1,ArrowLeft:(index+tabs.length-1)%tabs.length,ArrowRight:(index+1)%tabs.length};
+  if(!Object.hasOwn(next,event.key))return;
+  event.preventDefault();
+  aiHubSetMode(tabs[next[event.key]].dataset.mode);
 }
 function aiHubSetPreset(id){
   const p=aiPreset(id);
@@ -8677,6 +8687,7 @@ function aiHubSetPreset(id){
   aiHubState.fullJournalText=!!p.fullJournalText;
   if(!aiHubState.instructionsEdited) aiHubState.instructions=p.instructions;
   renderAIHub();
+  document.getElementById('aihub-preset')?.focus({preventScroll:true});
 }
 function aiHubToggleScope(id){
   const i=aiHubState.scopes.indexOf(id);
@@ -8781,11 +8792,7 @@ function aiHubSummaryData(){
 }
 function aiHubShareSummaryHtml(){
   const d=aiHubSummaryData(), ctx=d.ctx, esc=_catEscHtml;
-  let html='';
-  html+='<div class="aih-share-lead"><strong>'+
-    (ctx.scopes.length?ctx.scopes.map(s=>esc(aiScopeLabel(s))).join(', '):'No information selected')+'</strong> · '+
-    esc(aiRangeLabel(ctx.range.kind))+'</div>';
-  html+='<div class="aih-sum-line"><span class="aih-sum-k">Including</span><span class="aih-sum-v">'+
+  let html='<div class="aih-sum-line"><span class="aih-sum-k">Including</span><span class="aih-sum-v">'+
     (ctx.scopes.length?ctx.scopes.map(s=>esc(aiScopeLabel(s))).join(', '):'nothing yet — pick at least one below')+'</span></div>';
   html+='<div class="aih-sum-line"><span class="aih-sum-k">Period</span><span class="aih-sum-v">'+
     esc(aiRangeLabel(ctx.range.kind))+' · '+esc(ctx.range.from)+' → '+esc(ctx.range.to)+'</span></div>';
@@ -10582,10 +10589,10 @@ function aiReconCopy(){
 }
 function aiReconHtml(){
   const esc=_catEscHtml;
-  let h=cardHeader('check','Reconcile what is imported');
-  h+='<div class="aih-note">Reads your own records — every expense, ledger entry, budget week and account — and reports what is missing, duplicated or undecided. It writes nothing.</div>';
+  let h=cardHeader('check','Reconcile imports');
+  h+='<div class="aih-note">Check your saved records for missing entries, duplicates and items that need a decision.</div>';
   const r=aiReconState.report;
-  h+='<button class="aih-btn '+(r?'':'aih-btn-primary ')+'aih-btn-wide" onclick="aiReconRun()">'+(r?'Run again':'Run reconciliation')+'</button>';
+  h+='<button class="aih-btn aih-btn-wide" onclick="aiReconRun()">'+(r?'Run again':'Run reconciliation')+'</button>';
   if(!r) return h;
   h+='<div class="aih-result">'+r.totals.transactions+' expenses · '+r.totals.ledger+' ledger records · '+
      r.totals.weeks+' weeks'+(r.totals.needsDecision?' · '+r.totals.needsDecision+' needing a decision':' · nothing outstanding')+'</div>';
@@ -10608,16 +10615,14 @@ function aiReconHtml(){
 function aiInboxHtml(){
   const esc=_catEscHtml;
   const st=aiInboxState;
-  let h='';
-  h+=cardHeader('receipt','Import AI actions');
-  h+='<div class="aih-inbox-step"><span>1</span><div><strong>Copy the supported action format</strong><p>Give this to your AI so its suggestions use Daily’s checked format.</p></div></div>';
-  h+='<button class="aih-link aih-format-copy" onclick="aiInboxCopySchema()">Copy supported format →</button>';
-  h+='<div class="aih-inbox-step"><span>2</span><div><strong>Paste the AI response</strong><p>Imported text is treated as untrusted data and cannot run code.</p></div></div>';
-  h+='<textarea id="aihub-inbox-text" class="aih-textarea aih-mono" rows="7" aria-label="Paste AI response" placeholder=\'{"schema":"daily-actions","version":1,"actions":[…]}\' oninput="aiInboxSetText(this.value)">'+esc(st.text)+'</textarea>';
-  h+='<div class="aih-inbox-step aih-inbox-step-action"><span>3</span><div><strong>Check actions</strong><p>Daily validates every action before anything can be selected.</p></div></div>';
-  h+='<button class="aih-btn '+(st.preview?'':'aih-btn-primary ')+'aih-btn-wide" onclick="aiInboxCheck()">Check actions</button>';
+  let h='<header class="aih-feature-head"><h1 id="aih-import-title" class="aih-feature-title">Import AI actions</h1>'+
+    '<p class="aih-feature-note">Review suggested changes before applying them to Daily.</p></header>'+
+    '<div class="aih-feature-body"><label class="aih-field-label" for="aihub-inbox-text">Paste AI response</label>'+
+    '<textarea id="aihub-inbox-text" class="aih-textarea aih-mono" rows="5" placeholder=\'{"schema":"daily-actions","version":1,"actions":[…]}\' oninput="aiInboxSetText(this.value)">'+esc(st.text)+'</textarea>'+
+    '<div class="aih-import-actions"><button class="stg-btn" onclick="aiInboxCheck()">Check actions</button>'+
+    '<button class="aih-link" onclick="aiInboxCopySchema()">Copy supported format</button></div>';
 
-  if(st.error) h+='<div class="aih-err">'+esc(st.error)+'</div>';
+  if(st.error) h+='<div class="aih-err" role="alert">'+esc(st.error)+'</div>';
 
   if(st.preview){
     const pv=st.preview, c=pv.counts;
@@ -10626,7 +10631,7 @@ function aiInboxHtml(){
     if(c.already) bits.push(c.already+' already applied');
     if(c.error) bits.push(c.error+' with errors');
     if(c.conflict) bits.push(c.conflict+' needing a decision');
-    h+='<div class="aih-inbox-step"><span>4</span><div><strong>Review the checks</strong><p>Valid, duplicate and rejected actions stay visibly separate.</p></div></div>';
+    h+='<h2 class="aih-inbox-heading">Review changes</h2>';
     // WHO and WHERE this lands. The importer only ever resolves against the signed-in account's
     // own stores, so this is a statement of fact rather than a control — but it has to be
     // visible, because "am I importing into the right person's Daily" is not answerable from a
@@ -10655,7 +10660,7 @@ function aiInboxHtml(){
       h+='<div class="aih-note">Mapping a name re-checks the batch. Nothing is created for you — if none of these is right, add the account or category first.</div></div>';
     }
 
-    if(c.new) h+='<div class="aih-inbox-step"><span>5</span><div><strong>Select actions</strong><p>Untick anything you do not want to apply. Leaving one unticked never blocks the rest.</p></div></div>';
+    if(c.new) h+='<p class="aih-note">Select the actions you want to apply.</p>';
     (pv.groups&&pv.groups.length?pv.groups:[{id:'other',label:'',rows:pv.rows}]).forEach(g=>{
     if(pv.groups&&pv.groups.length>1) h+='<div class="aih-group-hd">'+esc(g.label)+' · '+g.rows.length+'</div>';
     h+='<div class="aih-rows">';
@@ -10684,8 +10689,7 @@ function aiInboxHtml(){
     });
     const sel=pv.rows.filter(r=>r.state==='new'&&st.selected[r.index]).length;
     if(c.new){
-      h+='<div class="aih-inbox-step"><span>6</span><div><strong>Apply selected actions</strong><p>This is the first point where Daily writes anything.</p></div></div>';
-      h+='<div class="aih-note">Undo is offered straight after applying. It removes only records that Apply created and restores only settings that Apply changed.</div>';
+      h+='<div class="aih-note">You can undo this batch immediately after applying it.</div>';
       h+='<button class="aih-btn aih-btn-primary aih-btn-wide"'+(sel?'':' disabled')+' onclick="aiInboxApply()">'+
          (sel?'Apply '+sel+' action'+(sel===1?'':'s'):'Nothing selected')+'</button>';
     }
@@ -10694,7 +10698,7 @@ function aiInboxHtml(){
 
   if(st.result){
     const r=st.result;
-    h+='<div class="aih-inbox-step"><span>7</span><div><strong>Undo if needed</strong><p>The immediate undo only reverses this import.</p></div></div>';
+    h+='<h2 class="aih-inbox-heading">Import result</h2>';
     const outBits=[r.applied+' imported'];
     if(r.already) outBits.push(r.already+' already present');
     if(r.unresolved) outBits.push(r.unresolved+' left unticked');
@@ -10716,7 +10720,7 @@ function aiInboxHtml(){
     if(st.lastApply&&st.lastApply.ids.length)
       h+='<button class="aih-btn aih-btn-wide" onclick="aiInboxUndo()">Undo this import</button>';
   }
-  return h;
+  return h+'</div>';
 }
 
 function renderAIHub(){
@@ -10727,10 +10731,10 @@ function renderAIHub(){
     (aiHubState.rangeKind==='custom'&&(!aiIsDate(aiHubState.from)||!aiIsDate(aiHubState.to)));
   const shareOpen=aiHubState.shareOpen||shareNeedsAttention;
 
-  const presets='<div class="aih-presets">'+AI_PRESETS.map(p=>
-    '<button class="aih-preset'+(aiHubState.preset===p.id?' on':'')+'" aria-pressed="'+
-      (aiHubState.preset===p.id?'true':'false')+'" onclick="aiHubSetPreset(\''+p.id+'\')">'+
-      '<span class="aih-preset-name">'+esc(p.label)+'</span><span class="aih-preset-desc">'+esc(p.description||'')+'</span></button>').join('')+'</div>';
+  const preset=aiPreset(aiHubState.preset);
+  const presets='<label class="aih-field-label" for="aihub-preset">Starting point</label>'+
+    '<select id="aihub-preset" class="aih-select" onchange="aiHubSetPreset(this.value)">'+AI_PRESETS.map(p=>
+      '<option value="'+esc(p.id)+'"'+(preset.id===p.id?' selected':'')+'>'+esc(p.label)+'</option>').join('')+'</select>';
 
   const ranges='<div class="aih-pills">'+AI_RANGES.map(r=>
     '<button class="aih-pill'+(aiHubState.rangeKind===r.id?' on':'')+'" onclick="aiHubSetRange(\''+r.id+'\')">'+
@@ -10774,15 +10778,12 @@ function renderAIHub(){
     return row;
   }).join('');
 
-  const hero='<section class="aih-hero" aria-labelledby="aih-hero-title">'+
-    '<div class="aih-hero-eyebrow">Daily AI</div><h1 id="aih-hero-title">Your assistant, with your Daily context</h1>'+
-    '<p>Check upcoming bills, review requested expenses and see their results. You control what is shared and which assistant can access Daily.</p>'+
-  '</section>';
-  const modes='<div class="aih-modes" role="tablist" aria-label="Daily AI workflow">'+
-    '<button role="tab" aria-selected="'+(aiHubState.mode==='assistant'?'true':'false')+'" class="'+(aiHubState.mode==='assistant'?'on':'')+'" onclick="aiHubSetMode(\'assistant\')">Assistant</button>'+
-    '<button role="tab" aria-selected="'+(aiHubState.mode==='ask'?'true':'false')+'" class="'+(aiHubState.mode==='ask'?'on':'')+'" onclick="aiHubSetMode(\'ask\')">Ask AI</button>'+
-    '<button role="tab" aria-selected="'+(aiHubState.mode==='import'?'true':'false')+'" class="'+(aiHubState.mode==='import'?'on':'')+'" onclick="aiHubSetMode(\'import\')">Import actions</button>'+
-  '</div>';
+  const modes='<div class="seg-tabs seg-fill aih-modes" role="tablist" aria-label="Daily AI workflow" onkeydown="aiHubModeKey(event)">'+
+    [['assistant','Assistant'],['ask','Ask AI'],['import','Import actions']].map(([id,label])=>{
+      const active=aiHubState.mode===id;
+      return '<button type="button" role="tab" data-mode="'+id+'" id="aih-tab-'+id+'" aria-controls="aih-workflow" aria-selected="'+active+
+        '" tabindex="'+(active?'0':'-1')+'" class="'+(active?'on':'')+'" onclick="aiHubSetMode(this.dataset.mode)">'+label+'</button>';
+    }).join('')+'</div>';
 
   let workflow='';
   if(aiHubState.mode==='assistant'){
@@ -10790,16 +10791,16 @@ function renderAIHub(){
   } else if(aiHubState.mode==='ask'){
     workflow='<div class="aih-ask-grid">'+
       '<div class="aih-ask-build">'+
-        '<section class="card aih-card aih-step-card">'+
-          '<div class="aih-step-label"><span>1</span> Choose a goal</div>'+cardHeader('note','What do you want help with?')+
-          '<div class="aih-hint">Choose a starting point. You can adjust the information afterwards.</div>'+presets+
-          '<label class="aih-request-label" for="aihub-instructions">What would you like the AI to do?</label>'+
-          '<div class="aih-hint aih-request-hint">Daily adds this request to the information you copy. You can use the suggested request or write your own.</div>'+
-          '<textarea id="aihub-instructions" class="aih-textarea aih-request" rows="5" placeholder="e.g. Where can I realistically cut $50 a week?" '+
-            'oninput="aiHubSetInstructions(this.value)">'+esc(aiHubState.instructions)+'</textarea>'+
+        '<section class="aih-feature" aria-labelledby="aih-ask-title">'+
+          '<header class="aih-feature-head"><h1 class="aih-feature-title" id="aih-ask-title">Build a prompt</h1>'+
+            '<p class="aih-feature-note">Choose the Daily records to send with your question.</p></header>'+
+          '<div class="aih-feature-body">'+presets+
+            '<label class="aih-field-label" for="aihub-instructions">Your question</label>'+
+            '<textarea id="aihub-instructions" class="aih-textarea aih-request" rows="4" placeholder="Where could I cut $50 a week?" '+
+              'oninput="aiHubSetInstructions(this.value)">'+esc(aiHubState.instructions)+'</textarea></div>'+
         '</section>'+
         '<section class="card aih-card aih-step-card">'+
-          '<div class="aih-step-label"><span>2</span> Review your data</div>'+cardHeader('check','What Daily will share')+
+          cardHeader('check','What Daily will share')+
           '<div id="aihub-share-summary">'+aiHubShareSummaryHtml()+'</div>'+
           '<button class="aih-disclosure" onclick="aiHubToggleShare()" aria-expanded="'+(shareOpen?'true':'false')+'">'+
             '<span>'+(shareOpen?'Hide information controls':'Change information included')+'</span><span aria-hidden="true">'+(shareOpen?'−':'+')+'</span></button>'+
@@ -10808,21 +10809,20 @@ function renderAIHub(){
         '</section>'+
       '</div>'+
       '<section class="card aih-card aih-step-card aih-ready-card">'+
-        '<div class="aih-step-label"><span>3</span> Copy for AI</div>'+cardHeader('wallet','Ready to copy')+
+        cardHeader('note','Ready to copy')+
         '<div id="aihub-ready">'+aiHubReadyHtml()+'</div>'+
       '</section>'+
     '</div>';
   } else {
     workflow='<div class="aih-import-flow">'+
-      '<div class="aih-import-intro"><h2>Bring AI suggestions back into Daily</h2>'+
-        '<p>Paste structured actions created by your AI. Daily checks every action and shows exactly what would change. Nothing is written until you review it and press Apply.</p></div>'+
-      '<section class="card aih-card aih-inbox-card">'+aiInboxHtml()+'</section>'+
+      '<section class="aih-feature" aria-labelledby="aih-import-title">'+aiInboxHtml()+'</section>'+
       // Reconciliation reads the stores rather than the paste, so it sits BELOW the inbox: it is
       // what you check between batches, not a step inside one.
       '<section class="card aih-card aih-inbox-card">'+aiReconHtml()+'</section>'+
     '</div>';
   }
-  wrap.innerHTML='<div class="aih-shell">'+hero+'<section id="daily-ai-identity" class="card aih-card daily-ai-identity" aria-label="Account and assistant access">'+dailyAIIdentityHtml()+'</section>'+modes+workflow+'</div>';
+  if(aiHubState.mode!=='assistant')workflow+=dailyAIConnectionHtml();
+  wrap.innerHTML='<div class="aih-shell">'+modes+'<div id="aih-workflow" role="tabpanel" aria-labelledby="aih-tab-'+aiHubState.mode+'">'+workflow+'</div></div>';
 }
 
 function fallbackCopy(text,done){
@@ -19661,7 +19661,7 @@ function wkrViewPlannedAction(button){
   if(task){jrnPlannerOpenWeek(task.date,task.id);return;}
   wkrRefreshPriorityCards();showToast('This action is no longer in Planner.');
 }
-function wkrPlanPriority(button){
+function wkrPlanPriority(button,afterSave){
   if(!wkrFlushPending())return;
   const week=button.closest('[data-week]').dataset.week;
   const source={week,text:button.dataset.priority,occurrence:Number(button.dataset.occurrence)};
@@ -19672,11 +19672,13 @@ function wkrPlanPriority(button){
   const next=wkrShiftWeek(week,1),today=dateStr(new Date());
   jrnPlannerTaskDialog({source,date:next>today?next:today,onSave(task){
     wkrRefreshPriorityCards();
+    if(afterSave){afterSave(task);return;}
     const target=[...document.querySelectorAll('.wkr-priority-card [data-task-id]')].find(el=>el.dataset.taskId===task.id);
     target?.focus({preventScroll:true});
   }});
 }
 function wkrRefreshPriorityCards(){
+  if(typeof categoryRefreshReview==='function')categoryRefreshReview();
   document.querySelectorAll('.wkr-priority-card').forEach(card=>{
     const week=card.dataset.week,focus=card.contains(document.activeElement)?document.activeElement.dataset:null;
     card.outerHTML=wkrPriorityCardHtml(week,wkrReview(week));
@@ -19715,7 +19717,7 @@ function wkrCommitPriorities(week,original,values){
   }
   return 'Could not save these priorities. Your entries are still here.';
 }
-function wkrEditPriorities(button){
+function wkrEditPriorities(button,afterClose){
   if(!wkrFlushPending())return;
   const week=button.closest('[data-week]').dataset.week,rec=wkrReview(week);
   if(rec?.status==='completed')return;
@@ -19736,6 +19738,7 @@ function wkrEditPriorities(button){
   };
   dialog.addEventListener('close',()=>{
     dialog.remove();
+    if(afterClose){afterClose();return;}
     document.querySelector('.wkr-priority-card [data-edit-priorities]')?.focus({preventScroll:true});
   },{once:true});
   dialog.showModal();
@@ -20258,12 +20261,12 @@ function nwHistoryPoints(){
 const _nwCharts={};
 let nwChartRange='3m';
 const nwChartSeries={assets:false,debts:false};
-let acctHistoryVisible=false;
-function acctToggleHistory(){
-  const focused=document.activeElement?.id==='accounts-history-toggle';
-  acctHistoryVisible=!acctHistoryVisible;
+function acctToggleOverview(button){
+  const panel=document.getElementById('accounts-overview-details');
+  if(!panel)return;
+  panel.hidden=!panel.hidden;
+  button.setAttribute('aria-expanded',String(!panel.hidden));
   renderNetWorthChartInto('accounts-chart');
-  if(focused)document.getElementById('accounts-history-toggle')?.focus();
 }
 function nwChartRefresh(){
   ['accounts-chart','bs-balance-wrap'].forEach(id=>{ if(document.getElementById(id)) renderNetWorthChartInto(id); });
@@ -20293,14 +20296,16 @@ function renderBSBalance(){ renderNetWorthChartInto('bs-balance-wrap'); }
 function renderNetWorthChartInto(wrapId){
   if(_nwCharts[wrapId]){ _nwCharts[wrapId].destroy(); _nwCharts[wrapId]=null; }
   const wrap=document.getElementById(wrapId); if(!wrap) return;
-  const accountHistory=wrapId==='accounts-chart',graphHidden=accountHistory&&!acctHistoryVisible;
-  const disclosureStart=accountHistory?'<button type="button" id="accounts-history-toggle" class="acct-history-toggle" aria-label="'+(graphHidden?'Show net worth history':'Hide net worth history')+'" aria-expanded="'+!graphHidden+'" aria-controls="accounts-history-plot" onclick="acctToggleHistory()">'+acctIcon('trend',14)+'<span>Net worth history</span><svg class="acct-history-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div id="accounts-history-plot"'+(graphHidden?' hidden':'')+'>':'';
-  const disclosureEnd=accountHistory?'</div>':'';
+  const accountHistory=wrapId==='accounts-chart';
+  if(accountHistory&&document.getElementById('accounts-overview-details')?.hidden){
+    wrap.innerHTML='';
+    return;
+  }
   const canvasId=wrapId+'-nwcanvas';
   const history=nwHistoryPoints();
   if(!history.length){
     const why='Record a dated balance in Accounts to start your net worth history. Current balances alone cannot establish past values.';
-    wrap.innerHTML=disclosureStart+(accountHistory?'<p class="acct-history-empty">'+why+'</p>':'<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+acctIcon('trend',13)+'Net worth over time</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">'+why+'</div></div>')+disclosureEnd;
+    wrap.innerHTML=accountHistory?'<p class="acct-history-empty">'+why+'</p>':'<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+acctIcon('trend',13)+'Net worth over time</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">'+why+'</div></div>';
     return;
   }
   const dates=nwChartDates(history.map(p=>p.date));
@@ -20334,7 +20339,7 @@ function renderNetWorthChartInto(wrapId){
   const latest=dates[dates.length-1];
   const ranges=[['1m','1M'],['3m','3M'],['1y','1Y'],['all','ALL']];
   const rangeHtml='<div class="nw-chart-ranges" role="group" aria-label="Net worth history period">'+ranges.map(r=>'<button type="button" onclick="setNWChartRange(\''+r[0]+'\')" class="'+(nwChartRange===r[0]?'on':'')+'" aria-pressed="'+(nwChartRange===r[0])+'">'+r[1]+'</button>').join('')+'</div>';
-  wrap.innerHTML=disclosureStart+'<div class="card nw-chart-card">'+
+  wrap.innerHTML='<div class="card nw-chart-card">'+
     '<div class="nw-chart-head">'+
       '<div>'+(accountHistory?'':'<div class="nw-chart-kicker">'+acctIcon('trend',13)+(latestPointInfo.count<latestPointInfo.total?'Recorded net worth':'Net worth')+'</div>')+
         '<div class="nw-chart-value">'+(wrapId==='accounts-chart'?'<span class="nw-chart-last-label">Last recorded </span>':'')+fmtMoney(curNet)+'</div>'+
@@ -20356,8 +20361,7 @@ function renderNetWorthChartInto(wrapId){
       (wrapId==='accounts-chart'?'<details class="nw-chart-notes"><summary>About this history</summary><p>Recorded balances carry forward between updates. '+(partial?'Missing balances are unknown, not zero. Dashed joins mark changes in account coverage. ':'')+'Select a point to see its records.</p></details>':partial?'<span class="nw-chart-coverage">Earlier or missing account balances are unknown, not zero. Points show only accounts recorded by that date; dashed joins mark changes in coverage. Select a point to see its records.</span>':'')+
       (stale.length?'<span class="nw-chart-stale">'+_catEscHtml(stale.map(x=>x.name+' '+x.days+'d').join(' · '))+' old</span>':'')+
       (wrapId==='bs-balance-wrap'?'<button class="stats-inline-link" onclick="openAccounts()">Open account records →</button>':'')+
-    '</div></div>'+disclosureEnd;
-  if(graphHidden)return;
+    '</div></div>';
   const ctx=document.getElementById(canvasId); if(!ctx) return;
   const {gc,tc}=budChartGridColors();
   const latestPoint=c=>c.dataIndex===dates.length-1?4:0;
@@ -24839,14 +24843,15 @@ function acctChangeHtml(a){
 function renderAccountsHero(){
   const el=document.getElementById('accounts-hero'); if(!el) return;
   if(!accounts.some(a=>a&&!a.archivedAt)){ el.innerHTML=''; return; }
+  const expanded=document.getElementById('accounts-overview-details')?.hidden===false;
   const assets=accountsAssetsTotal(), debts=accountsDebtsTotal();
   const savers=accounts.filter(a=>a&&!a.archivedAt&&acctIsSaver(a));
   const saverTot=accountsSaverTotal();
   const pos=accountsPayoffPosition();
   const clear=pos>=0;
   const headline=debts<=0
-    ? 'No debts — everything here is yours'
-    : (clear?'spare after clearing every debt':'still needed to clear every debt');
+    ? 'No debts to pay off.'
+    : (clear?'Your spendable balances cover your debts.':'Your spendable balances fall short of your debts.');
   const payoffChip=debts<=0
     ? tstat('pos','No debts','check',true)
     : (clear?tstat('pos','Debts covered','check',true):tstat('neg','Not yet covered','alert',true));
@@ -24868,10 +24873,13 @@ function renderAccountsHero(){
       '<div class="acct-overview-net"><div class="card-cap">Current net worth</div><div class="card-fig">'+fmtMoney(assets-debts)+'</div></div>'+
       '<div><div class="card-cap">Assets</div><div class="card-fig card-fig-sm">'+fmtMoney(assets)+'</div></div>'+
       '<div><div class="card-cap">Debts</div><div class="card-fig card-fig-sm">'+fmtMoney(debts)+'</div></div>'+
-    '</div></div><div class="acct-overview-dock"><details class="acct-records acct-payoff-details"><summary><span class="acct-payoff-summary">'+
-      '<span>Debt payoff position</span><strong>'+fmtMoney(Math.abs(pos))+'</strong></span>'+payoffChip+'</summary>'+
-      '<div class="acct-payoff-detail"><div>'+headline+'</div>'+mathLine+kindLine+saverLine+'</div></details>'+
-      '<section id="accounts-history" class="acct-history" aria-label="Net worth history"><div id="accounts-chart"></div></section></div></div>';
+    '</div></div><div class="acct-overview-dock"><button type="button" class="acct-overview-toggle" aria-expanded="'+expanded+'" aria-controls="accounts-overview-details" onclick="acctToggleOverview(this)">'+
+      acctIcon('trend',14)+'<span class="acct-overview-summary"><span>Payoff &amp; history</span><span class="acct-payoff-summary"><strong>'+fmtMoney(Math.abs(pos))+'</strong>'+payoffChip+'</span></span>'+
+      '<svg class="acct-overview-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>'+
+      '<div id="accounts-overview-details"'+(expanded?'':' hidden')+'><section class="acct-payoff-detail" aria-labelledby="accounts-payoff-label">'+
+        '<h3 id="accounts-payoff-label">Debt payoff position</h3>'+
+        '<div>'+headline+'</div>'+mathLine+kindLine+saverLine+'</section>'+
+      '<section id="accounts-history" class="acct-history" aria-labelledby="accounts-history-label"><h3 id="accounts-history-label">Net worth history</h3><div id="accounts-chart"></div></section></div></div></div>';
 }
 function savingsReconcileFocus(){
   if(typeof acctFinCheckinOpen==='function'){acctFinCheckinOpen(saverAccounts().filter(a=>!a.archivedAt).map(a=>a.id));return;}
@@ -24914,9 +24922,7 @@ function renderSaversReconcileCard(){
       '<div class="acct-check-actions"><button type="button" class="stg-btn" onclick="savingsReconcileFocus()">'+(check.updated?'Check again':'Check savings balances')+'</button></div></details>';
 }
 function renderAccountsPage(){
-  const payoffOpen=!!document.querySelector('#accounts-hero .acct-payoff-details')?.open;
   renderAccountsHero();
-  if(payoffOpen) document.querySelector('#accounts-hero .acct-payoff-details')?.setAttribute('open','');
   renderSaversReconcileCard();
   // One card per account
   // Section header carrying the Edit toggle — same .bud-edit-btn / "Edit"→"Done" convention as

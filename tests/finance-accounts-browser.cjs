@@ -1,39 +1,45 @@
 const {chromium}=require('playwright');
-const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
-const root=path.resolve(__dirname,'..'),types={'.html':'text/html','.js':'application/javascript','.css':'text/css','.json':'application/json','.png':'image/png','.webp':'image/webp'};
-const server=http.createServer((req,res)=>{const target=path.resolve(root,decodeURIComponent(req.url.split('?')[0]).replace(/^\/daily-app\//,'')||'index.html');if(!target.startsWith(root+path.sep)){res.writeHead(403);res.end();return;}fs.readFile(target,(err,data)=>{res.writeHead(err?404:200,{'Content-Type':types[path.extname(target)]||'text/plain'});res.end(err?'Missing':data);});});
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {plannerFixture,fixtureURL}=require('./planner-browser-fixture.cjs');
+const root=path.resolve(__dirname,'..');
 const keys=['daily_transactions','daily_ledger','daily_budget','daily_budget_cycles','wt_sessions','wt_weight'];
 (async()=>{
-  await new Promise(r=>server.listen(0,'127.0.0.1',r));const browser=await chromium.launch({channel:'chrome',headless:true}),url='http://127.0.0.1:'+server.address().port+'/daily-app/tests/sync-browser.html?preview&finance-links';
+  const browser=await chromium.launch({channel:'chrome',headless:true}),url=fixtureURL+'?preview&finance-links';
   try{
     for(const width of [320,390,1440])for(const theme of ['light','dark']){
-      const context=await browser.newContext({viewport:{width,height:950}});await context.route(/firebaseio\.com|cloudfunctions\.net/,r=>r.abort());
+      const context=await browser.newContext({viewport:{width,height:950}});await plannerFixture()(context);
       const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(url);await page.getByText(/Local preview · sample money only/).waitFor();
       const before=await page.evaluate(({theme,keys})=>{S.theme=theme;applyTheme();openAccounts();return Object.fromEntries(keys.map(k=>[k,localStorage.getItem(k)]));},{theme,keys});
       // The compact presentation keeps tools reachable without changing saved records.
       const originalAccounts=await page.evaluate(()=>localStorage.getItem('daily_accounts'));
       const history=page.locator('#accounts-history');
+      const overviewToggle=page.getByRole('button',{name:/^Payoff & history/}),overviewDetails=page.locator('#accounts-overview-details');
       assert.equal(await history.evaluate(e=>e.tagName),'SECTION');
       assert.equal(await history.evaluate(e=>!!e.closest('#accounts-hero .acct-overview-dock')),true);
       assert.equal(await page.evaluate(()=>!!(document.getElementById('accounts-history').compareDocumentPosition(document.getElementById('accounts-list'))&Node.DOCUMENT_POSITION_FOLLOWING)),true);
       assert.match(await page.locator('#accounts-hero').innerText(),/Current net worth[\s\S]*\$970/);
-      assert.equal(await page.locator('#accounts-history-plot').isVisible(),false);
+      assert.equal(await overviewDetails.isVisible(),false);
+      assert.equal(await overviewToggle.getAttribute('aria-expanded'),'false');
+      assert.match(await overviewToggle.innerText(),/Payoff & history[\s\S]*\$470[\s\S]*Debts covered/);
+      assert.equal(await page.locator('#accounts-hero').getByRole('button').count(),1);
       assert.equal(await page.evaluate(()=>!!_nwCharts['accounts-chart']),false,'collapsed by default without a chart instance');
-      await page.getByRole('button',{name:'Show net worth history',exact:true}).press('Enter');
+      await overviewToggle.press('Enter');
+      assert.equal(await overviewToggle.getAttribute('aria-expanded'),'true');
+      assert.match(await overviewDetails.locator('.acct-payoff-detail').innerText(),/Debt payoff position[\s\S]*spendable[\s\S]*held back/);
       await page.locator('#accounts-chart canvas').waitFor({state:'visible'});
       assert.ok(await page.locator('#accounts-chart .nw-chart-canvas').evaluate(e=>e.getBoundingClientRect().height)<=190);
-      assert.equal((await page.locator('#accounts-history-toggle').innerText()).trim(),'Net worth history');
-      assert.ok(await page.locator('#accounts-history-toggle').evaluate(e=>e.getBoundingClientRect().height>=44&&getComputedStyle(e).borderTopWidth==='0px'));
+      assert.equal(await history.getByRole('heading',{name:'Net worth history'}).isVisible(),true);
+      assert.ok(await overviewToggle.evaluate(e=>e.getBoundingClientRect().height>=44&&getComputedStyle(e).borderTopWidth==='0px'));
       assert.deepEqual(await page.evaluate(()=>Array.from(document.querySelectorAll('.accounts-wrap .stg-btn,.accounts-wrap .sav-update-btn,.accounts-wrap .nw-chart-ranges button,.accounts-wrap .nw-chart-series button')).filter(b=>b.getClientRects().length&&b.scrollWidth>b.clientWidth+1).map(b=>b.textContent.trim())),[], 'account button labels fit');
       await page.locator('#accounts-chart').getByRole('button',{name:'ALL',exact:true}).click();
       await page.locator('#accounts-chart').getByRole('button',{name:'Assets',exact:true}).click();
-      await page.getByRole('button',{name:'Hide net worth history',exact:true}).press('Enter');
-      assert.equal(await page.locator('#accounts-history-plot').isVisible(),false);
-      assert.equal(await page.getByRole('button',{name:'Show net worth history',exact:true}).evaluate(e=>document.activeElement===e),true);
+      await overviewToggle.press('Enter');
+      assert.equal(await overviewDetails.isVisible(),false);
+      assert.equal(await overviewToggle.evaluate(e=>document.activeElement===e),true);
       assert.equal(await page.evaluate(()=>!!_nwCharts['accounts-chart']),false,'closing destroys the hidden chart');
       await page.evaluate(()=>renderAccountsPage());
-      assert.equal(await page.locator('#accounts-history-plot').isVisible(),false);
-      await page.getByRole('button',{name:'Show net worth history',exact:true}).press('Space');
+      assert.equal(await overviewDetails.isVisible(),false);
+      await overviewToggle.press('Space');
       await page.evaluate(()=>renderAccountsPage());
       assert.equal(await page.locator('#accounts-chart canvas').isVisible(),true);
       assert.equal(await page.locator('#accounts-chart canvas').count(),1);
@@ -133,7 +139,16 @@ const keys=['daily_transactions','daily_ledger','daily_budget','daily_budget_cyc
       await page.getByRole('button',{name:'Restore account',exact:true}).click();const restored=await page.evaluate(()=>loadAccounts().find(a=>a.id==='savings'));
       assert.equal(restored.archivedAt,undefined);assert.equal(restored.current,525);assert.deepEqual(restored.history,archiveBefore.history);
       assert.equal(await page.locator('.acct-account-card[data-account="savings"]').count(),1);
+      await page.evaluate(()=>{accounts=[{id:'undated',type:'asset',name:'Undated',current:9999999999.99,history:[]}];renderAccountsPage();});
+      assert.match(await overviewToggle.innerText(),/No debts/);
+      assert.equal(await overviewToggle.evaluate(el=>el.scrollWidth<=el.clientWidth&&el.querySelector('strong').getBoundingClientRect().right<=el.getBoundingClientRect().right),true,'large payoff amount fits the row');
+      assert.match(await overviewDetails.innerText(),/No debts/);
+      assert.match(await history.innerText(),/Record a dated balance/);
+      assert.equal(await history.locator('canvas').count(),0);
+      await page.evaluate(()=>{accounts=[];renderAccountsPage();});
+      assert.equal(await overviewToggle.count(),0);
+      assert.match(await page.locator('#accounts-list').innerText(),/No accounts yet/);
       assert.deepEqual(errors,[]);console.log(`Complete Finance assertions passed ${width}px ${theme}`);await context.close();
     }
-  }finally{await browser.close();server.close();}
-})().catch(e=>{console.error(e);server.close();process.exitCode=1;});
+  }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -4,12 +4,14 @@
 // existing account namespace and blob-sync/backup registry. Financial writes remain in the
 // Inbox's canonical expense/undo paths. No tokens, grants or new finance store live here.
 const dailyAIState={request:'',activeId:'',reply:'',preview:null,error:'',busy:false,
-  from:'',to:'',bills:null,verifiedUid:'',verifiedAt:0,authError:'',acks:{},ready:{}};
+  from:null,to:null,bills:null,accessOpen:false,verifiedUid:'',verifiedAt:0,authError:'',acks:{},ready:{}};
 let dailyAIApplying=false;
 function dailyAIAccountChanged(){
   if(typeof dailyRemoteReset==='function')dailyRemoteReset();
-  Object.assign(dailyAIState,{request:'',activeId:'',reply:'',preview:null,error:'',bills:null,verifiedUid:'',verifiedAt:0,authError:'',acks:{},ready:{}});
+  Object.assign(dailyAIState,{request:'',activeId:'',reply:'',preview:null,error:'',bills:null,accessOpen:false,verifiedUid:'',verifiedAt:0,authError:'',acks:{},ready:{}});
+  const access=document.getElementById('daily-ai-access');if(access)access.open=false;
   dailyAIRefresh();
+  if(typeof dailyRemoteRefreshHtml==='function')dailyRemoteRefreshHtml();
 }
 function dailyAIStoreObserved(uid,path){if(auth?.currentUser?.uid===uid)dailyAIState.ready[path]=true;}
 function dailyAIScope(){return localStorage.scope||'legacy';}
@@ -27,7 +29,11 @@ function dailyAISaveRequest(row){
 }
 function dailyAIRefresh(){
   const el=document.getElementById('daily-ai-activity');if(el)el.innerHTML=dailyAIActivityHtml();
-  const status=document.getElementById('daily-ai-identity');if(status)status.innerHTML=dailyAIIdentityHtml();
+  const status=document.getElementById('daily-ai-identity');
+  if(status){
+    status.innerHTML=dailyAIIdentityHtml();
+    if(dailyAIState.authError)status.closest('details').open=true;
+  }
 }
 function dailyAIGuard(){
   const user=auth&&auth.currentUser;
@@ -40,10 +46,14 @@ function dailyAIGuard(){
 function dailyAIToday(now){
   return new Intl.DateTimeFormat('en-CA',{timeZone:'Australia/Sydney',year:'numeric',month:'2-digit',day:'2-digit'}).format(now||new Date());
 }
-function dailyAIWeek(){
+function dailyAIWeekRange(){
   const start=localMidnight(dailyAIToday());start.setDate(start.getDate()-((start.getDay()+6)%7));
   const end=new Date(start);end.setDate(end.getDate()+6);
-  dailyAIState.from=dateStr(start);dailyAIState.to=dateStr(end);dailyAIQueryBills();
+  return {from:dateStr(start),to:dateStr(end)};
+}
+function dailyAIWeek(){
+  Object.assign(dailyAIState,dailyAIWeekRange());
+  dailyAIQueryBills();
 }
 function dailyAIMoney(value){
   if(typeof value!=='number'||!Number.isFinite(value)||value<=0||!Number.isSafeInteger(Math.round(value*100))||Math.abs(value*100-Math.round(value*100))>0.000001)
@@ -261,13 +271,14 @@ function dailyAIIdentityHtml(){
   const user=auth&&auth.currentUser,esc=_catEscHtml;
   const checked=user&&dailyAIState.verifiedUid===user.uid;
   return '<div><strong>Daily account</strong><p>'+esc(user?(user.email||user.displayName||user.uid):'Local guest · this browser only')+'</p><small>'+esc(checked?'Sign-in verified at '+new Date(dailyAIState.verifiedAt).toLocaleTimeString('en-AU'):'Sign-in has not been verified online in this session')+'</small></div>'+
-    '<div><strong>Assistant access</strong><p>Separate authorization required</p><small>Signing into Daily does not grant Fuji access. Check the Fuji connection panel for remote authorization and results.</small></div>'+
     (dailyAIState.authError?'<p class="aih-err" role="alert">'+esc(dailyAIState.authError)+'</p>':'')+
     '<div class="daily-ai-actions"><button class="aih-btn" onclick="dailyAICheckIdentity()">'+(user?'Check sign-in':'Sign into Daily')+'</button><button class="aih-btn" onclick="openProfile()">Account settings</button></div>';
 }
 function dailyAIActivityHtml(){
   const esc=_catEscHtml,rows=dailyAIRequests().filter(r=>!r.remote).slice().reverse().slice(0,20);
-  return '<h2>Recent assistant activity</h2><p class="aih-hint">Latest 20 requests for this Daily account. Cloud confirmations are checked per change during this session. Undo is available while the expense is unchanged.</p>'+
+  return '<header class="daily-ai-activity-head"><h2 class="aih-card-heading">'+cardIcon('receipt')+'Recent activity</h2>'+
+    '<button class="stg-btn" onclick="dailyAIRetrySync()">Retry cloud sync</button></header>'+
+    (rows.length?'<p class="aih-hint">Your latest 20 expense requests and their save status. You can undo an expense until it changes.</p>':'')+
     (rows.length?rows.map(r=>{
       const record=r.record||txnData.find(t=>t.aiActionId===r.id),state=r.status==='applying'&&record?'Expense exists · receipt needs review':r.status;
       return '<article class="daily-ai-record"><strong>'+esc(record?record.merchant+' · '+fmtMoneyExact(record.amount):r.request)+'</strong><span>'+esc(state)+'</span><code>Request: '+esc(r.id)+'</code>'+
@@ -277,12 +288,22 @@ function dailyAIActivityHtml(){
         '<div class="daily-ai-actions">'+(r.status==='prepared'?'<button class="aih-btn" data-id="'+esc(r.id)+'" onclick="dailyAIResume(this.dataset.id)">Resume request</button><button class="aih-btn" data-id="'+esc(r.id)+'" onclick="dailyAICancel(this.dataset.id)">Cancel request</button>':'')+
         (['applying','failed'].includes(r.status)?'<button class="aih-btn" data-id="'+esc(r.id)+'" onclick="dailyAIRecover(this.dataset.id)">Recover result</button>':'')+
         (['applied','undo_requested','undo_failed'].includes(r.status)?'<button class="aih-btn" data-id="'+esc(r.id)+'" onclick="dailyAIUndo(this.dataset.id)">Undo expense</button>':'')+'</div></article>';
-    }).join(''):'<p>No assistant expense requests yet.</p>')+'<button class="aih-btn" onclick="dailyAIRetrySync()">Retry cloud sync</button>';
+    }).join(''):'<p class="aih-note">No expense requests yet.</p>');
+}
+function dailyAIConnectionHtml(){
+  const remote=typeof dailyRemoteHtml==='function';
+  const open=dailyAIState.accessOpen||dailyAIState.authError||(remote&&dailyRemoteState.error);
+  return '<details id="daily-ai-access" class="card aih-card daily-ai-disclosure"'+(open?' open':'')+
+    ' ontoggle="if(this.isConnected)dailyAIState.accessOpen=this.open">'+
+    '<summary>'+cardIcon('bank')+'Account &amp; connection</summary>'+
+    '<div id="daily-ai-identity" class="daily-ai-identity" aria-label="Daily account">'+dailyAIIdentityHtml()+'</div>'+
+    (remote?'<section id="daily-remote" aria-label="Fuji remote connection">'+dailyRemoteHtml()+'</section>':'')+'</details>';
 }
 function dailyAIHtml(){
   const s=dailyAIState,esc=_catEscHtml,b=s.bills,p=s.preview?.pv;
+  if(s.from===null&&s.to===null)Object.assign(s,dailyAIWeekRange());
   const errors=s.error?'<p class="aih-err" role="alert">'+esc(s.error)+'</p>':'';
-  const bills=b?'<div class="daily-ai-bills" aria-live="polite">'+(b.items.length?b.items.map(r=>'<article class="daily-ai-record"><strong>'+esc(r.name)+'</strong><span>'+esc(r.dueDate)+' · '+(r.amount===null?'Amount not recorded':esc(fmtMoneyExact(r.amount)))+'</span><small>'+esc(r.paymentStatus)+'</small>'+
+  const bills=b?'<div class="daily-ai-bills aih-feature-body" aria-live="polite">'+(b.items.length?b.items.map(r=>'<article class="daily-ai-record"><strong>'+esc(r.name)+'</strong><span>'+esc(aiActFmtFullDate(r.dueDate))+' · '+(r.amount===null?'Amount not recorded':esc(fmtMoneyExact(r.amount)))+'</span><small>'+esc(r.paymentStatus)+'</small>'+
     (r.kind==='statement'?'<small>Statement balance '+esc(fmtMoneyExact(r.statementBalance))+' · issued '+esc(r.statementIssueDate||'not recorded')+' · pending repayments '+esc(fmtMoneyExact(r.pendingRepayments))+'</small>':'')+'</article>').join(''):'<p>No dated bills scheduled in this period.</p>')+
     (b.missingSchedule.length?'<p>Missing or invalid schedules: '+esc(b.missingSchedule.join(', '))+'.</p>':'')+
     '<p class="aih-hint">Payment records in this period: '+b.recordedPayments.length+'. They are not automatically matched to scheduled occurrences.</p>'+b.recordedPayments.map(r=>'<p>'+esc(r.date+' · '+r.name+' · '+fmtMoneyExact(r.amount))+'</p>').join('')+
@@ -290,15 +311,27 @@ function dailyAIHtml(){
   const preview=p?'<div class="aih-inbox-preview" aria-live="polite">'+p.rows.map(r=>'<p>'+esc(r.summary||r.error||r.note)+'</p>'+(r.action?.data?.note?'<p>Note: '+esc(r.action.data.note)+'</p>':'')+(r.conflict?'<p class="aih-sensitive">'+esc(r.conflict)+'</p>':'')).join('')+
     '<p class="aih-hint">Records this expense only. Your posted card balance, pending charges and statement fields stay as recorded.</p>'+
     '<button class="aih-btn aih-btn-primary" onclick="dailyAIApply()"'+(s.busy||p.counts.new!==1?' disabled':'')+'>Apply reviewed expense</button></div>':'';
-  return errors+(typeof dailyRemoteHtml==='function'?'<section id="daily-remote" class="card aih-card" aria-label="Fuji remote connection">'+dailyRemoteHtml()+'</section>':'')+'<div class="daily-ai-grid"><section class="card aih-card"><h2>What bills are coming up?</h2><p class="aih-hint">Saved schedules in AUD. Dates use Australia/Sydney. A scheduled charge is not proof of an unpaid bill.</p>'+
-    '<div class="aih-dates"><label class="aih-date"><span>From</span><input id="daily-ai-from" type="date" value="'+esc(s.from)+'" onchange="dailyAIBillDate(\'from\',this.value)"></label><label class="aih-date"><span>To</span><input id="daily-ai-to" type="date" value="'+esc(s.to)+'" onchange="dailyAIBillDate(\'to\',this.value)"></label></div>'+
-    '<div class="daily-ai-actions"><button class="aih-btn" onclick="dailyAIWeek()">This week</button><button class="aih-btn" onclick="dailyAIQueryBills()">Show scheduled bills</button></div>'+bills+'</section>'+
-    '<section class="card aih-card"><h2>Manual expense review</h2><p class="aih-hint">This optional workflow works without a remote connection. Use your phone keyboard’s microphone or type “Log $18.50 for lunch today on my credit card.” Copy the request to your assistant, then bring its JSON reply back here.</p>'+
-    '<label for="daily-ai-request">Your expense request</label><textarea id="daily-ai-request" class="aih-textarea" maxlength="2000" oninput="dailyAIState.request=this.value">'+esc(s.request)+'</textarea>'+
-    '<button class="aih-btn" onclick="dailyAIPrepare()">Copy expense request</button><p class="aih-hint">Shares this request, today’s date, and existing category/account names and IDs. No balances or login credentials are included.</p>'+
-    '<label for="daily-ai-reply">Assistant’s JSON reply</label><textarea id="daily-ai-reply" class="aih-textarea aih-mono" oninput="dailyAIState.reply=this.value;dailyAIState.preview=null">'+esc(s.reply)+'</textarea>'+
-    '<button class="aih-btn" onclick="dailyAICheck()">Check expense</button>'+preview+'</section></div>'+
+  return errors+'<div class="daily-ai-workspace">'+
+    '<section class="aih-feature daily-ai-schedule" aria-labelledby="daily-ai-bills-title">'+
+      '<header class="aih-feature-head"><h1 class="aih-feature-title" id="daily-ai-bills-title">Scheduled bills</h1>'+
+        '<p class="aih-feature-note">Saved schedules in AUD · Sydney dates</p>'+
+        '<div class="aih-dates"><label class="aih-date"><span>From</span><input id="daily-ai-from" type="date" value="'+esc(s.from)+'" onchange="dailyAIBillDate(\'from\',this.value)"></label><label class="aih-date"><span>To</span><input id="daily-ai-to" type="date" value="'+esc(s.to)+'" onchange="dailyAIBillDate(\'to\',this.value)"></label></div>'+
+      '</header><div class="aih-feature-actions hero-action-footer daily-ai-bill-actions">'+
+        '<button class="stg-btn" onclick="dailyAIQueryBills()">Show scheduled bills</button>'+
+        '<button class="stg-btn" onclick="dailyAIWeek()">This week</button>'+
+      '</div>'+bills+'</section>'+
+    '<section class="card aih-card daily-ai-expense">'+
+      '<h2 class="aih-card-heading">'+cardIcon('wallet')+'Review an expense</h2>'+
+      '<p class="aih-hint">Copy your request into your assistant, then paste its reply here to review.</p>'+
+      '<label for="daily-ai-request">Your expense request</label>'+
+      '<textarea id="daily-ai-request" class="aih-textarea" rows="2" maxlength="2000" placeholder="e.g. Lunch today, $18.50 on my credit card" aria-describedby="daily-ai-privacy" oninput="dailyAIState.request=this.value">'+esc(s.request)+'</textarea>'+
+      '<p id="daily-ai-privacy" class="aih-hint">Includes today’s date and category and account names and IDs. Balances and login details stay private.</p>'+
+      '<button class="aih-btn" onclick="dailyAIPrepare()">Copy expense request</button>'+
+      '<label for="daily-ai-reply">Assistant’s JSON reply</label>'+
+      '<textarea id="daily-ai-reply" class="aih-textarea aih-mono" rows="2" oninput="dailyAIState.reply=this.value;dailyAIState.preview=null">'+esc(s.reply)+'</textarea>'+
+      '<button class="aih-btn" onclick="dailyAICheck()">Check expense</button>'+preview+'</section>'+
     '<section id="daily-ai-activity" class="card aih-card">'+dailyAIActivityHtml()+'</section>'+
-    '<details class="card aih-card daily-ai-setup"><summary>Manual workflow help</summary><ol><li>Open Daily on your phone and check the account shown above.</li><li>For bills, choose dates and read the list or copy it into your assistant.</li><li>For expenses, copy a request, answer missing details, then paste the JSON reply here. Check and apply the preview.</li><li>Check Recent activity for the request ID, record ID and save result. Offline changes remain local until sync succeeds.</li></ol>'+
-    '<p>Manual copy does not create an assistant access grant, so there is nothing to revoke for it. Cancel a prepared request to prevent applying it. Daily sign-out is in Account settings. Previously copied text remains in your clipboard or chat. Remote connection controls are separate, above.</p></details>';
+  '</div>'+dailyAIConnectionHtml()+
+    '<details class="card aih-card daily-ai-disclosure daily-ai-setup"><summary>'+cardIcon('note')+'Manual workflow help</summary><ol><li>Check your Daily account under Account &amp; connection.</li><li>Choose bill dates to read or copy the schedule. A scheduled charge alone does not establish whether a bill was paid.</li><li>For expenses, type or dictate a request, copy it into your assistant, then paste its JSON reply here. Check and apply the preview.</li><li>Find request IDs, record IDs and save results in Recent activity. Offline changes remain local until sync succeeds.</li></ol>'+
+    '<p>Manual copy does not create an assistant access grant, so there is nothing to revoke for it. Cancel a prepared request to prevent applying it. Previously copied text remains in your clipboard or chat.</p></details>';
 }

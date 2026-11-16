@@ -3,16 +3,16 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const {extract,copy}=require('./harness.cjs');
 function fixture(accounts){
-  const wrap={innerHTML:''},charts=[];
-  const c=vm.createContext({accounts,console,document:{documentElement:{},getElementById:id=>id==='accounts-chart'?wrap:{}},
+  const wrap={innerHTML:''},charts=[],overview={hidden:false};
+  const c=vm.createContext({accounts,console,document:{documentElement:{},getElementById:id=>id==='accounts-chart'?wrap:id==='accounts-overview-details'?overview:{}},
     getComputedStyle:()=>({getPropertyValue:()=> '#533B7E'}),getLocalDate:()=> '2026-10-04',
     localMidnight:s=>new Date(s+'T00:00:00'),dateStr:d=>d.toISOString().slice(0,10),
     fmtMoney:n=>'$'+n,fmtDate:s=>s,_catEscHtml:s=>s,a_name:a=>a.name,acctIcon:()=>'',tstat:()=>'',
     hexToRgb:()=> '83,59,126',budChartGridColors:()=>({gc:'#333',tc:'#fff'}),S:{theme:'dark'},
     Chart:class{constructor(ctx,config){charts.push(config);}destroy(){}}});
-  vm.runInContext("const _nwCharts={};let nwChartRange='all',acctHistoryVisible=true;const nwChartSeries={assets:true,debts:true};\n"+
+  vm.runInContext("const _nwCharts={};let nwChartRange='all';const nwChartSeries={assets:true,debts:true};\n"+
     ['accountEntryAt','accountsHistoryDates','nwHistoryPoints','nwChartDates','nwCompactMoney','renderNetWorthChartInto'].map(extract).join('\n'),c);
-  return {c,wrap,charts};
+  return {c,wrap,charts,overview};
 }
 const recorded=()=>[
   {id:'cash',name:'Cash',type:'asset',current:1500,history:[{date:'2026-08-01',balance:1000},{date:'2026-09-01',balance:1500}]},
@@ -43,13 +43,12 @@ test('a real zero balance is a plotted point; undated current balances remain un
   const empty=fixture([{id:'none',type:'asset',current:200,history:[]}]);empty.c.renderNetWorthChartInto('accounts-chart');
   assert.equal(empty.charts.length,0);assert.match(empty.wrap.innerHTML,/dated balance/);
 });
-test('collapsing Accounts history retains its disclosure and never hides the Stats chart',()=>{
-  const data=recorded(),before=copy(data),{c,wrap,charts}=fixture(data);
-  vm.runInContext('acctHistoryVisible=false',c);c.renderNetWorthChartInto('accounts-chart');
-  assert.equal(charts.length,0);assert.match(wrap.innerHTML,/Show net worth history/);
-  assert.match(wrap.innerHTML,/aria-expanded="false"/);assert.match(wrap.innerHTML,/id="accounts-history-plot" hidden/);
+test('the collapsed Accounts overview skips the hidden chart while Stats still renders',()=>{
+  const data=recorded(),before=copy(data),{c,wrap,charts,overview}=fixture(data);
+  overview.hidden=true;c.renderNetWorthChartInto('accounts-chart');
+  assert.equal(charts.length,0);assert.equal(wrap.innerHTML,'');
   c.renderNetWorthChartInto('bs-balance-wrap');assert.equal(charts.length,1);
-  vm.runInContext('acctHistoryVisible=true',c);c.renderNetWorthChartInto('accounts-chart');
-  assert.equal(charts.length,2);assert.match(wrap.innerHTML,/Hide net worth history/);
+  overview.hidden=false;c.renderNetWorthChartInto('accounts-chart');
+  assert.equal(charts.length,2);assert.match(wrap.innerHTML,/Last recorded/);
   assert.deepEqual(copy(charts[1].data.datasets[0].data),[1000,1500,1300]);assert.deepEqual(data,before);
 });

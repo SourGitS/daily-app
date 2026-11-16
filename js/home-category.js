@@ -20,7 +20,7 @@ function categorySave(mode,value){
 function categoryEscape(v){return escText(String(v??''));}
 function categoryDate(v){return v?fmtDate(v):'';}
 function categoryHeading(id,meta=''){const c=CATEGORY_HOME_CARDS.find(c=>c.id===id);return '<header class="cat-heading"><h2>'+cardIcon(c.icon)+c.label+'</h2>'+(meta?'<small>'+categoryEscape(meta)+'</small>':'')+'</header>';}
-function categoryLink(id,label){return '<a class="cat-route" href="#'+id+'" data-cat-nav="'+id+'" aria-label="'+escAttr(label||'Open '+CATEGORY_HOME_CARDS.find(c=>c.id===id)?.label)+'"><span aria-hidden="true">↗</span></a>';}
+function categoryLink(id,label,week){return '<a class="cat-route" href="#'+id+'" data-cat-nav="'+id+'"'+(week?' data-week="'+escAttr(week)+'"':'')+' aria-label="'+escAttr(label||'Open '+CATEGORY_HOME_CARDS.find(c=>c.id===id)?.label)+'"><span aria-hidden="true">↗</span></a>';}
 function categoryAction(action,label,primary=false){const expense=action==='expense';return '<button type="button" class="cat-action'+(primary?' cat-primary':'')+(expense?' stg-btn':'')+'" data-cat-action="'+action+'"'+(expense?' aria-label="Add expense"':'')+'>'+label+'</button>';}
 function categoryTraining(profile){
  const combined=layoutMode()==='desktop'&&!profile.hidden.includes('budget');
@@ -100,11 +100,49 @@ function categoryStats(){
  return '<div class="cat-blue cat-stats-body">'+categoryHeading('stats')+'<div class="cat-tabs seg-tabs" role="tablist" aria-label="Stats topic">'+[['strength','Strength'],['weight','Weight'],['consistency','Consistency']].map(([id,label])=>'<button type="button" role="tab" data-cat-topic="'+id+'" aria-selected="'+(id===categoryTopic)+'">'+label+'</button>').join('')+'</div><div class="cat-stat-summary"><div><h3>'+categoryEscape(m.title)+'</h3>'+(last?'<p class="cat-stat-date">'+(categoryTopic==='consistency'?'Week of ':'Latest · ')+categoryDate(last.date)+'</p>':'')+'</div><p class="cat-figure">'+(last?last.value:'—')+'<small>'+categoryEscape(m.unit)+'</small></p></div>'+(chart?'<div class="cat-chart">'+chart+'</div>':'')+'</div><footer class="cat-footer"><strong>'+categoryEscape(categoryStatsComparison(m.rows,categoryTopic,m.unit))+'</strong><span>'+categoryEscape(m.caption)+'</span></footer>'+categoryLink('stats');
 }
 function categoryJournal(){const entries=jrnEntries().slice().sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)),e=entries[0],text=e?(e.body||e.title||'Untitled'):'A thought, a small win, or something to remember.';return categoryHeading('journal',e?categoryDate(e.dateAbout):'')+'<blockquote>'+categoryEscape(text)+'</blockquote>'+categoryAction('journal-write','<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6ZM14 5l5 5M4 16l4 4"/></svg>Write a note')+categoryLink('journal');}
+function categoryReviewWeek(){
+ const preferred=wkrPendingWeek()||weekKey(getMondayOf(-1)),weeks=wkrVisibleWeeks();
+ if(weeks.includes(preferred))return preferred;
+ const current=weekKey(getMondayOf(0));
+ return weeks.find(week=>week<=current)||current;
+}
+function categoryReviewNext(week,rec){
+ const priorities=wkrPriorityRows(week,rec,plannerTasks());
+ const priority=priorities.find(row=>!row.task)||priorities.find(row=>!row.task.done)||priorities[0];
+ const nextRange=homeWeekRangeLabel(wkrShiftWeek(week,1));
+ let caption='',text,action,label,attrs='';
+ if(priority?.task){
+   const task=priority.task;
+   caption=(task.done?'Done in Planner':'Scheduled in Planner')+' · '+categoryDate(task.date);
+   text=task.title;action='review-task';label='View in Planner';
+   attrs=' data-task-id="'+escAttr(task.id)+'"';
+ }else if(priority){
+   caption='Priority for '+nextRange;
+   text=priority.source.text;action='review-plan';label='Schedule in Planner';
+   attrs=' data-priority="'+escAttr(text)+'" data-occurrence="'+priority.source.occurrence+'"';
+ }else if(rec?.status==='completed'){
+   text='This week’s review is complete.';action='review';label='Read review';
+ }else{
+   text='Choose a priority for '+nextRange+'. You can give it a date in Planner.';
+   action='review-set';label='Set a priority';
+ }
+ return '<footer class="cat-review-next">'+(caption?'<span class="cat-caption">'+categoryEscape(caption)+'</span>':'')+
+   '<p class="cat-copy">'+categoryEscape(text)+'</p>'+
+   '<button type="button" class="cat-action stg-btn" data-cat-action="'+action+'" data-week="'+escAttr(week)+'"'+attrs+'>'+label+'</button></footer>';
+}
 function categoryReview(){
- const week=wkrPendingWeek()||weekKey(getMondayOf(-1)),rec=wkrReview(week),plan=wkrEffectivePlan(rec,week),money=wkrDisplayActuals(week,rec,plan),frozen=rec?.status==='completed'&&rec.actualSnapshot;
- const days=frozen?(Number.isFinite(frozen.trainingDays)?frozen.trainingDays:'—'):wkrTrainingDays(week),logs=Array.from({length:7},(_,i)=>nutDaySummary(budDateAdd(week,i))).filter(s=>s.status!=='missing').length;
- const focus=rec?.reflection?.priorities?.filter(x=>typeof x==='string'?x.trim():x?.text).map(x=>typeof x==='string'?x:x.text)[0];
- return categoryHeading('review',homeWeekRangeLabel(week))+'<div class="cat-review-facts"><div><strong>'+days+' days</strong><span>Training</span></div><div><strong>'+(money.hasData?fmtMoney(money.spendTotal):'—')+'</strong><span>Recorded spending</span></div><div><strong>'+logs+' of 7</strong><span>Food log days · current records</span></div></div><p class="cat-copy">'+categoryEscape(focus||(frozen?'Saved review · training and spending use its recorded snapshot.':'What would you like to carry into next week?'))+'</p>'+categoryAction('review',rec?.status==='completed'?'Read review':'Choose a focus <span aria-hidden="true">+</span>')+categoryLink('review');
+ const week=categoryReviewWeek(),rec=wkrReview(week),plan=wkrEffectivePlan(rec,week),money=wkrDisplayActuals(week,rec,plan);
+ const frozen=rec?.status==='completed'&&rec.actualSnapshot;
+ const days=frozen?frozen.trainingDays:wkrTrainingDays(week);
+ const spend=money.hasData&&Number.isFinite(money.spendTotal)?fmtMoney(money.spendTotal):'—';
+ const logs=Array.from({length:7},(_,i)=>nutDaySummary(budDateAdd(week,i))).filter(s=>s.status!=='missing').length;
+ return categoryHeading('review',homeWeekRangeLabel(week))+
+   '<dl class="cat-review-facts">'+[
+     [frozen?'Training at review':'Training',Number.isFinite(days)?days+(days===1?' day':' days'):'—'],
+     [frozen?.money?'Spending at review':'Recorded spending',spend],
+     [frozen?'Food log days · live':'Food log days',logs+' of 7']
+   ].map(([name,value])=>'<div><dt>'+name+'</dt><dd>'+categoryEscape(value)+'</dd></div>').join('')+'</dl>'+
+   categoryReviewNext(week,rec)+categoryLink('review','Open weekly review for '+homeWeekRangeLabel(week),week);
 }
 function categoryWeather(){return '<div class="home-widget home-widget-weather">'+buildWeatherCard(true,true).replace('<div class="weather-fx"','<div class="cat-weather-scene"><div class="weather-fx"').replace('<div class="weather-forecast-dock">','</div><div class="weather-forecast-dock">')+'</div>';}
 function categoryCard(id,profile){
@@ -135,23 +173,38 @@ function categoryWeatherHeading(entry){
  card.classList.toggle('cat-weather-city-condition',!!entry);
  if(entry){const condition=weatherLook(entry)[1];city.innerHTML=categoryEscape(entry.city||'Weather')+', <span class="cat-weather-condition">'+categoryEscape(condition.charAt(0).toLowerCase()+condition.slice(1))+'</span>'+(entry.placeholder?'<span class="cat-weather-sample"> · sample</span>':'');city.setAttribute('aria-label','Weather details and location: '+(entry.city||'Weather')+', '+condition+(entry.placeholder?' · sample':''));}
 }
-function categoryNavigate(id){
+function categoryRefreshReview(restoreFocus=false){
+ if(S.view!=='home')return;
+ const card=document.querySelector('#home-content .cat-review');
+ if(!card)return;
+ const focused=card.contains(document.activeElement)?document.activeElement:null;
+ card.innerHTML=categoryReview();
+ if(restoreFocus||focused){
+  const selector=focused?.matches('[data-cat-nav]')?'[data-cat-nav]':'[data-cat-action]';
+  card.querySelector(selector)?.focus({preventScroll:true});
+ }
+}
+function categoryNavigate(id,week){
  if(id==='training'){const b=logTodayBrief();logOpenPlannedDay(b.dayIdx);return;}
  if(['budget','activity'].includes(id)){homeOpenBudgetWeek();return;}
  if(id==='food'){openFoodToday();return;}if(id==='shopping'){openFoodShopping();return;}if(id==='journal'){setView('notes');return;}
- if(id==='review'){wkrOpenWeek(wkrPendingWeek()||weekKey(getMondayOf(-1)));return;}
+ if(id==='review'){wkrOpenWeek(week||categoryReviewWeek());return;}
  setView('stats');if(id==='stats'){setStatsTab(categoryTopic==='weight'?'body':'training');return;}if(id==='weight')setStatsTab('body');else if(id==='records')setStatsTab('training');
 }
 function categoryHabitDialog(){let d=document.getElementById('category-habit-dialog');if(!d){d=document.createElement('dialog');d.id='category-habit-dialog';d.className='cat-dialog';d.setAttribute('aria-labelledby','cat-habit-title');document.body.append(d);}const focus=d.contains(document.activeElement)?document.activeElement.dataset.catHabit:null,top=d.querySelector('.cat-habit-list')?.scrollTop||0;d.innerHTML=categoryHabits(true);d.querySelector('h2').id='cat-habit-title';if(!d.open)d.showModal();d.querySelector('.cat-habit-list').scrollTop=top;if(focus!=null)d.querySelector('[data-cat-habit="'+focus+'"]')?.focus({preventScroll:true});}
 document.addEventListener('change',e=>{const input=e.target.closest('[data-cat-habit]');if(!input)return;toggleHabit(Number(input.dataset.catHabit));if(S.view==='home')renderHome();if(document.getElementById('category-habit-dialog')?.open)categoryHabitDialog();});
 document.addEventListener('click',e=>{
- const nav=e.target.closest('[data-cat-nav]');if(nav){e.preventDefault();categoryNavigate(nav.dataset.catNav);return;}
+ const nav=e.target.closest('[data-cat-nav]');if(nav){e.preventDefault();categoryNavigate(nav.dataset.catNav,nav.dataset.week);return;}
  const topic=e.target.closest('[data-cat-topic]');if(topic){categoryTopic=topic.dataset.catTopic;const el=document.querySelector('.cat-card.cat-stats');if(el){el.innerHTML=categoryStats();el.querySelector('[data-cat-topic="'+categoryTopic+'"]').focus();}return;}
  const a=e.target.closest('[data-cat-action]');if(!a)return;
  const id=a.dataset.catAction;if(id==='layout'){openHomeLayoutEditor();return;}if(id==='expense'){openTxnModal({date:getLocalDate()});return;}if(id==='budget-setup'){budPeriodSetup();return;}
  if(id==='food'){nutOpen();return;}if(id==='weight'){openLogWeight();return;}if(id==='habits'){categoryHabitDialog();return;}
  if(id==='habits-edit'){document.getElementById('category-habit-dialog')?.close();openHabitsEditModal();return;}
- if(id==='journal-write'){setView('notes');jrnOpenEditor(null,'entry');return;}if(id==='review')categoryNavigate('review');
+ if(id==='journal-write'){setView('notes');jrnOpenEditor(null,'entry');return;}
+ if(id==='review-set'){wkrEditPriorities(a,()=>categoryRefreshReview(true));return;}
+ if(id==='review-plan'){wkrPlanPriority(a,task=>jrnPlannerOpenWeek(task.date,task.id));return;}
+ if(id==='review-task'){wkrViewPlannedAction(a);return;}
+ if(id==='review')categoryNavigate('review',a.dataset.week);
 });
 
 function categoryEditorOpen(){

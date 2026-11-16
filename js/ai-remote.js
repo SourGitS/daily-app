@@ -163,13 +163,17 @@ async function dailyRemoteUseCloud(path){
     dailyRemoteReconcile(s,raw);dailyRemoteState.error='';dailyRemoteState.message='Cloud copy loaded. The previous local copy is retained for recovery.';dailyRemoteRefreshHtml();
   }catch(e){dailyRemoteProblem(e.message);}
 }
-function dailyRemoteRefreshHtml(){const el=document.getElementById('daily-remote');if(el)el.innerHTML=dailyRemoteHtml();}
+function dailyRemoteRefreshHtml(){
+  const el=document.getElementById('daily-remote');
+  if(!el)return;
+  el.innerHTML=dailyRemoteHtml();
+  if(dailyRemoteState.error)el.closest('details').open=true;
+}
 function dailyRemoteHtml(){
   const esc=_catEscHtml,s=dailyRemoteState,configured=!!dailyRemoteOrigin(),status=s.status,busy=s.loading?' disabled':'';
   let html='<h2>Fuji connection</h2><p>'+(!configured?'Prepared · not deployed':s.loading?'Checking secure connection…':status?.enabled?'Secure service enabled':status?'Secure service not enabled':'Connection not checked')+'</p>';
-  html+='<p class="aih-hint">Ask Fuji “What bills are scheduled this week?” or “Log $18.50 for lunch today on my credit card.” Fuji must resolve missing account or category details and retain the platform’s write confirmations.</p>';
-  if(!configured)html+='<p>No hosting, billing or assistant grant has been activated. Automatic phone access is unavailable until setup is completed. The manual tools below remain available.</p>';
-  else html+='<div class="daily-ai-actions"><button class="aih-btn" onclick="dailyRemoteCheck()"'+busy+'>Check connection and results</button><a class="aih-btn" href="https://chatgpt.com/plugins" target="_blank" rel="noopener">Open ChatGPT plugins to connect or reconnect</a></div>';
+  if(!configured)html+='<p class="aih-hint">Fuji has no remote access. You can still copy bills and review expense requests manually.</p>';
+  else html+='<p class="aih-hint">Fuji needs its own authorization to read scheduled bills or review expenses.</p><div class="daily-ai-actions"><button class="aih-btn" onclick="dailyRemoteCheck()"'+busy+'>Check connection and results</button><a class="aih-btn" href="https://chatgpt.com/plugins" target="_blank" rel="noopener">Open ChatGPT plugins to connect or reconnect</a></div>';
   if(status){
     html+='<p>Verified Daily account: '+esc(status.account.email||status.account.uid)+'<br><small>Checked '+esc(new Date(s.checkedAt).toLocaleString('en-AU'))+'. Authorization does not prove that Fuji has used a tool successfully.</small></p>';
     html+=(status.connections.length?status.connections.map(g=>'<article class="daily-ai-record"><strong>'+esc(g.status)+'</strong><span>'+esc(g.scopes.join(', '))+'</span><small>Grant expires '+esc(new Date(g.expiresAt).toLocaleString('en-AU'))+'</small>'+(g.status!=='revoked'?'<button class="aih-btn" data-id="'+esc(g.id)+'" onclick="dailyRemoteAction(\'revoke\',this.dataset.id)"'+busy+'>Revoke connection</button>':'')+'</article>').join(''):'<p>No assistant authorization exists for this account.</p>');

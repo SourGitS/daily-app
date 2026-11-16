@@ -458,7 +458,8 @@
 // v458: Planner Week tasks and linked Weekly Review priorities.
 // v459: curated Home order and iPhone landscape layout.
 // v460: shared neutral dark card fill on phone and desktop.
-const CACHE_NAME = 'daily-v460';
+// v461: refreshed Daily AI, combined Accounts details and Home review priorities linked to Planner.
+const CACHE_NAME = 'daily-v461';
 importScripts('./js/notification-storage.js');
 importScripts('./js/cache-scope.js');
 
@@ -480,6 +481,7 @@ const ASSETS = [
   './css/nutrition-modals.css',
   './css/budget-home.css',
   './css/kitchen-extras.css',
+  './css/daily-ai-assistant.css',
   './css/journal.css',
   './css/settings.css',
   './css/review.css',

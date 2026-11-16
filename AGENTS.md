@@ -1,5 +1,12 @@
 # Daily — Agent Handoff
 
+## v461 Daily AI, Accounts and Home Weekly Review — 2026-11-17
+
+- Daily AI opens with the shared workflow tabs. Assistant starts with Scheduled bills for the current Sydney week, Ask AI opens the editable prompt and its starting point, and Import actions starts with the response field. Account verification and Fuji connection details are available in every mode.
+- The Accounts hero uses one Payoff & history control. The closed row shows the payoff amount and status. Expanding it reveals the calculation and the net-worth chart with its range, series and record controls.
+- The Home Weekly review card groups the three figures between the header and the priority action. Set a priority opens the Weekly Review editor on Home. Schedule in Planner lets the user date a saved priority and opens the linked action in Planner Week. The card’s arrow opens the full review for the week shown.
+- All 813 app checks passed. Chrome and WebKit checked Daily AI and Accounts with synthetic data. The Home-to-Planner flow passed at 320, 390 and 1440px, including cancellation, scheduling, moving, completion and reload. The offline shell upgrade also passed.
+
 ## v460 shared dark card colour — 2026-11-17
 
 - Home and regular dark-mode cards share the same `#202020` fill at every width, over the `#121212` page background. Light mode retains its existing device-specific colours.

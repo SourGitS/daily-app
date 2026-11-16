@@ -97,3 +97,59 @@ test('phone habits show up to six inline; overflow and desktop retain a full-lis
  assert.equal((c.categoryHabits(true).match(/data-cat-habit=/g)||[]).length,7);
  mode='desktop';assert.equal((c.categoryHabits().match(/data-cat-habit=/g)||[]).length,2);
 });
+function reviewFixture(){
+ const {c}=context(),week='2026-11-09',current='2026-11-16';
+ const escape=s=>String(s).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;');
+ Object.assign(c,{
+   getMondayOf:n=>n===-1?week:current,weekKey:s=>s,wkrPendingWeek:()=>null,wkrVisibleWeeks:()=>[current,week],
+   wkrShiftWeek:()=>current,homeWeekRangeLabel:s=>s===week?'9–15 Nov':'16–22 Nov',
+   wkrReview:()=>null,wkrEffectivePlan:()=>({}),wkrTrainingDays:()=>2,
+   wkrMoneyActuals:()=>({hasData:true,spendTotal:0}),fmtMoney:n=>'$'+n,budDateAdd:(s,n)=>n,
+   nutDaySummary:n=>({status:n===1?'logged':'missing'}),plannerTasks:()=>[],
+   cardIcon:()=>'',escText:escape,escAttr:escape,fmtDate:s=>s
+ });
+ const {extract}=require('./harness.cjs');
+ vm.runInContext(['wkrPriorityRows','wkrDisplayActuals'].map(extract).join('\n'),c);
+ return {c,week,current};
+}
+test('Home review opens the same eligible week as its metrics, including a new profile',()=>{
+ const {c,week,current}=reviewFixture();
+ assert.equal(c.categoryReviewWeek(),week);
+ let html=c.categoryReview();
+ assert.match(html,/data-cat-action="review-set" data-week="2026-11-09"/);
+ assert.match(html,/data-cat-nav="review" data-week="2026-11-09"/);
+ assert.match(html,/16–22 Nov.+Planner/);
+ c.wkrVisibleWeeks=()=>['2026-11-23',current,'2026-11-02'];
+ assert.equal(c.categoryReviewWeek(),current);
+ html=c.categoryReview();
+ assert.match(html,/data-cat-action="review-set" data-week="2026-11-16"/);
+ assert.match(html,/data-cat-nav="review" data-week="2026-11-16"/);
+ c.wkrPendingWeek=()=>'2026-11-02';
+ assert.equal(c.categoryReviewWeek(),'2026-11-02');
+});
+test('Home review separates saved metrics from current food logs and renders missing amounts honestly',()=>{
+ const {c}=reviewFixture();
+ c.wkrReview=()=>({status:'completed',actualSnapshot:{trainingDays:1,money:{hasData:false}}});
+ let html=c.categoryReview();
+ assert.match(html,/<dt>Training at review<\/dt><dd>1 day<\/dd>/);
+ assert.match(html,/<dt>Spending at review<\/dt><dd>—<\/dd>/);
+ assert.match(html,/<dt>Food log days · live<\/dt><dd>1 of 7<\/dd>/);
+ assert.match(html,/data-cat-action="review".+Read review/);
+ c.wkrReview=()=>null;html=c.categoryReview();
+ assert.match(html,/<dt>Training<\/dt><dd>2 days<\/dd>/);
+ assert.match(html,/<dt>Recorded spending<\/dt><dd>\$0<\/dd>/);
+});
+test('a saved, scheduled or completed priority points to the corresponding Planner action',()=>{
+ const {c,week}=reviewFixture(),title='Walk <daily> "outside"';
+ const rec={status:'completed',nextWeek:{priorities:[title]}};
+ let html=c.categoryReviewNext(week,rec);
+ assert.match(html,/data-cat-action="review-plan"/);
+ assert.match(html,/data-priority="Walk &lt;daily> &quot;outside&quot;" data-occurrence="0"/);
+ assert.match(html,/Schedule in Planner/);
+ const task={id:'test-action',title:'Walk at lunch',date:'2026-11-19',source:{week,text:title,occurrence:0},done:false};
+ c.plannerTasks=()=>[task];html=c.categoryReviewNext(week,rec);
+ assert.match(html,/Scheduled in Planner · 2026-11-19/);
+ assert.match(html,/Walk at lunch/);
+ assert.match(html,/data-cat-action="review-task".+data-task-id="test-action">View in Planner/);
+ task.done=true;assert.match(c.categoryReviewNext(week,rec),/Done in Planner/);
+});

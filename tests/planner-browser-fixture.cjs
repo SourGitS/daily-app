@@ -36,7 +36,7 @@ function plannerSampleFiles(revision) {
   };
 }
 
-function plannerFixture(revision) {
+function plannerFixture(revision, fixtureOrigin = origin) {
   const sample = plannerSampleFiles(revision);
   return async context => {
     await context.addInitScript(() => {
@@ -44,7 +44,7 @@ function plannerFixture(revision) {
     });
     await context.route('**/*', route => {
       const url = new URL(route.request().url());
-      if (url.origin !== origin) return route.abort();
+      if (url.origin !== fixtureOrigin) return route.abort();
       const file = decodeURIComponent(url.pathname).slice(1);
       return route.fulfill(sample(file) || {status:404, body:''});
     });

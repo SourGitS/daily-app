@@ -2640,26 +2640,25 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .acct-overview-totals>div+div{border-left:1px solid #ffffff25;padding-left:20px}
 .acct-overview-totals .card-cap{margin:0 0 8px;font-weight:500}
 .acct-overview-totals .card-fig{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
-.acct-overview-dock{background:#202020;color:var(--text)}
+.acct-overview-dock{--acct-inset:20px;background:var(--surface-card);color:var(--text)}
 [data-theme=light] .acct-overview-dock{background:#f2f2f2}
-.acct-overview-dock>.acct-payoff-details{border:0;margin:0;padding:8px 20px;background:transparent;color:inherit}
-.acct-payoff-details .acct-payoff-detail,.acct-payoff-details>summary{color:#b1b1b1}
-[data-theme=light] .acct-payoff-details .acct-payoff-detail,[data-theme=light] .acct-payoff-details>summary{color:#626262}
-.acct-payoff-details>summary{display:flex;align-items:center;font-size:12px}
-.acct-payoff-summary{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;flex:1}
-.acct-payoff-summary strong{font-family:var(--font-num);font-size:17px;color:var(--text)}
-.acct-payoff-detail{padding:8px 0 2px;font-size:12px;line-height:1.5}
-.acct-history{padding:0;overflow:hidden;margin:0;border-top:1px solid var(--border)}
-.acct-history-toggle{display:flex;align-items:center;gap:8px;width:100%;min-width:0;min-height:48px;padding:12px 20px;margin:0;background:transparent;border:0;color:var(--text);font-size:12px;font-weight:700;line-height:1.5;cursor:pointer}
-.accounts-wrap .acct-history-toggle{text-align:left}
-.acct-history-toggle>span{flex:1;min-width:0;overflow-wrap:anywhere}
-.acct-history-toggle>svg:first-child{color:var(--muted)}
-.acct-history-chevron{flex:none;color:var(--muted);transition:transform .16s ease}
-.acct-history-toggle[aria-expanded=true] .acct-history-chevron{transform:rotate(180deg)}
-.acct-history-toggle:focus-visible{outline:2px solid var(--accent-text);outline-offset:-4px}
-.acct-history-empty{padding:0 20px 18px;margin:0;color:var(--muted);font-size:12px;line-height:1.6}
+.acct-overview-dock h3{font-size:13px;line-height:1.5;color:var(--text);margin:0 0 8px}
+.acct-overview-summary,.acct-payoff-summary{display:flex;align-items:center;flex-wrap:wrap;gap:3px 12px;min-width:0}
+.acct-overview-summary{flex:1;justify-content:space-between}
+.acct-payoff-summary{max-width:100%}
+.acct-payoff-summary strong{min-width:0;overflow-wrap:anywhere;font-family:var(--font-num);font-size:17px;color:var(--text)}
+.acct-payoff-detail{padding:14px var(--acct-inset);border-top:1px solid var(--border);font-size:12px;line-height:1.5;color:var(--text-2)}
+.acct-history{padding:14px 0 0;overflow:hidden;margin:0;border-top:1px solid var(--border)}
+.acct-history>h3{margin-inline:var(--acct-inset)}
+.acct-overview-toggle{display:flex;align-items:center;gap:8px;width:100%;min-width:0;min-height:48px;padding:12px var(--acct-inset);margin:0;background:transparent;border:0;color:var(--text);font-size:12px;font-weight:700;line-height:1.5;cursor:pointer}
+.accounts-wrap .acct-overview-toggle{text-align:left}
+.acct-overview-toggle>svg{color:var(--muted)}
+.acct-overview-chevron{flex:none;transition:transform .16s ease}
+.acct-overview-toggle[aria-expanded=true] .acct-overview-chevron{transform:rotate(180deg)}
+.acct-overview-toggle:focus-visible{outline:2px solid var(--accent-text);outline-offset:-4px}
+.acct-history-empty{padding:0 var(--acct-inset) 18px;margin:0;color:var(--muted);font-size:12px;line-height:1.6}
 .acct-history .nw-chart-card{border:0;box-shadow:none;background:transparent;margin:0;border-radius:0}
-.acct-history .nw-chart-head{align-items:flex-start;padding:0 20px 8px}
+.acct-history .nw-chart-head{align-items:flex-start;padding:0 var(--acct-inset) 8px}
 .acct-history .nw-chart-head>div:first-child{min-width:0;flex:1}
 .acct-history .nw-chart-canvas{height:170px;padding:12px 14px 4px 4px}
 .acct-history .nw-chart-value{font-size:18px;display:inline-block;margin-top:6px}
@@ -2667,7 +2666,6 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 .acct-history .nw-chart-change{display:inline-block;margin-left:10px;font-size:11px}
 .acct-history .nw-chart-ranges{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:176px;max-width:calc(100% - 32px);margin:6px 16px 0}
 .acct-history .nw-chart-ranges button{display:flex;align-items:center;justify-content:center;min-width:0;width:100%;height:44px;min-height:44px;margin:0;padding:0 4px;line-height:1.2;text-align:center}
-.acct-history .nw-chart-ranges[hidden],#accounts-history-plot[hidden]{display:none}
 .acct-history .nw-chart-series{gap:6px;padding:6px 12px 10px}
 .acct-history .nw-chart-series>span,.acct-history .nw-chart-series>button{height:44px;min-height:44px;line-height:1.2}
 .accounts-wrap button,.acct-statement-dialog button{-webkit-appearance:none;appearance:none;box-sizing:border-box;font-family:var(--font-ui);text-align:center}
@@ -2696,13 +2694,11 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
 }
 @media(max-width:479px){
   .acct-overview-body{padding:16px 16px 0}
-  .acct-overview-dock>.acct-payoff-details,.acct-history-toggle,.acct-history .nw-chart-head,.acct-history-empty{padding-inline:16px}
+  .acct-overview-dock{--acct-inset:16px}
   .acct-overview-totals{grid-template-columns:1fr 1fr;gap:18px 16px;padding-bottom:16px}
   .acct-overview-totals .acct-overview-net{grid-column:1 / -1}
   .acct-overview-totals>div:nth-child(2){border-left:0;padding-left:0}
   .acct-overview-totals>div+div{padding-left:16px}
-  .acct-payoff-details>summary{gap:8px;flex-wrap:wrap}
-  .acct-payoff-summary{flex-basis:100%}
   .acct-history .nw-chart-head{flex-wrap:nowrap}
   .acct-history .nw-chart-change{display:block;margin-left:0}
   .acct-history .nw-chart-canvas{height:160px}
