@@ -1,9 +1,9 @@
-// Routing regression cover for the Food hub and Stats' return to the swipe deck.
+// Routing regression cover for the Food hub and the swipe deck.
 //
 // These run the REAL declarations out of js/app.js in a VM — no DOM, no network, no storage,
 // no account. They exist because the expensive failures in this change are silent ones: a
 // legacy #kitchen link that resolves to nothing, a deck order that disagrees with NAV_ORDER,
-// or Stats pinned twice because it is in both NAV_ORDER and NAV_QUICK_EXTRA.
+// or duplicated shortcuts in the sidebar.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -36,7 +36,7 @@ function ctx() {
   // navigation constants have to be handed out explicitly. Function declarations do become
   // globals, which is why the history helpers below need no epilogue.
   vm.runInContext(slice('const NAV_ORDER=', '// Row id → row.') +
-    '\n;globalThis.__nav={NAV_ORDER,NAV_QUICK_EXTRA,NAV_QUICK_VIEWS,NAV_QUICK,' +
+    '\n;globalThis.__nav={NAV_ORDER,NAV_QUICK_VIEWS,NAV_QUICK,' +
     'NAV_VIEW_ALIAS,FOOD_LEGACY_ROUTES,NAV_TREE,FOOD_TABS,foodState,FOOD_SUPPORT};', context);
   vm.runInContext(['dailyHistoryView', 'dailyHistoryTarget', 'dailyHistoryUrl', 'dailyHistorySub']
     .map(extract).join('\n'), context);
@@ -51,9 +51,9 @@ function ctx() {
   });
 }
 
-test('the deck retains five phone tabs with Log central and Journal outside it', () => {
+test('the deck retains five phone tabs with Log central and Planner fifth', () => {
   const c = ctx();
-  assert.deepEqual(c.NAV_ORDER, ['home', 'budget', 'log', 'food', 'stats']);
+  assert.deepEqual(c.NAV_ORDER, ['home', 'budget', 'log', 'food', 'notes']);
   assert.equal(c.NAV_ORDER[2], 'log', 'Log keeps its existing slot');
   // css/layout.css assigns #view-*{order:n} from this list; a disagreement gives you a tab you
   // can tap but not swipe to. Check the stylesheet actually matches.
@@ -64,12 +64,9 @@ test('the deck retains five phone tabs with Log central and Journal outside it',
   });
 });
 
-test('Stats stays in the deck while Daily AI is a sidebar-only favourite', () => {
+test('all phone destinations, Stats and Daily AI remain available in quick access', () => {
   const c = ctx();
-  assert.ok(!c.NAV_QUICK_EXTRA.includes('stats'), 'Stats is in NAV_ORDER now; listing it here shows it twice');
-  assert.deepEqual(c.NAV_QUICK_EXTRA, ['notes', 'aihub', 'accounts', 'settings']);
-  // The pinned extras are not deck tabs and cannot duplicate a phone destination.
-  c.NAV_QUICK_EXTRA.forEach(v => assert.ok(!c.NAV_ORDER.includes(v), v + ' must not join the deck'));
+  c.NAV_ORDER.forEach(v => assert.ok(c.NAV_QUICK_VIEWS.includes(v), 'missing shortcut for ' + v));
   assert.equal(c.NAV_QUICK_VIEWS.filter(v => v === 'stats').length, 1);
   assert.equal(c.NAV_QUICK_VIEWS.filter(v => v === 'food').length, 1);
   // Every pinned destination needs a label and an icon or the strip renders a raw view id.
@@ -98,7 +95,10 @@ test('the mobile selection surface changes with the active page, without positio
   assert.ok(!geometry.test((latePill.match(/transition:[^;}]+/) || [''])[0]),
     'the final CSS layer must not reintroduce a lagging pill');
   const setView = extract('setView');
-  assert.match(setView, /classList\.toggle\('active',b\.dataset\.view===v\)/);
+  assert.match(setView, /const current=b\.dataset\.view===v;/);
+  assert.match(setView, /classList\.toggle\('active',current\)/);
+  assert.match(setView, /if\(current\) b\.setAttribute\('aria-current','page'\)/);
+  assert.match(setView, /else b\.removeAttribute\('aria-current'\)/);
   assert.match(setView, /updateNavPill\(v\)/);
 });
 
@@ -225,11 +225,10 @@ test('each supporting screen names its parent section', () => {
     assert.ok(at > 0, 'missing overlay markup for ' + def.el);
     assert.ok(at > deckEnd, def.el + ' must sit outside #swipe-deck');
   });
-  // Stats, by contrast, must be INSIDE the deck now.
+  // Stats opens above the five phone panels.
   const statsAt = html.indexOf('id="view-stats"');
-  assert.ok(statsAt > 0 && statsAt < deckEnd, '#view-stats must be a panel inside #swipe-deck');
-  assert.match(html.slice(statsAt - 40, statsAt + 80), /swipe-panel/,
-    '#view-stats must carry .swipe-panel');
+  assert.ok(statsAt > deckEnd, '#view-stats must be a secondary destination');
+  assert.match(html.slice(statsAt - 40, statsAt + 80), /id="view-stats" class="hidden"/);
   // One copy of the Stats markup, and one recipe book.
   assert.equal(html.split('id="view-stats"').length - 1, 1);
   assert.equal(html.split('id="kit-recipes"').length - 1, 1);

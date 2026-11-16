@@ -107,7 +107,7 @@ function foodCatalogueCheck(){
   const ob=document.getElementById('onboarding-overlay');
   if(ob&&!ob.classList.contains('hidden'))return;
   if(document.querySelector('dialog[open],#whats-new-overlay')||kitCookState.recipeId)return;
-  const covered=['kit-form-overlay','kit-import-overlay','kit-sheet-overlay'].some(id=>{
+  const covered=['kit-form-overlay','kit-import-overlay','kit-sheet-overlay','nutrition-food-overlay'].some(id=>{
     const el=document.getElementById(id);return el&&!el.classList.contains('hidden');
   });
   if(covered||foodSupportOpen('library')||foodSupportOpen('review'))return;

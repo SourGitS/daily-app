@@ -1,5 +1,13 @@
 # Daily — Agent Handoff
 
+## v453 Planner and shared Add — release authorised, 2026-11-16
+
+- Planner takes the fifth phone tab. Food and Planner support swiping in both directions. Stats is available in the phone menu and desktop sidebar. Existing `#notes` and `#stats` links and browser history still work. Journal writing and history live under Entries & notes.
+- The neutral phone header plus and desktop Add button open the existing expense, food, weight, task/note and journal editors. A task added from the calendar takes the selected date. Add food opens the log directly even on a first visit.
+- Next up previews the first three items across today and the next six days, with an expandable full list. It reads dated notes, Finance bill occurrences and the actionable workout from Log. Selecting a date opens its full agenda and existing writing. Bills open the selected day in Finance.
+- Browser comparison with v452 (`dac5a9c`) matched the order, positions and dimensions of every visible Home card at 320, 390, 1024 and 1440px, including reordered and hidden-card examples. The focused integration check is `tests/planner-shared-add-browser.cjs`. Set `DAILY_HOME_COMPARE_REF=dac5a9c` to repeat that comparison.
+- The app suite passed 793 checks. The Home and calendar browser suite passed in both themes at 320, 390, 844 landscape, 1024, 1440 and 1920px. Browser checks used synthetic records in Chrome, including phone touch swipes, editing and cancellation, saving expenses/food/weight/notes, screen resizing, and the offline cache upgrade. Francois authorised committing and pushing v453 to GitHub Pages for physical iPhone testing.
+
 ## v452 review fixes — release authorised, 2026-11-16
 
 - The local verification report at `temp-analysis/fix-review-20261116/Daily-app-fix-verification.html` links the 34 v451 findings to repeatable checks in `tests/` and `remote/test/`. The browser app, default Firebase rules and prepared connector rules have changes in this checkout.

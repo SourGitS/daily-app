@@ -41,7 +41,7 @@ test('quick access stays separate from groups with nine labelled destinations an
   const f = fixture();
   assert.deepEqual(f.NAV_QUICK.map(q => [q.id, q.label]), [
     ['home', 'Home'], ['budget', 'Finance'], ['log', 'Log'], ['food', 'Food'],
-    ['stats', 'Stats'], ['notes', 'Journal'], ['aihub', 'Daily AI'], ['accounts', 'Accounts'], ['settings', 'Settings']
+    ['stats', 'Stats'], ['notes', 'Planner'], ['aihub', 'Daily AI'], ['accounts', 'Accounts'], ['settings', 'Settings']
   ]);
   // Accounts is a Finance VIEW, so it is the one pinned item that carries a sub-tab.
   assert.deepEqual(f.NAV_QUICK.filter(q => q.sub).map(q => [q.id, q.view, q.sub]),

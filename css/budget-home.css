@@ -1192,13 +1192,8 @@ button.bud-day-row:active{background:var(--track);border-radius:10px}
      ONE rule, not two: this used to be a max-width/width declaration here and a SECOND
      padding declaration for the same selector 120 lines further down, same specificity, so
      the later one silently won and the earlier padding was dead. Both are folded in here. */
-  /* BOTH selectors, because they cover disjoint halves of the app and neither reaches the
-     other. The four paged tabs (Home, Log, Stats, Budget) are .swipe-panel and live inside
-     #swipe-deck, so `#app-main>section` has never matched them — #swipe-deck is display:contents
-     here, which flattens them for LAYOUT but not for selector matching, so they are still not
-     direct children. `#app-main>section` reaches only the overlay views (Kitchen, Settings,
-     Plans, Notes). Capping one and not the other is how the two drifted apart in the first
-     place. #app-main-scoped so this outranks the plain .swipe-panel padding in layout.css. */
+  /* Deck panels remain nested inside #swipe-deck even with display:contents. Include them
+     and the secondary views directly under #app-main so both have the same gutters. */
   /* ONE canvas for every view. Category Home established a 1440px content width; the shared
      container includes its 32px padding on both sides, so every main tab now begins and ends
      on the same lines at wide desktop sizes. Below that width the existing fluid behaviour is

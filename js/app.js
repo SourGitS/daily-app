@@ -478,6 +478,7 @@ if(firebaseReady){
       // every one of those goes stale. Presentation only; no listener, path, merge rule or
       // timestamp behaviour changes.
       if(S.view==='log'&&logSubTab==='today'&&logTodayView==='overview'&&typeof renderLogOverview==='function') renderLogOverview();
+      if(typeof jrnPlannerRefreshSchedule==='function')jrnPlannerRefreshSchedule();
       if(S.view==='home'&&typeof renderHome==='function') renderHome();
       if(S.view==='stats') refreshStatsForData(['overview','review','training']);
     });
@@ -756,12 +757,13 @@ if(firebaseReady){
       if(typeof txnAfterChange==='function') txnAfterChange();
     });
     syncBlobListen(user.uid,'aiRequests','daily_ai_requests',()=>{if(typeof dailyAIRefresh==='function')dailyAIRefresh();});
-    syncBlobListen(user.uid,'dayCustom','wt_day_custom',()=>{ try{ dayCustom=JSON.parse(localStorage.getItem('wt_day_custom')||'{}')||{}; }catch(e){} if(S.view==='log'&&typeof renderLog==='function') renderLog(); if(S.view==='home'&&typeof renderHome==='function') renderHome(); });
+    syncBlobListen(user.uid,'dayCustom','wt_day_custom',()=>{ try{ dayCustom=JSON.parse(localStorage.getItem('wt_day_custom')||'{}')||{}; }catch(e){} if(S.view==='log'&&typeof renderLog==='function') renderLog(); if(S.view==='home'&&typeof renderHome==='function') renderHome(); if(typeof jrnPlannerRefreshSchedule==='function') jrnPlannerRefreshSchedule(); });
     syncBlobListenTS(user.uid,'exerciseLib','wt_exercise_lib','wt_exercise_lib_ts',()=>{ if(typeof renderExerciseLibList==='function') renderExerciseLibList(); if(typeof SE!=='undefined' && SE.target>=0 && document.getElementById('se-picker-list')) document.getElementById('se-picker-list').innerHTML=sePickerListHTML(); if(S.view==='stats') refreshStatsForData(['overview','review','training']); });
     syncBlobListen(user.uid,'customMuscles','wt_custom_muscles',()=>{ try{ if(S.view==='log'&&logSubTab==='exercises'&&typeof renderMuscleFilterRow==='function') renderMuscleFilterRow(); }catch(e){} });
     syncBlobListen(user.uid,'libHidden','wt_lib_hidden',()=>{ if(typeof renderExerciseLibList==='function') renderExerciseLibList(); });
     syncBlobListenTS(user.uid,'trainingSplit','wt_split','wt_split_ts',()=>{
       splitConfig=null; splitCfg(); // reload from the just-updated localStorage copy
+      if(typeof jrnPlannerRefreshSchedule==='function') jrnPlannerRefreshSchedule();
       if(S.view==='log'&&typeof renderLog==='function') renderLog();
       if(S.view==='home'&&typeof renderHome==='function') renderHome();
       if(S.view==='stats') refreshStatsForData(['overview','review','training']);
@@ -833,6 +835,7 @@ if(firebaseReady){
         if(!(auth.currentUser&&auth.currentUser.uid===user.uid)) return;
         if(_cloudApplied.sessions&&_cloudApplied.weights){
           _cloudWorkoutReady=true;
+          if(typeof jrnPlannerRefreshSchedule==='function') jrnPlannerRefreshSchedule();
           if(typeof dailyResumeOnboardingDraft==='function')dailyResumeOnboardingDraft(user.uid,!!(profileData.name||'').trim()||profileData.onboardingVersion>=OB_VERSION);
           if(profileNeedsRestore&&profileData.onboardingVersion>=OB_VERSION&&typeof obCurrentStep==='function'&&obCurrentStep()==='welcome')obDismiss();
           setSyncStatus('Synced ✓');
@@ -842,7 +845,7 @@ if(firebaseReady){
         } else setTimeout(ready,150);
       };
       ready();
-    }).catch(()=>{ _cloudReadFailed=true; setSyncStatus('Sync failed'); });
+    }).catch(()=>{ _cloudReadFailed=true; setSyncStatus('Sync failed'); if(typeof jrnPlannerRefreshSchedule==='function') jrnPlannerRefreshSchedule(); });
 
   } else {
     // syncDetachAll() above already released every tracked listener, including the ones the
@@ -2412,7 +2415,7 @@ function setView(v, direction, opts){
   const swipeIdx=NAV_ORDER.indexOf(v);
   const isSwipe=swipeIdx>=0;
   // Overlay (non-deck) views are the direct <section> children of #app-main; hide them all,
-  // then reveal the target if it's an overlay. Deck views (home/budget/log/stats) live inside
+  // then reveal the target if it's an overlay. The five phone tabs live inside
   // #swipe-deck and are shown by deck position (mobile) / .deck-active (desktop) instead.
   document.querySelectorAll('#app-main > section').forEach(el=>el.classList.add('hidden'));
   if(!isSwipe){ const incoming=document.getElementById('view-'+v); if(incoming) incoming.classList.remove('hidden'); }
@@ -2422,7 +2425,12 @@ function setView(v, direction, opts){
   if(isSwipe && !opts.fromSwipe) setDeckPosition(swipeIdx, prev!==v);
   else if(isSwipe) deckIdx=swipeIdx;
   else setDeckPosition(deckIdx,false); // an overlay also cancels any pending page gesture
-  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+  document.querySelectorAll('.nav-btn').forEach(b=>{
+    const current=b.dataset.view===v;
+    b.classList.toggle('active',current);
+    if(current) b.setAttribute('aria-current','page');
+    else b.removeAttribute('aria-current');
+  });
   setNavActive();
   if(v==='home') renderHome();
   if(v==='log'){
@@ -2436,8 +2444,7 @@ function setView(v, direction, opts){
   } else {
     rtStopUi();
   }
-  // Stats is a deck destination again — its own bottom-nav tab, its own swipe slot — and it
-  // still remembers whichever section was last open (statsSubTab).
+  // Stats remembers whichever section was last open.
   if(v==='stats'){ setStatsTab(statsSubTab,true); }
   // Budget is entered from the deck, the sidebar, a hash restore and several deep links, and
   // every one has to land on the sub-view budgetView actually names. This used to call
@@ -2471,15 +2478,12 @@ function setView(v, direction, opts){
   if(v!=='home' && homeEditMode){ homeEditMode=false; const b=document.getElementById('home-edit-btn'); if(b){ b.textContent='Edit layout'; b.classList.remove('active'); } }
   updateNavBadges();
 }
-// The main swipeable tabs, in swipe order. Nutrition and Kitchen merged into ONE Food
-// destination — they were two top-level tabs answering one question between them — and the
-// slot that freed went back to Stats, which had been pushed out of the deck when Kitchen
-// arrived and had been reachable only through the menu and the header chip since.
+// Primary phone tabs in swipe order. Planner retains the 'notes' route for existing links.
 // This list IS the deck — a view named here must be a .swipe-panel inside #swipe-deck, and one
 // that isn't must be a direct <section> child of #app-main (see setView). Changing the list
 // without moving the markup gives you a tab you can swipe to but not tap, or the reverse.
 // #view-*{order:n} in css/layout.css must agree with this order for the same reason.
-const NAV_ORDER=['home','budget','log','food','stats'];
+const NAV_ORDER=['home','budget','log','food','notes'];
 
 // ── Food: one destination, four sections, two supporting screens ──
 // Declared HERE, beside NAV_ORDER, and not next to the render functions two thousand lines
@@ -2540,19 +2544,7 @@ function navResolve(view, sub){
 }
 
 // ── Quick access ────────────────────────────────────────────────
-// The phone's bottom-nav tabs, pinned above the groups on BOTH nav surfaces so the app's
-// most-used destinations are one press instead of two (expand a group, then pick a row). That
-// two-press cost only existed on desktop and in the hamburger — the phone has always had these
-// five under its thumb — so this closes the gap rather than inventing a new idea.
-// The deck tabs are DERIVED from NAV_ORDER, never re-typed: adding a tab to the phone
-// deck adds it here, and the two cannot drift into disagreeing about which views the deck
-// holds. Their icons are the same paths #bottom-nav draws, so the desktop shortcut and the
-// phone tab are visibly the same thing.
-// NAV_QUICK_EXTRA is the deliberate exception: a destination worth pinning that is NOT a deck
-// tab. Stats used to be in it and no longer is — it is a real bottom-nav tab again, so leaving
-// it here would have listed it twice in one strip. Settings is the only one left.
-// A quick item dispatches setView with NO sub-tab — exactly what pressing the bottom-nav
-// button does — so it lands you back wherever you were inside that view.
+// Pinned shortcuts in the sidebar and phone menu. The phone bar has its own order.
 const NAV_QUICK_ICONS={
   home:'<path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/><path d="M9 21V12h6v9"/>',
   budget:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h2M10 15h4"/>',
@@ -2561,10 +2553,7 @@ const NAV_QUICK_ICONS={
   // buy and hold, and neither of those two said all four.
   food:'<path d="M4 12h16a8 8 0 0 1-8 8 8 8 0 0 1-8-8z"/><path d="M2 12h20"/><path d="M9 8c0-1.6 1.6-1.6 1.6-3.2"/><path d="M14 8c0-1.6 1.6-1.6 1.6-3.2"/>',
   stats:'<path d="M3 17l6-6 4 4 7-7"/><path d="M20 8v5h-5"/>',
-  // Journal and Accounts have no bottom-nav button to borrow from either, so like Settings
-  // below they are written out here rather than referenced: CARD_ICONS and SETTINGS_ICONS are
-  // both declared thousands of lines lower and `const` does not hoist.
-  notes:'<path d="M5 4h11l3 3v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M16 4v4h3"/><path d="M8 12h7M8 16h4"/>',
+  notes:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   // A stack of balances, deliberately not the Finance card icon beside it — the two are pinned
   // a few rows apart and must not read as the same destination twice.
   accounts:'<path d="M3 20h18"/><path d="M12 3 3 8h18z"/><path d="M6 11v6M10 11v6M14 11v6M18 11v6"/>',
@@ -2580,10 +2569,8 @@ const NAV_QUICK_ICONS={
 // the desktop sidebar's pinned strip and the phone hamburger, and they must read the same as
 // the bottom-nav button beside them.
 const NAV_QUICK_LABELS={home:'Home', budget:'Finance', log:'Log', food:'Food',
-                        stats:'Stats', notes:'Journal', aihub:'Daily AI', accounts:'Accounts', settings:'Settings'};
-// Journal remains pinned in the sidebar and phone menu, outside the five phone tabs.
-const NAV_QUICK_EXTRA=['notes','aihub','accounts','settings'];
-const NAV_QUICK_VIEWS=NAV_ORDER.concat(NAV_QUICK_EXTRA);
+                        stats:'Stats', notes:'Planner', aihub:'Daily AI', accounts:'Accounts', settings:'Settings'};
+const NAV_QUICK_VIEWS=Object.keys(NAV_QUICK_LABELS);
 // A quick item is normally just a view, and dispatches setView with NO sub-tab — exactly what
 // pressing the bottom-nav button does — so it lands you back wherever you were inside it.
 // Accounts is the one exception: it is a Finance VIEW (see BUD_VIEWS), not a top-level one, so
@@ -2657,7 +2644,7 @@ const NAV_TREE=[
     {id:'st-finance',   label:'Finance',   view:'stats', sub:'finance'},
   ]},
   {id:'more', label:'More', rows:[
-    {id:'journal',  label:'Journal',  view:'notes'},
+    {id:'journal',  label:'Planner',  view:'notes'},
     {id:'plans',    label:'Plans',    view:'plans'},
     {id:'aihub',    label:'Daily AI', view:'aihub'},
     // No Settings row: it is pinned in the quick strip now, and it was the second destination
@@ -2931,8 +2918,7 @@ let _jrnResizeT=null;
 // ── Swipe deck (native-feel tab paging) ──────────────────────────
 // The bottom-nav views sit side-by-side in #swipe-deck and track the finger in real
 // time; releasing spring-snaps to the nearest view. Mobile only — desktop pages via
-// .deck-active (see setView + layout.css). Order matches NAV_ORDER: home, budget, log,
-// food, stats. Journal opens separately from Home or the sidebar/menu.
+// .deck-active (see setView + layout.css). The order is defined by NAV_ORDER.
 let deckIdx = 0;
 let deckRaf = 0;      // handle of the pending touchmove frame (0 = none) — must be cancellable
 // Mirrors the gesture IIFE's own `dragging`, at module scope: vpSyncDeck must never re-page
@@ -3518,15 +3504,10 @@ window.addEventListener('resize',function(){ if(typeof S!=='undefined'&&S.view) 
 function applyLogoDayColour(){
   document.documentElement.style.setProperty('--day-color', currentAccentHex());
 }
-// Stats pill shows on Home (and stays visible+active on the Stats view so it doubles
-// as the way back). Hidden everywhere else.
+// Desktop shortcut opens the Stats section for the current destination.
 function updateStatsPill(v){
   const p=document.getElementById('header-stats-pill');
   if(!p) return;
-  // Visible on Home/Log/Budget (carrying the tab as context); hidden on Stats itself and on
-  // Food/Settings. Stats has its own bottom-nav button now, so this chip is a context-aware
-  // shortcut rather than the only way in — it still opens the sub-tab that matches where it
-  // was tapped from, which the button cannot do.
   if(v==='home'||v==='log'||v==='budget'){
     p.style.display='block';
     p.classList.remove('active');
@@ -14920,7 +14901,12 @@ function openBudgetOverview(){
   setView('budget');
   setBudgetView('overview');
 }
-function openBillsCalendar(){
+function openBillsCalendar(day){
+  if(day&&budDateValid(day)){
+    const selected=localMidnight(day),today=localMidnight(getLocalDate());
+    budBillsMonthOffset=(selected.getFullYear()-today.getFullYear())*12+selected.getMonth()-today.getMonth();
+    budBillsDay=day;
+  }
   setView('budget');
   setBudgetView('bills');
 }
@@ -18733,9 +18719,7 @@ function wkrSetSection(sec){
   wkrUI.section=sec;
   renderStatsReview();
   // With several optional pages the row scrolls, and a selected pill off its right edge is
-  // invisible. NEVER scrollIntoView(): #view-stats is a .swipe-panel inside the transformed
-  // #swipe-deck, so that would walk up and shove the deck sideways. segScrollToTab is the
-  // app's measured-rect nudge, the same one Log and the Stats strip itself use.
+  // invisible. Adjust just the row, keeping the rest of Stats at its scroll position.
   // Guarded on the METHOD, not on `document`: the Review regression suite runs these helpers
   // against a stub document that has no querySelector.
   const row=(typeof document!=='undefined'&&typeof document.querySelector==='function')
@@ -30441,20 +30425,25 @@ function jrnMountDetail(){
     '</div>';
   }
 }
-function jrnHeadHtml(){
+function jrnHeadHtml(plannerModel){
   const planning=typeof jrnPlannerActive==='function'&&jrnPlannerActive();
   const searchIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
   const calIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
   let h='<div class="jrn-head">'+
-    '<h1 class="jrn-head-title">Journal</h1>'+
-    '<button class="jrn-head-btn'+(jrnSearchOpen?' on':'')+'" data-jrn="search-toggle" aria-label="Search Journal" aria-pressed="'+(jrnSearchOpen?'true':'false')+'">'+searchIco+'</button>'+
+    '<h1 class="jrn-head-title">Planner</h1>'+
+    '<button class="jrn-head-btn'+(jrnSearchOpen?' on':'')+'" data-jrn="search-toggle" aria-label="Search Planner" aria-pressed="'+(jrnSearchOpen?'true':'false')+'">'+searchIco+'</button>'+
     '<button class="jrn-head-btn" data-jrn="cal" aria-label="'+(typeof jrnPlannerShow==='function'?'Calendar view':'Jump to a date')+'">'+calIco+'</button>'+
+    (typeof sharedAddButtonHtml==='function'?sharedAddButtonHtml():'')+
   '</div>';
   if(jrnSearchOpen){
     const q=jrnQ();
-    const n = q ? planning ? jrnPlannerRead().events.filter(e=>e.date.startsWith(jrnPlannerState.month)||e.overdue).length : jrnEntries().filter(r=>jrnMatch(r,q)).length + jrnNotesAll().filter(r=>jrnMatch(r,q)).length : 0;
+    let n=0;
+    if(q&&planning){
+      const model=plannerModel||jrnPlannerRead(),upcoming=new Set(jrnPlannerState.showNext?model.upcoming:[]);
+      n=model.events.filter(e=>e.date.startsWith(model.month)||e.overdue||upcoming.has(e)).length;
+    }else if(q)n=jrnEntries().filter(r=>jrnMatch(r,q)).length+jrnNotesAll().filter(r=>jrnMatch(r,q)).length;
     h+='<div class="jrn-search-wrap">'+
-      '<input id="jrn-search" class="jrn-search" type="search" placeholder="'+(planning?'Search notes, entries and bills':'Search entries, notes and tags')+'" value="'+escAttr(jrnQuery)+'" autocomplete="off">'+
+      '<input id="jrn-search" class="jrn-search" type="search" aria-label="Search Planner" placeholder="'+(planning?'Search your calendar':'Search entries, notes and tags')+'" value="'+escAttr(jrnQuery)+'" autocomplete="off">'+
       (jrnQuery?'<button class="jrn-search-clear" data-jrn="search-clear">Clear</button>':'')+
     '</div>';
     if(q) h+='<div class="jrn-search-count">'+n+' match'+(n===1?'':'es')+'</div>';

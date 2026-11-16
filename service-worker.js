@@ -450,7 +450,8 @@
 // v450: unified workout logger hero, neutral set cards and expandable muscle-map history.
 // v451: matching Home activity ticks, contained Log scrolling and Journal planning calendar.
 // v452: record-aware financial sync, guarded restore, scoped offline caching and review fixes.
-const CACHE_NAME = 'daily-v452';
+// v453: shared Add, Planner phone navigation and the calendar's Next up agenda.
+const CACHE_NAME = 'daily-v453';
 importScripts('./js/notification-storage.js');
 importScripts('./js/cache-scope.js');
 
@@ -466,6 +467,8 @@ const ASSETS = [
   './css/workout-session.css',
   './css/journal-planner.css',
   './js/journal-planner.js',
+  './css/shared-add.css',
+  './js/shared-add.js',
   './css/nutrition-modals.css',
   './css/budget-home.css',
   './css/kitchen-extras.css',

@@ -188,24 +188,22 @@ test('the whole Home card opens Journal with one native destination and independ
   assert.match(extract('renderHomeNotesBubble'), /\[data-card-id="notes"\]/);
 });
 
-test('Journal stays outside the five phone tabs and retains its pinned shortcut', () => {
+test('Planner occupies the fifth phone tab and keeps the existing notes route and sidebar order', () => {
   const ctx = vm.createContext({ console });
   const from = source.indexOf('const NAV_ORDER=');
   const to = source.indexOf('// ── Journal screen state');
   assert.ok(from >= 0 && to > from, 'navigation registry anchors');
   vm.runInContext(source.slice(from, to) + '\nglobalThis.__n={NAV_ORDER,NAV_QUICK,NAV_TREE};', ctx);
   const { NAV_ORDER, NAV_QUICK, NAV_TREE } = JSON.parse(JSON.stringify(ctx.__n));
-  assert.deepEqual(NAV_ORDER, ['home', 'budget', 'log', 'food', 'stats'],
-    'Journal does not add a sixth phone tab');
+  assert.deepEqual(NAV_ORDER, ['home', 'budget', 'log', 'food', 'notes']);
   const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
   const deck=html.slice(html.indexOf('<div id="swipe-deck">'),html.indexOf('</div><!-- /#swipe-deck -->'));
-  assert.ok(!deck.includes('id="view-notes"'),'Journal must not occupy a swipe slot');
-  assert.ok(!html.slice(html.indexOf('<nav id="bottom-nav">'),html.indexOf('</nav>',html.indexOf('<nav id="bottom-nav">'))).includes('data-view="notes"'));
-  assert.match(html,/<section id="view-notes" class="hidden">/);
+  assert.match(deck,/<section id="view-notes" class="swipe-panel">/);
+  assert.ok(html.slice(html.indexOf('<nav id="bottom-nav">'),html.indexOf('</nav>',html.indexOf('<nav id="bottom-nav">'))).includes('data-view="notes"'));
   assert.deepEqual(NAV_QUICK.map(q => q.id),
     ['home', 'budget', 'log', 'food', 'stats', 'notes', 'aihub', 'accounts', 'settings']);
-  // Journal is pinned for reach; its route, its internal id and its grouped row are unchanged.
-  assert.ok(NAV_QUICK.some(q => q.id === 'notes' && q.view === 'notes' && q.label === 'Journal'));
+  assert.ok(NAV_QUICK.some(q => q.id === 'notes' && q.view === 'notes' && q.label === 'Planner'));
   const journal = NAV_TREE.find(g => g.id === 'more').rows.find(r => r.id === 'journal');
   assert.equal(journal.view, 'notes', 'Journal keeps its row, its internal id and its route');
+  assert.equal(journal.label, 'Planner');
 });

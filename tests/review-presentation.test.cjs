@@ -63,12 +63,12 @@ test('the section registry carries no table-of-contents descriptions', () => {
   assert.match(forFn, /WKR_SECTIONS\.concat/, 'enabled pages must extend the same registry');
 });
 
-test('the section row never uses scrollIntoView inside the swipe deck', () => {
+test('the section row only scrolls its own tabs', () => {
   const start = app.indexOf('function wkrSetSection');
   // To the end of THIS function only — a fixed slice ran into neighbouring code.
   const fn = noComments(app.slice(start, app.indexOf('\n}', start) + 2));
   assert.ok(!/scrollIntoView/.test(fn),
-    '#view-stats is a .swipe-panel inside the transformed #swipe-deck; scrollIntoView would shove the deck sideways');
+    'scrollIntoView would also shift the surrounding Stats view');
   assert.match(fn, /segScrollToTab/, 'use the app’s measured-rect nudge to reveal the selected pill');
   assert.match(fn, /wkrFlushPending\(\)/, 'pending answer edits must be flushed before the section changes');
 });

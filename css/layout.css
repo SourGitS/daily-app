@@ -11,7 +11,7 @@
 #header-title .wordmark{height:22px}
 #header-stats-pill{display:none;padding:5px 14px;border-radius:999px;border:none;background:var(--card);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;transition:background .15s,color .15s}
 #header-stats-pill.active{background:var(--day-color,var(--accent));color:#fff}
-/* Stats is already in the bottom nav on mobile, so this header shortcut is redundant there.
+/* The contextual Stats shortcut belongs to the desktop header.
    updateStatsPill() sets an inline display:block, so the mobile override needs !important. */
 @media (max-width:1023px){ #header-stats-pill{display:none !important} }
 #header-menu{width:34px;height:34px;border-radius:50%;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--muted);flex-shrink:0;-webkit-tap-highlight-color:transparent;padding:0}
@@ -32,8 +32,8 @@
 #view-budget{order:1}
 #view-log{order:2}
 #view-food{order:3}
-#view-stats{order:4}
-/* Non-swipe views (settings/plans/notes) overlay the deck when shown. */
+#view-notes{order:4}
+/* Secondary views overlay the deck on phones. */
 #app-main>section{position:absolute;top:0;left:0;right:0;bottom:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px;padding-bottom:calc(104px + env(safe-area-inset-bottom));background:var(--bg);z-index:5;box-sizing:border-box;animation:fadeIn 0.18s ease}
 
 /* Desktop: no swipe paging — the deck wrapper collapses and one panel shows at a time
@@ -44,7 +44,6 @@
   .swipe-panel{width:auto;height:auto;overflow:visible;padding:40px 32px 40px}
   .swipe-panel:not(.deck-active){display:none}
   #app-main>section{position:static;overflow:visible;z-index:auto}
-  #view-notes{padding:40px 32px 40px}
 }
 @keyframes fadeIn{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:translateX(0)}}
 /* Directional tab-slide animations (mobile) — ID-scoped to override fadeIn */

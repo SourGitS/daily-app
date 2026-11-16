@@ -1933,10 +1933,7 @@ button.weather-city{display:block;max-width:100%;padding:0;border:0;background:n
      One consistent compact treatment rather than a bespoke layout per screen. Overlays cover
      the whole viewport INCLUDING the rail, so they pad themselves off the side insets directly
      rather than inheriting the padding on #app. */
-  /* #view-stats left this list when it became a .swipe-panel: the deck panels take their
-     landscape padding from the .swipe-panel rule in layout.css, and the !important side
-     insets here would have given Stats a gutter none of its four neighbours has.
-     #view-accounts left it for the same reason when Accounts became a Finance VIEW — its
+  /* #view-accounts is a Finance view — its
      panel is inside #view-budget and takes that panel's padding, so an !important inset here
      would have given it a gutter none of its five neighbours has. */
   .app-overlay,#view-settings,#view-plans,
