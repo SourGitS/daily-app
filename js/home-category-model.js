@@ -7,9 +7,15 @@ const CATEGORY_HOME_CARDS=[
  {id:'food',label:'Food',span:6,icon:'pot'}, {id:'stats',label:'Stats',span:6,icon:'trend'},
  {id:'journal',label:'Journal',span:6,icon:'note'}, {id:'review',label:'Weekly review',span:6,icon:'calendar'}
 ];
+// Desktop follows the registry order; Budget shares Training's card when both are visible.
+const CATEGORY_HOME_PHONE_ORDER=[
+ 'weather','activity','review','budget','training','food',
+ 'habits','stats','shopping','weight','records','journal'
+];
 function categoryProfile(value,mode){
  let v=value;try{if(typeof v==='string')v=JSON.parse(v);}catch(e){v=null;}v=v&&typeof v==='object'?v:{};
- const ids=CATEGORY_HOME_CARDS.map(c=>c.id),valid=new Set(ids),defaults=mode==='mobile'?['training','budget','weather','activity','food','stats','habits','shopping','weight','records','review','journal']:ids;
+ const ids=CATEGORY_HOME_CARDS.map(c=>c.id),valid=new Set(ids);
+ const defaults=mode==='mobile'?CATEGORY_HOME_PHONE_ORDER:ids;
  const unique=a=>[...new Set((Array.isArray(a)?a:[]).filter(id=>valid.has(id)))];
  const order=unique(v.order);defaults.forEach(id=>{if(!order.includes(id))order.push(id);});
  // New Home is the read-time default; an explicit legacy choice remains authoritative.

@@ -1,5 +1,11 @@
 # Daily — Agent Handoff
 
+## v459 Home defaults and iPhone landscape — release authorised, 2026-11-17
+
+- Read both device arrangements in the live Home layout editor. The phone factory order is Weather, Last 7 days, Weekly review, Budget, Training, Food, Daily habits, Stats, Shopping, Weight, Personal best, Journal. The desktop default already matches the saved arrangement, with Budget included in Training. Fresh profiles and Reset use those orders. Opening Home does not save a layout or overwrite a personal arrangement.
+- With the iOS CSS feature query enabled, v458 retained 104px of portrait navigation clearance plus the bottom inset after the navigation moved to the left. In the 844×390 WebKit sample with a 21px inset, Planner ended at y=265. In v459 it reaches y=390. Resting swipe pages and focused fields follow the available width when a side inset settles after rotation.
+- All 809 app checks passed. Run `tests/phone-rotation-browser.cjs` for the five phone tabs, late inset updates, return to portrait and rotating after dismissing the expense keyboard. Set `DAILY_LANDSCAPE_REF=5b5e547` to exercise the published baseline. The existing swipe suite also passed at four phone sizes in both themes. WebKit comparison screenshots with sample records are in `temp-analysis/landscape-459/`. Francois approved publishing v459 to GitHub Pages for testing in his installed iPhone app.
+
 ## v458 Planner Week and Weekly Review — release authorised, 2026-11-17
 
 - Week and Month share their date header and navigation. Week puts unfinished actions first and shows dated calendar records beside them on desktop. Finance, the action editor and the priority editor use the same form layout. The local screen picker runs these real layouts at phone and desktop sizes. Start it with `node tests/serve-planner-preview.cjs`. For an iPhone on the same network, set `DAILY_PREVIEW_HOST` to the computer’s private IPv4 address before starting the server. The default local address is `http://127.0.0.1:8822/`.

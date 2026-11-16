@@ -32,6 +32,9 @@ let chartSource;
    await p.waitForFunction(()=>typeof _cloudWorkoutReady!=='undefined'&&_cloudWorkoutReady&&S.view==='budget'&&budgetView==='accounts');
    await p.evaluate(theme=>{
     obDismiss();dailyUpdateDismiss();profileData.budgetRhythmSeen=2;foodCatalogueState.seenThisSession=true;S.theme=theme;applyTheme();
+    // These gesture cases target the legacy briefing and its full-card links.
+    // Category Home and its tab rail are exercised by phone-rotation-browser.cjs.
+    localStorage.setItem(categoryKey('mobile'),JSON.stringify({enabled:false}));
     const now=Date.now(),today=localMidnight(getLocalDate()).getTime();
     const sample={city:'Synthetic city',tempC:22,feelsC:20,tmax:24,tmin:14,code:1,isDay:1,placeholder:true,lat:-33.8,lon:151.2,timezone:'Australia/Sydney',fetchedAt:now,observedAt:now,
      daily:Array.from({length:7},(_,i)=>({time:today+i*864e5,tempMax:22+i,tempMin:14+i,code:1,rainProbability:30})),

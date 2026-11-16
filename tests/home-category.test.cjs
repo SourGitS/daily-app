@@ -1,6 +1,17 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 const model=require('../js/home-category-model.js');
 const {categoryProfile,categoryVisible,categoryCells,categoryPaceModel,categoryMealModel}=model;
+test('a new Home starts in the curated card order for its device',()=>{
+ const phone=categoryProfile(null,'mobile'),desktop=categoryProfile(null,'desktop');
+ assert.deepEqual(categoryVisible(phone,'mobile'),[
+  'weather','activity','review','budget','training','food','habits','stats','shopping','weight','records','journal'
+ ]);
+ assert.deepEqual(categoryVisible(desktop,'desktop'),[
+  'training','weather','activity','habits','shopping','weight','records','food','stats','journal','review'
+ ]);
+ assert.deepEqual(phone.hidden,[]);assert.deepEqual(desktop.hidden,[]);
+ assert.ok(desktop.order.includes('budget'),'Budget remains included in the desktop Training card');
+});
 test('category layout defaults on, honours explicit legacy choice and does not mutate input',()=>{
  const input={enabled:true,order:['food','bogus','food','training'],hidden:['weather','weather','bogus']},before=JSON.stringify(input);
  const p=categoryProfile(input,'mobile');assert.equal(JSON.stringify(input),before);assert.deepEqual(p.order.slice(0,2),['food','training']);assert.equal(p.order.length,12);assert.deepEqual(p.hidden,['weather']);assert.equal(categoryProfile('{bad','mobile').enabled,true);assert.equal(categoryProfile(null,'desktop').enabled,true);assert.equal(categoryProfile({enabled:false},'mobile').enabled,false);
@@ -17,7 +28,7 @@ test('phone Training and Budget keep independent positions and visibility withou
  p.hidden=['budget'];assert.ok(categoryVisible(p,'mobile').includes('training'));
  assert.ok(!categoryVisible(p,'mobile').includes('budget'));
  const cells=categoryCells(categoryVisible(categoryProfile(null,'mobile'),'mobile'),'mobile');
- assert.equal(cells.training.span,2);assert.equal(cells.budget.span,2);assert.equal(cells.budget.row,cells.training.row+1);
+ assert.equal(cells.training.span,2);assert.equal(cells.budget.span,2);assert.equal(cells.training.row,cells.budget.row+1);
 });
 test('every reordered and hidden card packs in source order without grid holes',()=>{
  for(const mode of ['mobile','desktop'])for(let offset=0;offset<12;offset++){

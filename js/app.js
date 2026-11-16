@@ -2948,7 +2948,7 @@ function deckPanelW(){
 // Current on-screen X of the deck in px (negative once paged right). Read from the computed
 // transform so an in-flight snap can be frozen exactly where it is, mid-animation.
 function deckOffsetPx(deck){
-  if(deckTextInputMode) return parseFloat(deck.style.marginLeft)||0;
+  if(deckTextInputMode) return parseFloat(getComputedStyle(deck).marginLeft)||0;
   try{ return new DOMMatrixReadOnly(getComputedStyle(deck).transform).m41; }
   catch(e){ return -(deckIdx*deckPanelW()); }
 }
@@ -2960,7 +2960,9 @@ function deckCancelPending(deck){
 }
 function deckApplyTextInputPosition(){
   const deck=document.getElementById('swipe-deck'); if(!deck) return;
-  deck.style.marginLeft=(-(deckIdx*deckPanelW()))+'px';
+  // A percentage margin uses the containing block (one page), so the focused
+  // field stays on screen if iOS changes the safe width after its resize event.
+  deck.style.marginLeft=(-deckIdx*100)+'%';
 }
 function deckEnterTextInputMode(){
   if(deckTextInputMode || layoutIsDesktop()) return;
@@ -3030,13 +3032,14 @@ function setDeckPosition(idx, animate){
     // WebKit may omit transitionend after interruption or a visibility change.
     deckSnapTimer=setTimeout(finish,420);
   }
-  // Measure the panel live every time — never cache it (orientation/resize safe).
-  deck.style.transform='translate3d('+targetX+'px,0,0)';
+  // The drag begins at a measured pixel offset. Its destination is a fraction of
+  // the deck so it stays aligned even after a late, eventless width adjustment.
+  deck.style.transform='translate3d('+(-idx*100/NAV_ORDER.length)+'%,0,0)';
   deckIdx=idx;
   pinDeckScroll(); // belt-and-braces: a stray scrollLeft would offset every panel
 }
-// A width change (rotation, resize, desktop breakpoint) changes the panel width, so the deck's
-// px transform has to be recomputed or the panels drift out of alignment.
+// A width change also cancels an in-flight swipe whose finger coordinates belong
+// to the old viewport.
 window.addEventListener('resize',function(){
   if(deckTextInputMode && !layoutIsDesktop()){ deckApplyTextInputPosition(); return; }
   setDeckPosition(deckIdx,false);
@@ -30122,31 +30125,15 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.register('service-worker.js');
 }
 
-// ── Keep #app-main bottom padding in sync with the real bottom-nav height ──
-// The nav height varies with the device safe-area inset, so measure it rather than
-// hardcoding. Floored + small gap so a mistimed measurement can never clip content;
-// falls back to the stylesheet value on desktop (nav hidden) or if measuring fails.
+// Publish the bottom bar measurement. The shell stylesheet owns its clearance and
+// the switch to a left rail, including while Safari is between rotation events.
 function syncNavPadding(){
   var nav=document.getElementById('bottom-nav');
-  var main=document.getElementById('app-main');
-  if(!nav||!main) return;
-  // In landscape the nav is a full-height rail down the LEFT side, so its height is the whole
-  // viewport and there is nothing along the bottom edge to clear. Measuring it here wrote the
-  // rail's ~390px as bottom padding, which pushed #app-main past its parent, made its height
-  // indefinite, and collapsed #swipe-deck (height:100%) to zero — every panel lost its height
-  // and the Log columns measured 0 tall. The rail's WIDTH is handled in CSS by #app's
-  // padding-left; nothing is needed here.
-  if(typeof isLandscapePhone==='function' && isLandscapePhone()){
-    main.style.paddingBottom='';
-    document.documentElement.style.removeProperty('--nav-height');
-    return;
-  }
-  var h=Math.round(nav.getBoundingClientRect().height);
+  if(!nav) return;
+  var h=isLandscapePhone()?0:Math.round(nav.getBoundingClientRect().height);
   if(h>0){
-    main.style.paddingBottom=Math.max(h+12, 88)+'px';
     document.documentElement.style.setProperty('--nav-height', h+'px');
   } else {
-    main.style.paddingBottom='';
     document.documentElement.style.removeProperty('--nav-height');
   }
 }
@@ -32344,19 +32331,8 @@ function vpSyncApp(){
     _vpAppPinned=true;
   }
 }
-// #swipe-deck is sized in PERCENT by CSS but positioned by a PIXEL transform
-// (-idx * panel width), so the two only agree while that measurement is current. iOS fires
-// `resize` after `orientationchange` BEFORE it reflows to the new orientation, so the single
-// resize handler recomputes the stride from the OLD width and never re-checks — parking the
-// deck between two panels, which is the "stuck halfway" screen. Re-assert it whenever the
-// measured width actually changes, driven from the settle loop that waits out the rotation.
-// Setting the position also writes transition:none, so this recovers a snap that was
-// interrupted mid-animation and stranded at a fractional offset.
-// How far the active panel is from where it should be — 0 when the deck is correctly paged.
-// Checking the OUTCOME rather than trying to detect the cause means the deck self-corrects
-// however it got stranded: a stale stride, a snap interrupted mid-animation, or a rotation
-// that reported the old orientation's width. Watching for a width *change* did not work,
-// because while WebKit is still reporting the old orientation that width is perfectly stable.
+// The resting page follows the shell width in CSS. This check also recovers from an
+// interrupted pixel-based drag or a browser focus scroll that shifted the deck.
 function deckMisalignPx(){
   const deck=document.getElementById('swipe-deck'); if(!deck) return 0;
   const main=document.getElementById('app-main'); if(!main) return 0;

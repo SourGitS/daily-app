@@ -5,6 +5,10 @@
 @media(max-width:1023px){
  #view-home.category-home-active{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 }
+/* The landscape shell already clears the rail and both screen edges. */
+@media(orientation:landscape) and (max-width:1023px) and (max-height:600px){
+ #view-home.category-home-active{padding-inline:14px}
+}
 #view-home.category-home-active{background:var(--bg)}
 #home-content.category-home{--cat-surface:#202020;--cat-muted:#b1b1b1;--cat-line:#ffffff12;--cat-ink:#f5f5f5;--cat-fill:linear-gradient(130deg,var(--accent-hero),var(--accent-hero-2));color:var(--cat-ink);padding:0;max-width:1440px;margin:auto}
 [data-theme=light] #home-content.category-home{--cat-surface:#f2f2f2;--cat-muted:#626262;--cat-line:#00000012;--cat-ink:#202020}

@@ -456,7 +456,8 @@
 // v456: compact the Planner month and filters into one hero, and show Log totals above the seven-day history.
 // v457: place the desktop sidebar Add button beside the account profile.
 // v458: Planner Week tasks and linked Weekly Review priorities.
-const CACHE_NAME = 'daily-v458';
+// v459: curated Home order and iPhone landscape layout.
+const CACHE_NAME = 'daily-v459';
 importScripts('./js/notification-storage.js');
 importScripts('./js/cache-scope.js');
 

@@ -18,7 +18,11 @@ function device(cloud,uid='u',native=new NativeStore()){
  Object.assign(c,model,{document:{addEventListener:(n,f)=>(handlers[n]??=[]).push(f)},window:{addEventListener(){}},_activeSettingsKey:null,renderHome(){},renderHomeLayoutSection(){},setSyncStatus:s=>statuses.push(s)});
  c.auth.currentUser.uid=uid;c.S.view='home';
  vm.runInContext(fs.readFileSync('js/home-category.js','utf8'),c);
- return {c,storage,native,statuses,attach(){c.categoryAttachSync(uid);},apply(){const action={dataset:{catEditor:'apply'}};handlers.click.forEach(fn=>fn({target:{closest:s=>s==='[data-cat-editor]'?action:null}}));}};
+ function editorAction(name){
+  const action={dataset:{catEditor:name}};
+  handlers.click.forEach(fn=>fn({target:{closest:s=>s==='[data-cat-editor]'?action:null}}));
+ }
+ return {c,storage,native,statuses,attach(){c.categoryAttachSync(uid);},editorAction};
 }
 const key=mode=>'daily_category_home_'+mode,path=(mode,uid='u')=>'users/'+uid+'/categoryHome'+(mode==='mobile'?'Mobile':'Desktop');
 const saved=(enabled=true,hidden=[],order=['training','budget','weather'])=>({enabled,hidden,order});
@@ -27,6 +31,22 @@ test('default Home appears without creating local timestamps or cloud layouts',a
  const cloud=new MultiCloud(),a=device(cloud);a.attach();
  assert.equal(a.c.categoryLoad('mobile').enabled,true);assert.equal(a.c.categoryLoad('desktop').enabled,true);
  await cloud.settle();assert.equal(a.storage.length,0);assert.equal(cloud.writes.length,0);
+});
+test('Reset previews the device default; Cancel retains a saved arrangement and Apply changes only that profile',()=>{
+ const a=device(new MultiCloud());
+ for(const mode of ['desktop','mobile']){
+  const previous={enabled:true,order:model.categoryProfile(null,mode).order.slice().reverse(),hidden:['weather','budget']};
+  a.c.categorySave(mode,previous);
+ }
+ const desktop=a.storage.getItem(key('desktop')),phone=a.storage.getItem(key('mobile'));
+ a.c.categoryDraft('mobile');a.editorAction('reset');
+ assert.deepEqual(a.c.categoryDraft('mobile').order,model.categoryProfile(null,'mobile').order);
+ assert.deepEqual(a.c.categoryDraft('mobile').hidden,[]);
+ a.editorAction('cancel');
+ assert.equal(a.storage.getItem(key('mobile')),phone);
+ a.c.categoryDraft('mobile');a.editorAction('reset');a.editorAction('apply');
+ assert.deepEqual(a.c.categoryLoad('mobile'),model.categoryProfile(null,'mobile'));
+ assert.equal(a.storage.getItem(key('desktop')),desktop);
 });
 test('two devices sync phone and desktop independently and never write legacy layouts or records',async()=>{
  const cloud=new MultiCloud({users:{u:{homeLayout:{v:'legacy',t:1},transactions:{v:'expenses',t:2}}}}),a=device(cloud),b=device(cloud);a.attach();b.attach();
@@ -40,7 +60,7 @@ test('fresh-device cloud restore respects an explicit old-layout choice and its 
 });
 test('newer cloud layout makes an open draft stale and Apply cannot overwrite it',async()=>{
  const cloud=new MultiCloud(),a=device(cloud);a.attach();a.c.categoryDraft('mobile').hidden=['weather'];
- const remote=JSON.stringify(saved(true,['journal']));cloud.put(path('mobile'),{v:remote,t:Date.now()+10000});cloud.emit(path('mobile'));a.apply();await cloud.settle();
+ const remote=JSON.stringify(saved(true,['journal']));cloud.put(path('mobile'),{v:remote,t:Date.now()+10000});cloud.emit(path('mobile'));a.editorAction('apply');await cloud.settle();
  assert.equal(cloud.get(path('mobile')).v,remote);assert.equal(cloud.writes.length,0);assert.equal(a.c.categoryLoad('mobile').hidden[0],'journal');
 });
 test('a cloud edit arriving between local Apply and transaction commit wins over the stale upload',async()=>{
