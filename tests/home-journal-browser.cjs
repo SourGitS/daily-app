@@ -52,6 +52,12 @@ const finance=()=>JSON.stringify({transactions:txnData,budget:budgetData,account
   }
   await p.evaluate(()=>setView('notes'));
   assert.ok(await p.locator('.jp-calendar').isVisible());assert.equal(await p.locator('.jp-view-switch [data-jp="calendar"]').getAttribute('aria-pressed'),'true');
+  const hero=p.locator('.jp-calendar-hero');
+  assert.ok(await hero.locator('.jp-month h2').isVisible(),label+' month in the calendar hero');
+  assert.match(await hero.evaluate(el=>getComputedStyle(el).backgroundImage),/linear-gradient/);
+  const filterBoxes=await hero.getByRole('group',{name:'Calendar items'}).getByRole('button').evaluateAll(buttons=>buttons.map(b=>b.getBoundingClientRect().toJSON()));
+  assert.equal(filterBoxes.length,4);
+  assert.ok(filterBoxes.every(b=>b.width>=44&&b.height>=44&&b.y===filterBoxes[0].y),label+' filters share one row of touch targets in the hero');
   await p.getByRole('button',{name:'Search Planner',exact:true}).click();await p.locator('#jrn-search').fill('Internet');
   assert.equal(await p.locator('.jp-day[aria-label*="Internet"]').count(),1);assert.match(await p.locator('.jrn-search-count').innerText(),/^1 match$/);
   assert.match(await p.locator('.jp-next-up .jp-event').innerText(),/Internet/);

@@ -22,9 +22,9 @@ const snapshot=()=>JSON.stringify({sessions:S.sessions,storage:Object.fromEntrie
    const weekFit=await p.locator('.lg-hero-week').evaluate(week=>{
     const days=Array.from(week.querySelectorAll('.lg-consistency-day'),day=>day.getBoundingClientRect());
     const totals=week.querySelector('.card-split').getBoundingClientRect();
-    return days.length===7&&days.every(day=>day.height>=44&&day.top===days[0].top&&day.bottom<=totals.top+1);
+    return days.length===7&&days.every(day=>day.height>=44&&day.top===days[0].top&&day.top>=totals.bottom-1);
    });
-   assert.ok(weekFit,label+' all seven dates fit in one touch row above the weekly totals');
+   assert.ok(weekFit,label+' all seven dates fit in one touch row below the weekly totals');
    const switchFit=await p.locator('.lg-coverage-tabs').evaluate(e=>{
     const buttons=Array.from(e.querySelectorAll('button')).map(b=>b.getBoundingClientRect());
     return e.scrollWidth<=e.clientWidth+1&&Math.abs(buttons[0].width-buttons[1].width)<1&&buttons.every(b=>b.height>=44&&b.right<=e.getBoundingClientRect().right+1);

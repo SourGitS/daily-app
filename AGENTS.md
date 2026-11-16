@@ -1,5 +1,10 @@
 # Daily — Agent Handoff
 
+## v456 compact Planner header and Log history order — release authorised, 2026-11-16
+
+- Planner’s month navigation and four calendar filters share one accent gradient. On the 390px phone preview the weekdays start 39px closer to the top of the card than in v455. The filter buttons keep 44px touch targets and share their pressed state with assistive technology. Physical iPhone Safari testing remains pending.
+- The Log workout card shows Sessions, Days trained and any Logged time before the seven daily markers. The 390px ready-workout card retains its v455 height of 283px. All 795 Node checks passed. Chrome verified the ordering and the 44px-tall date buttons at 320, 390, 844, 1024 and 1440px in both themes.
+
 ## v455 Home, Planner and workout layout — release authorised, 2026-11-16
 
 - Category Home shows the local date above the city in Weather. If Weather is hidden the date sits above the full-width Customise button at the end of Home. Customise opens the existing layout editor, including when every card is hidden. The desktop sidebar provides Home’s shared Add. At 390px the first card starts 52px higher. The v454 comparison checks Home card order, size and position relative to the grid.

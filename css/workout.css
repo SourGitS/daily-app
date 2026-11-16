@@ -1309,7 +1309,7 @@ button.ov-day{cursor:pointer}
 .lg-training-brief .lg-hero-week .card-split-l{color:#ffffffb5;font-size:10px}
 .lg-training-brief .lg-hero-week .card-split-v{color:#fff;font-size:20px}
 .lg-training-brief .lg-hero-week .card-split-div{background:#ffffff26}
-.lg-training-brief .lg-hero-week .lg-consistency{margin:0 0 12px}
+.lg-training-brief .lg-hero-week .lg-consistency{margin:12px 0 0}
 .lg-training-brief .lg-hero-week .lg-consistency-day{min-height:44px;color:#ffffffb8;font-size:10px;gap:7px}
 .lg-training-brief .lg-hero-week .lg-consistency-day i{width:18px;height:18px;max-width:18px;border:1px solid #ffffff35;background:#ffffff0d;border-radius:6px}
 .lg-training-brief .lg-hero-week .lg-consistency-day i.done{border-color:#e5f0f6}
@@ -1443,7 +1443,7 @@ button.ov-day{cursor:pointer}
   .lg-training-hero .lg-training-dock{padding:12px 16px}
   .lg-training-hero .lg-training-brief .lg-hero-week{margin-top:12px;padding:10px 0 0;border-left:0;border-top:1px solid #ffffff26}
   .lg-week-heading{margin-bottom:4px}
-  .lg-training-brief .lg-hero-week .lg-consistency{gap:0;margin:0 0 8px}
+  .lg-training-brief .lg-hero-week .lg-consistency{gap:0;margin:8px 0 0}
   .lg-training-brief .lg-hero-week .lg-consistency-day{justify-content:center;gap:4px}
   .lg-training-brief .lg-hero-week .card-split{column-gap:8px;align-items:baseline}
   .lg-training-brief .lg-hero-week .card-split>div:not(.card-split-div){display:flex;flex-wrap:wrap;align-items:baseline;gap:0 5px}

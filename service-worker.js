@@ -453,7 +453,8 @@
 // v453: shared Add, Planner phone navigation and the calendar's Next up agenda.
 // v454: neutral charcoal theme, rounded-square profile menu, touch focus in Add, shorter activity card and remembered phone forecast.
 // v455: move the Home date and layout control, compact the Log workout card and align Planner with the shared tabs and hero styling.
-const CACHE_NAME = 'daily-v455';
+// v456: compact the Planner month and filters into one hero, and show Log totals above the seven-day history.
+const CACHE_NAME = 'daily-v456';
 importScripts('./js/notification-storage.js');
 importScripts('./js/cache-scope.js');
 

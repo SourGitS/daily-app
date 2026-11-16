@@ -31686,12 +31686,13 @@ function logWeekCardHtml(){
   const range=budRangeLabel(localMidnight(days[0].date), today);
   return '<section class="lg-hero-week" aria-label="Last 7 days">'+
     '<div class="lg-week-heading">'+cardHeader('calendar','Last 7 days')+'<span class="lg-week-range">'+escText(range)+'</span></div>'+
+    statsSplit(cells)+
     '<div class="lg-consistency" role="group" aria-label="Saved sessions on each of the last seven days">'+
       days.map(d=>'<button type="button" class="lg-consistency-day'+(d.date===getLocalDate()?' today':'')+'" '+
         (d.date===getLocalDate()?'aria-current="date" ':'')+
         'aria-label="'+escAttr(fmtDate(d.date)+(d.saved?': '+d.saved.count+' saved session'+(d.saved.count===1?'':'s'):': no saved session'))+'" '+
         'onclick="logGoto(\'history\')"><span>'+escText(d.label)+'</span><i'+(d.saved?' class="done" style="background:'+escAttr(d.color)+'"':'')+'></i></button>').join('')+
-    '</div>'+statsSplit(cells)+
+    '</div>'+
   '</section>';
 }
 
