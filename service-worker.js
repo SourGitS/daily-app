@@ -462,7 +462,8 @@
 // v462: optional Home Planner card with links to the next two unfinished actions in Week.
 // v463: date-scoped Finance overview, interactive spending chart and consistent history totals.
 // v464: restore the Finance budget hero above the additional Your money card.
-const CACHE_NAME = 'daily-v464';
+// v465: refreshed visual update pages for Finance, Home and Planner.
+const CACHE_NAME = 'daily-v465';
 importScripts('./js/notification-storage.js');
 importScripts('./js/cache-scope.js');
 

@@ -26159,6 +26159,7 @@ function finishOnboarding(){
   if(Array.isArray(obData.focus)) profileData.focus = obData.focus.slice();
   profileData.onboardingVersion = OB_VERSION;
   profileData.lastSeenWhatsNew = WHATS_NEW_VERSION;   // brand-new users start "caught up"
+  profileData.budgetRhythmSeen = Math.max(Number(profileData.budgetRhythmSeen)||0,DAILY_UPDATE_VERSION);
   if(catalogueStarter)profileData.foodCatalogueStarter=1;
   localStorage.setItem('daily_profile', JSON.stringify(profileData));
   syncProfileToFirebase();

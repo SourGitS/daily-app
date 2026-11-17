@@ -1,6 +1,7 @@
 'use strict';
 
 const BUD_PERIOD_FREQUENCIES=[['weekly','Weekly'],['fortnightly','Fortnightly'],['monthly','Monthly'],['semimonthly','Twice monthly'],['custom','Custom dates']];
+const DAILY_UPDATE_VERSION=3;
 let budPeriodOffset=0, budPeriodSelected='', budLegacyOpen=false;
 function budDateValid(value){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(value||''))return false;
@@ -714,9 +715,13 @@ function dailyUpdateBannerHtml(){
   return '';
 }
 function dailyUpdateDismiss(){
-  profileData.budgetRhythmSeen=2;localStorage.setItem('daily_profile',JSON.stringify(profileData));
-  const r=fbRef('profile');if(r)r.child('budgetRhythmSeen').transaction(v=>Math.max(Number(v)||0,2));
-  const popup=document.getElementById('daily-update-dialog');if(popup){popup.close();popup.remove();}
+  const popup=document.getElementById('daily-update-dialog');
+  if(popup&&popup.dataset.owner!==dailyUpdateIdentity()){dailyUpdatePopupRemove();return;}
+  let stored=0;try{stored=Number(JSON.parse(localStorage.getItem('daily_profile')||'{}').budgetRhythmSeen)||0;}catch{}
+  const seen=Math.max(Number(profileData.budgetRhythmSeen)||0,stored,DAILY_UPDATE_VERSION);
+  profileData.budgetRhythmSeen=seen;localStorage.setItem('daily_profile',JSON.stringify(profileData));
+  const r=fbRef('profile');if(r)r.child('budgetRhythmSeen').transaction(v=>Math.max(Number(v)||0,seen));
+  dailyUpdatePopupRemove();
   document.querySelectorAll('.daily-update-banner').forEach(e=>e.remove());
 }
 function dailyUpdateRefresh(){
@@ -1016,24 +1021,71 @@ function budPeriodLiveMoney(){
 }
 
 const DAILY_UPDATE_PAGES=[
-  {icon:'calendar',title:'Money that fits your payday',body:'Week is now Budget, with weekly, fortnightly, monthly and custom periods. Set income sources and paydays, and enter fortnightly bills. Improved bill conversions and balance calculations keep your familiar Finance cards and saved weekly plans together.'},
-  {icon:'home',title:'A clearer, calmer Home',body:'Gradient heroes and status are back, with gentler orange spending warnings. Desktop weather fills its side of the briefing, with the date inside. Today and Week forecasts slide from the bottom controls on phone and desktop. One Customise Home button keeps layout choices together.'},
-  {icon:'wallet',title:'Smoother first steps',body:'Account data stays separate when signing in or switching users. The Daily logo is visible in light-mode onboarding, and new users start with the recommended six Home cards. Swipe through this update, then dismiss it when you’re ready.'}
+  {id:'finance',label:'Finance',title:'See your money clearly',body:'Choose a budget period that fits. Your money shows spending, income and savings for the dates you choose.'},
+  {id:'home',label:'Home',title:'Home, your way',body:'Weather, progress and your weekly review, together. Choose your cards, arrange them your way, and add Planner when you want it.'},
+  {id:'planner',label:'Planner',title:'Make plans happen',body:'Plan actions alongside bills and workouts. Give a weekly priority a date, then move it or mark it done.'}
 ];
-let dailyUpdatePage=0;
-function dailyUpdatePopupEligible(){
-  return typeof profileData!=='undefined'&&!!profileData.onboardingVersion&&(Number(profileData.budgetRhythmSeen)||0)<2&&
-    !(typeof auth!=='undefined'&&auth?.currentUser&&!_cloudWorkoutReady);
+let dailyUpdatePage=0,dailyUpdateObserver=null,dailyUpdateFrame=0;
+function dailyUpdateArt(id){
+  if(id==='finance')return '<div class="du-visual du-visual-finance"><div class="du-mini-top"><span>Finance</span><small>This month ⌄</small></div><div class="du-fin-hero"><span>Available this period</span><strong>$420</strong></div><div class="du-fin-card"><span>Your money</span><div class="du-fin-values"><div><span>Spent</span><strong>$580</strong></div><div><span>Income</span><strong>$1,200</strong></div></div><div class="du-fin-bars">'+[24,42,30,65,38,80,46,58,90,44,68,52].map(n=>'<i style="--height:'+n+'%"></i>').join('')+'</div></div></div>';
+  if(id==='home')return '<div class="du-visual du-visual-home"><div class="du-mini-top"><span>Your day, together</span><small>Home</small></div><div class="du-home-grid"><div class="du-home-weather"><small>Sydney</small><strong>22°</strong><span>Mainly clear</span></div><div class="du-home-training"><small>Training</small><strong>Full body A</strong><span>Next workout</span></div><div class="du-home-review"><small>Weekly review</small><strong>Make time for you</strong></div><div class="du-home-planner"><small>Planner <span>Optional</span></small><strong>2 next actions</strong></div></div><div class="du-home-customise"><span>⠿</span><span>Customise Home</span><b>＋</b></div></div>';
+  return '<div class="du-visual du-visual-planner"><div class="du-mini-top"><span>Planner</span><small>Week</small></div><div class="du-week-days">'+[['M','16'],['T','17'],['W','18'],['T','19'],['F','20'],['S','21'],['S','22']].map(([name,date],i)=>'<span'+(i===1?' class="selected"':'')+'><small>'+name+'</small><b>'+date+'</b></span>').join('')+'</div><div class="du-planner-action"><i></i><div><small>Tuesday · Your priority</small><strong>Book the bike service</strong></div></div><div class="du-planner-done"><i>✓</i><span>One thing done</span></div><div class="du-planner-nav"><span>Home</span><span>Finance</span><span class="active">Planner</span></div></div>';
 }
-function dailyUpdatePopupCheck(){
-  if(!dailyUpdatePopupEligible()||document.getElementById('daily-update-dialog'))return;
+function dailyUpdateIdentity(){
+  return String(typeof localStorage!=='undefined'&&localStorage.scope||'guest')+'|'+String(typeof auth!=='undefined'&&auth?.currentUser?.uid||'guest');
+}
+function dailyUpdateReady(){
+  const signedIn=typeof auth!=='undefined'&&!!auth?.currentUser;
+  const scoped=typeof localStorage!=='undefined'&&/^user:/.test(localStorage.scope||'');
+  return typeof profileData!=='undefined'&&!!profileData.onboardingVersion&&
+    !((signedIn||scoped)&&!(typeof _cloudWorkoutReady!=='undefined'&&_cloudWorkoutReady));
+}
+function dailyUpdatePopupEligible(){
+  return dailyUpdateReady()&&(Number(profileData.budgetRhythmSeen)||0)<DAILY_UPDATE_VERSION;
+}
+function dailyUpdatePopupRemove(){
+  if(dailyUpdateObserver){dailyUpdateObserver.disconnect();dailyUpdateObserver=null;}
+  if(dailyUpdateFrame){cancelAnimationFrame(dailyUpdateFrame);dailyUpdateFrame=0;}
+  const popup=document.getElementById('daily-update-dialog');if(popup){if(popup.open)popup.close();popup.remove();}
+}
+function dailyUpdatePopupBlocked(){
   const ob=document.getElementById('onboarding-overlay');
-  if(ob&&!ob.classList.contains('hidden'))return;
-  if(document.querySelector('dialog[open],#whats-new-overlay'))return;
+  if(ob&&!ob.classList.contains('hidden'))return true;
+  if(document.querySelector('dialog[open],#whats-new-overlay'))return true;
+  return [...document.querySelectorAll('.modal-overlay:not(.hidden),.app-overlay,[aria-modal="true"]')].some(el=>{
+    if(el.inert||el.closest?.('[inert]')||el.getAttribute?.('aria-hidden')==='true'||!el.getClientRects().length||getComputedStyle(el).visibility==='hidden')return false;
+    if(el.id==='side-menu'&&el.classList.contains('open'))return true;
+    const rect=el.getBoundingClientRect?.();
+    return !rect||(rect.right>0&&rect.left<innerWidth&&rect.bottom>0&&rect.top<innerHeight);
+  });
+}
+function dailyUpdatePopupWait(force){
+  if(dailyUpdateObserver||typeof MutationObserver==='undefined')return;
+  const owner=dailyUpdateIdentity();
+  dailyUpdateObserver=new MutationObserver(()=>{
+    if(dailyUpdateFrame)return;
+    dailyUpdateFrame=requestAnimationFrame(()=>{
+      dailyUpdateFrame=0;
+      if(owner!==dailyUpdateIdentity()){dailyUpdatePopupRemove();return;}
+      dailyUpdatePopupCheck(force);
+    });
+  });
+  dailyUpdateObserver.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style','hidden','open']});
+}
+function dailyUpdatePopupCheck(force=false){
+  const current=document.getElementById('daily-update-dialog');
+  if(current){
+    if(current.dataset.owner!==dailyUpdateIdentity()||(!current.dataset.preview&&!dailyUpdatePopupEligible()))dailyUpdatePopupRemove();
+    return;
+  }
+  if(!dailyUpdateReady()||(!force&&!dailyUpdatePopupEligible())){dailyUpdatePopupRemove();return;}
+  if(dailyUpdatePopupBlocked()){dailyUpdatePopupWait(force);return;}
+  if(dailyUpdateObserver){dailyUpdateObserver.disconnect();dailyUpdateObserver=null;}
   const d=document.createElement('dialog');d.id='daily-update-dialog';d.className='daily-update-dialog';
+  d.dataset.owner=dailyUpdateIdentity();if(force)d.dataset.preview='true';
   d.setAttribute('aria-labelledby','daily-update-title');
-  d.innerHTML='<div class="du-head"><span>Daily · Quality-of-life update</span><button type="button" aria-label="Dismiss updates" onclick="dailyUpdateDismiss()">×</button></div>'+
-    '<div class="du-page" id="daily-update-page" tabindex="0" aria-live="polite"><div id="daily-update-art" aria-hidden="true"></div><h2 id="daily-update-title"></h2><p id="daily-update-copy"></p></div>'+
+  d.innerHTML='<div class="du-head"><span>New in Daily</span><button type="button" aria-label="Dismiss updates" onclick="dailyUpdateDismiss()">×</button></div>'+
+    '<div class="du-page" id="daily-update-page" tabindex="0" aria-live="polite"><span class="du-kicker" id="daily-update-kicker"></span><div id="daily-update-art" aria-hidden="true"></div><h2 id="daily-update-title"></h2><p id="daily-update-copy"></p></div>'+
     '<div class="du-dots" aria-label="Update pages">'+DAILY_UPDATE_PAGES.map((_,i)=>'<button type="button" aria-label="Update '+(i+1)+' of '+DAILY_UPDATE_PAGES.length+'" onclick="dailyUpdateGo('+i+')"></button>').join('')+'</div>'+
     '<div class="du-foot"><button class="stg-btn" id="daily-update-back" onclick="dailyUpdateGo(dailyUpdatePage-1)">Back</button><span id="daily-update-count"></span><button class="stg-btn primary" id="daily-update-next" onclick="dailyUpdateNext()">Next</button></div>';
   d.addEventListener('cancel',e=>{e.preventDefault();dailyUpdateDismiss();});
@@ -1048,11 +1100,13 @@ function dailyUpdatePopupCheck(){
 function dailyUpdateGo(n){
   const d=document.getElementById('daily-update-dialog');if(!d)return;
   dailyUpdatePage=Math.max(0,Math.min(DAILY_UPDATE_PAGES.length-1,n));const p=DAILY_UPDATE_PAGES[dailyUpdatePage];
-  d.querySelector('#daily-update-art').innerHTML=cardIcon(p.icon);
+  d.querySelector('#daily-update-art').innerHTML=dailyUpdateArt(p.id);d.querySelector('#daily-update-kicker').textContent=p.label;
+  d.dataset.page=p.id;
   d.querySelector('#daily-update-title').textContent=p.title;d.querySelector('#daily-update-copy').textContent=p.body;
   d.querySelector('#daily-update-count').textContent=(dailyUpdatePage+1)+' / '+DAILY_UPDATE_PAGES.length;
   d.querySelector('#daily-update-back').disabled=dailyUpdatePage===0;
   d.querySelector('#daily-update-next').textContent=dailyUpdatePage===DAILY_UPDATE_PAGES.length-1?'Got it':'Next';
   d.querySelectorAll('.du-dots button').forEach((el,i)=>el.setAttribute('aria-current',i===dailyUpdatePage?'step':'false'));
+  d.querySelector('#daily-update-page').scrollTop=0;
 }
 function dailyUpdateNext(){if(dailyUpdatePage===DAILY_UPDATE_PAGES.length-1)dailyUpdateDismiss();else dailyUpdateGo(dailyUpdatePage+1);}

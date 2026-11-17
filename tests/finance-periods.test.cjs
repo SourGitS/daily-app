@@ -187,7 +187,7 @@ test('weekly review uses actual payments and preserves a frozen legacy review',(
 test('swipeable update popup waits for restore and can be seen after dismissing the old banner',()=>{
   const c=context({profileData:{onboardingVersion:2,lastSeenWhatsNew:999},auth:{currentUser:{uid:'A'}},_cloudWorkoutReady:false});
   assert.equal(c.dailyUpdateBannerHtml(),'');assert.equal(c.dailyUpdatePopupEligible(),false);c._cloudWorkoutReady=true;assert.equal(c.dailyUpdatePopupEligible(),true);
-  c.profileData.budgetRhythmSeen=1;assert.equal(c.dailyUpdatePopupEligible(),true);c.profileData.budgetRhythmSeen=2;assert.equal(c.dailyUpdatePopupEligible(),false);
+  c.profileData.budgetRhythmSeen=1;assert.equal(c.dailyUpdatePopupEligible(),true);c.profileData.budgetRhythmSeen=2;assert.equal(c.dailyUpdatePopupEligible(),true);c.profileData.budgetRhythmSeen=3;assert.equal(c.dailyUpdatePopupEligible(),false);
   c.profileData={onboardingVersion:0};assert.equal(c.dailyUpdatePopupEligible(),false);
 });
 test('saving another profile field cannot undo a banner acknowledgement from another device',()=>{

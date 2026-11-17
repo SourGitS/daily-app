@@ -1,5 +1,12 @@
 # Daily — Agent Handoff
 
+## v465 Finance, Home and Planner update popup — 2026-11-18
+
+- Replaces the outdated release slideshow with three short illustrated pages: Finance retains its hero above Your money, Home shows customisable cards and optional Planner, and Planner shows dated priorities and completion. Artwork is decorative HTML/CSS with sample figures. Keep copy concise; the popup's header, page buttons and footer remain visible while its body scrolls on short screens.
+- Announcement version 3 reuses the existing account-scoped `budgetRhythmSeen` marker. Returning users who dismissed version 2 can see the new pages; explicit dismissal preserves higher local or cloud acknowledgements. New onboarding starts caught up. The popup waits for account restoration and visible editors/menus, retries after blockers close, and never acknowledges a different account after a switch. Financial records are not touched.
+- Private previews and screenshots stay under ignored `temp-analysis/update-popup*`. Unrelated Accounts export and Home working edits remain outside this change. Cache daily-v465.
+- The isolated release passed 849 Node checks. Chrome/WebKit checked all three pages at 320×568, 390×844, 844×390 and 1440×900 in both themes, including reload persistence, delayed opening after editors/menus, higher cloud markers and account-switch protection. Additional short-screen checks covered normal and reduced motion; full copy and navigation remain visible. The v464-to-v465 offline shell check passed. Cloud and account tests used synthetic accounts.
+
 ## v464 Finance hero restored — correction authorised, 2026-11-18
 
 - Francois intended Your money to be an additional card under the existing Finance hero. Restore the original hero and Needs attention section at the top, retain Your money below, and remove the duplicate collapsed Budget section after Activity. Keep the new card's current design for later refinement. Do not replace the hero in future design passes without an explicit request.
