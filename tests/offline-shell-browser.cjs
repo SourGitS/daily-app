@@ -37,22 +37,28 @@ const pageHTML='<title>Daily offline fixture</title><h1>Daily offline fixture</h
     });
     const p=await ctx.newPage();await p.goto(base);
     const weather='https://api.open-meteo.com/v1/forecast?latitude=1&longitude=2';
-    await p.evaluate(async weather=>{
+    const previousShell=await p.evaluate(async weather=>{
       const legacy=await caches.open('daily-v451'),other=await caches.open('sibling-fixture');
       await legacy.put(new URL('js/app.js',location.href),new Response('old Daily'));
       await legacy.put(weather,new Response('old weather'));
       await other.put(new URL('/sibling/icon.png',location.href),new Response('sibling'));
+      const previous='daily-shell:'+encodeURIComponent(new URL('./',location.href).href)+':daily-v462';
+      await (await caches.open(previous)).put(new URL('js/app.js',location.href),new Response('previous installed shell'));
       await navigator.serviceWorker.register('service-worker.js');
+      return previous;
     },weather);
     await p.waitForFunction(()=>!!navigator.serviceWorker.controller,null,{timeout:20000});
     const names=await p.evaluate(()=>caches.keys());
     assert.ok(names.includes('sibling-fixture'));assert.ok(!names.includes('daily-v451'));
+    assert.ok(!names.includes(previousShell),'the previous installed shell is retired');
     assert.ok(names.some(name=>name.startsWith('daily-shell:')&&name.endsWith(cacheVersion)));
+    assert.equal(await p.evaluate(async()=>!!await caches.match(new URL('js/finance-overview.js',location.href))),true,'the Finance overview is included in the offline shell');
     const readForecast=()=>p.evaluate(async url=>(await fetch(url)).text(),weather);
     assert.equal(await readForecast(),'19');forecast=31;assert.equal(await readForecast(),'31');
     forecast=null;await assert.rejects(readForecast);
     assert.equal(await p.evaluate(async url=>!!await caches.match(url),weather),false);
     online=false;
+    assert.equal(await p.evaluate(async()=>(await fetch('js/finance-overview.js')).text()),'fixture','the new Finance code remains available offline');
     for(const suffix of ['?new-link=1','index.html?another=1']){
       const response=await p.goto(base+suffix);
       assert.ok(response.fromServiceWorker());

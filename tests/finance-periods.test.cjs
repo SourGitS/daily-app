@@ -283,6 +283,39 @@ test('starting a new rhythm today closes dated activity in the old period withou
   assert.deepEqual(plain(changed.periods[oldId].reserves),{rent:250});
   assert.equal(c.budPeriodRangeForStore(changed,'2026-10-04',0).id,'2026-10-04_2026-10-31');
 });
+test('previous budget after an immediate change ends before the new period and keeps its saved plan key',()=>{
+  const c=context(),oldId='2026-11-02_2026-11-08',store={config:{frequency:'weekly',anchor:'2026-11-02'},periods:{[oldId]:{
+    start:'2026-11-02',end:'2026-11-08',notes:'Original plan',opening:400,reserves:{rent:250},
+    rollover:{to:'2026-11-09_2026-11-15',amount:50,destination:'budget'}
+  }}};
+  const plan=c.budPeriodTransitionPlan(store,{frequency:'monthly',anchor:'2026-11-01'},'2026-11-04','now');
+  const changed=c.budPeriodApplyTransition(store,plan),before=JSON.stringify(changed);
+  const current=c.budPeriodRangeForStore(changed,'2026-11-18'),previous=c.budPeriodRangeForStore(changed,'2026-11-18',-1);
+  assert.deepEqual(plain(previous),{id:oldId,start:'2026-11-02',end:'2026-11-03',days:2});
+  assert.deepEqual(plain(c.budPeriodRangeForStore(changed,'2026-11-03')),plain(previous));
+  assert.deepEqual(plain(c.budPeriodAdjacent(changed,previous,1)),plain(current));
+  assert.equal(c.budPeriodAdjacent(changed,previous,-1).end,'2026-11-01');
+  const events=[{kind:'income',date:'2026-11-03',amount:1000},{kind:'income',date:'2026-11-05',amount:500}];
+  const expenses=[{date:'2026-11-03',amount:20},{date:'2026-11-05',amount:30}];
+  const oldMoney=c.budPeriodCompute(previous,changed.periods[previous.id],events,expenses,changed.periods,{});
+  const newMoney=c.budPeriodCompute(current,changed.periods[current.id],events,expenses,changed.periods,{});
+  assert.equal(oldMoney.income,1000);assert.equal(newMoney.income,500);
+  assert.equal(oldMoney.spent,20);assert.equal(newMoney.spent,30);
+  assert.equal(oldMoney.opening,400);assert.equal(oldMoney.record.notes,'Original plan');
+  assert.equal(oldMoney.outgoing,50);assert.equal(newMoney.incoming,50);
+  c.budCyclesSave(changed);vm.runInContext('budPeriodSelected="'+oldId+'"',c);
+  assert.deepEqual(plain(c.budPeriodViewed()),plain(previous));
+  assert.equal(JSON.stringify(changed),before);
+});
+test('a custom period closed early still navigates by its original configured duration',()=>{
+  const c=context(),store={config:{frequency:'custom',anchor:'2026-11-02',end:'2026-11-08'},periods:{}};
+  const plan=c.budPeriodTransitionPlan(store,{frequency:'monthly',anchor:'2026-11-01'},'2026-11-04','now');
+  const changed=c.budPeriodApplyTransition(store,plan),closed=c.budPeriodRangeForStore(changed,'2026-11-18',-1);
+  assert.equal(closed.end,'2026-11-03');assert.equal(closed.days,2);
+  const earlier=c.budPeriodRangeForStore(changed,'2026-11-18',-2);
+  assert.deepEqual(plain(earlier),{id:'2026-10-26_2026-11-01',start:'2026-10-26',end:'2026-11-01',days:7});
+  assert.deepEqual(plain(c.budPeriodAdjacent(changed,earlier,1)),plain(closed));
+});
 test('period transitions retarget or remove only affected rollovers and preserve unrelated history',()=>{
   const c=context(),oldId='2026-09-28_2026-10-04',store={config:{frequency:'weekly',anchor:'2026-09-28'},periods:{
     earlier:{start:'2026-09-21',end:'2026-09-27',notes:'history',rollover:{to:oldId,amount:75,destination:'budget'}},

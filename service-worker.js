@@ -460,7 +460,8 @@
 // v460: shared neutral dark card fill on phone and desktop.
 // v461: refreshed Daily AI, combined Accounts details and Home review priorities linked to Planner.
 // v462: optional Home Planner card with links to the next two unfinished actions in Week.
-const CACHE_NAME = 'daily-v462';
+// v463: date-scoped Finance overview, interactive spending chart and consistent history totals.
+const CACHE_NAME = 'daily-v463';
 importScripts('./js/notification-storage.js');
 importScripts('./js/cache-scope.js');
 
@@ -508,6 +509,7 @@ const ASSETS = [
   './js/account-storage.js',
   './js/sync-integrity.js',
   './js/finance-periods.js',
+  './js/finance-overview.js',
   './js/accounts-tools.js',
   './js/account-links.js',
   './js/finance-accounts.js',

@@ -10400,8 +10400,7 @@ function aiReconReport(){
   const txns=(Array.isArray(txnData)?txnData:[]).filter(t=>t&&t.date);
   const range=aiReconRange();
 
-  // 1. The symptom a half-imported history actually produces: a week showing spending with no
-  //    income against it. Weekly result and savings rate are both meaningless until it is fixed.
+  // A week without recorded income may be correct. Ask for a check without inventing pay.
   const spentNoIncome=[], incomeNoSpend=[];
   Object.keys(budgetData||{}).filter(aiIsDate).sort().forEach(k=>{
     const d=budgetData[k]||{};
@@ -10409,8 +10408,8 @@ function aiReconReport(){
     if(spent>0.005&&inc<=0.005) spentNoIncome.push(aiActFmtFullDate(k)+' — '+fmtMoneyExact(spent)+' spent, no income recorded');
     if(inc>0.005&&spent<=0.005&&!txnsForWeek(k).length) incomeNoSpend.push(aiActFmtFullDate(k)+' — '+fmtMoneyExact(inc)+' income, no spending recorded');
   });
-  add('weeks_no_income','Weeks with spending but no income','warn',spentNoIncome,
-    'Import the salary deposits for these weeks with add_income. Until then the weekly result and the savings rate are wrong for them.');
+  add('weeks_no_income','Weeks with no income recorded','info',spentNoIncome,
+    'Zero income can be correct. Check whether money was received during these dates; only add a payment if it actually arrived. Expected salary is not received income.');
   add('weeks_no_spend','Weeks with income but no spending','info',incomeNoSpend,
     'Expected for a week you have not imported expenses for yet; worth checking if you thought it was done.');
 
@@ -11794,8 +11793,9 @@ function weekSavedAmt(d){
   return 0;
 }
 function weekLeftover(d){
-  if(d&&d.snapshot) return parseFloat(d.snapshot.leftover)||0;
-  return weekIncome(d)-weekSpending(d)-weekSavedAmt(d);
+  // A backfilled expense or corrected income must change the result even if cloud sync
+  // restores an older snapshot. The component readers retain genuine legacy aggregates.
+  return Math.round((weekIncome(d)-weekSpending(d)-weekSavedAmt(d))*100)/100;
 }
 let savingsLog         = loadSavingsLog();
 // ── Credit-card balance history (dated; drives the Finance net-worth line) ──
@@ -12934,6 +12934,9 @@ function ledgerSavingsMovement(fromDate, toDate){
   const linked=new Set(transfers.flatMap(r=>[r.id,r.accountMovementId].filter(Boolean)));
   const ledgerIds=new Set(transfers.map(r=>r.id));
   [...transfers,...recorded.filter(r=>!linked.has(r.id)&&!ledgerIds.has(r.ledgerId))].forEach(r=>{
+    if(!r||r.deletedAt||!/^\d{4}-\d{2}-\d{2}$/.test(r.date||''))return;
+    const day=new Date(r.date+'T12:00:00Z'),amount=Number(r.amount);
+    if(isNaN(day)||day.toISOString().slice(0,10)!==r.date||!(amount>0)||!Number.isSafeInteger(Math.round(amount*100)))return;
     if(fromDate&&r.date<fromDate) return;
     if(toDate&&r.date>toDate) return;
     const amt=parseFloat(r.amount)||0;
@@ -14626,19 +14629,71 @@ function budOvMonthWindow(today){
   return {start,end:today,previousStart,previousEnd:budDateAdd(previousStart,compareDays-1),
     compareEnd:budDateAdd(start,compareDays-1),days,compareDays};
 }
+// A date filter only: looking at another range never changes the budget schedule or records.
+let budOvMoneyRange={preset:'month',from:'',to:''};
+function budOvRangeWindow(selection=budOvMoneyRange,today=getLocalDate()){
+  const preset=selection.preset||'month',month=budOvMonthWindow(today);
+  if(preset==='last-month')return {start:month.previousStart,end:budDateAdd(month.start,-1),label:'Last month',preset};
+  if(preset==='30-days')return {start:budDateAdd(today,-29),end:today,label:'Last 30 days',preset};
+  if(preset==='budget'){
+    const p=typeof budPeriodCurrent==='function'?budPeriodCurrent():null;
+    if(p&&budDateValid(p.start)&&budDateValid(p.end)&&p.start<=today&&p.end>=p.start)return {start:p.start,end:p.end<today?p.end:today,label:'Budget period to date',preset};
+  }
+  if(preset==='custom'&&budDateValid(selection.from)&&budDateValid(selection.to)&&selection.from<=selection.to&&selection.to<=today)
+    return {start:selection.from,end:selection.to,label:'Custom dates',preset};
+  return {start:month.start,end:today,label:'This month',preset:'month'};
+}
+function budOvRangeChoose(value){
+  if(!['month','last-month','30-days','budget','custom'].includes(value))return;
+  const range=budOvRangeWindow();
+  budOvMoneyRange={preset:value,from:range.start,to:range.end};
+  if(typeof budMoneyUI!=='undefined'){budMoneyUI.activityDay='';budMoneyUI.showAll=false;budMoneyUI.selected='';}
+  renderBudgetOverview();
+  document.getElementById(value==='custom'?'bov-range-from':'bov-range-preset')?.focus();
+}
+function budOvRangeApply(event){
+  event.preventDefault();
+  const from=document.getElementById('bov-range-from').value,to=document.getElementById('bov-range-to').value;
+  const error=document.getElementById('bov-range-error');
+  if(!budDateValid(from)||!budDateValid(to)||from>to||to>getLocalDate()){
+    error.textContent='Choose a start date on or before the end date, through today.';return;
+  }
+  budOvMoneyRange={preset:'custom',from,to};
+  if(typeof budMoneyUI!=='undefined'){budMoneyUI.activityDay='';budMoneyUI.showAll=false;budMoneyUI.selected='';}
+  renderBudgetOverview();
+  document.getElementById('bov-range-preset')?.focus();
+}
+function budOvRangeControls(range){
+  const selected=budOvMoneyRange.preset==='custom'?'custom':range.preset;
+  const options=[['month','This month'],['last-month','Last month'],['30-days','Last 30 days'],['budget','Budget period'],['custom','Custom dates']];
+  const budget=typeof budPeriodCurrent==='function'?budPeriodCurrent():null;
+  const hasBudget=budget&&budDateValid(budget.start)&&budDateValid(budget.end)&&budget.start<=getLocalDate()&&budget.end>=budget.start;
+  return '<form class="bov-range-form" onsubmit="budOvRangeApply(event)"><label for="bov-range-preset">Show dates</label>'+
+    '<select id="bov-range-preset" onchange="budOvRangeChoose(this.value)">'+options.map(([id,label])=>'<option value="'+id+'"'+(id===selected?' selected':'')+(id==='budget'&&!hasBudget?' disabled':'')+'>'+label+'</option>').join('')+'</select>'+
+    (selected==='custom'?'<div class="bov-range-dates"><label for="bov-range-from">From<input id="bov-range-from" type="date" required max="'+getLocalDate()+'" value="'+escAttr(range.start)+'"></label>'+
+      '<label for="bov-range-to">To<input id="bov-range-to" type="date" required max="'+getLocalDate()+'" value="'+escAttr(range.end)+'"></label><button type="submit" class="stg-btn">Apply dates</button></div><p id="bov-range-error" role="alert"></p>':'')+'</form>';
+}
+function budOvRangeDateLabel(range){
+  const date=d=>localMidnight(d).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});
+  return date(range.start)+' – '+date(range.end)+' · inclusive';
+}
 function budOvAmountValid(amount){
   const n=Number(amount),cents=Math.round(n*100);
   return n>0&&Number.isFinite(n)&&Number.isSafeInteger(cents)&&cents>0;
+}
+function budOvExpenseAmountValid(amount){
+  const n=Number(amount),cents=Math.round(n*100);
+  return n!==0&&Number.isFinite(n)&&Number.isSafeInteger(cents)&&cents!==0;
 }
 function budOvDatedMoney(start,end){
   const inRange=x=>x&&!x.deletedAt&&budDateValid(x.date)&&x.date>=start&&x.date<=end;
   const amountOK=x=>budOvAmountValid(x.amount);
   const events=ledgerData.filter(x=>x&&['income','savings','bill_payment'].includes(x.kind));
-  const invalid=[...events,...txnData].filter(x=>x&&!x.deletedAt&&
-    (!budDateValid(x.date)||(inRange(x)&&!amountOK(x)))).length;
+  const invalid=events.filter(x=>x&&!x.deletedAt&&(!budDateValid(x.date)||(inRange(x)&&!amountOK(x)))).length+
+    txnData.filter(x=>x&&!x.deletedAt&&(!budDateValid(x.date)||(inRange(x)&&!budOvExpenseAmountValid(x.amount)))).length;
   // The same dated-payment reader as Budget, without assigning undated weekly totals to days.
   const m=budPeriodCompute({start,end},{},events.filter(x=>inRange(x)&&amountOK(x)),
-    txnData.filter(x=>x&&!x.deletedAt&&amountOK(x)),{},null);
+    txnData.filter(x=>x&&!x.deletedAt&&budOvExpenseAmountValid(x.amount)),{},null);
   m.spent=budMoneyRound(m.spent-m.legacySpent);
   return {...m,total:budMoneyRound(m.spent+m.billPaid),invalid};
 }
@@ -14652,15 +14707,73 @@ function budOvSpendGroups(m){
   if(m.billPaid>0)groups.set('__bills__',{id:'__bills__',name:'Bills paid',amount:m.billPaid});
   return [...groups.values()].sort((a,b)=>b.amount-a.amount||a.name.localeCompare(b.name));
 }
+function budOvRangeFacts(range){
+  const m=budOvDatedMoney(range.start,range.end),legacy=budPeriodLegacy(range);
+  const movement=typeof ledgerSavingsMovement==='function'?ledgerSavingsMovement(range.start,range.end):{contributions:0,withdrawals:0,net:0,transfers:0};
+  return {range,current:m,groups:budOvSpendGroups(m),movement,
+    difference:budMoneyRound(m.income-m.total),undated:!!(m.incomplete||m.legacySpent||legacy.incomplete||legacy.spent||legacy.income)};
+}
+function budOvRangeEntries(range){
+  const valid=(r,expense=false)=>r&&!r.deletedAt&&budDateValid(r.date)&&r.date>=range.start&&r.date<=range.end&&(expense?budOvExpenseAmountValid(r.amount):budOvAmountValid(r.amount));
+  const events=ledgerData.filter(r=>r&&['income','savings','bill_payment','reimbursement','transfer'].includes(r.kind));
+  const transfers=events.filter(r=>r.kind==='transfer'),linked=new Set(transfers.flatMap(r=>[r.id,r.accountMovementId].filter(Boolean))),ledgerIds=new Set(transfers.map(r=>r.id));
+  const recorded=typeof acctRecordedTransfers==='function'?acctRecordedTransfers().filter(r=>!linked.has(r.id)&&!ledgerIds.has(r.ledgerId)):[];
+  return [...txnData.filter(r=>valid(r,true)&&(typeof txnIsCarryRecord!=='function'||!txnIsCarryRecord(r))).map(r=>({...r,kind:'purchase'})),...events.filter(r=>valid(r)),...recorded.filter(r=>valid(r))]
+    .sort((a,b)=>b.date.localeCompare(a.date)||(Number(b.createdAt)||0)-(Number(a.createdAt)||0)||String(a.id||'').localeCompare(String(b.id||'')));
+}
+function budOvRangeRecordsHtml(range){
+  const rows=budOvRangeEntries(range),vars=loadVarCats(),fixed=loadFixCats(),income=loadIncCats(),accounts=loadAccounts();
+  const labels={purchase:'Purchase',income:'Income received',savings:'Savings recorded',bill_payment:'Bill paid',reimbursement:'Reimbursement',transfer:'Transfer'};
+  return '<details class="bov-range-records"><summary>Dated activity <span>'+rows.length+' records</span></summary>'+
+    (rows.length?'<div class="bov-range-record-list">'+rows.map(r=>{
+      const cat=(r.kind==='purchase'?vars:r.kind==='bill_payment'?fixed:income).find(c=>c.id===(r.catId||r.fixCatId||r.streamId));
+      const account=accounts.find(a=>a.id===r.acctId),name=r.kind==='purchase'?(r.merchant||cat?.name||'Expense'):cat?.name||labels[r.kind];
+      const kindLabel=r.kind==='purchase'&&Number(r.amount)<0?'Expense refund':labels[r.kind];
+      const transfer=r.kind==='transfer'?(accounts.find(a=>a.id===r.fromAcctId)?.name||r.fromName||'Unknown account')+' → '+(accounts.find(a=>a.id===r.toAcctId)?.name||r.toName||'Unknown account'):'';
+      const source=r.source&&[r.source.file,r.source.row?'row '+r.source.row:''].filter(Boolean).join(' · ');
+      return '<div class="bov-range-record"><div><strong>'+escText(name)+'</strong><small>'+escText(r.date+' · '+kindLabel+(account?' · '+account.name:''))+'</small>'+
+        (transfer?'<small>'+escText(transfer)+'</small>':'')+(r.note?'<small>'+escText(r.note)+'</small>':'')+(source?'<small>'+escText(source)+'</small>':'')+'</div><strong>'+fmtMoneyExact(Number(r.amount))+'</strong></div>';
+    }).join('')+'</div>':'<p class="bov-month-empty">No dated activity in these dates.</p>')+'</details>';
+}
+function budOvRangeSavingsHtml(f){
+  const mv=f.movement;
+  return '<div class="bov-range-savings"><div><span>Net moved to savings</span><strong>'+fmtMoneyExact(mv.net)+'</strong></div>'+
+    '<p>'+fmtMoneyExact(mv.contributions)+' in · '+fmtMoneyExact(mv.withdrawals)+' out</p>'+
+    '<p>Transfers between your accounts. Separate from savings recorded above; these figures are never added together.</p></div>';
+}
+function budOvRangeCoverageHtml(f){
+  return (f.undated||f.current.invalid)?'<details class="bov-coverage"><summary>Some records are excluded</summary><p>Undated weekly totals remain in Weekly history. Entries without valid dates or amounts are excluded here; spending uses dated purchases and paid bills only.</p><button type="button" class="cat-action" onclick="homeOpenBudgetWeek()">Review in Budget →</button></details>':'';
+}
+function budOvRangeDifferenceHtml(f){
+  return '<div class="bov-range-difference"><span>Income less spending</span><strong>'+fmtMoneyExact(f.difference)+'</strong><p>Recorded income minus purchases and bills paid. This difference is not your bank balance or confirmed savings. Missing entries can change it.</p></div>';
+}
+function budOvRangeGroupsHtml(groups,total){
+  const magnitude=groups.reduce((sum,g)=>sum+Math.abs(g.amount),0);
+  return groups.length?'<div class="bov-spend-groups"><h3>Spending by category</h3>'+groups.map(g=>'<div class="bov-spend-group"><div><span>'+escText(g.name)+'</span><strong>'+fmtMoneyExact(g.amount)+'</strong></div><div class="card-bar"><div class="card-bar-fill" style="width:'+(magnitude?Math.min(100,Math.abs(g.amount)/magnitude*100):0)+'%"></div></div></div>').join('')+'</div>':'';
+}
+function budOvRecordedHtml(){
+  const range=budOvRangeWindow(),f=budOvRangeFacts(range);
+  if(range.preset==='month')return budOvMonthlyHtml(budOvMonthFacts(),f);
+  const m=f.current,hasRecords=m.purchases.length||m.rows.length;
+  return '<section class="card bov-month" aria-label="Monthly spending">'+cardHeader('trend','Recorded money','<span class="bov-period-label">'+escText(range.label)+'</span>')+
+    budOvRangeControls(range)+'<p class="bov-range-caption">'+escText(budOvRangeDateLabel(range))+'</p>'+
+    '<div class="bov-month-money"><div>'+statsFigure(hasRecords?fmtMoneyExact(m.total):'—','','Recorded spending')+'</div>'+statsSplit([['Income received',fmtMoneyExact(m.income)],['Savings recorded',fmtMoneyExact(m.savingsRecorded)]])+'</div>'+
+    '<div class="bov-month-costs"><span>Purchases <strong>'+fmtMoneyExact(m.spent)+'</strong></span><span>Bills paid <strong>'+fmtMoneyExact(m.billPaid)+'</strong></span></div>'+
+    budOvRangeDifferenceHtml(f)+budOvRangeSavingsHtml(f)+
+    (f.groups.length?budOvRangeGroupsHtml(f.groups,m.total):'<p class="bov-month-empty">'+(hasRecords?'No spending recorded in these dates.':'No dated activity in these dates.')+'</p>')+
+    budOvRangeRecordsHtml(range)+budOvRangeCoverageHtml(f)+'<p class="bov-range-basis">Purchases include recorded expense refunds. Spending is before separate reimbursements. Expected pay, scheduled bills, account balances and budget allocations are excluded.</p></section>';
+}
 function budOvMonthFacts(today=getLocalDate()){
   const w=budOvMonthWindow(today),current=budOvDatedMoney(w.start,w.end);
   const previous=budOvDatedMoney(w.previousStart,w.previousEnd);
   const matched=w.compareEnd===w.end?current:budOvDatedMoney(w.start,w.compareEnd);
   const legacy=budPeriodLegacy({start:w.start,end:w.end});
   const previousLegacy=budPeriodLegacy({start:w.previousStart,end:w.previousEnd});
+  const spendingLegacy=budPeriodLegacy({start:w.start,end:w.end},null,{spendingOnly:true});
+  const previousSpendingLegacy=budPeriodLegacy({start:w.previousStart,end:w.previousEnd},null,{spendingOnly:true});
   const carryUndated=[current,matched,previous].some(m=>m.incomplete||m.legacySpent!==0);
-  const spendUndated=carryUndated||legacy.incomplete||legacy.spent>0||previousLegacy.incomplete||previousLegacy.spent>0;
-  const undated=spendUndated||legacy.income>0;
+  const spendUndated=carryUndated||spendingLegacy.incomplete||spendingLegacy.spent>0||previousSpendingLegacy.incomplete||previousSpendingLegacy.spent>0;
+  const undated=spendUndated||legacy.incomplete||legacy.income>0||previousLegacy.incomplete||previousLegacy.income>0;
   const available=!spendUndated&&!current.invalid&&!previous.invalid&&
     (matched.purchases.length>0||matched.billPaid>0)&&(previous.purchases.length>0||previous.billPaid>0);
   const daily=m=>Array.from({length:w.days},(_,i)=>{
@@ -14680,58 +14793,63 @@ function budOvMonthFacts(today=getLocalDate()){
       driver:available&&Math.abs(changes[0]?.amount||0)>.005?changes[0]:null}};
 }
 function budOvTrendHtml(f){
-  const w=f.window,hasCurrent=f.current.total>0,hasPrevious=f.previous.total>0;
+  const w=f.window,hasCurrent=!!(f.current.purchases.length||f.current.billPaid),hasPrevious=!!(f.previous.purchases.length||f.previous.billPaid);
   if(!hasCurrent&&!hasPrevious)return '<div class="bov-trend-empty">No dated spending to chart yet.</div>';
   const cumulative=values=>{let n=0;return values.map(v=>v===null?null:(n=budMoneyRound(n+v)));};
   const current=cumulative(f.currentDaily),previous=cumulative(f.previousDaily);
-  const max=Math.max(...current,...previous.filter(v=>v!==null),1),step=Math.pow(10,Math.floor(Math.log10(max)));
-  const ceiling=Math.ceil(max/step)*step;
-  const path=values=>values.map((v,i)=>v===null?'':(i?'L':'M')+(w.days===1?300:i/(w.days-1)*600).toFixed(2)+' '+(116-v/ceiling*110).toFixed(2)).join(' ');
+  const values=[...current,...previous.filter(v=>v!==null)],max=Math.max(...values,0),min=Math.min(...values,0);
+  const step=Math.pow(10,Math.floor(Math.log10(Math.max(max-min,1))));
+  const floor=Math.floor(min/step)*step,ceiling=Math.max(floor+step,Math.ceil(max/step)*step);
+  const y=value=>116-(value-floor)/(ceiling-floor)*110;
+  const path=values=>values.map((v,i)=>v===null?'':(i?'L':'M')+(w.days===1?300:i/(w.days-1)*600).toFixed(2)+' '+y(v).toFixed(2)).join(' ');
   const previousLabel=localMidnight(w.previousStart).toLocaleDateString('en-AU',{month:'short'});
   const currentLabel=localMidnight(w.start).toLocaleDateString('en-AU',{month:'short'});
   const dateLabel=d=>localMidnight(d).toLocaleDateString('en-AU',{day:'numeric',month:'short'});
   const description='Cumulative recorded spending. '+currentLabel+' through '+dateLabel(w.end)+': '+fmtMoneyExact(f.current.total)+
     '. '+previousLabel+' through '+dateLabel(w.previousEnd)+': '+fmtMoneyExact(f.previous.total)+'. Exact daily amounts follow.';
   return '<figure class="bov-trend"><figcaption>Cumulative spending</figcaption>'+
-    '<div class="bov-trend-plot"><div class="bov-trend-axis" aria-hidden="true"><span>'+nwCompactMoney(ceiling)+'</span><span>'+nwCompactMoney(ceiling/2)+'</span><span>$0</span></div>'+
+    '<div class="bov-trend-plot"><div class="bov-trend-axis" aria-hidden="true"><span>'+nwCompactMoney(ceiling)+'</span><span>'+nwCompactMoney((ceiling+floor)/2)+'</span><span>'+nwCompactMoney(floor)+'</span></div>'+
     '<svg viewBox="0 0 600 120" preserveAspectRatio="none" role="img" aria-label="'+escAttr(description)+'">'+
       '<path class="bov-trend-grid" d="M0 6H600 M0 61H600 M0 116H600"/>'+
       (hasPrevious?'<path class="bov-trend-previous" d="'+path(previous)+'"/>':'')+
       (hasCurrent?'<path class="bov-trend-current" d="'+path(current)+'"/>':'')+
-      (w.days===1&&hasCurrent?'<circle class="bov-trend-current-dot" cx="300" cy="'+(116-current[0]/ceiling*110)+'" r="3"/>':'')+
-      (w.days===1&&hasPrevious?'<circle class="bov-trend-previous-dot" cx="300" cy="'+(116-previous[0]/ceiling*110)+'" r="3"/>':'')+
+      (floor<0&&ceiling>0?'<path class="bov-trend-grid" d="M0 '+y(0).toFixed(2)+'H600"/>':'')+
+      (w.days===1&&hasCurrent?'<circle class="bov-trend-current-dot" cx="300" cy="'+y(current[0])+'" r="3"/>':'')+
+      (w.days===1&&hasPrevious?'<circle class="bov-trend-previous-dot" cx="300" cy="'+y(previous[0])+'" r="3"/>':'')+
     '</svg></div><div class="bov-trend-dates" aria-hidden="true"><span>Day 1</span><span>Day '+w.days+'</span></div>'+
     '<div class="bov-trend-legend"><span><i></i>'+escText(currentLabel)+' · '+fmtMoneyExact(f.current.total)+'</span>'+
     (hasPrevious?'<span class="is-previous"><i></i>'+escText(previousLabel)+' · '+fmtMoneyExact(f.previous.total)+'</span>':'')+'</div></figure>'+
-    '<details class="bov-daily"><summary>Daily amounts</summary><div class="bov-daily-table"><table><caption>Recorded purchases and bills paid; unlisted payments are unknown.</caption>'+
+    '<details class="bov-daily"><summary>Daily amounts</summary><div class="bov-daily-table"><table><caption>Recorded purchases, expense refunds and bills paid; unlisted payments are unknown.</caption>'+
     '<thead><tr><th scope="col">Day</th><th scope="col">'+escText(currentLabel)+'</th><th scope="col">'+escText(previousLabel)+'</th></tr></thead><tbody>'+
     f.currentDaily.map((n,i)=>'<tr><th scope="row">'+(i+1)+'</th><td>'+fmtMoneyExact(n)+'</td><td>'+(f.previousDaily[i]===null?'—':fmtMoneyExact(f.previousDaily[i]))+'</td></tr>').join('')+
     '</tbody></table></div></details>';
 }
-function budOvMonthlyHtml(f){
+function budOvMonthlyHtml(f,rangeFacts){
   const w=f.window,m=f.current,cmp=f.comparison;
-  const dateLabel=d=>localMidnight(d).toLocaleDateString('en-AU',{day:'numeric',month:'short'});
+  const range={start:w.start,end:w.end,label:'This month',preset:'month'},facts=rangeFacts||budOvRangeFacts(range);
   const month=localMidnight(w.start).toLocaleDateString('en-AU',{month:'long',year:'numeric'});
   const compareLabel='First '+w.compareDays+' day'+(w.compareDays===1?'':'s')+' vs '+localMidnight(w.previousStart).toLocaleDateString('en-AU',{month:'short'});
   const comparison=cmp.available?(Math.abs(cmp.difference)<.005?'Same recorded spending':fmtMoneyExact(Math.abs(cmp.difference))+' '+(cmp.difference>0?'more':'less')):'Comparison unavailable';
   const hasRecords=m.purchases.length||m.rows.length;
-  const groupRows=f.groups.slice(0,3).map(g=>'<div class="bov-spend-group"><div><span>'+escText(g.name)+'</span><strong>'+fmtMoneyExact(g.amount)+'</strong></div>'+
-    '<div class="card-bar"><div class="card-bar-fill" style="width:'+Math.min(100,g.amount/m.total*100)+'%"></div></div></div>').join('');
-  return '<section class="card bov-month" aria-label="Monthly spending">'+cardHeader('trend','This month',
+  return '<section class="card bov-month" aria-label="Monthly spending">'+cardHeader('trend','Recorded money',
     '<span class="bov-period-label">'+escText(month)+'</span>')+
+    budOvRangeControls(range)+'<p class="bov-range-caption">'+escText(budOvRangeDateLabel(range))+'</p>'+
     '<div class="bov-month-money"><div>'+statsFigure(hasRecords?fmtMoneyExact(m.total):'—','','Recorded spending')+'</div>'+
     statsSplit([['Income received',fmtMoneyExact(m.income)],['Savings recorded',fmtMoneyExact(m.savingsRecorded)]])+'</div>'+
     '<div class="bov-month-costs"><span>Purchases <strong>'+fmtMoneyExact(m.spent)+'</strong></span><span>Bills paid <strong>'+fmtMoneyExact(m.billPaid)+'</strong></span></div>'+
+    budOvRangeDifferenceHtml(facts)+budOvRangeSavingsHtml(facts)+
     '<div class="bov-comparison"><strong>'+escText(comparison)+'</strong><span>'+escText(cmp.available?compareLabel:cmp.reason)+'</span></div>'+
     (cmp.driver?'<p class="bov-driver">Biggest change · '+escText(cmp.driver.name)+' <strong>'+(cmp.driver.amount>0?'+':'−')+fmtMoneyExact(Math.abs(cmp.driver.amount))+'</strong></p>':'')+
     budOvTrendHtml(f)+
-    (groupRows?'<div class="bov-spend-groups"><h3>Top spending</h3>'+groupRows+'</div>':'<p class="bov-month-empty">'+(hasRecords?'No spending recorded this month yet.':'No dated activity this month yet.')+'</p>')+
+    (f.groups.length?budOvRangeGroupsHtml(f.groups,m.total):'<p class="bov-month-empty">'+(hasRecords?'No spending recorded this month yet.':'No dated activity this month yet.')+'</p>')+
+    budOvRangeRecordsHtml(range)+
     ((f.undated||m.invalid)?'<details class="bov-coverage"><summary>Some records are excluded</summary><p>Undated weekly totals remain in Weekly history. Entries without valid dates or amounts are excluded here; the chart and comparison use dated purchases and paid bills only.</p><button type="button" class="cat-action" onclick="homeOpenBudgetWeek()">Review in Budget →</button></details>':'')+
-    '<footer class="bov-month-footer"><span>'+escText(dateLabel(w.start)+' – '+dateLabel(w.end))+' · recorded payments</span><button type="button" class="cat-action" onclick="openBudgetCurrentMonth()">View month →</button></footer></section>';
+    '<p class="bov-range-basis">Purchases include recorded expense refunds. Spending is before separate reimbursements. Expected pay, scheduled bills, account balances and budget allocations are excluded.</p>'+
+    '<footer class="bov-month-footer"><span>'+escText(budOvRangeDateLabel(range))+'</span><button type="button" class="cat-action" onclick="openBudgetCurrentMonth()">View month →</button></footer></section>';
 }
 function budOvActivityRows(today=getLocalDate(),limit=6){
-  const end=today,valid=x=>x&&!x.deletedAt&&budDateValid(x.date)&&x.date<=end&&budOvAmountValid(x.amount);
-  return [...txnData.filter(x=>valid(x)&&(typeof txnIsCarryRecord!=='function'||!txnIsCarryRecord(x))).map(record=>({kind:'purchase',record})),
+  const end=today,valid=(x,expense=false)=>x&&!x.deletedAt&&budDateValid(x.date)&&x.date<=end&&(expense?budOvExpenseAmountValid(x.amount):budOvAmountValid(x.amount));
+  return [...txnData.filter(x=>valid(x,true)&&(typeof txnIsCarryRecord!=='function'||!txnIsCarryRecord(x))).map(record=>({kind:'purchase',record})),
     ...ledgerData.filter(x=>valid(x)&&['income','savings','bill_payment'].includes(x.kind)).map(record=>({kind:record.kind,record}))]
     .sort((a,b)=>b.record.date.localeCompare(a.record.date)||(Number(b.record.createdAt)||0)-(Number(a.record.createdAt)||0)||String(a.record.id||'').localeCompare(String(b.record.id||''))).slice(0,limit);
 }
@@ -14743,9 +14861,10 @@ function budOvActivityHtml(today=getLocalDate()){
     (rows.length?'<div class="bov-activity-list">'+rows.map(({kind,record:r},index)=>{
       const cat=(kind==='purchase'?vars:kind==='bill_payment'?fixed:income).find(c=>c.id===(r.catId||r.fixCatId||r.streamId));
       const name=kind==='purchase'?(r.merchant||cat?.name||'Expense'):kind==='savings'?'Savings':cat?.name||types[kind][1];
+      const kindLabel=kind==='purchase'&&Number(r.amount)<0?'Expense refund':types[kind][1];
       const account=accounts.find(a=>a.id===r.acctId);
       return '<details class="bov-activity-item"'+(index>=6?' hidden':'')+'><summary><span class="bov-activity-icon" aria-hidden="true">'+cardIcon(types[kind][0])+'</span>'+
-        '<span class="bov-activity-copy"><strong>'+escText(name)+'</strong><small>'+escText(types[kind][1]+' · '+fmtDate(r.date))+'</small></span>'+
+        '<span class="bov-activity-copy"><strong>'+escText(name)+'</strong><small>'+escText(kindLabel+' · '+fmtDate(r.date))+'</small></span>'+
         '<strong class="bov-activity-amount'+(kind==='income'?' is-income':'')+'">'+(kind==='income'?'+':'')+fmtMoneyExact(Number(r.amount))+'</strong><span class="bov-activity-chevron" aria-hidden="true">⌄</span></summary>'+
         '<div class="bov-activity-detail">'+(r.note?'<p>'+escText(r.note)+'</p>':'')+
         (cat?'<p>'+escText(cat.name)+'</p>':'')+(account?'<p>'+escText(account.name)+'</p>':'')+
@@ -14854,14 +14973,9 @@ function renderBudgetOverview(){
   const key=weekKey(monday);
   const period=typeof budPeriodMoney==='function'?budPeriodMoney():null;
   const m=period?budPeriodOverviewMoney(period):Object.assign({monday, key}, budWeekMoney(budCurrentWeekBasis(), key));
-  // Derived from the SAME figure and the SAME week object the hero above it states, exactly
-  // as budRecalc hands them to the Outlook card.
-  const f=period?budPeriodForecast(period):payCycleForecast(m.available, m.week);
-  wrap.innerHTML=budOvHeroHtml(m)+
-    '<div class="bov-attention">'+budOvAttentionHtml(m,f)+'</div>'+
-    '<div class="bov-insights">'+budOvMonthlyHtml(budOvMonthFacts())+budOvActivityHtml()+'</div>'+
+  // Recorded activity owns the overview; budget allocations retain their own dated section.
+  wrap.innerHTML=budMoneyOverviewHtml(m)+
     '<section id="bov-bills" class="card bov-bills" aria-labelledby="bov-bills-title">'+budOvBillsHtml()+'</section>';
-  budOvActivityMount(wrap.querySelector('.bov-insights'));
 }
 
 // ── Home: Finance check-in ────────────────────────────────────────
@@ -18570,17 +18684,26 @@ function wkrMoneyActuals(week, plan){
     groupCats.fixedBills=Object.entries(paid).map(([id,amount])=>({id,label:loadFixCats().find(c=>c.id===id)?.name||'Recorded bill',amount}));
   }
 
-  // Income, split into what the plan calls regular and what it calls irregular. weekIncome()
-  // stays the authority on the TOTAL — if the itemised rows do not add up to it (a legacy week
-  // whose only surviving figure is an aggregate), the difference is shown as unitemised rather
-  // than quietly dropped or invented.
+  // Use the same evidence as the total: dated payments in period mode, legacy weekly fields
+  // otherwise. This preserves an irregular source's identity after a budget-period change.
   const irregular=new Set(p.money.irregularIncomeCatIds||[]);
   const incCats=loadIncCats();
-  const incomeRows=weekIncomeKeys(d||{}).map(k=>{
-    const id=k.slice(4);
+  const incomeAmounts={};
+  if(dated)dated.rows.filter(x=>x.kind==='income').forEach(x=>{
+    const id=x.streamId||'__unitemised__';incomeAmounts[id]=(incomeAmounts[id]||0)+Number(x.amount||0);
+  });
+  else weekIncomeKeys(d||{}).forEach(k=>{incomeAmounts[k.slice(4)]=wkrNum((d||{})[k],0);});
+  if(dated&&dated.legacyIncome>0){
+    const residuals=weekIncomeKeys(d||{}).map(k=>[k.slice(4),Math.max(0,wkrNum(d[k],0)-(incomeAmounts[k.slice(4)]||0))]);
+    // Retain a legacy source only when its surviving breakdown reconciles to the undated
+    // total. Conflicting weekly fields cannot manufacture source amounts or negative rows.
+    if(Math.abs(residuals.reduce((s,[,amount])=>s+amount,0)-dated.legacyIncome)<.005)
+      residuals.forEach(([id,amount])=>{incomeAmounts[id]=(incomeAmounts[id]||0)+amount;});
+  }
+  const incomeRows=Object.entries(incomeAmounts).map(([id,amount])=>{
     const c=incCats.find(x=>x&&x.id===id);
-    return {id, label:c?catLabel(c):'Uncategorised / archived',
-      amount:wkrNum((d||{})[k],0), irregular:irregular.has(id), archived:!!(c&&catIsArchived(c))};
+    return {id, label:c?catLabel(c):id==='__unitemised__'?'Unitemised income':'Uncategorised / archived',
+      amount:Math.round(amount*100)/100, irregular:irregular.has(id), archived:!!(c&&catIsArchived(c))};
   }).filter(r=>r.amount);
   const incomeTotal=dated?dated.income:weekIncome(d);
   const itemised=incomeRows.reduce((s,r)=>s+r.amount,0);
@@ -18592,7 +18715,7 @@ function wkrMoneyActuals(week, plan){
   const regularIncome=incomeRows.filter(r=>!r.irregular).reduce((s,r)=>s+r.amount,0);
   const irregularIncome=incomeRows.filter(r=>r.irregular).reduce((s,r)=>s+r.amount,0);
 
-  const saved=dated?0:weekSavedAmt(d);
+  const saved=dated?dated.savingsRecorded:weekSavedAmt(d);
   return {
     week, hasData:!!d||!!dated, periodMode:!!dated,
     incomeTotal, regularIncome, irregularIncome, incomeRows,
@@ -18601,7 +18724,7 @@ function wkrMoneyActuals(week, plan){
     fixed:parts.fixed, variable:parts.variable, spendTotal:parts.total,
     fromSnapshot:parts.fixedFromSnapshot||parts.variableFromSnapshot,
     quality:statsWeekSpendQuality(d,week),
-    saved, leftover:dated?Math.round((incomeTotal-parts.total)*100)/100:weekLeftover(d)
+    saved, leftover:dated?Math.round((incomeTotal-parts.total-saved)*100)/100:weekLeftover(d)
   };
 }
 // Planned side of the comparison, read from whichever plan applies to this review: a completed

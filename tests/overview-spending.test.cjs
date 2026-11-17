@@ -3,7 +3,8 @@ const {extract}=require('./harness.cjs');
 const plain=x=>JSON.parse(JSON.stringify(x));
 function fixture(extra={}){
   const c=vm.createContext({console,Date,Math,Number,Map,Set,JSON,
-    getLocalDate:()=> '2026-11-07',budgetData:{},ledgerData:[],txnData:[],
+    getLocalDate:()=> '2026-11-07',budgetData:{},ledgerData:[],txnData:[],budOvMoneyRange:{preset:'month',from:'',to:''},
+    lsLoad:(key,fallback)=>fallback,
     localMidnight:s=>new Date(s+'T00:00:00'),
     loadVarCats:()=>[{id:'food',name:'Food'},{id:'travel',name:'Transport'}],
     loadFixCats:()=>[{id:'gym',name:'Gym'}],loadIncCats:()=>[{id:'salary',name:'Salary'}],loadAccounts:()=>[],
@@ -17,7 +18,9 @@ function fixture(extra={}){
     statsSplit:cells=>cells.map(([l,v])=>'<span>'+l+' '+v+'</span>').join(''),
     ...extra});
   vm.runInContext(fs.readFileSync('js/finance-periods.js','utf8'),c);
-  ['budOvMonthWindow','budOvAmountValid','budOvDatedMoney','budOvSpendGroups','budOvMonthFacts','budOvTrendHtml',
+  ['budOvMonthWindow','budOvRangeWindow','budOvRangeChoose','budOvRangeApply','budOvRangeControls','budOvRangeDateLabel',
+    'budOvAmountValid','budOvExpenseAmountValid','budOvDatedMoney','budOvSpendGroups','budOvRangeFacts','budOvRangeEntries','budOvRangeRecordsHtml',
+    'budOvRangeSavingsHtml','budOvRangeDifferenceHtml','budOvRangeCoverageHtml','budOvRangeGroupsHtml','budOvRecordedHtml','budOvMonthFacts','budOvTrendHtml',
     'budOvMonthlyHtml','budOvActivityRows','budOvActivityHtml','budOvOpenActivity'].forEach(name=>vm.runInContext(extract(name),c));
   return c;
 }
@@ -77,7 +80,7 @@ test('missing history and invalid records never manufacture a trend or an empty 
   const empty=fixture(),f=empty.budOvMonthFacts();assert.equal(f.comparison.available,false);
   assert.match(empty.budOvMonthlyHtml(f),/>—</);assert.match(empty.budOvMonthlyHtml(f),/No dated activity/);
   assert.match(empty.budOvTrendHtml(f),/No dated spending to chart/);
-  const c=fixture({txnData:[expense('good','2026-11-07',20),expense('negative','2026-11-03',-5),
+  const c=fixture({txnData:[expense('good','2026-11-07',20),expense('zero','2026-11-03',0),
     expense('bad','2026-11-05','oops'),expense('date','2026-02-30',100),expense('huge','2026-11-02',1e308),expense('prior','2026-10-07',30)]});
   const data=c.budOvMonthFacts();assert.equal(data.current.total,20);assert.equal(data.current.invalid,4);
   assert.equal(data.comparison.available,false);assert.match(c.budOvMonthlyHtml(data),/Some records are excluded/);
@@ -127,4 +130,90 @@ test('activity details escape user text and only existing editable records open 
   click('a"b','purchase');click('manual','savings');click('imported','income');click('missing','purchase');
   assert.deepEqual(calls,[['purchase','a"b'],['ledger','manual']]);
   c.txnData[0].deletedAt=1;click('a"b','purchase');assert.equal(calls.length,2);
+});
+
+test('date presets use inclusive calendar dates and budget dates without altering the schedule',()=>{
+  const c=fixture();
+  assert.deepEqual(plain(c.budOvRangeWindow()),{start:'2026-11-01',end:'2026-11-07',label:'This month',preset:'month'});
+  assert.deepEqual(plain(c.budOvRangeWindow({preset:'last-month'},'2027-01-01')),{start:'2026-12-01',end:'2026-12-31',label:'Last month',preset:'last-month'});
+  assert.equal(c.budOvRangeWindow({preset:'last-month'},'2028-03-01').end,'2028-02-29');
+  assert.deepEqual(plain(c.budOvRangeWindow({preset:'30-days'})),{start:'2026-10-09',end:'2026-11-07',label:'Last 30 days',preset:'30-days'});
+  const original={id:'2026-10-30',start:'2026-10-30',end:'2026-11-12',days:14};
+  c.budPeriodCurrent=()=>original;
+  assert.deepEqual(plain(c.budOvRangeWindow({preset:'budget'})),{start:'2026-10-30',end:'2026-11-07',label:'Budget period to date',preset:'budget'});
+  assert.equal(original.end,'2026-11-12');
+  c.budPeriodCurrent=()=>({start:'2026-11-08',end:'2026-11-14'});
+  assert.equal(c.budOvRangeWindow({preset:'budget'}).preset,'month','future budgets cannot produce a reversed recorded range');
+  assert.match(c.budOvRangeControls(c.budOvRangeWindow()),/value="budget" disabled/);
+});
+
+test('undated income crossing a month boundary does not become an undated spending warning',()=>{
+  const c=fixture({budgetData:{'2026-10-26':{income:500}},txnData:[expense('now','2026-11-07',20),expense('old','2026-10-07',30)]});
+  const f=c.budOvMonthFacts();
+  assert.equal(f.comparison.available,true);assert.equal(f.comparison.difference,-10);assert.equal(f.undated,true);
+  assert.doesNotMatch(c.budOvMonthlyHtml(f),/Some weekly spending has no dates/);
+});
+
+test('custom recorded totals cross schedule and week boundaries, excluding undated figures and plans',()=>{
+  const c=fixture({budgetData:{'2026-10-26':{income:1000,spent:500}},
+    txnData:[expense('first','2026-10-30',20.01),expense('last','2026-11-07',10.02),expense('before','2026-10-29',900),expense('after','2026-11-08',800)],
+    ledgerData:[event('income','2026-10-30','income',100),event('bill','2026-11-07','bill_payment',5.03),event('saving','2026-11-02','savings',10),
+      event('transfer','2026-11-03','transfer',70),event('refund','2026-11-04','reimbursement',5)]});
+  c.budOvMoneyRange={preset:'custom',from:'2026-10-30',to:'2026-11-07'};
+  const before=JSON.stringify([c.txnData,c.ledgerData,c.budgetData]),f=c.budOvRangeFacts(c.budOvRangeWindow());
+  assert.equal(f.current.total,35.06);assert.equal(f.current.income,100);assert.equal(f.current.savingsRecorded,10);assert.equal(f.difference,64.94);
+  assert.equal(f.undated,true);assert.equal(c.budOvRangeEntries(f.range).length,7);
+  const html=c.budOvRecordedHtml();assert.match(html,/30 Oct 2026 – 7 Nov 2026 · inclusive/);assert.match(html,/Income less spending/);assert.match(html,/before separate reimbursements/);assert.match(html,/Some records are excluded/);
+  assert.doesNotMatch(html,/Cumulative spending|First .* vs/);
+  c.budPeriodCurrent=()=>({start:'2026-11-01',end:'2026-11-07'});
+  assert.equal(c.budOvRangeFacts(c.budOvRangeWindow()).current.total,35.06);
+  assert.equal(JSON.stringify([c.txnData,c.ledgerData,c.budgetData]),before);
+});
+
+test('a period with recorded spending and no income shows an honest difference without inventing pay or savings',()=>{
+  const c=fixture({txnData:[expense('purchase','2026-11-07',80)],ledgerSavingsMovement:()=>({contributions:30,withdrawals:50,net:-20,transfers:2})});
+  c.budOvMoneyRange={preset:'30-days'};
+  const f=c.budOvRangeFacts(c.budOvRangeWindow()),html=c.budOvRecordedHtml();
+  assert.equal(f.current.income,0);assert.equal(f.difference,-80);assert.equal(f.current.savingsRecorded,0);assert.equal(f.movement.net,-20);
+  assert.match(html,/Income received \$0/);assert.match(html,/Savings recorded \$0/);assert.match(html,/Net moved to savings[\s\S]*\$-20/);assert.match(html,/never added together/);
+  assert.doesNotMatch(html,/salary.*missing|income.*wrong|import.*salary/i);
+});
+
+test('date-filtered detail includes bank source references and counts a linked transfer once',()=>{
+  const c=fixture({txnData:[expense('purchase','2026-11-07',10,{merchant:'<shop>',source:{file:'<bank>.csv',row:9}})],
+    ledgerData:[event('transfer','2026-11-06','transfer',50,{fromAcctId:'cash',toAcctId:'save',accountMovementId:'posted'}),event('deleted','2026-11-07','income',500,{deletedAt:1})],
+    acctRecordedTransfers:()=>[event('posted','2026-11-06','transfer',50,{ledgerId:'transfer'}),event('other','2026-11-05','transfer',20)],
+    loadAccounts:()=>[{id:'cash',name:'Everyday'},{id:'save',name:'Savings'}]});
+  const range={start:'2026-11-01',end:'2026-11-07'},rows=c.budOvRangeEntries(range),html=c.budOvRangeRecordsHtml(range);
+  assert.deepEqual(plain(rows.map(r=>r.id)),['purchase','transfer','other']);
+  assert.match(html,/&lt;shop&gt;/);assert.match(html,/&lt;bank&gt;.csv · row 9/);assert.match(html,/Everyday → Savings/);assert.doesNotMatch(html,/<shop>|<bank>/);
+});
+
+test('reversed or future custom dates keep the applied range and financial records intact',()=>{
+  const nodes={'bov-range-from':{value:'2026-11-07'},'bov-range-to':{value:'2026-11-01'},'bov-range-error':{textContent:''},'bov-range-preset':{focus(){}}};
+  let renders=0,prevented=0;
+  const c=fixture({document:{getElementById:id=>nodes[id]},renderBudgetOverview:()=>renders++});
+  c.budOvMoneyRange={preset:'custom',from:'2026-11-01',to:'2026-11-07'};
+  const before=JSON.stringify(c.budOvMoneyRange),event={preventDefault(){prevented++;}};
+  c.budOvRangeApply(event);assert.equal(renders,0);assert.match(nodes['bov-range-error'].textContent,/start date/);assert.equal(JSON.stringify(c.budOvMoneyRange),before);
+  nodes['bov-range-from'].value='2026-11-01';nodes['bov-range-to'].value='2026-11-08';c.budOvRangeApply(event);assert.equal(renders,0);
+  nodes['bov-range-to'].value='2026-11-06';c.budOvRangeApply(event);assert.equal(renders,1);assert.equal(c.budOvMoneyRange.to,'2026-11-06');assert.equal(prevented,3);
+});
+
+test('expense refunds reconcile with budget net purchases and stay visible in categories and activity',()=>{
+  const c=fixture({txnData:[expense('buy','2026-11-01',100),expense('refund','2026-11-02',-20)],
+    ledgerData:[event('pay','2026-11-03','income',200),event('bill','2026-11-04','bill_payment',10),event('bad-income','2026-11-05','income',-100)]});
+  const m=c.budOvDatedMoney('2026-11-01','2026-11-07'),f=c.budOvMonthFacts();
+  assert.equal(m.spent,80);assert.equal(m.total,90);assert.equal(m.income,200);assert.equal(m.invalid,1);
+  assert.equal(c.budOvSpendGroups(m).reduce((sum,g)=>sum+g.amount,0),90);
+  assert.ok(c.budOvRangeEntries({start:'2026-11-01',end:'2026-11-07'}).some(r=>r.id==='refund'));
+  assert.ok(c.budOvActivityRows().some(r=>r.record.id==='refund'));
+  assert.equal(f.currentDaily[1],-20);assert.match(c.budOvMonthlyHtml(f),/Purchases include recorded expense refunds/);
+});
+
+test('refund-only spending charts remain visible with a negative axis and finite coordinates',()=>{
+  const c=fixture({txnData:[expense('refund','2026-11-01',-20)]});
+  const f=c.budOvMonthFacts(),html=c.budOvTrendHtml(f),groups=c.budOvRangeGroupsHtml(f.groups,f.current.total);
+  assert.equal(f.current.total,-20);assert.match(html,/bov-trend-current/);assert.match(html,/\$-20/);assert.doesNotMatch(html,/NaN|Infinity|No dated spending/);
+  assert.match(groups,/width:100%/);assert.doesNotMatch(groups,/width:-/);
 });

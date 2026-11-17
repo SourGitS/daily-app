@@ -1,5 +1,11 @@
 # Daily — Agent Handoff
 
+## v463 Finance overview and history — release authorised, 2026-11-18
+
+- Finance Overview leads with Your money: Spent, Income and Income minus spending for one selected date range. Savings transfers show no entries as unknown, with manually logged savings kept separate. Daily spending bars support date selection, keyboard navigation and a running-total view. Categories and source activity use the same dates; selecting another range clears a chart-day activity filter. Budget planning is a compact, collapsed section below actual activity. Explanations are behind About these figures. No record readers or writers were replaced.
+- Previous-budget navigation respects an immediately closed period without detaching its saved plan or rollover. Weekly leftover derives from current component readers rather than an obsolete snapshot. Weekly Review retains dated savings and identifiable income sources. Zero recorded income no longer implies a missing salary. Income-only legacy overlap no longer incorrectly blocks the spending comparison.
+- Francois approved publishing this Finance pass for testing in his installed iPhone app. Cache daily-v463 includes `js/finance-overview.js`. The isolated release passed all 841 Node checks and 16 Chrome/WebKit cases at 320, 390, 1024 and 1440px in both themes. Another 12 touch/date-field checks covered 320, 390 and 844px landscape, including chart selection and no financial writes. The offline shell check verified retiring v462 and caching the new Finance code. Synthetic test records only; physical iPhone testing remains pending. No live finance records were edited. Unrelated Accounts export and Home working edits are excluded from this release. Private snapshot previews, source comparisons and review suggestions remain in ignored `temp-analysis/` and must never be included in a release.
+
 ## v462 optional Home Planner card — 2026-11-17
 
 - Home → Customise → Show Planner adds a neutral card above Customise in the selected phone or desktop layout. Fresh, existing and reset layouts start with Planner hidden. Enabling it preserves the positions of the other cards.

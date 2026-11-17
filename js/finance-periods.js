@@ -61,13 +61,20 @@ function budPeriodRangeAt(store,date){
     if(special&&date>=special.start&&date<=special.end)return special;
     return budPeriodRange(t.config,date,0);
   }
-  return budPeriodRange(store?.config,date,0);
+  const range=budPeriodRange(store?.config,date,0);if(!range)return null;
+  const savedEnd=store?.periods?.[range.id]?.closedEnd;
+  let end=budDateValid(savedEnd)&&savedEnd>=range.start&&savedEnd<range.end?savedEnd:range.end;
+  if(t&&budDateValid(t.effectiveFrom)&&range.start<t.effectiveFrom&&end>=t.effectiveFrom)end=budDateAdd(t.effectiveFrom,-1);
+  // Keep the saved plan's original key: shortening its dates must not detach notes,
+  // allocations or rollovers, or make Previous budget include the new period's payments.
+  return end<range.end?{...range,end,days:budDateDays(range.start,end)+1}:range;
 }
 function budPeriodAdjacent(store,range,direction){
   const target=direction>0?budDateAdd(range.end,1):budDateAdd(range.start,-1);
   const next=budPeriodRangeAt(store,target),config=budPeriodConfigAt(store,target);
   if(config?.frequency==='custom'&&next&&(target<next.start||target>next.end)){
-    return budPeriodRange(config,target,Math.floor(budDateDays(config.anchor,target)/next.days));
+    const full=budPeriodRange(config,target,0);
+    return budPeriodRange(config,target,Math.floor(budDateDays(config.anchor,target)/full.days));
   }
   return next;
 }
@@ -144,7 +151,7 @@ function budPeriodCompute(range,record,events,expenses,periods,legacy){
     funded:budMoneyRound(funded),known,available:incomplete||allocationReview||(!funded&&!r.fundingConfirmed)?null:known,incomplete,allocationReview,
     legacyIncome:legacy?.income||0,legacySpent:undatedSpent};
 }
-function budPeriodLegacy(range,weeks){
+function budPeriodLegacy(range,weeks,{spendingOnly=false}={}){
   let income=0,spent=0,incomplete=false,allocationReview=false;
   Object.entries(weeks||budgetData||{}).forEach(([start,w])=>{
     if(!budDateValid(start))return;
@@ -154,7 +161,7 @@ function budPeriodLegacy(range,weeks){
     const datedSpend=txnData.filter(x=>x.date>=start&&x.date<=end).reduce((s,x)=>s+(Number(x.amount)||0),0);
     const oldIncome=Math.max(0,weekIncome(w)-datedIncome),oldSpend=Math.max(0,weekVarTotal(w,start)-datedSpend);
     if(start>=range.start&&end<=range.end){income+=oldIncome;spent+=oldSpend;}
-    else if(oldIncome>.005||oldSpend>.005)incomplete=true;
+    else if(oldSpend>.005||(!spendingOnly&&oldIncome>.005))incomplete=true;
     // Fixed totals may be weekly accruals, not dated payments: retain them in weekly history.
   });
   return {income:budMoneyRound(income),spent:budMoneyRound(spent),incomplete,...(allocationReview?{allocationReview:true}:{})};
