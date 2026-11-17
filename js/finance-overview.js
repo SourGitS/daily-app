@@ -154,5 +154,5 @@ function budMoneyOverviewHtml(m){
     budMoneySavingsHtml(f)+'<div class="money-breakdown"><div id="bud-money-chart" class="money-chart">'+budMoneyChartHtml(f)+'</div>'+budMoneyGroupsHtml(f)+'</div>'+
     '<details id="money-totals-info" class="money-totals-info"><summary>About these figures</summary><div><p>Spent includes dated purchases, expense refunds and paid bills. Income is money recorded as received. Income − spending is the difference for these dates.</p><p>Savings transfers and savings logged manually are separate records. Budget allowances, account balances and separate reimbursements are excluded from spending. Undated weekly totals stay in Weekly history.</p>'+
     '<div class="money-total-components"><span>Purchases '+fmtMoneyExact(money.spent)+'</span><span>Bills paid '+fmtMoneyExact(money.billPaid)+'</span><span>Savings logged '+fmtMoneyExact(money.savingsRecorded)+'</span></div></div></details></section>'+
-    '<div id="bud-money-activity">'+budMoneyActivityHtml(f)+'</div>'+budMoneyBudgetHtml(m)+'</div>';
+    '<div id="bud-money-activity">'+budMoneyActivityHtml(f)+'</div></div>';
 }

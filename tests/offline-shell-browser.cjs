@@ -4,6 +4,7 @@ const fs=require('node:fs'),http=require('node:http'),path=require('node:path');
 const {chromium}=require('playwright');
 const root=path.join(__dirname,'..');
 const cacheVersion=fs.readFileSync(path.join(root,'service-worker.js'),'utf8').match(/const CACHE_NAME = '([^']+)'/)[1];
+const previousVersion=cacheVersion.replace(/\d+$/,version=>String(Number(version)-1));
 const pageHTML='<title>Daily offline fixture</title><h1>Daily offline fixture</h1>';
 
 (async()=>{
@@ -37,16 +38,16 @@ const pageHTML='<title>Daily offline fixture</title><h1>Daily offline fixture</h
     });
     const p=await ctx.newPage();await p.goto(base);
     const weather='https://api.open-meteo.com/v1/forecast?latitude=1&longitude=2';
-    const previousShell=await p.evaluate(async weather=>{
+    const previousShell=await p.evaluate(async({weather,previousVersion})=>{
       const legacy=await caches.open('daily-v451'),other=await caches.open('sibling-fixture');
       await legacy.put(new URL('js/app.js',location.href),new Response('old Daily'));
       await legacy.put(weather,new Response('old weather'));
       await other.put(new URL('/sibling/icon.png',location.href),new Response('sibling'));
-      const previous='daily-shell:'+encodeURIComponent(new URL('./',location.href).href)+':daily-v462';
+      const previous='daily-shell:'+encodeURIComponent(new URL('./',location.href).href)+':'+previousVersion;
       await (await caches.open(previous)).put(new URL('js/app.js',location.href),new Response('previous installed shell'));
       await navigator.serviceWorker.register('service-worker.js');
       return previous;
-    },weather);
+    },{weather,previousVersion});
     await p.waitForFunction(()=>!!navigator.serviceWorker.controller,null,{timeout:20000});
     const names=await p.evaluate(()=>caches.keys());
     assert.ok(names.includes('sibling-fixture'));assert.ok(!names.includes('daily-v451'));

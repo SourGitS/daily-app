@@ -14973,8 +14973,10 @@ function renderBudgetOverview(){
   const key=weekKey(monday);
   const period=typeof budPeriodMoney==='function'?budPeriodMoney():null;
   const m=period?budPeriodOverviewMoney(period):Object.assign({monday, key}, budWeekMoney(budCurrentWeekBasis(), key));
-  // Recorded activity owns the overview; budget allocations retain their own dated section.
-  wrap.innerHTML=budMoneyOverviewHtml(m)+
+  // Keep the familiar budget hero; the dated Your money card is additional reporting below it.
+  const f=period?budPeriodForecast(period):payCycleForecast(m.available, m.week);
+  wrap.innerHTML=budOvHeroHtml(m)+
+    '<div class="bov-attention">'+budOvAttentionHtml(m,f)+'</div>'+budMoneyOverviewHtml(m)+
     '<section id="bov-bills" class="card bov-bills" aria-labelledby="bov-bills-title">'+budOvBillsHtml()+'</section>';
 }
 

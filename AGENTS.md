@@ -1,5 +1,11 @@
 # Daily — Agent Handoff
 
+## v464 Finance hero restored — correction authorised, 2026-11-18
+
+- Francois intended Your money to be an additional card under the existing Finance hero. Restore the original hero and Needs attention section at the top, retain Your money below, and remove the duplicate collapsed Budget section after Activity. Keep the new card's current design for later refinement. Do not replace the hero in future design passes without an explicit request.
+- This corrects the published v463 layout. No financial records, calculations or source imports change in this correction. Cache daily-v464; private data and unrelated local work stay excluded from publication.
+- The isolated release passed all 841 Node checks. `tests/finance-hero-restoration-browser.cjs` passed 20 Chrome/WebKit cases at 320, 390, 844 landscape, 1024 and 1440px in both themes, comparing the hero directly with v462 and checking date independence, actions, cancellation and no financial writes. The offline check passed the v463-to-v464 upgrade. Physical iPhone acceptance remains with Francois.
+
 ## v463 Finance overview and history — release authorised, 2026-11-18
 
 - Finance Overview leads with Your money: Spent, Income and Income minus spending for one selected date range. Savings transfers show no entries as unknown, with manually logged savings kept separate. Daily spending bars support date selection, keyboard navigation and a running-total view. Categories and source activity use the same dates; selecting another range clears a chart-day activity filter. Budget planning is a compact, collapsed section below actual activity. Explanations are behind About these figures. No record readers or writers were replaced.
