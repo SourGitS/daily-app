@@ -464,7 +464,8 @@
 // v464: restore the Finance budget hero above the additional Your money card.
 // v465: refreshed visual update pages for Finance, Home and Planner.
 // v466: imported-content safety, conflict recovery, reliable AI actions and retained budget history.
-const CACHE_NAME = 'daily-v466';
+// v467: explicit TV mode with remote focus navigation and sofa-readable controls.
+const CACHE_NAME = 'daily-v467';
 importScripts('./js/notification-storage.js');
 importScripts('./js/cache-scope.js');
 
@@ -483,6 +484,8 @@ const ASSETS = [
   './js/journal-planner.js',
   './css/shared-add.css',
   './js/shared-add.js',
+  './css/tv-navigation.css',
+  './js/tv-navigation.js',
   './css/nutrition-modals.css',
   './css/budget-home.css',
   './css/kitchen-extras.css',

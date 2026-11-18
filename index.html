@@ -50,6 +50,7 @@
 <link rel="stylesheet" href="css/journal-planner.css">
 <link rel="stylesheet" href="css/shared-add.css">
 <link rel="stylesheet" href="css/daily-ai-assistant.css">
+<link rel="stylesheet" href="css/tv-navigation.css">
 </head>
 <body>
 <div id="app">
@@ -90,6 +91,12 @@
   </header>
 
   <main id="app-main">
+  <div id="daily-tv-bar" hidden role="navigation" aria-label="TV navigation">
+    <span class="tv-mode-label">TV mode</span>
+    <button id="daily-tv-back" type="button">Back</button>
+    <p id="daily-tv-hint" aria-live="polite">Arrows to move · OK to choose</p>
+    <button id="daily-tv-exit" type="button">Exit TV mode</button>
+  </div>
 
     <!-- Swipe deck: the five bottom-nav views page horizontally. Log stays central. -->
     <div id="swipe-deck">
@@ -1537,6 +1544,7 @@
 <script src="js/planner-tasks.js" defer></script>
 <script src="js/journal-planner.js" defer></script>
 <script src="js/shared-add.js" defer></script>
+<script src="js/tv-navigation.js" defer></script>
 <script src="js/app.js" defer></script>
 </body>
 </html>

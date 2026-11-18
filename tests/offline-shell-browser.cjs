@@ -54,13 +54,19 @@ const pageHTML='<title>Daily offline fixture</title><h1>Daily offline fixture</h
     assert.ok(!names.includes(previousShell),'the previous installed shell is retired');
     assert.ok(names.some(name=>name.startsWith('daily-shell:')&&name.endsWith(cacheVersion)));
     assert.equal(await p.evaluate(async()=>!!await caches.match(new URL('js/finance-overview.js',location.href))),true,'the Finance overview is included in the offline shell');
+    for(const file of ['js/tv-navigation.js','css/tv-navigation.css']){
+      assert.equal(await p.evaluate(async file=>!!await caches.match(new URL(file,location.href)),file),true,file+' is included in the offline shell');
+    }
     const readForecast=()=>p.evaluate(async url=>(await fetch(url)).text(),weather);
     assert.equal(await readForecast(),'19');forecast=31;assert.equal(await readForecast(),'31');
     forecast=null;await assert.rejects(readForecast);
     assert.equal(await p.evaluate(async url=>!!await caches.match(url),weather),false);
     online=false;
     assert.equal(await p.evaluate(async()=>(await fetch('js/finance-overview.js')).text()),'fixture','the new Finance code remains available offline');
-    for(const suffix of ['?new-link=1','index.html?another=1']){
+    for(const file of ['js/tv-navigation.js','css/tv-navigation.css']){
+      assert.equal(await p.evaluate(async file=>(await fetch(file)).text(),file),'fixture',file+' remains available offline');
+    }
+    for(const suffix of ['?new-link=1','index.html?another=1','?tv=1']){
       const response=await p.goto(base+suffix);
       assert.ok(response.fromServiceWorker());
       assert.equal(await p.title(),'Daily offline fixture');
