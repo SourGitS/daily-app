@@ -102,11 +102,15 @@ function syncProfileToFirebase(){
   if(r) r.transaction(old=>({...profileData,budgetRhythmSeen:Math.max(Number(old&&old.budgetRhythmSeen)||0,Number(profileData.budgetRhythmSeen)||0),homeCustomiseSeen:Math.max(Number(old&&old.homeCustomiseSeen)||0,Number(profileData.homeCustomiseSeen)||0),foodCatalogueSeen:Math.max(Number(old&&old.foodCatalogueSeen)||0,Number(profileData.foodCatalogueSeen)||0),foodCatalogueStarter:Math.max(Number(old&&old.foodCatalogueStarter)||0,Number(profileData.foodCatalogueStarter)||0)}));
 }
 function syncPersonalInfoToFirebase(){ if(_bootPhase||_syncApplying) return; const r=fbRef('personalInfo'); if(r) r.set(S.personalInfo); }
-function syncBudDefaultsToFirebase(){ if(_bootPhase||_syncApplying) return; const r=fbRef('budgetDefaults'); if(r) r.set(budDefaults); }
+function syncBudDefaultsToFirebase(){
+  if(typeof dailyAtomicDefer==='function'&&dailyAtomicDefer('budget-defaults',()=>syncBudDefaultsToFirebase()))return;
+  if(_bootPhase||_syncApplying)return;const r=fbRef('budgetDefaults');if(r)r.set(budDefaults);
+}
 // When the caller knows which week changed, write ONLY that week's node — a device
 // holding a stale copy of other weeks then can't clobber them, whatever it does.
 // Without a named week, each known week still compares its own revision at the server.
 function syncBudgetDataToFirebase(changedKey){
+  if(typeof dailyAtomicDefer==='function'&&dailyAtomicDefer('budget:'+String(changedKey||'*'),()=>syncBudgetDataToFirebase(changedKey)))return;
   const r=fbRef('budgetData'); if(!r) return;
   if(changedKey && budgetData[changedKey]){
     const sent=JSON.stringify(budgetData[changedKey]),uid=auth.currentUser.uid;
@@ -166,20 +170,27 @@ function mergeBudgetWeeks(localData, cloudData){
 // ── Generic blob sync (Realtime Database) for simple localStorage keys ──
 // Stores the raw localStorage string under users/<uid>/<path>. Used for data added
 // after the original sync was built (budget categories, credit card, weight log).
-function syncBlobPush(path, lsKey, confirmSame){
+function syncBlobPush(path, lsKey, confirmSame, tsKey){
+  if(typeof dailyAtomicDefer==='function'&&dailyAtomicDefer('blob:'+path,()=>syncBlobPush(path,lsKey,confirmSame,tsKey)))return;
   if(_bootPhase || _syncApplying) return;
   const r=fbRef(path); if(!r) return;
   setSyncStatus('Syncing…');
   // {v,t} envelope so the receiving device can compare ages. Reading side still accepts a
   // bare value for anything written by an older build (treated as age 0, i.e. beatable).
-  const t=parseInt(localStorage.getItem(lsKey+'_ts')||'0',10)||0;
-  const aiUid=auth&&auth.currentUser&&auth.currentUser.uid;
+  const t=parseInt(localStorage.getItem(tsKey||lsKey+'_ts')||'0',10)||0,sent=localStorage.getItem(lsKey);
+  const aiUid=auth&&auth.currentUser&&auth.currentUser.uid,scope=localStorage.scope;
   const aiSeq=typeof dailyAICloudStart==='function'?dailyAICloudStart(aiUid,path):0;
-  const ordinaryFinance=typeof dailyFinancePaths!=='undefined'&&dailyFinancePaths[path]&&dailyFinanceUsesDefault();
-  const saving=ordinaryFinance?dailyFinanceCommit(aiUid,path,r,confirmSame):syncBlobCommit(r,localStorage.getItem(lsKey),t,confirmSame);
-  saving
-    .then(result=>{setSyncStatus('Synced ✓');if(typeof dailyAICloudResult==='function')dailyAICloudResult(aiUid,path,result,null,aiSeq);})
-    .catch(error=>{setSyncStatus('Sync failed');if(typeof dailyAICloudResult==='function')dailyAICloudResult(aiUid,path,null,error,aiSeq);});
+  const ordinaryFinance=typeof dailyFinancePaths!=='undefined'&&dailyFinancePaths[path]&&dailyFinanceUsesDefault(path);
+  const saving=ordinaryFinance?dailyFinanceCommit(aiUid,path,r,confirmSame):syncBlobCommit(r,sent,t,confirmSame);
+  return saving
+    .then(result=>{
+      if(auth?.currentUser?.uid!==aiUid||localStorage.scope!==scope)return result;
+      const accepted=ordinaryFinance||typeof dailyBlobReceipt!=='function'||dailyBlobReceipt(path,lsKey,sent,t,result);
+      setSyncStatus(accepted?'Synced ✓':'Sync needs review');
+      if(typeof dailyAICloudResult==='function')dailyAICloudResult(aiUid,path,result,accepted?null:Error('A newer cloud version was kept; the local change is retained for recovery.'),aiSeq);
+      return result;
+    })
+    .catch(error=>{if(auth?.currentUser?.uid!==aiUid||localStorage.scope!==scope)return;setSyncStatus('Sync failed');if(typeof dailyAICloudResult==='function')dailyAICloudResult(aiUid,path,null,error,aiSeq);});
 }
 // Compare against the server at commit time, not an earlier snapshot. A delayed/offline
 // upload must not replace a newer edit, and timestamp 0 must stay 0.
@@ -218,15 +229,18 @@ function syncBlobListen(uid, path, lsKey, onUpdate){
 function lsSaveTS(key, value, tsKey, syncPath){
   // Same boot rule as lsSave: a migration or default written during init must not outrank a
   // real edit sitting in the cloud.
-  const now=(_bootPhase || _syncApplying) ? (parseInt(localStorage.getItem(tsKey)||'0',10)||0) : Date.now();
+  const previous=localStorage.getItem(key),previousT=localStorage.getItem(tsKey);
+  const prior=parseInt(previousT||'0',10)||0,now=(_bootPhase || _syncApplying)?prior:Math.max(Date.now(),prior+1);
   try{
     localStorage.setItem(key, typeof value==='string'?value:JSON.stringify(value));
     localStorage.setItem(tsKey, String(now));
-  }catch(e){ console.warn('localStorage save failed for '+key, e); return; }
-  if(!_bootPhase && !_syncApplying && syncPath && firebaseReady && auth && auth.currentUser && db){
-    syncBlobCommit(db.ref('users/'+auth.currentUser.uid+'/'+syncPath),localStorage.getItem(key),now)
-      .catch(()=>setSyncStatus('Sync failed'));
+    if(!_bootPhase&&!_syncApplying&&syncPath&&typeof dailyBlobRecord==='function')dailyBlobRecord(syncPath,key,tsKey,now);
+  }catch(e){
+    try{if(previous===null)localStorage.removeItem(key);else localStorage.setItem(key,previous);if(previousT===null)localStorage.removeItem(tsKey);else localStorage.setItem(tsKey,previousT);}catch(rollback){}
+    console.warn('localStorage save failed for '+key,e);return false;
   }
+  if(syncPath){try{syncBlobPush(syncPath,key,undefined,tsKey);}catch(e){setSyncStatus('Sync failed');}}
+  return true;
 }
 // Every blob store that has registered a listener this session, as {path, lsKey, tsKey}.
 // Built here rather than kept as a second hardcoded list because the two would drift: a new
@@ -238,7 +252,7 @@ function syncBlobListenTS(uid, path, lsKey, tsKey, onUpdate, legacy){
     const remote=dailyRemoteListen(uid,path,lsKey,tsKey,onUpdate);if(remote)return remote;
   }
   const ref=db.ref('users/'+uid+'/'+path);
-  if(typeof dailyFinancePaths!=='undefined'&&dailyFinancePaths[path]&&dailyFinanceUsesDefault()){
+  if(typeof dailyFinancePaths!=='undefined'&&dailyFinancePaths[path]&&dailyFinanceUsesDefault(path)){
     return dailyFinanceListen(uid,path,ref,onUpdate);
   }
   const localT=()=>parseInt(localStorage.getItem(tsKey)||'0',10)||0;
@@ -265,8 +279,10 @@ function syncBlobListenTS(uid, path, lsKey, tsKey, onUpdate, legacy){
     }
     if(localStorage.getItem(lsKey)===cloudV){
       localStorage.setItem(tsKey,String(cloudT));
+      if(typeof dailyBlobAcknowledge==='function')dailyBlobAcknowledge(lsKey,cloudV,cloudT);
       return;
     }
+    if(typeof dailyBlobBeforeReceive==='function'&&!dailyBlobBeforeReceive(path,lsKey,cloudV,cloudT))return;
     localStorage.setItem(lsKey, cloudV);
     localStorage.setItem(tsKey, String(cloudT));
     _syncApplying++;
@@ -341,10 +357,11 @@ function syncDetachAll(){
 }
 function setSyncStatus(txt){
   const conflict=typeof dailyFinanceConflicts!=='undefined'&&dailyFinanceConflicts.size>0;
+  const recovery=typeof dailyBlobRecoveryKeys==='function'&&dailyBlobRecoveryKeys().length>0;
   const review=document.getElementById('finance-sync-review');
-  if(review)review.hidden=!conflict;
+  if(review){review.hidden=!conflict&&!recovery;review.textContent=recovery?'Review saved changes':'Review financial sync conflict';}
   const el=document.getElementById('sync-status');
-  if(el)el.textContent=conflict&&/^(Synced|Syncing|Sync failed)/.test(txt)?'Financial sync needs review':txt;
+  if(el)el.textContent=(conflict||recovery)&&/^(Synced|Syncing|Sync failed)/.test(txt)?(conflict?'Financial sync needs review':'Sync needs review'):txt;
 }
 
 // ── Generic localStorage load/save ────────────────────────────────
@@ -373,17 +390,23 @@ function lsLoad(key, fallback, validate){
 let _bootPhase = true;
 let _syncApplying = 0;
 function stampFor(key){
-  if(!_bootPhase && !_syncApplying) return Date.now();
+  if(!_bootPhase && !_syncApplying) return Math.max(Date.now(),(parseInt(localStorage.getItem(key+'_ts')||'0',10)||0)+1);
   return parseInt(localStorage.getItem(key+'_ts')||'0',10)||0;
 }
 function lsSave(key, value, syncPath){
+  const previous=localStorage.getItem(key),previousT=localStorage.getItem(key+'_ts');
   try{
     localStorage.setItem(key, typeof value==='string'?value:JSON.stringify(value));
     // Stamp every save so the sync listener can tell a real edit from an untouched default.
     // Without this the cloud copy carried no age and any device could claim to be newest.
     localStorage.setItem(key+'_ts', String(stampFor(key)));
-  }catch(e){ console.warn('localStorage save failed for '+key, e); return; }
+    if(!_bootPhase&&!_syncApplying&&syncPath&&typeof dailyBlobRecord==='function')dailyBlobRecord(syncPath,key,key+'_ts',Number(localStorage.getItem(key+'_ts'))||0);
+  }catch(e){
+    try{if(previous===null)localStorage.removeItem(key);else localStorage.setItem(key,previous);if(previousT===null)localStorage.removeItem(key+'_ts');else localStorage.setItem(key+'_ts',previousT);}catch(rollback){}
+    console.warn('localStorage save failed for '+key,e);return false;
+  }
   if(syncPath){ try{ if(typeof syncBlobPush==='function') syncBlobPush(syncPath, key); }catch(e){} }
+  return true;
 }
 
 // ── Toasts & haptics ──────────────────────────────────────────────
@@ -721,7 +744,12 @@ if(firebaseReady){
     db.ref('users/'+user.uid+'/accounts').once('value').then(snap=>{
       if(snap.exists() && localStorage.getItem('daily_accounts_migrated')==='1'){
         const v=snap.val();
-        if(v!=null && v!==''){ localStorage.setItem('daily_accounts', v); _acctRerender(); }
+        if(v!=null && v!==''){
+          localStorage.setItem('daily_accounts',JSON.stringify(dailyRemoteRows(v)));
+          localStorage.setItem('daily_accounts_ts',String(Number(v?.t)||0));
+          if(typeof dailyFinanceView==='function')dailyFinanceView('accounts',dailyRemoteRows(v));
+          _acctRerender();
+        }
       }
       localStorage.removeItem('daily_accounts_migrated'); // reconciled: cloud adopted, or ours will seed the cloud
       _acctListen();
@@ -1442,12 +1470,6 @@ function lastSessionOf(typeName){
     if(S.sessions[i].sessionType===typeName) return S.sessions[i];
   return null;
 }
-function hintWeight(session, exName, setIdx){
-  if(!session) return '';
-  const ex = (session.exercises||[]).find(e=>e.name===exName);
-  if(!ex||!ex.sets||!ex.sets[setIdx]) return '';
-  return ex.sets[setIdx].weight||'';
-}
 function fmtDate(iso){
   const d = new Date(iso+'T12:00:00');
   return d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
@@ -1749,13 +1771,6 @@ const WEATHER_ACCENTS={
 // The scene the accent should follow. Prefers a real reading; with no location yet it uses
 // the same clock-based sky the card itself falls back to, so the colour still tracks
 // day/night rather than freezing on a default.
-function currentWeatherScene(){
-  try{
-    const c=loadWeatherCache();
-    if(c) return weatherScene(c.code,c);   // display scene: what the CARD is showing
-  }catch(e){}
-  return (typeof weatherPlaceholderScene==='function') ? weatherPlaceholderScene() : 'clear-day';
-}
 // The scene the APPEARANCE may follow, which is a stricter question than what the card shows.
 // The built-in Sydney sample used to pass straight through here, so a user who had never
 // granted location had their whole app coloured by a city they have never been to — and a
@@ -1804,7 +1819,7 @@ function renderAccentModeRow(){
   const row=document.getElementById('accent-mode-row'); if(!row) return;
   const cur=accentMode();
   row.innerHTML=ACCENT_MODES.map(m=>
-    '<button type="button" class="accent-mode-btn'+(m===cur?' on':'')+'" onclick="setAccentMode(\''+m+'\')">'+
+    '<button type="button" class="accent-mode-btn'+(m===cur?' on':'')+'" onclick="setAccentMode('+escAttr(JSON.stringify(m))+')">'+
       ACCENT_MODE_LABELS[m].label+'</button>').join('');
   const d=document.getElementById('accent-mode-desc');
   if(d){
@@ -1836,7 +1851,7 @@ function renderDayColorPickers(){
       '<div class="accent-preset-row">'+
         ACCENT_PRESETS.map(p=>
           '<button class="accent-preset'+(accentMode()==='static'&&p.hex.toLowerCase()===curLc?' active':'')+'" '+
-            'onclick="setStaticAccent(\''+p.hex+'\');renderDayColorPickers()" aria-label="'+p.name+' accent">'+
+            'onclick="setStaticAccent('+escAttr(JSON.stringify(p.hex))+');renderDayColorPickers()" aria-label="'+p.name+' accent">'+
             '<span class="accent-preset-dot" style="background:'+p.hex+'"></span>'+
             '<span class="accent-preset-name">'+p.name+'</span>'+
           '</button>').join('')+
@@ -1856,8 +1871,8 @@ function renderDayColorPickers(){
         (favs.length
           ? '<div class="fav-list">'+favs.filter(h=>/^#[0-9a-fA-F]{6}$/.test(h)).map(hex=>
               '<div class="fav-row">'+
-                '<button class="fav-del" onclick="removeAccentFavourite(\''+hex+'\')" aria-label="Delete favourite '+hex+'">'+FAV_TRASH_SVG+'</button>'+
-                '<div class="fav-face" role="button" tabindex="0" onclick="favRowActivate(this,\''+hex+'\')" aria-label="Use '+hex+' as accent">'+
+                '<button class="fav-del" onclick="removeAccentFavourite('+escAttr(JSON.stringify(hex))+')" aria-label="Delete favourite '+hex+'">'+FAV_TRASH_SVG+'</button>'+
+                '<div class="fav-face" role="button" tabindex="0" onclick="favRowActivate(this,'+escAttr(JSON.stringify(hex))+')" aria-label="Use '+hex+' as accent">'+
                   '<span class="fav-dot" style="background:'+hex+'"></span>'+
                   '<span class="fav-hex">'+hex.toUpperCase()+'</span>'+
                   (accentMode()==='static'&&hex.toLowerCase()===curLc?'<span class="fav-inuse">In use</span>':'')+
@@ -1879,7 +1894,7 @@ function renderDayColorPickers(){
     const cur=String(m[r.key]||m[REST_COLOR_KEY]||DEFAULT_ACCENT).toLowerCase();
     const sw=DAY_COLOR_PRESETS.map(hex=>
       '<button class="dc-swatch'+(hex.toLowerCase()===cur?' active':'')+'" style="background:'+hex+'" '+
-        'onclick="setDayColorEnc(\''+encodeURIComponent(r.key)+'\',\''+hex+'\')" aria-label="'+hex+'"></button>'
+        'onclick="setDayColorEnc('+escAttr(JSON.stringify(encodeURIComponent(r.key)))+','+escAttr(JSON.stringify(hex))+')" aria-label="'+hex+'"></button>'
     ).join('');
     return '<div class="dc-row"><div class="dc-row-name">'+String(r.label).replace(/</g,'&lt;')+'</div>'+
       '<div class="dc-swatches">'+sw+'</div></div>';
@@ -2051,11 +2066,6 @@ function favRowActivate(el,hex){
 })();
 
 // ── Timer ─────────────────────────────────────────────────────────
-function fmtTimer(ms){
-  const s=Math.floor(ms/1000), m=Math.floor(s/60), h=Math.floor(m/60);
-  const mm=String(m%60).padStart(2,'0'), ss=String(s%60).padStart(2,'0');
-  return h>0?`${h}:${mm}:${ss}`:`${m}:${ss}`;
-}
 function getDurationMins(){ return S.sessionStart ? Math.round((Date.now()-S.sessionStart)/60000) : 0; }
 function fmtDuration(mins){
   if(!mins) return '';
@@ -2073,9 +2083,9 @@ function rtUpdateSessionLabels(){
   const action=document.querySelector('#log-day-hero .ldh-action');
   if(action) action.hidden=!!S.sessionStart;
   const bar=document.getElementById('rt-bar-session');
-  if(bar) bar.textContent=txt;
+  rtWriteClock(bar,txt);
   const fs=document.getElementById('rt-fs-session');
-  if(fs) fs.textContent='Session '+txt;
+  rtWriteClock(fs,'Session '+txt);
   // Same ~per-second interval drives the lap button's live duration, so the current lap time
   // is visible on the button without opening the fullscreen timer.
   if(typeof updateLapFabText==='function') updateLapFabText();
@@ -2091,6 +2101,29 @@ let rtRunning = false;
 let rtInterval = null;
 let rtLaps = [];
 let rtUiInterval = null;  // 1s refresh for the session label while on the Log tab
+let rtIntervalDelay=0,rtUiWanted=false;
+function rtClockVisible(el){
+  if(el?.id&&!el.id.startsWith('rt-fs-')){
+    const full=document.getElementById('rt-fullscreen');
+    if(S.view!=='log'||(full&&!full.classList.contains('hidden')))return false;
+  }
+  return !!(el&&!document.hidden&&el.getClientRects().length&&getComputedStyle(el).visibility!=='hidden');
+}
+function rtWriteClock(el,text){
+  if(rtClockVisible(el)&&el.textContent!==text)el.textContent=text;
+}
+function rtSyncRefresh(){
+  const visible=id=>rtClockVisible(document.getElementById(id));
+  const full=visible('rt-fs-time');
+  const delay=rtRunning?(full?100:(visible('rt-bar-time')||visible('lap-fab-lap')?1000:0)):0;
+  if(delay!==rtIntervalDelay){
+    if(rtInterval)clearInterval(rtInterval);
+    rtIntervalDelay=delay;rtInterval=delay?setInterval(rtTick,delay):null;
+  }
+  const session=!!S.sessionStart&&(rtUiWanted||full)&&(visible('rt-fs-session')||visible('rt-bar-session')||visible('lap-fab-session'));
+  if(session&&!rtUiInterval)rtUiInterval=setInterval(rtUpdateSessionLabels,1000);
+  else if(!session&&rtUiInterval){clearInterval(rtUiInterval);rtUiInterval=null;}
+}
 
 function rtFormat(ms){
   const s=Math.floor(ms/1000), min=Math.floor(s/60), sec=s%60, tenth=Math.floor((ms%1000)/100);
@@ -2100,10 +2133,9 @@ function rtGetElapsed(){ if(!rtRunning) return rtOffset; return rtOffset+(Date.n
 function rtStart(){
   rtStartTime=Date.now(); rtRunning=true;
   if(!S.sessionStart){ S.sessionStart=Date.now(); rtStartUi(); } // first Start also starts the session
-  if(rtInterval) clearInterval(rtInterval);
-  rtInterval=setInterval(rtTick,47);
   rtUpdateControls();
   updateLapFab();
+  rtUpdateDisplay(rtGetElapsed());
 }
 function startWorkout(){
   if(S.sessionStart) return;
@@ -2129,9 +2161,9 @@ function rtPause(){
   if(!rtRunning) return;
   rtOffset+=Date.now()-rtStartTime;
   rtRunning=false;
-  clearInterval(rtInterval); rtInterval=null;
   rtUpdateControls();
   updateLapFab();
+  rtUpdateDisplay(rtGetElapsed());
 }
 function rtToggle(){ rtRunning ? rtPause() : rtStart(); }
 function rtRestControlHTML(){
@@ -2155,13 +2187,13 @@ function renderTimerCard(){
       '<button type="button" id="lt-toggle" class="lt-toggle'+(rtRunning?' running':'')+'" onclick="rtToggle();rtUpdateDisplay(rtGetElapsed());rtUpdateSessionLabels()">'+rtRestControlHTML()+
       '</button>'+
     '</div>';
+  rtSyncRefresh();
 }
-function rtTick(){ rtUpdateDisplay(rtGetElapsed()); }
+function rtTick(){rtSyncRefresh();rtUpdateDisplay(rtGetElapsed());}
 
 function rtUpdateDisplay(ms){
-  const txt=rtFormat(ms);
-  const bar=document.getElementById('rt-bar-time'); if(bar) bar.textContent=lapFabClock(ms);
-  const fs=document.getElementById('rt-fs-time'); if(fs) fs.textContent=txt;
+  rtWriteClock(document.getElementById('rt-bar-time'),lapFabClock(ms));
+  rtWriteClock(document.getElementById('rt-fs-time'),rtFormat(ms));
 }
 function rtUpdateControls(){
   const inline=document.getElementById('lt-toggle');
@@ -2202,9 +2234,9 @@ function lapFabClock(ms){ const s=Math.floor(ms/1000); return Math.floor(s/60)+'
 function updateLapFabText(){
   // Pill shows two live clocks: session elapsed (left) and the current lap/rest split (right).
   const sEl=document.getElementById('lap-fab-session');
-  if(sEl) sEl.textContent=sessionFormat(sessionGetElapsed());
+  rtWriteClock(sEl,sessionFormat(sessionGetElapsed()));
   const lEl=document.getElementById('lap-fab-lap');
-  if(lEl) lEl.textContent=lapFabClock(rtGetElapsed());
+  rtWriteClock(lEl,lapFabClock(rtGetElapsed()));
 }
 function updateLapFab(){
   const f=document.getElementById('lap-fab'); if(!f) return;
@@ -2214,6 +2246,7 @@ function updateLapFab(){
   const fsOpen=fs && !fs.classList.contains('hidden');
   f.style.display=(rtRunning && S.view==='log' && logSubTab==='today' && logTodayView==='session' && !fsOpen) ? 'flex' : 'none';
   updateLapFabText(); // show the current lap time immediately when the button appears
+  rtSyncRefresh();
 }
 // Sync all timer UI to current state (called when entering the Log tab).
 function rtInitDisplay(){
@@ -2233,13 +2266,15 @@ function rtCloseFullscreen(){
   const fs=document.getElementById('rt-fullscreen');
   if(fs) fs.classList.add('hidden');
   updateLapFab(); // restore the pill once fullscreen is dismissed
+  rtInitDisplay();
 }
-function rtStartUi(){ if(rtUiInterval) return; rtUiInterval=setInterval(rtUpdateSessionLabels,500); }
-function rtStopUi(){ if(rtUiInterval){ clearInterval(rtUiInterval); rtUiInterval=null; } }
+function rtStartUi(){rtUiWanted=true;rtSyncRefresh();rtUpdateSessionLabels();}
+function rtStopUi(){rtUiWanted=false;rtSyncRefresh();}
 
 // Recompute on return to foreground: setInterval is throttled while hidden, so
 // snap the display back to the true timestamp-derived elapsed.
 document.addEventListener('visibilitychange',()=>{
+  rtSyncRefresh();
   if(document.hidden) return;
   if(rtRunning) rtUpdateDisplay(rtGetElapsed());
   rtUpdateSessionLabels();
@@ -2831,16 +2866,16 @@ function navBuildHtml(){
   // the one block that exists to be always reachable. The small section labels are orientation,
   // not controls: they make the quick destinations and the detailed tree read as two levels.
   const quick='<div class="nv-quick"><div class="nv-section-label nv-quick-label">Favourites</div>'+NAV_QUICK.map(q=>
-    '<button type="button" class="nv-qrow" data-nav-quick="'+q.id+'">'+
+    '<button type="button" class="nv-qrow" data-nav-quick="'+escAttr(q.id)+'">'+
       '<svg class="nv-qico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '+
         'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+q.icon+'</svg>'+
       '<span>'+q.label+'</span></button>').join('')+'</div>';
   return quick+'<div class="nv-groups"><div class="nv-section-label nv-groups-label">All areas</div>'+NAV_TREE.map(g=>
-    '<div class="nv-group" data-nav-group="'+g.id+'">'+
-      '<button type="button" class="nv-hd" data-nav-group-hd="'+g.id+'" aria-expanded="false">'+
+    '<div class="nv-group" data-nav-group="'+escAttr(g.id)+'">'+
+      '<button type="button" class="nv-hd" data-nav-group-hd="'+escAttr(g.id)+'" aria-expanded="false">'+
         '<span>'+g.label+'</span>'+caret+'</button>'+
       '<div class="nv-rows">'+g.rows.map(r=>
-        '<button type="button" class="nv-row" data-nav-row="'+r.id+'">'+r.label+'</button>'
+        '<button type="button" class="nv-row" data-nav-row="'+escAttr(r.id)+'">'+r.label+'</button>'
       ).join('')+'</div>'+
     '</div>').join('')+'</div>';
 }
@@ -3640,7 +3675,6 @@ function exerciseUnit(ex){
   if(ex && ex.unit) return ex.unit;
   return (ex && _secsNames.has(ex.name)) ? 'secs' : 'reps';
 }
-function isTimedExercise(ex){ return exerciseUnit(ex)==='secs'; }
 // Formats a set's second field for display: "45s" for a hold, plain count for reps.
 function fmtSetAmount(v,unit){
   const n=parseFloat(v);
@@ -4174,7 +4208,7 @@ function statsDeltaChip(delta,unit,invert){
 // on top of two chart cards — accent means "press this", not "this is a chart header".
 function statsSeg(group,options,active,fn){
   return '<div class="stats-seg" role="group">'+options.map(o=>
-    '<button type="button" id="'+group+'-'+o[0]+'" class="'+(active===o[0]?'on':'')+'" aria-pressed="'+(active===o[0]?'true':'false')+'" onclick="'+fn+'(\''+o[0]+'\')">'+o[1]+'</button>').join('')+'</div>';
+    '<button type="button" id="'+group+'-'+o[0]+'" class="'+(active===o[0]?'on':'')+'" aria-pressed="'+(active===o[0]?'true':'false')+'" onclick="'+fn+'('+escAttr(JSON.stringify(o[0]))+')">'+o[1]+'</button>').join('')+'</div>';
 }
 // One figure + its unit + a caption, in the shared card vocabulary.
 function statsFigure(value,unit,caption,small){
@@ -4326,7 +4360,7 @@ function openFinanceCategoryEvidence(key){
       const explicit=d['fix_'+c.id];
       detail=explicit!==undefined&&explicit!==''?'Saved weekly field · '+fmtMoneyExact(explicit):'Frozen weekly rate · '+fmtMoneyExact(w.val);
     }else detail='Legacy aggregate only; category-level source metadata was not stored.';
-    return '<button class="stats-source-row" onclick="closeStatsEvidence();openBudgetWeekFromStats(\''+w.key+'\')"><div class="stats-source-top"><span>Week of '+fmtDate(w.key)+(w.label?' · '+_catEscHtml(w.label):'')+'</span><span>'+fmtMoneyExact(w.val)+'</span></div><div class="stats-source-meta">'+detail+'</div><div class="stats-review-link">Open source week →</div></button>';
+    return '<button class="stats-source-row" onclick="closeStatsEvidence();openBudgetWeekFromStats('+escAttr(JSON.stringify(w.key))+')"><div class="stats-source-top"><span>Week of '+fmtDate(w.key)+(w.label?' · '+_catEscHtml(w.label):'')+'</span><span>'+fmtMoneyExact(w.val)+'</span></div><div class="stats-source-meta">'+detail+'</div><div class="stats-review-link">Open source week →</div></button>';
   }).join('');
   const sourceRule=c.kind==='Variable'
     ? 'Variable category. Transactions govern whenever one or more matching records exist.'
@@ -4338,22 +4372,6 @@ function openFinanceCategoryEvidence(key){
       (c.pctLabel?' · '+_catEscHtml(c.pctLabel)+' of variable spending':'')+'<br>'
     : '';
   openStatsEvidence(c.label+' · spend evidence','<div class="stats-data-note">'+period+sourceRule+'</div><div class="stats-source-list">'+rows+'</div>');
-}
-function monthRegisterOtherEvidence(periodKey,periodLabel,cats,total){
-  const key=statsEvidenceKey('month-other|'+periodKey,'mo');
-  _monthOtherEvidence[key]={periodLabel,cats,total};
-  return key;
-}
-function openMonthOtherEvidence(key){
-  const group=_monthOtherEvidence[key]; if(!group) return;
-  const rows=(group.cats||[]).map(c=>
-    '<button class="stats-source-row" onclick="openMonthSpendCategory(\''+c.evidenceKey+'\',\''+_catEsc(c.id)+'\')">'+
-      '<div class="stats-source-top"><span>'+_catEscHtml(c.label)+'</span><span>'+fmtMoneyExact(c.val)+'</span></div>'+
-      '<div class="stats-source-meta">'+_catEscHtml(c.pctLabel)+' of variable spending · open weekly source records</div>'+
-    '</button>').join('');
-  openStatsEvidence('Other spending · '+group.periodLabel,
-    '<div class="stats-data-note">The donut groups these smaller categories only to keep its slices readable. Every amount remains separate in the ranked list.</div>'+
-    '<div class="stats-source-list">'+rows+'</div>');
 }
 function openNetWorthEvidence(date){
   const rows=accounts.filter(a=>a).map(a=>{
@@ -4950,54 +4968,6 @@ function getWeekBounds(){
   const sunday=new Date(monday); sunday.setDate(monday.getDate()+6);
   return {mondayStr, sundayStr:dateStr(sunday)};
 }
-function renderWeekReviewCard(){
-  const {mondayStr,sundayStr}=getWeekBounds();
-  const isSunday=localMidnight(getLocalDate()).getDay()===0;
-  const weekBudget=budgetData[mondayStr];
-  if(!isSunday&&!(weekBudget&&weekBudget.saved)) return '';
-
-  const workoutDays=new Set(
-    S.sessions.filter(s=>s.date>=mondayStr&&s.date<=sundayStr).map(s=>s.date)
-  ).size;
-
-  let leftoverLine='';
-  if(weekBudget){
-    const inc=weekIncome(weekBudget);
-    const leftover=inc>0?weekLeftover(weekBudget):null;
-    if(leftover!==null){
-      const chip = leftover>=50 ? tstat('pos','On track','check',true)
-        : leftover>=0 ? tstat('warn','Tight','flat',true)
-        : tstat('neg','Over','alert',true);
-      leftoverLine='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)"><span style="font-size:13px;color:var(--muted)">Budget</span><span style="display:flex;align-items:center;gap:7px"><span style="font-size:13px;font-weight:600;color:var(--text)">'+(leftover>=0?'+$':'-$')+Math.abs(leftover).toFixed(0)+'</span>'+chip+'</span></div>';
-    }
-  }
-
-  let calLine='';
-  const cg=calcGoalCals();
-  const goalCals=cg?(cg.goal==='cut'?cg.cut:cg.goal==='bulk'?cg.bulk:cg.maintain):null;
-  if(goalCals){
-    const ns=typeof nutDaySummary==='function'?nutDaySummary(getLocalDate()):null;
-    const calTotal=ns&&ns.calories!=null?ns.calories:S.dailyLog.entries.reduce((a,e)=>a+e.kcal,0);
-    calLine='<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border)"><span style="font-size:13px;color:var(--muted)">Today\'s cals</span><span style="font-size:13px;font-weight:600">'+(ns&&ns.status==='partial'?calTotal+' known + '+ns.unknown+' unknown':calTotal+' / '+goalCals+' kcal')+'</span></div>';
-  }
-
-  let weightLine='';
-  const weekWeights=S.weights.filter(w=>w.date>=mondayStr&&w.date<=sundayStr).sort((a,b)=>a.date<b.date?-1:1);
-  if(weekWeights.length>=2){
-    const chg=+(weekWeights[weekWeights.length-1].weight-weekWeights[0].weight).toFixed(1);
-    const goal=(calcGoalCals()||{}).goal;
-    const helpful=goal==='cut'?chg<0:goal==='bulk'?chg>0:false;
-    const col=chg===0||goal==='maintain'?'var(--muted)':helpful?'var(--success)':'var(--danger)';
-    weightLine='<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border)"><span style="font-size:13px;color:var(--muted)">Weight</span><span style="font-size:13px;font-weight:600;color:'+col+'">'+(chg>0?'+':'')+chg+'kg this week</span></div>';
-  }
-
-  return '<div class="card">'
-    +'<div class="sec-label" style="margin-bottom:10px">🗓️ Week in review</div>'
-    +'<div style="display:flex;justify-content:space-between;padding:6px 0"><span style="font-size:13px;color:var(--muted)">Workouts</span><span style="font-size:13px;font-weight:600">'+workoutDays+' / 6 days</span></div>'
-    +leftoverLine+calLine+weightLine
-    +'<button onclick="openWeekReviewModal()" style="width:100%;margin-top:12px;padding:10px;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-weight:600;color:var(--text);cursor:pointer">View full review</button>'
-    +'</div>';
-}
 // Shared week-review body — used by the wr-modal popup AND inline by Stats > Overview.
 function buildWeekReviewHTML(){
   const {mondayStr,sundayStr}=getWeekBounds();
@@ -5200,17 +5170,6 @@ function renderHistory(){
   list.innerHTML = S.sessions.map((s,i)=>s?logHistoryCardHTML(s,i):'').reverse().join('');
 }
 
-function toggleExpand(id, btn){
-  const el = document.getElementById(id);
-  if(!el) return;
-  const open = el.style.display === 'block';
-  el.style.display = open ? 'none' : 'block';
-  if(btn){
-    const label = btn.textContent.includes('sets') ? (open?'Show sets ▾':'Hide sets ▴')
-                                                     : (open?'Notes ▾':'Notes ▴');
-    btn.textContent = label;
-  }
-}
 
 function deleteSession(id){
   if(!confirm('Delete this session?')) return;
@@ -5289,7 +5248,7 @@ function showPostSaveEffortPrompt(sessionId){
     '<div class="psw-card">'+
       '<div class="psw-title">💪 How did that session feel?</div>'+
       '<div class="psw-row">'+
-        EFFORT_LEVELS.map(l=>'<button class="effort-btn" onclick="setSessionEffort(\''+sessionId+'\',\''+l.id+'\')">'+l.emoji+' '+l.label+'</button>').join('')+
+        EFFORT_LEVELS.map(l=>'<button class="effort-btn" onclick="setSessionEffort('+escAttr(JSON.stringify(sessionId))+','+escAttr(JSON.stringify(l.id))+')">'+l.emoji+' '+l.label+'</button>').join('')+
       '</div>'+
       '<button class="psw-skip" style="width:100%;margin-top:8px;padding:8px 0" onclick="dismissPostSaveEffort()">Skip</button>'+
     '</div>';
@@ -5346,7 +5305,7 @@ function renderWeightSection(){
             <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
               <span style="font-size:13px;color:var(--muted)">${fmtDate(w.date)}</span>
               <span style="font-size:14px;font-weight:600">${w.weight}kg</span>
-              <button class="weight-entry-delete" onclick="deleteWeight('${w.date}')" aria-label="Delete weigh-in from ${fmtDate(w.date)}">✕</button>
+              <button class="weight-entry-delete" onclick="deleteWeight(${escAttr(JSON.stringify(w.date))})" aria-label="Delete weigh-in from ${fmtDate(w.date)}">✕</button>
             </div>`).join('')}
         </div>` :
         // Not emptyState(): its 40px emoji is card chrome, which cannot follow the theme or
@@ -5577,7 +5536,7 @@ function renderBodyInsight(){
       (a.pace&&a.rateReady?'<div class="stats-goal-row">'+statsChip(a.pace.onPace?'good':'warn',a.pace.label)+
         '<span>Expected '+a.pace.expected.toFixed(1)+' kg by '+fmtDate(a.cur.date)+' on a straight path to the target date</span></div>':'')+
       '<div class="stats-evidence-row"><span>Measured rate</span><strong>'+rate+'</strong></div>'+
-      '<button class="stats-inline-link" style="margin-top:12px" onclick="openWeightEvidence(\''+a.cur.date+'\')">See the latest check-in &rarr;</button>';
+      '<button class="stats-inline-link" style="margin-top:12px" onclick="openWeightEvidence('+escAttr(JSON.stringify(a.cur.date))+')">See the latest check-in &rarr;</button>';
   }
   goalWrap.innerHTML='<div class="card">'+goalHead+goalHtml+'</div>';
 }
@@ -5769,7 +5728,7 @@ function renderMuscleBalance(){
     '<div class="card-shape">'+rows.map(m=>{
       const pct=Math.round(counts[m]/max*100);
       const label=m.charAt(0).toUpperCase()+m.slice(1);
-      return '<button type="button" class="stats-muscle-row" data-muscle="'+escAttr(m)+'" onclick="openMuscleEvidence(this.dataset.muscle,\''+cutoffStr+'\')"><div class="muscle-bar-row">'+
+      return '<button type="button" class="stats-muscle-row" data-muscle="'+escAttr(m)+'" onclick="openMuscleEvidence(this.dataset.muscle,'+escAttr(JSON.stringify(cutoffStr))+')"><div class="muscle-bar-row">'+
         '<div class="muscle-bar-label">'+escText(label)+'</div>'+
         '<div class="muscle-bar-track"><div class="muscle-bar-fill" style="width:'+pct+'%;background:var(--accent)"></div></div>'+
         '<div class="muscle-bar-count">'+counts[m]+'</div>'+
@@ -5827,7 +5786,7 @@ function renderWeeklyGrid(targetId){
       const styleAttr=styles.length?` style="${styles.join(';')}"`:'';
       if(saved){
         const label=fmtDate(ds)+': '+saved.count+' saved session'+(saved.count===1?'':'s')+(saved.names.length?' · '+saved.names.join(', '):'');
-        html+=`<button type="button" class="day-cell has-session${isToday}"${styleAttr} aria-label="${_catEsc(label)}" title="${_catEsc(label)}" onclick="openWorkoutDayFromStats('${ds}')"><span aria-hidden="true">✓</span></button>`;
+        html+=`<button type="button" class="day-cell has-session${isToday}"${styleAttr} aria-label="${_catEsc(label)}" title="${_catEsc(label)}" onclick="openWorkoutDayFromStats(${escAttr(JSON.stringify(ds))})"><span aria-hidden="true">✓</span></button>`;
       }else{
         html+=`<div class="day-cell${isToday}"${styleAttr} aria-label="${_catEsc(fmtDate(ds)+(cellDate>today?': future day':': no saved session'))}"></div>`;
       }
@@ -6297,6 +6256,7 @@ const SETTINGS_SECTIONS={
   }
 };
 function settingsOpen(key,anchor){
+  if(key==='training'&&anchor==='exercises'){ logGoto('exercises'); return; }
   if(key==='health'&&(anchor==='stg-card-weight'||anchor==='stg-card-weightgoal')){ openLogWeight(anchor==='stg-card-weightgoal'?'goal':'weight'); return; }
   const s=SETTINGS_SECTIONS[key];
   if(s&&s.open) s.open(anchor);
@@ -6327,7 +6287,7 @@ const SETTINGS_SEARCH=[
   {s:'training',label:'Training days',      sub:'Log \u203a Splits', keys:'split rotation push pull legs day names schedule programme program'},
   {s:'training',label:'Exercises per day',  sub:'Log \u203a Splits', keys:'add remove swap movement lift library order'},
   {s:'training',label:'Saved splits',     sub:'Log \u203a Splits', keys:'plan plans program switch snapshot save split preset'},
-  {s:'training',label:'Exercise Library',   sub:'Log \u203a Exercises', keys:'exercise library custom movement muscle group hidden'},
+  {s:'training',label:'Exercise Library',   sub:'Log \u203a Exercises', a:'exercises', keys:'exercise library custom movement muscle group hidden'},
   {s:'budget',  label:'Income sources',     sub:'Categories', keys:'pay wage salary money in earnings'},
   {s:'budget',  label:'Fixed expenses',     sub:'Categories', keys:'rent bills subscriptions recurring monthly direct debit'},
   {s:'budget',  label:'Variable spending',  sub:'Categories', keys:'groceries fuel spending weekly categories'},
@@ -6436,7 +6396,7 @@ function settingsNavRow(key){
   if(key==='account') sum=(firebaseReady&&auth&&auth.currentUser)?'Connected':'This device only';
   const on=stgSplit()&&_activeSettingsKey===key;
   return '<button class="stg-nav-row'+(on?' active':'')+'" type="button" data-stg-key="'+key+'"'+
-    (on?' aria-current="page"':'')+' onclick="settingsOpen(\''+key+'\')">'+
+    (on?' aria-current="page"':'')+' onclick="settingsOpen('+escAttr(JSON.stringify(key))+')">'+
     '<span class="stg-nav-icon">'+stgIcon(s.icon)+'</span>'+
     '<span class="stg-nav-txt"><span class="stg-nav-label">'+s.label+'</span>'+
       (sum?'<span class="stg-nav-sum">'+escText(sum)+'</span>':'')+'</span>'+
@@ -6477,7 +6437,7 @@ function settingsOverviewHtml(){
   const rows=SETTINGS_OVERVIEW_KEYS.map(function(k){
     const s=SETTINGS_SECTIONS[k]; if(!s) return '';
     let sum=''; try{ sum=s.summary?(s.summary()||''):''; }catch(e){ sum=''; }
-    return '<button class="stg-row stg-row-btn" type="button" onclick="settingsOpen(\''+k+'\')">'+
+    return '<button class="stg-row stg-row-btn" type="button" onclick="settingsOpen('+escAttr(JSON.stringify(k))+')">'+
       '<span class="stg-row-txt"><span class="stg-row-label">'+escText(s.label)+'</span></span>'+
       '<span class="stg-row-val">'+escText(sum||'Not set up')+'</span>'+STG_ROW_CHEV+
     '</button>';
@@ -6488,7 +6448,7 @@ function settingsOverviewHtml(){
       '<div class="stg-sub">Quick actions</div>'+
       '<div class="stg-actions stack">'+
         SETTINGS_OVERVIEW_ACTIONS.map(function(a){
-          return '<button class="stg-btn" type="button" onclick="settingsOpen(\''+a.s+'\')">'+escText(a.label)+'</button>';
+          return '<button class="stg-btn" type="button" onclick="settingsOpen('+escAttr(JSON.stringify(a.s))+')">'+escText(a.label)+'</button>';
         }).join('')+
       '</div>'+
     '</div>';
@@ -7273,7 +7233,7 @@ function exportAllData(){
     // expanded, and the sidebar it belongs to only exists on a laptop; daily_budget_ui is
     // which spending breakdown the Budget week is showing. None mean anything on another
     // device.
-    if(key && (/^(daily_weather_cache|daily_weather_forecast_mobile|daily_planner_period|daily_planner_guest_tasks|daily_pantry_ui|daily_nav_ui|daily_budget_ui|daily_finance_pending_|daily_finance_seen_)/.test(key)||key.endsWith('_restore_ts'))) continue;
+    if(key && (/^(daily_weather_cache|daily_weather_forecast_mobile|daily_planner_period|daily_planner_guest_tasks|daily_pantry_ui|daily_nav_ui|daily_budget_ui|daily_finance_pending_|daily_finance_seen_|daily_blob_pending_)/.test(key)||key.endsWith('_restore_ts'))) continue;
     if(key && /^(daily_|wt_|kitchen_)/.test(key)) data[key]=localStorage.getItem(key);
   }
   const backup={ app:'daily', version:1, exported:new Date().toISOString(), data };
@@ -8831,7 +8791,7 @@ function aiHubReadyHtml(){
       '<div class="aih-option-label">Preview format</div>'+
       '<div class="aih-fmt" role="group" aria-label="Preview format">'+
         ['markdown','json'].map(f=>'<button class="aih-fmt-btn'+(aiHubState.previewFormat===f?' on':'')+
-          '" aria-pressed="'+(aiHubState.previewFormat===f?'true':'false')+'" onclick="aiHubSetFormat(\''+f+'\')">'+(f==='json'?'JSON':'Markdown')+'</button>').join('')+'</div>'+
+          '" aria-pressed="'+(aiHubState.previewFormat===f?'true':'false')+'" onclick="aiHubSetFormat('+escAttr(JSON.stringify(f))+')">'+(f==='json'?'JSON':'Markdown')+'</button>').join('')+'</div>'+
       '<button class="aih-preview-toggle" onclick="aiHubTogglePreview()" aria-expanded="'+(aiHubState.previewOpen?'true':'false')+'">'+
         (aiHubState.previewOpen?'Hide':'Show')+' full raw preview</button>'+
       (aiHubState.previewOpen?'<pre class="aih-preview">'+esc(d.text)+'</pre>':'')+
@@ -9113,7 +9073,7 @@ function aiValSubscription(d,id){
       if(acct.rec) item.paymentAccountId=acct.rec.id;
       if(meta&&meta.aiActionId){ item.aiActionId=meta.aiActionId; item.aiSource=meta.aiSource||''; }
       cats.push(item);
-      BUD_CAT_SAVE.fix(cats);
+      if(BUD_CAT_SAVE.fix(cats)===false)throw Error('The subscription could not be saved on this device.');
       if(typeof refreshCatBudgetUI==='function') refreshCatBudgetUI();
       return {kind:'subscription'};
     }};
@@ -9209,7 +9169,7 @@ function aiValRecipe(d,id){
       const rec=Object.assign({id:kitUUID(),favourite:false,lastCooked:null,createdAt:Date.now()}, r);
       if(meta&&meta.aiActionId){ rec.aiActionId=meta.aiActionId; rec.aiSource=meta.aiSource||''; }
       kitRecipes.push(rec);
-      kitSaveRecipes();
+      if(kitSaveRecipes()===false)throw Error('The recipe could not be saved on this device.');
       return {kind:'recipe'};
     }};
 }
@@ -9416,6 +9376,7 @@ function aiValIncome(d,id){
   const date=aiActStr(d.date);
   if(!date) return {ok:false, error:'Income needs a "date" — the date the money actually landed.'};
   if(!aiActValidDate(date)) return {ok:false, error:'"'+date.slice(0,20)+'" is not a real date — use YYYY-MM-DD.'};
+  if(date>getLocalDate()) return {ok:false,error:'Income must already have arrived. Choose its actual received date through today; future pay is not received income.'};
   const streams=activeCats(loadIncCats());
   const stream=aiResolveRef(streams, d.streamId||d.incomeStreamId, d.streamName||d.incomeStreamName, c=>catLabel(c));
   if(!stream.ok) return {ok:false, error:'Income stream — '+stream.reason+'. Live streams: '+
@@ -9699,11 +9660,11 @@ function aiValBalanceSnapshot(d,id){
       const list=loadAccounts();
       const a=list.find(x=>x&&String(x.id)===String(acc.rec.id));
       if(!a) throw new Error('That account no longer exists.');
-      const undo={accountId:a.id, date:date, hadEntry:false, previous:null, prevCurrent:a.current};
+      const undo={accountId:a.id, date:date, hadEntry:false, previous:null, previousHistory:aiUndoCopy(a.history), prevCurrent:a.current};
       if(writesHistory){
         const h=(Array.isArray(a.history)?a.history:[]).filter(e=>e&&e.date);
         const prev=h.find(e=>e.date===date);
-        if(prev){ undo.hadEntry=true; undo.previous={date:prev.date, balance:prev.balance}; }
+        if(prev){ undo.hadEntry=true; undo.previous=aiUndoCopy(prev); }
         const kept=h.filter(e=>e.date!==date);
         kept.push({date:date, balance:bal, kind:kind});
         kept.sort((x,y)=>x.date<y.date?-1:1);
@@ -9842,7 +9803,7 @@ function aiValIncomeStream(d,id){
       const item={id:genCatId('inc'), name:name};
       if(meta&&meta.aiActionId){ item.aiActionId=meta.aiActionId; item.aiSource=meta.aiSource||''; }
       cats.push(item);
-      BUD_CAT_SAVE.inc(cats);
+      if(BUD_CAT_SAVE.inc(cats)===false)throw Error('The income stream could not be saved on this device.');
       if(typeof refreshCatBudgetUI==='function') refreshCatBudgetUI();
       return {kind:'income stream'};
     }};
@@ -9864,7 +9825,7 @@ function aiValExpenseCategory(d,id){
       const item={id:genCatId('var'), name:name};
       if(meta&&meta.aiActionId){ item.aiActionId=meta.aiActionId; item.aiSource=meta.aiSource||''; }
       cats.push(item);
-      BUD_CAT_SAVE.var(cats);
+      if(BUD_CAT_SAVE.var(cats)===false)throw Error('The expense category could not be saved on this device.');
       if(typeof refreshCatBudgetUI==='function') refreshCatBudgetUI();
       return {kind:'expense category'};
     }};
@@ -9902,6 +9863,7 @@ function previewDailyActions(parsed){
     // Sharing one amber style between the two would make twenty routine salary rows look like
     // twenty problems.
     row.info=res.info||'';
+    row.review=aiActionReview(res);
     if(res.already){ row.state='already'; row.note=res.already; rows.push(row); return; }
     const existing=(res.collection()||[]).some(res.dupKey);
     row.state=existing?'already':'new';
@@ -9953,10 +9915,76 @@ function aiActBatchSpan(actions){
 // ── apply ────────────────────────────────────────────────────────
 // Re-validates immediately before writing (the store can have changed since the preview was
 // built) and only then writes. Returns {applied, skipped, undo}.
+function aiActionReview(result){
+  return JSON.stringify([result.summary||'',result.conflict||'',!!result.requiresConfirmation,
+    loadAccounts().map(a=>[a.id,a.name,a.type,!!a.archivedAt]),
+    [loadIncCats(),loadFixCats(),loadVarCats()].map(list=>list.map(c=>[c.id,catLabel(c),!!c.archived,!!c.archivedAt]))]);
+}
+function aiUndoCopy(value){return value===undefined?undefined:JSON.parse(JSON.stringify(value));}
+function aiActionMemory(){
+  return {txnData:aiUndoCopy(txnData),ledgerData:aiUndoCopy(ledgerData),budgetData:aiUndoCopy(budgetData),accounts:aiUndoCopy(accounts),budDefaults:aiUndoCopy(budDefaults),kitRecipes:aiUndoCopy(kitRecipes),kitShopManual:aiUndoCopy(kitShopManual),kitShopChecked:aiUndoCopy(kitShopChecked)};
+}
+function aiActionMemoryRestore(memory){
+  txnData=memory.txnData;ledgerData=memory.ledgerData;budgetData=memory.budgetData;accounts=memory.accounts;budDefaults=memory.budDefaults;kitRecipes=memory.kitRecipes;kitShopManual=memory.kitShopManual;kitShopChecked=memory.kitShopChecked;
+}
+function aiUndoGuardCapture(item){
+  const id=item.id,u=item.undo||{},guard={transactions:aiUndoCopy(txnData.filter(r=>r.aiActionId===id)),ledger:aiUndoCopy(ledgerData.filter(r=>r.aiActionId===id))};
+  guard.recipes=aiUndoCopy(kitRecipes.filter(r=>r.aiActionId===id));
+  guard.shopping=aiUndoCopy(kitShopManual.filter(r=>r.aiActionId===id));
+  if(item.type==='add_income'&&u.week&&u.mode!=='record_only')guard.income={week:u.week,field:u.field,value:budgetData[u.week]?.[u.field]};
+  if(item.type==='add_balance_snapshot'&&u.balance)guard.account=aiUndoCopy(loadAccounts().find(a=>String(a.id)===String(u.accountId)));
+  if(item.type==='update_expense')guard.correction=aiUndoCopy(txnData.find(r=>String(r.id)===String(u.expenseId)));
+  guard.categories=[['fix',loadFixCats()],['inc',loadIncCats()],['var',loadVarCats()]].flatMap(([type,list])=>list.filter(c=>c.aiActionId===id||c.aiArchiveActiveActionId===id).map(c=>({type,record:aiUndoCopy(c)})));
+  return guard;
+}
+function aiUndoGuardSafe(item,ids){
+  const guard=item.guard;if(!guard)return false;
+  const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+  for(const [name,rows]of [['transactions',txnData],['ledger',ledgerData]]){
+    const current=rows.filter(r=>r.aiActionId===item.id);
+    if(!equal(current,guard[name]||[]))return false;
+  }
+  if(!equal(kitRecipes.filter(r=>r.aiActionId===item.id),guard.recipes||[])||!equal(kitShopManual.filter(r=>r.aiActionId===item.id),guard.shopping||[]))return false;
+  if((guard.transactions||[]).some(t=>ledgerData.some(r=>r.expenseId===t.id&&!ids.includes(r.aiActionId))))return false;
+  if(guard.income&&budgetData[guard.income.week]?.[guard.income.field]!==guard.income.value)return false;
+  if(guard.account&&!equal(loadAccounts().find(a=>String(a.id)===String(guard.account.id)),guard.account))return false;
+  if(guard.correction&&!equal(txnData.find(r=>r.id===guard.correction.id),guard.correction))return false;
+  for(const {type,record}of guard.categories||[]){
+    const list=type==='fix'?loadFixCats():type==='inc'?loadIncCats():loadVarCats();
+    if(!equal(list.find(c=>c.id===record.id),record))return false;
+    if(record.aiActionId===item.id){
+      const referenced=type==='inc'?ledgerData.some(r=>r.streamId===record.id&&!ids.includes(r.aiActionId)):
+        type==='var'?txnData.some(r=>r.catId===record.id&&!ids.includes(r.aiActionId)):
+        ledgerData.some(r=>r.fixCatId===record.id&&!ids.includes(r.aiActionId));
+      const weekly=Object.values(budgetData||{}).some(w=>Object.prototype.hasOwnProperty.call(w,type+'_'+record.id)||type==='fix'&&Object.prototype.hasOwnProperty.call(w.fixRates||{},record.id));
+      const periods=type==='fix'&&Object.values(typeof budCyclesLoad==='function'?budCyclesLoad().periods||{}:{}).some(p=>Object.prototype.hasOwnProperty.call(p.reserves||{},record.id));
+      if(referenced||weekly||periods)return false;
+    }
+  }
+  return true;
+}
 function applyDailyActions(rows, source){
   const applied=[], skipped=[], failed=[];
+  // Confirm the whole selected preview before the first write. Changes made by this batch
+  // may then be re-resolved without mistaking them for an unseen edit from another device.
+  for(const row of rows||[]){
+    if(row.state!=='new'||typeof row.apply!=='function')continue;
+    let unchanged=false;
+    try{
+      const fresh=validateDailyAction(row.action);
+      if(fresh.ok&&(fresh.already||(fresh.collection()||[]).some(fresh.dupKey)))continue;
+      unchanged=fresh.ok&&(row.review?row.review===aiActionReview(fresh):
+        row.summary===fresh.summary&&(row.conflict||'')===(fresh.conflict||'')&&!!row.requiresConfirmation===!!fresh.requiresConfirmation);
+    }catch{/* A failed recheck cannot authorize a write. */}
+    if(!unchanged){
+      row.state='error';row.error='The records changed since this preview. Check the pasted actions again before applying.';
+      failed.push({id:row.id,type:row.type,error:row.error});
+    }
+  }
+  if(failed.length)return {applied,skipped:rows||[],failed};
   (rows||[]).forEach(row=>{
     if(row.state!=='new'||typeof row.apply!=='function'){ skipped.push(row); return; }
+    let memory;
     try{
       // Re-resolve names, ids and current values at the last possible moment. A Firebase sync
       // can legitimately change a category or setting while the preview is open.
@@ -9966,18 +9994,21 @@ function applyDailyActions(rows, source){
         row.state='already'; row.note=fresh.already||'Already applied earlier — it will not be added twice.';
         skipped.push(row); return;
       }
-      const out=fresh.apply({aiActionId:row.id, aiSource:source||''});
+      memory=aiActionMemory();
+      if(typeof dailyAtomicLocalChange!=='function')throw Error('Refresh Daily before retrying this import.');
+      const out=dailyAtomicLocalChange(()=>fresh.apply({aiActionId:row.id, aiSource:source||''}));
       applied.push({id:row.id, type:row.type, kind:out&&out.kind, recordId:out&&out.recordId, undo:out&&out.undo, summary:fresh.summary});
     }catch(e){
-      // A partial batch is reported exactly, never rolled back: actions 1-6 that landed are
-      // real records, and the safe retry is to re-paste — the source fingerprints recognise
-      // what already exists. `failed` is kept apart from `skipped` because the two need
-      // different action from the reader.
+      if(memory)aiActionMemoryRestore(memory);
+      // Only this failed action rolls back. Earlier successful rows retain their records
+      // and source fingerprints, so checking the same batch again safely retries the rest.
       row.state='error'; row.error='Could not apply: '+(e&&e.message||e);
       failed.push({id:row.id, type:row.type, error:row.error});
       skipped.push(row);
     }
   });
+  // Guard the final batch state, not intermediate values when two actions share a week.
+  applied.forEach(item=>{item.guard=aiUndoGuardCapture(item);});
   return {applied, skipped, failed};
 }
 
@@ -9986,6 +10017,31 @@ function applyDailyActions(rows, source){
 // leaves or applies again the offer is gone, because by then "the most recent apply" is no
 // longer an unambiguous thing to reverse.
 function aiUndoLastApply(){
+  const last=aiInboxState.lastApply;if(!last||!last.ids.length)return {removed:0,restored:0,changed:0};
+  const items=(last.items||[]).map(item=>{
+    // The dedicated assistant has already verified its durable, exact expense receipt.
+    const receipt=!item.guard&&item.type==='add_expense'&&typeof dailyAIRequest==='function'?dailyAIRequest(item.id):null;
+    return receipt?.status==='undo_requested'&&JSON.stringify(txnData.find(t=>t.aiActionId===item.id))===JSON.stringify(receipt.record)?{...item,guard:aiUndoGuardCapture(item)}:item;
+  });
+  let safe=items;
+  while(true){const ids=safe.map(item=>item.id),next=safe.filter(item=>aiUndoGuardSafe(item,ids));if(next.length===safe.length)break;safe=next;}
+  const safeIds=safe.map(item=>item.id),kept=items.filter(item=>!safeIds.includes(item.id));
+  if(!safe.length)return {removed:0,restored:0,changed:0,protected:kept.length};
+  const memory=aiActionMemory();
+  try{
+    if(typeof dailyAtomicLocalChange!=='function')throw Error('Refresh Daily before retrying Undo.');
+    const result=dailyAtomicLocalChange(()=>{
+      aiInboxState.lastApply={...last,ids:safeIds,items:safe};
+      const result=aiUndoLastApplyChanges();if(result.failed)throw Error('The undo could not be saved.');return result;
+    });
+    aiInboxState.lastApply=kept.length?{...last,ids:kept.map(item=>item.id),items:kept}:null;
+    aiInboxRefreshViews();return {...result,protected:kept.length};
+  }catch(error){
+    aiActionMemoryRestore(memory);
+    aiInboxState.lastApply=last;aiInboxRefreshViews();return {removed:0,restored:0,changed:0,failed:true,error:error.message};
+  }
+}
+function aiUndoLastApplyChanges(){
   const last=aiInboxState.lastApply;
   if(!last||!last.ids.length) return {removed:0};
   const ids=last.ids;
@@ -9995,7 +10051,7 @@ function aiUndoLastApply(){
   if(txnData.length!==before){
     const count=before-txnData.length;
     if(saveTxns()===false)return {removed,restored,changed:0,failed:true};
-    removed+=count;txnAfterChange();
+    removed+=count;
   }
   const fixCats=BUD_CAT_LOAD.fix();
   const keptCats=fixCats.filter(c=>!(c&&c.aiActionId&&ids.indexOf(c.aiActionId)>=0));
@@ -10003,7 +10059,7 @@ function aiUndoLastApply(){
     if(typeof refreshCatBudgetUI==='function') refreshCatBudgetUI(); }
   // Income streams and expense categories created by this apply. Removed only when nothing has
   // been filed against them since — deleting a category out from under a record would orphan it.
-  [['inc',BUD_CAT_LOAD.inc,BUD_CAT_SAVE.inc,c=>ledgerOf('income').some(r=>r.streamId===c.id)||
+  [['inc',BUD_CAT_LOAD.inc,BUD_CAT_SAVE.inc,c=>ledgerOf('income').some(r=>r.streamId===c.id&&!ids.includes(r.aiActionId))||
       Object.keys(budgetData||{}).some(k=>budgetData[k]&&budgetData[k]['inc_'+c.id]!=null&&budgetData[k]['inc_'+c.id]!=='')],
    ['var',BUD_CAT_LOAD.var,BUD_CAT_SAVE.var,c=>(txnData||[]).some(t=>t&&String(t.catId)===String(c.id))]
   ].forEach(([kind,load,save,inUse])=>{
@@ -10022,7 +10078,7 @@ function aiUndoLastApply(){
   }
   // An income action may also have moved the week's stored total. Restore it only while the
   // applied value is still the one on record; a manual edit afterwards always wins over Undo.
-  (last.items||[]).filter(x=>x&&x.type==='add_income'&&x.undo&&x.undo.week).forEach(x=>{
+  (last.items||[]).filter(x=>x&&x.type==='add_income'&&x.undo&&x.undo.week).slice().reverse().forEach(x=>{
     const u=x.undo;
     if(u.mode==='record_only') return;
     const w=budgetData[u.week]; if(!w) return;
@@ -10032,20 +10088,22 @@ function aiUndoLastApply(){
     restored++;
   });
   // Balance snapshots: put the account's history entry and current balance back as they were.
-  (last.items||[]).filter(x=>x&&x.type==='add_balance_snapshot'&&x.undo&&x.undo.balance).forEach(x=>{
+  (last.items||[]).filter(x=>x&&x.type==='add_balance_snapshot'&&x.undo&&x.undo.balance).slice().reverse().forEach(x=>{
     const u=x.undo;
     const list=loadAccounts();
     const a=list.find(y=>y&&String(y.id)===String(u.accountId)); if(!a) return;
     // Drop the entry Apply wrote (always at u.date), then put back whatever was there before.
     const kept=(Array.isArray(a.history)?a.history:[]).filter(e=>e&&e.date&&e.date!==u.date);
-    a.history=u.hadEntry&&u.previous ? kept.concat([u.previous]).sort((m,n)=>m.date<n.date?-1:1) : kept;
+    if(Object.prototype.hasOwnProperty.call(u,'previousHistory')){
+      if(u.previousHistory===undefined)delete a.history;else a.history=aiUndoCopy(u.previousHistory);
+    }else a.history=u.hadEntry&&u.previous ? kept.concat([u.previous]).sort((m,n)=>m.date<n.date?-1:1) : kept;
     a.current=u.prevCurrent;
     saveAccounts(list);
     restored++;
   });
   // Expense corrections: restore the exact fields Apply changed, and drop the audit entry it
   // wrote. Skipped when the value has moved on since, for the same reason as the goal undo.
-  for(const x of (last.items||[]).filter(x=>x&&x.type==='update_expense'&&x.undo)){
+  for(const x of (last.items||[]).filter(x=>x&&x.type==='update_expense'&&x.undo).slice().reverse()){
     const u=x.undo;
     const t=(txnData||[]).find(y=>y&&String(y.id)===String(u.expenseId)); if(!t) continue;
     const trail=Array.isArray(t.corrections)?t.corrections:[];
@@ -10117,7 +10175,6 @@ function aiUndoLastApply(){
     restored++;
   });
   aiInboxState.lastApply=null;
-  aiInboxRefreshViews();
   return {removed, restored, changed:removed+restored};
 }
 
@@ -10151,7 +10208,7 @@ const AI_MAP_KINDS={
   bill:     {label:'recurring cost', fields:['fixedCategoryName','billName'],
              list:()=>loadFixCats().map(c=>({id:c.id, name:catLabel(c)}))}
 };
-function aiMapKey(kind,name){ return kind+' '+String(name||'').trim().toLowerCase(); }
+function aiMapKey(kind,name){ return kind+'\u0000'+String(name||'').trim().toLowerCase(); }
 // Every unresolved name in the current paste, with the kind it belongs to. Derived from the
 // raw actions rather than parsed out of error strings — an error message is prose and would
 // break the moment it was reworded.
@@ -10254,7 +10311,8 @@ function aiInboxUndo(){
     renderAIHub();return;
   }
   aiInboxState.result=null;
-  if(typeof showToast==='function') showToast(r.changed?('Undid '+r.changed+' change'+(r.changed===1?'':'s')):'Nothing to undo');
+  if(typeof showToast==='function') showToast(r.protected?((r.changed?'Undid '+r.changed+' changes. ':'')+'Kept '+r.protected+' changed or referenced action'+(r.protected===1?'':'s')+'; review the records in Finance.'):
+    r.changed?('Undid '+r.changed+' change'+(r.changed===1?'':'s')):'Nothing to undo');
   renderAIHub();
 }
 function aiInboxCopyErrors(){
@@ -10561,7 +10619,6 @@ function aiReconReport(){
 
 const aiReconState={report:null};
 function aiReconRun(){ aiReconState.report=aiReconReport(); renderAIHub(); }
-function aiReconClear(){ aiReconState.report=null; renderAIHub(); }
 function aiReconText(){
   const r=aiReconState.report||aiReconReport();
   const L=[];
@@ -10736,7 +10793,7 @@ function renderAIHub(){
       '<option value="'+esc(p.id)+'"'+(preset.id===p.id?' selected':'')+'>'+esc(p.label)+'</option>').join('')+'</select>';
 
   const ranges='<div class="aih-pills">'+AI_RANGES.map(r=>
-    '<button class="aih-pill'+(aiHubState.rangeKind===r.id?' on':'')+'" onclick="aiHubSetRange(\''+r.id+'\')">'+
+    '<button class="aih-pill'+(aiHubState.rangeKind===r.id?' on':'')+'" onclick="aiHubSetRange('+escAttr(JSON.stringify(r.id))+')">'+
     esc(r.label)+'</button>').join('')+'</div>'+
     (aiHubState.rangeKind==='custom'
       ? '<div class="aih-dates">'+
@@ -10750,7 +10807,7 @@ function renderAIHub(){
   const scopeRows=AI_SCOPES.map(s=>{
     const checked=on(s.id);
     let row='<button class="aih-scope'+(checked?' on':'')+'" role="checkbox" aria-checked="'+(checked?'true':'false')+
-      '" onclick="aiHubToggleScope(\''+s.id+'\')">'+
+      '" onclick="aiHubToggleScope('+escAttr(JSON.stringify(s.id))+')">'+
       '<span class="aih-box" aria-hidden="true">'+(checked?
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>':'')+'</span>'+
       '<span class="aih-scope-t"><span class="aih-scope-n">'+esc(s.label)+
@@ -10977,12 +11034,12 @@ function renderBudgetEditList(containerId,type){
   const items=budgetConfig[type]||[];
   el.innerHTML=items.map(it=>
     '<div class="bud-edit-row">'+
-      '<input class="bud-edit-name" value="'+(it.name||'').replace(/"/g,'&quot;')+'" placeholder="Name" onchange="updateBudgetItem(\''+type+'\',\''+it.id+'\',\'name\',this.value)">'+
-      '<input class="bud-edit-amt" type="number" inputmode="decimal" value="'+(it.weeklyAmount??'')+'" placeholder="0" onchange="updateBudgetItem(\''+type+'\',\''+it.id+'\',\'weeklyAmount\',this.value)">'+
-      '<button class="bud-edit-del" title="Remove" onclick="deleteBudgetItem(\''+type+'\',\''+it.id+'\')">🗑️</button>'+
+      '<input class="bud-edit-name" value="'+(it.name||'').replace(/"/g,'&quot;')+'" placeholder="Name" onchange="updateBudgetItem('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(it.id))+',\'name\',this.value)">'+
+      '<input class="bud-edit-amt" type="number" inputmode="decimal" value="'+(it.weeklyAmount??'')+'" placeholder="0" onchange="updateBudgetItem('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(it.id))+',\'weeklyAmount\',this.value)">'+
+      '<button class="bud-edit-del" title="Remove" onclick="deleteBudgetItem('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(it.id))+')">🗑️</button>'+
     '</div>'
   ).join('')+
-    '<button class="bud-add-item" onclick="addBudgetItem(\''+type+'\')">+ Add item</button>';
+    '<button class="bud-add-item" onclick="addBudgetItem('+escAttr(JSON.stringify(type))+')">+ Add item</button>';
 }
 
 // ── Category budget editor (Settings → Budget setup) ──────────────
@@ -11050,31 +11107,31 @@ function renderCatBudgetList(containerId, type, kind){
       const hist=Array.isArray(c.priceHistory)?c.priceHistory:[];
       const last=hist.length?hist[hist.length-1]:null;
       recurFields=
-        '<label class="budget-setup-field"><span>Next billing date<small>'+dueHint+'</small></span><input class="bud-edit-due" type="date" value="'+(c.dueDate?String(c.dueDate).slice(0,10):'')+'" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'dueDate\',this.value)"></label>'+
-        '<label class="budget-setup-field"><span>Status<small>Paused and cancelled items stop counting toward future commitments</small></span><select class="bud-edit-status '+(catIsCharging(c)?'charging':'off')+'" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'status\',this.value)">'+
-          CAT_STATUSES.map(o=>'<option value="'+o.id+'"'+(o.id===st?' selected':'')+'>'+o.label+'</option>').join('')+'</select></label>'+
-        '<label class="budget-setup-field"><span>Payment account<small>Where this bill or subscription is charged</small></span><select class="bud-edit-account" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'paymentAccountId\',this.value)">'+catPaymentAccountOptions(c)+'</select></label>'+
-        '<label class="budget-setup-field"><span>Website<small>Optional — also helps Daily find a recognisable logo</small></span><input class="bud-edit-site" value="'+_catEsc(c.site||'')+'" placeholder="example.com" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'site\',this.value)"></label>'+
+        '<label class="budget-setup-field"><span>Next billing date<small>'+dueHint+'</small></span><input class="bud-edit-due" type="date" value="'+(c.dueDate?String(c.dueDate).slice(0,10):'')+'" onchange="catUpdateField('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(c.id))+',\'dueDate\',this.value)"></label>'+
+        '<label class="budget-setup-field"><span>Status<small>Paused and cancelled items stop counting toward future commitments</small></span><select class="bud-edit-status '+(catIsCharging(c)?'charging':'off')+'" onchange="catUpdateField('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(c.id))+',\'status\',this.value)">'+
+          CAT_STATUSES.map(o=>'<option value="'+escAttr(o.id)+'"'+(o.id===st?' selected':'')+'>'+o.label+'</option>').join('')+'</select></label>'+
+        '<label class="budget-setup-field"><span>Payment account<small>Where this bill or subscription is charged</small></span><select class="bud-edit-account" onchange="catUpdateField('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(c.id))+',\'paymentAccountId\',this.value)">'+catPaymentAccountOptions(c)+'</select></label>'+
+        '<label class="budget-setup-field"><span>Website<small>Optional — also helps Daily find a recognisable logo</small></span><input class="bud-edit-site" value="'+_catEsc(c.site||'')+'" placeholder="example.com" onchange="catUpdateField('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(c.id))+',\'site\',this.value)"></label>'+
         (last?'<div class="bud-edit-pricehist">Previous price: '+fmtMoneyExact(last.from)+' until '+fmtDate(last.date)+' · now '+fmtMoneyExact(last.to)+(last.to>last.from?' <span class="ph-up">↑</span>':' <span class="ph-down">↓</span>')+'</div>':'');
     }
     const open=catIsUnnamed(c)||_budgetSetupOpen.has(type+':'+c.id);
     return '<details class="budget-setup-item'+(recurring&&!catIsCharging(c)?' inactive':'')+'" data-cat-key="'+type+':'+_catEsc(c.id)+'"'+(open?' open':'')+'>'+
-      '<summary class="budget-setup-summary" onclick="budgetSetupToggle(\''+type+'\',\''+c.id+'\',this.parentElement)">'+
+      '<summary class="budget-setup-summary" onclick="budgetSetupToggle('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(c.id))+',this.parentElement)">'+
         (cycles?'<span class="budget-setup-icon">'+catIconHtml(c,30)+'</span>':'')+
         '<span class="budget-setup-summary-copy"><strong>'+_catEscHtml(catLabel(c))+'</strong><small>'+summaryMeta.join(' · ')+'</small></span>'+
         '<span class="budget-setup-summary-value">'+summaryValue+'</span><span class="budget-setup-chevron">›</span>'+
       '</summary>'+
       '<div class="budget-setup-item-body">'+
         '<div class="budget-setup-primary-fields'+(cycles?' has-cycle has-charge-type':'')+'">'+
-          '<label class="budget-setup-field"><span>Name</span><input class="bud-edit-name" value="'+_catEsc(c.name||'')+'" placeholder="Name" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'name\',this.value)"></label>'+
-          '<label class="budget-setup-field"><span>'+(cycles?'Billed amount':'Weekly target')+'</span><input class="bud-edit-amt" type="number" inputmode="decimal" value="'+(amt===''?'':amt)+'" placeholder="0" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\''+(cycles?'amount':'budget')+'\',this.value)"></label>'+
-          (cycles?'<label class="budget-setup-field"><span>Billing cycle</span><select class="bud-edit-cycle" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'cycle\',this.value)">'+CAT_CYCLES.map(o=>'<option value="'+o.id+'"'+(o.id===cyc?' selected':'')+'>'+o.label+'</option>').join('')+'</select></label>':'')+
-          (cycles?'<label class="budget-setup-field"><span>Type</span><select class="bud-edit-charge-type" onchange="catUpdateField(\''+type+'\',\''+c.id+'\',\'chargeType\',this.value)">'+CAT_CHARGE_TYPES.map(o=>'<option value="'+o.id+'"'+(o.id===chargeType?' selected':'')+'>'+o.label+'</option>').join('')+'</select></label>':'')+
+          '<label class="budget-setup-field"><span>Name</span><input class="bud-edit-name" value="'+_catEsc(c.name||'')+'" placeholder="Name" onchange="catUpdateField('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(c.id))+',\'name\',this.value)"></label>'+
+          '<label class="budget-setup-field"><span>'+(cycles?'Billed amount':'Weekly target')+'</span><input class="bud-edit-amt" type="number" inputmode="decimal" value="'+(amt===''?'':amt)+'" placeholder="0" onchange="catUpdateField('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(c.id))+','+escAttr(JSON.stringify((cycles?'amount':'budget')))+',this.value)"></label>'+
+          (cycles?'<label class="budget-setup-field"><span>Billing cycle</span><select class="bud-edit-cycle" onchange="catUpdateField('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(c.id))+',\'cycle\',this.value)">'+CAT_CYCLES.map(o=>'<option value="'+escAttr(o.id)+'"'+(o.id===cyc?' selected':'')+'>'+o.label+'</option>').join('')+'</select></label>':'')+
+          (cycles?'<label class="budget-setup-field"><span>Type</span><select class="bud-edit-charge-type" onchange="catUpdateField('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(c.id))+',\'chargeType\',this.value)">'+CAT_CHARGE_TYPES.map(o=>'<option value="'+escAttr(o.id)+'"'+(o.id===chargeType?' selected':'')+'>'+o.label+'</option>').join('')+'</select></label>':'')+
         '</div>'+recurFields+
         '<div class="budget-setup-actions">'+
-          '<select class="bud-edit-move" onchange="catMoveTo(\''+type+'\',\''+c.id+'\',this.value)" aria-label="Move category"><option value="">Move to…</option>'+moveOpts+'</select>'+
-          '<button type="button" class="budget-setup-archive" onclick="catArchive(\''+type+'\',\''+c.id+'\',true)">Archive</button>'+
-          '<button type="button" class="budget-setup-delete" onclick="catRemoveItem(\''+type+'\',\''+c.id+'\')">Delete permanently</button>'+
+          '<select class="bud-edit-move" onchange="catMoveTo('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(c.id))+',this.value)" aria-label="Move category"><option value="">Move to…</option>'+moveOpts+'</select>'+
+          '<button type="button" class="budget-setup-archive" onclick="catArchive('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(c.id))+',true)">Archive</button>'+
+          '<button type="button" class="budget-setup-delete" onclick="catRemoveItem('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(c.id))+')">Delete permanently</button>'+
         '</div>'+
       '</div></details>';
   }).join('');
@@ -11082,7 +11139,7 @@ function renderCatBudgetList(containerId, type, kind){
   const cycle=type==='fix'&&kind==='recurring'?'monthly':type==='fix'?'weekly':'';
   const chargeType=type==='fix'&&kind==='recurring'?'subscription':type==='fix'?'commitment':'';
   el.innerHTML=(cards||'<div class="budget-setup-empty">None set up yet.</div>')+
-    '<button class="bud-add-item" onclick="catAddItem(\''+type+'\',\''+cycle+'\',\''+chargeType+'\')">+ Add '+addLabel+'</button>';
+    '<button class="bud-add-item" onclick="catAddItem('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(cycle))+','+escAttr(JSON.stringify(chargeType))+')">+ Add '+addLabel+'</button>';
 }
 function renderArchivedBudgetItems(){
   const wrap=document.getElementById('be-archived');
@@ -11094,7 +11151,7 @@ function renderArchivedBudgetItems(){
     (BUD_CAT_LOAD[type]?BUD_CAT_LOAD[type]():[]).filter(catIsArchived).forEach(c=>{
       const duplicateLegacy=type==='inc'&&(c.id==='fuji'||c.id==='mcd');
       const meta=duplicateLegacy?'Income · duplicate legacy copy kept, not counted':labels[type]+' · historical data retained';
-      rows.push('<div class="budget-archived-row"><span><strong>'+_catEscHtml(catLabel(c))+'</strong><small>'+meta+'</small></span><button type="button" onclick="catArchive(\''+type+'\',\''+c.id+'\',false)">Restore</button></div>');
+      rows.push('<div class="budget-archived-row"><span><strong>'+_catEscHtml(catLabel(c))+'</strong><small>'+meta+'</small></span><button type="button" onclick="catArchive('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(c.id))+',false)">Restore</button></div>');
     });
   });
   section.style.display=rows.length?'block':'none';
@@ -11268,22 +11325,6 @@ function billsUndatedCount(){
   return loadFixCats().filter(c=>billIsScheduled(c)&&!c.dueDate).length;
 }
 // The current month plus the next two, as a fixed three-month planning window.
-function billsMonths(){
-  const today=localMidnight(getLocalDate());
-  const y=today.getFullYear(), m=today.getMonth();
-  const occ=billOccurrences(new Date(y,m,1), new Date(y,m+3,0));
-  const months=[];
-  for(let i=0;i<3;i++){
-    const start=new Date(y,m+i,1), end=new Date(y,m+i+1,0);
-    const items=occ.filter(o=>o.date>=start&&o.date<=end);
-    months.push({start, end, items,
-      label:start.toLocaleDateString('en-AU',{month:'long'}),
-      short:start.toLocaleDateString('en-AU',{month:'short'}),
-      year:start.getFullYear(),
-      total:items.reduce((s,o)=>s+o.amount,0)});
-  }
-  return months;
-}
 // ── Pay cycle ─────────────────────────────────────────────────────
 // Anchored pay dates support weekly, fortnightly and month-end schedules. Legacy weekly
 // weekday choices remain readable; an unspecified schedule never invents a Friday payday.
@@ -11578,21 +11619,6 @@ function catArchive(type,id,on){
 }
 // Fold each source category's per-week amounts into the target's key and clear the source.
 // Amounts are ADDED, never overwritten, so a merge cannot lose money.
-function budMergeCatsInto(type,targetId,sourceIds){
-  if(!sourceIds.length) return;
-  const tk=type+'_'+targetId;
-  Object.keys(budgetData||{}).forEach(wk=>{
-    const d=budgetData[wk]; if(!d||typeof d!=='object') return;
-    sourceIds.forEach(sid=>{
-      const sk=type+'_'+sid;
-      if(!(sk in d)) return;
-      const sv=parseFloat(d[sk]);
-      if(!isNaN(sv)&&sv!==0) d[tk]=String((parseFloat(d[tk])||0)+sv);
-      delete d[sk];
-    });
-  });
-  budSaveData();
-}
 // Junk categories: an unnamed row (never named after "+ Add category"), or an "Other" left by
 // an earlier version of this cleanup. Holding money decides the outcome, never the name:
 //   holds money → ARCHIVED, so past weeks still add up but no row appears
@@ -11718,8 +11744,8 @@ function renderStrandedCard(){
           '<div class="bud-row-budget">'+fmtMoney(o.total)+' across '+o.weeks+' week'+(o.weeks===1?'':'s')+' · '+o.firstWeek+' to '+o.lastWeek+'</div>'+
         '</div>'+
         '<div style="display:flex;gap:6px;flex-shrink:0">'+
-          '<button class="bud-edit-btn" onclick="budRestoreOrphan(\''+o.type+'\',\''+o.id+'\')">Restore</button>'+
-          '<button class="bud-edit-btn" style="color:var(--danger);border-color:var(--danger)" onclick="budDiscardOrphan(\''+o.type+'\',\''+o.id+'\')">Discard</button>'+
+          '<button class="bud-edit-btn" onclick="budRestoreOrphan('+escAttr(JSON.stringify(o.type))+','+escAttr(JSON.stringify(o.id))+')">Restore</button>'+
+          '<button class="bud-edit-btn" style="color:var(--danger);border-color:var(--danger)" onclick="budDiscardOrphan('+escAttr(JSON.stringify(o.type))+','+escAttr(JSON.stringify(o.id))+')">Discard</button>'+
         '</div>'+
       '</div>').join('')+
   '</div>';
@@ -11810,13 +11836,6 @@ function recordCCHistory(bal){
 }
 // Last known CC balance on or before `date`; earliest entry before history starts;
 // falls back to the current daily_cc balance if no history exists at all.
-function ccBalanceAt(date){
-  let last=null;
-  for(const e of ccLog){ if(e.date<=date) last=e; else break; }
-  if(last) return last.balance;
-  if(ccLog.length) return ccLog[0].balance;
-  return parseFloat(loadCCData().balance)||0;
-}
 
 // ── Accounts (generic assets/debts) ───────────────────────────────────────────
 // Supersedes the separate savings + CC logs with one flexible list. Each account:
@@ -11826,21 +11845,30 @@ function ccBalanceAt(date){
 // Net worth = Σ(asset.current) − Σ(debt.current). Persists to daily_accounts and syncs
 // as a blob via the 'accounts' Firebase path (registered in the auth callback), exactly
 // like the budget-category lists.
-function loadAccounts(){ const a=lsLoad('daily_accounts', []); return Array.isArray(a)?(typeof acctLinkProject==='function'?acctLinkProject(a):a):[]; }
-let accounts = loadAccounts();
+function loadAccounts(recover=false){
+  let a=lsLoad('daily_accounts',[],Array.isArray);
+  if(recover&&typeof dailyFinanceRecover==='function')a=dailyFinanceRecover('accounts',a);
+  return typeof acctLinkProject==='function'?acctLinkProject(a):a;
+}
+let accounts = loadAccounts(true);
 function saveAccounts(list){
-  if(Array.isArray(list)) accounts=list;
+  const next=Array.isArray(list)?list:accounts;
   // A real save supersedes the boot migration guess — drop the flag so the sign-in reconcile
   // treats this as authoritative (offline edits win) rather than discarding it for the cloud.
   try{ localStorage.removeItem('daily_accounts_migrated'); }catch(e){}
-  lsSave('daily_accounts', typeof acctLinkStored==='function'?acctLinkStored(accounts):accounts, 'accounts');
-  if(typeof acctLinkStored==='function')accounts=loadAccounts();
+  const raw=typeof acctLinkStored==='function'?acctLinkStored(next):next;
+  if(!_bootPhase&&!_syncApplying&&typeof dailyFinanceWrite==='function'&&dailyFinanceUsesDefault('accounts')){
+    try{dailyFinanceWrite('accounts',raw);}
+    catch(error){accounts=loadAccounts();dailyFinanceIssue('accounts',error);return false;}
+  }else if(lsSave('daily_accounts',raw,'accounts')===false){accounts=loadAccounts();return false;}
+  accounts=loadAccounts();
   // Finance › Overview states the account position, so an edit made on the Accounts tab has to
   // reach it. Building that markup writes nothing, and the panel may be hidden — it is the
   // string that matters, so the card is right the moment the tab is selected.
   if(typeof S!=='undefined'&&S&&S.view==='budget'&&typeof renderBudgetOverview==='function') renderBudgetOverview();
   const be=document.getElementById('view-budget-editor');
   if(be&&be.style.display!=='none'&&typeof renderBudgetEditor==='function') renderBudgetEditor();
+  return true;
 }
 function genAccountId(){ return 'acct_'+Date.now()+'_'+Math.floor(Math.random()*1e4); }
 
@@ -12127,14 +12155,6 @@ function setHourlyRate(id, rate){
   const r=parseFloat(rate);
   if(r>0) budDefaults.hourlyRates[id]=r; else delete budDefaults.hourlyRates[id];
 }
-function dFine()       { return budDefaults.fine       ?? DEFAULT_FINE; }
-function dSubs()       { return budDefaults.subs       ?? DEFAULT_SUBS; }
-function dGym()        { return budDefaults.gym        ?? DEFAULT_GYM; }
-function dTransport()  { return budDefaults.transport  ?? DEFAULT_TRANSPORT; }
-function dFineLabel()      { return budDefaults.fine_label      || '⚙️ Fine repayment'; }
-function dSubsLabel()      { return budDefaults.subs_label      || '📱 Subscriptions'; }
-function dGymLabel()       { return budDefaults.gym_label       || '🏋️ Gym'; }
-function dTransportLabel() { return budDefaults.transport_label || '🚌 Transport'; }
 function dTransportBud()   { return budDefaults.transport       ?? DEFAULT_TRANSPORT; }
 function dFoodBud()    { return budDefaults.food_bud    ?? DEFAULT_FOOD; }
 function dPubBud()     { return budDefaults.pub_bud     ?? DEFAULT_PUB; }
@@ -12364,7 +12384,7 @@ function recoverBudgetData(){
 function loadFixCats(){
   return budCategoryTypes(lsLoad('daily_budget_fix_cats', null, Array.isArray)||budLegacyCats('fix'),'fix');
 }
-function saveFixCats(cats){ lsSaveTS('daily_budget_fix_cats', cats, 'daily_budget_fix_cats_ts', 'budgetFixCats'); }
+function saveFixCats(cats){ return lsSaveTS('daily_budget_fix_cats', cats, 'daily_budget_fix_cats_ts', 'budgetFixCats'); }
 function loadVarCats(){
   return budCategoryTypes(lsLoad('daily_budget_var_cats', [
     {id:'food',     name:'🍔 Food'},
@@ -12372,7 +12392,7 @@ function loadVarCats(){
     {id:'personal', name:'👜 Personal'},
   ], Array.isArray),'var');
 }
-function saveVarCats(cats){ lsSaveTS('daily_budget_var_cats', cats, 'daily_budget_var_cats_ts', 'budgetVarCats'); }
+function saveVarCats(cats){ return lsSaveTS('daily_budget_var_cats', cats, 'daily_budget_var_cats_ts', 'budgetVarCats'); }
 // Income sources — ids match the legacy field suffixes (fuji/mcd) so per-week storage
 // d['inc_'+id] stays compatible with existing saved weeks (d.inc_fuji / d.inc_mcd).
 function loadIncCats(){
@@ -12399,8 +12419,12 @@ function budLegacyCats(type){
   return [...ids].map((id,i)=>({id,name:labels[id]||(type==='inc'?'Income source ':'Fixed expense ')+(i+1),
     ...(type==='fix'&&budDefaults[id]!=null?{default:budDefaults[id]}:{})}));
 }
-function saveIncCats(cats){ lsSaveTS('daily_budget_inc_cats', cats, 'daily_budget_inc_cats_ts', 'budgetIncCats'); }
-function genCatId(prefix){ return prefix+'_'+Date.now(); }
+function saveIncCats(cats){ return lsSaveTS('daily_budget_inc_cats', cats, 'daily_budget_inc_cats_ts', 'budgetIncCats'); }
+function genCatId(prefix){
+  const unique=typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function'?crypto.randomUUID():
+    Date.now().toString(36)+'_'+Math.random().toString(36).slice(2)+'_'+(genCatId.sequence=(genCatId.sequence||0)+1);
+  return prefix+'_'+unique;
+}
 
 // ── Per-category weekly budget ────────────────────────────────────
 // The category's own `budget` field is the single source of truth for its weekly target.
@@ -12504,7 +12528,7 @@ function catIconHtml(c,size){
   // Not loading="lazy": these are ~20px icons in a short list, so deferring them saves
   // nothing and just risks them never resolving if the list renders off-screen.
   return '<img class="cat-icon-img" src="'+url+'" alt="" style="'+style+'" '+
-    'onerror="this.outerHTML='+_catEsc(JSON.stringify(fallback))+'">';
+    'onerror="this.outerHTML='+escAttr(JSON.stringify(fallback))+'">';
 }
 function catBudget(c){
   if(!c) return 0;
@@ -12886,11 +12910,6 @@ function ledgerSrcKey(src){
 // transaction. Both stores are checked because one bank row can legitimately land in either
 // (a purchase becomes a transaction; a transfer becomes a ledger record) and an assistant
 // re-classifying a row between batches must not create a second copy of it.
-function ledgerSrcSeen(key, ignoreId){
-  if(!key) return false;
-  return ledgerData.some(r=>r&&r.srcKey===key&&r.id!==ignoreId)
-      || (Array.isArray(txnData)&&txnData.some(t=>t&&t.srcKey===key));
-}
 function ledgerNormaliseSource(src){
   if(!src||typeof src!=='object'||Array.isArray(src)) return null;
   const out={};
@@ -12950,12 +12969,6 @@ function ledgerSavingsMovement(fromDate, toDate){
           net:r2(contributions-withdrawals), transfers:count};
 }
 // Every ledger record dated inside one Monday-started week.
-function ledgerForWeek(mondayStr, kind){
-  if(!mondayStr) return [];
-  const mon=localMidnight(mondayStr);
-  const sunStr=dateStr(new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+6));
-  return ledgerData.filter(r=>r&&r.date>=mondayStr&&r.date<=sunStr&&(!kind||r.kind===kind));
-}
 // Every transaction dated inside the week starting `mondayStr`.
 function txnsForWeek(mondayStr){
   if(!mondayStr) return [];
@@ -13175,7 +13188,7 @@ function budChartGridColors(){
   const isDark=S.theme==='dark';
   return {gc:isDark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)', tc:isDark?'#888':'#94a3b8'};
 }
-const _catEsc=s=>(s||'').replace(/"/g,'&quot;');
+const _catEsc=s=>String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const _catEscHtml=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 // Two escapers because the HTML contexts are NOT interchangeable, and using the text-node one
 // on an attribute is exactly how stored prose used to be destroyed: a note titled `5" pipe`
@@ -13232,14 +13245,14 @@ let budPastEdit = false;
 // A brand-new unnamed row also gets an input so it can be named without window.prompt().
 function budCatNameHtml(type,c,isCur,editMode){
   if(editMode && isCur){
-    return '<input class="bud-cat-name-input" id="catname-'+type+'-'+c.id+'" value="'+_catEsc(c.name||'')+'" placeholder="Name this category…" oninput="budRenameCat(\''+type+'\',\''+c.id+'\',this.value)">';
+    return '<input class="bud-cat-name-input" id="catname-'+type+'-'+escAttr(c.id)+'" value="'+_catEsc(c.name||'')+'" placeholder="Name this category…" oninput="budRenameCat('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(c.id))+',this.value)">';
   }
   // Fixed rows lead with the category's logo (or its initial); the stored name may still
   // carry a legacy emoji prefix, so display the stripped form to avoid showing both.
   if(c.name) return '<div class="bud-row-left">'+
     (type==='fix'?catIconHtml(c,20):'')+
     '<div class="bud-row-name">'+_catEscHtml(type==='fix'?catDisplayName(c.name):c.name)+'</div></div>';
-  return '<input class="bud-cat-name-input" id="catname-'+type+'-'+c.id+'" value="" placeholder="Name this category…" oninput="budRenameCat(\''+type+'\',\''+c.id+'\',this.value)" onchange="renderBudgetTab()"'+(isCur?'':' disabled')+'>';
+  return '<input class="bud-cat-name-input" id="catname-'+type+'-'+escAttr(c.id)+'" value="" placeholder="Name this category…" oninput="budRenameCat('+escAttr(JSON.stringify(type))+','+escAttr(JSON.stringify(c.id))+',this.value)" onchange="renderBudgetTab()"'+(isCur?'':' disabled')+'>';
 }
 // ── Week plan: one expandable section ─────────────────────────────
 // Income, Fixed/committed and Savings were three separate cards saying one thing between
@@ -13259,7 +13272,7 @@ function budPlanSection(id, icon, label, sumId, bodyHtml, editType, isCur){
         (editing?'Done':'Edit')+'</button>'
     : '';
   return '<div class="bud-sec-head">'+
-      '<button type="button" class="bud-sec-hd" onclick="budSecToggle(\''+id+'\')" '+
+      '<button type="button" class="bud-sec-hd" onclick="budSecToggle('+escAttr(JSON.stringify(id))+')" '+
         'aria-expanded="false" aria-controls="bud-plan-'+id+'-body">'+
         '<span class="bud-sec-t">'+cardIcon(icon)+'<span>'+label+'</span></span>'+
         '<span class="bud-sec-r"><span class="bud-sec-v" id="'+sumId+'"></span>'+BUD_SEC_CHEVRON+'</span>'+
@@ -13287,10 +13300,10 @@ function renderFixedCardBody(data,isCur){
     const val=(raw!==undefined&&raw!=='')?raw:'';
     // Placeholder is the amount a blank row actually contributes, so an empty field reads as
     // "the usual $50" rather than the old, misleading "$0".
-    return '<div class="bud-row bud-cat-row" data-cat-id="'+c.id+'">'+
+    return '<div class="bud-row bud-cat-row" data-cat-id="'+escAttr(c.id)+'">'+
       budCatNameHtml('fix',c,isCur,editing)+
-      '<input class="bud-row-input" type="number" inputmode="decimal" id="fix-'+c.id+'" placeholder="$'+catBudget(c).toFixed(0)+'" value="'+val+'" oninput="budRecalc();budSaveDraft()"'+(isCur?'':' disabled')+'>'+
-      (editing?'<button class="delete-cat-btn" data-type="fix" data-id="'+c.id+'" aria-label="Remove category">×</button>':'')+
+      '<input class="bud-row-input" type="number" inputmode="decimal" id="fix-'+escAttr(c.id)+'" placeholder="$'+catBudget(c).toFixed(0)+'" value="'+val+'" oninput="budRecalc();budSaveDraft()"'+(isCur?'':' disabled')+'>'+
+      (editing?'<button class="delete-cat-btn" data-type="fix" data-id="'+escAttr(c.id)+'" aria-label="Remove category">×</button>':'')+
     '</div>';
   }).join('');
 
@@ -13305,7 +13318,7 @@ function renderFixedCardBody(data,isCur){
       const due=c.dueDate?(' · Due '+new Date(c.dueDate+'T00:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'})):'';
       return '<div class="bud-recur-item"><div class="bud-row-left">'+catIconHtml(c,18)+'<div><div class="bud-row-name">'+_catEscHtml(catDisplayName(c.name))+'</div><div class="bud-recur-note">'+_catEscHtml(amount+due)+'</div></div></div><div class="bud-recur-amt">$'+catBudget(c).toFixed(2)+'<span class="bud-recur-per">/wk</span></div></div>';
     }).join('');
-    return '<div class="bud-row bud-recur-head" role="button" tabindex="0" aria-expanded="'+(open?'true':'false')+'" aria-controls="bud-recur-list-'+id+'" onclick="budRecurToggle(\''+id+'\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();budRecurToggle(\''+id+'\');}"><div class="bud-row-left"><span class="bud-recur-ic">'+cardIcon('repeat')+'</span><div class="bud-row-name">'+label+'<span class="bud-recur-count">'+groupCats.length+'</span></div></div><div class="bud-row-calc bud-recur-total">$'+total.toFixed(2)+'<span class="bud-recur-per">/wk</span><span class="bud-recur-chev">'+(open?'▴':'▾')+'</span></div></div><div class="bud-recur-list" id="bud-recur-list-'+id+'"'+(open?'':' style="display:none"')+'>'+items+'</div>';
+    return '<div class="bud-row bud-recur-head" role="button" tabindex="0" aria-expanded="'+(open?'true':'false')+'" aria-controls="bud-recur-list-'+id+'" onclick="budRecurToggle('+escAttr(JSON.stringify(id))+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();budRecurToggle('+escAttr(JSON.stringify(id))+');}"><div class="bud-row-left"><span class="bud-recur-ic">'+cardIcon('repeat')+'</span><div class="bud-row-name">'+label+'<span class="bud-recur-count">'+groupCats.length+'</span></div></div><div class="bud-row-calc bud-recur-total">$'+total.toFixed(2)+'<span class="bud-recur-per">/wk</span><span class="bud-recur-chev">'+(open?'▴':'▾')+'</span></div></div><div class="bud-recur-list" id="bud-recur-list-'+id+'"'+(open?'':' style="display:none"')+'>'+items+'</div>';
   };
   const recurBlock=groupHtml('routine','Routine',routineCats)+groupHtml('periodic','Periodic',periodicCats);
 
@@ -14028,31 +14041,6 @@ function billRowHtml(o){
 // shape, not a chart, and a canvas here would need its own theme-change redraw.
 // Colour never carries the message on its own — the heaviest month is also named in the
 // summary sentence above and carries a "Most bills" badge under its label.
-function billsChartHtml(months, heaviest){
-  const max=Math.max.apply(null, months.map(m=>m.total).concat([1]));
-  return '<div class="bills-chart" role="img" aria-label="Scheduled bills by month: '+
-      months.map(m=>m.label+' '+fmtMoney(m.total)).join(', ')+
-      (heaviest?'. Heaviest month: '+heaviest.label+'.':'')+'">'+
-    months.map(m=>{
-      const on=!!heaviest&&m.label===heaviest.label&&m.total>0;
-      const pct=m.total>0?Math.max(4,Math.round(m.total/max*100)):0;
-      return '<div class="bills-col'+(on?' is-top':'')+'">'+
-        '<div class="bills-col-amt">'+(m.total>0?fmtMoney(m.total):'—')+'</div>'+
-        '<div class="bills-col-track">'+
-          '<div class="bills-col-bar" style="height:'+pct+'%">'+
-            // The cap marks the amount worth setting aside — the top of the heaviest bar.
-            // A lighter band inside the fill, so it reads on the bar rather than floating.
-            (on?'<span class="bills-col-cap"></span>':'')+
-          '</div>'+
-        '</div>'+
-        '<div class="bills-col-lbl">'+m.short+'</div>'+
-        // Always emitted, empty when not the heaviest, so every column is the same height
-        // and the three month labels sit on one line.
-        '<div class="bills-col-tag">'+(on?'Most bills':'')+'</div>'+
-      '</div>';
-    }).join('')+
-  '</div>';
-}
 function renderBillsView(){
   openBillsCalendar();
 }
@@ -14364,7 +14352,7 @@ function budOvBillsHtml(){
   return '<header class="bov-bills-heading"><h2 id="bov-bills-title">'+cardIcon('calendar')+'Upcoming bills</h2>'+
     '<button type="button" class="stg-btn quiet" onclick="openBudgetEditor()">Manage bills</button></header>'+
     '<div class="bov-bills-controls"><div class="seg-tabs bud-seg" role="tablist" aria-label="Bill schedule view" onkeydown="budBillsViewKey(event)">'+
-      ['list','calendar'].map(view=>'<button type="button" id="bov-bills-'+view+'-tab" role="tab" aria-controls="bov-bills-'+view+'" aria-selected="'+(budBillsView===view)+'" tabindex="'+(budBillsView===view?'0':'-1')+'"'+(budBillsView===view?' class="on"':'')+' onclick="budBillsSetView(\''+view+'\')">'+(view==='list'?'List':'Calendar')+'</button>').join('')+'</div>'+
+      ['list','calendar'].map(view=>'<button type="button" id="bov-bills-'+view+'-tab" role="tab" aria-controls="bov-bills-'+view+'" aria-selected="'+(budBillsView===view)+'" tabindex="'+(budBillsView===view?'0':'-1')+'"'+(budBillsView===view?' class="on"':'')+' onclick="budBillsSetView('+escAttr(JSON.stringify(view))+')">'+(view==='list'?'List':'Calendar')+'</button>').join('')+'</div>'+
     '<nav class="bov-bills-month" aria-label="Bill schedule month"><button type="button" id="bov-bills-prev" aria-label="Previous bill month" onclick="budBillsMove(-1)">‹</button>'+
       '<span aria-live="polite">'+escText(s.label)+'</span><button type="button" id="bov-bills-next" aria-label="Next bill month" onclick="budBillsMove(1)">›</button>'+
       (budBillsMonthOffset?'<button type="button" id="bov-bills-current" class="bov-bills-current" onclick="budBillsMove(0)">This month</button>':'')+'</nav></div>'+
@@ -14539,43 +14527,6 @@ function budOvComingHtml(f){
 // the coverage verdict rides in a chip beside it rather than recolouring the figure. Nothing
 // here is folded into the weekly available-to-spend calculation — an account balance and a
 // weekly allocation are different quantities and must not be added together.
-function budOvAccountsHtml(){
-  const head=cardHeader('bank','Accounts',
-    '<button type="button" class="card-hd-act" onclick="openAccounts(this)">Open accounts →</button>');
-  if(!Array.isArray(accounts)||!accounts.some(a=>a&&!a.archivedAt)){
-    return '<div class="card bov-card">'+head+
-      '<div class="bov-empty">No accounts yet. Add your savings, cards and anything else you want tracked, and your net worth and debt position appear here.</div>'+
-      '<button type="button" class="bov-act bov-act-wide" onclick="openAccounts(this)">Add an account →</button>'+
-    '</div>';
-  }
-  const assets=accountsAssetsTotal(), debts=accountsDebtsTotal();
-  const net=accountsNetWorth(), pos=accountsPayoffPosition();
-  const chip=debts<=0
-    ? tstat('pos','No debts','check',true)
-    : (pos>=0?tstat('pos','Debts covered','check',true):tstat('neg','Not yet covered','alert',true));
-  const cover=debts<=0
-    ? 'No debts recorded — everything here is yours.'
-    : (pos>=0
-        ? fmtMoney(pos)+' spare after clearing every debt'
-        : fmtMoney(Math.abs(pos))+' still needed to clear every debt');
-  // The nearest tracked statement in either direction. acctDueText() already names an overdue
-  // one as overdue, and that is the only case coloured.
-  const stmt=accounts
-    .filter(a=>a&&!a.archivedAt&&a.type==='debt'&&a.tracksStatement&&(typeof acctStatementRemaining==='function'?acctStatementRemaining(a):(parseFloat(a.statementBalance)||0))>0&&a.dueDate&&acctDueDays(a)!==null)
-    .sort((a,b)=>acctDueDays(a)-acctDueDays(b))[0]||null;
-  const stmtRow=stmt
-    ? '<div class="fin-line"><span class="fin-line-l">'+escText(stmt.name||'Card')+' statement'+
-        '<small>'+escText(acctDueText(stmt))+'</small></span>'+
-        '<span class="fin-line-r'+(acctDueDays(stmt)<0?' is-over':'')+'">'+
-        fmtMoneyExact(typeof acctStatementRemaining==='function'?acctStatementRemaining(stmt):(parseFloat(stmt.statementBalance)||0))+'</span></div>'
-    : '';
-  return '<div class="card bov-card">'+head+
-    '<div class="bov-fig-row">'+statsFigure(fmtMoney(net),'net worth','')+chip+'</div>'+
-    '<div class="card-cap">'+cover+'</div>'+
-    statsSplit([['Assets',fmtMoney(assets)],['Debts',fmtMoney(debts)]])+
-    stmtRow+
-  '</div>';
-}
 
 // This month, from the same readers Budget › Month and Stats use. A partial current month is
 // never compared against a complete previous one: monthSpendComparison() slices the earlier
@@ -14911,19 +14862,6 @@ function budOvActivityFit(){
   }else host.style.removeProperty('--bov-month-height');
   rows.forEach((r,index)=>{r.hidden=index>=count;});
   const label=activity.querySelector('[data-bov-count]');if(label)label.textContent='Latest '+count;
-}
-function budOvActivityMount(host){
-  if(budOvActivityObserver)budOvActivityObserver.disconnect();
-  if(budOvActivityFrame){cancelAnimationFrame(budOvActivityFrame);budOvActivityFrame=0;}
-  if(budOvActivityHost)budOvActivityHost.removeEventListener('toggle',budOvActivityQueue,true);
-  budOvActivityHost=host;
-  host.addEventListener('toggle',budOvActivityQueue,true);
-  window.addEventListener('resize',budOvActivityQueue);
-  const month=host.querySelector('.bov-month');
-  if(month&&typeof ResizeObserver==='function'){
-    budOvActivityObserver=new ResizeObserver(budOvActivityQueue);budOvActivityObserver.observe(month);
-  }
-  budOvActivityFit();
 }
 
 // The hero. ONE figure — what is actually still spendable this week — on the app's own
@@ -15282,7 +15220,7 @@ function renderVarConflict(c,conf,isCur){
   if(!conf) return '';
   const money=fmtMoneyExact(conf.amount);
   const name=_catEscHtml(catLabel(c));
-  const id=_catEsc(c.id);
+  const id=c.id;
   const text = conf.kind==='live'
     ? money+' is also saved as this week\u2019s typed total for '+name+
       '. The itemised expenses are what counts \u2014 this figure is not being added on top.'
@@ -15290,10 +15228,10 @@ function renderVarConflict(c,conf,isCur){
       'rather than counted, so removing the last expense does not silently bring it back.';
   const actions = isCur
     ? (conf.kind==='live'
-        ? '<button type="button" class="bud-conflict-btn primary" onclick="budResolveConflict(\''+id+'\',\'drop\')">Remove the '+money+' total</button>'+
-          '<button type="button" class="bud-conflict-btn" onclick="budResolveConflict(\''+id+'\',\'convert\')">Add it as an expense</button>'
-        : '<button type="button" class="bud-conflict-btn primary" onclick="budResolveConflict(\''+id+'\',\'drop\')">Discard the '+money+'</button>'+
-          '<button type="button" class="bud-conflict-btn" onclick="budResolveConflict(\''+id+'\',\'restore\')">Restore it as the weekly total</button>')
+        ? '<button type="button" class="bud-conflict-btn primary" onclick="budResolveConflict('+escAttr(JSON.stringify(id))+',\'drop\')">Remove the '+money+' total</button>'+
+          '<button type="button" class="bud-conflict-btn" onclick="budResolveConflict('+escAttr(JSON.stringify(id))+',\'convert\')">Add it as an expense</button>'
+        : '<button type="button" class="bud-conflict-btn primary" onclick="budResolveConflict('+escAttr(JSON.stringify(id))+',\'drop\')">Discard the '+money+'</button>'+
+          '<button type="button" class="bud-conflict-btn" onclick="budResolveConflict('+escAttr(JSON.stringify(id))+',\'restore\')">Restore it as the weekly total</button>')
     : '';
   return '<div class="bud-conflict" role="status"><div class="bud-conflict-text">'+text+'</div>'+
     (actions?'<div class="bud-conflict-actions">'+actions+'</div>':'')+'</div>';
@@ -15318,22 +15256,22 @@ function budVarRowsHtml(data,isCur){
     // labelled rather than left to be inferred from "input vs button", which reads as the
     // control having gone missing.
     const amountCell = hasTxns
-      ? '<button type="button" class="bud-row-calc txn-total" onclick="txnToggleCat(\''+_catEsc(c.id)+'\')" '+
+      ? '<button type="button" class="bud-row-calc txn-total" onclick="txnToggleCat('+escAttr(JSON.stringify(c.id))+')" '+
           'title="'+txns.length+' purchase'+(txns.length===1?'':'s')+' — tap to see them">'+
           fmtMoneyExact(txnCatTotal(wk,c.id))+
           '<span class="txn-count">'+txns.length+'</span></button>'
       : '<span class="bud-money-field"><span class="bud-money-prefix" aria-hidden="true">$</span>'+
-        '<input class="bud-row-input" type="text" inputmode="decimal" id="var-'+c.id+'" '+
+        '<input class="bud-row-input" type="text" inputmode="decimal" id="var-'+escAttr(c.id)+'" '+
         'aria-label="'+escAttr(catLabel(c))+' weekly total in dollars" placeholder="0" value="'+escAttr(val)+'" '+
         'oninput="budRecalc();budSaveDraft()" onblur="budFormatMoneyInput(this);budRecalc();budSaveDraft()"'+(isCur?'':' disabled')+'></span>';
     const modeTag = hasTxns
       ? '<span class="bud-mode-tag itemised">Itemised</span>'
       : '<span class="bud-mode-tag">Weekly total</span>';
-    let row='<div class="bud-row bud-cat-row'+(hasTxns?' bud-row-itemised':'')+'" data-cat-id="'+c.id+'">'+
+    let row='<div class="bud-row bud-cat-row'+(hasTxns?' bud-row-itemised':'')+'" data-cat-id="'+escAttr(c.id)+'">'+
       budCatNameHtml('var',c,isCur,editing)+
       modeTag+
       amountCell+
-      (editing?'<button class="delete-cat-btn" data-type="var" data-id="'+c.id+'" aria-label="Remove category">×</button>':'')+
+      (editing?'<button class="delete-cat-btn" data-type="var" data-id="'+escAttr(c.id)+'" aria-label="Remove category">×</button>':'')+
     '</div>';
     row+=renderVarConflict(c,varConflictFor(data,wk,c.id),isCur);
     if(hasTxns && _txnOpenCats.has(c.id)){
@@ -15494,14 +15432,14 @@ function renderPlanIncSection(data,isCur){
     const hrsVal=(hrsRaw!==undefined&&hrsRaw!=='')?hrsRaw:'';
     // Optional hours-worked companion input (hrs_<id>), independent of the dollar figure.
     // Hidden while category-editing to keep room for the rename/delete controls.
-    const hrsInput=editing?'':'<input class="bud-row-input" type="number" inputmode="decimal" id="hrs-'+c.id+'" placeholder="hrs" value="'+hrsVal+'" style="width:58px;margin-right:6px;font-size:14px" oninput="budHoursInput(\''+c.id+'\')"'+(isCur?'':' disabled')+'>';
+    const hrsInput=editing?'':'<input class="bud-row-input" type="number" inputmode="decimal" id="hrs-'+escAttr(c.id)+'" placeholder="hrs" value="'+hrsVal+'" style="width:58px;margin-right:6px;font-size:14px" oninput="budHoursInput('+escAttr(JSON.stringify(c.id))+')"'+(isCur?'':' disabled')+'>';
     const historical=catIsArchived(c);
     const label=historical?'<div class="bud-row-left"><div class="bud-row-name">'+_catEscHtml(catLabel(c))+'</div><div class="bud-row-budget">Archived history</div></div>':budCatNameHtml('inc',c,isCur,editing);
-    return '<div class="bud-row bud-cat-row" data-cat-id="'+c.id+'">'+
+    return '<div class="bud-row bud-cat-row" data-cat-id="'+escAttr(c.id)+'">'+
       label+
       hrsInput+
-      '<input class="bud-row-input" type="number" inputmode="decimal" id="inc-'+c.id+'" placeholder="$0" value="'+val+'" oninput="this.removeAttribute(\'data-autofilled\');budRecalc();budSaveDraft()"'+(isCur?'':' disabled')+'>'+
-      (editing?'<button class="delete-cat-btn" data-type="inc" data-id="'+c.id+'" aria-label="Remove income source">×</button>':'')+
+      '<input class="bud-row-input" type="number" inputmode="decimal" id="inc-'+escAttr(c.id)+'" placeholder="$0" value="'+val+'" oninput="this.removeAttribute(\'data-autofilled\');budRecalc();budSaveDraft()"'+(isCur?'':' disabled')+'>'+
+      (editing?'<button class="delete-cat-btn" data-type="inc" data-id="'+escAttr(c.id)+'" aria-label="Remove income source">×</button>':'')+
     '</div>';
   }).join('');
   // The total is neutral, like every other total on this tab: green here asserted that
@@ -15977,12 +15915,6 @@ function txnCalcUse(){
 // never creates a transfer or balance update; it only helps plan what remains spendable.
 const SAVINGS_GOAL = 200; // default when the user hasn't set one
 function getSavingsGoal(){ const g=parseFloat(budDefaults&&budDefaults.savingsGoal); return isNaN(g)?SAVINGS_GOAL:g; }
-function savingsColor(amt){
-  const goal=getSavingsGoal();
-  if(amt>=goal) return 'var(--positive)';   // met the goal
-  if(amt>0)            return 'var(--accent)';       // saved something, below goal
-  return 'var(--muted)';                             // nothing saved
-}
 function countUp(el, target, duration){
   if(!el || isNaN(target)) return;
   if(el._countUpFrame)cancelAnimationFrame(el._countUpFrame);
@@ -16275,14 +16207,6 @@ function _applyCardCollapse(id, collapse){
     body.addEventListener('transitionend',()=>{ body.style.height=''; body.style.transition=''; },{ once:true });
   }
 }
-function toggleCard(id){
-  const card=document.getElementById(id); if(!card) return;
-  const isCollapsed=!card.classList.contains('collapsed');
-  _applyCardCollapse(id, isCollapsed);
-  let collapsed; try{ collapsed=JSON.parse(localStorage.getItem('daily_collapsed')||'{}'); }catch(e){ collapsed={}; }
-  if(isCollapsed) collapsed[id]=true; else delete collapsed[id];
-  localStorage.setItem('daily_collapsed',JSON.stringify(collapsed));
-}
 function restoreCardCollapse(){
   let collapsed; try{ collapsed=JSON.parse(localStorage.getItem('daily_collapsed')||'{}'); }catch(e){ collapsed={}; }
   Object.keys(collapsed).forEach(id=>{
@@ -16491,7 +16415,7 @@ function renderMonthSpendBreakdown(wrap,monthDate,keys,weekCount,isCurrent){
   // tail of near-equal categories needed. Every row still prints its label, amount and share,
   // so the card reads with no colour at all.
   const rows=cats.map((c,index)=>
-    '<button type="button" class="month-spend-row'+(c.evidenceKey===_monthSpendSelected?' selected':'')+'" data-evidence-key="'+c.evidenceKey+'" data-chart-index="'+index+'" onclick="openMonthSpendCategory(\''+c.evidenceKey+'\')" aria-label="Open '+_catEsc(c.label)+' source records">'+
+    '<button type="button" class="month-spend-row'+(c.evidenceKey===_monthSpendSelected?' selected':'')+'" data-evidence-key="'+c.evidenceKey+'" data-chart-index="'+index+'" onclick="openMonthSpendCategory('+escAttr(JSON.stringify(c.evidenceKey))+')" aria-label="Open '+_catEsc(c.label)+' source records">'+
       '<span class="month-spend-name">'+_catEscHtml(c.label)+'</span>'+
       '<span class="month-spend-track"><span class="month-spend-fill" style="width:'+(c.val/max*100).toFixed(1)+'%;background:'+shade(c,index)+'"></span></span>'+
       '<span class="month-spend-amount">'+fmtMoneyExact(c.val)+'</span>'+
@@ -17056,15 +16980,6 @@ function getBudTrendPoints(range){
     return {label,...groups[k],balance};
   });
 }
-function setBudTrendRange(range){
-  budTrendRange=range;
-  ['monthly','yearly','alltime'].forEach(r=>{
-    const btn=document.getElementById('btr-'+r); if(!btn) return;
-    btn.style.background=r===range?'var(--header)':'transparent';
-    btn.style.color=r===range?'#fff':'var(--muted)';
-  });
-  renderBudTrend();
-}
 function renderBudTrend(){
   const wrap=document.getElementById('bud-trend-wrap'); if(!wrap) return;
   if(budChart){budChart.destroy();budChart=null;}
@@ -17136,7 +17051,7 @@ function renderSavingsCard(){
         <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
           <span style="font-size:13px;color:var(--muted)">${e.date}</span>
           <span style="font-size:14px;font-weight:600">$${e.balance.toLocaleString()}</span>
-          <button onclick="deleteSavingsEntry('${e.date}')" style="font-size:12px;color:var(--danger);background:none;border:none;cursor:pointer;padding:0 4px">✕</button>
+          <button onclick="deleteSavingsEntry(${escAttr(JSON.stringify(e.date))})" style="font-size:12px;color:var(--danger);background:none;border:none;cursor:pointer;padding:0 4px">✕</button>
         </div>`).join('')}
     </div>`:'<div style="text-align:center;color:var(--muted);font-size:13px;padding:8px 0">No entries yet — log your balance above</div>'}
   </div>`;
@@ -17426,7 +17341,7 @@ function renderBSWeek(){
   wrap.innerHTML='<div class="card">'+
     cardHeader('wallet','Latest completed week',
       (comparable?statsChip(over?'warn':'good',(over?'Over':'Under')+' plan'):statsChip('neutral',q.ambiguousLegacyVariable?'Legacy week':'No saved plan'))+
-      '<button class="card-hd-act" onclick="openBudgetWeekFromStats(\''+k+'\')">Open week &rarr;</button>')+
+      '<button class="card-hd-act" onclick="openBudgetWeekFromStats('+escAttr(JSON.stringify(k))+')">Open week &rarr;</button>')+
     statsFigure(fmtMoney(Math.round(parts.total)),'','Spent · week of '+fmtDate(k)+(comparable?' · saved plan '+fmtMoney(target):''))+
     (comparable?'<div class="card-bar"><div class="card-bar-fill" style="width:'+pct+'%;background:'+(over?'var(--danger)':'var(--positive)')+'"></div></div>':'')+
     statsSplit([
@@ -17466,7 +17381,7 @@ function renderBSAccountGrowth(){
       '<span class="bud-head-label">'+cardIcon('trend')+'<span>Account growth</span></span>'+
       '<div class="bs-growth-range">'+
         [['30','30d'],['90','90d'],['all','All']].map(([v,l])=>
-          '<button onclick="setBSGrowthRange(\''+v+'\')" class="'+(bsGrowthRange===v?'on':'')+'">'+l+'</button>').join('')+
+          '<button onclick="setBSGrowthRange('+escAttr(JSON.stringify(v))+')" class="'+(bsGrowthRange===v?'on':'')+'">'+l+'</button>').join('')+
       '</div>'+
     '</div>'+body+'</div>';
   const tracked=accounts.filter(a=>a&&(a.history||[]).some(e=>e&&e.date));
@@ -17495,7 +17410,7 @@ function renderBSAccountGrowth(){
       const good=r.nwEffect>0, flat=r.nwEffect===0;
       const col=flat?'var(--muted)':(good?'var(--success)':'var(--danger)');
       const arrow=flat?'':(r.delta>0?'▲':'▼');
-      return '<button type="button" class="bs-growth-row" onclick="openAccountGrowthEvidence(\''+evKey+'\')">'+
+      return '<button type="button" class="bs-growth-row" onclick="openAccountGrowthEvidence('+escAttr(JSON.stringify(evKey))+')">'+
         '<div class="bs-growth-name">'+_catEscHtml(a_name(r.a))+
           '<span class="bs-growth-type">'+(r.a.type==='debt'?'Debt':'Asset')+'</span></div>'+
         '<div class="bs-growth-spark">'+(acctSparklineHtml(r.a,r.from,r.to)||'')+'</div>'+
@@ -17641,7 +17556,7 @@ function renderBSCatBreakdown(){
   const rows=shownCats.map(c=>{
     const evidenceKey=statsRegisterFinanceEvidence(c);
     const pctOfTotal=Math.round(c.val/total*100);
-    return '<button type="button" class="stats-muscle-row" onclick="openFinanceCategoryEvidence(\''+evidenceKey+'\')" aria-label="Open '+_catEsc(c.label)+' source records"><div class="muscle-bar-row">'+
+    return '<button type="button" class="stats-muscle-row" onclick="openFinanceCategoryEvidence('+escAttr(JSON.stringify(evidenceKey))+')" aria-label="Open '+_catEsc(c.label)+' source records"><div class="muscle-bar-row">'+
       '<div class="muscle-bar-label bs-cat-label" title="'+_catEsc(c.label)+'">'+
         '<span class="bs-cat-name">'+_catEscHtml(c.label)+'</span>'+
         '<span class="bs-cat-kind">'+c.kind+'</span></div>'+
@@ -17667,66 +17582,7 @@ function renderBSCatBreakdown(){
     '</div></div>';
 }
 
-function renderBSProgress(){
-  const wrap=document.getElementById('bs-progress-wrap'); if(!wrap) return;
-  const keys=Object.keys(budgetData).filter(k=>{const d=budgetData[k];return d&&(d.saved||d.draft||d.snapshot);}).sort();
-  if(!keys.length){ wrap.innerHTML=''; return; }
-  const weekCount=keys.length;
-  const totalSaved=keys.reduce((s,k)=>s+weekSavedAmt(budgetData[k]),0);
-  const goal=getSavingsGoal();
-  const cumulativeGoal=goal*weekCount;
-  const pct=cumulativeGoal>0?Math.min(100,Math.round(totalSaved/cumulativeGoal*100)):0;
-  // The bar is the primary saved series, so it stays in the accent whatever the outcome; the
-  // outcome itself is stated in words beside the percentage.
-  const chip = !cumulativeGoal ? ''
-    : totalSaved>=cumulativeGoal ? tstat('pos','At goal','check',true)
-    : totalSaved>=cumulativeGoal*0.85 ? tstat('pos','On track','check',true)
-    : totalSaved>=cumulativeGoal*0.6 ? tstat('warn','Behind','flat',true)
-    : tstat('neg','Well behind','down',true);
-  wrap.innerHTML='<div class="card bst-prog-card">'+
-    '<div class="bst-prog-label">Total saved · '+weekCount+' week'+(weekCount>1?'s':'')+' tracked</div>'+
-    '<div class="bst-prog-val">$'+Math.round(totalSaved).toLocaleString()+'</div>'+
-    '<div class="bst-prog-goal">of $'+cumulativeGoal.toLocaleString()+' cumulative goal ($'+goal+'/wk)</div>'+
-    '<div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-top:12px">'+
-      '<div style="width:'+pct+'%;height:100%;background:var(--accent);border-radius:4px;transition:width .4s ease"></div>'+
-    '</div>'+
-    '<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-top:8px">'+
-      '<span>'+pct+'% of goal</span>'+chip+
-    '</div>'+
-  '</div>';
-}
 
-function renderBSBestWorst(){
-  const wrap=document.getElementById('bs-bestworst-wrap'); if(!wrap) return;
-  const keys=Object.keys(budgetData).filter(k=>budgetData[k]&&weekIncome(budgetData[k])>0);
-  if(!keys.length){ wrap.innerHTML=''; return; }
-  let bestKey=null,bestSav=-Infinity,worstKey=null,worstOver=-Infinity;
-  keys.forEach(k=>{
-    const d=budgetData[k];
-    const sav=weekSavedAmt(d);
-    const left=weekIncome(d)-weekSpending(d)-weekSavedAmt(d);
-    if(sav>bestSav){bestSav=sav;bestKey=k;}
-    if(left<0&&-left>worstOver){worstOver=-left;worstKey=k;}
-  });
-  const fmtWk=k=>k?new Date(k+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'}):'—';
-  wrap.innerHTML='<div class="bst-tiles">'+
-    '<div class="bst-tile">'+
-      '<div class="bst-tile-icon">'+cardIcon('trophy')+'</div>'+
-      '<div class="bst-tile-lbl">Best week</div>'+
-      '<div class="bst-tile-date">'+fmtWk(bestKey)+'</div>'+
-      // The amount stays neutral; the verdict travels as a chip beside it.
-      '<div class="bst-tile-val">'+(bestKey?'$'+Math.round(bestSav):'—')+'</div>'+
-      (bestKey?'<div class="bst-tile-chip">'+tstat('pos','Most saved','check',true)+'</div>':'')+
-    '</div>'+
-    '<div class="bst-tile">'+
-      '<div class="bst-tile-icon">'+cardIcon('alert')+'</div>'+
-      '<div class="bst-tile-lbl">Worst week</div>'+
-      '<div class="bst-tile-date">'+fmtWk(worstKey)+'</div>'+
-      '<div class="bst-tile-val">'+(worstKey?'$'+Math.round(worstOver):'—')+'</div>'+
-      '<div class="bst-tile-chip">'+(worstKey?tstat('neg','Over budget','alert',true):tstat('pos','No overspend','check',true))+'</div>'+
-    '</div>'+
-  '</div>';
-}
 
 // ── Stats: Nutrition sub-tab ──────────────────────────────────────
 // Charts the archived daily calorie totals (daily_cal_history, written by
@@ -17762,7 +17618,7 @@ function renderNutrition(){
     const partial=dayStates[d]?.status==='partial';
     const v=partial?dayStates[d].calories:(isLogged(d)?totals[d]:null);
     const h=v===null?0:Math.max(12,Math.round(v/max7*100));
-    return '<button type="button" class="ov-day'+(v===null?' none':'')+(partial?' partial':'')+'" onclick="openNutritionEvidence(\''+d+'\')" '+
+    return '<button type="button" class="ov-day'+(v===null?' none':'')+(partial?' partial':'')+'" onclick="openNutritionEvidence('+escAttr(JSON.stringify(d))+')" '+
       'aria-label="'+fmtDate(d)+(partial?', partial, '+Math.round(v)+' known kilocalories':v===null?', not logged':', '+Math.round(v)+' kilocalories')+'">'+
       '<div class="ov-day-track"><div class="ov-day-fill'+(partial?' cw-partial':'')+'" style="height:'+h+'%"></div></div>'+
       '<span>'+new Date(d+'T12:00:00').toLocaleDateString('en-AU',{weekday:'narrow'})+'</span></button>';
@@ -17920,7 +17776,7 @@ function statsNetWorth(){
 
 function ovBlock(icon,title,tab,body,chip){
   return '<div class="card ov-block">'+
-    cardHeader(icon,title,(chip||'')+'<button class="card-hd-act" onclick="setStatsTab(\''+tab+'\')">Open '+title+' &rarr;</button>')+
+    cardHeader(icon,title,(chip||'')+'<button class="card-hd-act" onclick="setStatsTab('+escAttr(JSON.stringify(tab))+')">Open '+title+' &rarr;</button>')+
     body+'</div>';
 }
 function renderStatsOverview(){
@@ -17953,7 +17809,7 @@ function renderStatsOverview(){
     {tab:'finance',l:'Last week spend',v:lastSpend===null?'—':fmtMoney(Math.round(lastSpend)),u:'',
      s:periodMode?'Recorded payments · last completed calendar week':lastWeek?(planComparable?(lastSpend<=lastTarget?'Under':'Over')+' plan by '+fmtMoney(Math.abs(lastSpend-lastTarget)):'No saved plan for that week'):'No completed week',
      cls:planComparable?(lastSpend<=lastTarget?'up':'down'):''}
-  ].map(c=>'<button type="button" class="ov-hs" onclick="setStatsTab(\''+c.tab+'\')">'+
+  ].map(c=>'<button type="button" class="ov-hs" onclick="setStatsTab('+escAttr(JSON.stringify(c.tab))+')">'+
       '<span class="ov-hs-label">'+c.l+'</span>'+
       '<span class="ov-hs-val">'+c.v+(c.u?'<span class="ov-hs-unit">'+c.u+'</span>':'')+'</span>'+
       '<span class="ov-hs-sub'+(c.cls?' '+(c.cls==='up'?'ov-pos':'ov-neg'):'')+'">'+c.s+'</span></button>').join('');
@@ -17976,7 +17832,7 @@ function renderStatsOverview(){
         const cmp=diff===null?'no comparable prior period'
           :diff===0?'same as prior 4 weeks'
           :(diff>0?'+':'−')+Math.abs(diff)+unit+' vs prior 4 weeks';
-        signal='<button type="button" class="ov-signal" onclick="openExerciseEvidence(this.dataset.ex,\''+P.from+'\',\''+P.to+'\',\''+_catEsc(P.label)+'\')" data-ex="'+_catEsc(top.name)+'">'+
+        signal='<button type="button" class="ov-signal" onclick="openExerciseEvidence(this.dataset.ex,'+escAttr(JSON.stringify(P.from))+','+escAttr(JSON.stringify(P.to))+','+escAttr(JSON.stringify(P.label))+')" data-ex="'+_catEsc(top.name)+'">'+
           '<span class="ov-signal-t">'+_catEscHtml(top.name)+'</span>'+
           '<span class="ov-signal-v">'+info.label.toLowerCase()+' '+now.value+unit+'</span>'+
           '<span class="ov-signal-m">'+top.days+' day'+(top.days===1?'':'s')+' logged · '+cmp+'</span>'+
@@ -18127,7 +17983,7 @@ function statsReviewInsights(){
         dates:'Goal running since '+fmtDate(wa.startedAt)+' · target '+wa.target+' kg',
         note:'No pace or forecast is calculated from readings this old. Weigh in to get one.',
         method:'A goal needs a recent reading to measure a rate against. Past that point Daily reports the gap rather than estimating through it.',
-        actions:[['openWeightEvidence(\''+wa.cur.date+'\')','See the check-in'],['setStatsTab(\'body\')','Open Body']]});
+        actions:[['openWeightEvidence('+JSON.stringify(wa.cur.date)+')','See the check-in'],['setStatsTab(\'body\')','Open Body']]});
     }else if(wa.pace&&wa.rateReady){
       const cutting=wa.mode==='cut', maintaining=wa.mode==='maintain';
       const verb=maintaining?'holding':(cutting?'losing':'gaining');
@@ -18143,7 +17999,7 @@ function statsReviewInsights(){
         dates:wa.goalReadings.length+' readings since '+fmtDate(wa.startedAt)+' · target '+wa.target+' kg'+(weightGoal.date?' by '+fmtDate(String(weightGoal.date).slice(0,10)):''),
         note:'This rate is measured from the readings you logged. It is not a projection of what will happen next.',
         method:'The rate is fitted across the readings saved since this goal started, then compared with the path the goal needs. Days without a reading are skipped, never counted as no change.',
-        actions:[['openWeightEvidence(\''+wa.cur.date+'\')','See the check-in'],['setStatsTab(\'body\')','Open Body']]});
+        actions:[['openWeightEvidence('+JSON.stringify(wa.cur.date)+')','See the check-in'],['setStatsTab(\'body\')','Open Body']]});
     }
   }
 
@@ -18175,7 +18031,7 @@ function statsReviewInsights(){
           figure:{value:fmtMoney(Math.round(spent))+' vs '+fmtMoney(target),caption:'spent against the plan saved for that week'},
           dates:'Week of '+fmtDate(k)+' · the most recent completed budget week',
           method:'Compared against the plan saved with that week, not today’s plan. Where a category has logged transactions they are used in place of any typed weekly figure.',
-          actions:[['closeStatsEvidence();openBudgetWeekFromStats(\''+k+'\')','Open that budget week'],['setStatsTab(\'finance\')','Open Finance']]});
+          actions:[['closeStatsEvidence();openBudgetWeekFromStats('+JSON.stringify(k)+')','Open that budget week'],['setStatsTab(\'finance\')','Open Finance']]});
       }
     }
     // A single variable category moving against its own recent baseline — the finance insight
@@ -18224,7 +18080,7 @@ function statsReviewInsights(){
           note:labelNote,
           method:(labelNote?'':'The category name was saved with every week compared. ')+
             'Where a category has logged transactions they are used in place of any typed weekly figure.',
-          actions:[['openFinanceCategoryEvidence(\''+evKey+'\')','See the transactions'],['setStatsTab(\'finance\')','Open Finance']]});
+          actions:[['openFinanceCategoryEvidence('+JSON.stringify(evKey)+')','See the transactions'],['setStatsTab(\'finance\')','Open Finance']]});
       }
     }
   }
@@ -18239,7 +18095,7 @@ function statsReviewInsights(){
       dates:'Latest date every account has a reading for: '+fmtDate(nw.latest),
       note:'A balance carries forward until you update it, so your net worth is only as current as its oldest input.',
       method:'Net worth is compared on dates where every tracked account has a recorded balance, so one account updated today does not make the whole figure look fresh.',
-      actions:[['openNetWorthEvidence(\''+nw.latest+'\')','See each balance'],['setStatsTab(\'finance\')','Open Finance']]});
+      actions:[['openNetWorthEvidence('+JSON.stringify(nw.latest)+')','See each balance'],['setStatsTab(\'finance\')','Open Finance']]});
   }
 
   return out.sort((a,b)=>b.score-a.score).slice(0,3);
@@ -18285,7 +18141,7 @@ function wkrInsightsHtml(){
       // disclosure — that is the difference between this and `method` below it.
       (it.note?'<p class="rev-note">'+escText(it.note)+'</p>':'')+
       '<div class="rev-actions">'+it.actions.map((a,i)=>
-        '<button type="button" class="'+(i?'rev-act':'rev-act primary')+'" onclick="'+a[0]+'">'+a[1]+' &rarr;</button>').join('')+
+        '<button type="button" class="'+(i?'rev-act':'rev-act primary')+'" onclick="'+escAttr(a[0])+'">'+a[1]+' &rarr;</button>').join('')+
       '</div>'+
       (it.method?'<details class="rev-method" id="rev-method-'+idx+'"><summary>How this was worked out</summary>'+
         '<div class="rev-method-body">'+escText(it.method)+'</div></details>':'')+
@@ -18327,7 +18183,6 @@ const WKR_GROUPS=[
   {id:'other',                  label:'Other spending',                kind:'rest'}
 ];
 const WKR_VAR_GROUPS=WKR_GROUPS.filter(g=>g.kind==='variable');
-function wkrGroup(id){ return WKR_GROUPS.find(g=>g.id===id)||null; }
 
 // Name hints used ONCE, when the user sets the review up, to pre-tick their existing variable
 // categories into the three named groups. Never applied at boot and never re-applied later —
@@ -19139,15 +18994,15 @@ function wkrField(label, controlHtml, help){
     (help?'<div class="wkr-help">'+escText(help)+'</div>':'')+'</div>';
 }
 function wkrMoneyInput(id, value, oninput){
-  return '<div class="wkr-money-in"><span>$</span><input class="wkr-input" id="'+id+'" type="text" '+
+  return '<div class="wkr-money-in"><span>$</span><input class="wkr-input" id="'+wkrAttr(id)+'" type="text" '+
     'inputmode="decimal" value="'+wkrAttr(value==null?'':value)+'" oninput="'+oninput+'"></div>';
 }
 function wkrArea(id, value, oninput, placeholder){
-  return '<textarea class="wkr-area" id="'+id+'" placeholder="'+wkrAttr(placeholder||'')+'" '+
+  return '<textarea class="wkr-area" id="'+wkrAttr(id)+'" placeholder="'+wkrAttr(placeholder||'')+'" '+
     'oninput="'+oninput+'">'+escText(value||'')+'</textarea>';
 }
 function wkrCheckRow(id, on, title, desc, onchange){
-  return '<label class="wkr-check" for="'+id+'"><input type="checkbox" id="'+id+'"'+(on?' checked':'')+
+  return '<label class="wkr-check" for="'+wkrAttr(id)+'"><input type="checkbox" id="'+wkrAttr(id)+'"'+(on?' checked':'')+
     ' onchange="'+onchange+'"><span><span class="wkr-check-t">'+escText(title)+'</span>'+
     (desc?'<span class="wkr-check-d">'+escText(desc)+'</span>':'')+'</span></label>';
 }
@@ -19262,9 +19117,9 @@ function wkrSetupFormHtml(){
           '<div class="wkr-row"><span class="wkr-row-l"><span class="wkr-row-name">'+escText(catLabel(c))+'</span></span>'+
           '<select class="wkr-select wkr-map-select" '+
             'aria-label="Group for '+wkrAttr(catLabel(c))+'" '+
-            'onchange="wkrSetupMapToggle(this.value,\''+wkrAttr(c.id)+'\',this.value!==\'other\')">'+
+            'onchange="wkrSetupMapToggle(this.value,'+wkrAttr(JSON.stringify(c.id))+',this.value!==\'other\')">'+
             WKR_VAR_GROUPS.concat([{id:'other',label:'Other spending'}]).map(g=>
-              '<option value="'+g.id+'"'+(groupOf(c.id)===g.id?' selected':'')+'>'+
+              '<option value="'+escAttr(g.id)+'"'+(groupOf(c.id)===g.id?' selected':'')+'>'+
               escText(g.id==='other'?'Other spending':d.money.groupLabels[g.id])+'</option>').join('')+
           '</select></div>').join('')
       : '<div class="wkr-blank">You have no variable spending categories yet. Add them in Finance and they '+
@@ -19278,7 +19133,7 @@ function wkrSetupFormHtml(){
     (incCats.length
       ? incCats.map(c=>wkrCheckRow('wr-irr-'+wkrAttr(c.id),
           (d.money.irregularIncomeCatIds||[]).indexOf(c.id)>=0, catLabel(c), '',
-          'wkrSetupIrregularToggle(\''+wkrAttr(c.id)+'\',this.checked)')).join('')
+          'wkrSetupIrregularToggle('+wkrAttr(JSON.stringify(c.id))+',this.checked)')).join('')
       : '<div class="wkr-blank">No income sources are set up in Finance yet.</div>')+
   '</div>';
 
@@ -19350,7 +19205,7 @@ function wkrPagesEditorHtml(d){
   return '<div class="card">'+cardHeader('note','Your review pages')+
     '<p class="wkr-help">Money and Next Week are always available. Add only what helps you make a decision. '+
     'Changes apply when you save this plan. Switching a page off keeps its saved answers.</p>'+
-    d.pages.map((p,i)=>'<details class="wkr-page-editor" id="wkr-page-editor-'+p.id+'"'+(wkrUI.openPage===p.id?' open':'')+'><summary>'+escText(p.title)+(p.enabled?' · On':' · Off')+'</summary>'+
+    d.pages.map((p,i)=>'<details class="wkr-page-editor" id="wkr-page-editor-'+escAttr(p.id)+'"'+(wkrUI.openPage===p.id?' open':'')+'><summary>'+escText(p.title)+(p.enabled?' · On':' · Off')+'</summary>'+
       wkrCheckRow('wkr-page-'+i,p.enabled,'Include this page','','wkrPageSet('+i+',\'enabled\',this.checked)')+
       wkrField('Page name','<input class="wkr-input" value="'+wkrAttr(p.title)+'" oninput="wkrPageSet('+i+',\'title\',this.value)">')+
       '<div class="wkr-actions"><button class="wkr-btn" onclick="wkrPageMove('+i+',-1)"'+(!i?' disabled':'')+'>Move up</button><button class="wkr-btn" onclick="wkrPageMove('+i+',1)"'+(i===d.pages.length-1?' disabled':'')+'>Move down</button></div>'+
@@ -19390,9 +19245,9 @@ function wkrOptionalPageHtml(week,rec,plan){
   }
   if(p.id==='health')built='<div class="card">'+cardHeader('flame','Health & habits')+'<p class="wkr-help">Use your recorded health information to choose one sustainable change.</p><div class="wkr-actions"><button class="wkr-btn" onclick="setStatsTab(\'nutrition\')">View nutrition</button><button class="wkr-btn" onclick="setStatsTab(\'body\')">View body trends</button></div></div>';
   const prompts=p.prompts.map(q=>{
-    const id='wkr-answer-'+p.id+'-'+q.id,v=answers[q.id],call='wkrPageAnswer(\''+p.id+'\',\''+q.id+'\',\''+q.type+'\',';
+    const id='wkr-answer-'+p.id+'-'+q.id,v=answers[q.id],call='wkrPageAnswer('+wkrAttr(JSON.stringify(p.id))+','+wkrAttr(JSON.stringify(q.id))+','+wkrAttr(JSON.stringify(q.type))+',';
     const content=q.type==='check'?wkrCheckRow(id,!!v,q.label,'',call+'this.checked)'):
-      wkrField(q.label,q.type==='number'?'<input id="'+id+'" class="wkr-input" type="number" value="'+wkrAttr(v==null?'':v)+'" oninput="'+call+'this.value)">':wkrArea(id,v||'',call+'this.value)',''),q.type==='number'&&q.target!=null?'Your target: '+q.target:'');
+      wkrField(q.label,q.type==='number'?'<input id="'+wkrAttr(id)+'" class="wkr-input" type="number" value="'+wkrAttr(v==null?'':v)+'" oninput="'+call+'this.value)">':wkrArea(id,v||'',call+'this.value)',''),q.type==='number'&&q.target!=null?'Your target: '+q.target:'');
     return '<div class="card">'+content+'</div>';
   }).join('');
   return built+prompts+(!built&&!prompts?'<div class="card"><p>Add prompts to this page in Edit baseline & pages.</p></div>':'');
@@ -19536,8 +19391,8 @@ function wkrWorkSectionHtml(week, rec, plan){
   const target=plan.work.qualifyingTarget;
   const pct=target>0?Math.min(100,Math.round(progress/target*100)):0;
   const f=wkrForecast(week, rec, plan);
-  const numIn=(id,path,val,ph)=>'<input class="wkr-input" id="'+id+'" type="number" inputmode="decimal" '+
-    'placeholder="'+wkrAttr(ph||'')+'" value="'+wkrAttr(val==null?'':val)+'" oninput="wkrPatchNum(\''+path+'\',this.value)">';
+  const numIn=(id,path,val,ph)=>'<input class="wkr-input" id="'+wkrAttr(id)+'" type="number" inputmode="decimal" '+
+    'placeholder="'+wkrAttr(ph||'')+'" value="'+wkrAttr(val==null?'':val)+'" oninput="wkrPatchNum('+escAttr(JSON.stringify(path))+',this.value)">';
 
   const entry='<div class="card">'+cardHeader('medal','This week')+
     '<div class="wkr-2col">'+
@@ -19568,25 +19423,25 @@ function wkrWorkSectionHtml(week, rec, plan){
     (opps.length
       ? opps.map((o,i)=>'<div class="wkr-opp">'+
           '<div class="wkr-opp-hd"><span class="wkr-opp-n">Opportunity '+(i+1)+'</span>'+
-            '<button type="button" class="wkr-opp-del" onclick="wkrOppRemove(\''+wkrAttr(o.id)+'\')">Remove</button></div>'+
+            '<button type="button" class="wkr-opp-del" onclick="wkrOppRemove('+wkrAttr(JSON.stringify(o.id))+')">Remove</button></div>'+
           wkrField('Name or short description',
             '<input class="wkr-input" type="text" value="'+wkrAttr(o.name)+'" '+
-            'oninput="wkrOppSet(\''+wkrAttr(o.id)+'\',\'name\',this.value)">')+
+            'oninput="wkrOppSet('+wkrAttr(JSON.stringify(o.id))+',\'name\',this.value)">')+
           '<div class="wkr-2col">'+
             wkrField('Likely closing date',
               '<input class="wkr-input" type="date" value="'+wkrAttr(o.closeDate)+'" '+
-              'onchange="wkrOppSet(\''+wkrAttr(o.id)+'\',\'closeDate\',this.value)">')+
+              'onchange="wkrOppSet('+wkrAttr(JSON.stringify(o.id))+',\'closeDate\',this.value)">')+
             wkrField('Expected commission',
               '<div class="wkr-money-in"><span>$</span><input class="wkr-input" type="text" inputmode="decimal" '+
               'value="'+wkrAttr(o.commission==null?'':o.commission)+'" '+
-              'oninput="wkrOppSet(\''+wkrAttr(o.id)+'\',\'commission\',this.value===\'\'?null:parseFloat(this.value)||0)"></div>')+
+              'oninput="wkrOppSet('+wkrAttr(JSON.stringify(o.id))+',\'commission\',this.value===\'\'?null:parseFloat(this.value)||0)"></div>')+
           '</div>'+
           wkrField('Status',
-            '<select class="wkr-select" onchange="wkrOppSet(\''+wkrAttr(o.id)+'\',\'status\',this.value)">'+
+            '<select class="wkr-select" onchange="wkrOppSet('+wkrAttr(JSON.stringify(o.id))+',\'status\',this.value)">'+
               WKR_OPP_STATUSES.map(s=>'<option value="'+s[0]+'"'+(o.status===s[0]?' selected':'')+'>'+s[1]+'</option>').join('')+
             '</select>')+
           wkrCheckRow('wkr-opp-q-'+wkrAttr(o.id), o.qualifying, 'Counts toward the qualifying target', '',
-            'wkrOppSet(\''+wkrAttr(o.id)+'\',\'qualifying\',this.checked)')+
+            'wkrOppSet('+wkrAttr(JSON.stringify(o.id))+',\'qualifying\',this.checked)')+
         '</div>').join('')
       : '<div class="wkr-blank">No opportunities recorded for this week.</div>')+
     '<button type="button" class="wkr-btn-add" onclick="wkrAddOpportunity()">+ Add an opportunity</button>'+
@@ -19679,7 +19534,7 @@ function wkrReflectionSectionHtml(week, rec, plan){
   const q=(icon,title,fact,chip,path,value,ph)=>
     '<div class="card">'+cardHeader(icon,title,chip||'')+
       (fact?'<div class="wkr-help" style="margin-top:0;margin-bottom:8px">'+escText(fact)+'</div>':'')+
-      wkrArea('wr-r-'+path.replace(/\./g,'-'), value, 'wkrPatchText(\''+path+'\',this.value)', ph||'')+
+      wkrArea('wr-r-'+path.replace(/\./g,'-'), value, 'wkrPatchText('+wkrAttr(JSON.stringify(path))+',this.value)', ph||'')+
     '</div>';
 
   const questions=
@@ -20007,7 +19862,7 @@ function wkrNextCardHtml(week,rec,plan,opts){
 function wkrNextEditorHtml(week,rec,plan){
   const d=wkrUI.nextDraft;
   if(!d)return wkrPriorityCardHtml(week,rec)+wkrNextCardHtml(week,rec,plan)+wkrSuggestionsHtml(week,rec,plan);
-  const input=(key,val)=>'<input class="wkr-input" type="number" min="0" step="0.01" inputmode="decimal" value="'+wkrAttr(val==null?'':val)+'" oninput="wkrNextSet(\''+key+'\',this.value)">';
+  const input=(key,val)=>'<input class="wkr-input" type="number" min="0" step="0.01" inputmode="decimal" value="'+wkrAttr(val==null?'':val)+'" oninput="wkrNextSet('+escAttr(JSON.stringify(key))+',this.value)">';
   const fields=WKR_GROUPS.map(g=>[g.id,d.money.groupLabels[g.id]]).concat([['savings','Savings'],['buffer','Buffer']]);
   const stale=wkrUI.nextBase!==wkrNextRevision(week);
   return '<div class="card">'+cardHeader('target','Allocate next week’s money')+
@@ -20192,7 +20047,7 @@ function wkrWeeklyReviewHtml(){
         ? 'This week has ended. Check the figures you need, choose next week’s plan, and complete when ready. Optional pages do not need filling in.'
         : 'You are looking at a different week. '+escText(fmtDate(pending))+' finished without a review.')+'</div>'+
       (pending===week?''
-        : '<div class="wkr-actions"><button type="button" class="wkr-btn primary" onclick="wkrSetWeek(\''+pending+'\')">Review that week instead</button></div>')+
+        : '<div class="wkr-actions"><button type="button" class="wkr-btn primary" onclick="wkrSetWeek('+escAttr(JSON.stringify(pending))+')">Review that week instead</button></div>')+
     '</div>'
     : '';
 
@@ -20213,7 +20068,7 @@ function wkrWeeklyReviewHtml(){
       '<div class="wkr-tabs" role="group" aria-label="Review sections">'+
         sections.map(s=>'<button type="button" class="'+(wkrUI.section===s.id?'on':'')+'" '+
           'aria-pressed="'+(wkrUI.section===s.id?'true':'false')+'" '+
-          'onclick="wkrSetSection(\''+s.id+'\')">'+escText(s.label)+'</button>').join('')+
+          'onclick="wkrSetSection('+escAttr(JSON.stringify(s.id))+')">'+escText(s.label)+'</button>').join('')+
       '</div>'+
     '</div>'+
     '<div class="wkr-main">'+
@@ -20256,7 +20111,7 @@ function wkrHomeNudgeHtml(){
   // still awaiting a review, not the one the figures above describe. wkrPendingWeek() and
   // wkrOpenWeek() are unchanged; only the wording is.
   const range=typeof homeWeekRangeLabel==='function'?homeWeekRangeLabel(week):'';
-  return '<button type="button" class="wkr-nudge" onclick="wkrOpenWeek(\''+week+'\')">'+
+  return '<button type="button" class="wkr-nudge" onclick="wkrOpenWeek('+escAttr(JSON.stringify(week))+')">'+
     '<span class="wkr-nudge-l">Outstanding review'+(range?' · '+escText(range):'')+'</span>'+
     '<span>Start →</span></button>';
 }
@@ -20317,7 +20172,7 @@ function renderBSTrend(){
     {c:spend.variable,l:'Variable spend'},
     {c:spend.fixed,l:'Committed spend',ring:spend.fixedEdge}
   ].concat(goalCoverage?[{c:BUD_CHART_COLORS.rate,l:'Saved plan',dash:true}]:[]));
-  wrap.innerHTML=card('<div class="stats-chart-summary">'+conclusion+' <button class="stats-inline-link" onclick="openBudgetWeekFromStats(\''+latestDone+'\')">Open source week →</button></div>'+
+  wrap.innerHTML=card('<div class="stats-chart-summary">'+conclusion+' <button class="stats-inline-link" onclick="openBudgetWeekFromStats('+escAttr(JSON.stringify(latestDone))+')">Open source week →</button></div>'+
     '<div class="stats-data-note">Income recorded in '+sum.incomeWeeks+' of '+shown.length+' week'+(shown.length===1?'':'s')+'; unrecorded weeks are drawn as gaps, not zeros. Saved plan available for '+goalCoverage+' of '+shown.length+'. Missing plans are not reconstructed from today’s defaults.'+(ambiguousCoverage?' '+ambiguousCoverage+' snapshot-only legacy week'+(ambiguousCoverage===1?' shows':'s show')+' known detail only.':'')+'</div>'+
     '<div class="chart-legend" style="margin-top:12px">'+legend+'</div>'+
     '<div class="stats-chart-box" style="margin-top:2px"><canvas id="bs-trend-chart" aria-label="Weekly income and expenses"></canvas></div>');
@@ -20463,7 +20318,7 @@ function renderNetWorthChartInto(wrapId){
   }).filter(Boolean);
   const latest=dates[dates.length-1];
   const ranges=[['1m','1M'],['3m','3M'],['1y','1Y'],['all','ALL']];
-  const rangeHtml='<div class="nw-chart-ranges" role="group" aria-label="Net worth history period">'+ranges.map(r=>'<button type="button" onclick="setNWChartRange(\''+r[0]+'\')" class="'+(nwChartRange===r[0]?'on':'')+'" aria-pressed="'+(nwChartRange===r[0])+'">'+r[1]+'</button>').join('')+'</div>';
+  const rangeHtml='<div class="nw-chart-ranges" role="group" aria-label="Net worth history period">'+ranges.map(r=>'<button type="button" onclick="setNWChartRange('+escAttr(JSON.stringify(r[0]))+')" class="'+(nwChartRange===r[0]?'on':'')+'" aria-pressed="'+(nwChartRange===r[0])+'">'+r[1]+'</button>').join('')+'</div>';
   wrap.innerHTML='<div class="card nw-chart-card">'+
     '<div class="nw-chart-head">'+
       '<div>'+(accountHistory?'':'<div class="nw-chart-kicker">'+acctIcon('trend',13)+(latestPointInfo.count<latestPointInfo.total?'Recorded net worth':'Net worth')+'</div>')+
@@ -20511,71 +20366,6 @@ function renderNetWorthChartInto(wrapId){
       }
     }
   });
-}
-function renderBSConsist(){
-  const wrap=document.getElementById('bs-consist-wrap'); if(!wrap) return;
-  const allKeys=Object.keys(budgetData).sort().reverse().slice(0,8).reverse();
-  if(!allKeys.length){
-    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+cardIcon('calendar')+'Budget consistency</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">No weeks saved yet.</div></div>';
-    return;
-  }
-  const cells=allKeys.map(k=>{
-    const d=budgetData[k]; if(!d) return '';
-    const inc=weekIncome(d);
-    const leftover=inc>0?weekLeftover(d):null;
-    const mon=new Date(k+'T12:00:00');
-    const dayLbl=mon.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
-    const status=leftover===null?'grey':leftover>=50?'green':leftover>=0?'amber':'red';
-    const bg={green:'#52B788',amber:'#f59e0b',red:'#E74C3C',grey:'var(--border)'};
-    const fg={green:'#fff',amber:'#fff',red:'#fff',grey:'var(--muted)'};
-    const valLbl=leftover!==null?(leftover>=0?'+$':'-$')+Math.abs(leftover).toFixed(0):'—';
-    return '<div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px">'
-      +'<div style="width:100%;height:48px;background:'+bg[status]+';border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:'+fg[status]+'">'+valLbl+'</div>'
-      +'<div style="font-size:9px;color:var(--muted);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;padding:0 1px">'+dayLbl+'</div>'
-      +'</div>';
-  }).join('');
-  wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden">'
-    +'<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+cardIcon('calendar')+'Budget consistency</div>'
-    +'<div style="padding:14px 16px">'
-    +'<div style="display:flex;gap:5px;margin-bottom:10px">'+cells+'</div>'
-    +'<div style="display:flex;gap:14px;font-size:11px;color:var(--muted)">'
-    +'<span><span style="display:inline-block;width:10px;height:10px;background:#52B788;border-radius:2px;vertical-align:middle;margin-right:3px"></span>On track</span>'
-    +'<span><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Tight</span>'
-    +'<span><span style="display:inline-block;width:10px;height:10px;background:#E74C3C;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Over</span>'
-    +'</div></div></div>';
-}
-function renderBSRecords(){
-  const wrap=document.getElementById('bs-records-wrap'); if(!wrap) return;
-  const keys=Object.keys(budgetData);
-  if(keys.length<2){
-    wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden"><div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+cardIcon('trophy')+'Personal records</div><div style="padding:14px 16px;text-align:center;color:var(--muted);font-size:13px">Save at least 2 weeks to see records.</div></div>';
-    return;
-  }
-  let bestInc={val:0,key:null},bestSav={val:0,key:null},loSpend={val:Infinity,key:null};
-  keys.forEach(k=>{
-    const d=budgetData[k]; if(!d) return;
-    const inc=weekIncome(d);
-    const spend=weekSpending(d);
-    const sav=weekSavedAmt(d);
-    if(inc>0&&inc>bestInc.val){bestInc={val:inc,key:k};}
-    if(sav>bestSav.val){bestSav={val:sav,key:k};}
-    if(inc>0&&spend<loSpend.val){loSpend={val:spend,key:k};}
-  });
-  const fmtWk=k=>{if(!k) return '—'; return new Date(k+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'2-digit'});};
-  const rows=[
-    {icon:cardIcon('wallet'),label:'Highest income',val:bestInc.key?'$'+bestInc.val.toFixed(0):'—',wk:fmtWk(bestInc.key)},
-    {icon:cardIcon('down'),label:'Lowest spending',val:loSpend.key&&isFinite(loSpend.val)?'$'+loSpend.val.toFixed(0):'—',wk:fmtWk(loSpend.key)},
-    {icon:cardIcon('medal'),label:'Most saved',val:bestSav.key?'$'+bestSav.val.toFixed(0):'—',wk:fmtWk(bestSav.key)},
-  ];
-  wrap.innerHTML='<div class="card" style="padding:0;overflow:hidden">'
-    +'<div style="background:transparent;padding:16px 16px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:flex;align-items:center;gap:6px">'+cardIcon('trophy')+'Personal records</div>'
-    +'<div style="padding:2px 16px">'
-    +rows.map(r=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--border)">'
-      +'<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">'+r.icon+'</span>'
-      +'<div><div style="font-size:13px;font-weight:600">'+r.label+'</div><div style="font-size:11px;color:var(--muted)">Week of '+r.wk+'</div></div></div>'
-      +'<div style="font-size:18px;font-weight:800;color:var(--success)">'+r.val+'</div>'
-      +'</div>').join('')
-    +'</div></div>';
 }
 function renderBSGoals(){
   const wrap=document.getElementById('bs-goals-wrap'); if(!wrap) return;
@@ -20725,18 +20515,6 @@ function calcHabitStreakIdx(idx){
 }
 // Habits stats live in the Training sub-tab. Created dynamically and always
 // re-appended to the end of #sub-training.
-function ensureHabitsStatsInProgress(){
-  const sub=document.getElementById('sub-training'); if(!sub) return;
-  let sec=document.getElementById('stats-habits-section');
-  if(!sec){
-    sec=document.createElement('div');
-    sec.id='stats-habits-section';
-    sec.style.cssText='margin-top:24px;display:none';
-    sec.innerHTML='<div class="sec-label" style="margin-bottom:12px">📋 Habit completion · last 30 days</div><div id="stats-habits-list"></div>';
-  }
-  sub.appendChild(sec); // move/keep at the end
-  renderStatsHabits();
-}
 function buildHabitsWeekStats(){
   const today=getLocalDate();
   const dates=getWeekDates();
@@ -21209,7 +20987,6 @@ function applyHabitOrderFromDOM(){
     document.addEventListener('pointercancel',onUp);
   });
 })();
-function closeHabitsEditModal(){ if(typeof closeSettingsSection==='function') closeSettingsSection(); }
 function refreshTodayHabits(){
   const list=document.getElementById('habits-today-list');
   if(list) list.innerHTML=buildTodayHabitsList();
@@ -21221,12 +20998,6 @@ function refreshTodayHabits(){
 }
 
 // Time-of-day greeting + saved profile name (source of truth: profileData.name).
-function getGreeting(){
-  const hour=new Date().getHours();
-  const nm=(profileData.name||S.personalInfo?.name||'').trim();
-  const timeGreet=hour<12?'Good morning':hour<17?'Good afternoon':'Good evening';
-  return nm?timeGreet+', '+nm:timeGreet;
-}
 
 // ── Home weather card ──────────────────────────────────────────────
 // Open-Meteo: free, no API key (nothing to hide in a static public repo), CORS-enabled.
@@ -22173,9 +21944,6 @@ function renderMobileWeatherForecast(entry){
   empty.hidden=!!rows.length; empty.textContent=week?'Weekly forecast unavailable. Try refreshing weather.':'Hourly forecast unavailable.';
   document.getElementById('home-weather-forecast-retry').hidden=!!rows.length;
 }
-function homeWeatherToggle(disclosure){
-  if(disclosure.isConnected) _homeWeatherExpanded[disclosure.dataset.mode]=disclosure.open;
-}
 // A calendar date, not elapsed 24-hour periods: DST and reloads keep the day's view stable.
 function weatherDailyView(date=getLocalDate()){
   const parts=date.split('-').map(Number);
@@ -22517,11 +22285,6 @@ function loadCCInput(){
     '</div>';
 }
 
-function daysUntil(targetDay,today){
-  const nowDay=new Date(today+'T12:00:00').getDay();
-  let diff=(targetDay-nowDay+7)%7;
-  return diff===0?'Today! 🎉':'in '+diff+' day'+(diff===1?'':'s');
-}
 // ── Card chrome ───────────────────────────────────────────────────
 // A small line-icon set for card headers, in one visual family with the sidebar's icons
 // (24px grid, currentColor stroke, round caps) — so a card header stops being an emoji sitting
@@ -22699,38 +22462,6 @@ function homeHeroContent(goalCals,kcalTotal,budLeft,budPillCls,budPillTxt,unknow
     // one — logging works with no target at all, so the profile hint must not read as a gate.
     return '<div class="nut-home-none" style="padding-top:2px">No food logged today</div>'+
       '<div class="card-cap" style="margin-top:6px">Add Health details if you want a calorie target. Food logging works without one.</div>';
-  }
-}
-function homeSavingsInner(){
-  const last8=savingsLog.slice(-8);
-  if(last8.length){
-    const latest=last8[last8.length-1];
-    const diffDays=Math.floor((new Date()-new Date(latest.date))/(864e5));
-    const ago=diffDays===0?'today':diffDays===1?'yesterday':diffDays+' days ago';
-    const vals=last8.map(e=>e.balance);
-    const maxV=Math.max(...vals),minV=Math.min(...vals),range=maxV-minV||maxV||1;
-    const bars=last8.map((e,i)=>{
-      const prev=i>0?last8[i-1].balance:e.balance;
-      const col=e.balance<prev?'var(--danger)':'var(--success)';
-      const h=Math.max(8,Math.round(((e.balance-minV)/range)*36+8));
-      return '<div style="flex:1;display:flex;align-items:flex-end;padding:0 1px"><div style="width:100%;height:'+h+'px;background:'+col+';border-radius:2px 2px 0 0;opacity:0.85"></div></div>';
-    }).join('');
-    return (
-      '<div style="display:flex;justify-content:space-between;align-items:flex-end">'+
-        '<div>'+
-          '<div style="font-size:22px;font-weight:800">$'+latest.balance.toLocaleString()+'</div>'+
-          '<div style="font-size:11px;color:var(--muted)">Updated '+ago+'</div>'+
-        '</div>'+
-        '<button class="sav-update-btn" onclick="event.stopPropagation();updateSavingsBalance()">Update</button>'+
-      '</div>'+
-      '<div style="display:flex;align-items:flex-end;height:40px;gap:2px;margin-top:8px">'+bars+'</div>');
-  } else {
-    return (
-      '<div style="display:flex;justify-content:space-between;align-items:center">'+
-        '<div style="font-size:22px;font-weight:800;color:var(--muted)">$—</div>'+
-        '<button class="sav-update-btn" onclick="event.stopPropagation();updateSavingsBalance()">Update</button>'+
-      '</div>'+
-      '<div style="font-size:11px;color:var(--muted);margin-top:4px">No balance logged</div>');
   }
 }
 
@@ -23226,7 +22957,7 @@ function buildHomePhoneOverview(cards,visible,brief){
 }
 // Native links make the whole summary reachable by keyboard without nesting its other actions.
 function homeCardDestination(view,label){
-  return '<a class="home-card-destination" href="#'+view+'" aria-label="'+label+'" tabindex="'+(homeEditMode?-1:0)+'" onclick="event.preventDefault();event.stopPropagation();if(!homeEditMode)setView(\''+view+'\')"></a>';
+  return '<a class="home-card-destination" href="#'+view+'" aria-label="'+label+'" tabindex="'+(homeEditMode?-1:0)+'" onclick="event.preventDefault();event.stopPropagation();if(!homeEditMode)setView('+escAttr(JSON.stringify(view))+')"></a>';
 }
 function homePrepareCardLinks(){
   const targets={prs:['stats','Open personal records','All →'],kitchen:['food','Open Food','Open →'],weight:['stats','Open weight and goal','Set a goal →'],recent:['log','Open workout history','History →'],finance:['budget','Open Finance','Open Finance →'],balance:['budget','Open accounts','Manage →'],review:['stats','Open weekly review','Full review →']};
@@ -23847,7 +23578,7 @@ function hlPreview(mode,layout){
     return '<div class="hl-pv hl-pv-dash" role="group" aria-label="Desktop Dashboard preview">'+
       HOME_DASH_COLS.map(function(c){
         const ids=cols[c.id].filter(shown);
-        return '<div class="hl-pv-col hl-pv-'+c.id+'"><span class="hl-pv-h">'+c.label+'</span>'+
+        return '<div class="hl-pv-col hl-pv-'+escAttr(c.id)+'"><span class="hl-pv-h">'+c.label+'</span>'+
           (ids.length?ids.map(id=>hlPvTile(id,id==='session'?' is-hero':'',combined&&id==='session')).join('')
                      :'<span class="hl-pv-none">No cards shown</span>')+'</div>';
       }).join('')+
@@ -23867,8 +23598,8 @@ function hlWidgetRow(id,index,count,mode,ctx){
   const embedded=mode==='desktop'&&id==='budget'&&!ctx.hidden.has('session')&&!ctx.hidden.has('budget');
   const phoneOverview=mode==='mobile'&&['session','weather'].includes(id);
   const other=ctx.dash?HOME_DASH_COLS.filter(c=>c.id!==ctx.col)[0]:null;
-  const mv=ctx.dash?'homeDashMove(\''+id+'\',':'homeWidgetMove(\''+id+'\',';
-  const mvEnd=ctx.dash?')':',\''+mode+'\')';
+  const mv=(ctx.dash?'homeDashMove(':'homeWidgetMove(')+JSON.stringify(id)+',';
+  const mvEnd=ctx.dash?')':','+JSON.stringify(mode)+')';
   return '<article class="hl-widget'+(off?' is-hidden':'')+'" data-hl-widget="'+id+'">'+
     '<div class="hl-widget-head">'+
       '<span class="hl-widget-order">'+(index+1)+'</span>'+
@@ -23876,24 +23607,24 @@ function hlWidgetRow(id,index,count,mode,ctx){
       (w.fixed?'<span class="hl-always">Always shown</span>'
         :'<label class="hl-show"><span>Show</span><span class="toggle-switch">'+
           '<input type="checkbox" data-hl-focus="'+id+':show"'+(off?'':' checked')+
-          ' onchange="homeWidgetToggle(\''+id+'\',this.checked,\''+mode+'\')">'+
+          ' onchange="homeWidgetToggle('+escAttr(JSON.stringify(id))+',this.checked,'+escAttr(JSON.stringify(mode))+')">'+
           '<span class="toggle-slider"></span></span></label>')+
     '</div>'+
     '<div class="hl-widget-preview" aria-label="Illustrative '+w.label+' card">'+(w.preview?w.preview():'')+'</div>'+
     (embedded||phoneOverview?'<p class="stg-help">'+(phoneOverview?'Shown in the compact daily overview.':'Shown inside the blue Training card.')+'</p>':'<div class="hl-widget-actions">'+
       '<div class="hl-order-actions">'+
         '<button type="button" data-hl-focus="'+id+':up" aria-label="Move '+w.label+' up" '+
-          'onclick="'+mv+'-1'+mvEnd+'"'+(index===0?' disabled':'')+'>↑</button>'+
+          'onclick="'+escAttr(mv+'-1'+mvEnd)+'"'+(index===0?' disabled':'')+'>↑</button>'+
         '<button type="button" data-hl-focus="'+id+':down" aria-label="Move '+w.label+' down" '+
-          'onclick="'+mv+'1'+mvEnd+'"'+(index===count-1?' disabled':'')+'>↓</button>'+
+          'onclick="'+escAttr(mv+'1'+mvEnd)+'"'+(index===count-1?' disabled':'')+'>↓</button>'+
       '</div>'+
       (ctx.dash
         ? '<button type="button" class="hl-col-btn" data-hl-focus="'+id+':col" '+
-            'aria-label="Move '+w.label+' to '+other.label+'" onclick="homeDashSwitchCol(\''+id+'\')">'+
+            'aria-label="Move '+w.label+' to '+other.label+'" onclick="homeDashSwitchCol('+escAttr(JSON.stringify(id))+')">'+
             '<span>Move to</span><strong>'+other.label+'</strong></button>'
         : mode==='desktop'
           ? '<button type="button" class="hl-width-btn'+(isWide?' is-wide':'')+'" data-hl-focus="'+id+':width" '+
-              'aria-pressed="'+(isWide?'true':'false')+'" onclick="homeWidgetWidth(\''+id+'\','+(!isWide)+',\'desktop\')">'+
+              'aria-pressed="'+(isWide?'true':'false')+'" onclick="homeWidgetWidth('+escAttr(JSON.stringify(id))+','+(!isWide)+',\'desktop\')">'+
               '<span>Desktop</span><strong>'+(isWide?'Full row':'Half row')+'</strong></button>'
           : '')+
     '</div>')+
@@ -23915,13 +23646,13 @@ function renderHomeLayoutSection(){
   const label=HL_PROFILE_LABEL[mode], otherMode=mode==='mobile'?'desktop':'mobile';
   const tab=function(m,text){
     return '<button type="button" role="tab" id="hl-tab-'+m+'" aria-selected="'+(mode===m)+'"'+
-      (mode===m?' class="on"':'')+' onclick="homeLayoutChooseProfile(\''+m+'\')">'+text+
+      (mode===m?' class="on"':'')+' onclick="homeLayoutChooseProfile('+escAttr(JSON.stringify(m))+')">'+text+
       (hlDirty(m)&&mode!==m?' •':'')+'</button>';
   };
   const comp=function(kind,name,desc){
     const on=dash===(kind==='dashboard');
     return '<button type="button" class="hl-comp'+(on?' is-on':'')+'" data-hl-focus="comp:'+kind+'" '+
-      'aria-pressed="'+on+'" onclick="homeCompositionChoose(\''+kind+'\')">'+
+      'aria-pressed="'+on+'" onclick="homeCompositionChoose('+escAttr(JSON.stringify(kind))+')">'+
       '<span class="hl-comp-fig hl-comp-'+kind+'">'+
       (kind==='grid'?'<i class="w"></i><i></i><i></i><i></i><i></i>':'<i class="m"></i><i class="s"></i>')+
       '</span><strong>'+name+'</strong><small>'+desc+'</small></button>';
@@ -23979,8 +23710,8 @@ function renderHomeLayoutSection(){
         '<p>It was updated from another device, another tab, or by rearranging Home directly. '+
         'Choose which one to keep — nothing has been overwritten yet.</p>'+
         '<div class="stg-actions">'+
-          '<button type="button" class="stg-btn primary" onclick="homeLayoutCommit(\''+mode+'\')">Keep my changes</button>'+
-          '<button type="button" class="stg-btn quiet" onclick="homeLayoutCancel(\''+mode+'\',true)">Use the updated layout</button>'+
+          '<button type="button" class="stg-btn primary" onclick="homeLayoutCommit('+escAttr(JSON.stringify(mode))+')">Keep my changes</button>'+
+          '<button type="button" class="stg-btn quiet" onclick="homeLayoutCancel('+escAttr(JSON.stringify(mode))+',true)">Use the updated layout</button>'+
         '</div></div>'
       : '')+
     '<div class="stg-card">'+
@@ -23988,14 +23719,14 @@ function renderHomeLayoutSection(){
         (dash?'Every card sits in exactly one column.':'Hidden cards keep their place for when you turn them back on.'))+
       '<div class="stg-actions hl-actions">'+
         (dirty?'<span class="hl-state">Unsaved changes</span>':stgSaveState('hl-saved'))+
-        '<button type="button" class="stg-btn quiet" onclick="homeLayoutCancel(\''+mode+'\')"'+
+        '<button type="button" class="stg-btn quiet" onclick="homeLayoutCancel('+escAttr(JSON.stringify(mode))+')"'+
           (dirty?'':' disabled')+'>Cancel</button>'+
-        '<button type="button" class="stg-btn primary" onclick="homeLayoutApply(\''+mode+'\')"'+
+        '<button type="button" class="stg-btn primary" onclick="homeLayoutApply('+escAttr(JSON.stringify(mode))+')"'+
           (dirty&&!stale?'':' disabled')+'>'+HL_APPLY_LABEL[mode]+'</button>'+
       '</div>'+
       (dirty?'<p class="stg-help">These changes are held here until you apply or cancel them. Home still shows your saved layout, and they are not kept if Daily is reloaded.</p>':'')+
       '<div class="stg-actions hl-actions-2">'+
-        '<button type="button" class="stg-btn" onclick="homeLayoutCopy(\''+otherMode+'\',\''+mode+'\')">Copy '+HL_PROFILE_LABEL[otherMode]+' here</button>'+
+        '<button type="button" class="stg-btn" onclick="homeLayoutCopy('+escAttr(JSON.stringify(otherMode))+','+escAttr(JSON.stringify(mode))+')">Copy '+HL_PROFILE_LABEL[otherMode]+' here</button>'+
         '<button type="button" class="stg-btn quiet" onclick="homeLayoutReset()">Reset to recommended</button>'+
       '</div>'+
     '</div>'+
@@ -24075,12 +23806,6 @@ function toggleHomeCardExpand(id){
   applyHomeCardCaps();
 }
 let homeEditMode=false;
-function toggleHomeEdit(){
-  homeEditMode=!homeEditMode;
-  const btn=document.getElementById('home-edit-btn');
-  if(btn){ btn.textContent=homeEditMode?'Done':'Edit'; btn.classList.toggle('active',homeEditMode); }
-  applyHomeEditMode();
-}
 function applyHomeEditMode(){
   const hc=document.getElementById('home-content');
   if(hc) hc.classList.toggle('home-editing',homeEditMode);
@@ -24229,7 +23954,7 @@ function buildHomeRecentCard(){
       // measured 1.76:1 in light mode). The per-theme values live in CSS — same problem, and
       // the same fix, as --accent-text.
       (m
-        ? '<span class="rw-effort ef-'+m.id+'">'+m.label+'</span>'
+        ? '<span class="rw-effort ef-'+escAttr(m.id)+'">'+m.label+'</span>'
         : '<span class="rw-effort rw-effort-none">Not rated</span>')+
     '</div>';
   }).join('');
@@ -24549,17 +24274,6 @@ function showOnboarding(){
 // Blank the shared budgetConfig to a single empty income row + no fixed expenses, but ONLY
 // for a genuinely new user (no budget saved yet). An existing account re-running onboarding
 // keeps its real budget untouched. Runs once when the budget step is first shown.
-function obEnsureBudgetStarter(){
-  if(obBudgetStarted) return;
-  obBudgetStarted = true;
-  if(localStorage.getItem('daily_budget_config')==null){
-    saveBudgetConfig({
-      incomeStreams:[{id:'i'+Date.now(),name:'',weeklyAmount:0}],
-      fixedExpenses:[],
-      variableExpenses:[],
-    });
-  }
-}
 // ── Training split editor (shared: onboarding 'split' step + Settings overlay) ──
 // The editor shows rotation slots. Source references stay in memory so opening/saving does
 // not flatten repeated days or strip metadata from the existing split.
@@ -24671,7 +24385,7 @@ function sePickerListHTML(){
       '<span class="se-picker-pick" onclick="sePick('+JSON.stringify(e.name).replace(/"/g,'&quot;')+')">'+
         '<span>'+_catEscHtml(e.name)+'</span><span class="se-picker-muscle">'+escText(muscleLabel(e.muscle))+'</span>'+
       '</span>'+
-      (SE.mode==='new'&&SE.customExercises.some(x=>x.id===e.id)?'':'<button class="se-picker-edit" onclick="event.stopPropagation();openEditExercise(\''+e.id+'\')" aria-label="Edit exercise">✎</button>')+
+      (SE.mode==='new'&&SE.customExercises.some(x=>x.id===e.id)?'':'<button class="se-picker-edit" onclick="event.stopPropagation();openEditExercise('+escAttr(JSON.stringify(e.id))+')" aria-label="Edit exercise">✎</button>')+
     '</div>'
   ).join('');
   if(q && !lib.some(e=>e.name.toLowerCase()===q)){
@@ -25085,7 +24799,7 @@ function renderAccountsPage(){
             (_acctEditMode
               ? '<div class="bud-row" style="border-bottom:none;padding-top:6px">'+
                   '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Track statement due date</div></div>'+
-                  '<label class="toggle-switch"><input type="checkbox"'+(a.tracksStatement?' checked':'')+' onchange="accountToggleStatement(\''+a.id+'\',this.checked)"><span class="toggle-slider"></span></label>'+
+                  '<label class="toggle-switch"><input type="checkbox"'+(a.tracksStatement?' checked':'')+' onchange="accountToggleStatement('+escAttr(JSON.stringify(a.id))+',this.checked)"><span class="toggle-slider"></span></label>'+
                 '</div>'
               : '')+
             (a.tracksStatement?
@@ -25094,13 +24808,13 @@ function renderAccountsPage(){
               '<div class="acct-stmt-row">'+
               '<div class="bud-row" style="border-bottom:none">'+
                 '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500">Statement balance</div></div>'+
-                '<input class="bud-row-input" type="number" inputmode="decimal" placeholder="$0" value="'+(a.statementBalance?a.statementBalance:'')+'" onchange="accountSetStatementField(\''+a.id+'\',\'statementBalance\',this.value)">'+
+                '<input class="bud-row-input" type="number" inputmode="decimal" placeholder="$0" value="'+(a.statementBalance?a.statementBalance:'')+'" onchange="accountSetStatementField('+escAttr(JSON.stringify(a.id))+',\'statementBalance\',this.value)">'+
               '</div>'+
               '<div class="bud-row" style="border-bottom:none">'+
-                '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500">Due date</div>'+('<div class="bud-row-budget" id="acct-due-hint-'+a.id+'"'+(dueTxt.indexOf('Overdue')===0?' style="color:var(--danger)"':'')+'>'+dueTxt+'</div>')+'</div>'+
-                '<input class="bud-row-input" type="date" value="'+(a.dueDate?String(a.dueDate).slice(0,10):'')+'" onchange="accountSetStatementField(\''+a.id+'\',\'dueDate\',this.value)" style="width:150px">'+
+                '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500">Due date</div>'+('<div class="bud-row-budget" id="acct-due-hint-'+escAttr(a.id)+'"'+(dueTxt.indexOf('Overdue')===0?' style="color:var(--danger)"':'')+'>'+dueTxt+'</div>')+'</div>'+
+                '<input class="bud-row-input" type="date" value="'+(a.dueDate?String(a.dueDate).slice(0,10):'')+'" onchange="accountSetStatementField('+escAttr(JSON.stringify(a.id))+',\'dueDate\',this.value)" style="width:150px">'+
               '</div>'+
-              '<button class="sav-update-btn" style="width:100%;margin-top:8px" onclick="accountMarkPaid(\''+a.id+'\')">Mark statement as paid</button>'+
+              '<button class="sav-update-btn" style="width:100%;margin-top:8px" onclick="accountMarkPaid('+escAttr(JSON.stringify(a.id))+')">Mark statement as paid</button>'+
               '</div>'
             :'');
         }
@@ -25110,9 +24824,9 @@ function renderAccountsPage(){
         const catRow=!_acctEditMode ? '' :
           '<div class="bud-row" style="border-bottom:none;padding-top:6px">'+
             '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Category</div></div>'+
-            '<select class="bud-row-input" style="text-align:left" onchange="accountSetCategory(\''+a.id+'\',this.value)">'+
+            '<select class="bud-row-input" style="text-align:left" onchange="accountSetCategory('+escAttr(JSON.stringify(a.id))+',this.value)">'+
               '<option value=""'+(a.category?'':' selected')+'>Not set</option>'+
-              catList.map(c=>'<option value="'+c.id+'"'+(a.category===c.id?' selected':'')+'>'+c.label+'</option>').join('')+
+              catList.map(c=>'<option value="'+escAttr(c.id)+'"'+(a.category===c.id?' selected':'')+'>'+c.label+'</option>').join('')+
             '</select>'+
           '</div>';
         // Credit limit — debts only, and only meaningful for revolving credit, but offered on
@@ -25150,7 +24864,7 @@ function renderAccountsPage(){
               '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Credit limit</div>'+
                 (util!==null?'':'<div class="bud-row-budget">Optional — shows how much of it you are using</div>')+
               '</div>'+
-              '<input class="bud-row-input" type="number" inputmode="decimal" placeholder="$0" value="'+(a.limit?a.limit:'')+'" onchange="accountSetLimit(\''+a.id+'\',this.value)">'+
+              '<input class="bud-row-input" type="number" inputmode="decimal" placeholder="$0" value="'+(a.limit?a.limit:'')+'" onchange="accountSetLimit('+escAttr(JSON.stringify(a.id))+',this.value)">'+
             '</div>';
         }
         // Assets can be flagged as a savers account: still net worth, held out of the payoff total.
@@ -25160,7 +24874,7 @@ function renderAccountsPage(){
             '<div class="bud-row" style="border-bottom:none;padding-top:6px">'+
               '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Savers account</div>'+
                 '<div class="bud-row-budget">Excluded from the payoff total</div></div>'+
-              '<label class="toggle-switch"><input type="checkbox"'+(a.saver?' checked':'')+' onchange="accountToggleSaver(\''+a.id+'\',this.checked)"><span class="toggle-slider"></span></label>'+
+              '<label class="toggle-switch"><input type="checkbox"'+(a.saver?' checked':'')+' onchange="accountToggleSaver('+escAttr(JSON.stringify(a.id))+',this.checked)"><span class="toggle-slider"></span></label>'+
             '</div>';
         }
         // Lock icon inherits typeCol via currentColor; the emoji it replaces rendered at 11px
@@ -25179,8 +24893,8 @@ function renderAccountsPage(){
               '<div class="bud-row-budget">'+(a.history&&a.history.length?a.history.length+' update'+(a.history.length===1?'':'s')+' logged':'No history yet')+'</div>'+
               acctChangeHtml(a)+'</div>'+
             '<div style="display:flex;align-items:center;gap:6px">'+
-              '<input class="bud-row-input" id="acct-bal-'+a.id+'" type="number" inputmode="decimal" placeholder="$0" value="'+(a.current||a.current===0?a.current:'')+'" style="color:'+curCol+'">'+
-              '<button class="sav-update-btn" onclick="accountUpdateBalanceFromInput(\''+a.id+'\')">Update</button>'+
+              '<input class="bud-row-input" id="acct-bal-'+escAttr(a.id)+'" type="number" inputmode="decimal" placeholder="$0" value="'+(a.current||a.current===0?a.current:'')+'" style="color:'+curCol+'">'+
+              '<button class="sav-update-btn" onclick="accountUpdateBalanceFromInput('+escAttr(JSON.stringify(a.id))+')">Update</button>'+
             '</div>'+
           '</div>'+
           // Keep the credit-used bar and savings goal visible; tools are optional disclosure.
@@ -25188,11 +24902,11 @@ function renderAccountsPage(){
           '<details class="acct-records acct-options" data-account="'+escAttr(a.id)+'"'+(_acctEditMode||_acctOptionsOpen.has(a.id)?' open':'')+' ontoggle="acctRememberDisclosure(this,\'options\')"><summary onclick="event.preventDefault();acctToggleDisclosure(this,\'options\')">Account options</summary>'+
           (typeof acctLinkCard==='function'?acctLinkCard(a):'')+
           (_acctEditMode?'<div class="bud-row acct-edit-row">'+
-            '<input class="bud-cat-name-input" aria-label="Account name" value="'+_catEsc(a.name)+'" placeholder="Account name" onchange="accountRename(\''+a.id+'\',this.value)" style="flex:1;font-weight:700">'+
+            '<input class="bud-cat-name-input" aria-label="Account name" value="'+_catEsc(a.name)+'" placeholder="Account name" onchange="accountRename('+escAttr(JSON.stringify(a.id))+',this.value)" style="flex:1;font-weight:700">'+
             '<div class="acct-order-controls">'+
-              '<button onclick="accountMove(\''+a.id+'\',-1)" aria-label="Move account up"'+(acctIndex===0?' disabled':'')+'>↑</button>'+
-              '<button onclick="accountMove(\''+a.id+'\',1)" aria-label="Move account down"'+(acctIndex===accounts.length-1?' disabled':'')+'>↓</button></div>'+
-            '<button class="lib-del-btn" onclick="accountDelete(\''+a.id+'\')" aria-label="Archive account">×</button></div>':'')+
+              '<button onclick="accountMove('+escAttr(JSON.stringify(a.id))+',-1)" aria-label="Move account up"'+(acctIndex===0?' disabled':'')+'>↑</button>'+
+              '<button onclick="accountMove('+escAttr(JSON.stringify(a.id))+',1)" aria-label="Move account down"'+(acctIndex===accounts.length-1?' disabled':'')+'>↓</button></div>'+
+            '<button class="lib-del-btn" onclick="accountDelete('+escAttr(JSON.stringify(a.id))+')" aria-label="Archive account">×</button></div>':'')+
           // Clarify that a debt balance is a standalone running total, not weekly spending —
           // the note that used to live in the retired Budget-tab CC editor.
           catRow+
@@ -25228,7 +24942,7 @@ function renderAccountsPage(){
               '<button class="acct-type-btn'+(_acctAddType==='debt'?' on':'')+'" onclick="accountsAddSetType(\'debt\')">Debt</button>'+
             '</div>'+
           '</div>'+
-          '<div class="stg-field"><label for="acct-new-category">Account category</label><select id="acct-new-category" onchange="accountsAddSetCategory(this.value)"><option value="">Choose category</option>'+ACCT_CATEGORIES[_acctAddType].map(c=>'<option value="'+c.id+'"'+(_acctAddCategory===c.id?' selected':'')+'>'+c.label+'</option>').join('')+'</select></div>'+
+          '<div class="stg-field"><label for="acct-new-category">Account category</label><select id="acct-new-category" onchange="accountsAddSetCategory(this.value)"><option value="">Choose category</option>'+ACCT_CATEGORIES[_acctAddType].map(c=>'<option value="'+escAttr(c.id)+'"'+(_acctAddCategory===c.id?' selected':'')+'>'+c.label+'</option>').join('')+'</select></div>'+
           (_acctAddType==='debt'?
             '<div class="bud-row" style="border-bottom:none">'+
               '<div class="bud-row-left"><div class="bud-row-name" style="font-weight:500;color:var(--muted)">Track statement due date</div></div>'+
@@ -25496,15 +25210,6 @@ function obSetAccentMode(m){
   renderObStep();
 }
 // A goal typed in is worth showing back as a figure, not just accepted into a box.
-function obBudgetPreview(){
-  const wrap=document.getElementById('ob-budget-preview'); if(!wrap) return;
-  const sav=obNum((document.getElementById('ob-savings')||{}).value);
-  wrap.innerHTML=(sav!==undefined&&sav>0)
-    ? '<div class="ob-pv-card ob-pv-wide"><div class="ob-pv-k">Savings target</div>'+
-      '<div class="ob-pv-fig">'+fmtMoney(sav)+'</div><div class="ob-pv-cap">per week \u00b7 '+fmtMoney(sav*52)+' a year</div></div>'
-    : '';
-}
-function obSkipBudget(){ obCaptureCurrent(); obData.savings=undefined; obData.varGoal=undefined; obNext(); }
 // The ONLY place onboarding touches geolocation, and only from this tap. On success the
 // sample card is replaced by the user's real sky in place — that swap is the whole point of
 // the screen. On refusal the flow continues and says where to enable it later.
@@ -25861,7 +25566,7 @@ function obFocusHTML(){
   const cards=OB_FOCUS.map(f=>{
     const on=picked?picked.indexOf(f.id)>=0:false;
     return '<button type="button" class="ob-focus'+(on?' on':'')+'" role="checkbox" aria-checked="'+(on?'true':'false')+'" '+
-      'onclick="obToggleFocus(\''+f.id+'\')">'+
+      'onclick="obToggleFocus('+escAttr(JSON.stringify(f.id))+')">'+
       '<span class="ob-focus-ic">'+cardIcon(f.icon)+'</span>'+
       '<span class="ob-focus-txt"><span class="ob-focus-label">'+escText(f.label)+'</span>'+
         '<span class="ob-focus-desc">'+escText(f.desc)+'</span></span>'+
@@ -25897,7 +25602,7 @@ function obFocusHTML(){
 function obAppearanceHTML(){
   const themeOpt=(val,label)=>{
     const sel=obData.theme===val;
-    return '<button type="button" class="ob-theme-opt'+(sel?' selected':'')+'" aria-pressed="'+(sel?'true':'false')+'" onclick="obSetTheme(\''+val+'\')">'+
+    return '<button type="button" class="ob-theme-opt'+(sel?' selected':'')+'" aria-pressed="'+(sel?'true':'false')+'" onclick="obSetTheme('+escAttr(JSON.stringify(val))+')">'+
       '<span class="ob-theme-mini ob-theme-mini-'+val+'">'+
         '<span class="ob-tm-hero"></span><span class="ob-tm-row"><i></i><i></i></span><span class="ob-tm-row"><i></i><i></i></span>'+
       '</span>'+
@@ -25905,7 +25610,7 @@ function obAppearanceHTML(){
     '</button>';
   };
   const mode=obData.accentMode||accentMode();
-  const modeBtn=(m,label,desc)=>'<button type="button" class="ob-mode'+(mode===m?' on':'')+'" aria-pressed="'+(mode===m?'true':'false')+'" onclick="obSetAccentMode(\''+m+'\')">'+
+  const modeBtn=(m,label,desc)=>'<button type="button" class="ob-mode'+(mode===m?' on':'')+'" aria-pressed="'+(mode===m?'true':'false')+'" onclick="obSetAccentMode('+escAttr(JSON.stringify(m))+')">'+
     '<span class="ob-mode-label">'+label+'</span><span class="ob-mode-desc">'+escText(desc)+'</span></button>';
   return '<div class="ob-head"><div class="ob-title">Make it yours</div>'+
       '<div class="ob-desc">Everything here previews live and can be changed anytime in Settings \u2192 Appearance.</div></div>'+
@@ -25961,7 +25666,7 @@ function obBodyHTML(){
   const goal=obData.goal||'maintain';
   const sexSel=s=>curSex===s?' selected':'';
   const actSel=a=>curAct===a?' selected':'';
-  const gopt=(g,label)=>'<button type="button" class="ob-seg-btn'+(goal===g&&obData.goal!==undefined?' on':'')+'" onclick="obSetGoal(\''+g+'\')">'+label+'</button>';
+  const gopt=(g,label)=>'<button type="button" class="ob-seg-btn'+(goal===g&&obData.goal!==undefined?' on':'')+'" onclick="obSetGoal('+escAttr(JSON.stringify(g))+')">'+label+'</button>';
   return '<div class="ob-head"><div class="ob-title">Body &amp; goals</div><div class="ob-desc">Powers your calorie targets and weight tracker. Skip and add it later in Settings.</div></div>'+
     '<div id="ob-tdee-preview">'+obTDEEPreviewHTML()+'</div>'+
     '<div class="settings-2col">'+
@@ -26266,57 +25971,6 @@ function resetOnboarding(){
 function kitUUID(){
   return (crypto&&crypto.randomUUID)?crypto.randomUUID():'r'+Date.now()+Math.random().toString(16).slice(2);
 }
-function kitSeedRecipes(){
-  const ig=(name,amount,unit)=>({name,amount,unit:unit||''});
-  const mk=(o)=>Object.assign({id:kitUUID(),description:'',tags:[],calories:null,protein:null,carbs:null,fat:null,nutritionBasis:'manual',favourite:false,batchPrep:false,createdAt:Date.now()},o);
-  return [
-    mk({name:'French Toast with Berries',category:'breakfast',servings:2,
-      description:'Golden eggy toast with fresh berries and maple syrup.',
-      ingredients:[ig('Eggs',3,''),ig('Milk',0.25,'cup'),ig('Bread',4,'slices'),ig('Vanilla',1,'tsp'),ig('Cinnamon',0.5,'tsp'),ig('Butter',1,'tbsp'),ig('Mixed berries',1,'cup'),ig('Maple syrup',2,'tbsp')],
-      steps:['Whisk eggs, milk, vanilla and cinnamon.','Dip bread in the mixture.','Cook in butter 2–3 min each side until golden.','Serve with berries and maple syrup.'],
-      tags:['quick'],calories:420,protein:16,carbs:58,fat:14}),
-    mk({name:'Hash Browns',category:'breakfast',servings:2,
-      description:'Crispy golden potato patties.',
-      ingredients:[ig('Potatoes',4,'medium'),ig('Canola oil',2,'tbsp'),ig('Salt','',''),ig('Pepper','','')],
-      steps:['Grate potatoes.','Squeeze out moisture.','Season.','Form into patties.','Fry 4–5 min each side until crispy.'],
-      tags:['quick','batch-prep'],calories:280,protein:4,carbs:48,fat:9,batchPrep:true}),
-    mk({name:'Honey Soy Chicken Thighs + Basmati Rice',category:'lunch',servings:4,
-      description:'Sticky honey soy chicken over fluffy basmati.',
-      ingredients:[ig('Chicken thighs',800,'g'),ig('Soy sauce',3,'tbsp'),ig('Honey',2,'tbsp'),ig('Garlic',3,'cloves'),ig('Ginger',1,'tsp'),ig('Sesame oil',1,'tsp'),ig('Basmati rice',2,'cups'),ig('Spring onion',2,'')],
-      steps:['Mix the marinade.','Marinate chicken 30 min.','Cook rice.','Pan-fry chicken 5–6 min each side.','Slice over rice and top with spring onion.'],
-      tags:['batch-prep','high-protein'],calories:520,protein:42,carbs:48,fat:14,batchPrep:true}),
-    mk({name:'Spiced Lamb Pan Fry + Basmati Rice',category:'lunch',servings:4,
-      description:'Aromatic spiced lamb mince with lemon and parsley.',
-      ingredients:[ig('Lamb mince',600,'g'),ig('Brown onion',1,''),ig('Garlic',3,'cloves'),ig('Garam masala',2,'tsp'),ig('Cumin',1,'tsp'),ig('Smoked paprika',1,'tsp'),ig('Basmati rice',2,'cups'),ig('Lemon',1,''),ig('Parsley','','')],
-      steps:['Cook rice.','Fry onion.','Add garlic then lamb.','Add spices.','Squeeze lemon.','Serve over rice with parsley.'],
-      tags:['batch-prep','high-protein'],calories:490,protein:38,carbs:44,fat:18,batchPrep:true}),
-    mk({name:'Korean Crispy Beef Mince + Rice',category:'lunch',servings:4,
-      description:'Crispy-edged beef in a sweet-savoury sauce.',
-      ingredients:[ig('Beef mince',600,'g'),ig('Soy sauce',3,'tbsp'),ig('Brown sugar',1,'tbsp'),ig('Sesame oil',1,'tsp'),ig('Garlic',3,'cloves'),ig('Ginger',1,'tsp'),ig('Spring onion',3,''),ig('Basmati rice',2,'cups'),ig('Chilli flakes',0.5,'tsp')],
-      steps:['Cook rice.','Mix the sauce.','Fry garlic and ginger.','Add mince and cook until crispy at the edges.','Add sauce.','Serve over rice.'],
-      tags:['batch-prep','high-protein'],calories:510,protein:40,carbs:46,fat:16,batchPrep:true}),
-    mk({name:'Butter Garlic Prawns',category:'dinner',servings:2,
-      description:'Juicy prawns in lemon garlic butter.',
-      ingredients:[ig('Prawns',400,'g peeled'),ig('Butter',60,'g'),ig('Garlic',4,'cloves'),ig('Lemon',1,''),ig('Parsley',1,'handful'),ig('Salt','',''),ig('Pepper','','')],
-      steps:['Melt butter.','Add garlic for 30 sec.','Add prawns, 1–2 min each side until pink.','Squeeze lemon.','Finish with parsley.'],
-      tags:['quick','high-protein'],calories:380,protein:36,carbs:4,fat:24}),
-    mk({name:'Pan Burgers',category:'dinner',servings:2,
-      description:'Caramelised onion cheeseburgers with burger sauce.',
-      ingredients:[ig('Burger patties',2,'x150g'),ig('Cheese slices',2,''),ig('Brown onion',1,''),ig('Butter',1,'tbsp'),ig('Brioche buns',2,''),ig('Mayo',2,'tbsp'),ig('Ketchup',1,'tbsp'),ig('Dijon',1,'tsp'),ig('Rocket',1,'handful')],
-      steps:['Caramelise onion ~20 min.','Cook patties 3–4 min each side.','Add cheese.','Mix burger sauce.','Toast buns.','Assemble.'],
-      tags:['quick'],calories:720,protein:38,carbs:52,fat:38}),
-    mk({name:'Turkish Bread Steak Sandwich',category:'dinner',servings:2,
-      description:'Thin-sliced rump with steakhouse sauce on Turkish bread.',
-      ingredients:[ig('Rump steak',400,'g'),ig('Turkish bread',1,'loaf'),ig('Brown onion',1,''),ig('Butter',1,'tbsp'),ig('Rocket',1,'handful'),ig('Mayo',2,'tbsp'),ig('Worcestershire',1,'tbsp'),ig('Dijon',1,'tsp'),ig('Salt','',''),ig('Pepper','','')],
-      steps:['Caramelise onion.','Sear steak 2–3 min each side.','Rest 5 min.','Slice thin.','Mix steakhouse sauce.','Build the sandwich.'],
-      tags:[],calories:680,protein:44,carbs:54,fat:26}),
-    mk({name:'Reverse Sear Rump Steak with Pan Sauce and Noodles',category:'dinner',servings:2,
-      description:'Reverse-seared steak with a glossy pan sauce over noodles.',
-      ingredients:[ig('Rump steak',500,'g'),ig('Mi Goreng noodles',2,'packs'),ig('Butter',30,'g'),ig('Garlic',2,'cloves'),ig('Soy sauce',2,'tbsp'),ig('Worcestershire',1,'tbsp'),ig('Balsamic',1,'tsp'),ig('Salt','',''),ig('Pepper','','')],
-      steps:['Bake steak at 120°C until 50°C internal (~35 min).','Sear 1 min each side.','Make pan sauce with butter, garlic, soy, Worcestershire and balsamic.','Cook noodles.','Slice steak over noodles with pan sauce.'],
-      tags:['high-protein'],calories:620,protein:52,carbs:44,fat:22}),
-  ];
-}
 function kitLoadRecipes(){
   try{
     const raw=localStorage.getItem('kitchen_recipes');
@@ -26327,7 +25981,18 @@ function kitLoadRecipes(){
   return [];
 }
 let kitRecipes=kitLoadRecipes();
-function kitSaveRecipes(){ lsSave('kitchen_recipes', kitRecipes, 'kitRecipes'); }
+function kitRecipeBook(){
+  const raw=localStorage.getItem('kitchen_recipes');
+  if(raw==null)return kitRecipes.slice();
+  const rows=JSON.parse(raw);
+  if(!Array.isArray(rows))throw new Error('Your saved recipes could not be read. Nothing was changed.');
+  return rows;
+}
+function kitSaveRecipes(recipes=kitRecipes){
+  if(lsSave('kitchen_recipes',recipes,'kitRecipes')===true)return true;
+  try{kitRecipes=kitRecipeBook();}catch{}
+  showToast('Recipes could not be saved on this device. Please try again.');return false;
+}
 // proteinOptionId is the DETAIL VIEW's current selection only. Cooking, shopping and meal
 // logging each own their own choice — a browsing selection must never silently become what
 // gets bought or what lands in the food log.
@@ -26836,7 +26501,7 @@ function kitRenderFilterButton(){
 function kitRenderCatPills(){
   const wrap=document.getElementById('kit-cat-pills'); if(!wrap) return;
   wrap.innerHTML=KIT_CATS.map(([v,l])=>
-    '<button class="kit-cat-pill'+(kitState.cat===v?' active':'')+'" onclick="kitSetCat(\''+v+'\')">'+l+'</button>'
+    '<button class="kit-cat-pill'+(kitState.cat===v?' active':'')+'" onclick="kitSetCat('+escAttr(JSON.stringify(v))+')">'+l+'</button>'
   ).join('');
 }
 // step normalisation helpers — seeded recipes have string steps, new ones use {text,timerMinutes}
@@ -27027,7 +26692,7 @@ function kitRenderFilterChips(){
   const wrap=document.getElementById('kit-filter-chips'); if(!wrap) return;
   const chips=[['all','All'],['favourites','Favourites ♥'],['recent','Recently Cooked 🕐']];
   wrap.innerHTML=chips.map(([v,l])=>
-    '<button class="kit-fchip'+(kitState.filter===v?' active':'')+'" onclick="kitSetFilter(\''+v+'\')">'+l+'</button>'
+    '<button class="kit-fchip'+(kitState.filter===v?' active':'')+'" onclick="kitSetFilter('+escAttr(JSON.stringify(v))+')">'+l+'</button>'
   ).join('');
 }
 
@@ -27134,7 +26799,7 @@ function kitCookChooseRender(){
   const t=kitTempBadge(rv.internalTempC);
   kitSheetOpen(
     kitSheetHead('Which protein?',r.name)+
-    kitProteinChooserHTML(r,rv.optionId,"kitCookSetPick('%ID%')",{label:false})+
+    kitProteinChooserHTML(r,rv.optionId,"kitCookSetPick(%ID%)",{label:false})+
     '<div class="kit-note-panel">'+
       (rv.option&&rv.option.cook?kitEsc(rv.option.cook):'This option has no cooking instruction saved.')+
       (rv.cookTime?' <b>⏱ '+rv.cookTime+' min</b>':'')+(t?' '+t:'')+
@@ -27619,7 +27284,7 @@ function kitRenderFeatured(){
       '<p class="card-label">'+label+'</p>'+
       '<p class="kitchen-hero-name">'+(r.emoji?kitEsc(r.emoji)+' ':'')+kitEsc(r.name)+'</p>'+
       ((cal||time)?'<div style="display:flex;gap:8px;align-items:center;margin-top:8px">'+cal+time+'</div>':'')+
-      '<button class="kitchen-hero-btn" onclick="kitOpenDetail(\''+r.id+'\')">View Recipe →</button>'+
+      '<button class="kitchen-hero-btn" onclick="kitOpenDetail('+kitEsc(JSON.stringify(r.id))+')">View Recipe →</button>'+
     '</div>';
 }
 function kitRenderList(){
@@ -27651,14 +27316,14 @@ function kitRenderList(){
         const days=Math.floor((Date.now()-r.lastCooked)/86400000);
         cookedLabel='<div class="kit-cooked-ago">'+(days===0?'Cooked today':days===1?'Cooked yesterday':'Cooked '+days+' days ago')+'</div>';
       }
-      return '<div class="kit-card kit-c-'+(r.category||'dinner')+fav+sel+'" onclick="kitOpenDetail(\''+r.id+'\')">'+
+      return '<div class="kit-card kit-c-'+(r.category||'dinner')+fav+sel+'" onclick="kitOpenDetail('+kitEsc(JSON.stringify(r.id))+')">'+
         '<div class="kit-card-top">'+
           '<div class="kit-cat-tile" aria-hidden="true">'+kitEsc(kitCardEmoji(r))+'</div>'+
           '<div class="kit-card-name">'+kitEsc(r.name)+'</div>'+
           // No favourite star on the card face: favouriting lives in the ⋯ menu, and the card
           // says it with the accent edge .kit-card-favourite draws. One control per card.
           '<div class="kit-card-actions" onclick="event.stopPropagation()">'+
-            '<button class="kit-menu-btn" onclick="kitToggleMenu(\''+r.id+'\',event)" aria-label="More actions">⋯</button>'+
+            '<button class="kit-menu-btn" onclick="kitToggleMenu('+kitEsc(JSON.stringify(r.id))+',event)" aria-label="More actions">⋯</button>'+
           '</div>'+
         '</div>'+
         '<div class="kit-card-meta"><span class="kit-cat-tag kit-cat-'+r.category+'">'+r.category+'</span>'+cal+cookTime+batch+optBadge+brokeBadge+'</div>'+
@@ -27669,13 +27334,13 @@ function kitRenderList(){
           '<div class="kit-menu-dropdown" onclick="event.stopPropagation()">'+
             // Text stars (U+2605/U+2606), not the ⭐ emoji — these inherit currentColor, so the
             // row follows the theme like every other item instead of forcing an OS gold.
-            '<button onclick="kitMenuOpenId=null;kitToggleFav(\''+r.id+'\')">'+
+            '<button onclick="kitMenuOpenId=null;kitToggleFav('+kitEsc(JSON.stringify(r.id))+')">'+
               (r.favourite?'★ Remove from favourites':'☆ Add to favourites')+'</button>'+
-            '<button onclick="kitMenuOpenId=null;kitOpenForm(\''+r.id+'\')">✏️ Edit</button>'+
-            '<button onclick="kitMenuOpenId=null;kitShareRecipe(\''+r.id+'\')">📤 Share recipe</button>'+
-            '<button onclick="kitMenuOpenId=null;kitCopyForDaily(\''+r.id+'\')">📋 Copy for Daily</button>'+
-            '<button onclick="kitMenuOpenId=null;kitCopyRecipe(\''+r.id+'\')">🤖 Copy for AI</button>'+
-            '<button class="danger" onclick="kitMenuOpenId=null;kitDeleteRecipe(\''+r.id+'\')">🗑️ Delete</button>'+
+            '<button onclick="kitMenuOpenId=null;kitOpenForm('+kitEsc(JSON.stringify(r.id))+')">✏️ Edit</button>'+
+            '<button onclick="kitMenuOpenId=null;kitShareRecipe('+kitEsc(JSON.stringify(r.id))+')">📤 Share recipe</button>'+
+            '<button onclick="kitMenuOpenId=null;kitCopyForDaily('+kitEsc(JSON.stringify(r.id))+')">📋 Copy for Daily</button>'+
+            '<button onclick="kitMenuOpenId=null;kitCopyRecipe('+kitEsc(JSON.stringify(r.id))+')">🤖 Copy for AI</button>'+
+            '<button class="danger" onclick="kitMenuOpenId=null;kitDeleteRecipe('+kitEsc(JSON.stringify(r.id))+')">🗑️ Delete</button>'+
           '</div>':'')+
       '</div>';
     }).join('');
@@ -27786,7 +27451,7 @@ function kitProteinChooserHTML(r,selectedId,onPick,opts){
       const on=op.id===selectedId;
       const isDef=def&&op.id===def.id;
       return '<button type="button" class="kit-pchip'+(on?' on':'')+'" aria-pressed="'+(on?'true':'false')+'" '+
-        'onclick="'+onPick.replace('%ID%',kitEsc(op.id))+'">'+
+        'onclick="'+onPick.replace('%ID%',kitEsc(JSON.stringify(op.id)))+'">'+
         '<span class="kit-pchip-tick" aria-hidden="true">'+(on?'✓':'')+'</span>'+
         '<span class="kit-pchip-txt">'+kitEsc(op.label||'Option')+'</span>'+
         (isDef?'<span class="kit-pchip-def">Default</span>':'')+
@@ -27842,7 +27507,7 @@ function kitRenderDetail(id,target){
       '<div class="kit-detail-name">'+kitEsc(r.name)+'</div>'+
       '<div class="kit-note-panel kit-note-warn">'+kitEsc(rv.problem)+
         ' This recipe’s other details are untouched — edit it to fix the protein options, or open it on the device that created them.</div>'+
-      '<div class="kit-detail-actions"><button class="kit-act" onclick="kitOpenForm(\''+r.id+'\')">✏️ Edit</button></div>';
+      '<div class="kit-detail-actions"><button class="kit-act" onclick="kitOpenForm('+kitEsc(JSON.stringify(r.id))+')">✏️ Edit</button></div>';
     return;
   }
   const ingRows=rv.ingredients.map(i=>{
@@ -27867,12 +27532,12 @@ function kitRenderDetail(id,target){
     ((cur>1&&rv.batch.calories!=null)?'<div class="kit-batch-line">Batch total for '+cur+' servings: <b>'+Math.round(rv.batch.calories)+' cal</b>'+
       (rv.batch.protein!=null?' · '+Math.round(rv.batch.protein)+'g protein':'')+'</div>':'');
   const cookInfo=(rv.cookTime?'<span class="kit-cal-badge">⏱ '+rv.cookTime+' min</span>':'')+kitTempBadge(rv.internalTempC);
-  const chooser=rv.variant?kitProteinChooserHTML(r,rv.optionId,"kitSetDetailProtein('%ID%')"):'';
+  const chooser=rv.variant?kitProteinChooserHTML(r,rv.optionId,"kitSetDetailProtein(%ID%)"):'';
   target.innerHTML=
     '<div class="kit-detail-head">'+backBtn+
       // The detail header keeps a one-tap toggle — it is the natural place to favourite the
       // thing you are looking at, and it is a header control, not a card face.
-      '<button class="kit-fav'+(r.favourite?' on':'')+'" onclick="kitToggleFav(\''+r.id+'\')" style="margin-left:auto" '+
+      '<button class="kit-fav'+(r.favourite?' on':'')+'" onclick="kitToggleFav('+kitEsc(JSON.stringify(r.id))+')" style="margin-left:auto" '+
         'aria-pressed="'+(r.favourite?'true':'false')+'" aria-label="'+(r.favourite?'Remove from favourites':'Add to favourites')+'">'+
         (r.favourite?'★':'☆')+'</button>'+kitDetailMoreHTML(r.id)+
     '</div>'+
@@ -27892,8 +27557,8 @@ function kitRenderDetail(id,target){
     '<div class="kit-sec-label">Ingredients'+(rv.variant?' <span class="kit-sec-note">shared + your protein</span>':'')+'</div><div class="kit-ing-list">'+ingRows+'</div>'+
     '<div class="kit-sec-label">Method</div><div class="kit-step-list">'+stepRows+'</div>'+
     '<div class="kit-detail-footer" role="group" aria-label="Recipe actions">'+
-      '<button type="button" class="kit-act kit-act-primary" onclick="kitStartCooking(\''+r.id+'\')"><span aria-hidden="true">▶</span> Cook recipe</button>'+
-      '<button type="button" class="kit-act" onclick="kitLogMeal(\''+r.id+'\')">Log meal</button>'+
+      '<button type="button" class="kit-act kit-act-primary" onclick="kitStartCooking('+kitEsc(JSON.stringify(r.id))+')"><span aria-hidden="true">▶</span> Cook recipe</button>'+
+      '<button type="button" class="kit-act" onclick="kitLogMeal('+kitEsc(JSON.stringify(r.id))+')">Log meal</button>'+
     '</div>';
 }
 // ── Shared action sheet ───────────────────────────────────────────
@@ -27965,7 +27630,7 @@ function kitLogRender(){
   const rv=kitResolve(r,kitLogState.optionId,r.servings);
   const n=kitLogState.servings;
   const v=x=>x==null?'—':Math.round(x*n);
-  const chooser=rv.variant?kitProteinChooserHTML(r,rv.optionId,"kitLogSetProtein('%ID%')"):'';
+  const chooser=rv.variant?kitProteinChooserHTML(r,rv.optionId,"kitLogSetProtein(%ID%)"):'';
   const cats=KIT_LOG_CATS;
   kitSheetOpen(
     kitSheetHead('Log this meal',r.name)+
@@ -27978,7 +27643,7 @@ function kitLogRender(){
     '</div>'+
     '<div class="kit-psel-label">Meal</div>'+
     '<div class="kit-psel-row">'+cats.map(([id,l])=>
-      '<button type="button" class="kit-pchip'+(kitLogState.category===id?' on':'')+'" aria-pressed="'+(kitLogState.category===id?'true':'false')+'" onclick="kitLogSetCat(\''+id+'\')">'+
+      '<button type="button" class="kit-pchip'+(kitLogState.category===id?' on':'')+'" aria-pressed="'+(kitLogState.category===id?'true':'false')+'" onclick="kitLogSetCat('+escAttr(JSON.stringify(id))+')">'+
         '<span class="kit-pchip-tick" aria-hidden="true">'+(kitLogState.category===id?'✓':'')+'</span><span class="kit-pchip-txt">'+l+'</span></button>').join('')+'</div>'+
     kitMacroBlock({calories:rv.nutrition.calories==null?null:rv.nutrition.calories*n,
                    protein:rv.nutrition.protein==null?null:rv.nutrition.protein*n,
@@ -28059,11 +27724,11 @@ function kitOpenShareSheet(id){
   kitSheetOpen(
     kitSheetHead('Share',r.name)+
     '<div class="kit-share-list">'+
-      '<button class="kit-share-opt" onclick="kitSheetClose();kitShareRecipe(\''+r.id+'\')">'+
+      '<button class="kit-share-opt" onclick="kitSheetClose();kitShareRecipe('+kitEsc(JSON.stringify(r.id))+')">'+
         '<span class="kit-share-ico">📤</span><span><b>Share recipe</b><small>Readable text for Messages, email or notes</small></span></button>'+
-      '<button class="kit-share-opt" onclick="kitSheetClose();kitCopyForDaily(\''+r.id+'\')">'+
+      '<button class="kit-share-opt" onclick="kitSheetClose();kitCopyForDaily('+kitEsc(JSON.stringify(r.id))+')">'+
         '<span class="kit-share-ico">📋</span><span><b>Copy for Daily</b><small>Exact copy for another Daily user to import</small></span></button>'+
-      '<button class="kit-share-opt" onclick="kitSheetClose();kitCopyRecipe(\''+r.id+'\')">'+
+      '<button class="kit-share-opt" onclick="kitSheetClose();kitCopyRecipe('+kitEsc(JSON.stringify(r.id))+')">'+
         '<span class="kit-share-ico">🤖</span><span><b>Copy for AI</b><small>The same recipe plus instructions for an assistant</small></span></button>'+
     '</div>'+
     '<div class="kit-sheet-actions"><button class="modal-btn secondary" onclick="kitSheetClose()">Cancel</button></div>');
@@ -28163,7 +27828,7 @@ function kitDeleteRecipe(id){
   const r=kitRecipes.find(x=>x.id===id); if(!r) return;
   if(!confirm('Delete "'+r.name+'"?')) return;
   kitRecipes=kitRecipes.filter(x=>x.id!==id);
-  kitSaveRecipes();
+  if(!kitSaveRecipes())return;
   if(!kitUsesSplitPane()) kitCloseDetail();
   else { kitState.selectedId=null; }
   kitRenderList();
@@ -28503,13 +28168,29 @@ function kitDoImport(){
   if(res.error){ if(msg){ msg.textContent=res.error; msg.style.color='var(--danger)'; } return; }
   // Same shape kitSaveForm builds, so imported recipes are ordinary recipes from here on.
   res.recipes.forEach(d=>kitRecipes.push(Object.assign({id:kitUUID(),favourite:false,lastCooked:null,createdAt:Date.now()},d)));
-  kitSaveRecipes();
+  if(!kitSaveRecipes())return;
   kitCloseImport();
   kitSetTab('recipes');
   showToast('Imported '+res.recipes.length+' recipe'+(res.recipes.length>1?'s':''));
 }
+let kitFormDraft=null,kitFormSaving=false;
+function kitRecipeOwner(){
+  return String(localStorage.scope||'guest')+'|'+String(auth?.currentUser?.uid||'guest');
+}
+function kitFormError(message){
+  const box=document.getElementById('kit-form-box');
+  if(box){
+    let error=document.getElementById('kit-form-error');
+    if(!error){error=document.createElement('p');error.id='kit-form-error';error.className='kit-note-panel kit-note-warn';error.setAttribute('role','alert');box.appendChild(error);}
+    error.textContent=message;
+  }
+  showToast(message);
+}
 function kitOpenForm(id){
-  const editing=id?kitRecipes.find(x=>x.id===id):null;
+  let editing;
+  try{editing=id?kitRecipeBook().find(x=>x.id===id):null;}catch(error){showToast(error.message);return;}
+  if(id&&!editing){showToast('This recipe changed or was removed. Open the latest recipe to edit it.');return;}
+  kitFormDraft={id:editing?.id||'',base:JSON.stringify(editing||null),owner:kitRecipeOwner(),newId:editing?'':kitUUID()};
   const r=editing||{name:'',emoji:'🍽️',category:'dinner',description:'',servings:2,cookTime:null,
     ingredients:[{name:'',amount:'',unit:'g'}],steps:[{text:'',timerMinutes:null}],
     tags:[],calories:null,protein:null,carbs:null,fat:null};
@@ -28525,7 +28206,7 @@ function kitOpenForm(id){
       '<div class="modal-title">'+(editing?'Edit Recipe':'New Recipe')+'</div>'+
       '<div style="width:36px"></div>'+
     '</div>'+
-    '<input type="hidden" id="kit-f-id" value="'+(editing?editing.id:'')+'">'+
+    '<input type="hidden" id="kit-f-id" value="'+kitEsc(editing?editing.id:'')+'">'+
     '<div class="kit-f-emoji-row">'+
       '<input id="kit-f-emoji" class="kit-f-emoji-input" type="text" value="'+kitEsc(r.emoji||'🍽️')+'" maxlength="4" placeholder="🍽️">'+
       '<input id="kit-f-name" class="kit-f-name-input" type="text" value="'+kitEsc(r.name||'')+'" placeholder="Recipe name" autocomplete="off">'+
@@ -28609,7 +28290,7 @@ function kitFormAddIng(data){
   const unitVal=(d.unit===undefined||d.unit===null)?'g':d.unit;
   const knownUnits=unitVal!==''&&KIT_UNITS.indexOf(unitVal)<0 ? [unitVal,...KIT_UNITS] : KIT_UNITS;
   const unitSel='<option value=""'+(unitVal===''?' selected':'')+'>Count / pieces</option>'+
-    knownUnits.map(u=>'<option value="'+u+'"'+(unitVal===u?' selected':'')+'>'+u+'</option>').join('');
+    knownUnits.map(u=>'<option value="'+kitEsc(u)+'"'+(unitVal===u?' selected':'')+'>'+kitEsc(u)+'</option>').join('');
   const row=document.createElement('div');
   row.className='kit-f-ing-row';
   row.dataset.foodId=d.foodId||'';
@@ -28777,7 +28458,7 @@ function kitFormUnitSelect(cls,val,onchange){
   const known=unitVal!==''&&KIT_UNITS.indexOf(unitVal)<0 ? [unitVal,...KIT_UNITS] : KIT_UNITS;
   return '<select class="'+cls+'" onchange="'+onchange+'">'+
     '<option value=""'+(unitVal===''?' selected':'')+'>Count / pieces</option>'+
-    known.map(u=>'<option value="'+u+'"'+(unitVal===u?' selected':'')+'>'+u+'</option>').join('')+'</select>';
+    known.map(u=>'<option value="'+kitEsc(u)+'"'+(unitVal===u?' selected':'')+'>'+kitEsc(u)+'</option>').join('')+'</select>';
 }
 function kitFormRenderProtein(){
   const wrap=document.getElementById('kit-f-protein'); if(!wrap) return;
@@ -28806,30 +28487,30 @@ function kitFormRenderProtein(){
       const q=(v)=>kitEsc(String(v==null?'':v));
       return '<div class="kit-po-card'+(isDef?' is-default':'')+'">'+
         '<div class="kit-po-head">'+
-          '<span class="kit-po-title" id="kit-po-title-'+o.id+'">'+kitEsc(o.label||'Untitled option')+'</span>'+
-          (isDef?'<span class="kit-po-def">Default</span>':'<button type="button" class="kit-po-mini" onclick="kitFormOptSetDefault(\''+o.id+'\')">Make default</button>')+
-          '<button type="button" class="kit-po-mini" onclick="kitFormOptMove(\''+o.id+'\',-1)"'+(idx===0?' disabled':'')+' aria-label="Move up">↑</button>'+
-          '<button type="button" class="kit-po-mini" onclick="kitFormOptMove(\''+o.id+'\',1)"'+(idx===kitFormProtein.options.length-1?' disabled':'')+' aria-label="Move down">↓</button>'+
-          '<button type="button" class="kit-po-mini" onclick="kitFormOptDuplicate(\''+o.id+'\')" aria-label="Duplicate">⧉</button>'+
-          '<button type="button" class="kit-f-del kit-po-del" onclick="kitFormOptDel(\''+o.id+'\')" aria-label="Remove option">✕</button>'+
+          '<span class="kit-po-title" id="kit-po-title-'+kitEsc(o.id)+'">'+kitEsc(o.label||'Untitled option')+'</span>'+
+          (isDef?'<span class="kit-po-def">Default</span>':'<button type="button" class="kit-po-mini" onclick="kitFormOptSetDefault('+kitEsc(JSON.stringify(o.id))+')">Make default</button>')+
+          '<button type="button" class="kit-po-mini" onclick="kitFormOptMove('+kitEsc(JSON.stringify(o.id))+',-1)"'+(idx===0?' disabled':'')+' aria-label="Move up">↑</button>'+
+          '<button type="button" class="kit-po-mini" onclick="kitFormOptMove('+kitEsc(JSON.stringify(o.id))+',1)"'+(idx===kitFormProtein.options.length-1?' disabled':'')+' aria-label="Move down">↓</button>'+
+          '<button type="button" class="kit-po-mini" onclick="kitFormOptDuplicate('+kitEsc(JSON.stringify(o.id))+')" aria-label="Duplicate">⧉</button>'+
+          '<button type="button" class="kit-f-del kit-po-del" onclick="kitFormOptDel('+kitEsc(JSON.stringify(o.id))+')" aria-label="Remove option">✕</button>'+
         '</div>'+
-        '<input class="kit-po-input" type="text" placeholder="Option name, e.g. Rump steak" value="'+q(o.label)+'" oninput="kitFormOptSet(\''+o.id+'\',\'label\',this.value)">'+
+        '<input class="kit-po-input" type="text" placeholder="Option name, e.g. Rump steak" value="'+q(o.label)+'" oninput="kitFormOptSet('+kitEsc(JSON.stringify(o.id))+',\'label\',this.value)">'+
         '<div class="kit-f-ing-row kit-po-ing">'+
-          '<input class="kit-fi-amt" type="text" inputmode="decimal" placeholder="Qty" value="'+q(o.ingredient.amount)+'" oninput="kitFormOptIngSet(\''+o.id+'\',\'amount\',this.value)">'+
-          kitFormUnitSelect('kit-fi-unit-sel',o.ingredient.unit,'kitFormOptIngSet(\''+o.id+'\',\'unit\',this.value)')+
-          '<input class="kit-fi-name" type="text" placeholder="Protein ingredient" value="'+q(o.ingredient.name)+'" oninput="kitFormOptIngSet(\''+o.id+'\',\'name\',this.value)">'+
+          '<input class="kit-fi-amt" type="text" inputmode="decimal" placeholder="Qty" value="'+q(o.ingredient.amount)+'" oninput="kitFormOptIngSet('+kitEsc(JSON.stringify(o.id))+',\'amount\',this.value)">'+
+          kitFormUnitSelect('kit-fi-unit-sel',o.ingredient.unit,'kitFormOptIngSet('+kitEsc(JSON.stringify(o.id))+',\'unit\',this.value)')+
+          '<input class="kit-fi-name" type="text" placeholder="Protein ingredient" value="'+q(o.ingredient.name)+'" oninput="kitFormOptIngSet('+kitEsc(JSON.stringify(o.id))+',\'name\',this.value)">'+
         '</div>'+
-        '<textarea class="kit-po-area" rows="2" placeholder="Preparation, e.g. Salt and rest 20 min" oninput="kitFormOptSet(\''+o.id+'\',\'prep\',this.value)">'+q(o.prep)+'</textarea>'+
-        '<textarea class="kit-po-area" rows="2" placeholder="Cooking, e.g. Sear 2–3 min each side" oninput="kitFormOptSet(\''+o.id+'\',\'cook\',this.value)">'+q(o.cook)+'</textarea>'+
+        '<textarea class="kit-po-area" rows="2" placeholder="Preparation, e.g. Salt and rest 20 min" oninput="kitFormOptSet('+kitEsc(JSON.stringify(o.id))+',\'prep\',this.value)">'+q(o.prep)+'</textarea>'+
+        '<textarea class="kit-po-area" rows="2" placeholder="Cooking, e.g. Sear 2–3 min each side" oninput="kitFormOptSet('+kitEsc(JSON.stringify(o.id))+',\'cook\',this.value)">'+q(o.cook)+'</textarea>'+
         '<div class="kit-po-2col">'+
-          '<label class="kit-po-lbl">Cook time (min)<input class="kit-po-input" type="number" inputmode="numeric" min="0" placeholder="e.g. 12" value="'+q(o.cookTime)+'" oninput="kitFormOptSet(\''+o.id+'\',\'cookTime\',this.value)"></label>'+
-          '<label class="kit-po-lbl">Safe internal °C<input class="kit-po-input" type="number" inputmode="numeric" min="0" placeholder="leave blank if N/A" value="'+q(o.internalTempC)+'" oninput="kitFormOptSet(\''+o.id+'\',\'internalTempC\',this.value)"></label>'+
+          '<label class="kit-po-lbl">Cook time (min)<input class="kit-po-input" type="number" inputmode="numeric" min="0" placeholder="e.g. 12" value="'+q(o.cookTime)+'" oninput="kitFormOptSet('+kitEsc(JSON.stringify(o.id))+',\'cookTime\',this.value)"></label>'+
+          '<label class="kit-po-lbl">Safe internal °C<input class="kit-po-input" type="number" inputmode="numeric" min="0" placeholder="leave blank if N/A" value="'+q(o.internalTempC)+'" oninput="kitFormOptSet('+kitEsc(JSON.stringify(o.id))+',\'internalTempC\',this.value)"></label>'+
         '</div>'+
         '<div class="kit-po-lbl">Macros for the whole dish made this way — <b>per serving</b></div>'+
         '<div class="kit-macro-grid">'+
           ['calories:cal','protein:protein','carbs:carbs','fat:fat'].map(pair=>{
             const [k,ph]=pair.split(':');
-            return '<input type="number" inputmode="numeric" placeholder="'+ph+'" value="'+q(o[k])+'" oninput="kitFormOptSet(\''+o.id+'\',\''+k+'\',this.value)">';
+            return '<input type="number" inputmode="numeric" placeholder="'+ph+'" value="'+q(o[k])+'" oninput="kitFormOptSet('+kitEsc(JSON.stringify(o.id))+','+kitEsc(JSON.stringify(k))+',this.value)">';
           }).join('')+
         '</div>'+
         '<div class="kit-po-extras">'+
@@ -28837,12 +28518,12 @@ function kitFormRenderProtein(){
             '<small>Cornflour for the chicken — not a copy of the shared sauce.</small></div>'+
           (o.extras.length?o.extras.map((x,xi)=>
             '<div class="kit-f-ing-row kit-po-ing">'+
-              '<input class="kit-fi-amt" type="text" inputmode="decimal" placeholder="Qty" value="'+q(x.amount)+'" oninput="kitFormOptExtraSet(\''+o.id+'\','+xi+',\'amount\',this.value)">'+
-              kitFormUnitSelect('kit-fi-unit-sel',x.unit,'kitFormOptExtraSet(\''+o.id+'\','+xi+',\'unit\',this.value)')+
-              '<input class="kit-fi-name" type="text" placeholder="Extra ingredient" value="'+q(x.name)+'" oninput="kitFormOptExtraSet(\''+o.id+'\','+xi+',\'name\',this.value)">'+
-              '<button class="kit-f-del" onclick="kitFormOptExtraDel(\''+o.id+'\','+xi+')" aria-label="Remove">✕</button>'+
+              '<input class="kit-fi-amt" type="text" inputmode="decimal" placeholder="Qty" value="'+q(x.amount)+'" oninput="kitFormOptExtraSet('+kitEsc(JSON.stringify(o.id))+','+xi+',\'amount\',this.value)">'+
+              kitFormUnitSelect('kit-fi-unit-sel',x.unit,'kitFormOptExtraSet('+kitEsc(JSON.stringify(o.id))+','+xi+',\'unit\',this.value)')+
+              '<input class="kit-fi-name" type="text" placeholder="Extra ingredient" value="'+q(x.name)+'" oninput="kitFormOptExtraSet('+kitEsc(JSON.stringify(o.id))+','+xi+',\'name\',this.value)">'+
+              '<button class="kit-f-del" onclick="kitFormOptExtraDel('+kitEsc(JSON.stringify(o.id))+','+xi+')" aria-label="Remove">✕</button>'+
             '</div>').join(''):'')+
-          '<button type="button" class="kit-add-row kit-po-add-extra" onclick="kitFormOptExtraAdd(\''+o.id+'\')">+ Add option-only ingredient</button>'+
+          '<button type="button" class="kit-add-row kit-po-add-extra" onclick="kitFormOptExtraAdd('+kitEsc(JSON.stringify(o.id))+')">+ Add option-only ingredient</button>'+
         '</div>'+
       '</div>';
     }).join('')+
@@ -28884,6 +28565,7 @@ function kitFormBuildProtein(){
   return {options:out, defaultId};
 }
 function kitCloseForm(){
+  kitFormDraft=null;
   const ov=document.getElementById('kit-form-overlay');
   if(ov){ ov.classList.add('hidden'); ov.style.cssText=''; }
   const mb=document.getElementById('kit-form-box');
@@ -28891,6 +28573,9 @@ function kitCloseForm(){
   if(typeof updateKitFab==='function') updateKitFab();
 }
 function kitSaveForm(){
+  if(kitFormSaving||!kitFormDraft)return false;
+  const draft=kitFormDraft;
+  if(draft.owner!==kitRecipeOwner()||document.body.inert){kitFormError('Your account changed. Reopen the recipe for the current account.');return false;}
   const num=v=>{ const n=parseFloat(v); return isNaN(n)?null:n; };
   const name=(document.getElementById('kit-f-name')?.value||'').trim();
   if(!name){ alert('Please enter a recipe name.'); return; }
@@ -28908,7 +28593,7 @@ function kitSaveForm(){
     return {text:t,timerMinutes:(!isNaN(m)&&m>0)?m:null};
   }).filter(s=>kitIsProteinStep(s)||s.text);
   const tags=[...document.querySelectorAll('#kit-f-tag-chips .kit-tag-chip.active')].map(b=>b.dataset.tag);
-  const id=document.getElementById('kit-f-id')?.value||'';
+  const id=draft.id;
   const data={
     name,
     emoji:(document.getElementById('kit-f-emoji')?.value||'🍽️').trim()||'🍽️',
@@ -28942,23 +28627,24 @@ function kitSaveForm(){
     data.proteinOptions=undefined;
     data.defaultProteinOptionId=undefined;
   }
-  if(id){
-    const r=kitRecipes.find(x=>x.id===id);
-    if(r){
-      if(['calories','protein','carbs','fat'].some(k=>data[k]!==r[k])) data.nutritionBasis=data.calories==null?'missing':'manual';
-      Object.assign(r,data);
-      if(data.proteinOptions===undefined){ delete r.proteinOptions; delete r.defaultProteinOptionId; }
-    }
-  } else {
-    data.nutritionBasis=data.calories==null?'missing':'manual';
-    if(data.proteinOptions===undefined){ delete data.proteinOptions; delete data.defaultProteinOptionId; }
-    kitRecipes.push(Object.assign({id:kitUUID(),favourite:false,lastCooked:null,createdAt:Date.now()},data));
-    kitState.selectedId=null;
-  }
-  kitSaveRecipes();
-  kitCloseForm();
-  kitRenderList();
-  if(id&&kitState.selectedId===id) kitRefreshOpenDetail();
+  kitFormSaving=true;
+  const save=()=>{
+    if(kitFormDraft!==draft||draft.owner!==kitRecipeOwner()||document.body.inert){kitFormError('Your account changed. Reopen the recipe for the current account.');return false;}
+    const latest=kitRecipeBook(),previous=id?latest.find(r=>r.id===id):null;
+    if(id&&JSON.stringify(previous||null)!==draft.base){kitFormError('This recipe changed elsewhere. Your draft is still here. Copy any edits you need, then reopen the latest recipe.');return false;}
+    const record={...(previous||{id:draft.newId,favourite:false,lastCooked:null,createdAt:Date.now()}),...data};
+    if(!previous||['calories','protein','carbs','fat'].some(key=>data[key]!==previous[key]))record.nutritionBasis=data.calories==null?'missing':'manual';
+    if(record.proteinOptions===undefined){delete record.proteinOptions;delete record.defaultProteinOptionId;}
+    const next=id?latest.map(r=>r.id===id?record:r):latest.concat(record);
+    if(!kitSaveRecipes(next)){kitFormError('Your recipe could not be saved. Your draft is still here; free some device storage or try again.');return false;}
+    kitRecipes=next;if(!id)kitState.selectedId=null;
+    kitCloseForm();kitRenderList();if(id&&kitState.selectedId===id)kitRefreshOpenDetail();return true;
+  };
+  return (async()=>{try{
+    if(typeof navigator!=='undefined'&&navigator.locks?.request)return await navigator.locks.request('daily-recipes:'+draft.owner,save);
+    return save();
+  }catch(error){kitFormError(error.message||'Your recipe could not be saved. Your draft is still here.');return false;}
+  finally{kitFormSaving=false;}})();
 }
 
 // ══ KITCHEN: Shopping List ════════════════════════════════════════
@@ -29000,7 +28686,6 @@ function kitShopRender(){
 // have to shop for different meat. Legacy entries carry no proteinOptionId and keep working;
 // for a variant recipe they resolve to the default, because no explicit older choice exists.
 function kitShopSelKey(sel){ return String(sel&&sel.recipeId||'')+'::'+String((sel&&sel.proteinOptionId)||''); }
-function kitShopKeyOf(recipeId,optionId){ return String(recipeId)+'::'+String(optionId||''); }
 function kitShopSelByKey(key){ return kitShopSelected.find(s=>kitShopSelKey(s)===key)||null; }
 // Every entry for one recipe, in list order.
 function kitShopSelsFor(recipeId){ return kitShopSelected.filter(s=>s&&s.recipeId===recipeId); }
@@ -29083,7 +28768,7 @@ function kitShopPickRender(){
   const dupe=already.some(o=>o.id===rv.optionId);
   kitSheetOpen(
     kitSheetHead(kitShopPick.replaceKey?'Change protein':'Which protein?',r.name)+
-    kitProteinChooserHTML(r,rv.optionId,"kitShopSetPick('%ID%')",{label:false})+
+    kitProteinChooserHTML(r,rv.optionId,"kitShopSetPick(%ID%)",{label:false})+
     '<div class="kit-sec-label">Shopping for</div><div class="kit-ing-list">'+(ing||'<div class="kit-ing-row"><span>No protein ingredient saved</span></div>')+'</div>'+
     (already.length?'<div class="kit-note-panel">Already on this list with: '+kitEsc(already.map(o=>o.label).join(', '))+
       '. Adding a second protein plans the same dish twice.</div>':'')+
@@ -29135,7 +28820,7 @@ function kitShopRenderSelector(){
     const on=sels.length>0;
     // The row itself is the add/remove target; every control inside it stops propagation, so
     // changing a protein or a serving count can never toggle the whole recipe off by accident.
-    html+='<div class="kitshop-sel-card'+(r.favourite?' favourite':'')+(on?' selected':'')+'" onclick="kitShopToggleRecipe(\''+r.id+'\')">'+
+    html+='<div class="kitshop-sel-card'+(r.favourite?' favourite':'')+(on?' selected':'')+'" onclick="kitShopToggleRecipe('+kitEsc(JSON.stringify(r.id))+')">'+
       '<div class="kitshop-sel-check">'+(on?'✓':'')+'</div>'+
       '<div class="kitshop-sel-body">'+
         '<div class="kitshop-sel-name">'+kitEsc(r.name)+'</div>'+
@@ -29152,20 +28837,20 @@ function kitShopRenderSelector(){
       const label=broken?'Protein no longer exists':(rv.optionLabel||'');
       html+='<div class="kitshop-sel-line'+(broken?' broken':'')+'" onclick="event.stopPropagation()">'+
         (rvDef.variant
-          ? '<button type="button" class="kitshop-sel-prot'+(broken?' broken':'')+'" onclick="kitShopChooseProtein(\''+r.id+'\',\''+kitEsc(sd.proteinOptionId||'')+'\',\''+kitEsc(key)+'\')">'+
+          ? '<button type="button" class="kitshop-sel-prot'+(broken?' broken':'')+'" onclick="kitShopChooseProtein('+kitEsc(JSON.stringify(r.id))+','+kitEsc(JSON.stringify(sd.proteinOptionId||''))+','+kitEsc(JSON.stringify(key))+')">'+
               (broken?'⚠️ ':'🥩 ')+kitEsc(label||'Choose protein')+' <span class="kitshop-sel-change">Change</span></button>'
           : '<span class="kitshop-sel-prot-static">'+r.servings+' serving base</span>')+
         '<div class="kitshop-serv">'+
-          '<button class="kitshop-serv-btn" onclick="kitShopAdjustServings(\''+kitEsc(key)+'\',-1)" aria-label="Fewer">−</button>'+
+          '<button class="kitshop-serv-btn" onclick="kitShopAdjustServings('+kitEsc(JSON.stringify(key))+',-1)" aria-label="Fewer">−</button>'+
           '<div class="kitshop-serv-num">'+(sd.servings||r.servings)+'</div>'+
-          '<button class="kitshop-serv-btn" onclick="kitShopAdjustServings(\''+kitEsc(key)+'\',1)" aria-label="More">+</button>'+
+          '<button class="kitshop-serv-btn" onclick="kitShopAdjustServings('+kitEsc(JSON.stringify(key))+',1)" aria-label="More">+</button>'+
         '</div>'+
-        '<button class="kitshop-sel-x" onclick="kitShopRemoveSel(\''+kitEsc(key)+'\')" aria-label="Remove">✕</button>'+
+        '<button class="kitshop-sel-x" onclick="kitShopRemoveSel('+kitEsc(JSON.stringify(key))+')" aria-label="Remove">✕</button>'+
       '</div>';
     });
     if(rvDef.variant){
       html+='<div class="kitshop-sel-line kitshop-sel-add" onclick="event.stopPropagation()">'+
-        '<button type="button" class="kitshop-sel-more" onclick="kitShopChooseProtein(\''+r.id+'\')">+ Add another protein version</button></div>';
+        '<button type="button" class="kitshop-sel-more" onclick="kitShopChooseProtein('+kitEsc(JSON.stringify(r.id))+')">+ Add another protein version</button></div>';
     }
   });
   html+='</div>';
@@ -29334,7 +29019,7 @@ function kitShopRenderList(){
   html+='<div class="kitshop-list-head">'+
     '<button class="back-btn" data-back="kitShopBackToSelector" aria-label="Back">'+BACK_CHEVRON+'</button>'+
     '<div class="kitshop-list-title">Shopping list<span class="kitshop-count">'+left+'</span></div>'+
-    '<button class="kitshop-clear-checked" onclick="kitShopClearChecked(decodeURIComponent(\''+kitPantryArg(plan.pantryId)+'\'))">Clear checked</button>'+
+    '<button class="kitshop-clear-checked" onclick="kitShopClearChecked(decodeURIComponent('+escAttr(JSON.stringify(kitPantryArg(plan.pantryId)))+'))">Clear checked</button>'+
   '</div>';
   // A selection whose protein option was deleted contributes NOTHING to the plan above
   // rather than falling back to the default, so the list has to say so — silently shopping
@@ -29357,7 +29042,7 @@ function kitShopRenderList(){
     plan.pantryNeeds.forEach(it=>{
       const qty=kitShopRequirementText(it.requirements);
       html+='<label class="kitshop-item">'+
-        '<input type="checkbox" class="kitshop-cb" onchange="kitPantryRestock(decodeURIComponent(\''+kitPantryArg(it.pantryId)+'\'),decodeURIComponent(\''+kitPantryArg(it.itemId)+'\'))">'+
+        '<input type="checkbox" class="kitshop-cb" onchange="kitPantryRestock(decodeURIComponent('+escAttr(JSON.stringify(kitPantryArg(it.pantryId)))+'),decodeURIComponent('+escAttr(JSON.stringify(kitPantryArg(it.itemId)))+'))">'+
         '<span class="kitshop-item-name">'+kitEsc(it.name)+'</span>'+
         (qty?'<span class="kitshop-item-qty">'+kitEsc(qty)+'</span>':'')+
         '<span class="kitshop-need-tag '+(it.status==='low'?'low':'out')+'">'+(it.status==='low'?'⚠ Low':'Out')+'</span>'+
@@ -29379,10 +29064,10 @@ function kitShopRenderList(){
       if(qtyBits.length) qty=qtyBits.join(' + ');
       else if(it.unit){ qty=it.unit; }
       html+='<label class="kitshop-item'+(checked?' checked':'')+'">'+
-        '<input type="checkbox" class="kitshop-cb"'+(checked?' checked':'')+' onchange="kitShopToggleCheck(decodeURIComponent(\''+kitPantryArg(it.key)+'\'),this.checked,decodeURIComponent(\''+kitPantryArg(plan.pantryId)+'\'))">'+
+        '<input type="checkbox" class="kitshop-cb"'+(checked?' checked':'')+' onchange="kitShopToggleCheck(decodeURIComponent('+escAttr(JSON.stringify(kitPantryArg(it.key)))+'),this.checked,decodeURIComponent('+escAttr(JSON.stringify(kitPantryArg(plan.pantryId)))+'))">'+
         '<span class="kitshop-item-name">'+kitEsc(it.name)+'</span>'+
         (qty?'<span class="kitshop-item-qty">'+kitEsc(qty)+'</span>':'')+
-        (it.manual?'<button class="kitshop-item-del" onclick="event.preventDefault();kitShopDeleteManual(\''+it.manualId+'\')" aria-label="Remove">✕</button>':'')+
+        (it.manual?'<button class="kitshop-item-del" onclick="event.preventDefault();kitShopDeleteManual('+kitEsc(JSON.stringify(it.manualId))+')" aria-label="Remove">✕</button>':'')+
       '</label>';
     });
   });
@@ -29390,7 +29075,7 @@ function kitShopRenderList(){
     const ui=(typeof kitPantryUI==='function')?kitPantryUI():{};
     const open=!!(ui.stockedOpen&&ui.stockedOpen[plan.pantryId]);
     html+='<section class="kitshop-stocked'+(open?' open':'')+'">'+
-      '<button type="button" class="kitshop-stocked-toggle" aria-expanded="'+(open?'true':'false')+'" onclick="kitPantryToggleStockedSection(decodeURIComponent(\''+kitPantryArg(plan.pantryId)+'\'))">'+
+      '<button type="button" class="kitshop-stocked-toggle" aria-expanded="'+(open?'true':'false')+'" onclick="kitPantryToggleStockedSection(decodeURIComponent('+escAttr(JSON.stringify(kitPantryArg(plan.pantryId)))+'))">'+
         '<span class="kitshop-stocked-chev" aria-hidden="true">›</span>'+
         '<span>Already in '+kitEsc(plan.pantryName)+'</span><span class="kitshop-stocked-count">'+plan.stocked.length+'</span>'+
       '</button>'+
@@ -29745,10 +29430,10 @@ function kitPantryRowHTML(it){
   return '<div class="kitpantry-item s-'+st+'">'+
     '<span class="kitpantry-name">'+kitEsc(it.name)+'</span>'+
     // Status is carried by an icon AND a word, never colour alone.
-    '<button type="button" class="kitpantry-status s-'+st+'" onclick="event.stopPropagation();kitPantryCycle(decodeURIComponent(\''+arg+'\'))" '+
+    '<button type="button" class="kitpantry-status s-'+st+'" onclick="event.stopPropagation();kitPantryCycle(decodeURIComponent('+escAttr(JSON.stringify(arg))+'))" '+
       'aria-label="'+escAttr(it.name+': '+meta.label+'. Change to '+next.label+'.')+'">'+
       '<span class="kitpantry-status-ic" aria-hidden="true">'+meta.icon+'</span>'+meta.short+'</button>'+
-    '<button type="button" class="kitpantry-more" onclick="event.stopPropagation();kitPantryOpenItemEdit(decodeURIComponent(\''+arg+'\'))" '+
+    '<button type="button" class="kitpantry-more" onclick="event.stopPropagation();kitPantryOpenItemEdit(decodeURIComponent('+escAttr(JSON.stringify(arg))+'))" '+
       'aria-label="Edit '+escAttr(it.name)+'" title="Edit '+escAttr(it.name)+'">\u22ef</button>'+
   '</div>';
 }
@@ -29803,7 +29488,7 @@ function kitPantryRenderItemEdit(){
     '<option value="'+escAttr(id)+'"'+(item.cat===id?' selected':'')+'>'+escText(label)+'</option>').join('');
   const statuses=KITPANTRY_STATUS.map(s=>{
     const label=s.id==='in'?'Stocked':s.id==='low'?'Low':'Out';
-    return '<option value="'+s.id+'"'+(kitPantryStatusOf(item)===s.id?' selected':'')+'>'+label+'</option>';
+    return '<option value="'+escAttr(s.id)+'"'+(kitPantryStatusOf(item)===s.id?' selected':'')+'>'+label+'</option>';
   }).join('');
   const removeLabel=item.custom?'Delete item':'Remove from '+pantry.name;
   kitSheetOpen(
@@ -30040,7 +29725,7 @@ function kitPantryRender(){
 
   // ── The old summary badges, now the primary filter ──
   const pill=(id,label,cls)=>'<button type="button" class="kitpantry-badge '+cls+(ui.filter===id?' on':'')+'" '+
-    'aria-pressed="'+(ui.filter===id?'true':'false')+'" onclick="kitPantrySetFilter(\''+id+'\')">'+label+'</button>';
+    'aria-pressed="'+(ui.filter===id?'true':'false')+'" onclick="kitPantrySetFilter('+escAttr(JSON.stringify(id))+')">'+label+'</button>';
   html+='<div class="kitpantry-summary" role="group" aria-label="Filter pantry">'+
     pill('attention',(low+out)+' need attention','bad')+
     pill('stocked',stocked+' stocked','good')+
@@ -30049,7 +29734,7 @@ function kitPantryRender(){
 
   // ── Category chips: filter, not jump — jumping leaves you deep in a long document ──
   const chip=(c,label)=>'<button type="button" class="kitpantry-chip'+(ui.cat===c?' on':'')+'" '+
-    'aria-pressed="'+(ui.cat===c?'true':'false')+'" onclick="kitPantrySetCat(\''+c+'\')">'+escText(label)+'</button>';
+    'aria-pressed="'+(ui.cat===c?'true':'false')+'" onclick="kitPantrySetCat('+escAttr(JSON.stringify(c))+')">'+escText(label)+'</button>';
   html+='<div class="kitpantry-chips">'+chip('','All')+
     KITPANTRY_CATS.map(([c,label])=>chip(c,label)).join('')+'</div>';
 
@@ -30095,12 +29780,12 @@ function kitPantryRender(){
       counts.push('<span class="kitpantry-c">'+cIn+' stocked</span>');
       html+='<div class="kitpantry-cat-head">'+
         '<button type="button" class="kitpantry-cat-btn'+(open?' open':'')+'"'+
-          ' aria-expanded="'+(open?'true':'false')+'" onclick="kitPantryToggleCat(\''+cat+'\')">'+
+          ' aria-expanded="'+(open?'true':'false')+'" onclick="kitPantryToggleCat('+escAttr(JSON.stringify(cat))+')">'+
           '<span class="kitpantry-cat-chev" aria-hidden="true">\u203a</span>'+
           '<span class="kitpantry-cat-label">'+escText(label)+'</span>'+
           '<span class="kitpantry-counts">'+counts.join('')+'</span>'+
         '</button>'+
-        '<button type="button" class="kitpantry-cat-add" onclick="kitPantryOpenAdd(\''+cat+'\')" aria-label="Add an item to '+escAttr(label)+'">+</button>'+
+        '<button type="button" class="kitpantry-cat-add" onclick="kitPantryOpenAdd('+escAttr(JSON.stringify(cat))+')" aria-label="Add an item to '+escAttr(label)+'">+</button>'+
       '</div>';
       if(open) html+='<div class="kitpantry-cat-items kitpantry-group">'+items.map(kitPantryRowHTML).join('')+'</div>';
     });
@@ -30109,7 +29794,7 @@ function kitPantryRender(){
   // ── One add control for the whole pantry ──
   if(kitPantryAddOpen){
     const catOpts=KITPANTRY_CATS.map(([c,label])=>'<option value="'+escAttr(c)+'"'+(c===kitPantryAddCat?' selected':'')+'>'+escText(label)+'</option>').join('');
-    const stOpts=KITPANTRY_STATUS.map(s=>'<option value="'+s.id+'">'+escText(s.label)+'</option>').join('');
+    const stOpts=KITPANTRY_STATUS.map(s=>'<option value="'+escAttr(s.id)+'">'+escText(s.label)+'</option>').join('');
     html+='<div class="kitpantry-newform">'+
       '<div class="kitpantry-newform-t">Add a pantry item</div>'+
       '<input id="kitpantry-new-name" type="text" placeholder="Item name" autocomplete="off" '+
@@ -31483,7 +31168,7 @@ function renderPlans(){
       cardHeader('note','Your plans')+
       docs.map(function(p){
         const on=p.id===(sel&&sel.id);
-        return '<button type="button" class="lg-row lg-pick'+(on?' on':'')+'" onclick="plansDocSelect(\''+escAttr(p.id)+'\')">'+
+        return '<button type="button" class="lg-row lg-pick'+(on?' on':'')+'" data-plan-id="'+escAttr(p.id)+'" onclick="plansDocSelect(this.dataset.planId)">'+
           '<span class="lg-row-l"><span class="lg-row-name">'+escText(p.name||'Untitled')+'</span>'+
           '<span class="lg-row-meta">HTML document</span></span>'+
           '<span class="lg-row-v">'+(on?'Selected':'Select')+'</span></button>';
@@ -31496,12 +31181,12 @@ function renderPlans(){
   if(sel){
     h+='<div class="lg-card">'+
       cardHeader('note',escText(sel.name||'Plan'))+
-      '<button type="button" class="lg-btn primary" onclick="plansOpenHTML(\''+escAttr(sel.id)+'\')">Open</button>'+
+      '<button type="button" class="lg-btn primary" data-plan-id="'+escAttr(sel.id)+'" onclick="plansOpenHTML(this.dataset.planId)">Open</button>'+
       '<div class="lg-btn-row">'+
         '<button type="button" class="lg-btn" onclick="plansDocExport()">Export</button>'+
-        '<button type="button" class="lg-btn" onclick="plansRename(\''+escAttr(sel.id)+'\')">Rename</button>'+
+        '<button type="button" class="lg-btn" data-plan-id="'+escAttr(sel.id)+'" onclick="plansRename(this.dataset.planId)">Rename</button>'+
       '</div>'+
-      '<button type="button" class="lg-btn danger" onclick="plansDelete(\''+escAttr(sel.id)+'\')">Delete this plan</button>'+
+      '<button type="button" class="lg-btn danger" data-plan-id="'+escAttr(sel.id)+'" onclick="plansDelete(this.dataset.planId)">Delete this plan</button>'+
     '</div>';
   }
 
@@ -31888,7 +31573,7 @@ function logPlanRowHtml(ex, t){
       }
     }
   }
-  return '<button type="button" class="lg-focus-row" onclick="openExerciseDetail(\''+escAttr(name)+'\')">'+
+  return '<button type="button" class="lg-focus-row" data-exercise="'+escAttr(name)+'" onclick="openExerciseDetail(this.dataset.exercise)">'+
     '<span class="lg-focus-copy"><strong>'+escText(name)+'</strong>'+
       '<small>'+planned+' set'+(planned===1?'':'s')+' planned · '+meta+'</small></span>'+
     target+
@@ -32134,11 +31819,6 @@ function logResetWorkoutForSplit(){
   initDay(Math.max(0,Math.min(S.dayIdx,scheduleLen()-1)));
   clearSetData(); rtResetAll(); dismissPostSaveWeight(); rtUpdateSessionLabels();
 }
-function logProgramExport(){
-  const sel=logProgramSelected();
-  if(!sel){ alert('No program selected to export.'); return; }
-  plansExportPlan(sel.id);
-}
 function plansRefreshViews(){
   if(S.view==='plans') renderPlans();
   if(S.view==='log'&&logSubTab==='program') renderLogProgram();
@@ -32256,10 +31936,6 @@ function plansDuplicate(id){
   data.plans.push(copy); savePlans(data); logProgSel=copy.id;
   logSplitSheetClose(); plansRefreshViews(); showToast('Created “'+copy.name+'”');
   return copy.id;
-}
-function plansSetActive(id){
-  const data=loadPlans(); data.activePlanId=id;
-  savePlans(data); plansRefreshViews();
 }
 function plansDelete(id){
   const p=loadPlans().plans.find(x=>x.id===id); if(!p) return;

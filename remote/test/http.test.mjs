@@ -56,6 +56,9 @@ test('real OAuth PKCE and MCP HTTP flow: account isolation, expiry, revocation, 
   r=await tokenRequest();const tokens=await r.json();assert.equal(r.status,200,JSON.stringify(tokens));assert.ok(tokens.access_token);assert.ok(tokens.refresh_token);
   async function call(method,params,token=tokens.access_token){const response=await request('/mcp',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',Accept:'application/json, text/event-stream','MCP-Protocol-Version':'2025-11-25'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});return {status:response.status,data:await response.json()};}
   const initialized=await call('initialize',{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'isolated-test',version:'1'}});assert.equal(initialized.status,200);
+  const tooComplex=await call('initialize',{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'isolated-test',version:'1',icons:Array(5000).fill(null)}});
+  assert.equal(tooComplex.status,400);assert.equal(tooComplex.data.error.code,'INVALID_INPUT');
+  assert.equal((await request('/health')).status,200,'complex metadata cannot take down the service');
   const list=await call('tools/list',{});assert.equal(list.data.result.tools.length,7);
   const tool=async(name,args={})=>{const r=await call('tools/call',{name,arguments:args});return r.data.result?.structuredContent||r.data.result||r.data;};
   const identity=await tool('connection_status');assert.equal(identity.accountId,'alice');

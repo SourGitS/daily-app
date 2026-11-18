@@ -156,14 +156,17 @@ test('the navigation tree routes Accounts through the Finance subview', () => {
 test('the Accounts store, its sync registration and its save path did not move', () => {
   // One store, one key, one Firebase path, one writer — rehoming the SCREEN must not have
   // touched any of them.
-  assert.match(body('loadAccounts'), /lsLoad\('daily_accounts', \[\]\)/);
-  assert.match(body('saveAccounts'), /lsSave\('daily_accounts', [^;]+, 'accounts'\)/);
+  assert.match(body('loadAccounts'), /lsLoad\('daily_accounts',\s*\[\],\s*Array\.isArray\)/);
+  assert.match(body('saveAccounts'), /dailyFinanceWrite\('accounts',raw\)/,
+    'explicit edits use the recoverable atomic account writer');
+  assert.match(body('saveAccounts'), /lsSave\('daily_accounts',\s*raw,\s*'accounts'\)/,
+    'boot migration retains the same storage key and sync path');
   assert.equal((source.match(/lsSave\('daily_accounts'/g) || []).length, 1,
     'exactly one writer for the accounts store');
   assert.match(source, /syncBlobListen\(user\.uid,'accounts','daily_accounts'/,
     'the sync registration is unchanged');
   // No second account state, and no boot-time seeding.
-  assert.equal((source.match(/let accounts = loadAccounts\(\)/g) || []).length, 1);
+  assert.equal((source.match(/let accounts = loadAccounts\(true\)/g) || []).length, 1);
   assert.match(body('ensureAccountsMigrated'),
     /if\(!savHas && !ccHas\) return;/, 'a brand-new user is still left unmigrated');
   // Every edit still lands through saveAccounts() and then re-renders the same page.

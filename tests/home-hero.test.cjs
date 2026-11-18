@@ -4,7 +4,7 @@ const vm=require('node:vm');
 const {extract}=require('./harness.cjs');
 const plain=v=>JSON.parse(JSON.stringify(v));
 function fixture(names,values={}){
-  const ctx=vm.createContext({console,Set,escText:s=>String(s),...values});
+  const ctx=vm.createContext({console,Set,escText:s=>String(s),escAttr:s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'),...values});
   vm.runInContext(names.map(extract).join('\n'),ctx);return ctx;
 }
 

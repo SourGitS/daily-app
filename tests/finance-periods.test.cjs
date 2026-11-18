@@ -57,7 +57,7 @@ test('weekly/custom navigation uses calendar dates and rejects malformed ranges'
   assert.equal(c.budPeriodRange({...cfg,anchor:'2026-02-30'},'2026-10-04',0),null);
 });
 test('multiple actual income sources add once; transfers and expected income cannot fund the budget',()=>{
-  const c=context(),events=[{kind:'income',date:'2026-10-02',amount:2000},{kind:'income',date:'2026-10-10',amount:120},{kind:'transfer',date:'2026-10-02',amount:9000},{kind:'income',date:'2026-10-16',amount:2000}];
+  const c=context({getLocalDate:()=> '2026-10-15'}),events=[{kind:'income',date:'2026-10-02',amount:2000},{kind:'income',date:'2026-10-10',amount:120},{kind:'transfer',date:'2026-10-02',amount:9000},{kind:'income',date:'2026-10-16',amount:2000}];
   const m=c.budPeriodCompute(period,{},events,[{date:'2026-10-15',amount:23.45},{date:'2026-10-16',amount:99}],{},{});
   assert.equal(m.income,2120);assert.equal(m.available,2096.55);
 });
@@ -67,6 +67,14 @@ test('recorded savings reduce spending once while a larger savings target keeps 
   assert.equal(m.savingsRecorded,75);assert.equal(m.savingsRemaining,125);assert.equal(m.savingsCommitted,200);assert.equal(m.available,800);
   m=c.budPeriodCompute(period,{savings:50},events,[],{},{});
   assert.equal(m.savingsCommitted,75);assert.equal(m.savingsRemaining,0);assert.equal(m.available,925);
+});
+test('future received-income records stay available for export but do not fund today',()=>{
+  let today='2026-10-04';const c=context({getLocalDate:()=>today});
+  const events=[{id:'received',kind:'income',date:today,amount:100},{id:'future',kind:'income',date:'2026-10-10',amount:900}],before=JSON.stringify(events);
+  let money=c.budPeriodCompute(period,{},events,[],{},{});
+  assert.equal(money.income,100);assert.equal(money.available,100);assert.equal(money.rows.length,2);
+  today='2026-10-10';money=c.budPeriodCompute(period,{},events,[],{},{});
+  assert.equal(money.income,1000);assert.equal(money.available,1000);assert.equal(JSON.stringify(events),before);
 });
 test('income and savings recording use matching visual actions',()=>{
   const c=context({escAttr:String,escText:String,fmtDate:String,fmtMoneyExact:n=>'$'+n});
@@ -119,7 +127,7 @@ test('overlapping undated weekly totals are never apportioned into guessed days'
 });
 test('legacy weekly income and expenses already itemised are not counted a second time',()=>{
   const events=[{kind:'income',date:'2026-10-06',amount:500}],expenses=[{date:'2026-10-06',amount:30}];
-  const c=context({budgetData:{'2026-10-05':{}},txnData:expenses,ledgerOf:()=>events,weekIncome:()=>500,weekVarTotal:()=>30});
+  const c=context({getLocalDate:()=> '2026-10-15',budgetData:{'2026-10-05':{}},txnData:expenses,ledgerOf:()=>events,weekIncome:()=>500,weekVarTotal:()=>30});
   const old=c.budPeriodLegacy(period);assert.deepEqual(plain(old),{income:0,spent:0,incomplete:false});
   assert.equal(c.budPeriodCompute(period,{},events,expenses,{},old).available,470);
 });
@@ -284,7 +292,7 @@ test('starting a new rhythm today closes dated activity in the old period withou
   assert.equal(c.budPeriodRangeForStore(changed,'2026-10-04',0).id,'2026-10-04_2026-10-31');
 });
 test('previous budget after an immediate change ends before the new period and keeps its saved plan key',()=>{
-  const c=context(),oldId='2026-11-02_2026-11-08',store={config:{frequency:'weekly',anchor:'2026-11-02'},periods:{[oldId]:{
+  const c=context({getLocalDate:()=> '2026-11-18'}),oldId='2026-11-02_2026-11-08',store={config:{frequency:'weekly',anchor:'2026-11-02'},periods:{[oldId]:{
     start:'2026-11-02',end:'2026-11-08',notes:'Original plan',opening:400,reserves:{rent:250},
     rollover:{to:'2026-11-09_2026-11-15',amount:50,destination:'budget'}
   }}};
@@ -315,6 +323,36 @@ test('a custom period closed early still navigates by its original configured du
   const earlier=c.budPeriodRangeForStore(changed,'2026-11-18',-2);
   assert.deepEqual(plain(earlier),{id:'2026-10-26_2026-11-01',start:'2026-10-26',end:'2026-11-01',days:7});
   assert.deepEqual(plain(c.budPeriodAdjacent(changed,earlier,1)),plain(closed));
+});
+test('three rhythm changes retain historical bridge dates, plans and both navigation directions after reload',()=>{
+  let today='2026-10-03';const c=context({getLocalDate:()=>today,document:{getElementById:()=>null},showToast(){}});c.budPeriodRefresh=()=>{};
+  const firstId='2026-09-28_2026-10-04',bridgeId='2026-10-05_2026-10-31',monthlyId='2026-11-01_2026-11-30';
+  let store={config:{frequency:'weekly',anchor:'2026-09-28'},periods:{[firstId]:{start:'2026-09-28',end:'2026-10-04',notes:'Original weekly',reserves:{rent:25}}}};
+  const change=(config,date,mode)=>{today=date;store=c.budPeriodApplyTransition(store,c.budPeriodTransitionPlan(store,config,today,mode));};
+  change({frequency:'monthly',anchor:'2026-10-01'},today,'next');
+  store.periods[bridgeId]={...store.periods[bridgeId],notes:'Bridge plan',opening:400,savings:50};
+  store.periods[monthlyId]={start:'2026-11-01',end:'2026-11-30',notes:'November plan',reserves:{rent:80},rollover:{to:'later',amount:20,destination:'budget'}};
+  change({frequency:'weekly',anchor:'2026-11-16'},'2026-11-18','now');
+  const novemberBridge=c.budPeriodRangeForStore(store,today);
+  change({frequency:'fortnightly',anchor:'2026-11-25'},'2026-11-20','next');
+  assert.equal(store.history.length,2);assert.deepEqual(plain(store.config),{frequency:'weekly',anchor:'2026-09-28'});
+  c.budCyclesSave(store);store=plain(c.budCyclesLoad());const before=JSON.stringify(store);
+  assert.equal(c.budPeriodRangeForStore(store,'2026-10-12').id,bridgeId);
+  assert.deepEqual(plain(c.budPeriodRangeForStore(store,'2026-11-10')),{id:monthlyId,start:'2026-11-01',end:'2026-11-17',days:17});
+  assert.equal(store.periods[bridgeId].notes,'Bridge plan');assert.equal(store.periods[bridgeId].opening,400);
+  assert.deepEqual(plain(store.periods[firstId].reserves),{rent:25});assert.equal(store.periods[monthlyId].notes,'November plan');
+  assert.equal(store.periods[monthlyId].rollover.to,store.transition.destinationId);
+  let range=c.budPeriodRangeForStore(store,'2026-10-03');
+  for(let i=0;i<9;i++){
+    const next=c.budPeriodAdjacent(store,range,1);assert.equal(next.start,c.budDateAdd(range.end,1));
+    assert.equal(c.budPeriodAdjacent(store,next,-1).id,range.id);range=next;
+  }
+  assert.equal(JSON.stringify(store),before,'range readers never migrate or save history');
+  c.budPeriodCancelTransition();store=plain(c.budCyclesLoad());
+  assert.equal(store.transition,undefined);assert.equal(store.history.length,2);
+  assert.equal(store.periods[monthlyId].rollover.to,novemberBridge.id);
+  assert.equal(c.budPeriodRangeForStore(store,'2026-11-25').start,'2026-11-23','cancelling only the pending third change resumes the latest active schedule');
+  assert.equal(c.budPeriodRangeForStore(store,'2026-10-12').id,bridgeId);
 });
 test('period transitions retarget or remove only affected rollovers and preserve unrelated history',()=>{
   const c=context(),oldId='2026-09-28_2026-10-04',store={config:{frequency:'weekly',anchor:'2026-09-28'},periods:{
@@ -466,4 +504,8 @@ test('income setup saves explicitly, preserves other sources/history, and reject
   assert.equal(c.budCyclesLoad().periods.newer.opening,777);
   c.budIncomeEdit('salary');cats[0].name='Changed on another device';
   form.onsubmit({preventDefault(){},target:form});assert.equal(saves,1);assert.match(nodes['bp-error'].textContent,/changed elsewhere/);
+  c.budCyclesSave({config:{frequency:'weekly',anchor:'2026-09-28'},history:[{effectiveFrom:'2026-10-01',config:{frequency:'fortnightly',anchor:'2026-10-01',sourceId:'salary'}}],periods:{old:{opening:200}}});
+  c.budIncomeEdit('salary');fields.follow=false;form.onsubmit({preventDefault(){},target:form});
+  const detached=c.budCyclesLoad();assert.equal(c.budPeriodConfigAt(detached,'2026-10-04').sourceId,undefined);
+  assert.equal(detached.history[0].config.anchor,'2026-10-01');assert.equal(detached.periods.old.opening,200);
 });

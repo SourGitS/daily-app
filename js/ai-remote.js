@@ -64,19 +64,23 @@ function dailyRemoteBaselineKey(s){return 'assistant_sync_baseline_'+s.uid+'_'+s
 function dailyRemoteBaseline(s){const text=localStorage.getItem(dailyRemoteBaselineKey(s));const value=text?JSON.parse(text):null;if(value?.pending)throw Error('A local save was interrupted. Export the retained copy and review this store.');return value;}
 function dailyRemoteReconcile(s,raw){
   if(!dailyRemoteOwn(s.uid))return;
-  const cloud=dailyRemoteRows(raw),t=Number(raw?.t)||0,base=dailyRemoteBaseline(s),local=dailyRemoteRows(localStorage.getItem(s.lsKey));
+  const cloud=dailyRemoteRows(raw),t=Number(raw?.t)||0,restoreAt=Number(raw?.restoreAt)||0,base=dailyRemoteBaseline(s),local=dailyRemoteRows(localStorage.getItem(s.lsKey));
   if(base&&t<base.t)return;
   let merged;
-  if(base)merged=dailyRemoteMerge(base.rows,local,cloud);
+  if(base&&(Number(base.restoreAt)||0)!==restoreAt){
+    if(dailyRemoteStable(local)!==dailyRemoteStable(base.rows))throw Error('A backup restore replaced this store. Your local changes are retained; export and review them before using the restored copy.');
+    merged=cloud;
+  }
+  else if(base)merged=dailyRemoteMerge(base.rows,local,cloud);
   else if(dailyRemoteStable(local)===dailyRemoteStable(cloud)||!Number(localStorage.getItem(s.tsKey)||0))merged=cloud;
   else throw Error('This device has no verified sync baseline and a different local copy. Export it and review before using the cloud copy.');
   const key=dailyRemoteBaselineKey(s),value=JSON.stringify(merged),dirty=dailyRemoteStable(merged)!==dailyRemoteStable(cloud);
   // A single durable recovery journal prevents a crash between the baseline and local
   // writes from silently losing an unsynced edit. Interrupted journals fail closed.
-  localStorage.setItem(key,JSON.stringify({pending:true,previous:local,merged,cloud,t}));
+  localStorage.setItem(key,JSON.stringify({pending:true,previous:local,merged,cloud,t,restoreAt}));
   localStorage.setItem(s.lsKey,value);
   localStorage.setItem(s.tsKey,String(dirty?Math.max(Date.now(),t+1):t));
-  localStorage.setItem(key,JSON.stringify({rows:cloud,t}));
+  localStorage.setItem(key,JSON.stringify({rows:cloud,t,restoreAt}));
   _syncApplying++;try{s.onUpdate?.();}finally{_syncApplying--;}
   if(typeof dailyAIStoreObserved==='function')dailyAIStoreObserved(s.uid,s.path);
   return dirty;
@@ -113,7 +117,7 @@ function dailyRemoteCommit(ref,v,t,confirmSame){
     const value=dailyRemoteRows(localStorage.getItem(s.lsKey));
     const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(dailyRemoteStable(base.rows)));
     const baseHash=Array.from(new Uint8Array(digest)).map(v=>v.toString(16).padStart(2,'0')).join('');
-    const result=await dailyRemoteFetch('/daily/sync',{path,base:base.rows,value,baseHash},uid);
+    const result=await dailyRemoteFetch('/daily/sync',{path,base:base.rows,value,baseHash,restoreAt:Number(base.restoreAt)||0},uid);
     if(result.cloudSave!=='verified'||result.status!=='committed'||result.path!==path)throw Error('No confirmed cloud-save receipt. Refresh before retrying.');
     dailyRemoteReconcile(s,result.envelope);
     dailyRemoteState.error='';dailyRemoteRefreshHtml();

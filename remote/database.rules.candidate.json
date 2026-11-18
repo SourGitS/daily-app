@@ -9,12 +9,16 @@
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
         "assistant": { ".write": false },
-        ".validate": "(!data.child('sessions/__dailyRestoredAt').exists() || newData.child('sessions/__dailyRestoredAt').val() >= data.child('sessions/__dailyRestoredAt').val()) && (!data.child('weights/__dailyRestoredAt').exists() || newData.child('weights/__dailyRestoredAt').val() >= data.child('weights/__dailyRestoredAt').val()) && (!data.child('notes/__dailyRestoredAt').exists() || newData.child('notes/__dailyRestoredAt').val() >= data.child('notes/__dailyRestoredAt').val()) && (!data.child('weeklyReviews/__dailyRestoredAt').exists() || newData.child('weeklyReviews/__dailyRestoredAt').val() >= data.child('weeklyReviews/__dailyRestoredAt').val()) && (!data.child('budgetData/__dailyRestoredAt').exists() || newData.child('budgetData/__dailyRestoredAt').val() >= data.child('budgetData/__dailyRestoredAt').val()) && (!data.child('savingsLog/__dailyRestoredAt').exists() || newData.child('savingsLog/__dailyRestoredAt').val() >= data.child('savingsLog/__dailyRestoredAt').val()) && (!data.child('transactions/recordSync').exists() || newData.child('transactions/recordSync').val() >= data.child('transactions/recordSync').val()) && (!data.child('ledger/recordSync').exists() || newData.child('ledger/recordSync').val() >= data.child('ledger/recordSync').val())",
+        ".validate": "(!data.child('sessions/__dailyRestoredAt').exists() || newData.child('sessions/__dailyRestoredAt').val() >= data.child('sessions/__dailyRestoredAt').val()) && (!data.child('weights/__dailyRestoredAt').exists() || newData.child('weights/__dailyRestoredAt').val() >= data.child('weights/__dailyRestoredAt').val()) && (!data.child('notes/__dailyRestoredAt').exists() || newData.child('notes/__dailyRestoredAt').val() >= data.child('notes/__dailyRestoredAt').val()) && (!data.child('weeklyReviews/__dailyRestoredAt').exists() || newData.child('weeklyReviews/__dailyRestoredAt').val() >= data.child('weeklyReviews/__dailyRestoredAt').val()) && (!data.child('budgetData/__dailyRestoredAt').exists() || newData.child('budgetData/__dailyRestoredAt').val() >= data.child('budgetData/__dailyRestoredAt').val()) && (!data.child('savingsLog/__dailyRestoredAt').exists() || newData.child('savingsLog/__dailyRestoredAt').val() >= data.child('savingsLog/__dailyRestoredAt').val()) && (!data.child('transactions/recordSync').exists() || newData.child('transactions/recordSync').val() >= data.child('transactions/recordSync').val()) && (!data.child('ledger/recordSync').exists() || newData.child('ledger/recordSync').val() >= data.child('ledger/recordSync').val()) && (!data.child('accounts/recordSync').exists() || newData.child('accounts/recordSync').val() >= data.child('accounts/recordSync').val()) && (!data.child('plannerTasks/__dailyRestoredAt').exists() || newData.child('plannerTasks/__dailyRestoredAt').val() >= data.child('plannerTasks/__dailyRestoredAt').val())",
         "sessions": {
           ".write": "auth != null && auth.uid === $uid && (!data.child('__dailyRestoredAt').exists() || newData.exists())",
           "$row": { ".validate": "$row === '__dailyRestoredAt' ? (newData.isNumber() && newData.val() > 0) : (!newData.parent().child('__dailyRestoredAt').exists() || (newData.child('restoreGeneration').val() === newData.parent().child('__dailyRestoredAt').val() && ((newData.child('updatedAt').isNumber() && newData.child('updatedAt').val() >= newData.parent().child('__dailyRestoredAt').val()) || (newData.child('deletedAt').isNumber() && newData.child('deletedAt').val() >= newData.parent().child('__dailyRestoredAt').val()))))" }
         },
         "weights": {
+          ".write": "auth != null && auth.uid === $uid && (!data.child('__dailyRestoredAt').exists() || newData.exists())",
+          "$row": { ".validate": "$row === '__dailyRestoredAt' ? (newData.isNumber() && newData.val() > 0) : (!newData.parent().child('__dailyRestoredAt').exists() || (newData.child('restoreGeneration').val() === newData.parent().child('__dailyRestoredAt').val() && ((newData.child('updatedAt').isNumber() && newData.child('updatedAt').val() >= newData.parent().child('__dailyRestoredAt').val()) || (newData.child('deletedAt').isNumber() && newData.child('deletedAt').val() >= newData.parent().child('__dailyRestoredAt').val()))))" }
+        },
+        "plannerTasks": {
           ".write": "auth != null && auth.uid === $uid && (!data.child('__dailyRestoredAt').exists() || newData.exists())",
           "$row": { ".validate": "$row === '__dailyRestoredAt' ? (newData.isNumber() && newData.val() > 0) : (!newData.parent().child('__dailyRestoredAt').exists() || (newData.child('restoreGeneration').val() === newData.parent().child('__dailyRestoredAt').val() && ((newData.child('updatedAt').isNumber() && newData.child('updatedAt').val() >= newData.parent().child('__dailyRestoredAt').val()) || (newData.child('deletedAt').isNumber() && newData.child('deletedAt').val() >= newData.parent().child('__dailyRestoredAt').val()))))" }
         },
@@ -34,6 +38,10 @@
           ".write": "auth != null && auth.uid === $uid && (!data.child('__dailyRestoredAt').exists() || newData.exists())",
           "$row": { ".validate": "$row === '__dailyRestoredAt' ? (newData.isNumber() && newData.val() > 0) : (!newData.parent().child('__dailyRestoredAt').exists() || (newData.child('t').isNumber() && newData.child('t').val() >= newData.parent().child('__dailyRestoredAt').val()))" }
         },
+        "accounts": {
+          ".write": "auth != null && auth.uid === $uid && (!data.child('recordSync').exists() || newData.exists())",
+          "recordSync": { ".validate": "newData.val() === 1" }
+        },
         "transactions": {
           ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).child('assistant').child('enabled').val() !== true && (!data.child('recordSync').exists() || newData.exists())",
           "recordSync": { ".validate": "newData.val() === 1" }
@@ -44,7 +52,7 @@
         },
         "aiRequests": { ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).child('assistant').child('enabled').val() !== true" },
         "$other": {
-          ".write": "auth != null && auth.uid === $uid && $other !== 'assistant' && $other !== 'transactions' && $other !== 'ledger' && $other !== 'aiRequests' && (!data.child('__dailyRestoredAt').exists() || newData.exists())"
+          ".write": "auth != null && auth.uid === $uid && $other !== 'plannerTasks' && $other !== 'accounts' && $other !== 'assistant' && $other !== 'transactions' && $other !== 'ledger' && $other !== 'aiRequests' && (!data.child('__dailyRestoredAt').exists() || newData.exists())"
         }
       }
     }

@@ -88,7 +88,7 @@ const server=http.createServer((req,res)=>{
       assert.equal(await balance('cash'),1510);assert.equal(await page.evaluate(()=>Number(budgetData[txnWeekOf(getLocalDate())].inc_salary)),510);
       // A weekly balance check takes precedence over entries already included in it.
       await page.evaluate(()=>openAccounts());await page.locator('#acct-bal-cash').fill('1400');
-      await page.locator('[onclick="accountUpdateBalanceFromInput(\'cash\')"]').click();assert.equal(await balance('cash'),1400);
+      await page.locator('.acct-account-card[data-account="cash"]').getByRole('button',{name:'Update',exact:true}).click();assert.equal(await balance('cash'),1400);
       await page.evaluate(id=>budPeriodEdit(id),incomeId);await page.locator('#bp-form [name="amount"]').fill('520');await page.locator('#bp-form button[type="submit"]').click();assert.equal(await balance('cash'),1400);
       await openExpense(10,'cash');await saveExpense();assert.equal(await balance('cash'),1390);
       await openExpense(20,'cash',false);await saveExpense();assert.equal(await balance('cash'),1390);
@@ -100,16 +100,16 @@ const server=http.createServer((req,res)=>{
       // Local failure and a remote edit while a form is open must leave the new expense unsaved.
       if(width===390&&theme==='dark'){
         await openExpense(50,'cash');
-        await page.evaluate(()=>{window.__testSave=lsSave;lsSave=(k,v,p)=>{if(k!=='daily_transactions')window.__testSave(k,v,p);};});
+        await page.evaluate(()=>{window.__testSet=localStorage.setItem.bind(localStorage);localStorage.setItem=(k,v)=>{if(k==='daily_transactions')throw Error('Synthetic storage failure');return window.__testSet(k,v);};});
         await page.getByRole('button',{name:'Save expense',exact:true}).click();assert.match(await page.locator('#txn-err').innerText(),/could not be saved/);assert.equal(await balance('cash'),1315);
-        await page.evaluate(()=>{lsSave=window.__testSave;});await saveExpense();assert.equal(await balance('cash'),1265);
+        await page.evaluate(()=>{localStorage.setItem=window.__testSet;});await saveExpense();assert.equal(await balance('cash'),1265);
         await openExpense(5,'cash');await page.evaluate(()=>{const list=loadAccounts();list[0].name='Everyday updated';saveAccounts(list);});
         await page.getByRole('button',{name:'Save expense',exact:true}).click();assert.match(await page.locator('#txn-err').innerText(),/changed/);assert.equal(await balance('cash'),1265);await page.evaluate(()=>closeTxnModal());
         const incomeCount=await page.evaluate(()=>ledgerData.length);
         await page.evaluate(()=>budPeriodRecord('income'));await page.locator('#bp-form [name="amount"]').fill('30');await page.locator('#bp-form [name="account"]').selectOption('cash');await page.locator('#bp-form [name="duplicate"]').check();
-        await page.evaluate(()=>{lsSave=(k,v,p)=>{if(k!=='daily_ledger')window.__testSave(k,v,p);};});
+        await page.evaluate(()=>{localStorage.setItem=(k,v)=>{if(k==='daily_ledger')throw Error('Synthetic storage failure');return window.__testSet(k,v);};});
         await page.getByRole('button',{name:'Confirm received',exact:true}).click();assert.match(await page.locator('#bp-error').innerText(),/could not be saved/);assert.equal(await balance('cash'),1265);
-        await page.evaluate(()=>{lsSave=window.__testSave;window.__testBudgetSave=budSaveData;budSaveData=()=>{throw Error('Synthetic storage failure');};});
+        await page.evaluate(()=>{localStorage.setItem=window.__testSet;window.__testBudgetSave=budSaveData;budSaveData=()=>{throw Error('Synthetic storage failure');};});
         await page.getByRole('button',{name:'Confirm received',exact:true}).click();assert.equal(await balance('cash'),1295);assert.equal(await page.evaluate(()=>ledgerData.length),incomeCount+1);
         assert.match(await page.locator('#bud-period-dialog').innerText(),/Income saved/);
         await page.evaluate(()=>{budSaveData=window.__testBudgetSave;});await page.getByRole('button',{name:'Retry weekly total',exact:true}).click();

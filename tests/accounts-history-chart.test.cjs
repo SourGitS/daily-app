@@ -5,6 +5,7 @@ const {extract,copy}=require('./harness.cjs');
 function fixture(accounts){
   const wrap={innerHTML:''},charts=[],overview={hidden:false};
   const c=vm.createContext({accounts,console,document:{documentElement:{},getElementById:id=>id==='accounts-chart'?wrap:id==='accounts-overview-details'?overview:{}},
+    escAttr:s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'),
     getComputedStyle:()=>({getPropertyValue:()=> '#533B7E'}),getLocalDate:()=> '2026-10-04',
     localMidnight:s=>new Date(s+'T00:00:00'),dateStr:d=>d.toISOString().slice(0,10),
     fmtMoney:n=>'$'+n,fmtDate:s=>s,_catEscHtml:s=>s,a_name:a=>a.name,acctIcon:()=>'',tstat:()=>'',

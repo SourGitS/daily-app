@@ -79,6 +79,19 @@ test('three-way sync preserves independent devices and refuses stale conflicting
   assert.throws(()=>mergeRecords(base,[],cloud),{code:'SYNC_CONFLICT'});
   assert.throws(()=>mergeRecords(base,[{id:'one',amount:5}],cloud),{code:'SYNC_CONFLICT'});
 });
+test('protected sync refuses pre-restore baselines even for previously unseen queued additions',()=>{
+  const f=fixture(),base=[],value=[{id:'queued',createdAt:now-1000,amount:5}];
+  f.roots.alice.transactions={v:JSON.stringify([{id:'restored',amount:2}]),t:now,recordSync:1,restoreAt:now};
+  const before=structuredClone(f.roots.alice);
+  for(const restoreAt of [undefined,0,now-1,now+1]){
+    assert.throws(()=>syncFinancialBlob(f.roots.alice,{path:'transactions',base,value,baseHash:hash(base),...(restoreAt===undefined?{}:{restoreAt})},now+1),{code:'RESTORE_CHANGED'});
+    assert.deepEqual(f.roots.alice,before);
+  }
+  const current=blob(f.roots.alice,'transactions');
+  const result=syncFinancialBlob(f.roots.alice,{path:'transactions',base:current,value:[...current,{id:'new',amount:4}],baseHash:hash(current),restoreAt:now},now+2);
+  assert.deepEqual(blob(result.root,'transactions').map(r=>r.id),['restored','new']);
+  assert.equal(result.root.transactions.restoreAt,now);
+});
 test('ordinary sync cannot rewrite remote audit receipts or introduce an orphan dependency',()=>{
   const f=fixture(),base=[];
   assert.throws(()=>syncFinancialBlob(f.roots.alice,{path:'ledger',base,value:[{id:'refund',expenseId:'missing'}],baseHash:hash(base)},now),{code:'DEPENDENCY_CONFLICT'});

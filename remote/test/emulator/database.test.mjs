@@ -31,6 +31,15 @@ test('real RTDB rules, transactions, encrypted OAuth persistence and concurrent 
     await assert.rejects(notifications.manage(devices,'alice',{action:'disable',device:'b'.repeat(64),token},notificationSchedule,now));
   });
   const alice=env.authenticatedContext('alice').database(),bob=env.authenticatedContext('bob').database(),guest=env.unauthenticatedContext().database();
+  await t.test('Accounts keeps its atomic-sync marker while protected connector stores remain fenced',async()=>{
+    const ref=alice.ref('users/alice/accounts'),original=(await ref.once('value')).val();
+    await assertSucceeds(ref.set({...original,t:now,recordSync:1}));
+    await assertFails(ref.set({v:'[]',t:now+1}));await assertFails(ref.remove());
+    await assertFails(bob.ref('users/alice/accounts').set({v:'[]',t:now+1,recordSync:1}));
+    await assertFails(guest.ref('users/alice/accounts').once('value'));
+    await assertSucceeds(ref.set({...original,t:now+1,restoreAt:now+1,recordSync:1}));
+    await assertFails(alice.ref('users/alice/transactions').set({v:'[]',t:now+2,recordSync:1}));
+  });
   await t.test('owner reads, cross-account and anonymous access, private OAuth and old snapshots',async()=>{
     await assertSucceeds(alice.ref('users/alice/transactions').once('value'));
     await assertFails(bob.ref('users/alice').once('value'));await assertFails(guest.ref('users/alice').once('value'));
@@ -69,6 +78,15 @@ test('real RTDB rules, transactions, encrypted OAuth persistence and concurrent 
     const undone=await service.undo(f.principal,{requestId:f.requestId});assert.equal(undone.status,'undone');
     const root=(await db.ref('users/alice').get()).val();assert.deepEqual(blob(root,'transactions').map(r=>r.id),['local']);
     assert.equal((await service2.commit(f.principal,{requestId:f.requestId,previewToken:preview.previewToken})).status,'undone');
+  });
+  await t.test('a database restore fences stale connector additions while current-generation edits remain valid',async()=>{
+    const uid='restored-connector',restored={id:'restored',amount:2,date:'2026-10-23'};
+    await db.ref('users/'+uid).set({assistant:{enabled:true},transactions:{v:JSON.stringify([restored]),t:now,recordSync:1,restoreAt:now}});
+    const input={path:'transactions',base:[],baseHash:hash([]),value:[{id:'stale',amount:5,date:'2026-10-22'}]};
+    await assert.rejects(store.transaction(uid,root=>syncFinancialBlob(root,input,now+1)),{code:'RESTORE_CHANGED'});
+    assert.deepEqual(blob((await db.ref('users/'+uid).get()).val(),'transactions'),[restored]);
+    const result=await store2.transaction(uid,root=>syncFinancialBlob(root,{path:'transactions',base:[restored],baseHash:hash([restored]),value:[restored,{id:'new',amount:3,date:'2026-10-23'}],restoreAt:now},now+2));
+    assert.deepEqual(JSON.parse(result.envelope.v).map(r=>r.id),['restored','new']);assert.equal(result.envelope.restoreAt,now);
   });
   await t.test('revocation serializes with writes and every later request is refused',async()=>{
     const id='daily_remote_revoke001',p=await service.preview(f.principal,{requestId:id,expense:{...f.expense,amount:32}});

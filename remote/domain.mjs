@@ -79,9 +79,14 @@ function guardReferences(root,before){
   }
 }
 export function syncFinancialBlob(root,input,now){
-  requireKeys(input,['path','base','value','baseHash']);
+  requireKeys(input,['path','base','value','baseHash','restoreAt']);
   if(!root?.assistant?.enabled||!protectedPaths.includes(input.path))fail('INVALID_SYNC','This store is not enabled for protected sync.');
   if(!Array.isArray(input.base)||!Array.isArray(input.value)||hash(input.base)!==input.baseHash)fail('INVALID_SYNC','A verified baseline is required. Refresh Daily before syncing.');
+  // A queued addition can be absent from both the old baseline and the restored cloud.
+  // Its timestamp is not proof that it belongs after an explicit replacement.
+  const generation=Number(root?.[input.path]?.restoreAt)||0,observed=input.restoreAt===undefined?0:input.restoreAt;
+  if(!Number.isSafeInteger(observed)||observed<0)fail('INVALID_SYNC','A valid restore generation is required.');
+  if(observed!==generation)fail('RESTORE_CHANGED','A backup restore replaced this store. Your local changes are retained; review the restored copy before syncing.');
   // Remote receipts are server-owned even when a full user session edits other Inbox activity.
   if(input.path==='aiRequests'){
     const baseRemote=input.base.filter(r=>r?.remote===true),localRemote=input.value.filter(r=>r?.remote===true);

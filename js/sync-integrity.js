@@ -81,6 +81,18 @@ function dailyRestoreCheckStore(key,v){
   if(key==='daily_cal_history')check(Object.entries(v).every(([date,total])=>validDate(date)&&number(object(total)?total.calories:total)));
   if(key==='daily_habits_log')check(Object.entries(v).every(([date,ids])=>validDate(date)&&Array.isArray(ids)&&ids.every(Number.isInteger)));
   if(key==='daily_cc_log')check(v.every(r=>validDate(r.date)&&number(r.balance)));
+  if(key==='daily_accounts'){
+    for(const account of v){
+      check(['asset','debt'].includes(account.type)&&typeof account.name==='string');
+      if(account.current!=null)check(number(account.current));
+      if(account.history!=null)check(Array.isArray(account.history)&&account.history.every(row=>
+        object(row)&&validDate(row.date)&&number(row.balance)));
+      for(const field of ['statementHistory','statementSettlements','statementCorrections','repayments',
+          'balanceMovements','balanceCheckpoints','reconciliations']){
+        if(account[field]!=null)check(rows(account[field]));
+      }
+    }
+  }
   if(key==='daily_weight_log')check(v.every(r=>validDate(r.date)&&number(r.kg===undefined?r.weight:r.kg)));
   if(key==='daily_nutrition_log'){
     check(object(v.entries)&&(v.legacyTotals===undefined||object(v.legacyTotals)));
@@ -99,7 +111,7 @@ function dailyRestoreStage(data, time) {
   const validKey = k => typeof k==='string' && k && !/[.#$\[\]/\u0000-\u001f\u007f]/.test(k) &&
     k!==DAILY_RESTORE_MARK && !['__proto__','prototype','constructor'].includes(k);
   for (const [key,input] of Object.entries(data)) {
-    if(!/^(daily_|wt_|kitchen_)/.test(key) || /_ts$/.test(key)||/^daily_finance_(pending|seen)_/.test(key)||
+    if(!/^(daily_|wt_|kitchen_)/.test(key) || /_ts$/.test(key)||/^daily_finance_(pending|seen)_/.test(key)||/^daily_blob_pending_/.test(key)||
        ['daily_weather_cache','daily_weather_forecast_mobile','daily_planner_period','daily_planner_guest_tasks','daily_pantry_ui','daily_nav_ui','daily_budget_ui'].includes(key)) continue;
     const raw = typeof input==='string'?input:JSON.stringify(input);
     let value = input;
@@ -197,6 +209,7 @@ function dailyRestoreAdvanceGenerations(plan,before){
 function dailyRestoreWriteLocal(plan) {
   const previous=new Map();
   try {
+    for(const key of [...plan.writes.keys()])if(dailyBlobIntent(key))plan.writes.set(dailyBlobPendingKey(key),null);
     if(plan.writes.has('daily_planner_tasks'))plan.writes.set('daily_planner_guest_tasks',null);
     for(const key of Object.keys(dailyRestoreGenerationalStores))if(plan.writes.has(key)){
       plan.writes.set(key+'_restore_ts',String(dailyRestoreCutoff(plan.updates[dailyRestoreSpecial[key]])));
@@ -254,11 +267,138 @@ function dailyRestoreLocalChanged(plan,allowEcho){
   return false;
 }
 
-const dailyFinancePaths={transactions:'daily_transactions',ledger:'daily_ledger'};
+// Keep a multi-store edit local until every value and revision can be committed. Existing
+// writers see their staged changes, while their cloud uploads wait for the whole commit.
+let dailyAtomicState=null;
+function dailyAtomicDefer(key,run){
+  if(!dailyAtomicState)return false;
+  dailyAtomicState.effects.set(key,run);return true;
+}
+function dailyAtomicLocalChange(change){
+  if(dailyAtomicState)return change();
+  const storage=localStorage,names=['getItem','setItem','removeItem','key','keys','length','clear'];
+  const descriptors=new Map(names.map(key=>[key,Object.getOwnPropertyDescriptor(storage,key)]));
+  const original={get:storage.getItem.bind(storage),set:storage.setItem.bind(storage),remove:storage.removeItem.bind(storage)};
+  const baseKeys=storage.keys?storage.keys():Array.from({length:storage.length},(_,i)=>storage.key(i)).filter(Boolean);
+  const state={writes:new Map(),effects:new Map()},before=new Map();
+  const views=new Map([...dailyFinanceViews].map(([key,rows])=>[key,dailyFinanceCopy(rows)]));
+  const keys=()=>[...new Set([...baseKeys,...state.writes.keys()])].filter(key=>
+    state.writes.has(key)?state.writes.get(key)!==null:original.get(key)!==null);
+  const restoreMethods=()=>{for(const [key,descriptor]of descriptors){if(descriptor)Object.defineProperty(storage,key,descriptor);else delete storage[key];}};
+  const define=(key,value)=>Object.defineProperty(storage,key,{configurable:true,writable:true,value});
+  dailyAtomicState=state;
+  let result;
+  try{
+    define('getItem',key=>state.writes.has(String(key))?state.writes.get(String(key)):original.get(String(key)));
+    define('setItem',(key,value)=>state.writes.set(String(key),String(value)));
+    define('removeItem',key=>state.writes.set(String(key),null));
+    define('keys',keys);define('key',index=>keys()[index]??null);
+    define('clear',()=>keys().filter(key=>key!=='daily_weather_cache').forEach(key=>state.writes.set(key,null)));
+    Object.defineProperty(storage,'length',{configurable:true,get:()=>keys().length});
+    result=change();
+    if(result&&typeof result.then==='function')throw Error('An atomic local edit must finish synchronously.');
+    restoreMethods();
+    for(const [key,value]of state.writes){
+      before.set(key,original.get(key));
+      if(value===null)original.remove(key);else original.set(key,value);
+    }
+  }catch(error){
+    restoreMethods();
+    // Remove new keys first, so rollback never needs more room than the original data.
+    for(const [key,value]of before)if(value===null&&original.get(key)!==null)original.remove(key);
+    for(const [key,value]of before)if(value!==null&&original.get(key)!==value)original.set(key,value);
+    dailyFinanceViews.clear();for(const [key,value]of views)dailyFinanceViews.set(key,value);
+    throw error;
+  }finally{restoreMethods();dailyAtomicState=null;}
+  for(const run of state.effects.values())try{run();}catch(error){setSyncStatus('Sync failed');}
+  return result;
+}
+
+// Generic settings still use timestamped blobs. Retain explicit intent across reloads so a
+// rejected save cannot vanish during the incoming cloud echo or be labelled as synced.
+function dailyBlobPendingKey(key){return 'daily_blob_pending_'+key;}
+function dailyBlobIntent(key){
+  try{const intent=JSON.parse(localStorage.getItem(dailyBlobPendingKey(key))||'null');
+    return intent&&intent.key===key&&typeof intent.v==='string'&&Number.isFinite(intent.t)?intent:null;
+  }catch{return null;}
+}
+function dailyBlobRecord(path,key,tsKey,t){
+  if(dailyFinancePaths[path]&&dailyFinanceUsesDefault(path))return;
+  localStorage.setItem(dailyBlobPendingKey(key),JSON.stringify({path,key,tsKey,t,v:localStorage.getItem(key)}));
+}
+function dailyBlobPreserve(intent){
+  try{
+    localStorage.setItem('daily_sync_recovery_'+intent.key+'_'+intent.t,JSON.stringify({...intent,reason:'A different cloud version was kept.'}));
+    localStorage.removeItem(dailyBlobPendingKey(intent.key));
+  }catch(error){setSyncStatus('Sync failed — local change retained');return false;}
+  setSyncStatus('Sync needs review');
+  if(typeof showToast==='function')showToast('A different cloud version was kept. Your change is retained in the backup recovery data.',6000);
+  return true;
+}
+function dailyBlobRecoveryKeys(){
+  const keys=localStorage.keys?localStorage.keys():Array.from({length:localStorage.length},(_,i)=>localStorage.key(i));
+  return keys.filter(key=>key?.startsWith('daily_sync_recovery_')&&dailyBlobRecovery(key));
+}
+function dailyBlobRecovery(key){
+  try{const entry=JSON.parse(localStorage.getItem(key)||'null');
+    return key.startsWith('daily_sync_recovery_')&&entry&&/^(daily_|wt_|kitchen_)/.test(entry.key)&&
+      !/^daily_(?:blob_pending_|sync_recovery_|finance_(?:pending|seen)_)/.test(entry.key)&&typeof entry.v==='string'?entry:null;
+  }catch{return null;}
+}
+function dailyBlobRecoveryDownload(key){
+  const entry=dailyBlobRecovery(key);if(!entry)return false;
+  const payload={app:'daily',version:1,exported:new Date().toISOString(),data:{[entry.key]:entry.v}};
+  const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'})),a=document.createElement('a');
+  a.href=url;a.download='daily-recovery-'+String(entry.path||'saved-change').replace(/[^a-zA-Z0-9_-]/g,'-')+'.json';
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);return true;
+}
+function dailyBlobReview(){
+  let dialog=document.getElementById('daily-sync-recovery-dialog');
+  if(!dialog){dialog=document.createElement('dialog');dialog.id='daily-sync-recovery-dialog';document.body.appendChild(dialog);}
+  const labels={budgetIncCats:'Income sources',budgetFixCats:'Recurring bills',budgetVarCats:'Expense categories',
+    kitRecipes:'Recipes',plans:'Training plans',trainingSplit:'Training split',exerciseLib:'Exercise library',
+    kitPantry:'Pantry',kitShopManual:'Shopping',appTheme:'Appearance',homeLayout:'Home layout'};
+  const rows=dailyBlobRecoveryKeys().map(key=>({key,entry:dailyBlobRecovery(key)})).filter(row=>row.entry);
+  const content='<p>A different cloud version was kept. Download a retained change as a Daily backup before deciding to keep the current version.</p>'+
+    rows.map(({key,entry})=>'<section class="stg-field"><strong>'+escText(labels[entry.path]||String(entry.path||'Saved change').replace(/([a-z])([A-Z])/g,'$1 $2'))+'</strong>'+
+      '<div class="bp-actions"><button type="button" class="stg-btn" data-sync-recovery-download="'+escAttr(key)+'">Download my change</button>'+
+      '<button type="button" class="stg-btn" data-sync-recovery-resolve="'+escAttr(key)+'">Keep current version</button></div></section>').join('');
+  const form=dailyFormDialogLayout(dialog,'daily-sync-recovery-title','Review saved changes',content,'Done');
+  form.onsubmit=event=>{event.preventDefault();dialog.close();};
+  dialog.querySelectorAll('[data-sync-recovery-download]').forEach(button=>button.onclick=()=>dailyBlobRecoveryDownload(button.dataset.syncRecoveryDownload));
+  dialog.querySelectorAll('[data-sync-recovery-resolve]').forEach(button=>button.onclick=()=>{
+    if(!confirm('Keep the current version and dismiss this retained change? Download it first if you want a backup copy.'))return;
+    localStorage.removeItem(button.dataset.syncRecoveryResolve);setSyncStatus('Synced ✓');
+    if(dailyBlobRecoveryKeys().length)dailyBlobReview();else dialog.close();
+  });
+  if(!dialog.open)dialog.showModal();
+}
+function dailyBlobBeforeReceive(path,key,cloudV,cloudT){
+  const intent=dailyBlobIntent(key);
+  if(!intent||cloudV===intent.v||cloudT<intent.t)return true;
+  return dailyBlobPreserve(intent);
+}
+function dailyBlobAcknowledge(key,cloudV,cloudT){
+  const intent=dailyBlobIntent(key);
+  if(intent&&intent.v===cloudV&&cloudT>=intent.t)localStorage.removeItem(dailyBlobPendingKey(key));
+}
+function dailyBlobReceipt(path,key,sent,t,result){
+  const intent=dailyBlobIntent(key),raw=result?.snapshot?.val();
+  const cloudV=raw&&typeof raw==='object'&&'v' in raw?raw.v:raw;
+  if(result?.committed===false&&cloudV!==sent){
+    if(intent&&intent.t===t)dailyBlobPreserve(intent);
+    else if(!intent&&localStorage.getItem(key)===sent)dailyBlobPreserve({path,key,tsKey:key+'_ts',v:sent,t});
+    return false;
+  }
+  if(intent&&intent.t===t&&intent.v===sent)localStorage.removeItem(dailyBlobPendingKey(key));
+  return true;
+}
+
+const dailyFinancePaths={transactions:'daily_transactions',ledger:'daily_ledger',accounts:'daily_accounts'};
 const dailyFinanceViews=new Map(), dailyFinanceListeners=new Map(), dailyFinanceQueues=new Map();
 const dailyFinanceConflicts=new Map();
-function dailyFinanceUsesDefault(){
-  return typeof dailyRemoteOrigin!=='function'||!dailyRemoteOrigin()||
+function dailyFinanceUsesDefault(path){
+  return path==='accounts'||typeof dailyRemoteOrigin!=='function'||!dailyRemoteOrigin()||
     dailyRemoteState.uid===auth?.currentUser?.uid&&dailyRemoteState.enabled===false;
 }
 function dailyFinanceCopy(records){return JSON.parse(JSON.stringify(records));}
@@ -370,12 +510,15 @@ function dailyFinanceReceive(s,raw){
   if(!seen&&!jobs.length&&raw&&localStorage.getItem(key)!==null&&Number(localStorage.getItem(key+'_ts'))>time&&
      dailyRemoteStable(local)!==dailyRemoteStable(cloud))throw Error('This device has an older-format unconfirmed financial edit.');
   const merged=dailyFinanceApply(raw==null?local:cloud,valid);
+  const changed=dailyRemoteStable(local)!==dailyRemoteStable(merged);
   localStorage.setItem(key,JSON.stringify(merged));
   localStorage.setItem(key+'_ts',String(Math.max(time,...valid.map(job=>job.t))));
   if(raw!=null)localStorage.setItem(seenKey,String(time||0));
   for(const job of jobs)if(cutoff&&job.t<=cutoff)localStorage.removeItem(job.key);
   dailyFinanceView(s.path,merged);
-  syncApply(()=>s.onUpdate?.());
+  // An acknowledgement can advance revisions without changing a single record. Rebuilding
+  // Accounts during an input's blur would remove the button receiving that same pointer tap.
+  if(changed)syncApply(()=>s.onUpdate?.());
   if(typeof dailyAIStoreObserved==='function')dailyAIStoreObserved(s.uid,s.path);
   return valid.length>0||(raw==null&&local.length>0);
 }
@@ -444,7 +587,8 @@ async function dailyFinanceReview(){
       dailyFinanceReceive(s,snap.val());dailyFinanceConflicts.delete(path);
     }catch(error){dailyFinanceIssue(path,error);}
   }
-  if(!dailyFinanceConflicts.size){
+  if(dailyBlobRecoveryKeys().length)dailyBlobReview();
+  if(!dailyFinanceConflicts.size&&!dailyBlobRecoveryKeys().length){
     const action=document.getElementById('finance-sync-review');if(action)action.hidden=true;
     setSyncStatus('Synced ✓');
   }

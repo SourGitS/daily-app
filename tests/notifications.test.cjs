@@ -128,7 +128,7 @@ function client(permission='default'){
     lsLoad:(k,d)=>store.has(k)?JSON.parse(store.get(k)):d,lsSave:(k,v)=>store.set(k,JSON.stringify(v)),
     setInterval:()=>++timers,clearInterval:()=>{},load:()=>[],setView:v=>status=v,setStatsTab:v=>status+=':'+v,
     history:{state:null,replaceState:()=>{}},location:{href:'https://example.test/'},kitEsc:s=>s});
-  vm.runInContext(fs.readFileSync('js/notifications.js','utf8'),c);
+  vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../js/notifications.js'),'utf8'),c);
   return {c,store,set binding(v){binding=v;},get binding(){return binding;},get requested(){return requested;},get status(){return status;},get timers(){return timers;}};
 }
 test('startup, resume and enabling a category never request notification permission',async()=>{

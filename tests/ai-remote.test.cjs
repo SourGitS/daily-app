@@ -36,7 +36,7 @@ test('confirmed cloud commit retains edits made while the HTTP result was in fli
   let release,started;const startedPromise=new Promise(r=>started=r);
   c.fetch=async(url,options)=>{c.requests.push({url,options});started();return new Promise(r=>release=r);};
   const pending=c.dailyRemoteCommit({key:'transactions',parent:{key:'alice'}},'stale-argument',1,true);await startedPromise;
-  const sent=JSON.parse(c.requests[0].options.body);assert.deepEqual(sent.base,[]);assert.deepEqual(sent.value,[{id:'local'}]);assert.match(sent.baseHash,/^[0-9a-f]{64}$/);
+  const sent=JSON.parse(c.requests[0].options.body);assert.deepEqual(sent.base,[]);assert.deepEqual(sent.value,[{id:'local'}]);assert.match(sent.baseHash,/^[0-9a-f]{64}$/);assert.equal(sent.restoreAt,0);
   c.memory.set('daily_transactions',JSON.stringify([{id:'local'},{id:'later'}]));
   release({ok:true,json:async()=>({status:'committed',cloudSave:'verified',path:'transactions',envelope:c.cloud([{id:'local'},{id:'remote'}],20)})});
   const ack=await pending;assert.equal(ack.committed,true);assert.deepEqual(c.local().map(r=>r.id),['local','remote','later']);assert.equal(JSON.parse(ack.snapshot.val().v).length,2);
@@ -53,4 +53,27 @@ test('interrupted local baseline write preserves a recovery journal and blocks s
   assert.throws(()=>c.dailyRemoteReconcile(c.s,c.cloud([{id:'remote'}],20)),/quota/);assert.deepEqual(c.local(),[{id:'local'}]);
   assert.equal(JSON.parse(c.memory.get(c.dailyRemoteBaselineKey(c.s))).pending,true);
   assert.throws(()=>c.dailyRemoteBaseline(c.s),/interrupted/);
+});
+
+test('a restore blocks queued local additions and preserves them until explicit recovery',()=>{
+  const c=fixture();c.dailyRemoteReconcile(c.s,c.cloud([{id:'old'}]));
+  c.memory.set('daily_transactions',JSON.stringify([{id:'old'},{id:'queued-before-restore'}]));
+  const baseline=c.memory.get(c.dailyRemoteBaselineKey(c.s));
+  assert.throws(()=>c.dailyRemoteReconcile(c.s,{...c.cloud([{id:'restored'}],2000),restoreAt:2000}),/backup restore replaced/);
+  assert.deepEqual(c.local().map(r=>r.id),['old','queued-before-restore']);
+  assert.equal(c.memory.get(c.dailyRemoteBaselineKey(c.s)),baseline);
+});
+
+test('an unchanged device adopts a restore and sends its observed generation on later edits',async()=>{
+  const c=fixture();c.dailyRemoteReconcile(c.s,c.cloud([{id:'old'}]));
+  const restored={...c.cloud([{id:'restored'}],2000),restoreAt:2000};
+  assert.equal(c.dailyRemoteReconcile(c.s,restored),false);
+  assert.deepEqual(c.local(),[{id:'restored'}]);assert.equal(c.dailyRemoteBaseline(c.s).restoreAt,2000);
+  c.memory.set('daily_transactions',JSON.stringify([{id:'restored'},{id:'after'}]));
+  c.fetch=async(url,options)=>{
+    const body=JSON.parse(options.body);assert.equal(body.restoreAt,2000);
+    return {ok:true,json:async()=>({status:'committed',cloudSave:'verified',path:'transactions',envelope:{...c.cloud(body.value,2100),restoreAt:2000}})};
+  };
+  assert.equal((await c.dailyRemoteCommit({key:'transactions',parent:{key:'alice'}},'',2100,true)).committed,true);
+  assert.deepEqual(c.local().map(r=>r.id),['restored','after']);
 });

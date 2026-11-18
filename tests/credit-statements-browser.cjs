@@ -1,5 +1,5 @@
 // Synthetic Firebase only. Run with Playwright available through NODE_PATH.
-const {chromium}=require('playwright');
+const {chromium,webkit}=require('playwright');
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'..');
 const moneyKeys=['daily_budget','daily_transactions','daily_ledger','daily_budget_cycles','daily_budget_inc_cats','daily_budget_fix_cats','daily_budget_var_cats','daily_budget_config','wt_sessions','wt_weight'];
@@ -11,7 +11,7 @@ const server=http.createServer((req,res)=>{
 });
 (async()=>{
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
-  const origin='http://127.0.0.1:'+server.address().port,browser=await chromium.launch({channel:'chrome',headless:true});
+  const origin='http://127.0.0.1:'+server.address().port,browser=process.argv.includes('--webkit')?await webkit.launch():await chromium.launch({channel:'chrome',headless:true});
   try{
     for(const width of [320,390,1440])for(const theme of ['light','dark'])for(const period of [false,true]){
       const context=await browser.newContext({viewport:{width,height:900}});
@@ -36,9 +36,19 @@ const server=http.createServer((req,res)=>{
       await page.keyboard.press('Escape');assert.equal(await dialog.evaluate(d=>d.open),false);
       assert.equal(await page.evaluate(()=>accounts[0].current),650.35);
       // Clicking Pay directly after an edit must survive the input's blur/change event.
+      await page.evaluate(()=>{
+        window.__directStatementTap=[];
+        window.__originalStatementButton=[...document.querySelectorAll('button')].find(button=>button.textContent.trim()==='Mark statement as paid');
+        for(const type of ['pointerdown','pointerup','click'])document.addEventListener(type,event=>{
+          if(event.target.closest('button')?.textContent.trim()==='Mark statement as paid')window.__directStatementTap.push(event.type);
+        },{capture:true});
+      });
       await page.locator('input[onchange*="statementBalance"]').fill('300.25');
       await page.getByRole('button',{name:'Mark statement as paid',exact:true}).click();
       await dialog.waitFor({state:'visible'});assert.equal(await page.locator('#acct-statement-remaining').inputValue(),'350.10');
+      await page.waitForFunction(()=>!dailyFinanceDirty('accounts'));
+      assert.deepEqual(await page.evaluate(()=>window.__directStatementTap),['pointerdown','pointerup','click'],'one pointer gesture reaches payment after input blur');
+      assert.equal(await page.evaluate(()=>window.__originalStatementButton.isConnected),true,'an unchanged sync acknowledgement keeps the active Accounts controls mounted');
       if(width===390)await page.screenshot({path:path.join(root,'temp-analysis/credit-payment-'+theme+'.png')});
       await page.getByRole('button',{name:'Confirm payment',exact:true}).click();await page.waitForFunction(()=>!document.getElementById('acct-statement-dialog').open);
       const after=await page.evaluate(moneyKeys=>({card:loadAccounts()[0],cash:loadAccounts()[1].current,debts:accountsDebtsTotal(),net:accountsNetWorth(),

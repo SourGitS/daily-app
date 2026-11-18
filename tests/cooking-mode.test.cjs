@@ -35,6 +35,7 @@ function context(recipes = [], opts = {}) {
     parseFloat, parseInt, isNaN, isFinite,
     Date: { now: () => now },
     kitRecipes: recipes,
+    kitFormDraft: {id:recipes[0]?.id||'',owner:'test'},kitFormSaving:false,kitRecipeOwner:()=> 'test',
     kitState: { selectedId: null, scaleServings: null, proteinOptionId: null },
     navigator: { vibrate: () => true },
     confirm: () => opts.confirm !== false,
@@ -43,6 +44,7 @@ function context(recipes = [], opts = {}) {
     setTimeout: () => 0, clearTimeout: () => {},
     window: { matchMedia: () => ({ matches: !!opts.reduceMotion, addEventListener() {}, removeEventListener() {} }) },
     document: {
+      body:{inert:false},
       getElementById: id => (nodes[id] = nodes[id] || el(id)),
       querySelector: () => null
     },

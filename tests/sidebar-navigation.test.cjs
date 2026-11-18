@@ -17,6 +17,7 @@ function fixture(savedOpen, visible) {
   const shown = new Set(visible || []);
   const context = vm.createContext({
     console, calls, S: {view: 'home'}, logSubTab: 'today', statsSubTab: 'overview',
+    escAttr:s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'),
     _bootPhase: false,
     localStorage: {
       getItem: () => savedOpen === undefined ? null : JSON.stringify({open: savedOpen}),

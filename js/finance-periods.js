@@ -52,30 +52,33 @@ function budTransitionRange(start,end){
   return budDateValid(start)&&budDateValid(end)&&end>=start?{id:start+'_'+end,start,end,days:budDateDays(start,end)+1}:null;
 }
 function budPeriodConfigAt(store,date){
-  const t=store?.transition;
-  return t&&budDateValid(t.effectiveFrom)&&date>=t.effectiveFrom&&t.config?t.config:store?.config;
+  const t=budPeriodSchedules(store).filter(t=>t.effectiveFrom<=date).at(-1);
+  return t?.config||store?.config;
+}
+function budPeriodSchedules(store){
+  return [...(Array.isArray(store?.history)?store.history:[]),store?.transition]
+    .filter(t=>t&&budDateValid(t.effectiveFrom)&&t.config).sort((a,b)=>a.effectiveFrom.localeCompare(b.effectiveFrom));
+}
+function budPeriodCloseRange(store,range,date){
+  if(!range)return null;
+  const next=budPeriodSchedules(store).find(t=>t.effectiveFrom>date),savedEnd=store?.periods?.[range.id]?.closedEnd;
+  let end=budDateValid(savedEnd)&&savedEnd>=range.start&&savedEnd<range.end?savedEnd:range.end;
+  if(next&&range.start<next.effectiveFrom&&end>=next.effectiveFrom)end=budDateAdd(next.effectiveFrom,-1);
+  // Retain the original plan/rollover key when its final days belong to a newer schedule.
+  return end<range.end?{...range,end,days:budDateDays(range.start,end)+1}:range;
 }
 function budPeriodRangeAt(store,date){
-  const t=store?.transition;
-  if(t&&budDateValid(t.effectiveFrom)&&date>=t.effectiveFrom){
-    const special=t.special&&budTransitionRange(t.special.start,t.special.end);
-    if(special&&date>=special.start&&date<=special.end)return special;
-    return budPeriodRange(t.config,date,0);
-  }
-  const range=budPeriodRange(store?.config,date,0);if(!range)return null;
-  const savedEnd=store?.periods?.[range.id]?.closedEnd;
-  let end=budDateValid(savedEnd)&&savedEnd>=range.start&&savedEnd<range.end?savedEnd:range.end;
-  if(t&&budDateValid(t.effectiveFrom)&&range.start<t.effectiveFrom&&end>=t.effectiveFrom)end=budDateAdd(t.effectiveFrom,-1);
-  // Keep the saved plan's original key: shortening its dates must not detach notes,
-  // allocations or rollovers, or make Previous budget include the new period's payments.
-  return end<range.end?{...range,end,days:budDateDays(range.start,end)+1}:range;
+  const t=budPeriodSchedules(store).filter(t=>t.effectiveFrom<=date).at(-1);
+  const special=t?.special&&budTransitionRange(t.special.start,t.special.end);
+  const range=special&&date>=special.start&&date<=special.end?special:budPeriodRange(t?.config||store?.config,date,0);
+  return budPeriodCloseRange(store,range,date);
 }
 function budPeriodAdjacent(store,range,direction){
   const target=direction>0?budDateAdd(range.end,1):budDateAdd(range.start,-1);
   const next=budPeriodRangeAt(store,target),config=budPeriodConfigAt(store,target);
   if(config?.frequency==='custom'&&next&&(target<next.start||target>next.end)){
     const full=budPeriodRange(config,target,0);
-    return budPeriodRange(config,target,Math.floor(budDateDays(config.anchor,target)/full.days));
+    return budPeriodCloseRange(store,budPeriodRange(config,target,Math.floor(budDateDays(config.anchor,target)/full.days)),target);
   }
   return next;
 }
@@ -95,14 +98,15 @@ function budPeriodFirstOnOrAfter(config,date){
 }
 function budCyclesLoad(){
   const v=lsLoad('daily_budget_cycles',null);
-  const store=v&&typeof v==='object'&&!Array.isArray(v)?{config:v.config||null,periods:v.periods||{},...(v.transition&&typeof v.transition==='object'?{transition:v.transition}:{})}:{config:null,periods:{}};
-  if(store.config?.sourceId&&!store.transition){
+  const store=v&&typeof v==='object'&&!Array.isArray(v)?{config:v.config||null,periods:v.periods||{},...(Array.isArray(v.history)?{history:v.history}:{}),...(v.transition&&typeof v.transition==='object'?{transition:v.transition}:{})}:{config:null,periods:{}};
+  if(store.config?.sourceId&&!store.transition&&!store.history?.length){
     const source=activeCats(loadIncCats()).find(c=>c.id===store.config.sourceId),follow=source&&budIncomePeriodConfig(source);
     if(follow)store.config={...store.config,...follow};
   }
   return store;
 }
 function budCyclesSave(v){lsSave('daily_budget_cycles',v,'budgetCycles');}
+function budPeriodScheduleSignature(store){return JSON.stringify([store.config,store.transition||null,store.history||[]]);}
 function budPeriodActive(){return !!budPeriodCurrent();}
 function budPeriodCurrent(){return budPeriodRangeForStore(budCyclesLoad(),getLocalDate(),0);}
 function budPeriodViewed(){
@@ -121,6 +125,7 @@ function budPeriodLabel(p){
 function budMoneyRound(n){return Math.round((Number(n)||0)*100)/100;}
 function budPeriodCompute(range,record,events,expenses,periods,legacy){
   const r=record||{},within=x=>x&&budDateValid(x.date)&&x.date>=range.start&&x.date<=range.end&&!x.deletedAt;
+  const today=typeof getLocalDate==='function'?getLocalDate():range.end;
   const rows=(events||[]).filter(within),purchases=[];
   let carrySpent=0,partialCarry=false;
   for(const expense of expenses||[]){
@@ -132,7 +137,7 @@ function budPeriodCompute(range,record,events,expenses,periods,legacy){
     }else if(within(expense))purchases.push(expense);
   }
   const sum=items=>budMoneyRound(items.reduce((a,x)=>a+(Number(x.amount)||0),0));
-  const income=sum(rows.filter(x=>x.kind==='income'))+(legacy?.income||0);
+  const income=sum(rows.filter(x=>x.kind==='income'&&x.date<=today))+(legacy?.income||0);
   const savingsRecorded=sum(rows.filter(x=>x.kind==='savings'));
   const payments=rows.filter(x=>x.kind==='bill_payment');
   const paidBy={};payments.forEach(x=>{paidBy[x.fixCatId]=(paidBy[x.fixCatId]||0)+(Number(x.amount)||0);});
@@ -272,7 +277,7 @@ function budIncomeManage(){
 }
 function budIncomeEdit(id){
   const cats=loadIncCats(),c=cats.find(x=>x.id===id)||{id:genCatId('inc'),name:'',payCycle:'fortnightly',payMode:'fixed'};
-  const baseline=JSON.stringify(cats),store=budCyclesLoad(),activeConfig=budPeriodConfigAt(store,getLocalDate())||store.config,cycleBaseline=JSON.stringify({config:store.config,transition:store.transition||null}),savedRate=getHourlyRate(c.id);
+  const baseline=JSON.stringify(cats),store=budCyclesLoad(),activeConfig=budPeriodConfigAt(store,getLocalDate())||store.config,cycleBaseline=budPeriodScheduleSignature(store),savedRate=getHourlyRate(c.id);
   const date=c.payDate||(incomeNextPay(c)?dateStr(incomeNextPay(c)):'');
   const d=budPeriodDialog(id?'Edit income source':'Add income source',
     '<label>Source name<input name="name" maxlength="80" required placeholder="e.g. My salary" value="'+escAttr(c.name)+'"></label>'+
@@ -292,7 +297,7 @@ function budIncomeEdit(id){
   document.getElementById('bp-form').onsubmit=e=>{
     e.preventDefault();
     const latest=budCyclesLoad();
-    if(JSON.stringify(loadIncCats())!==baseline||JSON.stringify({config:latest.config,transition:latest.transition||null})!==cycleBaseline||getHourlyRate(c.id)!==savedRate){budPeriodError('Income settings changed elsewhere. Close and reopen this form to use the latest settings.');return;}
+    if(JSON.stringify(loadIncCats())!==baseline||budPeriodScheduleSignature(latest)!==cycleBaseline||getHourlyRate(c.id)!==savedRate){budPeriodError('Income settings changed elsewhere. Close and reopen this form to use the latest settings.');return;}
     const f=new FormData(e.target),mode=f.get('mode'),cycle=f.get('cycle'),amount=Number(f.get('amount'));
     if(!String(f.get('name')).trim()||(mode==='fixed'&&!(Number.isFinite(amount)&&amount>0))){budPeriodError('Enter a name and a positive take-home amount for fixed pay.');return;}
     const next={...c,name:String(f.get('name')).trim(),payMode:mode,payCycle:cycle,payDate:f.get('payDate'),paySecondDay:f.get('secondDay')};
@@ -308,12 +313,16 @@ function budIncomeEdit(id){
       if(follow&&previous){
         const plan=budPeriodTransitionPlan(latest,config,getLocalDate(),'next');
         if(!plan){budPeriodError('This payday cannot form a safe next budget period. Check the date and try again.');return;}
-        if(latest.transition&&getLocalDate()>=latest.transition.effectiveFrom){nextStore.config=budPeriodConfigAt(latest,getLocalDate());delete nextStore.transition;}
         nextStore=budPeriodApplyTransition(nextStore,plan,'retarget');
       }else if(follow){nextStore.config=config;delete nextStore.transition;}
       else{
         if(nextStore.transition?.config?.sourceId===c.id)delete nextStore.transition.config.sourceId;
         if(nextStore.config?.sourceId===c.id)delete nextStore.config.sourceId;
+        const active=budPeriodSchedules(nextStore).filter(t=>t.effectiveFrom<=getLocalDate()).at(-1);
+        if(nextStore.history?.includes(active)&&active.config.sourceId===c.id){
+          const manual={...active.config};delete manual.sourceId;
+          nextStore.history=nextStore.history.map(t=>t===active?{...t,config:manual}:t);
+        }
       }
     }
     saveIncCats(id?cats.map(x=>x.id===id?next:x):[...cats,next]);
@@ -417,11 +426,16 @@ function budPeriodTransitionPlan(store,config,today,mode='next'){
     effectiveFrom=special?special.start:first.start;
   }
   const destination=special||first;
-  return {mode,config,old,first,special,effectiveFrom,destination,closedEnd,
+  return {mode,config,old,first,special,effectiveFrom,destination,closedEnd,today,
     rolloverIds:budPeriodTransitionRolloverIds(store,old)};
 }
 function budPeriodApplyTransition(store,plan,rolloverAction='retarget'){
   const next={...store,periods:{...(store.periods||{})}},now=Date.now(),old=plan.old,sourceExisted=!!store.periods?.[old.id],rolloverBefore={};
+  // A later edit adds a dated era; it cannot rewrite the schedules used by earlier days.
+  // Keep the original config and archives untouched. Nothing is migrated merely on read.
+  if(store.transition&&plan.today>=store.transition.effectiveFrom){
+    next.history=[...(Array.isArray(store.history)?store.history:[]),store.transition];
+  }
   const oldRecord={...(next.periods[old.id]||{}),start:old.start,end:old.end};
   if(plan.closedEnd)oldRecord.closedEnd=plan.closedEnd;
   oldRecord.transitionedAt=now;next.periods[old.id]=oldRecord;
@@ -479,7 +493,7 @@ function budPeriodCancelTransition(){
 }
 function budPeriodSetup(){
   const store=budCyclesLoad(),today=getLocalDate(),current=budPeriodRangeForStore(store,today,0);
-  const config=(store.transition?.config||budPeriodConfigAt(store,today)||{}),baseline=JSON.stringify({config:store.config,transition:store.transition||null});
+  const config=(store.transition?.config||budPeriodConfigAt(store,today)||{}),baseline=budPeriodScheduleSignature(store);
   const sources=activeCats(loadIncCats()).filter(c=>budIncomePeriodConfig(c));
   const main=sources[0];
   const frequency=config.frequency||main?.payCycle||'weekly',anchor=config.anchor||main?.payDate||dateStr(getMondayOf(0));
@@ -498,7 +512,7 @@ function budPeriodSetup(){
   document.getElementById('bp-form').onsubmit=e=>{
     e.preventDefault();const f=new FormData(e.target),source=activeCats(loadIncCats()).find(c=>c.id===f.get('source'));
     let latest=budCyclesLoad();
-    if(JSON.stringify({config:latest.config,transition:latest.transition||null})!==baseline){budPeriodError('Budget dates changed elsewhere. Close and reopen to use the latest schedule.');return;}
+    if(budPeriodScheduleSignature(latest)!==baseline){budPeriodError('Budget dates changed elsewhere. Close and reopen to use the latest schedule.');return;}
     const next=source?budIncomePeriodConfig(source):{frequency:f.get('frequency'),anchor:f.get('anchor'),end:f.get('end'),secondDay:f.get('secondDay')};
     if(!budPeriodRange(next,today,0)){budPeriodError(next?.frequency==='semimonthly'?'Choose two different days of the month, from 1 to 31.':next?.frequency==='custom'?'Choose a valid start and end date covering 1–366 days.':'Choose a valid schedule start date.');return;}
     const previous=budPeriodRangeForStore(latest,today,0);
@@ -507,7 +521,6 @@ function budPeriodSetup(){
       const mode=f.get('transitionMode')||'next',plan=budPeriodTransitionPlan(latest,next,today,mode);
       if(!plan){budPeriodError('These dates cannot form a safe transition. Check the starting date and try again.');return;}
       const base={...latest,periods:{...latest.periods}};
-      if(latest.transition&&today>=latest.transition.effectiveFrom){base.config=budPeriodConfigAt(latest,today);delete base.transition;}
       latest=budPeriodApplyTransition(base,plan,f.get('rolloverAction')||'retarget');
     }
     budCyclesSave(latest);budPeriodOffset=0;budPeriodSelected='';budLegacyOpen=false;
@@ -525,7 +538,7 @@ function budPeriodSetupFields(){
   budPeriodSetupPreview();
 }
 function budPeriodEditBaseline(store,period){
-  return JSON.stringify([budPlanOwner(),store.config,store.transition,store.periods[period.id],
+  return JSON.stringify([budPlanOwner(),store.config,store.transition,store.history,store.periods[period.id],
     budPeriodViewed()?.id,budPeriodInheritedPlan(period,store.periods[period.id]),budPeriodSuggestedReserves(period)]);
 }
 function budPeriodSubmitEdit(store,id){

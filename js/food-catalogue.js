@@ -230,9 +230,9 @@ async function foodCatalogueAdd(indices){
     if(account!==foodCatalogueAccount()||!foodCatalogueReady()||session!==foodCatalogueState.session)return;
     const original=foodCatalogueCurrent(),result=foodCatalogueBuild(recipes,original,indices);
     if(!result.added){foodCatalogueStatus('These recipes are already in your recipe book. Your saved versions were kept.');return;}
-    kitRecipes=result.recipes;kitSaveRecipes();
-    // The shared writer catches storage errors. Check the stored value before reporting success.
-    if(localStorage.getItem('kitchen_recipes')!==JSON.stringify(result.recipes)){
+    kitRecipes=result.recipes;
+    // Both the recipe book and its timestamp must be stored before reporting success.
+    if(!kitSaveRecipes()||localStorage.getItem('kitchen_recipes')!==JSON.stringify(result.recipes)){
       kitRecipes=original;throw new Error('The recipes could not be saved on this device. Please free some storage and try again.');
     }
     foodRefreshActive();foodRefreshSupport();

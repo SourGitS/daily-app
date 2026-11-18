@@ -1,6 +1,12 @@
 # Daily ↔ Fuji: prepared connection
 
-This branch prepares the remote connection requested on 23 October 2026. **It does not activate hosting, billing, credentials, OAuth grants, production rules or a real financial test.** Live Daily remains v406 (`a9995a1`) until a separate release. `js/ai-remote-config.js` is deliberately `null`.
+This prepares the remote connection requested on 23 October 2026. **It does not activate hosting, billing, credentials, OAuth grants, connector rules or a real financial test.** Daily's browser app is released independently; `js/ai-remote-config.js` remains deliberately `null`.
+
+## Security repairs — 18 November 2026
+
+Protected snapshot sync now requires the restore generation observed by the browser baseline. A queued edit from before a backup replacement is refused, including an addition absent from both previous and restored lists. Unchanged devices adopt the restored generation; dirty devices retain their local copy for explicit export/review. Database emulator checks cover both stale and current-generation clients.
+
+Before MCP schema validation, requests are bounded to 2 MB, 2,048 nodes, 24 nesting levels, 256 array items, 128 object fields and 65,536 characters per string. Compressed JSON is refused. Patched production dependencies, including Zod 4.6.7 and Firebase Admin 14.5.1, pass `npm run audit:production`. Development-only emulator/CLI advisories are separate from the pruned production image; do not expose the emulator publicly.
 
 ## Fuji route and current evidence
 
@@ -79,7 +85,7 @@ Production dependencies reported no audit advisories when checked. Firebase's de
 4. After credential approval, run `prepare-secrets.mjs` in a private operator environment with `DAILY_APPROVED_OPERATION=create-connector-secrets`. It creates a new `.local` directory with three secret files and prints no values. Import them directly into Secret Manager. Restrict and then securely remove local copies according to operator policy. Never paste them into chat, Git, public config or screenshots. Rotation must retain required old keys or explicitly revoke/reconnect grants; replacing encryption keys invalidates old artifacts.
 5. Build from the repository root with `docker build -f remote/Dockerfile .`; publish the image and deploy Cloud Run with the reviewed dedicated identity. Allow public HTTP invocation for OAuth metadata/consent; `/mcp` and account APIs enforce authentication themselves. Set min 0/max 1, request-based CPU, a suitable request timeout and budget alerts. Use the Cloud Run HTTPS origin; a paid custom domain is unnecessary.
 6. Configure the variables below using Secret Manager bindings for secrets, not literal command arguments. Copy only public Firebase web configuration from Daily. Add the connector hostname to Firebase Auth's authorized domains. Verify email and Google sign-in in the phone browser.
-7. Prepare the Daily release with `window.DAILY_REMOTE_CONFIG={origin:'https://YOUR-SERVICE'}`. Publish before account activation. Cache v407 is prepared here; use a newer number if another release has happened meanwhile. Update all active devices, sync pending edits and reload.
+7. Prepare the Daily release with `window.DAILY_REMOTE_CONFIG={origin:'https://YOUR-SERVICE'}`. Publish before account activation, using a new cache version after the current browser release. Update all active devices, sync pending edits and reload.
 8. After rule approval, compare live rules, then deploy the candidate **only to the database**, not the existing notification functions. Use an explicit temporary Firebase config pointing to `remote/database.rules.candidate.json` and the verified project ID. The existing production configuration is intentionally untouched in this branch.
 9. With operator ADC and `DAILY_DATABASE_URL`, run `node admin.mjs plan` to compare installed rules. For the exact verified owner UID, run `node admin.mjs enable UID` only with `DAILY_APPROVED_OPERATION=enable:UID`. It refuses a rules mismatch, validates record IDs, and does not rewrite financial records. Reload all devices; resolve any missing baseline by exporting/reviewing local data. Verify with an isolated test account before the real owner.
 10. Finish creating the ChatGPT plugin using the HTTPS `/mcp` URL. Complete real Daily sign-in/consent for only bill reading and expense creation. Enable the plugin for **Fuji**. Check identity, permissions and expiry in Daily and through Fuji's `connection_status`. A grant alone is not proof of a successful tool call.

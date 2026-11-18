@@ -4,6 +4,12 @@ Prepared 9 October 2026. **Client commit and push authorised; Firebase setup def
 push delivery has not been verified.** Do not enable billing, deploy the backend or activate
 the push feature flag until Francois explicitly asks to revisit it.
 
+Security maintenance on 18 November 2026 updates the locked production dependencies,
+including Firebase Admin 14.5.1 and body-parser 2.4.0. The backend build, module imports
+and 25 notification checks pass; `npm run audit:production` reports no known production
+advisories. These are local checks. Closed-app delivery and the deployed framework still
+need real-device acceptance before activation. `DAILY_PUSH_CONFIG.enabled` remains false.
+
 ## What is ready
 
 Settings → Account → Reminders has separate workout and budget reminders, workout prompts,

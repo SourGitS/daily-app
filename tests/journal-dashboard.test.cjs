@@ -10,7 +10,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { extract } = require('./harness.cjs');
 
-const source = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8').replace(/\r\n?/g, '\n');
 const TODAY = '2026-09-15';
 const CONTINUE = 'Continue today’s entry';
 

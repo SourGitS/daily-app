@@ -61,10 +61,11 @@ function device(env, uid, seed = {}) {
     dbRef: db.ref('users/' + uid + '/sessions')
   });
   vm.runInContext(readProject('js/ai-remote.js'), client);
-  vm.runInContext(['loadTxns', 'saveTxns', 'loadLedger', 'saveLedger'].map(extract).join('\n') +
+  vm.runInContext(['loadTxns','saveTxns','loadLedger','saveLedger','loadAccounts','saveAccounts'].map(extract).join('\n') +
     '\nasync ' + extract('restorePushToCloud'), client);
   client.txnData = client.dailyFinanceView('transactions', client.loadTxns());
   client.ledgerData = client.dailyFinanceView('ledger', client.loadLedger());
+  client.accounts=client.loadAccounts(true);
   assert.equal(client.dailyRemoteOrigin(), '');
   return client;
 }
@@ -78,11 +79,12 @@ async function until(condition, message) {
 }
 
 function attachFinance(client, path) {
-  const transactions = path === 'transactions';
+  const key={transactions:'daily_transactions',ledger:'daily_ledger',accounts:'daily_accounts'}[path];
   let observed = false;
-  client.syncBlobListen(client.auth.currentUser.uid, path, transactions ? 'daily_transactions' : 'daily_ledger', () => {
-    if (transactions) client.txnData = client.loadTxns();
-    else client.ledgerData = client.loadLedger();
+  client.syncBlobListen(client.auth.currentUser.uid,path,key,() => {
+    if(path==='transactions')client.txnData=client.loadTxns();
+    else if(path==='accounts')client.accounts=client.loadAccounts();
+    else client.ledgerData=client.loadLedger();
     observed = true;
   });
   return until(() => observed, path + ' initial sync');
@@ -102,6 +104,48 @@ test('active Daily app with independent authenticated RTDB clients', {timeout: 5
   t.after(() => env.cleanup());
   t.after(() => Promise.all(releaseApps.map(app => app.delete())));
   if (releaseSdk) t.diagnostic('Application clients use the release browser SDK ' + releaseSdk.SDK_VERSION + '.');
+
+  await t.test('Accounts merges unrelated offline edits while conflicting transfers retain both sides for recovery',async()=>{
+    const uid='account-conflicts',server=env.authenticatedContext(uid).database().ref('users/'+uid+'/accounts');
+    const initial=[{id:'cash',name:'Cash',type:'asset',current:100,history:[]},{id:'saver',name:'Savings',type:'asset',current:200,history:[]}];
+    await server.set({v:JSON.stringify(initial),t:10});
+    const first=device(env,uid),second=device(env,uid);
+    await Promise.all([attachFinance(first,'accounts'),attachFinance(second,'accounts')]);
+    second.db.goOffline();
+    const saved=JSON.parse(JSON.stringify(second.accounts));saved[1].current=250;
+    saved[1].history.push({date:'2026-11-18',balance:250});assert.equal(second.saveAccounts(saved),true);
+    const changed=JSON.parse(JSON.stringify(first.accounts));changed[0].current=125;
+    changed[0].history.push({date:'2026-11-18',balance:125});assert.equal(first.saveAccounts(changed),true);
+    await until(()=>!first.dailyFinanceDirty('accounts'),'first balance acknowledgement');
+    second.db.goOnline();await until(()=>!second.dailyFinanceDirty('accounts'),'independent account edits merge');
+    assert.deepEqual(rows(await server.once('value')).map(a=>a.current),[125,250]);
+    await until(()=>second.accounts[0].current===125,'receive both account changes');
+    second.db.goOffline();
+    const transfer=JSON.parse(JSON.stringify(second.accounts));transfer[0].current=105;transfer[1].current=270;
+    transfer.forEach(a=>a.balanceMovements=[{id:'one-transfer',amount:20,fromAcctId:'cash',toAcctId:'saver'}]);
+    assert.equal(second.saveAccounts(transfer),true);
+    const correction=JSON.parse(JSON.stringify(first.accounts));correction[0].current=130;
+    assert.equal(first.saveAccounts(correction),true);await until(()=>!first.dailyFinanceDirty('accounts'),'later bank check acknowledged');
+    second.db.goOnline();await until(()=>vm.runInContext("dailyFinanceConflicts.has('accounts')",second),'conflicted transfer is reported');
+    assert.deepEqual(rows(await server.once('value')).map(a=>a.current),[130,250]);
+    assert.equal(second.dailyFinanceDirty('accounts'),true);
+    assert.deepEqual(JSON.parse(second.localStorage.getItem('daily_accounts')).map(a=>a.current),[105,270]);
+    await assert.rejects(server.set({v:JSON.stringify(initial),t:Date.now()+1000}),/permission.denied/i);
+    await assert.rejects(server.remove(),/permission.denied/i);
+    await assert.rejects(env.authenticatedContext('other-owner').database().ref('users/'+uid+'/accounts').once('value'),/permission.denied/i);
+  });
+
+  await t.test('an Accounts restore fences an older queued transfer without applying either side',async()=>{
+    const uid='account-restore',server=env.authenticatedContext(uid).database().ref('users/'+uid+'/accounts');
+    const initial=[{id:'cash',name:'Cash',type:'asset',current:100},{id:'saver',name:'Savings',type:'asset',current:200}];
+    await server.set({v:JSON.stringify(initial),t:10});
+    const peer=device(env,uid);await attachFinance(peer,'accounts');peer.db.goOffline();
+    const transfer=JSON.parse(JSON.stringify(peer.accounts));transfer[0].current=80;transfer[1].current=220;
+    assert.equal(peer.saveAccounts(transfer),true);
+    const cutoff=Date.now()+1000;await server.set({v:JSON.stringify(initial),t:cutoff,restoreAt:cutoff,recordSync:1});
+    peer.db.goOnline();await until(()=>!peer.dailyFinanceDirty('accounts')&&peer.accounts[0].current===100,'restored account generation wins');
+    assert.deepEqual(rows(await server.once('value')).map(a=>a.current),[100,200]);
+  });
 
   await t.test('Planner merges a reschedule with an offline completion, then respects a restore during a queued undo', async () => {
     const uid = 'planner-week', key = 'daily_planner_tasks';
@@ -347,7 +391,7 @@ test('active Daily app with independent authenticated RTDB clients', {timeout: 5
     const uid = 'legacy-keyed';
     const cloud = env.authenticatedContext(uid).database().ref('users/' + uid);
     const cutoff = 1000;
-    const stores = {sessions: 'updatedAt', weights: 'updatedAt', notes: 'updatedAt',
+    const stores = {sessions:'updatedAt',weights:'updatedAt',plannerTasks:'updatedAt',notes:'updatedAt',
       weeklyReviews: 'updatedAt', budgetData: 'updatedAt', savingsLog: 't'};
     await cloud.set(Object.fromEntries(Object.keys(stores).map(key => [key, {__dailyRestoredAt: cutoff}])));
     for (const [key, time] of Object.entries(stores)) {
@@ -356,7 +400,8 @@ test('active Daily app with independent authenticated RTDB clients', {timeout: 5
       await assert.rejects(ref.remove(), /permission.denied/i, key);
       await assert.rejects(ref.child('earlier').set({[time]: cutoff - 1}), /permission.denied/i, key);
       const later = {[time]: cutoff + 1};
-      if (key === 'sessions' || key === 'weights') later.restoreGeneration = cutoff;
+      if(key==='sessions'||key==='weights'||key==='plannerTasks')later.restoreGeneration=cutoff;
+      if(key==='plannerTasks')await assert.rejects(ref.child('future-stale').set({updatedAt:cutoff+100000,restoreGeneration:cutoff-1}),/permission.denied/i);
       await ref.child('later').set(later);
       assert.deepEqual((await ref.once('value')).val(), {__dailyRestoredAt: cutoff, later});
     }

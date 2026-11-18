@@ -463,7 +463,8 @@
 // v463: date-scoped Finance overview, interactive spending chart and consistent history totals.
 // v464: restore the Finance budget hero above the additional Your money card.
 // v465: refreshed visual update pages for Finance, Home and Planner.
-const CACHE_NAME = 'daily-v465';
+// v466: imported-content safety, conflict recovery, reliable AI actions and retained budget history.
+const CACHE_NAME = 'daily-v466';
 importScripts('./js/notification-storage.js');
 importScripts('./js/cache-scope.js');
 
@@ -499,8 +500,6 @@ const ASSETS = [
   './js/ai-assistant.js',
   './js/ai-remote-config.js',
   './js/ai-remote.js',
-  './assets/manhua-hub-mark-v2.png',
-  './assets/manhua-hub-wordmark-star.png',
   './assets/manhua-hub-wordmark-stars.png',
   './js/notification-schedule.js',
   './js/notification-storage.js',

@@ -5,6 +5,7 @@ import {connectorService,DailyError,blob,fail,protectedPaths,syncFinancialBlob,u
 import {configureOAuth,SCOPES} from './oauth.mjs';
 import {createMcp} from './mcp.mjs';
 import {consentPage} from './consent.mjs';
+import {boundedMcpRequest} from './request-limits.mjs';
 
 export function createApp(config,dependencies){
   const {store,db,firebaseAuth}=dependencies,{origin,dailyOrigin,firebaseConfig}=config;
@@ -25,7 +26,7 @@ export function createApp(config,dependencies){
   const metadata={resource:oauth.resource,authorization_servers:[oauth.issuer],scopes_supported:SCOPES};
   app.get(['/.well-known/oauth-protected-resource','/.well-known/oauth-protected-resource/mcp'],(_req,res)=>res.json(metadata));
   app.get('/.well-known/oauth-authorization-server/oauth',(_req,res)=>res.redirect(302,oauth.issuer+'/.well-known/openid-configuration'));
-  const body=express.json({limit:'2mb'});
+  const body=express.json({limit:'2mb',inflate:false});
   const bearer=req=>/^Bearer ([^\s]+)$/.exec(req.headers.authorization||'')?.[1];
   async function userAuth(req){
     const token=bearer(req);if(!token)fail('UNAUTHENTICATED','Sign in to Daily.');
@@ -71,6 +72,7 @@ export function createApp(config,dependencies){
     let principal;
     try{principal=await oauth.authenticate(bearer(req));}
     catch{res.set('WWW-Authenticate',`Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"`);return res.status(401).json({error:{code:'UNAUTHENTICATED',message:'Reconnect Daily.'}});}
+    if(!boundedMcpRequest(req.body))fail('INVALID_INPUT','This request is too complex. Reduce its collections, nesting or text before retrying.');
     const server=createMcp(service,principal),transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined,enableJsonResponse:true});
     res.on('close',()=>{transport.close().catch(()=>{});server.close().catch(()=>{});});
     await server.connect(transport);await transport.handleRequest(req,res,req.body);

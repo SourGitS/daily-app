@@ -6,9 +6,9 @@ function fixture(){
  const c=vm.createContext({console,S:{sessions:[],swaps:{}},document:{addEventListener(){},getElementById:id=>nodes[id],querySelector:()=>null},
   localStorage:{setItem:(...a)=>writes.push(a)},escText:escape,escAttr:escape,muscleLabel:m=>m.charAt(0).toUpperCase()+m.slice(1),
   cardHeader:(_,label)=>'<header>'+label+'</header>',fmtDate:d=>d,fmtDuration:n=>n+'m',effortMeta:()=>null,
-  _secsNames:new Set(),loadExerciseLib:()=>[],loadLibHidden:()=>[],dayCustom:{}});
+  _secsNames:new Set(),loadExerciseLib:()=>[],loadLibHidden:()=>[],dayCustom:{},getComputedStyle:()=>({visibility:'visible'}),rtSyncRefresh:()=>{}});
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/training.js'),'utf8'),c);
- vm.runInContext(['libGuessMuscle','statsIsWorkingSet','fmtSetAmount','fmtLoggedSet','rtFormat','lapFabClock','rtUpdateDisplay'].map(extract).join('\n'),c);
+ vm.runInContext(['libGuessMuscle','statsIsWorkingSet','fmtSetAmount','fmtLoggedSet','rtFormat','lapFabClock','rtClockVisible','rtWriteClock','rtUpdateDisplay'].map(extract).join('\n'),c);
  return {c,writes,nodes};
 }
 const work={weight:60,reps:8,type:'working'},warm={weight:20,reps:10,type:'warmup'};
@@ -55,9 +55,17 @@ test('history map interactions and labels are isolated from Today coverage selec
  assert.doesNotMatch(today,/logHistorySelectMuscle/);
 });
 test('compact rest display uses whole seconds while fullscreen retains timestamp-derived tenths',()=>{
- const {c,nodes,writes}=fixture();nodes['rt-bar-time']={};nodes['rt-fs-time']={};
+ const {c,nodes,writes}=fixture();nodes['rt-bar-time']={getClientRects:()=>[{}]};nodes['rt-fs-time']={getClientRects:()=>[{}]};
  c.rtUpdateDisplay(61234);assert.equal(nodes['rt-bar-time'].textContent,'1:01');assert.equal(nodes['rt-fs-time'].textContent,'1:01.2');
  c.rtUpdateDisplay(0);assert.equal(nodes['rt-bar-time'].textContent,'0:00');assert.deepEqual(writes,[]);
+});
+test('closed and background clocks are untouched and identical text is not rewritten',()=>{
+ const {c,nodes}=fixture();let writes=0,text='0:00';
+ nodes['rt-bar-time']={getClientRects:()=>[{}],get textContent(){return text;},set textContent(value){text=value;writes++;}};
+ nodes['rt-fs-time']={getClientRects:()=>[],textContent:'closed'};
+ c.rtUpdateDisplay(100);c.rtUpdateDisplay(999);assert.equal(writes,0);assert.equal(nodes['rt-fs-time'].textContent,'closed');
+ c.rtUpdateDisplay(1000);assert.equal(text,'0:01');assert.equal(writes,1);
+ c.document.hidden=true;c.rtUpdateDisplay(5000);assert.equal(text,'0:01');assert.equal(writes,1);
 });
 test('floating lap controls follow the active set logger while the timer keeps running',()=>{
  const {c,nodes,writes}=fixture();nodes['lap-fab']={style:{}};
