@@ -6295,6 +6295,7 @@ const SETTINGS_SEARCH=[
   {s:'habits',  label:'Daily habits',       sub:'Habits',    a:'stg-card-habits', keys:'checklist streak add remove reorder routine'},
   {s:'appearance', label:'Dark mode',       sub:'Theme',     a:'stg-card-theme', keys:'light night theme black white appearance'},
   {s:'appearance', label:'App colour',      sub:'Theme',     a:'stg-card-theme', keys:'accent tint fixed training weather colour brand hue'},
+  {s:'appearance', label:'TV mode',         sub:'Display',   a:'stg-card-tv-mode', keys:'television remote controller dpad big screen navigation display'},
   {s:'appearance', label:'Colours & favourites', sub:'App colours', a:'stg-card-daycolours', keys:'training per day colour push pull legs rest fixed weather favourite custom picker hex'},
   {s:'weather',    label:'Use my location', sub:'Location',  a:'stg-card-wx-location', keys:'gps coordinates permission city suburb allow forecast region'},
   {s:'weather',    label:'Weather source',  sub:'Right now', a:'stg-card-wx-now', keys:'temperature condition scene stale refresh live reading'},
@@ -6532,6 +6533,27 @@ const SETTINGS_SECTION_KEYS=['account','health','habits','appearance','weather',
 // and the search subtitle at once. There is no second list to keep in step any more.
 function settingsTitle(key){ return (SETTINGS_SECTIONS[key]&&SETTINGS_SECTIONS[key].label)||key; }
 let _activeSettingsKey=null;
+function stgSyncTVMode(detail){
+  const button=document.getElementById('stg-tv-mode-toggle');
+  if(!button) return;
+  const on=!!(window.DailyTV&&window.DailyTV.enabled);
+  button.setAttribute('aria-checked',String(on));
+  const label=on?'On':'Off';
+  if(button.textContent!==label) button.textContent=label;
+  button.disabled=!window.DailyTV;
+  const feedback=document.getElementById('stg-tv-mode-feedback');
+  if(feedback&&detail&&detail.persisted!=null){
+    feedback.textContent=detail.persisted===false?'Changed for now. This browser could not remember the setting.':'';
+    feedback.hidden=detail.persisted!==false;
+  }
+}
+function stgSetTVMode(on){
+  const button=document.getElementById('stg-tv-mode-toggle');
+  if(button){ try{button.focus({preventScroll:true});}catch(_){button.focus();} }
+  if(window.DailyTV) window.DailyTV.setEnabled(on===true,{persist:true,source:'settings'});
+  stgSyncTVMode();
+}
+window.addEventListener('daily-tv-change',function(event){ stgSyncTVMode(event.detail); });
 // `anchor` is a card id from a search result: after the section mounts, that card is
 // scrolled to and briefly outlined (stgRevealCard).
 function openSettingsSection(key,anchor){
@@ -6571,7 +6593,7 @@ function openSettingsSection(key,anchor){
     renderWeightGoal();
   }
   if(key==='habits') renderHabitsEditModal();
-  if(key==='appearance'){ const th=document.getElementById('theme-toggle'); if(th) th.checked=S.theme==='dark'; renderAccentModeRow(); renderDayColorPickers(); }
+  if(key==='appearance'){ const th=document.getElementById('theme-toggle'); if(th) th.checked=S.theme==='dark'; stgSyncTVMode(); renderAccentModeRow(); renderDayColorPickers(); }
   if(key==='weather'){ weatherPermissionState(function(s){ _weatherPerm=s; renderWeatherSection(); }); renderWeatherSection(); }
   if(key==='homelayout'){ homeLayoutEnter(); renderHomeLayoutSection(); }
   if(split){

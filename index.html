@@ -901,6 +901,20 @@
               <button type="button" class="stg-link" onclick="openSettingsSection('weather')">Weather source &amp; location &#8594;</button>
             </div>
           </div>
+          <div class="stg-card" id="stg-card-tv-mode">
+            <div class="stg-card-head">
+              <span class="stg-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
+              <div class="stg-card-head-txt">
+                <div class="stg-card-title">TV mode</div>
+                <div class="stg-card-desc">Larger controls and remote navigation.</div>
+              </div>
+            </div>
+            <div class="stg-row">
+              <span class="stg-row-txt"><span class="stg-row-label" id="stg-tv-mode-label">TV mode</span><span class="stg-row-sub">Remembered on this device.</span></span>
+              <button type="button" class="stg-btn" id="stg-tv-mode-toggle" role="switch" aria-checked="false" aria-labelledby="stg-tv-mode-label" aria-describedby="stg-tv-mode-feedback" onclick="stgSetTVMode(this.getAttribute('aria-checked')!=='true')">Off</button>
+            </div>
+            <p class="stg-help" id="stg-tv-mode-feedback" role="status" hidden></p>
+          </div>
           <div class="stg-card" id="stg-card-daycolours">
             <div class="stg-card-head">
               <span class="stg-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18 2 2 0 0 0 2-2 2 2 0 0 1 2-2h1.5a3.5 3.5 0 0 0 3.5-3.5C21 7.4 17 3 12 3z"/><circle cx="7.5" cy="12" r="1"/><circle cx="10" cy="8" r="1"/><circle cx="15" cy="8.5" r="1"/></svg></span>

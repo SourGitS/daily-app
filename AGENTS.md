@@ -1,5 +1,12 @@
 # Daily — Agent Handoff
 
+## v468 Settings TV mode option — 2026-11-18
+
+- Settings → Appearance → TV mode provides an accessible On/Off switch, also findable by TV/remote/television searches. It applies without reload and keeps focus on the control. Appearance reflects toolbar Exit and history changes in place. Copy is concise; an unsuccessful device save gets a visible status instead of a false promise of persistence.
+- Explicit Settings choices and Exit use native `window.localStorage` key `daily-tv-mode` (`1`/`0`), outside account namespaces, cloud stores and backups. The choice survives ordinary launches and account changes on that browser. Other devices keep their own choice. An exact `?tv=1` link still opens TV mode without silently saving a preference; history and temporary API changes do not persist it. Blocked storage retains a session choice. Screen size never enables TV mode.
+- The native launcher remains unchanged. Its current ordinary Daily URL can use a choice saved in that TV browser; a direct first launch can still use the special TV link. No real financial records or unrelated Home/Accounts export work change. Cache daily-v468. The starting working diff is `temp-analysis/tv-settings-20261118/preexisting.patch`; preview and test reports remain ignored in that folder.
+- The isolated candidate passed 899 Node checks, four focused Chrome/WebKit Settings journeys at phone/HD sizes, all 11 existing TV/browser comparisons and the v467-to-v468 offline upgrade. The visual/accessibility matrix passed all 20 Chrome/WebKit size/theme cases from 320px to 1920px. Pointer and keyboard toggles preserve visible focus after reflow, including WebKit buttons; only the first enabled refresh reveals retained focus. Synthetic tests cover failed saves, normal-link restarts, Exit/history state, zero mode-triggered cloud/financial writes, backup exclusion and account-switch/reset independence. Physical TV acceptance remains pending.
+
 ## v467 optional TV remote interface — 2026-11-18
 
 - `https://sourgits.github.io/daily-app/?tv=1` explicitly enables remote focus navigation. The ordinary URL retains its existing interface; screen width never enables TV mode. The TV bar provides Back and Exit. Exit preserves drafts without reloading, and browser history follows the URL's mode without a navigation trap. No new preferences, account stores or financial writers are introduced.

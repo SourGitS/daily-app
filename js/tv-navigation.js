@@ -1,21 +1,31 @@
-/* Optional remote navigation. No preferences or user records are stored here. */
+/* Optional remote navigation. Its one device preference never uses account storage. */
 (function () {
   'use strict';
   const root = document.documentElement;
+  const preferenceKey = 'daily-tv-mode';
   const controls = 'button,a[href],input:not([type="hidden"]),select,textarea,summary,[tabindex],[contenteditable="true"],[role="button"],[role="link"],[role="checkbox"],[role="radio"],[role="switch"],[role="tab"],[role="menuitem"],[onclick]';
   const layers = 'dialog[open],.app-overlay,.modal-overlay,[role="dialog"],[aria-modal="true"],[role="menu"],.kit-menu-dropdown,.kit-detail-more[open],#kit-detail-overlay,#plan-html-overlay,#rt-fullscreen,#onboarding-overlay';
   const directions = {ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right'};
   const backKeys = new Set(['Escape','BrowserBack','GoBack','Back','Backspace']);
   const ownedTabIndexes = new Map();
   let enabled = false, started = false, observer = null, barObserver = null, frame = 0;
+  let revealOnRefresh = false;
   let marked = null, editing = null, pointerField = null, remembered = null;
   let composing = null, compositionTarget = null, compositionPending = false, compositionTimer = 0;
   let planReader = null, layerHint = null;
   let layerStack = [], currentLayer = null;
+  let preference = readPreference();
 
   function requested() {
     try { return new URL(location.href).searchParams.get('tv') === '1'; } catch (_) { return false; }
   }
+  function preferenceValue(raw) { return raw==='1'?true:raw==='0'?false:null; }
+  function readPreference() {
+    // window.localStorage is the browser store; the unqualified localStorage
+    // binding belongs to the active Daily account and must not be used here.
+    try { return preferenceValue(window.localStorage.getItem(preferenceKey)); } catch (_) { return null; }
+  }
+  function effectiveMode() { return requested() || preference===true; }
   function isField(el) {
     return !!(el&&el.matches) && (el.isContentEditable || el.matches('textarea,select,input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"])'));
   }
@@ -147,7 +157,7 @@
     }
     try{el.focus({preventScroll:true});}catch(_){el.focus();}
     if(document.activeElement!==el)return false;
-    mark(el);reveal(el);return true;
+    mark(el);reveal(el);revealOnRefresh=false;return true;
   }
   function preferred(list,scope) {
     const selected=list.find(el=>el.matches('[aria-current="page"],.nv-qrow.is-on,.nav-btn.active'));
@@ -170,7 +180,9 @@
     const list=candidates(next),active=document.activeElement;
     if(list.includes(active)){
       if(editing&&editing!==active)leaveEdit();
-      mark(active);return true;
+      mark(active);
+      if(revealOnRefresh){revealOnRefresh=false;reveal(active);}
+      return true;
     }
     if(editing)leaveEdit();
     const replacement=editSaved&&next===old?findRemembered(editSaved.identity,list):null;
@@ -408,10 +420,13 @@
     if(bar){const value=Math.ceil(bar.getBoundingClientRect().height)+'px';if(root.style.getPropertyValue('--tv-bar-height')!==value)root.style.setProperty('--tv-bar-height',value);}
   }
   function barBack() { if(!back())history.back(); }
-  function barExit() { setEnabled(false); }
+  function barExit() { setEnabled(false,{persist:true,source:'exit'}); }
   function init() {
     if(!enabled||started||!document.body)return;
     started=true;
+    // Enabling TV can reflow the existing Settings control below the viewport.
+    // Reveal it once after layout, rather than scrolling on every later mutation.
+    revealOnRefresh=true;
     const bar=document.getElementById('daily-tv-bar');
     if(bar){bar.hidden=false;measureBar();if(window.ResizeObserver){barObserver=new ResizeObserver(measureBar);barObserver.observe(bar);}}
     document.getElementById('daily-tv-back')?.addEventListener('click',barBack);
@@ -467,35 +482,58 @@
     for(const [el,value] of ownedTabIndexes)if(el.getAttribute('tabindex')==='-1'){
       if(value===null)el.removeAttribute('tabindex');else el.setAttribute('tabindex',value);
     }
-    ownedTabIndexes.clear();layerStack=[];currentLayer=null;pointerField=null;remembered=null;started=false;
+    ownedTabIndexes.clear();layerStack=[];currentLayer=null;pointerField=null;remembered=null;revealOnRefresh=false;started=false;
   }
-  function setEnabled(value) {
+  function changed(persisted,source) {
+    window.dispatchEvent(new CustomEvent('daily-tv-change',{detail:{enabled,preference,persisted,source}}));
+  }
+  function setEnabled(value,options) {
     const next=value===true;
-    if(next===enabled)return enabled;
-    enabled=next;
-    if(enabled){root.setAttribute('data-tv','true');init();}
-    else{stop();root.removeAttribute('data-tv');}
-    try{
-      const url=new URL(location.href);
-      if(enabled)url.searchParams.set('tv','1');else url.searchParams.delete('tv');
-      history.replaceState(history.state,'',url.pathname+url.search+url.hash);
-    }catch(_){}
+    options=options||{};
+    let persisted=null;
+    if(options.persist===true){
+      // Keep the explicit choice for this session even when storage is blocked.
+      preference=next;
+      try{window.localStorage.setItem(preferenceKey,next?'1':'0');persisted=true;}catch(_){persisted=false;}
+    }
+    const different=next!==enabled;
+    if(different){
+      enabled=next;
+      if(enabled){root.setAttribute('data-tv','true');init();}
+      else{stop();root.removeAttribute('data-tv');}
+    }
+    if(different||options.persist===true){
+      if(options.updateUrl!==false)try{
+        const url=new URL(location.href);
+        if(enabled)url.searchParams.set('tv','1');else url.searchParams.delete('tv');
+        history.replaceState(history.state,'',url.pathname+url.search+url.hash);
+      }catch(_){}
+      changed(persisted,options.source||'api');
+    }
     return enabled;
   }
   function urlStateChanged() {
-    const next=requested();
-    if(next!==enabled)setEnabled(next);else schedule();
+    const next=effectiveMode();
+    if(next!==enabled)setEnabled(next,{source:'history',updateUrl:false});else schedule();
+  }
+  function storagePreferenceChanged(event) {
+    if(event.key!==preferenceKey)return;
+    preference=preferenceValue(event.newValue);
+    const next=effectiveMode();
+    if(next!==enabled)setEnabled(next,{source:'storage',updateUrl:false});else changed(null,'storage');
   }
   function destroy() {
     setEnabled(false);
     window.removeEventListener('popstate',urlStateChanged);
+    window.removeEventListener('storage',storagePreferenceChanged);
     document.removeEventListener('DOMContentLoaded',init);
   }
   window.DailyTV=Object.freeze({get enabled(){return enabled;},get mode(){return editing?'editing':'navigation';},
     refresh,focus,move,back,setEnabled,destroy});
-  enabled=requested();
+  enabled=effectiveMode();
   if(enabled)root.setAttribute('data-tv','true');
   // Observe URL opt-in changes without preventing navigation or adding history entries.
   window.addEventListener('popstate',urlStateChanged);
+  window.addEventListener('storage',storagePreferenceChanged);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();

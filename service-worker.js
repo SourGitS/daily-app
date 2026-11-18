@@ -465,7 +465,8 @@
 // v465: refreshed visual update pages for Finance, Home and Planner.
 // v466: imported-content safety, conflict recovery, reliable AI actions and retained budget history.
 // v467: explicit TV mode with remote focus navigation and sofa-readable controls.
-const CACHE_NAME = 'daily-v467';
+// v468: Settings TV mode switch with a device-only remembered choice.
+const CACHE_NAME = 'daily-v468';
 importScripts('./js/notification-storage.js');
 importScripts('./js/cache-scope.js');
 
